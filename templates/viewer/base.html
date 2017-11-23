@@ -1,0 +1,147 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#29527a">
+  <title>{% block title %}Panda Backup{% endblock %}</title>
+  {% load staticfiles %}
+  <link rel="shortcut icon" href="{% static 'favicon.ico' %}">
+  <link rel="icon" sizes="16x16 32x32 64x64" href="{% static 'favicon.ico' %}">
+  <link rel="icon" type="image/png" sizes="196x196" href="{% static 'favicon-196.png' %}">
+  <link rel="icon" type="image/png" sizes="160x160" href="{% static 'favicon-160.png' %}">
+  <link rel="icon" type="image/png" sizes="96x96" href="{% static 'favicon-96.png' %}">
+  <link rel="icon" type="image/png" sizes="64x64" href="{% static 'favicon-64.png' %}">
+  <link rel="icon" type="image/png" sizes="32x32" href="{% static 'favicon-32.png' %}">
+  <link rel="icon" type="image/png" sizes="16x16" href="{% static 'favicon-16.png' %}">
+  <link rel="apple-touch-icon" sizes="152x152" href="{% static 'favicon-152.png' %}">
+  <link rel="apple-touch-icon" sizes="144x144" href="{% static 'favicon-144.png' %}">
+  <link rel="apple-touch-icon" sizes="120x120" href="{% static 'favicon-120.png' %}">
+  <link rel="apple-touch-icon" sizes="114x114" href="{% static 'favicon-114.png' %}">
+  <link rel="apple-touch-icon" sizes="76x76" href="{% static 'favicon-76.png' %}">
+  <link rel="apple-touch-icon" sizes="72x72" href="{% static 'favicon-72.png' %}">
+  <link rel="apple-touch-icon" href="{% static 'favicon-57.png' %}">
+  <meta name="msapplication-TileColor" content="#FFFFFF">
+  <meta name="msapplication-TileImage" content="{% static 'favicon-144.png' %}">
+  <meta name="msapplication-config" content="{% static 'browserconfig.xml' %}">
+  {% load compress %}
+  {% compress css %}
+    <link href="{% static 'css/vendor/bootstrap.min.css' %}" rel="stylesheet">
+    <link rel="stylesheet" type="text/css" href="{% static 'css/main.css' %}">
+  {% endcompress %}
+  {% block extrahead %} {% endblock %}
+</head>
+{% load viewer_extras %}
+<body>
+<div class="container-fluid">
+  {% block nav-global %}
+    <!-- MENU -->
+    <nav class="navbar navbar-default">
+      <div class="navbar-header">
+
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar" aria-expanded="false">
+          <span class="sr-only">Toggle navigation</span>
+          <span class="icon-bar"></span>
+          <span class="icon-bar"></span>
+          <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="{% url 'viewer:main-page' %}"><img alt="PG" src="{% static 'favicon-16.png' %}"></a>
+      </div>
+      <div id="navbar" class="navbar-collapse collapse">
+        <ul class="nav navbar-nav">
+          <li><a href="{% url 'viewer:archive-search' %}">Archives</a></li>
+          <li><a href="{% url 'viewer:gallery-list' %}">Galleries</a></li>
+          {% if not user.is_staff %}
+            <li><a href="/ripper/">Rips dir listing</a></li>
+            <li class="dropdown">
+              <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Help needed <span class="caret"></span></a>
+              <ul class="dropdown-menu">
+                <li><a href="{% url 'viewer:lists' 'missing-archives' %}">Missing archives</a></li>
+                <li><a href="{% url 'viewer:lists' 'wanted-galleries' %}">Wanted galleries</a></li>
+              </ul>
+            </li>
+            <li><a href="{% url 'viewer:url-submit' %}">Submit URLs</a></li>
+          {% endif %}
+          {% if user.is_staff %}
+            <li><a href="{% url 'viewer:tools' %}">Tools</a></li>
+            <li class="dropdown">
+              <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Lists <span class="caret"></span></a>
+              <ul class="dropdown-menu">
+                <li><a href="{% url 'viewer:lists' 'repeated-archives' %}">Repeated archives (same gallery)</a></li>
+                <li><a href="{% url 'viewer:lists' 'missing-archives' %}?provider=panda">Non used panda galleries</a></li>
+                <li><a href="{% url 'viewer:lists' 'archive-filesize-different' %}">Archives not matching gallery filesize</a></li>
+                <li><a href="{% url 'viewer:lists' 'archive-not-present' %}">Archives with file not present in filesystem</a></li>
+                <li><a href="{% url 'viewer:lists' 'archives-not-matched' %}">Archives without gallery matches</a></li>
+                <li class="divider"></li>
+                <li><a href="{% url 'viewer:lists' 'wanted-galleries' %}?{% url_replace 'wanted-not-found' '1' %}">Wanted galleries</a></li>
+              </ul>
+            </li>
+            <li class="dropdown">
+              <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Stats <span class="caret"></span></a>
+              <ul class="dropdown-menu">
+                <li><a href="{% url 'viewer:stats-collection' %}">Collection</a></li>
+                <li><a href="{% url 'viewer:stats-workers' %}">Workers</a></li>
+                <li><a href="{% url 'viewer:stats-settings' %}">Settings</a></li>
+              </ul>
+            </li>
+            <li><a href="{% url 'viewer:logs' %}">Logs</a></li>
+            <li><a href="{% url 'viewer:crawler' %}">URL Crawler</a></li>
+            <li><a href="{% url 'viewer:folder-crawler' %}">Folder Crawler</a></li>
+            <li class="dropdown">
+              <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Other tools<span class="caret"></span></a>
+              <ul class="dropdown-menu">
+                <li><a href="{% url 'viewer:es-index-view' %}">Advanced search</a></li>
+                <li><a href="{% url 'viewer:public-stats' %}">Collection stats</a></li>
+                <li><a href="{% url 'viewer:tag-frequency' %}">Tag frequency</a></li>
+                <li><a href="{% url 'viewer:gallery-frequency' %}">Gallery frequency</a></li>
+              </ul>
+            </li>
+          {% else %}
+            <li class="dropdown">
+              <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Other tools<span class="caret"></span></a>
+              <ul class="dropdown-menu">
+                <li><a href="{% url 'viewer:es-index-view' %}">Advanced search</a></li>
+                <li><a href="{% url 'viewer:public-stats' %}">Collection stats</a></li>
+                <li><a href="{% url 'viewer:tag-frequency' %}">Tag frequency</a></li>
+                <li><a href="{% url 'viewer:gallery-frequency' %}">Gallery frequency</a></li>
+              </ul>
+            </li>
+            <li><a href="{% url 'viewer:about' %}">About</a></li>
+          {% endif %}
+        </ul>
+        <div class="navbar-collapse collapse" id="searchbar">
+          <ul class="nav navbar-nav navbar-right">
+            {% if user.is_staff %}
+              <li><a href="{% url 'admin:index' %}">Admin</a></li>
+            {% endif %}
+            {% if user.is_authenticated %}
+              <li><a href="{% url 'viewer:logout' %}">Logout</a></li>
+            {% endif %}
+          </ul>
+          <form action="{% url 'viewer:archive-search' %}" class="navbar-form" role="search">
+            <div class="form-group form-group-sm " style="display:inline;">
+              <div class="input-group" style="display:table;">
+                <input class="form-control" name="qsearch" placeholder="Title, tag or source URL archive quick search" autocomplete="off" value="{{ display_prms.qsearch }}" type="text" aria-label="quick text">
+                <span class="input-group-btn" style="width:1%;">
+                <button class="btn btn-default btn-sm" type="submit" aria-label="quick search"><span class="glyphicon glyphicon-search"></span></button>
+                <button class="btn btn-default btn-sm" id="more" data-toggle="collapse" data-target="#main-search" name="main_filters" type="button" aria-label="toggle search"><span class="glyphicon glyphicon-chevron-{% if prm.main_filters %}up{% else %}down{% endif %}"></span></button>
+                </span>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+    </nav>{% endblock %}
+  <!-- CONTENT -->
+  <div id="content">
+    {% block content %}{% endblock %}
+  </div>
+</div>
+<script type="text/javascript" src="{% static "admin/js/vendor/jquery/jquery.min.js" %}"></script>
+{% compress js %}
+  <script src="{% static 'js/vendor/bootstrap.min.js' %}"></script>
+  <script src="{% static 'js/main.js' %}"></script>
+{% endcompress %}
+{% block afterJQ %}{% endblock %}
+</body>
+</html>

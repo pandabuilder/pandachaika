@@ -1,0 +1,94 @@
+{% extends "viewer/base.html" %}
+{% block title %}Repeated archives | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+{% load staticfiles %}
+
+{% block content %}
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+    <!-- Repeated archives  -->
+    <div class="page-header">
+      <h2>Galleries with more than one archive</h2>
+      <p class="lead">Number of galleries (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
+    </div>
+  <form action="{% url 'viewer:lists' 'repeated-archives' %}" method="GET">
+    {% for field in form %}
+      <div class="page-line">
+        {{ field.errors }}
+        {{ field }}
+      </div>
+    {% endfor %}
+    <div class="page-line form-inline">
+      <button type="submit" name="apply" class="btn btn-default">Search</button>
+      <a class="btn btn-default" href="{% url 'viewer:lists' 'repeated-archives' %}">Clear</a>
+      <input id="checkbox-f1" type="checkbox" name="no-custom-tags" value="1" {% if "no-custom-tags" in request.GET %}checked{% endif %}><label for="checkbox-f1"><span><span></span></span>No custom tags</label>
+      <input id="checkbox-f2" type="checkbox" name="with-possible-matches" value="1" {% if "with-possible-matches" in request.GET %}checked{% endif %}><label for="checkbox-f2"><span><span></span></span>With possible matches</label>
+    </div>
+  </form>
+    <!-- Next/Prev page links  -->
+    {% if results.object_list and results.paginator.num_pages > 1 %}
+      <div class="pagination-top">
+        <span class="step-links">
+            {% if results.has_previous %}
+              <a href= "?page={{ results.previous_page_number }}">previous &lt;&lt; </a>
+            {% endif %}
+          <span class="current">
+            &nbsp;Page {{ results.number }} of {{ results.paginator.num_pages }}
+          </span>
+          {% if results.has_next %}
+            <a href="?page={{ results.next_page_number }}"> &gt;&gt; next</a>
+          {% endif %}
+        </span>
+      </div>
+    {% endif %}
+    <form action="{% url 'viewer:lists' 'repeated-archives' %}" method="POST">{% csrf_token %}
+    <ul class="list-group">
+      {% for gallery in results %}
+        <li class="list-group-item">
+          {% with archives=gallery.archive_set %}
+            <label for="del-{{ gallery.id }}">{{ gallery.filesize }} >> {{ gallery.filecount }} >> <a href="{{ gallery.get_absolute_url }}">{{ gallery.title }}</a> >> {{ gallery.get_link|urlize }}</label>
+            <select id="del-{{ gallery.id }}" name="del-{{ gallery.id }}" class="form-control" multiple size="{{ archives.count }}">
+              {% for archive in archives.all %}
+                <option value="{{ archive.pk }}" {% if archive.selected == True %}selected="selected"{% endif %}  {% if archive.filesize == gallery.filesize %}class="highlight-option"{% endif %}>{{ archive.filesize }} >> {{ archive.filecount }} >> {{ archive.match_type }} >> {{ archive.source_type }} >> {{ archive.zipped }}</option>
+              {% endfor %}
+            </select>
+          {% endwith %}
+        </li>
+      {% endfor %}
+    </ul>
+    <button type="submit" name="delete_archives" class="btn btn-default">Delete selected archives</button>
+    <button type="submit" name="delete_archives_and_files" class="btn btn-default">Delete (WARNING!) selected archives and files</button>
+  </form>
+  <!-- Next/Prev page links  -->
+  {% if results.object_list and results.paginator.num_pages > 1 %}
+    <div>
+        <span class="step-links">
+          {% if results.has_previous %}
+            <a href= "?page={{ results.previous_page_number }}">previous &lt;&lt; </a>
+          {% endif %}
+          <span class="current">
+            &nbsp;Page {{ results.number }} of {{ results.paginator.num_pages }}
+          </span>
+          {% if results.has_next %}
+            <a href="?page={{ results.next_page_number }}"> &gt;&gt; next</a>
+          {% endif %}
+        </span>
+    </div>
+  {% endif %}
+{% endblock %}
+{% block afterJQ %}
+  {% load compress %}
+  {% compress css %}
+    <link href="{% static 'autocomplete_light/vendor/jal/src/style.css' %}" type="text/css" media="all" rel="stylesheet" />
+  {% endcompress %}
+  {% compress js %}
+    <script type="text/javascript" src="{% static 'autocomplete_light/jquery.init.js' %}"></script>
+    <script type="text/javascript" src="{% static 'autocomplete_light/autocomplete.init.js' %}"></script>
+    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/autocomplete.js' %}"></script>
+    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/text_widget.js' %}"></script>
+    <script type="text/javascript" src="{% static 'autocomplete_light/jal.js' %}"></script>
+  {% endcompress %}
+{% endblock %}

@@ -1,0 +1,19 @@
+# Chose one depending on database backend
+pymysql
+psycopg2
+python-dateutil
+python-pushover
+twitter
+beautifulsoup4
+CherryPy>=10
+Django>=1.11.3
+django-compressor
+Pillow>=4.2.0
+rarfile>=2.7
+requests>=2.5.3
+feedparser>=5.2.1
+transmissionrpc>=0.11
+-e git+https://github.com/pandabuilder/django-autocomplete-light.git#egg=django-autocomplete-light
+python-dateutil
+elasticsearch>=5.0.0,<6.0.0
+elasticsearch-dsl>=5.0.0,<6.0.0

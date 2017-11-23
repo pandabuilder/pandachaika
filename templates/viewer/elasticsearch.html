@@ -1,0 +1,133 @@
+{% extends "viewer/base.html" %}
+{% load staticfiles %}
+{% load viewer_extras %}
+{% block extrahead %}
+  <link href="{% static "css/dashboard.css" %}" rel="stylesheet">
+{% endblock %}
+{% block content %}
+
+  <div class="container-fluid">
+    <div class="row">
+      <div class="col-sm-3 col-md-2 sidebar">
+        <ul class="nav nav-sidebar">
+          <li class="active"><a href=""><h3>FILTERS</h3><span class="sr-only">(current)</span></a></li>
+        </ul>
+        <ul class="nav nav-sidebar">
+          <li class="active"><a href="">Tag<span class="sr-only">(current)</span></a></li>
+          {% for tag in aggregations.tags__full %}
+            <li><a href="{% url 'viewer:es-index-view'%}?{{tag.url_args}}">{{tag.name}}: {{tag.count}} ({% if tag.is_active %}-{% else %}+{% endif %})</a></li>
+          {% endfor %}
+          <li class="active"><a href="">Source<span class="sr-only">(current)</span></a></li>
+          {% for source_type in aggregations.source_type %}
+            <li><a href="{% url 'viewer:es-index-view'%}?{{source_type.url_args}}">{{source_type.name}}: {{source_type.count}} ({% if source_type.is_active %}-{% else %}+{% endif %})</a></li>
+          {% endfor %}
+          <li class="active"><a href="">Reason<span class="sr-only">(current)</span></a></li>
+          {% for reason in aggregations.reason %}
+            <li><a href="{% url 'viewer:es-index-view'%}?{{reason.url_args}}">{{reason.name}}: {{reason.count}} ({% if reason.is_active %}-{% else %}+{% endif %})</a></li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="col-sm-9 col-sm-offset-3 col-md-10 col-md-offset-2 main">
+        <h2>Search by <a href="https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-query-string-query.html#query-string-syntax">Elasticsearch</a></h2>
+        <h4>Default fields: title, title_jpn, tags.full. Available fields: title, title_jpn, tags.full, tags.name, tags.scope, size, image_count, public_date, original_date, source_type, reason</h4>
+        <div class="row">
+          <div class="col text-center sub-header">
+            <form>
+              <div class="form-inline">
+                <input type="text" name="q" id="search" value="{{ q }}" class="form-control my-group" autocomplete="off" placeholder="Try your luck!">
+                <select id="sort" name="sort" class="form-control" title="sort">
+                  {% if user.is_staff %}
+                    <option value="create_date" {% if sort == "create_date" %} selected{% endif %}>create_date</option>
+                  {% endif %}
+                  <option value="public_date" {% if sort == "public_date" %} selected{% endif %}>public_date</option>
+                  <option value="original_date" {% if sort == "original_date" %} selected{% endif %}>original_date</option>
+                  <option value="size" {% if sort == "size" %} selected{% endif %}>size</option>
+                  <option value="image_count" {% if sort == "image_count" %} selected{% endif %}>image_count</option>
+                </select>
+                <select id="order" name="order" class="form-control" title="order" aria-label="sort_order">
+                  <option value="desc" {% if order == "desc" %} selected{% endif %}>descending</option>
+                  <option value="asc" {% if order == "asc" %} selected{% endif %}>ascending</option>
+                </select>
+                <button type="submit" class="btn btn-default">Search</button>
+                <button type="submit" name="clear" class="btn btn-default">Clear</button>
+              </div>
+            </form>
+          </div>
+          {% if message %}
+            <h5 class="text-center sub-header">{{ message }}</h5>
+          {% endif %}
+          {% if not results %}
+            <h4 class="text-center sub-header">No results!</h4>
+          {% else %}
+            <h4 class="text-center sub-header">Results on page: {{ results.from }} to {{ results.to }}, total: {{ paginator.count }}, current page: {{ paginator.number }} total pages: {{ paginator.num_pages }}</h4>
+            <div class="col col-md-4 col-md-offset-4 text-center">
+              <ul class="pagination">
+                <li {% if paginator.number == 1 %} class="disabled"{% endif %}>
+                  <a href="?{% url_replace 'page' '1' %}" aria-label="First">
+                    <span aria-hidden="true">&laquo;</span>
+                  </a>
+                </li>
+                {% for p in paginator.page_range %}
+                  <li {% ifequal p paginator.number %} class="active" {% endifequal %}><a
+                      href="?{% url_replace 'page' p %}">{{ p }}</a></li>
+                {% empty %}
+                  <li class="active"><a href="?{% url_replace 'page' '1' %}">1</a></li>
+                {% endfor %}
+                <li {% if paginator.number == paginator.num_pages %}
+                  class="disabled"{% endif %}>
+                  <a href="?{% url_replace 'page' paginator.num_pages %}"
+                     aria-label="Last">
+                    <span aria-hidden="true">&raquo;</span>
+                  </a>
+                </li>
+              </ul>
+            </div>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-striped">
+                <thead>
+                <tr>
+                  <th style="width:4%">#</th>
+                  {% if user.is_staff %}
+                    <th style="width:71%">Title</th>
+                    <th style="width:4%"><a href="?{% url_multi_replace sort='image_count' order=order|revert_order %}">Images</a></th>
+                    <th style="width:6%"><a href="?{% url_multi_replace sort='size' order=order|revert_order %}">Size</a></th>
+                    <th style="width:5%"><a href="?{% url_multi_replace sort='create_date' order=order|revert_order %}">Added</a></th>
+                    <th style="width:5%"><a href="?{% url_multi_replace sort='public_date' order=order|revert_order %}">Available</a></th>
+                    <th style="width:5%"><a href="?{% url_multi_replace sort='original_date' order=order|revert_order %}">Original</a></th>
+                  {% else %}
+                    <th style="width:76%">Title</th>
+                    <th style="width:4%"><a href="?{% url_multi_replace sort='image_count' order=order|revert_order %}">Images</a></th>
+                    <th style="width:6%"><a href="?{% url_multi_replace sort='size' order=order|revert_order %}">Size</a></th>
+                    <th style="width:5%"><a href="?{% url_multi_replace sort='public_date' order=order|revert_order %}">Available</a></th>
+                    <th style="width:5%"><a href="?{% url_multi_replace sort='original_date' order=order|revert_order %}">Original</a></th>
+                  {% endif %}
+                </tr>
+                </thead>
+                <tbody>
+                {% for hit in hits %}
+                  <tr>
+                    <td><a href="{% url 'viewer:archive' hit.pk %}">{{ hit.pk }}</a></td>
+                    <td>{{ hit.title }}</td>
+                    <td>{{ hit.image_count }}</td>
+                    <td>{{ hit.size|filesizeformat }}</td>
+                    {% if user.is_staff %}
+                      <td>{{ hit.create_date_c|date:"SHORT_DATE_FORMAT" }}</td>
+                    {% endif %}
+                    <td>{{ hit.public_date_c|date:"SHORT_DATE_FORMAT"|default:'none' }}</td>
+                    <td>{{ hit.original_date_c|date:"SHORT_DATE_FORMAT"|default:'none' }}</td>
+                  </tr>
+                {% endfor %}
+                </tbody>
+              </table>
+            </div>
+
+          {% endif %}
+      </div>
+    </div>
+  </div>
+
+{% endblock content %}
+
+{% block afterJQ %}
+{% endblock afterJQ %}

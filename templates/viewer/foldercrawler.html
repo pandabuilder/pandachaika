@@ -1,0 +1,95 @@
+{% extends "viewer/base.html" %}
+{% block title %}Folder Crawler | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+{% load staticfiles %}
+{% block content %}
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+  <!-- Folder Crawler  -->
+  <div class="page-header">
+    <h2>Folder crawler interface, one command per line</h2>
+  </div>
+  <form action="{% url 'viewer:folder-crawler' %}" method="POST">{% csrf_token %}
+    <div class="form-group">
+      <label for="commands"></label>
+      <textarea class="form-control" name="commands" id="commands" rows="5"></textarea>
+    </div>
+  <div class="form-group">
+    <button type="button" class="btn btn-info" data-toggle="collapse" data-target="#priorities">Change default priorities</button>
+  </div>
+  <div id="priorities" class="form-horizontal collapse">
+    {% for name, priority in matchers %}
+      <div class="form-group">
+        <label class="col-sm-1 control-label" for="{{ name }}">{{ name|capfirst }}</label>
+        <div class="col-sm-1">
+          <input class="form-control" type="number" id="{{ name }}"
+               name="matchers-{{ name }}"
+               value="{{ priority|default:"1" }}">
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+    <div class="form-group">
+      <label class="control-label">
+        Options
+      </label>
+      <div class="checkbox">
+        <input id="checkbox2" type="checkbox" name="keep_this_settings" value="1">
+        <label for="checkbox2"><span><span></span></span>
+          Keep this settings
+        </label>
+      </div>
+      <div class="checkbox">
+        <input id="checkbox3" type="checkbox" name="internal_matches" value="1">
+        <label for="checkbox3"><span><span></span></span>
+          Generate internal matches if it's a non-match
+        </label>
+      </div>
+    </div>
+    <div class="form-group">
+      <input size="10" class="form-control" name="reason" value="" placeholder="Reason" maxlength="200"/>
+    </div>
+    <div class="form-group">
+      <button class="btn btn-default">Submit to Folder Crawler</button>
+    </div>
+  </form>
+
+  <div class="form-group">
+    <div><a class="btn btn-default current-folder" type="button" id="folder-browser" href="#" onclick="dirBrowser();return false;">Browse folder and files in media root</a></div>
+    <h4>Browsing media root: {{ media_root }}, sub folder: <span id="id03"></span> <span id="id03b"></span></h4>
+    <ul id="id01"></ul>
+  </div>
+
+  <script type="text/javascript" src="{% static 'js/dirbrowser.js' %}"></script>
+  <style>
+    ul#id01 {
+      cursor: pointer;
+      list-style-type: none;
+      padding-left: 0;
+    }
+    ul#id01 li:hover {
+      background-color: #012c69;
+    }
+    ul#id01 li.id02f {
+      color: LightCoral;
+      border:1px solid lightgrey;
+    }
+
+    ul#id01 li.id02d {
+      color: rgb(153,204,102);
+      border:1px solid lightgrey;
+    }
+    .current-folder {
+      /*display: block;*/
+      cursor: pointer;
+      margin: 1em auto 1em auto;
+    }
+    #id03b {
+      color: #66afe9;
+    }
+  </style>
+
+{% endblock %}

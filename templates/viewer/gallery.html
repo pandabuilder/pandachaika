@@ -1,0 +1,151 @@
+{% extends "viewer/base.html" %}
+{% block title %}{{ gallery.title }}{% endblock %}
+{% load staticfiles %}
+{% block sidebar %}{% endblock %}
+
+{% block content %}
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+  <!-- Gallery  -->
+
+  <ul class="info">
+    {% if user.is_authenticated %}
+      <li class="right">
+        <br>Gallery: {% if user.is_staff %}
+        <a href="{% url 'admin:viewer_gallery_change' gallery.pk %}">admin</a>
+        <a href="{% url 'viewer:gallery-tool' gallery.pk 'toggle-hidden' %}">toggle hidden</a>
+        <a href="{% url 'viewer:gallery-tool' gallery.pk 'toggle-public' %}">toggle public</a>
+        <a href="{% url 'viewer:gallery-tool' gallery.pk 'mark-deleted' %}">mark deleted</a>
+        <a href="{% url 'viewer:gallery-tool' gallery.pk 'recall-api' %}">recall api</a>
+        <a href="{% url 'viewer:gallery-tool' gallery.pk 'download' %}">default download</a>
+        <span class="dropdown">
+          <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-toggle="dropdown">force download<span class="caret"></span></button>
+          <ul class="dropdown-menu dropdown-menu-right">
+          {% for downloader, priority in settings.downloaders.items %}
+            <li><a href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ settings.api_key }}', '{% static 'favicon-160.png' %}', 'webcrawler', {link: '{{ gallery.get_link }}', downloader: '{{ downloader }}'}); return false;">{{ downloader }}</a></li>
+          {% endfor %}
+          </ul>
+        </span>
+      {% endif %}
+      </li>
+    {% endif %}
+
+    <li class="subtitle">
+      <table>
+        <tr>
+          <th>Title</th>
+          <td>{{ gallery.title|default:"None provided" }}</td>
+        </tr>
+        <tr>
+          <th>Japanese title</th>
+          <td>{{ gallery.title_jpn|default:"None provided" }}</td>
+        </tr>
+        <tr>
+          <th>Comment</th>
+          <td>{{ gallery.comment|safe|default:"None provided" }}</td>
+        </tr>
+        <tr>
+          <th>Category</th>
+          <td>{{ gallery.category|default:"None provided" }}</td>
+        </tr>
+        <tr>
+          <th>Rating</th>
+          <td>{{ gallery.rating|default:"None provided" }}</td>
+        </tr>
+        <tr>
+          <th>File count</th>
+          <td>{{ gallery.filecount|default:"None provided" }}</td>
+        </tr>
+        <tr>
+          <th>Unpacked file size</th>
+          {% if gallery.filesize %}
+          <td>{{ gallery.filesize|filesizeformat }}, {{ gallery.filesize }}</td>
+          {% else %}
+          <td>None provided</td>
+          {% endif %}
+        </tr>
+        <tr>
+          <th>Source URL</th>
+          <td>{{ gallery.get_link|urlize }}</td>
+        </tr>
+        <tr>
+          <th>Posted</th>
+          <td>{{ gallery.posted|date:"DATETIME_FORMAT"|default:"None provided" }}</td>
+        </tr>
+        <tr>
+          <th>Added to Backup</th>
+          <td>{{ gallery.create_date|date:"DATETIME_FORMAT" }}</td>
+        </tr>
+        <tr>
+          <th>Provider</th>
+          <td>{{ gallery.provider }}</td>
+        </tr>
+        <tr>
+          <th>Uploader</th>
+          <td>{{ gallery.uploader|default:"None provided" }}</td>
+        </tr>
+        <tr>
+          <th>Expunged</th>
+          <td>{{ gallery.expunged|yesno }}</td>
+        </tr>
+        <tr>
+          <th>Fjord</th>
+          <td>{{ gallery.fjord|yesno }}</td>
+        </tr>
+        <tr>
+          <th>Status</th>
+          <td>{{ gallery.get_status_display }}</td>
+        </tr>
+        {% if user.is_staff %}
+        <tr>
+          <th>Public</th>
+          <td>{{ gallery.public|yesno }}</td>
+        </tr>
+        <tr>
+          <th>Hidden</th>
+          <td>{{ gallery.hidden|yesno }}</td>
+        </tr>
+        <tr>
+          <th>Download type</th>
+          <td>{{ gallery.dl_type }}</td>
+        </tr>{% endif %}
+      </table>
+    </li>
+    {% if gallery.thumbnail.name %}
+      <a class="btn btn-default img-preview" data-image-url="{{ gallery.thumbnail.url }}" rel="popover">Hover for cover</a>
+    {% endif %}
+    <li>
+      <ul class="tags">
+        {% for tag_list in tag_lists %}
+          <li class="subtitle">
+            {% if tag_list.0 %}{{ tag_list.0 }}:{% endif %}
+            {% for tag in tag_list.1 %}
+              <a href="{% url 'viewer:gallery-tag-search' 'gallery-tag' tag %}">{% if tag_list.0 %}{{ tag.name }}{% else %}{{ tag }}{% endif %}</a>
+            {% endfor %}
+          </li>{% endfor %}
+      </ul>
+    </li>
+    <li><label class="label-extended">Related archives:</label>
+      <ul>
+        {% for archive in gallery.archive_set.all %}
+          <li><a href="{% url 'viewer:archive' archive.id %}">{{ archive }}</a>, images: {{ archive.filecount }}, size: {{ archive.filesize|filesizeformat }}</li>
+        {% endfor %}
+      </ul>
+    </li>
+    {% if user.is_staff %}
+      <li><label class="label-extended">Found by these wanted galleries:</label>
+        <ul>
+          {% for found_entry in gallery.foundgallery_set.all %}
+            <li><a href="{% url 'viewer:wanted-gallery' found_entry.wanted_gallery.id %}">{{ found_entry.wanted_gallery }}</a>, found date: {{ found_entry.create_date }}</li>
+          {% endfor %}
+        </ul>
+      </li>
+    {% endif %}
+  </ul>
+  {% if user.is_staff %}
+    <script type="text/javascript" src="{% static 'js/admin.js' %}"></script>
+  {% endif %}
+{% endblock %}

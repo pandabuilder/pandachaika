@@ -1,0 +1,90 @@
+{% extends "viewer/base.html" %}
+{% block title %}Not present archives | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+{% load staticfiles %}
+
+{% block content %}
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+  <!-- Archives not in filesystem  -->
+  <div class="page-header">
+    <h2>Archives not in filesystem</h2>
+    <p class="lead">Number of archives (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
+  </div>
+  <form action="{% url 'viewer:lists' 'archive-not-present' %}" method="GET">
+    {% for field in form %}
+      <div class="page-line">
+        {{ field.errors }}
+        {{ field }}
+      </div>
+    {% endfor %}
+    <div class="page-line form-inline">
+      <button id="toggle-all" class="btn btn-info" type="button">Toggle All</button>
+      <button type="submit" name="apply" class="btn btn-default">Search</button>
+      <a class="btn btn-default" href="{% url 'viewer:lists' 'archive-not-present' %}">Clear</a>
+    </div>
+  </form>
+  <!-- Next/Prev page links  -->
+  {% if results.object_list and results.paginator.num_pages > 1 %}
+    <div class="pagination-top">
+        <span class="step-links">
+            {% if results.has_previous %}
+              <a href= "?page={{ results.previous_page_number }}">previous &lt;&lt; </a>
+            {% endif %}
+          <span class="current">
+            &nbsp;Page {{ results.number }} of {{ results.paginator.num_pages }}
+          </span>
+          {% if results.has_next %}
+            <a href="?page={{ results.next_page_number }}"> &gt;&gt; next</a>
+          {% endif %}
+        </span>
+    </div>
+  {% endif %}
+  <form action="{% url 'viewer:lists' 'archive-not-present' %}" method="POST">{% csrf_token %}
+    <ul class="list-group">
+      {% for archive in results %}
+        <li class="list-group-item">
+          <p><input id="checkbox-{{ archive.id }}" type="checkbox" name="del-{{ archive.id }}" value="{{ archive.pk }}"><label for="checkbox-{{ archive.id }}"><span><span></span></span></label><a href="{{ archive.get_absolute_url }}">{{ archive.pk }}</a> >> {{ archive.title }}</p>
+          <p>{{ archive.zipped.path }} >> {{ archive.filesize|filesizeformat }} >> {{ archive.filesize }} >> {{ archive.filecount }} >> {{ archive.source_type }}</p>        </li>
+      {% endfor %}
+    </ul>
+    <button type="submit" name="delete_archives" class="btn btn-default">Delete (WARNING!) selected archives</button>
+  </form>
+  <!-- Next/Prev page links  -->
+  {% if results.object_list and results.paginator.num_pages > 1 %}
+    <div>
+        <span class="step-links">
+            {% if results.has_previous %}
+              <a href= "?page={{ results.previous_page_number }}">previous &lt;&lt; </a>
+            {% endif %}
+          <span class="current">
+            &nbsp;Page {{ results.number }} of {{ results.paginator.num_pages }}
+          </span>
+          {% if results.has_next %}
+            <a href="?page={{ results.next_page_number }}"> &gt;&gt; next</a>
+          {% endif %}
+        </span>
+    </div>
+  {% endif %}
+{% endblock %}
+{% block afterJQ %}
+  {% load compress %}
+  {% compress css %}
+    <link href="{% static 'autocomplete_light/vendor/jal/src/style.css' %}" type="text/css" media="all" rel="stylesheet" />
+  {% endcompress %}
+  {% compress js %}
+    <script type="text/javascript" src="{% static 'autocomplete_light/jquery.init.js' %}"></script>
+    <script type="text/javascript" src="{% static 'autocomplete_light/autocomplete.init.js' %}"></script>
+    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/autocomplete.js' %}"></script>
+    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/text_widget.js' %}"></script>
+    <script type="text/javascript" src="{% static 'autocomplete_light/jal.js' %}"></script>
+  {% endcompress %}
+  <script>
+      $('#toggle-all').click(function() {
+          $('.list-group-item input[type="checkbox"]').click();
+      });
+  </script>
+{% endblock %}

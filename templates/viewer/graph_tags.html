@@ -1,0 +1,110 @@
+{% extends "viewer/base.html" %}
+{% block title %}Tag frequency | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+{% load staticfiles %}
+{% block extrahead %}
+  <script src="{% static 'js/vendor/d3.min.js' %}"></script>
+  <script src="{% static 'js/vendor/d3.tip.0.6.7.js' %}"></script>
+  <style>
+    .y.axis text {
+      font: 14px sans-serif;
+    }
+    svg {
+      font: 10px sans-serif;
+    }
+    .tag-diagram {
+      margin-top: 10px;
+      background-color: #9acfea;
+      margin-left:auto;
+      margin-right:auto;
+      display:block;
+    }
+    .bar {
+      fill: steelblue;
+    }
+    .bar:hover {
+      fill: brown;
+    }
+    .axis {
+      font: 10px sans-serif;
+    }
+    .axis path,
+    .axis line {
+      fill: none;
+      stroke: #000;
+      shape-rendering: crispEdges;
+    }
+    .x.axis path {
+      display: none;
+    }
+    .d3-tip {
+      line-height: 1;
+      font-weight: bold;
+      padding: 12px;
+      background: rgba(0, 0, 0, 0.8);
+      color: #fff;
+      border-radius: 2px;
+    }
+    /* Creates a small triangle extender for the tooltip */
+    .d3-tip:after {
+      box-sizing: border-box;
+      display: inline;
+      font-size: 10px;
+      width: 100%;
+      line-height: 1;
+      color: rgba(0, 0, 0, 0.8);
+      content: "\25BC";
+      position: absolute;
+      text-align: left;
+    }
+
+    /* Style northward tooltips differently */
+    .d3-tip.n:after {
+      margin: -1px 0 0 0;
+      top: 100%;
+      left: 0;
+    }
+  </style>
+{% endblock %}
+{% block content %}
+  {% if messages %}
+    <ul class="messages">
+      {% for message in messages %}
+        <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+  <!-- Graphs  -->
+  <div class="row">
+    <div class='col-md-12'>
+      <form role="search" id="send-data">
+        {% for field in form %}
+          <div class="page-line">
+            {{ field.errors }}
+            {{ field }}
+          </div>
+        {% endfor %}
+        <div class="page-line form-inline">
+          <button id="search-button" class="btn btn-default" data-loading-text="Loading..." type="submit">Search</button>
+          <button id="search-button" class="btn btn-default" type="reset">Reset</button>
+        </div>
+      </form>
+    </div>
+    <div id="diagram-1" class='col-md-12'>
+    </div>
+  </div>
+{% endblock %}
+{% block afterJQ %}
+  {% load compress %}
+  {% compress css %}
+    <link href="{% static 'autocomplete_light/vendor/jal/src/style.css' %}" type="text/css" media="all" rel="stylesheet" />
+  {% endcompress %}
+  {% compress js %}
+    <script type="text/javascript" src="{% static 'autocomplete_light/jquery.init.js' %}"></script>
+    <script type="text/javascript" src="{% static 'autocomplete_light/autocomplete.init.js' %}"></script>
+    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/autocomplete.js' %}"></script>
+    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/text_widget.js' %}"></script>
+    <script type="text/javascript" src="{% static 'autocomplete_light/jal.js' %}"></script>
+  {% endcompress %}
+  <script src="{% static 'js/tagforce.js' %}"></script>
+{% endblock %}

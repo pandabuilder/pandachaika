@@ -1,0 +1,73 @@
+{% extends "viewer/base.html" %}
+{% block title %}Stats | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+
+{% block content %}
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <!-- Stats  -->
+  <div class="page-header">
+    <h2>Stats</h2>
+    <p class="lead">Aggregated information</p>
+  </div>
+  <table class="table table-striped">
+    <thead>
+    <tr>
+      <th>Archives</th>
+      <th>Tags</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+      <td>
+        <table class="table table-striped table-bordered table-condensed">
+          <tr>
+            <td class="label-extended">Number of archives</td>
+            <td>{{ stats.n_archives }}</td>
+          </tr>
+          <tr>
+            <td class="label-extended">Sum of unpacked filesize</td>
+            <td>{{ stats.archive.filesize__sum|default:"0" }} bytes {{ stats.archive.filesize__sum|filesizeformat }}</td>
+          </tr>
+          <tr>
+            <td class="label-extended">Average unpacked filesize</td>
+            <td>{{ stats.archive.filesize__avg|default:"0"|floatformat:"0" }} bytes {{ stats.archive.filesize__avg|filesizeformat }}</td>
+          </tr>
+          <tr>
+            <td class="label-extended">Maximum unpacked filesize</td>
+            <td>{{ stats.archive.filesize__max|default:"0" }} bytes {{ stats.archive.filesize__max|filesizeformat }}</td>
+          </tr>
+          <tr>
+            <td class="label-extended">Minimum unpacked filesize</td>
+            <td>{{ stats.archive.filesize__min|default:"0" }} bytes {{ stats.archive.filesize__min|filesizeformat }}</td>
+          </tr>
+        </table>
+      </td>
+      <td>
+        <table class="table table-striped table-bordered table-condensed">
+          <tr>
+            <td class="label-extended">Number of tags</td>
+            <td>{{ stats.n_tags }}</td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    </tbody>
+  </table>
+  <div class="row">
+    <div class="panel col-sm-6 col-md-4">
+      <div class="panel-heading">10 most used tags</div>
+      <ul class="list-group">
+        {% for tag in stats.top_10_tags %}
+          <li class="list-group-item">
+            <a href="{% url 'viewer:archive-tag-search' 'tag' tag %}">{{ tag }}</a>, used {{ tag.num_archive }} times<br>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+{% endblock %}

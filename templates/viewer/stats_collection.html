@@ -1,0 +1,181 @@
+{% extends "viewer/base.html" %}
+{% block title %}Stats | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+
+{% block content %}
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <!-- Stats  -->
+  <div class="page-header">
+    <h2>Stats</h2>
+    <p class="lead">Aggregated information</p>
+  </div>
+  <h3>Models</h3>
+  <table class="table table-striped">
+    <thead>
+    <tr>
+      <th>Gallery</th><th>Archive</th><th>Wanted Gallery</th><th>Tag</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+      <td>
+        <table class="table table-striped table-bordered table-condensed">
+          <tr>
+            <td class="label-extended">Number of galleries</td>
+            <td>{{ stats.n_galleries }}</td>
+          </tr>
+          <tr>
+            <td class="label-extended">Hidden galleries</td>
+            <td>{{ stats.hidden_galleries }}</td>
+          </tr>
+          <tr>
+            <td class="label-extended">Unpacked filesize for hidden galleries</td>
+            <td>{{ stats.hidden_galleries_size.filesize__sum }} bytes, {{ stats.hidden_galleries_size.filesize__sum|filesizeformat }}</td>
+          </tr>
+          <tr>
+            <td class="label-extended">Expunged galleries</td>
+            <td>{{ stats.expunged_galleries }}</td>
+          </tr>
+          <tr>
+            <td class="label-extended">Fjord galleries</td>
+            <td>{{ stats.fjord_galleries }}</td>
+          </tr>
+          <tr>
+            <td class="label-extended">Sum of unpacked filesize</td>
+            <td>{{ stats.gallery.filesize__sum }} bytes {{ stats.gallery.filesize__sum|filesizeformat }}</td>
+          </tr>
+          <tr>
+            <td class="label-extended">Average unpacked filesize</td>
+            <td>{{ stats.gallery.filesize__avg|floatformat:"0" }} bytes {{ stats.gallery.filesize__avg|filesizeformat }}</td>
+          </tr>
+          <tr>
+            <td class="label-extended">Maximum unpacked filesize</td>
+            <td>{{ stats.gallery.filesize__max }} bytes {{ stats.gallery.filesize__max|filesizeformat }}</td>
+          </tr>
+          <tr>
+            <td class="label-extended">Minimum unpacked filesize</td>
+            <td>{{ stats.gallery.filesize__min }} bytes {{ stats.gallery.filesize__min|filesizeformat }}</td>
+          </tr>
+        </table>
+      </td>
+      <td>
+        <table class="table table-striped table-bordered table-condensed">
+          <tr>
+            <td class="label-extended">Number of archives</td>
+            <td>{{ stats.n_archives }}</td>
+          </tr>
+          <tr>
+            <td class="label-extended">Number of expanded archives</td>
+            <td>{{ stats.n_expanded_archives }}</td>
+          </tr>
+          <tr>
+            <td class="label-extended">Number of archives waiting to download</td>
+            <td>{{ stats.n_to_download_archives }}</td>
+          </tr>
+          <tr>
+            <td class="label-extended">Sum of unpacked filesize</td>
+            <td>{{ stats.archive.filesize__sum }} bytes {{ stats.gallery.filesize__sum|filesizeformat }}</td>
+          </tr>
+          <tr>
+            <td class="label-extended">Average unpacked filesize</td>
+            <td>{{ stats.archive.filesize__avg|floatformat:"0" }} bytes {{ stats.archive.filesize__avg|filesizeformat }}</td>
+          </tr>
+          <tr>
+            <td class="label-extended">Maximum unpacked filesize</td>
+            <td>{{ stats.archive.filesize__max }} bytes {{ stats.archive.filesize__max|filesizeformat }}</td>
+          </tr>
+          <tr>
+            <td class="label-extended">Minimum unpacked filesize</td>
+            <td>{{ stats.archive.filesize__min }} bytes {{ stats.archive.filesize__min|filesizeformat }}</td>
+          </tr>
+        </table>
+      </td>
+      <td>
+        <table class="table table-striped table-bordered table-condensed">
+          <tr>
+            <td class="label-extended">Total</td>
+            <td>{{ stats.wanted_galleries.total }}</td>
+          </tr>
+          <tr>
+            <td class="label-extended">Found</td>
+            <td>{{ stats.wanted_galleries.found }}</td>
+          </tr>
+          <tr>
+            <td class="label-extended">Galleries found by wanted galleries</td>
+            <td>{{ stats.wanted_galleries.total_galleries_found }}</td>
+          </tr>
+          <tr>
+            <td class="label-extended">User created</td>
+            <td>{{ stats.wanted_galleries.user_created }}</td>
+          </tr>
+        </table>
+      </td>
+      <td>
+        <table class="table table-striped table-bordered table-condensed">
+          <tr>
+            <td class="label-extended">Number of tags</td>
+            <td>{{ stats.n_tags }}</td>
+          </tr>
+          <tr>
+            <td class="label-extended">Number of custom tags</td>
+            <td>{{ stats.n_custom_tags }}</td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    </tbody>
+  </table>
+  <h3>Providers</h3>
+  <table class="table table-striped">
+    <thead>
+    <tr>
+      <th>Provider</th><th>Galleries</th><th>Archives</th><th>Wanted Galleries</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for name, info in providers.items %}
+    <tr>
+      <td>
+        {{ name }}
+      </td>
+      <td>
+        {{ info.galleries }}
+      </td>
+      <td>
+        {{ info.archives }}
+      </td>
+      <td>
+        {{ info.wanted_galleries }}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <div class="row">
+    <div class="panel col-sm-6 col-md-4">
+      <div class="panel-heading">10 most used tags</div>
+      <ul class="list-group">
+        {% for tag in stats.top_10_tags %}
+          <li class="list-group-item">
+            <a href="{% url 'viewer:archive-tag-search' 'tag' tag %}">{{ tag }}</a>, used {{ tag.num_gallery }} times<br>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+    <div class="panel col-sm-6 col-md-4">
+      <div class="panel-heading">10 most used parody tags</div>
+      <ul class="list-group">
+        {% for tag in stats.top_10_parody_tags %}
+          <li class="list-group-item">
+            <a href="{% url 'viewer:archive-tag-search' 'tag' tag %}">{{ tag }}</a>, used {{ tag.num_gallery }} times<br>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+{% endblock %}

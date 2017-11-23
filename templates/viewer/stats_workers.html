@@ -1,0 +1,196 @@
+{% extends "viewer/base.html" %}
+{% block title %}Stats | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+
+{% block content %}
+  {% load viewer_extras %}
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <!-- Stats  -->
+  <div class="page-header">
+    <h2>Stats</h2>
+    <p class="lead">Several statistics of the workers. Current server time: {% now "DATETIME_FORMAT" %}</p>
+    <a class="btn btn-default" href="{% url 'viewer:tools-id' 'restart_viewer' %}">Restart Viewer (for code changes)</a>
+  </div>
+  <h3>Queues</h3>
+  <table class="table table-striped">
+    <thead>
+    <tr>
+      <th>Name</th><th>Running</th><th>Groups in queue</th><th>Current group length</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+      <td>
+        Web Queue
+      </td>
+      <td class="{% if stats.web_queue.is_running %}active{% else %}danger{% endif %}">
+        {{ stats.web_queue.is_running|yesno }}
+      </td>
+      <td>
+        {{ stats.web_queue.queue_size }}
+      </td>
+      <td>
+        {{ stats.web_queue.current_processing_items.args|length }}
+      </td>
+    </tr>
+    </tbody>
+  </table>
+  <h3>Web Queue groups</h3>
+  <table class="table table-striped">
+    <thead>
+    <tr>
+      <th>Arguments</th><th>Wanted filters</th><th>Override options</th><th>Remove</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% if stats.web_queue.current_processing_items %}
+      {% with item=stats.web_queue.current_processing_items %}
+        <tr>
+          <td>
+            <ul class="list-group">
+              {% for arg in item.args %}
+                <li class="list-group-item">{{ arg }}</li>
+              {% endfor %}
+            </ul>
+          </td>
+          <td>
+            <ul class="list-group">
+              {% for wanted in item.wanted %}
+                <li class="list-group-item">{{ wanted }}</li>
+              {% empty %}
+                <li class="list-group-item">None</li>
+              {% endfor %}
+            </ul>
+          </td>
+          <td>
+          {% for setting, value in item.override_options|format_setting_value %}
+            <div>{{ setting }}: {{ value|format_setting_value }}</div>
+          {% endfor %}
+          </td>
+          <td>
+            Not allowed
+          </td>
+        </tr>
+      {% endwith %}
+    {% endif %}
+    {% for item in stats.web_queue.queue %}
+      <tr>
+        <td>
+          <ul class="list-group">
+            {% for arg in item.args %}
+              <li class="list-group-item">{{ arg }}</li>
+            {% endfor %}
+          </ul>
+        </td>
+        <td>
+          <ul class="list-group">
+            {% for wanted in item.wanted %}
+              <li class="list-group-item">{{ wanted }}</li>
+            {% empty %}
+              <li class="list-group-item">None</li>
+            {% endfor %}
+          </ul>
+        </td>
+        <td>
+          {{ item.override_options }}
+        </td>
+        <td>
+          <a href="{% url 'viewer:queue-operations' 'remove_by_index' forloop.counter0 %}">Remove</a>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <h3>Post downloader</h3>
+  <table class="table table-striped">
+    <thead>
+    <tr>
+      <th>File</th><th>Size</th><th>Downloaded</th><th>Speed</th><th>Files to download</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for item in stats.post_downloader.current_download %}
+      <tr>
+        <td>
+          {{ item.filename }}
+        </td>
+        <td>
+          {{ item.filesize|filesizeformat }}
+        </td>
+        <td>
+          {% widthratio item.downloaded item.filesize 100 %}%
+        </td>
+        <td>
+          {{ item.speed|filesizeformat }}/s
+        </td>
+        <td>
+          {{ item.index }}/{{ item.total }}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <h3>Schedulers</h3>
+  <table class="table table-striped">
+    <thead>
+    <tr>
+      <th>Name</th><th>Running</th><th>Last run</th><th>Cycle (seconds, minutes)</th><th>Next run</th><th>Next run in</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for scheduler in stats.schedulers %}
+      <tr>
+        <td>
+          {{ scheduler.0 }}
+        </td>
+        <td class="{% if scheduler.1 %}active{% else %}danger{% endif %}">
+          {{ scheduler.1|yesno }}
+        </td>
+        <td>
+          {{ scheduler.2 }}
+        </td>
+        <td>
+          {{ scheduler.3 }}
+        </td>
+        <td>
+          {{ scheduler.4 }}
+        </td>
+        <td>
+          {{ scheduler.4|timeuntil }}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <h3>All threads</h3>
+  <table class="table table-striped">
+    <thead>
+    <tr>
+      <th>Name</th><th>Running</th><th>Info</th><th>Type</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for thread_info in stats.thread_status %}
+      <tr>
+        <td>
+          {{ thread_info.0.0 }}
+        </td>
+        <td class="{% if thread_info.1 %}active{% else %}danger{% endif %}">
+          {{ thread_info.1|yesno }}
+        </td>
+        <td>
+          {{ thread_info.0.1 }}
+        </td>
+        <td>
+          {{ thread_info.0.2 }}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}

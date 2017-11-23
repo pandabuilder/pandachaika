@@ -1,0 +1,27 @@
+{% extends "viewer/base.html" %}
+<title>{% block title %}Server Error | {{ block.super }}{% endblock %}</title>
+{% block sidebar %}{% endblock %}
+
+{% block content %}
+  {% if messages %}
+    <ul class="messages">
+      {% for message in messages %}
+        <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+  <div class="row">
+    <div class="col-md-12">
+      <div class="error-template">
+        <h1>Oops!</h1>
+        <h2>500 Server Error</h2>
+        <div class="error-details">
+          Sorry, an internal server error has occurred!
+        </div>
+        <div class="error-actions">
+          <a href="{% url 'viewer:main-page' %}" class="btn btn-primary btn-lg"><span class="glyphicon glyphicon-home"></span>Go Home</a>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}

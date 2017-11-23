@@ -1,0 +1,355 @@
+{% extends "viewer/base.html" %}
+{% block title %}Search | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+
+{% load staticfiles %}
+
+{% block content %}
+  {% load static %}
+  {% load viewer_extras %}
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}"
+           role="alert">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+  <!-- Form  -->
+  <form action="{% url 'viewer:archive-search' %}" method="GET">
+    <div id="main-search" class="collapse{% if prm.main_filters %} in{% endif %}">
+      {% for field in form %}
+        <div class="page-line">
+          {{ field.errors }}
+          {{ field }}
+        </div>
+      {% endfor %}
+      <div id="extra_filters" class="page-line form-inline collapse{% if prm.extra_filters %} in{% endif %}">
+        {% if user.is_staff %}
+          <input class="form-control" name="filename" value="{{ display_prms.filename }}"
+                 placeholder="Filename"/>
+          <input name="match_type" class="form-control" value="{{ display_prms.match_type }}"
+                 placeholder="Match Type"/>
+        {% endif %}
+        {% for field in form_simple %}
+          {{ field.label_tag }}{{ field }}
+        {% endfor %}
+
+      </div>
+      <div class="page-line form-inline">
+        <label for="sort">Sort</label>
+        <select id="sort" name="sort" class="form-control">
+          <option value="posted" {% if prm.sort == "posted" %} selected{% endif %}>posted date</option>
+          {% if user.is_staff %}
+            <option value="create_date" {% if prm.sort == "create_date" %} selected{% endif %}>create date</option>
+            <option value="public_date" {% if prm.sort == "public_date" %} selected{% endif %}>public date</option>
+          {% else %}
+            <option value="public_date" {% if prm.sort == "public_date" %} selected{% endif %}>public date</option>
+          {% endif %}
+          <option value="title" {% if prm.sort == "title" %} selected{% endif %}>title</option>
+          <option value="title_jpn" {% if prm.sort == "title_jpn" %} selected{% endif %}>title jpn</option>
+          <option value="rating" {% if prm.sort == "rating" %} selected{% endif %}>rating</option>
+          <option value="filecount" {% if prm.sort == "filecount" %} selected{% endif %}>images</option>
+          <option value="filesize" {% if prm.sort == "filesize" %} selected{% endif %}>size</option>
+        </select>
+        <select id="asc_desc" name="asc_desc" class="form-control" title="sort_order" aria-label="sort_order">
+          <option value="asc" {% if prm.asc_desc == "asc" %} selected{% endif %}>ascending</option>
+          <option value="desc" {% if prm.asc_desc == "desc" %} selected{% endif %}>descending</option>
+        </select>
+        <button type="submit" name="apply" class="btn btn-default">Search</button>
+        <button type="submit" name="clear" class="btn btn-default">Clear</button>
+        <button type="button" class="btn btn-info" data-toggle="collapse" data-target="#extra_filters">More filters</button>
+        <button type="submit" name="gen-ddl" class="btn btn-default">Generate DDLs</button>
+        <button type="submit" name="rss" onclick="this.form.action='{% url "viewer:archive-rss" %}'; this.form.submit(); this.form.action='{% url "viewer:main-page" %}'; return false;" class="btn btn-default">View as RSS</button>
+        {% if user.is_authenticated %}<input id="checkbox1" type="checkbox" name="only_favorites" value="1"
+                                             {% if display_prms.only_favorites == '1' %}checked{% endif %}><label
+            for="checkbox1"><span><span></span></span>Only favorites</label>{% endif %}
+        {% if user.is_staff %}<input id="checkbox2" type="checkbox" name="non_public" value="1"
+                                     {% if display_prms.non_public == '1' %}checked{% endif %}><label
+            for="checkbox2"><span><span></span></span>Only private</label>
+          <input id="checkbox3" type="checkbox" name="public" value="1"
+                 {% if display_prms.public == '1' %}checked{% endif %}><label
+            for="checkbox3"><span><span></span></span>Only public</label>{% endif %}
+      </div>
+    </div>
+    {% if results %}
+      <ul class="result-container">
+        <!-- Next/Prev page links  -->
+        <li>
+          <div class="row{% if prm.view == "cover" %} page-line{% endif %}">
+            <div class="col-md-4">
+              {% if results.paginator.num_pages > 1 %}
+                <nav>
+                  <ul class="pagination">
+                    <li {% if results.number == 1 %} class="disabled"{% endif %}>
+                      <a href="?{% url_replace 'page' '1' %}" aria-label="First">
+                        <span aria-hidden="true">&laquo;</span>
+                      </a>
+                    </li>
+                    {% for p in display_prms.page_range %}
+                      <li {% ifequal p results.number %} class="active" {% endifequal %}><a
+                          href="?{% url_replace 'page' p %}">{{ p }}</a></li>
+                    {% empty %}
+                      <li class="active"><a href="?{% url_replace 'page' '1' %}">1</a></li>
+                    {% endfor %}
+                    <li {% if results.number == results.paginator.num_pages %}
+                      class="disabled"{% endif %}>
+                      <a href="?{% url_replace 'page' results.paginator.num_pages %}"
+                         aria-label="Last">
+                        <span aria-hidden="true">&raquo;</span>
+                      </a>
+                    </li>
+                  </ul>
+                </nav>
+              {% endif %}
+            </div>
+            <div class="col-md-4">
+              <ul class="pager">
+                {% if results.has_previous %}
+                  <li><a href="?{% url_replace 'page' results.previous_page_number %}">Previous</a></li>
+                {% else %}
+                  <li class="disabled"><a href="#">Previous</a></li>
+                {% endif %}
+                <li class="text-center">
+                  <span>{{ results.paginator.count }} archives, {{ results.paginator.num_pages }} pages</span>
+                </li>
+                {% if results.has_next %}
+                  <li><a href="?{% url_replace 'page' results.next_page_number %}">Next</a></li>
+                {% else %}
+                  <li class="disabled"><a href="#">Next</a></li>
+                {% endif %}
+              </ul>
+            </div>
+
+            {% if extra_options %}
+              <div class="col-md-4 text-right">
+                {% for option in extra_options %}
+                  <a href="?{% url_replace 'view' option %}" {% ifequal option prm.view %}
+                     class="active"{% endifequal %}>{{ option }}</a>
+                {% endfor %}
+              </div>
+            {% endif %}
+          </div>
+        </li>
+        <!-- Results  -->
+        <li>
+          {% if prm.view == "cover" %}
+            <div class="arch-cont">
+              {% for archive in results.object_list %}
+                <div class="gallery">
+                  <a class="cover" href="{% url 'viewer:archive' archive.pk %}">
+                    <div class="cover-title" title="{{ archive.title }}">{{ archive.title }}</div>
+                    <img class="image-container center-block" alt="" title="{{ archive.title }}"
+                        {% if archive.thumbnail.name %} width="{{ archive.thumbnail_width }}" height="{{ archive.thumbnail_height }}" src="{{ archive.thumbnail.url }}"
+                         {% else %}src="{% static "imgs/no_cover.png" %}"{% endif %}/>
+                  </a>
+                  <div class="caption">
+                    {{ archive.filecount }} | {{ archive.filesize|filesizeformat }} | {% if archive.crc32 %}<a href="{% url 'viewer:archive-download' archive.pk %}">DL</a>{% else %}DL{% endif %} | <a class="tag-preview" tabindex="0" role="button" data-toggle="popover" data-trigger="focus" data-pk="{{ archive.pk }}">Tags</a>
+                    {% if user.is_authenticated and archive.extracted %}| <a href="{% url 'viewer:new-image-viewer' archive.pk '1' %}?{% url_replace 'extracted' '1' %}">IV</a>{% endif %}
+                  </div>
+
+                </div>
+              {% endfor %}
+            </div>
+          {% elif prm.view == "list" %}
+            <table class="result-table">
+              <thead>
+              <tr>{% if prm.sort == "create_date" %}
+                <th class="col-md-1"><a href="?{% url_replace 'sort' 'create_date' %}">Created</a></th>
+              {% elif prm.sort == "public_date" %}
+                <th class="col-md-1"><a href="?{% url_replace 'sort' 'public_date' %}">Added</a></th>
+              {% else %}
+                <th class="col-md-1"><a href="?{% url_replace 'sort' 'posted' %}">Posted</a></th>
+              {% endif %}
+                  <th class="col-md-9"><a href="?{% url_replace 'sort' 'title' %}">Title</a></th>
+                  <th class="col-md-1">Source</th>
+                  <th class="col-md-1">Reason</th>
+                <th class="col-md-1"><a href="?{% url_replace 'sort' 'filecount' %}">Images</a></th>
+                <th class="col-md-1"><a href="?{% url_replace 'sort' 'filesize' %}">Size</a></th>
+              </tr>
+              </thead>
+              <tbody>
+              {% for archive in results.object_list %}
+                <tr class="result-list">
+                  {% if prm.sort == "create_date" %}
+                    <td class="col-md-1">{{ archive.create_date|date:"SHORT_DATE_FORMAT" }}</td>
+                  {% elif prm.sort == "public_date" %}
+                    <td class="col-md-1">{{ archive.public_date|date:"SHORT_DATE_FORMAT" }}</td>
+                  {% else %}
+                    <td class="col-md-1">{{ archive.gallery.posted|date:"SHORT_DATE_FORMAT" }}</td>
+                  {% endif %}
+                    <td class="col-md-9"><a href="{% url 'viewer:archive' archive.pk %}" title="{{ archive.title_jpn }}">{{ archive.title }}</a></td>
+                    <td class="col-md-1">{{ archive.source_type }}</td>
+                    <td class="col-md-1">{{ archive.reason }}</td>
+                  <td class="col-md-1">{{ archive.filecount }}</td>
+                  <td class="col-md-1">{{ archive.filesize|filesizeformat }}</td>
+                </tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          {% elif prm.view == "extended" %}
+            <table class="result-table">
+              <tbody>
+              {% for archive in results.object_list %}
+                <tr>
+                  <td class="td-extended col-md-1">
+                    <a href="{% url 'viewer:archive' archive.pk %}">
+                      <img alt=""
+                          {% if archive.thumbnail.name %} width="{{ archive.thumbnail_width }}" height="{{ archive.thumbnail_height }}" src="{{ archive.thumbnail.url }}"
+                           {% else %}src="{% static "imgs/no_cover.png" %}"{% endif %}/>
+                    </a>
+                  </td>
+                  <td class="td-extended col-md-9">
+                    <div><label class="label-extended">Title:</label>{{ archive.title }}</div>
+                    <div><label class="label-extended">Japanese:</label>{{ archive.title_jpn }}</div>
+                    {% if user.is_staff %}
+                      <div><label class="label-extended">File:</label>{{ archive.zipped }}</div>
+                    {% else %}
+                      <div><a class="btn btn-xs btn-default" href="{% url 'viewer:archive-download' archive.pk %}">Download archive</a></div>
+                    {% endif %}
+                    <div>
+                      {% if archive.tag_lists %}
+                        <ul class="tags">
+                          {% for tag_list in archive.tag_lists %}
+                            <li>
+                              {% if tag_list.0 %}
+                                <label class="label-extended">{{ tag_list.0 }}:</label>
+                              {% endif %}
+                              {% for tag in tag_list.1 %}
+                                <a href="{% url 'viewer:archive-tag-search' 'tag' tag %}">
+                                  {% if tag_list.0 %}{{ tag.name }}{% else %}
+                                    {{ tag }}{% endif %}</a>
+                              {% endfor %}
+                            </li>{% endfor %}
+                        </ul>
+                      {% endif %}
+                      {% if archive.custom_tag_lists %}
+                        <ul class="tags">
+                          {% for tag_list in archive.custom_tag_lists %}
+                            <li>
+                              {% if tag_list.0 %}
+                                <label class="label-extended">{{ tag_list.0 }}:</label>
+                              {% endif %}
+                              {% for tag in tag_list.1 %}
+                                <a href="{% url 'viewer:archive-tag-search' 'tag' tag %}">
+                                  {% if tag_list.0 %}{{ tag.name }}{% else %}
+                                    {{ tag }}{% endif %}</a>
+                              {% endfor %}
+                            </li>{% endfor %}
+                        </ul>
+                      {% endif %}
+                    </div>
+                    <div><label class="label-extended">Source URL:</label>{{ archive.gallery.get_link|urlize }}
+                    </div>
+                  </td>
+                  <td class="td-extended col-md-1">
+                    <div><label class="label-extended">Count:</label>{{ archive.filecount }}</div>
+                    <div><label class="label-extended">Size:</label>{{ archive.filesize|filesizeformat }}</div>
+                    <div><label class="label-extended">Category:</label>{{ archive.gallery.category }}</div>
+                    <div><label class="label-extended">Posted:</label>{{ archive.gallery.posted|date:"SHORT_DATE_FORMAT" }}</div>
+                    {% if user.is_staff %}
+                      <div><label class="label-extended">Created:</label>{{ archive.create_date|date:"SHORT_DATE_FORMAT" }}</div>
+                      <div><label class="label-extended">Published:</label>{{ archive.public_date|date:"SHORT_DATE_FORMAT" }}</div>
+                    {% else %}
+                      <div><label class="label-extended">Added:</label>{{ archive.public_date|date:"SHORT_DATE_FORMAT" }}</div>
+                    {% endif %}
+                    <div><label class="label-extended">Fjord:</label>{{ archive.gallery.fjord|yesno }}</div>
+                  </td>
+                  <td class="td-extended col-md-1">
+                    <div><label class="label-extended">Source:</label>{{ archive.source_type }}</div>
+                    <div><label class="label-extended">Reason:</label>{{ archive.reason }}</div>
+                    <div><label class="label-extended">Uploader:</label>{{ archive.gallery.uploader }}</div>
+                    <div><label class="label-extended">Rating:</label>{{ archive.gallery.rating }}</div>
+                    {% if user.is_staff %}<div><label class="label-extended">Hidden:</label>{{ archive.gallery.hidden|yesno }}</div>{% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          {% endif %}
+        </li>
+        {% if results.paginator.num_pages > 1 %}
+          <!-- Next/Prev page links  -->
+          <li>
+            {% if results.paginator.num_pages > 1 %}
+              <div class="row{% if prm.view == "cover" %} page-line{% endif %}">
+                <div class="col-md-4">
+                  <nav>
+                    <ul class="pagination">
+                      <li {% if results.number == 1 %} class="disabled"{% endif %}>
+                        <a href="?{% url_replace 'page' '1' %}" aria-label="First">
+                          <span aria-hidden="true">&laquo;</span>
+                        </a>
+                      </li>
+                      {% for p in display_prms.page_range %}
+                        <li {% ifequal p results.number %} class="active" {% endifequal %}><a
+                            href="?{% url_replace 'page' p %}">{{ p }}</a></li>
+                      {% empty %}
+                        <li class="active"><a href="?{% url_replace 'page' '1' %}">1</a></li>
+                      {% endfor %}
+                      <li {% if results.number == results.paginator.num_pages %}
+                        class="disabled"{% endif %}>
+                        <a href="?{% url_replace 'page' results.paginator.num_pages %}"
+                           aria-label="Last">
+                          <span aria-hidden="true">&raquo;</span>
+                        </a>
+                      </li>
+                    </ul>
+                  </nav>
+                </div>
+              </div>
+            {% endif %}
+          </li>
+        {% endif %}
+      </ul>
+    {% else %}
+      <div class="row">
+        <div class="col-xs-12 text-center">
+          <div><h4><strong>No results</strong></h4></div>
+        </div>
+      </div>
+    {% endif %}
+  </form>
+{% endblock %}
+{% block afterJQ %}
+  {% load compress %}
+  {% compress css %}
+    <link href="{% static 'autocomplete_light/vendor/jal/src/style.css' %}" type="text/css" media="all" rel="stylesheet" />
+  {% endcompress %}
+  {% compress js %}
+    <script type="text/javascript" src="{% static 'autocomplete_light/jquery.init.js' %}"></script>
+    <script type="text/javascript" src="{% static 'autocomplete_light/autocomplete.init.js' %}"></script>
+    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/autocomplete.js' %}"></script>
+    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/text_widget.js' %}"></script>
+    <script type="text/javascript" src="{% static 'autocomplete_light/jal.js' %}"></script>
+  {% endcompress %}
+  {% if prm.view == "cover" %}
+    <script>
+        var tagData = {};
+        var tagUrl = '{% url 'viewer:api' %}?at=';
+        function tagToHtml (tag) {
+            return '<div class="tag">' + tag + '</div>'
+        }
+        $(document).ready(function() {
+            $(".tag-preview").click(function() {
+                var el = $(this);
+                var pk = $(this).data('pk');
+                if (tagData[pk]) {
+                    return tagData[pk];
+                }
+                else {
+                    $.get(tagUrl + pk, function(response) {
+                        if (response.tags) {
+                            tagData[pk] = response.tags.map(tagToHtml);
+                            el.unbind('click').popover({
+                                content: tagData[pk],
+                                {#            title: 'Dynamic response!',#}
+                                html: true,
+                                {#                        delay: {show: 500, hide: 100}#}
+                            }).popover('show');
+                        }
+                    });
+                }
+            });
+        });
+    </script>
+  {% endif %}
+{% endblock %}

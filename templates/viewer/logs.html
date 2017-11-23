@@ -1,0 +1,74 @@
+{% extends "viewer/base.html" %}
+{% block title %}Log | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+
+{% block content %}
+  {% load viewer_extras %}
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+  <div class="page-header">
+    <h2>Server logs</h2>
+    <p class="lead">Current server time: {% now "DATETIME_FORMAT" %}</p>
+  </div>
+  <form action="{% url 'viewer:logs' %}" class="form-inline" method="GET">
+    <div class="form-group">
+      <label for="filter">Filter</label>
+      <input type="text" class="form-control" id="filter" name="filter"  value="{{ request.GET.filter }}">
+    </div>
+    <div class="form-group">
+      <button type="submit" class="btn btn-default">Apply filter</button>
+      <a class="btn btn-default" href="{% url 'viewer:logs' %}" role="button">Clear</a>
+    </div>
+  </form>
+  <!-- Next/Prev page links  -->
+  {% if log_lines.object_list and log_lines.paginator.num_pages > 1 %}
+    <div class="pagination-top">
+        <span class="step-links">
+          <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
+          {% if log_lines.has_previous %}
+            <a href= "?{% url_replace 'page' log_lines.previous_page_number %}"> previous &lt;&lt; </a>
+          {% else %}
+            <span> previous &lt;&lt; </span>
+          {% endif %}
+          <span class="current">
+                &nbsp;Page {{ log_lines.number }} of {{ log_lines.paginator.num_pages }}
+            </span>
+          {% if log_lines.has_next %}
+            <a href="?{% url_replace 'page' log_lines.next_page_number %}"> &gt;&gt; next</a>
+          {% else %}
+            <span> &gt;&gt; next</span>
+          {% endif %}
+          <a href="?{% url_replace 'page' log_lines.paginator.num_pages %}"> &gt;&gt; last</a>
+        </span>
+    </div>
+  {% endif %}
+  <!-- Logs  -->
+  <table class="result-table">
+    {% for log_line in log_lines %}<tr class="result-list"><td>{{ log_line|linebreaksbr|urlize }}</td></tr>{% endfor %}
+  </table>
+  <!-- Next/Prev page links  -->
+  {% if log_lines.object_list and log_lines.paginator.num_pages > 1 %}
+    <div>
+        <span class="step-links">
+          <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
+          {% if log_lines.has_previous %}
+            <a href= "?{% url_replace 'page' log_lines.previous_page_number %}"> previous &lt;&lt; </a>
+          {% else %}
+            <span> previous &lt;&lt; </span>
+          {% endif %}
+          <span class="current">
+                &nbsp;Page {{ log_lines.number }} of {{ log_lines.paginator.num_pages }}
+            </span>
+          {% if log_lines.has_next %}
+            <a href="?{% url_replace 'page' log_lines.next_page_number %}"> &gt;&gt; next</a>
+          {% else %}
+            <span> &gt;&gt; next</span>
+          {% endif %}
+          <a href="?{% url_replace 'page' log_lines.paginator.num_pages %}"> &gt;&gt; last</a>
+        </span>
+    </div>
+  {% endif %}
+{% endblock %}

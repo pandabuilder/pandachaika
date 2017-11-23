@@ -1,0 +1,63 @@
+{% extends "viewer/base.html" %}
+{% block title %}Settings | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+
+{% block content %}
+  {% load viewer_extras %}
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <!-- Stats  -->
+  <div class="page-header">
+    <h2>Settings</h2>
+    <p class="lead">View setting objects, mainly as a debug tool. Current server time: {% now "DATETIME_FORMAT" %}</p>
+  </div>
+  <h3>Current global settings</h3>
+  <table class="table table-striped">
+    <thead>
+    <tr>
+      <th>Setting</th><th>Value</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for setting, value in stats.current_settings|format_setting_value %}
+      <tr>
+        <td>
+          {{ setting }}
+        </td>
+        <td>
+          {{ value|format_setting_value }}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <h3>Current settings, provider specific</h3>
+  <table class="table table-striped">
+    <thead>
+    <tr>
+      <th>Provider</th><th>Setting</th><th>Value</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for provider, settings in stats.current_settings.providers.items %}
+      {% for setting, value in settings|format_setting_value %}
+        <tr>
+          <td>
+            {{ provider }}
+          </td>
+          <td>
+            {{ setting }}
+          </td>
+          <td>
+            {{ value|format_setting_value }}
+          </td>
+        </tr>
+      {% endfor %}
+    {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}

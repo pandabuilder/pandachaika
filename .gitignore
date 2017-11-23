@@ -1,0 +1,19 @@
+*.log
+*.db
+*.pid
+settings.ini
+
+__pycache__/
+*.py[cod]
+
+# Developer
+.settings/
+.project
+.pydevproject
+*.pyproj
+.idea/
+/static/
+/node_modules/
+/package.json
+/yarn.lock
+/src/

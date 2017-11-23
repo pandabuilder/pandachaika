@@ -1,0 +1,37 @@
+#!/bin/sh
+#
+# PROVIDE: panda
+# REQUIRE: LOGIN
+# KEYWORD: shutdown
+
+# Add the following lines to /etc/rc.conf to enable panda:
+# panda_enable:         Set to NO by default. Set it to YES to enable it.
+#
+# panda_user:           The user account PandaBackup daemon runs as what
+#                       you want it to be.
+# panda_install_dir:    Directory where PandaBackup lives.
+#                           
+# panda_conf_dir:       Directory where PandaBackup configuration files live.
+#
+
+. /etc/rc.subr
+
+name=panda
+rcvar=panda_enable
+
+load_rc_config $name
+: ${panda_enable:=no}
+: ${panda_user:=panda}
+: ${panda_install_dir:=/home/panda/pandagallery/}
+: ${panda_conf_dir:=/home/panda/pandagallery/}
+
+pidfile="${panda_conf_dir}${name}.pid"
+
+command="${panda_install_dir}server.py"
+command_interpreter="python3.6"
+
+panda_flags="-c ${panda_conf_dir} -pf ${pidfile} -d"
+
+sig_reload="USR2"
+
+run_rc_command "$1"

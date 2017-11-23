@@ -1,0 +1,114 @@
+{% extends "viewer/base.html" %}
+{% block title %}{{ image_object.archive.title }}{% endblock %}
+{% block sidebar %}{% endblock %}
+{% load staticfiles %}
+{% block content %}
+  {% load viewer_extras %}
+  {% with vertical=request.session.viewer_parameters.image_width_vertical|default:"900" horizontal=request.session.viewer_parameters.image_width_horizontal|default:"1500" %}
+    {% if messages %}
+      {% for message in messages %}
+        <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+
+    {% if image_object.archive.title %}
+      <div class="title-img">{{ image_object.archive.title }}</div>
+    {% endif %}
+    <!-- Pagination top -->
+    <div class="pagination-cen form-inline">
+      <nav>
+        <ul class="pager">
+          <li class="previous"><a href="{{ backurl }}">&larr;</a></li>
+          <li class="image-center-pager">
+            <ul>
+              <li><a class="step-links-first" href="{% url 'viewer:image-viewer' image_object.archive.pk '1' %}#cent-img">&lt;&lt;</a></li>
+              <li><a class="step-links-left" href= "{% if image.has_previous %}{% url 'viewer:image-viewer' image_object.archive.pk image.previous_page_number %}#cent-img{% endif %}">&lt;</a></li>
+              <li>
+                <select title="image-number" class="step-links-inner form-control">
+                  {% for p in images_range %}
+                    <option{% ifequal p image.number %} selected="selected"{% endifequal %}>{{p}}</option>
+                  {% endfor %}
+                </select>
+                <span>of {{ image.paginator.num_pages }}</span>
+              </li>
+              <li><a class="step-links-right" href="{% if image.has_next %}{% url 'viewer:image-viewer' image_object.archive.pk image.next_page_number %}#cent-img{% endif %}">&gt;</a></li>
+              <li><a class="step-links-last" href="{% url 'viewer:image-viewer' image_object.archive.pk image.paginator.num_pages %}#cent-img">&gt;&gt;</a></li>
+            </ul>
+          </li>
+          <li class="next">
+            <button type="button" class="btn btn-info btn-sm" id="fullscreen-button">Fullscreen</button>
+            <button type="button" class="btn btn-info btn-sm" data-toggle="modal" data-target="#options">
+              Options
+            </button>
+
+          </li>
+        </ul>
+      </nav>
+    </div>
+    <!-- Image -->
+    <div id="img-container">
+      <img class="img-responsive center-block" id="cent-img" src="{{ image_object.image.url }}"
+           width="{% if image_object.is_horizontal %}{% if image_object.image_width >= horizontal|add:"0" %}{{ horizontal }}{% else %}{{ image_object.image_width }}{% endif %}
+             {% else %}{% if image_object.image_width >= vertical|add:"0" %}{{ vertical }}{% else %}{{ image_object.image_width }}{% endif %}{% endif %}"/>
+      <div class="overlay"><span id="img-counter">{{ image.number }}</span>/{{ image.paginator.num_pages }}</div>
+    </div>
+    <!-- Pagination bottom -->
+    <div class="pagination-cen form-inline">
+      <nav>
+        <ul class="pager">
+          <li><a class="step-links-first" href="{% url 'viewer:image-viewer' image_object.archive.pk '1' %}#cent-img">&lt;&lt;</a></li>
+          <li><a class="step-links-left" href= "{% if image.has_previous %}{% url 'viewer:image-viewer' image_object.archive.pk image.previous_page_number %}#cent-img{% endif %}">&lt;</a></li>
+          <li>
+            <select title="image-number" class="step-links-inner form-control">
+              {% for p in images_range %}
+                <option{% ifequal p image.number %} selected="selected"{% endifequal %}>{{p}}</option>
+              {% endfor %}
+            </select>
+            <span>of {{ image.paginator.num_pages }}</span>
+          </li>
+          <li><a class="step-links-right" href="{% if image.has_next %}{% url 'viewer:image-viewer' image_object.archive.pk image.next_page_number %}#cent-img{% endif %}">&gt;</a></li>
+          <li><a class="step-links-last" href="{% url 'viewer:image-viewer' image_object.archive.pk image.paginator.num_pages %}#cent-img">&gt;&gt;</a></li>
+        </ul>
+      </nav>
+    </div>
+    <!-- Modal -->
+    <div class="modal fade" id="options" tabindex="-1" role="dialog" aria-labelledby="myModalLabel">
+      <div class="modal-dialog" role="document">
+        <div class="modal-content">
+          <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+            <h4 class="modal-title" id="myModalLabel">Image viewer options</h4>
+          </div>
+          <div class="modal-body">
+            <form>
+              <div class="form-group">
+                <label for="image-vertical-width" class="control-label">Max vertical width:</label>
+                <input type="number" class="form-control" id="image-vertical-width" autocomplete="off" value="{{ vertical }}">
+              </div>
+              <div class="form-group">
+                <label for="image-horizontal-width" class="control-label">Max horizontal width:</label>
+                <input type="number" class="form-control" id="image-horizontal-width" autocomplete="off" value="{{ horizontal }}">
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+            <button type="button" class="btn btn-primary" id="save-changes">Save changes</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="text/javascript" src="{% static 'js/vendor/keys.min.js' %}"></script>
+    <script type="text/javascript">
+        var current_position = {{ image.number }};
+        var start_position = 1;
+        var last_position = {{ image.paginator.num_pages }};
+        var back_url = "{{ backurl }}";
+        var archive = {{ image_object.archive.pk }};
+        var image_width_vertical = {{ vertical }};
+        var image_width_horizontal = {{ horizontal }};
+    </script>
+    <script type="text/javascript" src="{% static 'js/imgnav.js' %}"></script>
+  {% endwith %}
+{% endblock %}

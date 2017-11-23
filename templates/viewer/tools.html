@@ -1,0 +1,105 @@
+{% extends "viewer/base.html" %}
+{% block title %}Tools | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+{% load staticfiles %}
+{% block content %}
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+  <!-- Tools  -->
+  <div class="page-header">
+    <h2>Tools</h2>
+    <small class="lead">List of tools</small>
+  </div>
+  {% if tool == "main" %}
+    <div class="row">
+
+      <div class="list-group col-lg-3 col-md-4 col-sm-6 col-xs-12">
+        <div class="list-group-item active">Archives and galleries</div>
+        <a class="list-group-item" href="{% url 'viewer:tools-id' 'generate_missing_thumbs' %}">Generate missing thumbnails</a>
+        <a class="list-group-item" href="{% url 'viewer:tools-id' 'calculate_missing_info' %}">Calculate missing file info</a>
+        <a class="list-group-item" href="{% url 'viewer:tools-id' 'recalc_all_file_info' %}">Recalculate all file info</a>
+        <a class="list-group-item" href="{% url 'viewer:tools-id' 'set_all_hidden_as_public' %}">Set all hidden as public</a>
+        <a class="list-group-item" href="{% url 'viewer:tools-id' 'regenerate_all_thumbs' %}">Regenerate all thumbnails (might be slow)</a>
+        <form action="{% url 'viewer:tools-id' 'search_wanted_galleries_provider_titles' %}" method="GET" role="form">
+          <div class="list-group-item form-inline">
+            <input size="10" class="form-control" name="provider" value="" placeholder="Provider filter"/>
+            <button class="btn btn-default">Search wanted galleries by provider titles</button>
+          </div>
+        </form>
+        <form action="{% url 'viewer:tools-id' 'wanted_galleries_possible_matches' %}" method="GET" role="form">
+          <div class="list-group-item form-inline">
+            <input title="Cutoff" size="10" type="number" step="0.01" class="form-control" name="cutoff" value="" placeholder="Cutoff"/>
+            <input title="Max matches" size="10" type="number" step="1" class="form-control" name="max-matches" value="20" placeholder="Max Matches"/>
+            <input size="10" class="form-control" name="provider" value="" placeholder="Provider filter"/>
+            <button class="btn btn-default">Search wanted galleries by internal galleries</button>
+          </div>
+        </form>
+        <a class="list-group-item" href="{% url 'viewer:tools-id' 'transfer_missing_downloads' %}">Transfer missing downloads</a>
+        <a class="list-group-item" href="{% url 'viewer:tools-id' 'retry_failed' %}">Retry failed downloads</a>
+        <form action="{% url 'viewer:tools-id' 'update_newer_than' %}" method="GET" role="form">
+          <div class="list-group-item form-inline">Update gallery metadata newer than date <input size="20" type="text" class="form-control" name="newer_than" value="" placeholder="Newer than date"/><button type="submit" name="apply" class="btn btn-default">Start</button></div>
+        </form>
+        <a class="list-group-item" href="{% url 'viewer:tools-id' 'generate_possible_matches_internally' %}">Generate possible matches for non-matches (all providers)</a>
+        <form action="{% url 'viewer:tools-id' 'generate_possible_matches_internally' %}" method="GET" role="form">
+          <div class="list-group-item form-inline">
+            <input size="10" type="text" class="form-control" name="provider" value="" placeholder="Provider filter"/>
+            <input title="Cutoff" size="10" type="number" step="0.01" class="form-control" name="cutoff" value="" placeholder="Cutoff"/>
+            <input title="Max matches" size="10" type="number" step="1" class="form-control" name="max-matches" value="20" placeholder="Max Matches"/>
+            <button type="submit" class="btn btn-default">Generate possible matches for non-matches (filter providers)</button>
+          </div>
+        </form>
+        <a class="list-group-item" href="{% url 'viewer:tools-id' 'clear_all_archive_possible_matches' %}">Clear all archive possible matches</a>
+      </div>
+      <div class="list-group col-lg-3 col-md-4 col-sm-6 col-xs-12">
+        <div class="list-group-item active">Lists</div>
+        <a class="list-group-item" href="{% url 'viewer:lists' 'repeated-archives' %}">Display repeated archives (same gallery)</a>
+        <a class="list-group-item" href="{% url 'viewer:lists' 'missing-archives' %}">Display non used panda galleries</a>
+        <a class="list-group-item" href="{% url 'viewer:lists' 'archive-filesize-different' %}">Display galleries with archives not matching filesize</a>
+        <a class="list-group-item" href="{% url 'viewer:lists' 'archive-not-present' %}">Display archives with file not present in filesystem</a>
+      </div>
+      <div class="list-group col-lg-3 col-md-4 col-sm-6 col-xs-12">
+        <div class="list-group-item active">Settings file</div>
+        <a class="list-group-item" href="{% url 'viewer:tools-id' 'modify_settings' %}">Modify settings file for crawler</a>
+        <a class="list-group-item" href="{% url 'viewer:tools-id' 'reload_settings' %}">Reload settings file for crawler</a>
+      </div>
+      <div class="list-group col-lg-3 col-md-4 col-sm-6 col-xs-12">
+        <div class="list-group-item active">Workers</div>
+        {% if not threads_status.post_downloader %}<a class="list-group-item off-text" href="{% url 'viewer:tools-id' 'start_timed_dl' %}">Start Post downloader</a>{% else %}<a class="list-group-item on-text" href="{% url 'viewer:tools-id' 'stop_timed_dl' %}">Stop Post downloader</a>{% endif %}
+        <a class="list-group-item off-text" href="{% url 'viewer:tools-id' 'force_run_timed_dl' %}">Force run Post downloader</a>
+        {% if not threads_status.auto_search %}<a class="list-group-item off-text" href="{% url 'viewer:tools-id' 'start_timed_crawler' %}">Start Auto search</a>{% else %}<a class="list-group-item on-text" href="{% url 'viewer:tools-id' 'stop_timed_crawler' %}">Stop Auto search</a>{% endif %}
+        <a class="list-group-item off-text" href="{% url 'viewer:tools-id' 'force_run_timed_crawler' %}">Force run Auto search</a>
+        {% if not threads_status.auto_updater %}<a class="list-group-item off-text" href="{% url 'viewer:tools-id' 'start_timed_updater' %}">Start Auto updater</a>{% else %}<a class="list-group-item on-text" href="{% url 'viewer:tools-id' 'stop_timed_updater' %}">Stop Auto updater</a>{% endif %}
+        <a class="list-group-item off-text" href="{% url 'viewer:tools-id' 'force_run_timed_updater' %}">Force run Auto updater</a>
+        {% if not threads_status.auto_wanted %}<a class="list-group-item off-text" href="{% url 'viewer:tools-id' 'start_timed_auto_wanted' %}">Start Auto wanted</a>{% else %}<a class="list-group-item on-text" href="{% url 'viewer:tools-id' 'stop_timed_auto_wanted' %}">Stop Auto Wanted</a>{% endif %}
+        <a class="list-group-item off-text" href="{% url 'viewer:tools-id' 'force_run_timed_auto_wanted' %}">Force run Auto wanted</a>
+        {% if not threads_status.web_queue %}<a class="list-group-item off-text" href="{% url 'viewer:tools-id' 'start_web_queue' %}">Start Web queue</a>{% else %}<a class=" list-group-item on-text" href="#">Stop Web queue</a>{% endif %}
+      </div>
+      <div class="list-group col-lg-3 col-md-4 col-sm-6 col-xs-12">
+        <div class="list-group-item active">Misc</div>
+        <a class="list-group-item" href="{% url 'viewer:panda-user-script' %}">Install JS userscript</a>
+        <a class="list-group-item" href="{% url 'viewer:tools-id' 'restart_viewer' %}">Restart Viewer (for code changes)</a>
+      </div>
+
+    </div>
+  {% endif %}
+  {% if tool == "modify_settings" %}
+    <form action="{% url 'viewer:tools-id' 'modify_settings' %}" method="POST">{% csrf_token %}
+      <div class="col-md-1">
+        <div class="page-line" id="update">
+          <button type="submit" class="btn btn-default">Commit settings</button>
+        </div>
+      </div>
+      <div class="col-md-8">
+
+        <div class="page-line">
+          <label for="settings_file"></label>
+          <textarea name="settings_file" id="settings_file" rows="50" cols="200">{{ settings_text }}</textarea>
+        </div>
+
+      </div>
+    </form>
+  {% endif %}
+{% endblock %}
