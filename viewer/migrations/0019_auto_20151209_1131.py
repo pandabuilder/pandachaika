@@ -18,8 +18,8 @@ class Migration(migrations.Migration):
                 ('match_accuracy', models.FloatField(blank=True, null=True, verbose_name='Match accuracy', default=0.0)),
                 ('source', models.CharField(blank=True, null=True, max_length=50, verbose_name='Source')),
                 ('create_date', models.DateTimeField(auto_now_add=True)),
-                ('gallery', models.ForeignKey(to='viewer.Gallery')),
-                ('wanted_gallery', models.ForeignKey(to='viewer.WantedGallery')),
+                ('gallery', models.ForeignKey(to='viewer.Gallery', on_delete=models.CASCADE)),
+                ('wanted_gallery', models.ForeignKey(to='viewer.WantedGallery', on_delete=models.CASCADE)),
             ],
             options={
                 'ordering': ['-create_date'],

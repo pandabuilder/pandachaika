@@ -260,7 +260,7 @@ def match_archives_from_gallery_titles(archives, logger=None, cutoff=0.4, max_ma
 
 
 # Archive
-def generate_possible_matches_for_archives(archives, logger=None, cutoff=0.4, max_matches=20, filters=[], match_local=True, match_web=True, update_if_local=False):
+def generate_possible_matches_for_archives(archives, logger=None, cutoff=0.4, max_matches=20, filters=(), match_local=True, match_web=True, update_if_local=False):
     # TODO: Not implemented: update_if_local, expose match_by_filesize.
     try:
         if not archives:

@@ -16,7 +16,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.AutoField(auto_created=True, verbose_name='ID', serialize=False, primary_key=True)),
                 ('match_accuracy', models.FloatField(blank=True, default=0.0, null=True, verbose_name='Match accuracy')),
-                ('gallery', models.ForeignKey(to='viewer.Gallery')),
+                ('gallery', models.ForeignKey(to='viewer.Gallery', on_delete=models.CASCADE)),
             ],
             options={
                 'verbose_name_plural': 'Gallery matches',
@@ -41,6 +41,6 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='gallerymatch',
             name='wanted_gallery',
-            field=models.ForeignKey(to='viewer.WantedGallery'),
+            field=models.ForeignKey(to='viewer.WantedGallery', on_delete=models.CASCADE),
         ),
     ]

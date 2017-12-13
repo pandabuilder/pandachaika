@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Dict, Any
 from xml.etree import ElementTree
 
 from core.base.utilities import translate_tag
@@ -34,7 +35,7 @@ def convert_api_response_text_to_gallery_dicts(text):
         return galleries
     for book in xml_root.findall('BOOK'):
         integer_id = int(book.get('ID').replace('B', ''))
-        gallery = {
+        gallery: Dict[str, Any] = {
             'gid': 'mugi-' + book.get('ID'),
             'link': constants.main_page + '/book/' + str(integer_id),
             'tags': [],

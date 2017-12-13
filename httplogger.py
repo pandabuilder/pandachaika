@@ -51,7 +51,7 @@ class HTTPLogger(_cplogging.LogManager):
             response = self.app(environ, start_response)
             self.access(environ, response)
             return response
-        except:
+        except Exception:
             self.error(traceback=True, severity=logging.CRITICAL)
             return HttpResponseServerError(_cperror.format_exc())
 
@@ -85,5 +85,5 @@ class HTTPLogger(_cplogging.LogManager):
         try:
             self.access_log.log(
                 logging.INFO, self.access_log_format.format(**atoms))
-        except:
+        except Exception:
             self.error(traceback=True)

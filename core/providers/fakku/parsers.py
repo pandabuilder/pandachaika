@@ -3,6 +3,7 @@ import re
 import time
 from collections import defaultdict
 from datetime import datetime, timezone
+from typing import Dict, Any
 
 from bs4 import BeautifulSoup
 
@@ -142,7 +143,7 @@ class Parser(BaseParser):
 
         response_data['content'] = defaultdict(str, **response_data['content'])
 
-        gallery = {
+        gallery: Dict[str, Any] = {
             'gid': link.replace(constants.api_page + '/', ''),
             'link': link,
             'tags': [],
@@ -239,7 +240,6 @@ class Parser(BaseParser):
             unique_urls.add(url)
 
         for gallery in unique_urls:
-
             gid = self.id_from_url(gallery)
             if not gid:
                 continue

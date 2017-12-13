@@ -107,9 +107,7 @@ class Parser(BaseParser):
             unique_urls.add(url)
 
         for gallery in unique_urls:
-
             gid = self.id_from_url(gallery)
-
             if not gid:
                 continue
 

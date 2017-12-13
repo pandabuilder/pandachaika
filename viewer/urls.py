@@ -3,6 +3,8 @@ from viewer.views import head, browser, wanted, exp, api, archive, admin
 from viewer.feeds import LatestArchivesFeed
 from viewer.views.elasticsearch import ESHomePageView, autocomplete_view, title_suggest_view
 
+app_name = 'viewer'
+
 urlpatterns = [
 
     url(r"^dir-browser/$", browser.directory_parser, name='directory-parser'),

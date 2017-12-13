@@ -138,7 +138,7 @@ class WantedGalleryAutocomplete(autocomplete.JalQuerySetView):
         return qs[0:self.limit_choices]
 
 
-class SourceAutocomplete(autocomplete.JalQuerySetView):
+class ArchiveFieldAutocomplete(autocomplete.JalQuerySetView):
 
     model = Archive
 
@@ -170,6 +170,9 @@ class SourceAutocomplete(autocomplete.JalQuerySetView):
     @staticmethod
     def get_result_label(result):
         return str(result)
+
+
+class SourceAutocomplete(ArchiveFieldAutocomplete):
 
     def choices_for_request(self):
 
@@ -183,38 +186,7 @@ class SourceAutocomplete(autocomplete.JalQuerySetView):
         return sources[0:self.limit_choices]
 
 
-class ReasonAutocomplete(autocomplete.JalQuerySetView):
-
-    model = Archive
-
-    choice_html_format = u'''
-        <a class="block choice" data-value="%s">%s</a>
-    '''
-    empty_html_format = '<span class="block"><em>%s</em></span>'
-    autocomplete_html_format = '%s'
-    limit_choices = 10
-
-    def render_to_response(self, context):
-
-        html = ''.join(
-            [self.choice_html(c) for c in self.choices_for_request()])
-
-        if not html:
-            html = self.empty_html_format % 'No matches found'
-
-        return http.HttpResponse(self.autocomplete_html_format % html)
-
-    def choice_html(self, choice):
-        return self.choice_html_format % (self.get_result_value(choice),
-                                          self.get_result_label(choice))
-
-    @staticmethod
-    def get_result_value(result):
-        return str(result)
-
-    @staticmethod
-    def get_result_label(result):
-        return str(result)
+class ReasonAutocomplete(ArchiveFieldAutocomplete):
 
     def choices_for_request(self):
 
@@ -228,38 +200,7 @@ class ReasonAutocomplete(autocomplete.JalQuerySetView):
         return sources[0:self.limit_choices]
 
 
-class UploaderAutocomplete(autocomplete.JalQuerySetView):
-
-    model = Archive
-
-    choice_html_format = u'''
-        <a class="block choice" data-value="%s">%s</a>
-    '''
-    empty_html_format = '<span class="block"><em>%s</em></span>'
-    autocomplete_html_format = '%s'
-    limit_choices = 10
-
-    def render_to_response(self, context):
-
-        html = ''.join(
-            [self.choice_html(c) for c in self.choices_for_request()])
-
-        if not html:
-            html = self.empty_html_format % 'No matches found'
-
-        return http.HttpResponse(self.autocomplete_html_format % html)
-
-    def choice_html(self, choice):
-        return self.choice_html_format % (self.get_result_value(choice),
-                                          self.get_result_label(choice))
-
-    @staticmethod
-    def get_result_value(result):
-        return str(result)
-
-    @staticmethod
-    def get_result_label(result):
-        return str(result)
+class UploaderAutocomplete(ArchiveFieldAutocomplete):
 
     def choices_for_request(self):
 
@@ -326,8 +267,8 @@ class TagAutocomplete(autocomplete.JalQuerySetView):
 
         return results.distinct()[0:self.limit_choices]
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self.modifier = ''
 
 
@@ -362,8 +303,8 @@ class NonCustomTagAutocomplete(autocomplete.Select2QuerySetView):
 
         return results.distinct()
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self.modifier = ''
 
 

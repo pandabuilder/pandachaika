@@ -36,7 +36,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.AutoField(verbose_name='ID', primary_key=True, auto_created=True, serialize=False)),
                 ('match_accuracy', models.FloatField(default=0.0, verbose_name='Match accuracy', null=True, blank=True)),
-                ('archive', models.ForeignKey(to='viewer.Archive')),
+                ('archive', models.ForeignKey(to='viewer.Archive', on_delete=models.CASCADE)),
             ],
         ),
         migrations.CreateModel(
@@ -73,7 +73,7 @@ class Migration(migrations.Migration):
                 ('image_width', models.PositiveIntegerField()),
                 ('thumbnail', models.ImageField(null=True, max_length=500, blank=True, upload_to=viewer.models.upload_thumbpath_handler)),
                 ('position', models.PositiveIntegerField(default=0)),
-                ('archive', models.ForeignKey(to='viewer.Archive')),
+                ('archive', models.ForeignKey(to='viewer.Archive', on_delete=models.CASCADE)),
             ],
             options={
                 'ordering': ['position'],
@@ -94,8 +94,8 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.AutoField(verbose_name='ID', primary_key=True, auto_created=True, serialize=False)),
                 ('favorite_group', models.IntegerField(default=1, verbose_name='Favorite Group')),
-                ('archive', models.ForeignKey(to='viewer.Archive')),
-                ('user', models.ForeignKey(to=settings.AUTH_USER_MODEL)),
+                ('archive', models.ForeignKey(to='viewer.Archive', on_delete=models.CASCADE)),
+                ('user', models.ForeignKey(to=settings.AUTH_USER_MODEL, on_delete=models.CASCADE)),
             ],
         ),
         migrations.AddField(
@@ -106,7 +106,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='archivematches',
             name='gallery',
-            field=models.ForeignKey(to='viewer.Gallery'),
+            field=models.ForeignKey(to='viewer.Gallery', on_delete=models.CASCADE),
         ),
         migrations.AddField(
             model_name='archive',
@@ -116,7 +116,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='archive',
             name='gallery',
-            field=models.ForeignKey(null=True, blank=True, to='viewer.Gallery'),
+            field=models.ForeignKey(null=True, blank=True, to='viewer.Gallery', on_delete=models.SET_NULL),
         ),
         migrations.AddField(
             model_name='archive',
@@ -126,6 +126,6 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='archive',
             name='user',
-            field=models.ForeignKey(default=1, to=settings.AUTH_USER_MODEL),
+            field=models.ForeignKey(default=1, to=settings.AUTH_USER_MODEL, on_delete=models.SET_NULL),
         ),
     ]

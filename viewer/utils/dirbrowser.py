@@ -25,10 +25,10 @@ class DirBrowser(object):
         p = os.path.normpath(os.path.join(self.path, path))
         if not p.startswith(self.path):
             p = self.path
-        l = os.listdir(p)
+        dir_list = os.listdir(p)
         files = sorted([
             (f, os.path.isdir(os.path.join(p, f)))
-            for f in l
+            for f in dir_list
         ])
         if not self.path == p:
             files.insert(0, ('..', os.path.isdir(os.path.join(p, '..'))))

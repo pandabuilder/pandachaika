@@ -21,7 +21,7 @@ try:
 except ImportError:
     PImage = None
 import django.db.models.options as options
-from django.core.urlresolvers import reverse
+from django.urls import reverse
 from django.contrib.auth.models import User
 from django.core.files import File
 from django.db import models
@@ -568,7 +568,7 @@ def thumb_path_handler(instance, filename):
 
 
 class Archive(models.Model):
-    gallery = models.ForeignKey(Gallery, blank=True, null=True)
+    gallery = models.ForeignKey(Gallery, blank=True, null=True, on_delete=models.SET_NULL)
     title = models.CharField(max_length=500, blank=True, null=True)
     title_jpn = models.CharField(max_length=500, blank=True, null=True, default='')
     zipped = models.FileField(
@@ -582,7 +582,7 @@ class Archive(models.Model):
     public_date = models.DateTimeField(blank=True, null=True)
     create_date = models.DateTimeField(auto_now_add=True)
     last_modified = models.DateTimeField(auto_now=True, blank=True, null=True)
-    user = models.ForeignKey(User, default=1)
+    user = models.ForeignKey(User, default=1, on_delete=models.SET_NULL, null=True)
     source_type = models.CharField(
         'Source type', max_length=50, blank=True, null=True, default='')
     reason = models.CharField(
@@ -1233,8 +1233,8 @@ class Archive(models.Model):
 
 
 class ArchiveMatches(models.Model):
-    archive = models.ForeignKey(Archive)
-    gallery = models.ForeignKey(Gallery)
+    archive = models.ForeignKey(Archive, on_delete=models.CASCADE)
+    gallery = models.ForeignKey(Gallery, on_delete=models.CASCADE)
     match_accuracy = models.FloatField(
         'Match accuracy', blank=True, null=True, default=0.0)
 
@@ -1275,7 +1275,7 @@ class Image(models.Model):
         null=True, max_length=500,
         height_field='thumbnail_height',
         width_field='thumbnail_width')
-    archive = models.ForeignKey(Archive)
+    archive = models.ForeignKey(Archive, on_delete=models.CASCADE)
     archive_position = models.PositiveIntegerField(default=1)
     position = models.PositiveIntegerField(default=1)
     sha1 = models.CharField(max_length=50, blank=True, null=True)
@@ -1322,8 +1322,8 @@ class Image(models.Model):
 
 
 class UserArchivePrefs(models.Model):
-    user = models.ForeignKey(User)
-    archive = models.ForeignKey(Archive)
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    archive = models.ForeignKey(Archive, on_delete=models.CASCADE)
     favorite_group = models.IntegerField('Favorite Group', default=1)
 
 
@@ -1466,7 +1466,8 @@ class WantedGallery(models.Model):
     release_date = models.DateTimeField('Release date', blank=True, null=True, default=django_tz.now)
     announces = models.ManyToManyField(Announce, blank=True)
     artists = models.ManyToManyField(Artist, blank=True)
-    cover_artist = models.ForeignKey(Artist, blank=True, null=True, related_name="cover_artist")
+    cover_artist = models.ForeignKey(
+        Artist, blank=True, null=True, related_name="cover_artist", on_delete=models.SET_NULL)
     look_for_duration = models.DurationField('Look for duration', default=timedelta(days=30))
     should_search = models.BooleanField('Should search', blank=True, default=False)
     keep_searching = models.BooleanField('Keep searching', blank=True, default=False)
@@ -1594,8 +1595,8 @@ class WantedGallery(models.Model):
 
 
 class FoundGallery(models.Model):
-    wanted_gallery = models.ForeignKey(WantedGallery)
-    gallery = models.ForeignKey(Gallery)
+    wanted_gallery = models.ForeignKey(WantedGallery, on_delete=models.CASCADE)
+    gallery = models.ForeignKey(Gallery, on_delete=models.CASCADE)
     match_accuracy = models.FloatField(
         'Match accuracy', blank=True, null=True, default=0.0)
     source = models.CharField(
@@ -1608,8 +1609,8 @@ class FoundGallery(models.Model):
 
 
 class GalleryMatch(models.Model):
-    wanted_gallery = models.ForeignKey(WantedGallery)
-    gallery = models.ForeignKey(Gallery)
+    wanted_gallery = models.ForeignKey(WantedGallery, on_delete=models.CASCADE)
+    gallery = models.ForeignKey(Gallery, on_delete=models.CASCADE)
     match_accuracy = models.FloatField(
         'Match accuracy', blank=True, null=True, default=0.0)
 
@@ -1721,7 +1722,7 @@ class Attribute(models.Model):
     value_duration = models.DurationField(blank=True, null=True)
     value_bool = models.NullBooleanField(blank=True, null=True)
 
-    provider = models.ForeignKey(Provider)
+    provider = models.ForeignKey(Provider, on_delete=models.CASCADE)
 
     create_date = models.DateTimeField(auto_now_add=True)
     last_modified = models.DateTimeField(auto_now=True, blank=True, null=True)

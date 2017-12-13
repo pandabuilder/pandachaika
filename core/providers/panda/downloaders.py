@@ -6,7 +6,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from core.base.utilities import calc_crc32, get_zip_filesize, request_with_retries
-from core.downloaders.handlers import BaseDownloader, BaseInfoDownloader, BaseFakeDownloader
+from core.downloaders.handlers import BaseDownloader, BaseInfoDownloader, BaseFakeDownloader, BaseTorrentDownloader
 from core.downloaders.torrent import get_torrent_client
 from core.providers.panda.utilities import ArchiveHTMLParser, TorrentHTMLParser
 from viewer.models import Archive
@@ -126,9 +126,8 @@ class ArchiveDownloader(BaseDownloader):
         )
 
 
-class TorrentDownloader(BaseDownloader):
+class TorrentDownloader(BaseTorrentDownloader):
 
-    type = 'torrent'
     provider = constants.provider_name
     skip_if_hidden = True
 
@@ -203,39 +202,7 @@ class TorrentDownloader(BaseDownloader):
             torrent_link = m.group(1)
 
         self.logger.info("Adding torrent to client, seeds: {}".format(torrent_page_parser.seeds))
-        client.connect()
-        if client.send_url:
-            result = client.add_url(
-                torrent_link,
-                download_dir=self.settings.torrent['download_dir']
-            )
-        else:
-            result = client.add_torrent(
-                self.general_utils.get_torrent(
-                    torrent_link,
-                    self.own_settings.cookies,
-                    convert_to_base64=client.convert_to_base64
-                ),
-                download_dir=self.settings.torrent['download_dir']
-            )
-        if result:
-            if client.expected_torrent_name:
-                self.expected_torrent_name = "{} [{}]".format(client.expected_torrent_name, self.gallery['gid'])
-            else:
-                self.expected_torrent_name = "{} [{}]".format(
-                    replace_illegal_name(self.gallery['title']), self.gallery['gid']
-                )
-            self.fileDownloaded = 1
-            self.return_code = 1
-            if client.total_size > 0:
-                self.gallery['filesize'] = client.total_size
-            self.gallery['filename'] = os.path.join(
-                self.own_settings.torrent_dl_folder,
-                replace_illegal_name(self.expected_torrent_name) + '.zip'
-            )
-        else:
-            self.return_code = 0
-            self.logger.error("There was an error adding the torrent to the client")
+        self.connect_and_download(client, torrent_link)
 
     def update_archive_db(self, default_values):
 

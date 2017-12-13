@@ -1,5 +1,6 @@
+import os
 from core.base.setup import Settings
-from core.base.utilities import OptionalLogger, GeneralUtils
+from core.base.utilities import OptionalLogger, GeneralUtils, replace_illegal_name
 
 from viewer.models import Gallery, Archive
 
@@ -120,3 +121,47 @@ class BaseFakeDownloader(BaseDownloader):
             default_values,
             self.gallery['gid'],
         )
+
+
+class BaseTorrentDownloader(BaseDownloader):
+
+    type = 'torrent'
+
+    def connect_and_download(self, client, torrent_link):
+        client.connect()
+        if client.send_url:
+            result = client.add_url(
+                torrent_link,
+                download_dir=self.settings.torrent['download_dir']
+            )
+        else:
+            result = client.add_torrent(
+                self.general_utils.get_torrent(
+                    torrent_link,
+                    self.own_settings.cookies,
+                    convert_to_base64=client.convert_to_base64
+                ),
+                download_dir=self.settings.torrent['download_dir']
+            )
+        if result:
+            if client.expected_torrent_name:
+                self.expected_torrent_name = "{} [{}]".format(client.expected_torrent_name, self.gallery['gid'])
+            else:
+                self.expected_torrent_name = "{} [{}]".format(
+                    replace_illegal_name(self.gallery['title']), self.gallery['gid']
+                )
+            self.fileDownloaded = 1
+            self.return_code = 1
+            if client.total_size > 0:
+                self.gallery['filesize'] = client.total_size
+            self.gallery['filename'] = os.path.join(
+                self.own_settings.torrent_dl_folder,
+                replace_illegal_name(self.expected_torrent_name) + '.zip'
+            )
+        else:
+            self.return_code = 0
+            self.logger.error("There was an error adding the torrent to the client")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.expected_torrent_name = ''

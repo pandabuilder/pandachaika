@@ -18,11 +18,11 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='wantedgallery',
             name='cover_artist',
-            field=models.ForeignKey(related_name='cover_artist', to='viewer.Artist', null=True, blank=True),
+            field=models.ForeignKey(related_name='cover_artist', to='viewer.Artist', null=True, blank=True, on_delete=models.SET_NULL),
         ),
         migrations.AlterField(
             model_name='wantedgallery',
             name='matched_gallery',
-            field=models.ForeignKey(to='viewer.Gallery', null=True, blank=True),
+            field=models.ForeignKey(to='viewer.Gallery', null=True, blank=True, on_delete=models.SET_NULL),
         ),
     ]

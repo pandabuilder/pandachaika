@@ -15,7 +15,7 @@ from viewer.views.complete import (
 admin.autodiscover()
 
 urlpatterns = [
-    url(r'^' + settings.MAIN_URL + r'admin/', include(admin.site.urls)),
+    url(r'^' + settings.MAIN_URL + r'admin/', admin.site.urls),
 ]
 
 urlpatterns += [
@@ -70,7 +70,7 @@ if settings.DEBUG:
     try:
         import debug_toolbar
         urlpatterns += [
-            url(r'^' + settings.MAIN_URL + r'__debug__/', include(debug_toolbar.urls)),
+            url(r'^' + settings.MAIN_URL + r'__debug__/', debug_toolbar.urls),
         ]
         urlpatterns += static(settings.STATIC_URL,
                               document_root=settings.STATIC_ROOT)
@@ -80,5 +80,5 @@ if settings.DEBUG:
         debug_toolbar = None
 
 urlpatterns += [
-    url(r'^' + settings.MAIN_URL, include('viewer.urls', namespace='viewer')),
+    url(r'^' + settings.MAIN_URL, include('viewer.urls')),
 ]

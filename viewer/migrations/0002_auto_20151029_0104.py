@@ -40,7 +40,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.AutoField(verbose_name='ID', auto_created=True, primary_key=True, serialize=False)),
                 ('match_accuracy', models.FloatField(blank=True, verbose_name='Match accuracy', null=True, default=0.0)),
-                ('gallery', models.ForeignKey(to='viewer.Gallery')),
+                ('gallery', models.ForeignKey(to='viewer.Gallery', on_delete=models.CASCADE)),
             ],
         ),
         migrations.CreateModel(
@@ -60,8 +60,8 @@ class Migration(migrations.Migration):
                 ('last_modified', models.DateTimeField(auto_now=True, null=True)),
                 ('announces', models.ManyToManyField(to='viewer.Announce', blank=True, default='')),
                 ('artists', models.ManyToManyField(to='viewer.Artist', blank=True, default='')),
-                ('cover_artist', models.ForeignKey(to='viewer.Artist', related_name='cover_artist')),
-                ('matched_gallery', models.ForeignKey(to='viewer.Gallery')),
+                ('cover_artist', models.ForeignKey(to='viewer.Artist', related_name='cover_artist', on_delete=models.SET_NULL)),
+                ('matched_gallery', models.ForeignKey(to='viewer.Gallery', on_delete=models.SET_NULL)),
                 ('possible_matches', models.ManyToManyField(to='viewer.Gallery', related_name='galleries_matches', blank=True, default='', through='viewer.GalleryMatches')),
                 ('wanted_tags', models.ManyToManyField(to='viewer.Tag', blank=True, default='')),
             ],
@@ -72,6 +72,6 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='gallerymatches',
             name='wanted_gallery',
-            field=models.ForeignKey(to='viewer.WantedGallery'),
+            field=models.ForeignKey(to='viewer.WantedGallery', on_delete=models.CASCADE),
         ),
     ]

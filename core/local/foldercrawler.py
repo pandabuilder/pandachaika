@@ -258,30 +258,15 @@ class FolderCrawler(object):
 
         elif args.rematch_from_internal_gallery_titles:
 
-            found_archives = Archive.objects.filter(
+            non_matched_archives = Archive.objects.filter(
                 match_type='non-match')
 
-            if found_archives:
+            if non_matched_archives:
 
-                found_galleries = Gallery.objects.eligible_for_use()
-                found_archives = Archive.objects.exclude(
-                    match_type__in=('', 'non-match'))
+                archives_title_gid, galleries_title_gid = self.get_archive_and_gallery_titles()
 
-                archives_title_gid = []
-                galleries_title_gid = []
-
-                for archive in found_archives:
-                    archives_title_gid.append(
-                        [replace_illegal_name(archive.title), archive.gallery_id])
-
-                for gallery in found_galleries:
-                    if 'replaced' in gallery.tag_list():
-                        continue
-                    galleries_title_gid.append(
-                        [replace_illegal_name(gallery.title), gallery.id])
-
-                self.logger.info("Matching against archive and gallery database, {} archives with no match".format(found_archives.count()))
-                for archive in found_archives:
+                self.logger.info("Matching against archive and gallery database, {} archives with no match".format(non_matched_archives.count()))
+                for archive in non_matched_archives:
                     adjusted_title = replace_illegal_name(
                         os.path.basename(archive.zipped.path)).replace(".zip", "")
 
@@ -325,30 +310,15 @@ class FolderCrawler(object):
 
         elif args.display_match_from_internal_gallery_titles:
 
-            found_archives = Archive.objects.filter(
+            non_matched_archives = Archive.objects.filter(
                 match_type='non-match')
 
-            if found_archives:
+            if non_matched_archives:
 
-                found_galleries = Gallery.objects.eligible_for_use()
-                found_archives = Archive.objects.exclude(
-                    match_type__in=('', 'non-match'))
+                archives_title_gid, galleries_title_gid = self.get_archive_and_gallery_titles()
 
-                archives_title_gid = []
-                galleries_title_gid = []
-
-                for archive in found_archives:
-                    archives_title_gid.append(
-                        [replace_illegal_name(archive.title), archive.gallery_id])
-
-                for gallery in found_galleries:
-                    if 'replaced' in gallery.tag_list():
-                        continue
-                    galleries_title_gid.append(
-                        [replace_illegal_name(gallery.title), gallery.id])
-
-                self.logger.info("Matching against archive and gallery database, {} archives with no match".format(found_archives.count()))
-                for archive in found_archives:
+                self.logger.info("Matching against archive and gallery database, {} archives with no match".format(non_matched_archives.count()))
+                for archive in non_matched_archives:
                     adjusted_title = replace_illegal_name(
                         os.path.basename(archive.zipped.path)).replace(".zip", "")
                     galleries_id_token = get_closer_gallery_title_from_list(
@@ -550,6 +520,23 @@ class FolderCrawler(object):
                     self.logger.info(result_message)
 
         self.logger.info('Folder crawler done.')
+
+    @staticmethod
+    def get_archive_and_gallery_titles():
+        found_galleries = Gallery.objects.eligible_for_use()
+        found_archives = Archive.objects.exclude(
+            match_type__in=('', 'non-match'))
+        archives_title_gid = []
+        galleries_title_gid = []
+        for archive in found_archives:
+            archives_title_gid.append(
+                [replace_illegal_name(archive.title), archive.gallery_id])
+        for gallery in found_galleries:
+            if 'replaced' in gallery.tag_list():
+                continue
+            galleries_title_gid.append(
+                [replace_illegal_name(gallery.title), gallery.id])
+        return archives_title_gid, galleries_title_gid
 
     def __init__(self, settings: Settings, logger):
         self.settings = settings

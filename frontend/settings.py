@@ -111,7 +111,7 @@ if module_exists('django_unused_media'):
 if DEBUG and module_exists('debug_toolbar'):
     INSTALLED_APPS += ('debug_toolbar',)
 
-MIDDLEWARE_CLASSES = (
+MIDDLEWARE = (
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -146,8 +146,8 @@ WSGI_APPLICATION = 'frontend.wsgi.application'
 if DEBUG and module_exists('debug_toolbar'):
     INTERNAL_IPS = ['127.0.0.1']
     DEBUG_TOOLBAR_PATCH_SETTINGS = False
-    MIDDLEWARE_CLASSES = ('debug_toolbar.middleware.DebugToolbarMiddleware',) + \
-        MIDDLEWARE_CLASSES
+    MIDDLEWARE = ('debug_toolbar.middleware.DebugToolbarMiddleware',) + \
+        MIDDLEWARE
 
 
 # Database

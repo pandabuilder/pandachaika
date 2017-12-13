@@ -2,6 +2,7 @@
 import re
 import time
 from collections import defaultdict
+from typing import Dict, Any
 
 import dateutil.parser
 from bs4 import BeautifulSoup
@@ -37,7 +38,7 @@ class Parser(BaseParser):
         if soup:
             title_jpn_match = soup.find("div", id=re.compile("info")).h2
 
-            gallery = {
+            gallery: Dict[str, Any] = {
                 'gid': 'nh-' + re.search(r'{}(\d+)'.format(constants.gallery_container_url), link).group(1),
                 'title': soup.h1.get_text(),
                 'title_jpn': title_jpn_match.get_text() if title_jpn_match else '',
