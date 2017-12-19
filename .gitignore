@@ -17,3 +17,4 @@ __pycache__/
 /package.json
 /yarn.lock
 /src/
+/.mypy_cache/

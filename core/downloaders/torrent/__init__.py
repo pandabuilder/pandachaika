@@ -2,9 +2,12 @@ import os
 import sys
 import pkgutil
 import inspect
+from typing import Any, Dict
+
+from core.base.types import TorrentClient
 
 
-def get_torrent_client(torrent_settings):
+def get_torrent_client(torrent_settings: Dict[str, Any]) -> TorrentClient:
     client = None
     torrent_module = None
     for module_name in modules_name:

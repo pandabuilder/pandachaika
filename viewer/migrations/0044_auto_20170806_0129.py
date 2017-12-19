@@ -48,6 +48,6 @@ class Migration(migrations.Migration):
         ),
         migrations.AlterUniqueTogether(
             name='providerattribute',
-            unique_together=set([('name', 'provider')]),
+            unique_together={('name', 'provider')},
         ),
     ]

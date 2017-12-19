@@ -1,6 +1,8 @@
 import os
+from typing import List
 
 from core.base.matchers import Matcher
+from core.base.types import GalleryData, DataDict
 from core.base.utilities import (
     filecount_in_zip,
     get_zip_filesize,
@@ -17,30 +19,30 @@ class TitleMatcher(Matcher):
     time_to_wait_after_compare = 0
     default_cutoff = 0.6
 
-    def get_metadata_after_matching(self):
+    def get_metadata_after_matching(self) -> List[GalleryData]:
         return self.values_array
 
-    def format_to_search_title(self, file_name):
+    def format_to_search_title(self, file_name: str) -> str:
         if file_name.endswith('.zip'):
             return clean_title(self.get_title_from_path(file_name))
         else:
             return clean_title(file_name)
 
-    def format_to_compare_title(self, file_name):
+    def format_to_compare_title(self, file_name: str) -> str:
         if file_name.endswith('.zip'):
             return clean_title(self.get_title_from_path(file_name))
         else:
             return clean_title(file_name)
 
-    def search_method(self, title_to_search):
+    def search_method(self, title_to_search: str) -> bool:
         return self.search_using_xml_api(title_to_search)
 
-    def format_match_values(self):
+    def format_match_values(self) -> DataDict:
 
-        self.match_gid = self.match_values['gid']
+        self.match_gid = self.match_values.gid
         values = {
             'title': self.match_title,
-            'title_jpn': self.match_values['title_jpn'],
+            'title_jpn': self.match_values.title_jpn,
             'zipped': self.file_path,
             'crc32': self.crc32,
             'match_type': self.found_by,
@@ -51,7 +53,7 @@ class TitleMatcher(Matcher):
 
         return values
 
-    def search_using_xml_api(self, title):
+    def search_using_xml_api(self, title: str) -> bool:
 
         if not self.own_settings.api_key:
             self.logger.error("Can't use {} API without an api key. Check {}/API_MANUAL.txt".format(
@@ -103,7 +105,7 @@ class TitleMatcher(Matcher):
 
         self.values_array = galleries
 
-        self.gallery_links = [x['link'] for x in galleries]
+        self.gallery_links = [x.link for x in galleries]
         if len(self.gallery_links) > 0:
             self.found_by = self.name
             return True

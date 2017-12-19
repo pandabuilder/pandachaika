@@ -5,8 +5,10 @@ import json
 import re
 
 import logging
+from typing import Dict, Any
+
 from django.db.models import Q
-from django.http import HttpResponse
+from django.http import HttpResponse, HttpRequest
 from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
@@ -14,7 +16,7 @@ from django.conf import settings
 from core.base.setup import Settings
 from core.base.utilities import str_to_int
 from core.base.utilities import timestamp_or_zero
-from viewer.models import Archive, Gallery
+from viewer.models import Archive, Gallery, ArchiveQuerySet, GalleryQuerySet
 from viewer.utils.matching import generate_possible_matches_for_archives
 from viewer.views.head import gallery_filter_keys
 
@@ -25,7 +27,7 @@ crawler_settings = settings.CRAWLER_SETTINGS
 # NOTE: This is used by 3rd parties, do not modify, at most create a new function if something needs changing
 # Public API, does not check for any token, but filters if the user is authenticated or not.
 @csrf_exempt
-def json_search(request):
+def json_search(request: HttpRequest) -> HttpResponse:
 
     if request.method == 'GET':
         data = request.GET
@@ -263,7 +265,7 @@ def json_search(request):
 # Private API, checks for the API key.
 # TODO: Port information fetching options to GET.
 @csrf_exempt
-def json_parser(request):
+def json_parser(request: HttpRequest) -> HttpResponse:
     response = {}
 
     if request.method == 'POST':
@@ -292,7 +294,7 @@ def json_parser(request):
                         archive = None
                         parsers = current_settings.provider_context.get_parsers(current_settings, crawler_logger)
                         for parser in parsers:
-                            if hasattr(parser, 'id_from_url'):
+                            if parser.id_from_url_implemented():
                                 urls_filtered = parser.filter_accepted_urls((args['link'], ))
                                 for url_filtered in urls_filtered:
                                     gallery_gid = parser.id_from_url(url_filtered)
@@ -310,7 +312,7 @@ def json_parser(request):
                             parent_archive = None
                             parsers = crawler_settings.provider_context.get_parsers(crawler_settings, crawler_logger)
                             for parser in parsers:
-                                if hasattr(parser, 'id_from_url'):
+                                if parser.id_from_url_implemented():
                                     urls_filtered = parser.filter_accepted_urls((args['parentLink'],))
                                     for url_filtered in urls_filtered:
                                         gallery_gid = parser.id_from_url(url_filtered)
@@ -338,7 +340,7 @@ def json_parser(request):
                                 archive = None
                                 parsers = crawler_settings.provider_context.get_parsers(crawler_settings, crawler_logger)
                                 for parser in parsers:
-                                    if hasattr(parser, 'id_from_url'):
+                                    if parser.id_from_url_implemented():
                                         urls_filtered = parser.filter_accepted_urls((args['link'],))
                                         for url_filtered in urls_filtered:
                                             gallery_gid = parser.id_from_url(url_filtered)
@@ -355,7 +357,7 @@ def json_parser(request):
                             archive = None
                             parsers = crawler_settings.provider_context.get_parsers(crawler_settings, crawler_logger)
                             for parser in parsers:
-                                if hasattr(parser, 'id_from_url'):
+                                if parser.id_from_url_implemented():
                                     urls_filtered = parser.filter_accepted_urls((args['link'],))
                                     for url_filtered in urls_filtered:
                                         gallery_gid = parser.id_from_url(url_filtered)
@@ -378,8 +380,8 @@ def json_parser(request):
                                  'id': archive.id,
                                  'zipped': archive.zipped.name,
                                  'filesize': archive.filesize} for archive in archives_query]
-                    response = json.dumps({'result': archives})
-                    return HttpResponse(response, content_type="application/json; charset=utf-8")
+                    response_text = json.dumps({'result': archives})
+                    return HttpResponse(response_text, content_type="application/json; charset=utf-8")
                 # Used by remotesite command
                 elif data['operation'] in ('queue_archives', 'queue_galleries'):
                     urls = args
@@ -388,7 +390,7 @@ def json_parser(request):
 
                     parsers = crawler_settings.provider_context.get_parsers(crawler_settings, crawler_logger)
                     for parser in parsers:
-                        if hasattr(parser, 'id_from_url'):
+                        if parser.id_from_url_implemented():
                             urls_filtered = parser.filter_accepted_urls(urls)
                             for url in urls_filtered:
                                 gid = parser.id_from_url(url)
@@ -409,7 +411,7 @@ def json_parser(request):
                     # new_gids = list(gids_set - set(already_present_gids))
 
                     for parser in parsers:
-                        if hasattr(parser, 'id_from_url'):
+                        if parser.id_from_url_implemented():
                             urls_filtered = parser.filter_accepted_urls(urls)
                             for url in urls_filtered:
                                 gid = parser.id_from_url(url)
@@ -499,7 +501,7 @@ def json_parser(request):
                 if not results:
                     return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
                 # TODO: For now, we have to manually update this entry when new fields are added to Gallery.
-                response = json.dumps(
+                response_text = json.dumps(
                     [{
                         'gid': gallery.gid,
                         'token': gallery.token,
@@ -528,7 +530,7 @@ def json_parser(request):
                     sort_keys=True,
                     ensure_ascii=False,
                 )
-                return HttpResponse(response, content_type="application/json; charset=utf-8")
+                return HttpResponse(response_text, content_type="application/json; charset=utf-8")
             else:
                 response['error'] = 'Unknown function'
     else:
@@ -536,7 +538,7 @@ def json_parser(request):
     return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
 
 
-def simple_archive_filter(args, public=True):
+def simple_archive_filter(args: str, public: bool = True) -> ArchiveQuerySet:
     """Simple filtering of archives.
     """
 
@@ -586,7 +588,7 @@ def simple_archive_filter(args, public=True):
     return results
 
 
-def filter_galleries_no_request(filter_args):
+def filter_galleries_no_request(filter_args: Dict[str, Any]) -> GalleryQuerySet:
 
     # sort and filter results by parameters
     order = "posted"

@@ -1,5 +1,7 @@
 import os
+from typing import Any
 
+from core.base.types import DataDict
 from core.base.utilities import replace_illegal_name, available_filename
 from core.downloaders.torrent import get_torrent_client
 
@@ -14,17 +16,17 @@ class GenericTorrentDownloader(BaseDownloader):
     archive_only = True
 
     @staticmethod
-    def get_download_link(url):
+    def get_download_link(url: str) -> str:
         return url
 
-    def start_download(self):
+    def start_download(self) -> None:
         client = get_torrent_client(self.settings.torrent)
         if not client:
             self.return_code = 0
             self.logger.error("No torrent client was found")
             return
 
-        torrent_link = self.get_download_link(self.gallery['link'])
+        torrent_link = self.get_download_link(self.gallery.link)
 
         self.logger.info("Adding torrent to client.")
         client.connect()
@@ -54,15 +56,15 @@ class GenericTorrentDownloader(BaseDownloader):
                 self.expected_torrent_name = "{}".format(client.expected_torrent_name)
             else:
                 self.expected_torrent_name = "{}".format(
-                    replace_illegal_name(self.gallery['link'])
+                    replace_illegal_name(self.gallery.link)
                 )
             self.fileDownloaded = 1
             self.return_code = 1
             if client.total_size > 0:
-                self.gallery['filesize'] = client.total_size
+                self.gallery.filesize = client.total_size
             else:
-                self.gallery['filesize'] = 0
-            self.gallery['filename'] = available_filename(
+                self.gallery.filesize = 0
+            self.gallery.filename = available_filename(
                 self.settings.MEDIA_ROOT,
                 os.path.join(
                     self.own_settings.torrent_dl_folder,
@@ -73,24 +75,24 @@ class GenericTorrentDownloader(BaseDownloader):
             self.return_code = 0
             self.logger.error("There was an error adding the torrent to the client")
 
-    def update_archive_db(self, default_values):
+    def update_archive_db(self, default_values: DataDict) -> Archive:
 
         values = {
             'title': self.expected_torrent_name,
             'title_jpn': '',
-            'zipped': self.gallery['filename'],
+            'zipped': self.gallery.filename,
             'crc32': self.crc32,
-            'filesize': self.gallery['filesize'],
+            'filesize': self.gallery.filesize,
             'filecount': 0,
         }
         default_values.update(values)
         return Archive.objects.update_or_create_by_values_and_gid(
             default_values,
             None,
-            zipped=self.gallery['filename']
+            zipped=self.gallery.filename
         )
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.expected_torrent_name = ''
 

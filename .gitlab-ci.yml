@@ -14,6 +14,11 @@ test:
   - pip3.6 install -r requirements.txt
   - python3.6 manage.py test viewer.tests.test_internal
   - pip3.6 install flake8
-  - flake8 --ignore="E501,E402" --exclude="migrations,ENV,src" .
+  - pip3.6 install mypy
+  - flake8 --ignore="E501,E402,F401" --exclude="migrations,ENV,src,.mypy_cache" .
+  - mypy . --ignore-missing-imports
+  cache:
+    paths:
+    - .mypy_cache
   tags:
     - django

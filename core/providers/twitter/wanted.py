@@ -1,21 +1,26 @@
 import re
+import typing
 from datetime import datetime, timedelta
+from typing import Any, Dict, List
 
-
-from django.db.models import Max
+from django.db.models import Max, QuerySet
 from twitter import Twitter, OAuth
 
+from core.base.types import OptionalLogger
 from core.base.utilities import format_title_to_wanted_search
 from viewer.models import WantedGallery, Artist, TweetPost
 from . import constants
 
+if typing.TYPE_CHECKING:
+    from core.base.setup import Settings
+
 CREDENTIALS = ('token', 'token_secret', 'consumer_key', 'consumer_secret')
 
 
-def wanted_generator(settings, ext_logger, attrs):
+def wanted_generator(settings: 'Settings', ext_logger: OptionalLogger, attrs: QuerySet):
     own_settings = settings.providers[constants.provider_name]
 
-    def process_wani_tweets(current_tweets, local_logger=None):
+    def process_wani_tweets(current_tweets: List[Dict[str, Any]], local_logger=None):
         publisher = 'wanimagazine'
         source = 'twitter'
 

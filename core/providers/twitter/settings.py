@@ -1,14 +1,22 @@
-class Settings:
-    def __init__(self):
+import typing
+
+from core.base.types import ProviderSettings
+
+if typing.TYPE_CHECKING:
+    from core.base.setup import Settings
+
+
+class OwnSettings(ProviderSettings):
+    def __init__(self) -> None:
         self.token = ''
         self.token_secret = ''
         self.consumer_key = ''
         self.consumer_secret = ''
 
 
-def parse_config(global_settings, config):
+def parse_config(global_settings: 'Settings', config: typing.Dict[str, typing.Any]) -> 'OwnSettings':
 
-    settings = Settings()
+    settings = OwnSettings()
     if 'general' in config:
         if 'token' in config['general']:
             settings.token = config['general']['token']

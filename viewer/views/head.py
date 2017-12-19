@@ -6,14 +6,17 @@ from functools import reduce
 from random import randint
 
 import operator
+from typing import Dict, Any, List
+
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
+from django.http.request import HttpRequest
 from django.core.mail import mail_admins
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
 from django.urls import reverse
-from django.db.models import Q, Avg, Max, Min, Sum, Count, Prefetch
+from django.db.models import Q, Avg, Max, Min, Sum, Count, Prefetch, QuerySet
 from django.http import Http404
 from django.http import HttpResponseRedirect, HttpResponse
 from django.http.request import QueryDict
@@ -22,6 +25,7 @@ from django.conf import settings
 from django.utils.html import urlize
 
 from core.base.setup import Settings
+from core.base.types import DataDict
 from core.base.utilities import (
     thread_exists)
 
@@ -33,8 +37,8 @@ from viewer.forms import (
 from viewer.models import (
     Archive, Image, Tag, Gallery,
     UserArchivePrefs, ArchiveMatches,
-    WantedGallery, GalleryMatch
-)
+    WantedGallery, GalleryMatch,
+    ArchiveQuerySet, GalleryQuerySet)
 from viewer.utils.matching import (
     create_matches_wanted_galleries_from_providers,
     create_matches_wanted_galleries_from_providers_internal,
@@ -70,7 +74,7 @@ wanted_gallery_filter_keys = (
 )
 
 
-def viewer_login(request):
+def viewer_login(request: HttpRequest) -> HttpResponse:
 
     if request.method == 'POST':
         username = request.POST['username']
@@ -92,12 +96,12 @@ def viewer_login(request):
 
 
 @login_required
-def viewer_logout(request):
+def viewer_logout(request: HttpRequest) -> HttpResponse:
     logout(request)
     return HttpResponseRedirect(reverse('viewer:main-page'))
 
 
-def session_settings(request):
+def session_settings(request: HttpRequest) -> HttpResponse:
     if request.method == 'POST':
         data = json.loads(request.body.decode("utf-8"))
         if 'viewer_parameters' in data:
@@ -125,7 +129,7 @@ def session_settings(request):
 
 # TODO: Generalize this script for several providers.
 @login_required
-def panda_userscript(request):
+def panda_userscript(request: HttpRequest) -> HttpResponse:
 
     return render(
         request,
@@ -140,7 +144,7 @@ def panda_userscript(request):
 
 
 @login_required
-def image_viewer(request, archive, page):
+def image_viewer(request: HttpRequest, archive: int, page: int) -> HttpResponse:
 
     images = Image.objects.filter(archive=archive, extracted=True)
     if not images:
@@ -163,7 +167,7 @@ def image_viewer(request, archive, page):
     return render(request, "viewer/image_viewer.html", d)
 
 
-def image_url(request, pk):
+def image_url(request: HttpRequest, pk: int) -> HttpResponse:
     try:
         image = Image.objects.get(id=pk, extracted=True)
     except Image.DoesNotExist:
@@ -181,7 +185,7 @@ def image_url(request, pk):
         return HttpResponseRedirect(image.image.url)
 
 
-def gallery_details(request, pk, tool=None):
+def gallery_details(request: HttpRequest, pk: int, tool: str=None) -> HttpResponse:
     try:
         gallery = Gallery.objects.get(pk=pk)
     except Gallery.DoesNotExist:
@@ -237,7 +241,7 @@ def gallery_details(request, pk, tool=None):
     return render(request, "viewer/gallery.html", d)
 
 
-def gallery_thumb(request, pk):
+def gallery_thumb(request: HttpRequest, pk: int) -> HttpResponse:
     try:
         gallery = Gallery.objects.get(pk=pk)
     except Gallery.DoesNotExist:
@@ -255,7 +259,7 @@ def gallery_thumb(request, pk):
         return HttpResponseRedirect(gallery.thumbnail.url)
 
 
-def gallery_list(request, mode='none', tag=None):
+def gallery_list(request: HttpRequest, mode: str = 'none', tag: str = None) -> HttpResponse:
     """Search, filter, sort galleries."""
     try:
         page = int(request.GET.get("page", '1'))
@@ -272,7 +276,7 @@ def gallery_list(request, mode='none', tag=None):
     get = request.GET
     request.GET = cleared_queries
 
-    display_prms = {}
+    display_prms: Dict[str, Any] = {}
 
     # init parameters
     if "gallery_parameters" in request.session:
@@ -352,7 +356,7 @@ def gallery_list(request, mode='none', tag=None):
     return render(request, "viewer/gallery_search.html", d)
 
 
-def filter_galleries(request, session_filters, request_filters):
+def filter_galleries(request: HttpRequest, session_filters: Dict[str, str], request_filters: Dict[str, str]) -> GalleryQuerySet:
     """Filter gallery results through parameters and return results list."""
 
     # sort and filter results by parameters
@@ -429,7 +433,7 @@ def filter_galleries(request, session_filters, request_filters):
     return results
 
 
-def search(request, mode='none', tag=None):
+def search(request: HttpRequest, mode: str = 'none', tag: str = None) -> HttpResponse:
     """Search, filter, sort archives."""
     try:
         page = int(request.GET.get("page", '1'))
@@ -452,7 +456,7 @@ def search(request, mode='none', tag=None):
 
     request.GET = cleared_queries
 
-    display_prms = {}
+    display_prms: Dict[str, Any] = {}
 
     if "parameters" in request.session:
         parameters = request.session["parameters"]
@@ -550,7 +554,7 @@ def search(request, mode='none', tag=None):
     return render(request, "viewer/archive_search.html", d)
 
 
-def filter_archives(request, session_filters, request_filters):
+def filter_archives(request: HttpRequest, session_filters: Dict[str, str], request_filters: Dict[str, str]) -> ArchiveQuerySet:
     """Filter results through parameters
     and return results list.
     """
@@ -658,7 +662,7 @@ def filter_archives(request, session_filters, request_filters):
     return results
 
 
-def quick_search(request, parameters, display_parameters):
+def quick_search(request: HttpRequest, parameters: DataDict, display_parameters: DataDict) -> ArchiveQuerySet:
     """Quick search of archives."""
     # sort and filter results by parameters
     order = "posted"
@@ -682,7 +686,7 @@ def quick_search(request, parameters, display_parameters):
     parsers = crawler_settings.provider_context.get_parsers_classes()
     gallery_ids_providers = list()
     for parser in parsers:
-        if hasattr(parser, 'id_from_url'):
+        if parser.id_from_url_implemented():
             accepted_urls = parser.filter_accepted_urls((url,))
             gallery_ids_providers.extend([(parser.id_from_url(x), parser.name) for x in accepted_urls])
 
@@ -753,7 +757,7 @@ def quick_search(request, parameters, display_parameters):
 
 # TODO: Submissions done before a autocrawler detects a new gallery as wanted,
 # will add the gallery, trigger the wanted filter, but leaving it as not downloaded.
-def url_submit(request):
+def url_submit(request: HttpRequest) -> HttpResponse:
     """Submit given URLs."""
 
     if not crawler_settings.urls.enable_public_submit:
@@ -795,9 +799,9 @@ def url_submit(request):
 
         # As a security check, only finally set urls that pass the accepted_urls
         parsers = crawler_settings.provider_context.get_parsers_classes()
-        no_commands_in_args_list = list()
+        no_commands_in_args_list: List[str] = list()
         for parser in parsers:
-            if hasattr(parser, 'id_from_url'):
+            if parser.id_from_url_implemented():
                 no_commands_in_args_list.extend(parser.filter_accepted_urls(urls))
         current_settings.workers.web_queue.enqueue_args_list(no_commands_in_args_list, override_options=current_settings)
 
@@ -805,10 +809,10 @@ def url_submit(request):
         admin_messages = []
 
         # Sometimes people submit messages here.
-        found_valid_urls = []
+        found_valid_urls: List[str] = []
 
         for parser in parsers:
-            if hasattr(parser, 'id_from_url'):
+            if parser.id_from_url_implemented():
                 urls_filtered = parser.filter_accepted_urls(urls)
                 found_valid_urls.extend(urls_filtered)
                 for url_filtered in urls_filtered:
@@ -880,7 +884,7 @@ def url_submit(request):
     return render(request, "viewer/url_submit.html")
 
 
-def public_stats(request):
+def public_stats(request: HttpRequest) -> HttpResponse:
     """Display public galleries and archives stats."""
     if not crawler_settings.urls.enable_public_stats:
         if not request.user.is_staff:
@@ -903,7 +907,7 @@ def public_stats(request):
 
 
 @login_required
-def user_archive_preferences(request, archive_pk, setting):
+def user_archive_preferences(request: HttpRequest, archive_pk: int, setting: str) -> HttpResponse:
     """Archive user favorite toggle."""
     try:
         Archive.objects.get(pk=archive_pk)
@@ -934,7 +938,7 @@ def user_archive_preferences(request, archive_pk, setting):
                                 {'user_archive_preferences': current_user_archive_preferences})
 
 
-def filter_archives_simple(params):
+def filter_archives_simple(params: Dict[str, Any]) -> ArchiveQuerySet:
     """Filter results through parameters
     and return results list.
     """
@@ -1038,7 +1042,7 @@ def filter_archives_simple(params):
     return results
 
 
-def filter_galleries_simple(params):
+def filter_galleries_simple(params: Dict[str, str]) -> GalleryQuerySet:
     """Filter results through parameters
     and return results list.
     """
@@ -1121,7 +1125,7 @@ def filter_galleries_simple(params):
     return results
 
 
-def filter_wanted_galleries_simple(params):
+def filter_wanted_galleries_simple(params: Dict[str, Any]) -> QuerySet:
     """Filter results through parameters
     and return results list.
     """
@@ -1209,7 +1213,7 @@ def filter_wanted_galleries_simple(params):
     return results
 
 
-def lists(request, list_name):
+def lists(request: HttpRequest, list_name: str) -> HttpResponse:
     """Lists."""
     if not request.user.is_staff and list_name not in ("missing-archives", "wanted-galleries"):
         return render_error(request, "You need to be an admin to display the lists.")
@@ -1233,7 +1237,7 @@ def lists(request, list_name):
             form = GallerySearchForm(initial={'title': title, 'tags': tags})
 
         if p:
-            pks = []
+            pks: List[str] = []
             for k, v in p.items():
                 if k.startswith("del-"):
                     # k, pk = k.split('-')
@@ -1834,7 +1838,7 @@ def lists(request, list_name):
         return render_error(request, "Non existent list.")
 
 
-def render_error(request, message):
+def render_error(request: HttpRequest, message: str) -> HttpResponseRedirect:
     messages.error(request, message, extra_tags='danger')
     if 'HTTP_REFERER' in request.META:
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
@@ -1842,7 +1846,7 @@ def render_error(request, message):
         return HttpResponseRedirect(reverse('viewer:main-page'))
 
 
-def render_message(request, message):
+def render_message(request: HttpRequest, message: str) -> HttpResponse:
 
     return render(
         request,
@@ -1851,7 +1855,7 @@ def render_message(request, message):
     )
 
 
-def about(request):
+def about(request: HttpRequest) -> HttpResponse:
 
     return render(
         request,

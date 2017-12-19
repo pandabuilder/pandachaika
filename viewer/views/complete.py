@@ -1,7 +1,11 @@
 import re
+from typing import Iterable, Any
+
 from dal import autocomplete
 from django import http
-from django.db.models import Q
+from django.db.models import Q, QuerySet
+from django.http import HttpResponse, HttpRequest
+from django.template import Context
 
 from viewer.models import Archive, Tag, Gallery, WantedGallery
 
@@ -16,12 +20,12 @@ class ArchiveAutocomplete(autocomplete.JalQuerySetView):
     autocomplete_html_format = '%s'
     limit_choices = 10
 
-    def choice_html(self, choice):
+    def choice_html(self, choice: Archive) -> str:
         return self.choice_html_format % (choice.title,
                                           choice.get_absolute_url(),
                                           choice.title)
 
-    def render_to_response(self, context):
+    def render_to_response(self, context: Context) -> HttpResponse:
 
         html = ''.join(
             [self.choice_html(c) for c in self.choices_for_request()])
@@ -29,9 +33,9 @@ class ArchiveAutocomplete(autocomplete.JalQuerySetView):
         if not html:
             html = self.empty_html_format % 'No matches found'
 
-        return http.HttpResponse(self.autocomplete_html_format % html)
+        return HttpResponse(self.autocomplete_html_format % html)
 
-    def choices_for_request(self):
+    def choices_for_request(self) -> Iterable[Archive]:
         qs = Archive.objects.all()
 
         q = self.request.GET.get('q', '')
@@ -59,12 +63,12 @@ class GalleryAutocomplete(autocomplete.JalQuerySetView):
     autocomplete_html_format = '%s'
     limit_choices = 10
 
-    def choice_html(self, choice):
+    def choice_html(self, choice: Gallery) -> str:
         return self.choice_html_format % (choice.title,
                                           choice.get_absolute_url(),
                                           choice.title)
 
-    def render_to_response(self, context):
+    def render_to_response(self, context: Context) -> HttpResponse:
 
         html = ''.join(
             [self.choice_html(c) for c in self.choices_for_request()])
@@ -72,9 +76,9 @@ class GalleryAutocomplete(autocomplete.JalQuerySetView):
         if not html:
             html = self.empty_html_format % 'No matches found'
 
-        return http.HttpResponse(self.autocomplete_html_format % html)
+        return HttpResponse(self.autocomplete_html_format % html)
 
-    def choices_for_request(self):
+    def choices_for_request(self) -> Iterable[Gallery]:
         qs = Gallery.objects.eligible_for_use()
 
         q = self.request.GET.get('q', '')
@@ -107,12 +111,12 @@ class WantedGalleryAutocomplete(autocomplete.JalQuerySetView):
     autocomplete_html_format = '%s'
     limit_choices = 10
 
-    def choice_html(self, choice):
+    def choice_html(self, choice: WantedGallery) -> str:
         return self.choice_html_format % (choice.title,
                                           choice.get_absolute_url(),
                                           choice.title)
 
-    def render_to_response(self, context):
+    def render_to_response(self, context: Context) -> HttpResponse:
 
         html = ''.join(
             [self.choice_html(c) for c in self.choices_for_request()])
@@ -120,9 +124,9 @@ class WantedGalleryAutocomplete(autocomplete.JalQuerySetView):
         if not html:
             html = self.empty_html_format % 'No matches found'
 
-        return http.HttpResponse(self.autocomplete_html_format % html)
+        return HttpResponse(self.autocomplete_html_format % html)
 
-    def choices_for_request(self):
+    def choices_for_request(self) -> Iterable[WantedGallery]:
         qs = WantedGallery.objects.all()
 
         q = self.request.GET.get('q', '')
@@ -149,7 +153,7 @@ class ArchiveFieldAutocomplete(autocomplete.JalQuerySetView):
     autocomplete_html_format = '%s'
     limit_choices = 10
 
-    def render_to_response(self, context):
+    def render_to_response(self, context: Context) -> HttpResponse:
 
         html = ''.join(
             [self.choice_html(c) for c in self.choices_for_request()])
@@ -157,24 +161,27 @@ class ArchiveFieldAutocomplete(autocomplete.JalQuerySetView):
         if not html:
             html = self.empty_html_format % 'No matches found'
 
-        return http.HttpResponse(self.autocomplete_html_format % html)
+        return HttpResponse(self.autocomplete_html_format % html)
 
-    def choice_html(self, choice):
+    def choice_html(self, choice: Archive) -> str:
         return self.choice_html_format % (self.get_result_value(choice),
                                           self.get_result_label(choice))
 
     @staticmethod
-    def get_result_value(result):
+    def get_result_value(result: Archive) -> str:
         return str(result)
 
     @staticmethod
-    def get_result_label(result):
+    def get_result_label(result: Archive) -> str:
         return str(result)
+
+    def choices_for_request(self) -> Iterable[Archive]:
+        raise NotImplementedError
 
 
 class SourceAutocomplete(ArchiveFieldAutocomplete):
 
-    def choices_for_request(self):
+    def choices_for_request(self) -> Iterable[Archive]:
 
         q = self.request.GET.get('q', '')
 
@@ -188,7 +195,7 @@ class SourceAutocomplete(ArchiveFieldAutocomplete):
 
 class ReasonAutocomplete(ArchiveFieldAutocomplete):
 
-    def choices_for_request(self):
+    def choices_for_request(self) -> Iterable[Archive]:
 
         q = self.request.GET.get('q', '')
 
@@ -202,7 +209,7 @@ class ReasonAutocomplete(ArchiveFieldAutocomplete):
 
 class UploaderAutocomplete(ArchiveFieldAutocomplete):
 
-    def choices_for_request(self):
+    def choices_for_request(self) -> Iterable[Archive]:
 
         q = self.request.GET.get('q', '')
 
@@ -225,7 +232,7 @@ class TagAutocomplete(autocomplete.JalQuerySetView):
     autocomplete_html_format = '%s'
     limit_choices = 10
 
-    def render_to_response(self, context):
+    def render_to_response(self, context: Context) -> HttpResponse:
 
         html = ''.join(
             [self.choice_html(c) for c in self.choices_for_request()])
@@ -233,19 +240,19 @@ class TagAutocomplete(autocomplete.JalQuerySetView):
         if not html:
             html = self.empty_html_format % 'No matches found'
 
-        return http.HttpResponse(self.autocomplete_html_format % html)
+        return HttpResponse(self.autocomplete_html_format % html)
 
-    def choice_html(self, choice):
+    def choice_html(self, choice: Tag) -> str:
         return self.choice_html_format % (self.get_result_value(choice),
                                           self.get_result_label(choice))
 
-    def get_result_value(self, result):
+    def get_result_value(self, result: Tag) -> str:
         return self.modifier + str(result)
 
-    def get_result_label(self, result):
+    def get_result_label(self, result: Tag) -> str:
         return self.modifier + str(result)
 
-    def choices_for_request(self):
+    def choices_for_request(self) -> Iterable[Tag]:
 
         tag_clean = self.request.GET.get('q', '').replace(" ", "_")
         m = re.match(r"^([-^])", tag_clean)
@@ -267,7 +274,7 @@ class TagAutocomplete(autocomplete.JalQuerySetView):
 
         return results.distinct()[0:self.limit_choices]
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.modifier = ''
 
@@ -275,13 +282,13 @@ class TagAutocomplete(autocomplete.JalQuerySetView):
 class NonCustomTagAutocomplete(autocomplete.Select2QuerySetView):
     model = Tag
 
-    def get_result_value(self, result):
+    def get_result_value(self, result: Tag) -> str:
         return self.modifier + str(result)
 
-    def get_result_label(self, result):
+    def get_result_label(self, result: Tag) -> str:
         return self.modifier + str(result)
 
-    def get_queryset(self):
+    def get_queryset(self) -> QuerySet:
 
         tag_clean = self.request.GET.get('q', '').replace(" ", "_")
         m = re.match(r"^([-^])", tag_clean)
@@ -303,7 +310,7 @@ class NonCustomTagAutocomplete(autocomplete.Select2QuerySetView):
 
         return results.distinct()
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.modifier = ''
 
@@ -311,7 +318,7 @@ class NonCustomTagAutocomplete(autocomplete.Select2QuerySetView):
 class CustomTagAutocomplete(autocomplete.Select2QuerySetView):
     model = Tag
 
-    def post(self, request):
+    def post(self, request: HttpRequest) -> HttpResponse:
 
         if not self.has_add_permission(request):
             return http.HttpResponseForbidden()

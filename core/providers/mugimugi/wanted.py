@@ -1,15 +1,21 @@
 import datetime
+import typing
 import urllib.parse
 
 import django.utils.timezone as django_tz
+from django.db.models import QuerySet
 
+from core.base.types import OptionalLogger, DataDict
 from core.base.utilities import request_with_retries, format_title_to_wanted_search
 from core.providers.mugimugi.utilities import convert_api_response_text_to_gallery_dicts
 from viewer.models import Gallery, WantedGallery, Provider, Artist
 from . import constants
 
+if typing.TYPE_CHECKING:
+    from core.base.setup import Settings
 
-def wanted_generator(settings, ext_logger, attrs):
+
+def wanted_generator(settings: 'Settings', ext_logger: OptionalLogger, attrs: QuerySet):
     own_settings = settings.providers[constants.provider_name]
 
     if not own_settings.api_key:
@@ -19,8 +25,8 @@ def wanted_generator(settings, ext_logger, attrs):
         ))
         return False
 
-    queries = {}
-    queries_slist_params = {}
+    queries: DataDict = {}
+    queries_slist_params: DataDict = {}
 
     for attr in attrs.filter(name__startswith='wanted_params_'):
 
@@ -190,10 +196,10 @@ def wanted_generator(settings, ext_logger, attrs):
                 break
 
             # Listen to what the server says
-            remaining_queries.value = api_galleries[0]['queries']
+            remaining_queries.value = api_galleries[0].queries
             remaining_queries.save()
 
-            used = Gallery.objects.filter(gid__in=[x['gid'] for x in api_galleries], provider=constants.provider_name)
+            used = Gallery.objects.filter(gid__in=[x.gid for x in api_galleries], provider=constants.provider_name)
 
             # If the amount of galleries present in database is equal to what we get from the page,
             # we assume we already processed everything. You can force to process everything by using:
@@ -220,7 +226,7 @@ def wanted_generator(settings, ext_logger, attrs):
             used_gids = used.values_list('gid', flat=True)
 
             for gallery_data in api_galleries:
-                if gallery_data['gid'] not in used_gids:
+                if gallery_data.gid not in used_gids:
                     gallery = Gallery.objects.add_from_values(gallery_data)
                     # We match anyways in case there's a previous WantedGallery.
                     # Actually, we don't match since we only get metadata here, so it should not count as found.

@@ -4,6 +4,7 @@ Django settings for frontend project.
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 import os
+from typing import Any, Dict
 
 from core.base.setup import Settings
 from core.base.utilities import module_exists
@@ -33,7 +34,7 @@ if crawler_settings.urls.behind_proxy:
     USE_X_FORWARDED_HOST = True
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
-LOGGING = {
+LOGGING: Dict[str, Any] = {
     'version': 1,
     'disable_existing_loggers': True,
     'formatters': {
@@ -89,7 +90,7 @@ LOGGING = {
 
 # Application definition
 
-INSTALLED_APPS = (
+INSTALLED_APPS = [
     'dal',
     'dal_select2',
     'dal_jal',
@@ -100,37 +101,37 @@ INSTALLED_APPS = (
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'viewer',
-)
+]
 
 if module_exists('compressor'):
-    INSTALLED_APPS += ('compressor',)
+    INSTALLED_APPS += ['compressor']
 
 if module_exists('django_unused_media'):
-    INSTALLED_APPS += ('django_unused_media',)
+    INSTALLED_APPS += ['django_unused_media']
 
 if DEBUG and module_exists('debug_toolbar'):
-    INSTALLED_APPS += ('debug_toolbar',)
+    INSTALLED_APPS += ['debug_toolbar']
 
-MIDDLEWARE = (
+MIDDLEWARE = [
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-)
+]
 
-STATICFILES_FINDERS = (
+STATICFILES_FINDERS = [
     'django.contrib.staticfiles.finders.FileSystemFinder',
-    'django.contrib.staticfiles.finders.AppDirectoriesFinder',
-)
+    'django.contrib.staticfiles.finders.AppDirectoriesFinder'
+]
 
 STATICFILES_DIRS = (
     os.path.join(BASE_DIR, 'viewer/assets'),
 )
 
 if module_exists('compressor'):
-    STATICFILES_FINDERS += ('compressor.finders.CompressorFinder',)
+    STATICFILES_FINDERS += ['compressor.finders.CompressorFinder']
     COMPRESS_CSS_FILTERS = [
         'compressor.filters.css_default.CssAbsoluteFilter',
         'compressor.filters.cssmin.rCSSMinFilter'
@@ -146,7 +147,7 @@ WSGI_APPLICATION = 'frontend.wsgi.application'
 if DEBUG and module_exists('debug_toolbar'):
     INTERNAL_IPS = ['127.0.0.1']
     DEBUG_TOOLBAR_PATCH_SETTINGS = False
-    MIDDLEWARE = ('debug_toolbar.middleware.DebugToolbarMiddleware',) + \
+    MIDDLEWARE = ['debug_toolbar.middleware.DebugToolbarMiddleware'] + \
         MIDDLEWARE
 
 
@@ -271,7 +272,7 @@ else:
 # If for each new provider, you need to call this method to register it.
 # For now, the problem is that if you disable a provider entirely, you can't reconstruct the original URL, since it's
 # not stored on the database.
-PROVIDERS = (
+PROVIDERS = [
     'core.providers.generic',
     'core.providers.cafe',
     'core.providers.fakku',
@@ -279,7 +280,7 @@ PROVIDERS = (
     'core.providers.nhentai',
     'core.providers.panda',
     'core.providers.twitter',
-)
+]
 
 PROVIDER_CONTEXT = crawler_settings.provider_context
 CRAWLER_SETTINGS = crawler_settings

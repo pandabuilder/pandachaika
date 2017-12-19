@@ -1,9 +1,15 @@
 import os
+import typing
+
+from core.base.types import ProviderSettings, DataDict
+
+if typing.TYPE_CHECKING:
+    from core.base.setup import Settings
 
 
-class Settings:
-    def __init__(self):
-        self.cookies = {}
+class OwnSettings(ProviderSettings):
+    def __init__(self) -> None:
+        self.cookies: DataDict = {}
         self.hath_dl_folder = ''
         self.local_hath_folder = ''
         self.get_newer_gallery = False
@@ -27,9 +33,9 @@ class Settings:
         )
 
 
-def parse_config(global_settings, config):
+def parse_config(global_settings: 'Settings', config: typing.Dict[str, typing.Any]) -> 'OwnSettings':
 
-    settings = Settings()
+    settings = OwnSettings()
 
     if 'general' in config:
         if 'stop_page_number' in config['general']:

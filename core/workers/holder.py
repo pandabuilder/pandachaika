@@ -1,5 +1,7 @@
 import logging
 
+from core.base import setup
+
 crawler_logger = logging.getLogger('viewer.webcrawler')
 
 
@@ -10,7 +12,7 @@ class WorkerContext:
     timed_updater = None
     timed_downloader = None
 
-    def start_workers(self, crawler_settings):
+    def start_workers(self, crawler_settings: 'setup.Settings') -> None:
 
         from core.downloaders.postdownload import TimedPostDownloader
         from core.workers.autosearch import TimedAutoCrawler

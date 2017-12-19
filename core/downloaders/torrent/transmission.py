@@ -1,3 +1,5 @@
+from typing import Dict, Any, Union
+
 import transmissionrpc
 import os
 
@@ -11,24 +13,25 @@ import ssl
 
 from transmissionrpc.error import HTTPHandlerError
 
+from core.base.types import TorrentClient, DataDict
 
-class Transmission(object):
+
+class Transmission(TorrentClient):
 
     name = 'transmission'
     convert_to_base64 = True
     send_url = False
-    type = 'torrent_handler'
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.name
 
-    def add_url(self, enc_torrent, download_dir=None):
+    def add_url(self, enc_torrent: str, download_dir: str=None) -> bool:
         result = self.add_torrent(enc_torrent, download_dir=download_dir)
         if self.expected_torrent_name:
             self.expected_torrent_name = os.path.splitext(self.expected_torrent_name)[0]
         return result
 
-    def add_torrent(self, enc_torrent, download_dir=None):
+    def add_torrent(self, enc_torrent: Union[str, bytes], download_dir: str=None) -> bool:
 
         if not self.trans:
             return False
@@ -62,7 +65,7 @@ class Transmission(object):
             else:
                 return False
 
-    def connect(self):
+    def connect(self) -> bool:
         try:
             if 'https://' in self.address:
                 http_handler = TransmissionHTTPSHandler(secure=self.secure)
@@ -78,15 +81,9 @@ class Transmission(object):
             return False
         return True
 
-    def __init__(self, address='localhost', port=9091, user='', password='', secure=True):
+    def __init__(self, address: str='localhost', port: int=9091, user: str='', password: str='', secure: bool=True) -> None:
+        super().__init__(address=address, port=port, user=user, password=password, secure=secure)
         self.trans = None
-        self.address = address
-        self.port = str(port)
-        self.user = user
-        self.password = password
-        self.secure = secure
-        self.total_size = 0
-        self.expected_torrent_name = ''
         self.error = ''
 
 
@@ -96,13 +93,13 @@ class TransmissionHTTPSHandler(transmissionrpc.HTTPHandler):
     The default HTTPS handler provided with transmissionrpc.
     """
 
-    def __init__(self, secure=True):
+    def __init__(self, secure: bool=True) -> None:
         transmissionrpc.HTTPHandler.__init__(self)
         self.http_opener = build_opener()
-        self.auth = None
+        self.auth: DataDict = None
         self.secure = secure
 
-    def set_authentication(self, uri, login, password):
+    def set_authentication(self, uri: str, login: str, password: str) -> None:
         if self.secure:
             context = ssl.create_default_context()
         else:
@@ -115,7 +112,7 @@ class TransmissionHTTPSHandler(transmissionrpc.HTTPHandler):
                                           ":" +
                                           password)).decode('utf-8')}
 
-    def request(self, url, query, headers, timeout):
+    def request(self, url: str, query: str, headers: Dict[Any, Any], timeout: int) -> str:
         headers = {**self.auth, **headers}
         request = Request(url, query.encode('utf-8'), headers)
         try:
@@ -123,24 +120,24 @@ class TransmissionHTTPSHandler(transmissionrpc.HTTPHandler):
                 response = self.http_opener.open(request, timeout=timeout)
             else:
                 response = self.http_opener.open(request)
-        except HTTPError as error:
-            if error.fp is None:
+        except HTTPError as http_error:
+            if http_error.fp is None:  # type: ignore
                 raise HTTPHandlerError(
-                    error.filename, error.code, error.msg, dict(error.hdrs))
+                    http_error.filename, http_error.code, http_error.msg, dict(http_error.hdrs))  # type: ignore
             else:
                 raise HTTPHandlerError(
-                    error.filename, error.code, error.msg,
-                    dict(error.hdrs), error.read())
-        except URLError as error:
+                    http_error.filename, http_error.code, http_error.msg,  # type: ignore
+                    dict(http_error.hdrs), http_error.read())  # type: ignore
+        except URLError as url_error:
             # urllib2.URLError documentation is horrendous!
             # Try to get the tuple arguments of URLError
-            if hasattr(error.reason, 'args') and isinstance(error.reason.args, tuple) and len(error.reason.args) == 2:
+            if hasattr(url_error.reason, 'args') and isinstance(url_error.reason.args, tuple) and len(url_error.reason.args) == 2:  # type: ignore
                 raise HTTPHandlerError(
-                    httpcode=error.reason.args[0], httpmsg=error.reason.args[1])
+                    httpcode=url_error.reason.args[0], httpmsg=url_error.reason.args[1])  # type: ignore
             else:
                 raise HTTPHandlerError(
-                    httpmsg='urllib2.URLError: %s' % error.reason)
-        except BadStatusLine as error:
+                    httpmsg='urllib2.URLError: %s' % url_error.reason)  # type: ignore
+        except BadStatusLine as line_error:
             raise HTTPHandlerError(
-                httpmsg='httplib.BadStatusLine: %s' % error.line)
+                httpmsg='httplib.BadStatusLine: %s' % line_error.line)  # type: ignore
         return response.read().decode('utf-8')

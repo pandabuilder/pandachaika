@@ -1,7 +1,15 @@
+import typing
+from typing import List, Tuple, Iterable
+
+from django.db.models import QuerySet
+
+if typing.TYPE_CHECKING:
+    from viewer.models import Tag
+
 scope_priorities = ["language", "artist", "group", "parody", "character", "female", "male", "misc"]
 
 
-def sort_tags(tag_list):
+def sort_tags(tag_list: QuerySet) -> List[Tuple[str, List['Tag']]]:
 
     prioritized_tag_list = list()
 
@@ -17,7 +25,7 @@ def sort_tags(tag_list):
     return prioritized_tag_list
 
 
-def sort_tags_str(tag_list):
+def sort_tags_str(tag_list: 'Iterable[Tag]') -> List[str]:
 
     prioritized_tag_list = list()
 

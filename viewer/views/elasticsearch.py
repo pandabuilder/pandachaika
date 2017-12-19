@@ -1,15 +1,20 @@
 import json
+from typing import Any, Dict, List
 
 from urllib.parse import urlencode
 from copy import deepcopy
 from datetime import datetime
 
 from django.conf import settings
-from django.http import HttpResponse, QueryDict
+from django.http import HttpResponse, QueryDict, HttpRequest
 from django.views.generic.base import TemplateView
 
 
 from math import ceil
+
+from elasticsearch_dsl.response import AggResponse
+
+from core.base.types import DataDict
 
 es_client = settings.ES_CLIENT
 max_result_window = settings.MAX_RESULT_WINDOW
@@ -24,7 +29,7 @@ class ESHomePageView(TemplateView):
 
     template_name = "viewer/elasticsearch.html"
 
-    def get_context_data(self, **kwargs):
+    def get_context_data(self, kwargs: Any) -> Dict[str, Any]:
 
         if not es_client:
             return {'message': 'Elasticsearch is disabled for this instance.'}
@@ -107,7 +112,7 @@ class ESHomePageView(TemplateView):
         return context
 
     @staticmethod
-    def num_pages(count, per_page):
+    def num_pages(count: int, per_page: int) -> int:
         """
         Returns the total number of pages.
         """
@@ -146,8 +151,8 @@ class ESHomePageView(TemplateView):
             url_args[field_name] = field_value
         return url_args, is_active
 
-    def prepare_facet_data(self, aggregations, get_args):
-        resp = {}
+    def prepare_facet_data(self, aggregations: AggResponse, get_args: QueryDict) -> Dict[str, List[Dict[str, str]]]:
+        resp: DataDict = {}
         for area, agg in aggregations.to_dict().items():
             resp[area] = []
             for item in aggregations[area].buckets:
@@ -192,9 +197,9 @@ class ESHomePageView(TemplateView):
                     s = s.filter('term', **{filter_field_name: field_value})
         return s
 
-    def gen_pagination(self, request, count, per_page):
+    def gen_pagination(self, request: HttpRequest, count: int, per_page: int) -> Dict[str, Any]:
 
-        paginator = {}
+        paginator: Dict[str, Any] = {}
 
         try:
             page = int(request.GET.get("page", '1'))
@@ -231,7 +236,7 @@ class ESHomePageView(TemplateView):
 
 
 # Not being used client-side
-def autocomplete_view(request):
+def autocomplete_view(request: HttpRequest) -> HttpResponse:
     query = request.GET.get('q', '')
     resp = es_client.suggest(
         index=es_index_name,
@@ -253,7 +258,7 @@ def autocomplete_view(request):
 
 
 # Not being used client-side
-def title_suggest_view(request):
+def title_suggest_view(request: HttpRequest) -> HttpResponse:
     query = request.GET.get('q', '')
     s = Search(using=es_client, index=es_index_name) \
         .source(['title']) \

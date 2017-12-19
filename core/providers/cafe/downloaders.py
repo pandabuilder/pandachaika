@@ -3,11 +3,13 @@ import os
 import shutil
 import re
 from tempfile import mkdtemp
+from typing import List
 from zipfile import ZipFile
 
 import requests
 from bs4 import BeautifulSoup
 
+from core.base.types import DataDict
 from core.base.utilities import calc_crc32, get_zip_filesize
 from core.downloaders.handlers import BaseDownloader, BaseInfoDownloader
 from .utilities import guess_gallery_read_url
@@ -22,20 +24,20 @@ class ArchiveDownloader(BaseDownloader):
     type = 'archive'
     provider = constants.provider_name
 
-    def start_download(self):
+    def start_download(self) -> None:
 
-        self.gallery['title'] = replace_illegal_name(
-            self.gallery['title'])
-        self.gallery['filename'] = available_filename(
+        self.gallery.title = replace_illegal_name(
+            self.gallery.title)
+        self.gallery.filename = available_filename(
             self.settings.MEDIA_ROOT,
             os.path.join(
                 self.own_settings.archive_dl_folder,
-                self.gallery['title'] + '.zip'))
-        if self.gallery['content']:
-            soup_1 = BeautifulSoup(self.gallery['content'], 'html.parser')
+                self.gallery.title + '.zip'))
+        if self.gallery.content:
+            soup_1 = BeautifulSoup(self.gallery.content, 'html.parser')
         else:
             gallery_page = requests.get(
-                self.gallery['link'],
+                self.gallery.link,
                 headers=self.settings.requests_headers,
                 timeout=self.settings.timeout_timer
             )
@@ -52,7 +54,7 @@ class ArchiveDownloader(BaseDownloader):
 
         if not gallery_read or gallery_read in constants.bad_urls or not gallery_read.startswith(constants.main_page):
             self.logger.warning("Reading gallery page not available, trying to guess the name.")
-            gallery_read = guess_gallery_read_url(self.gallery['link'], self.gallery)
+            gallery_read = guess_gallery_read_url(self.gallery.link, self.gallery)
 
         if not gallery_read.endswith('page/1'):
             gallery_read += 'page/1'
@@ -63,7 +65,7 @@ class ArchiveDownloader(BaseDownloader):
 
         directory_path = mkdtemp()
 
-        self.logger.info('Downloading gallery: {}'.format(self.gallery['title']))
+        self.logger.info('Downloading gallery: {}'.format(self.gallery.title))
 
         second_pass = False
         while True:
@@ -83,7 +85,7 @@ class ArchiveDownloader(BaseDownloader):
             if gallery_read_page.status_code == 404:
                 if gallery_read.endswith('page/1'):
                     if not second_pass:
-                        gallery_read = guess_gallery_read_url(self.gallery['link'], self.gallery, False)
+                        gallery_read = guess_gallery_read_url(self.gallery.link, self.gallery, False)
                         second_pass = True
                         continue
                     self.logger.error("Last page was the first one: {}, stopping".format(gallery_read))
@@ -132,40 +134,40 @@ class ArchiveDownloader(BaseDownloader):
 
         file_path = os.path.join(
             self.settings.MEDIA_ROOT,
-            self.gallery['filename']
+            self.gallery.filename
         )
 
-        self.gallery['filecount'] = 0
+        self.gallery.filecount = 0
 
         with ZipFile(file_path, 'w') as archive:
             for (root_path, _, file_names) in os.walk(directory_path):
                 for current_file in file_names:
-                    self.gallery['filecount'] += 1
+                    self.gallery.filecount += 1
                     archive.write(
                         os.path.join(root_path, current_file), arcname=os.path.basename(current_file))
         shutil.rmtree(directory_path, ignore_errors=True)
 
-        self.gallery['filesize'] = get_zip_filesize(file_path)
-        if self.gallery['filesize'] > 0:
+        self.gallery.filesize = get_zip_filesize(file_path)
+        if self.gallery.filesize > 0:
             self.crc32 = calc_crc32(file_path)
             self.fileDownloaded = 1
             self.return_code = 1
 
-    def update_archive_db(self, default_values):
+    def update_archive_db(self, default_values: DataDict) -> Archive:
 
         values = {
-            'title': self.gallery['title'],
+            'title': self.gallery.title,
             'title_jpn': '',
-            'zipped': self.gallery['filename'],
+            'zipped': self.gallery.filename,
             'crc32': self.crc32,
-            'filesize': self.gallery['filesize'],
-            'filecount': self.gallery['filecount'],
+            'filesize': self.gallery.filesize,
+            'filecount': self.gallery.filecount,
         }
         default_values.update(values)
         return Archive.objects.update_or_create_by_values_and_gid(
             default_values,
-            self.gallery['gid'],
-            zipped=self.gallery['filename']
+            self.gallery.gid,
+            zipped=self.gallery.filename
         )
 
 
@@ -175,7 +177,7 @@ class ArchiveJSDownloader(BaseDownloader):
     provider = constants.provider_name
 
     @staticmethod
-    def get_img_urls_from_gallery_read_page(content):
+    def get_img_urls_from_gallery_read_page(content: str) -> List[str]:
         soup = BeautifulSoup(content, 'html.parser')
         script_content = soup.find("script", type="text/javascript")
 
@@ -186,20 +188,20 @@ class ArchiveJSDownloader(BaseDownloader):
                 return [x['url'] for x in urls]
         return []
 
-    def start_download(self):
+    def start_download(self) -> None:
 
-        self.gallery['title'] = replace_illegal_name(
-            self.gallery['title'])
-        self.gallery['filename'] = available_filename(
+        self.gallery.title = replace_illegal_name(
+            self.gallery.title)
+        self.gallery.filename = available_filename(
             self.settings.MEDIA_ROOT,
             os.path.join(
                 self.own_settings.archive_dl_folder,
-                self.gallery['title'] + '.zip'))
-        if self.gallery['content']:
-            soup_1 = BeautifulSoup(self.gallery['content'], 'html.parser')
+                self.gallery.title + '.zip'))
+        if self.gallery.content:
+            soup_1 = BeautifulSoup(self.gallery.content, 'html.parser')
         else:
             gallery_page = requests.get(
-                self.gallery['link'],
+                self.gallery.link,
                 headers=self.settings.requests_headers,
                 timeout=self.settings.timeout_timer
             )
@@ -216,12 +218,12 @@ class ArchiveJSDownloader(BaseDownloader):
 
         if not gallery_read or gallery_read in constants.bad_urls or not gallery_read.startswith(constants.main_page):
             self.logger.warning("Reading gallery page not available, trying to guess the name.")
-            gallery_read = guess_gallery_read_url(self.gallery['link'], self.gallery)
+            gallery_read = guess_gallery_read_url(self.gallery.link, self.gallery)
 
         if not gallery_read.endswith('page/1'):
             gallery_read += 'page/1'
 
-        self.logger.info('Downloading gallery: {}'.format(self.gallery['title']))
+        self.logger.info('Downloading gallery: {}'.format(self.gallery.title))
 
         try:
             gallery_read_page = requests.get(
@@ -235,7 +237,7 @@ class ArchiveJSDownloader(BaseDownloader):
             return
 
         if gallery_read_page.status_code != 200:
-            gallery_read = guess_gallery_read_url(self.gallery['link'], self.gallery, False)
+            gallery_read = guess_gallery_read_url(self.gallery.link, self.gallery, False)
             try:
                 gallery_read_page = requests.get(
                     gallery_read,
@@ -249,7 +251,7 @@ class ArchiveJSDownloader(BaseDownloader):
 
         if gallery_read_page.status_code == 200:
 
-            image_urls = self.get_img_urls_from_gallery_read_page(gallery_read_page.content)
+            image_urls = self.get_img_urls_from_gallery_read_page(gallery_read_page.text)
 
             if not image_urls:
                 self.logger.error("Could not find image links, archive not downloaded")
@@ -275,21 +277,21 @@ class ArchiveJSDownloader(BaseDownloader):
 
             file_path = os.path.join(
                 self.settings.MEDIA_ROOT,
-                self.gallery['filename']
+                self.gallery.filename
             )
 
-            self.gallery['filecount'] = 0
+            self.gallery.filecount = 0
 
             with ZipFile(file_path, 'w') as archive:
                 for (root_path, _, file_names) in os.walk(directory_path):
                     for current_file in file_names:
-                        self.gallery['filecount'] += 1
+                        self.gallery.filecount += 1
                         archive.write(
                             os.path.join(root_path, current_file), arcname=os.path.basename(current_file))
             shutil.rmtree(directory_path, ignore_errors=True)
 
-            self.gallery['filesize'] = get_zip_filesize(file_path)
-            if self.gallery['filesize'] > 0:
+            self.gallery.filesize = get_zip_filesize(file_path)
+            if self.gallery.filesize > 0:
                 self.crc32 = calc_crc32(file_path)
                 self.fileDownloaded = 1
                 self.return_code = 1
@@ -297,21 +299,21 @@ class ArchiveJSDownloader(BaseDownloader):
             self.logger.error("Wrong HTML code returned, could not download, link: {}".format(gallery_read))
             self.return_code = 0
 
-    def update_archive_db(self, default_values):
+    def update_archive_db(self, default_values: DataDict) -> Archive:
 
         values = {
-            'title': self.gallery['title'],
+            'title': self.gallery.title,
             'title_jpn': '',
-            'zipped': self.gallery['filename'],
+            'zipped': self.gallery.filename,
             'crc32': self.crc32,
-            'filesize': self.gallery['filesize'],
-            'filecount': self.gallery['filecount'],
+            'filesize': self.gallery.filesize,
+            'filecount': self.gallery.filecount,
         }
         default_values.update(values)
         return Archive.objects.update_or_create_by_values_and_gid(
             default_values,
-            self.gallery['gid'],
-            zipped=self.gallery['filename']
+            self.gallery.gid,
+            zipped=self.gallery.filename
         )
 
 

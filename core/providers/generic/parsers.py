@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from collections import defaultdict
+from typing import List
 
 from core.base.parsers import BaseParser
 
@@ -11,10 +12,10 @@ class GenericParser(BaseParser):
 
     # Accepts anything, doesn't check if it's a valid link for any of the downloader.
     @classmethod
-    def filter_accepted_urls(cls, urls):
+    def filter_accepted_urls(cls, urls: List) -> List:
         return urls
 
-    def crawl_urls(self, urls, wanted_filters=None, wanted_only=False):
+    def crawl_urls(self, urls: List[str], wanted_filters=None, wanted_only: bool=False) -> None:
 
         unique_urls = set()
         gallery_data_list = []

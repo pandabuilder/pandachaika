@@ -3,6 +3,7 @@ import traceback
 from collections import deque
 
 import logging
+from typing import Iterable, Optional
 
 from core.base.setup import Settings
 from core.web.crawlerthread import WebCrawler
@@ -12,7 +13,7 @@ class WebQueue(object):
 
     """Queue handler for downloads."""
 
-    def web_worker(self):
+    def web_worker(self) -> None:
         while True:
             try:
                 item = self.queue.popleft()
@@ -34,11 +35,11 @@ class WebQueue(object):
         self.settings = settings
         self.crawler_logger = crawler_logger
         self.queue: deque = deque()
-        self.web_queue_thread = None
+        self.web_queue_thread: Optional[threading.Thread] = None
         self.current_processing_items = []
         self.thread_name = 'web_queue'
 
-    def start_running(self):
+    def start_running(self) -> None:
 
         if self.is_running():
             return
@@ -50,7 +51,7 @@ class WebQueue(object):
         self.web_queue_thread.daemon = True
         self.web_queue_thread.start()
 
-    def is_running(self):
+    def is_running(self) -> bool:
 
         thread_list = threading.enumerate()
         for thread in thread_list:
@@ -59,11 +60,11 @@ class WebQueue(object):
 
         return False
 
-    def queue_size(self):
+    def queue_size(self) -> int:
 
         return len(self.queue)
 
-    def remove_by_index(self, index):
+    def remove_by_index(self, index: int) -> bool:
 
         try:
             del self.queue[index]
@@ -71,12 +72,12 @@ class WebQueue(object):
         except IndexError:
             return False
 
-    def enqueue_args(self, args):
+    def enqueue_args(self, args: str) -> None:
 
         self.queue.append({'args': args.split(), 'override_options': None})
         self.start_running()
 
-    def enqueue_args_list(self, args, override_options=None):
+    def enqueue_args_list(self, args: Iterable[str], override_options: Settings=None) -> None:
 
         self.queue.append({'args': args, 'override_options': override_options})
         self.start_running()

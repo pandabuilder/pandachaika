@@ -7,13 +7,16 @@ import os
 import re
 import shutil
 import threading
+import typing
 import zipfile
 import zlib
-from datetime import timedelta
+from datetime import timedelta, datetime
 from difflib import SequenceMatcher
 from itertools import tee, islice, chain
 from tempfile import mkdtemp
-from typing import Union, Optional, Tuple, List
+from typing import Union, Optional, Tuple, List, Dict, Any
+
+from core.base.types import GalleryData, OptionalLogger
 
 try:
     import rarfile
@@ -29,19 +32,24 @@ import requests
 
 from core.base import setup
 
+if typing.TYPE_CHECKING:
+    from core.workers.schedulers import BaseScheduler
+
 
 # The idea of this class is to contain certain methods, to not have to pass arguments that are global.
 class GeneralUtils:
 
-    def discard_by_tag_list(self, tag_list):
+    def discard_by_tag_list(self, tag_list: Optional[List[str]]):
 
         if self.settings.update_metadata_mode:
+            return False
+        if tag_list is None:
             return False
         if any(x in self.settings.discard_tags for x in tag_list):
             return True
         return False
 
-    def get_torrent(self, torrent_url, cookies, convert_to_base64=False):
+    def get_torrent(self, torrent_url: str, cookies: Dict[str, Any], convert_to_base64: bool = False) -> Union[str, bytes]:
 
         r = requests.get(
             torrent_url,
@@ -55,7 +63,7 @@ class GeneralUtils:
         else:
             return base64.encodebytes(r.content).decode('utf-8')
 
-    def __init__(self, global_settings):
+    def __init__(self, global_settings: 'setup.Settings') -> None:
         self.settings = global_settings
 
 
@@ -69,7 +77,7 @@ def discard_string_by_cutoff(base: str, compare: str, cutoff: float) -> bool:
     return False
 
 
-def discard_by_tag_list(tag_list, discard_tags):
+def discard_by_tag_list(tag_list: List[str], discard_tags: List[str]):
     if any(x in discard_tags for x in tag_list):
         return True
     return False
@@ -138,7 +146,7 @@ def calc_crc32(filename: str) -> str:
     return "%X" % (prev & 0xFFFFFFFF)
 
 
-def sha1_from_file_object(file_object):
+def sha1_from_file_object(file_object: typing.IO[bytes]):
     block_size = 65536
     hasher = hashlib.sha1()
     buf = file_object.read(block_size)
@@ -149,13 +157,16 @@ def sha1_from_file_object(file_object):
     return hasher.hexdigest()
 
 
-def chunks(l, n):
+T = typing.TypeVar('T')
+
+
+def chunks(l: typing.Sequence[T], n: int):
     """ Yield successive n-sized chunks from l."""
     for i in range(0, len(l), n):
         yield l[i:i + n]
 
 
-def zfillrepl(matchobj):
+def zfillrepl(matchobj: typing.Match):
     return matchobj.group(0).zfill(3)
 
 
@@ -337,11 +348,11 @@ def str_to_int(number: str) -> Union[str, int]:
     return number or 0
 
 
-def timestamp_or_zero(posted):
+def timestamp_or_zero(posted: datetime) -> float:
     if posted:
         return posted.timestamp()
     else:
-        return 0
+        return 0.0
 
 
 def compare_search_title_with_strings(original_title: str, titles: List[str]) -> bool:
@@ -359,7 +370,7 @@ def compare_search_title_with_strings(original_title: str, titles: List[str]) ->
     return False
 
 
-def get_scored_matches(word: str, possibilities: List[str], n: int=3, cutoff: float=0.6):
+def get_scored_matches(word: str, possibilities: List[str], n: int=3, cutoff: float=0.6) -> List[Tuple[float, str]]:
     if not n > 0:
         raise ValueError("n must be > 0: %r" % (n,))
     if not (0.0 <= cutoff <= 1.0):
@@ -391,19 +402,18 @@ needed_keys = [
 ]
 
 
-def leave_only_needed_fields(gallery_dict):
+def get_dict_allowed_fields(gallery_data: GalleryData) -> Dict[str, Any]:
 
-    delete_keys = []
+    gallery_dict = {}
 
-    for key, _ in gallery_dict.items():
-        if key not in needed_keys:
-            delete_keys.append(key)
+    for key in needed_keys:
+        if hasattr(gallery_data, key) and getattr(gallery_data, key) is not None:
+            gallery_dict[key] = getattr(gallery_data, key)
 
-    for key in delete_keys:
-        del gallery_dict[key]
+    return gallery_dict
 
 
-def previous_and_next(some_iterable):
+def previous_and_next(some_iterable: typing.Sequence[T]) -> typing.Iterator[Tuple[T, T, T]]:
     prevs, items, nexts = tee(some_iterable, 3)
     prevs = chain([None], prevs)
     nexts = chain(islice(nexts, 1, None), [None])
@@ -411,7 +421,7 @@ def previous_and_next(some_iterable):
 
 
 def unescape(text: str) -> str:
-    def fixup(m):
+    def fixup(m: typing.Match):
         in_text = m.group(0)
         if in_text[:2] == "&#":
             # character reference
@@ -433,7 +443,7 @@ def unescape(text: str) -> str:
     return re.sub("&#?\w+;", fixup, text)
 
 
-def get_thread_status():
+def get_thread_status() -> List[Tuple[Tuple[str, str, str], bool]]:
     info_list = []
 
     thread_list = threading.enumerate()
@@ -443,7 +453,7 @@ def get_thread_status():
     return info_list
 
 
-def get_schedulers_status(schedulers):
+def get_schedulers_status(schedulers: List['BaseScheduler']) -> List[Tuple[str, bool, datetime, str, datetime]]:
     info_list = []
 
     for scheduler in schedulers:
@@ -460,7 +470,7 @@ def get_schedulers_status(schedulers):
     return info_list
 
 
-def get_thread_status_bool():
+def get_thread_status_bool() -> Dict[str, bool]:
     info_dict = {}
 
     thread_list = threading.enumerate()
@@ -473,7 +483,7 @@ def get_thread_status_bool():
     return info_dict
 
 
-def check_for_running_threads():
+def check_for_running_threads() -> bool:
     thread_list = threading.enumerate()
     for thread_name in setup.GlobalInfo.worker_threads:
         if any([thread.name == thread_name for thread in thread_list]):
@@ -490,7 +500,7 @@ def thread_exists(thread_name: str) -> bool:
     return False
 
 
-def module_exists(module_name):
+def module_exists(module_name: str) -> bool:
     try:
         __import__(module_name)
     except ImportError:
@@ -500,40 +510,17 @@ def module_exists(module_name):
 
 
 class StandardFormatter(logging.Formatter):
-    def formatException(self, exc_info):
+    def formatException(self, exc_info: Any) -> str:
         result = super(StandardFormatter, self).formatException(exc_info)
         return result
 
-    def format(self, record):
+    def format(self, record: logging.LogRecord) -> str:
         s = super(StandardFormatter, self).format(record)
         s += '[0m'
         return s
 
 
-class FakeLogger:
-    def debug(self, msg, *args, **kwargs):
-        pass
-
-    def info(self, msg, *args, **kwargs):
-        pass
-
-    def warning(self, msg, *args, **kwargs):
-        pass
-
-    def critical(self, msg, *args, **kwargs):
-        pass
-
-    def log(self, msg, *args, **kwargs):
-        pass
-
-    def error(self, msg, *args, **kwargs):
-        pass
-
-    def exception(self, msg, *args, **kwargs):
-        pass
-
-
-def send_pushover_notification(user_key, token, message, title="Alert", sound="intermission", device=None):
+def send_pushover_notification(user_key: str, token: str, message: str, title: str = "Alert", sound: str = "intermission", device: str = None) -> bool:
     if pushover:
         pushover.init(token)
         pushover_client = pushover.Client(user_key)
@@ -543,7 +530,10 @@ def send_pushover_notification(user_key, token, message, title="Alert", sound="i
         return False
 
 
-def request_with_retries(url, request_dict, post=False, retries=3, logger=None):
+def request_with_retries(
+        url: str, request_dict: Dict[str, Any],
+        post: bool = False, retries: int = 3,
+        logger: OptionalLogger = None) -> Optional[requests.models.Response]:
     for retry_count in range(retries):
         try:
             if post:
@@ -561,6 +551,4 @@ def request_with_retries(url, request_dict, post=False, retries=3, logger=None):
                 if logger:
                     logger.error("Failed to reach URL: {}".format(url))
                 return None
-
-
-OptionalLogger = Union[logging.Logger, FakeLogger, None]
+    return None

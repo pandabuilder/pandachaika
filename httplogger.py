@@ -1,15 +1,19 @@
 # -*- coding: utf-8 -*-
 import logging
 from logging.handlers import RotatingFileHandler, SMTPHandler
+from typing import Callable, Dict
 
 import cherrypy
 from cherrypy import _cplogging, _cperror
-from django.http import HttpResponseServerError
+from django.core.handlers.wsgi import WSGIHandler
+from django.http import HttpResponseServerError, HttpResponse
+
+from core.base.setup import Settings
 
 
 class HTTPLogger(_cplogging.LogManager):
 
-    def __init__(self, app, crawler_settings):
+    def __init__(self, app: WSGIHandler, crawler_settings: Settings) -> None:
         _cplogging.LogManager.__init__(
             self, id(self), cherrypy.log.logger_root)
         self.app = app
@@ -32,16 +36,17 @@ class HTTPLogger(_cplogging.LogManager):
             self.access_log.addHandler(h)
 
         if crawler_settings.mail_logging.enable:
-            h = SMTPHandler(
+            s = SMTPHandler(  # type: ignore
                 crawler_settings.mail_logging.mailhost,
                 crawler_settings.mail_logging.from_,
                 crawler_settings.mail_logging.to,
-                crawler_settings.mail_logging.credentials,
-                crawler_settings.mail_logging.subject)
-            h.setLevel(logging.CRITICAL)
-            self.error_log.addHandler(h)
+                subject=crawler_settings.mail_logging.subject,
+                credentials=crawler_settings.mail_logging.credentials
+            )
+            s.setLevel(logging.CRITICAL)
+            self.error_log.addHandler(s)
 
-    def __call__(self, environ, start_response):
+    def __call__(self, environ: Dict[str, str], start_response: Callable) -> HttpResponse:
         """
         Called as part of the WSGI stack to log the incoming request
         and its response using the common log format. If an error bubbles up
@@ -55,7 +60,7 @@ class HTTPLogger(_cplogging.LogManager):
             self.error(traceback=True, severity=logging.CRITICAL)
             return HttpResponseServerError(_cperror.format_exc())
 
-    def access(self, environ, response):
+    def access(self, environ: Dict[str, str], response: HttpResponse) -> None:
         """
         Special method that logs a request following the common
         log format. This is mostly taken from CherryPy and adapted

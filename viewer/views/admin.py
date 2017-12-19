@@ -3,6 +3,7 @@ import os.path
 import re
 import signal
 import threading
+import typing
 from functools import reduce
 
 from django.contrib import messages
@@ -10,7 +11,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
 from django.urls import reverse
 from django.db.models import Avg, Max, Min, Sum, Count
-from django.http import HttpResponseRedirect
+from django.http import HttpResponseRedirect, HttpRequest, HttpResponse
 from django.shortcuts import render
 from django.utils.dateparse import parse_date
 
@@ -47,7 +48,7 @@ crawler_settings = settings.CRAWLER_SETTINGS
 
 
 @login_required
-def stats_settings(request):
+def stats_settings(request: HttpRequest) -> HttpResponse:
     """Display setting objects."""
 
     if not request.user.is_staff:
@@ -63,7 +64,7 @@ def stats_settings(request):
 
 
 @login_required
-def stats_workers(request):
+def stats_workers(request: HttpRequest) -> HttpResponse:
     """Display workers stats."""
 
     if not request.user.is_staff:
@@ -88,7 +89,7 @@ def stats_workers(request):
 
 
 @login_required
-def stats_collection(request):
+def stats_collection(request: HttpRequest) -> HttpResponse:
     """Display galleries and archives stats."""
 
     if not request.user.is_staff:
@@ -140,7 +141,7 @@ def stats_collection(request):
 
 
 @login_required
-def queue_operations(request, operation, arguments=None):
+def queue_operations(request: HttpRequest, operation: str, arguments: str=None):
 
     if not request.user.is_staff:
         return render_error(request, "You need to be an admin to operate the queue.")
@@ -154,7 +155,7 @@ def queue_operations(request, operation, arguments=None):
 
 # TODO: Restart workers not working correctly. It sends the stop signal, but tries to start before it finishes.
 @login_required
-def tools(request, tool="main"):
+def tools(request: HttpRequest, tool: str = "main") -> HttpResponse:
     """Tools listing."""
     settings_text = ''
     if not request.user.is_staff:
@@ -465,13 +466,13 @@ def tools(request, tool="main"):
 
 
 @login_required
-def logs(request, tool="all"):
+def logs(request: HttpRequest, tool: str = "all") -> HttpResponse:
     """Logs listing."""
 
     if not request.user.is_staff:
         return render_error(request, "You need to be an admin to see logs.")
 
-    log_lines = []
+    log_lines: typing.List[str] = []
 
     if tool == "all" or tool == "webcrawler":
 
@@ -500,7 +501,7 @@ def logs(request, tool="all"):
             r'(?<!' + current_base_uri + r')/wanted-gallery/\d+/?',
         ]
 
-    def build_request(match_obj):
+    def build_request(match_obj: typing.Match) -> str:
         return request.build_absolute_uri(match_obj.group(0))
 
     log_lines = [reduce(lambda v, pattern: re.sub(pattern, build_request, v), patterns, line) for line in log_lines]
@@ -521,7 +522,7 @@ def logs(request, tool="all"):
 
 
 @login_required
-def crawler(request):
+def crawler(request: HttpRequest) -> HttpResponse:
     """Crawl given URLs."""
 
     if not request.user.is_staff:
@@ -582,7 +583,7 @@ def crawler(request):
 
 
 @login_required
-def foldercrawler(request):
+def foldercrawler(request: HttpRequest) -> HttpResponse:
     """Folder crawler."""
     if not request.user.is_staff:
         return render_error(request, "You need to be an admin to use the tools.")

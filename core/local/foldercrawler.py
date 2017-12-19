@@ -4,11 +4,13 @@ import os
 import re
 import time
 import argparse
+from typing import List, Tuple, Union
 from zipfile import BadZipFile
 from zipfile import ZipFile
 
 from core.base.comparison import get_closer_gallery_title_from_list
 from core.base.setup import Settings
+from core.base.types import DataDict
 from core.base.utilities import (
     calc_crc32, filecount_in_zip,
     get_zip_filesize,
@@ -24,13 +26,13 @@ class ArgumentParserError(Exception):
 
 class YieldingArgumentParser(argparse.ArgumentParser):
 
-    def error(self, message):
+    def error(self, message: str) -> None:
         raise ArgumentParserError(message)
 
 
 class FolderCrawler(object):
 
-    def get_args(self, arg_line):
+    def get_args(self, arg_line: List[str]) -> Union[argparse.Namespace, ArgumentParserError]:
 
         parser = YieldingArgumentParser(prog='PandaBackupFolder')
 
@@ -143,16 +145,17 @@ class FolderCrawler(object):
 
         return args
 
-    def start_crawling(self, arg_line):
+    def start_crawling(self, arg_line: List[str]) -> None:
 
         args = self.get_args(arg_line)
 
-        if self.parse_error:
+        if isinstance(args, ArgumentParserError):
             self.logger.info(str(args))
             return
 
         files = []
         do_not_replace = False
+        values: DataDict = {}
 
         if args.remove_missing_files:
             found_archives = Archive.objects.all()
@@ -522,7 +525,7 @@ class FolderCrawler(object):
         self.logger.info('Folder crawler done.')
 
     @staticmethod
-    def get_archive_and_gallery_titles():
+    def get_archive_and_gallery_titles() -> Tuple[List[Tuple[str, str]], List[Tuple[str, str]]]:
         found_galleries = Gallery.objects.eligible_for_use()
         found_archives = Archive.objects.exclude(
             match_type__in=('', 'non-match'))
@@ -530,15 +533,15 @@ class FolderCrawler(object):
         galleries_title_gid = []
         for archive in found_archives:
             archives_title_gid.append(
-                [replace_illegal_name(archive.title), archive.gallery_id])
+                (replace_illegal_name(archive.title), archive.gallery_id))
         for gallery in found_galleries:
             if 'replaced' in gallery.tag_list():
                 continue
             galleries_title_gid.append(
-                [replace_illegal_name(gallery.title), gallery.id])
+                (replace_illegal_name(gallery.title), gallery.id))
         return archives_title_gid, galleries_title_gid
 
-    def __init__(self, settings: Settings, logger):
+    def __init__(self, settings: Settings, logger) -> None:
         self.settings = settings
         self.logger = logger
         self.parse_error = False

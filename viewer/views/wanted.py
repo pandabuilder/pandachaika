@@ -1,7 +1,7 @@
 import django.utils.timezone as django_tz
 import logging
 from django.contrib.auth.decorators import login_required
-from django.http import Http404, HttpResponseRedirect
+from django.http import Http404, HttpResponseRedirect, HttpRequest, HttpResponse
 from django.shortcuts import render
 from django.urls import reverse
 from django.conf import settings
@@ -17,7 +17,7 @@ crawler_settings = settings.CRAWLER_SETTINGS
 
 
 @login_required
-def wanted_gallery(request, pk):
+def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
     """WantedGallery listing."""
     tool = request.GET.get('tool', '')
     tool_use_id = request.GET.get('tool-id', '')

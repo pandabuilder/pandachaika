@@ -1,9 +1,24 @@
 import importlib
 import inspect
 from operator import itemgetter
+from typing import List, Callable, Optional, Tuple, Union, Type
+import typing
+
+from core.base.types import OptionalLogger, ProviderSettings
+from core.base.utilities import GeneralUtils
+from core.base.matchers import Matcher
+from core.base.parsers import BaseParser
+from core.downloaders.handlers import BaseDownloader
+
+if typing.TYPE_CHECKING:
+    from viewer import models
+    from core.base import setup
 
 
-def _get_provider_submodule_api(module_name, submodule_name):
+AcceptableModules = Union[Type['BaseParser'], Type['Matcher'], Type['BaseDownloader']]
+
+
+def _get_provider_submodule_api(module_name: str, submodule_name: str) -> List[AcceptableModules]:
     sub_module = "{}.{}".format(module_name, submodule_name)
     try:
         importlib.import_module(module_name, package='__path__')
@@ -12,12 +27,12 @@ def _get_provider_submodule_api(module_name, submodule_name):
     if importlib.util.find_spec(sub_module):
         site = importlib.import_module(sub_module, package=module_name)
         if hasattr(site, 'API'):
-            return getattr(site, 'API')
+            return list(getattr(site, 'API'))
 
     return []
 
 
-def _get_provider_submodule_method(module_name, submodule_name, method_name):
+def _get_provider_submodule_method(module_name: str, submodule_name: str, method_name: str) -> Optional[Callable]:
     sub_module = "{}.{}".format(module_name, submodule_name)
     try:
         importlib.import_module(module_name, package='__path__')
@@ -37,29 +52,29 @@ def _get_provider_submodule_method(module_name, submodule_name, method_name):
 # This is why this should be outside Settings
 class ProviderContext:
 
-    parsers = []
-    matchers = []
-    downloaders = []
-    resolvers = []
-    settings_parsers = []
-    wanted_generators = []
+    parsers: List[Type['BaseParser']] = []
+    matchers: List[Type['Matcher']] = []
+    downloaders: List[Type['BaseDownloader']] = []
+    resolvers: List[Tuple[str, Callable[['setup.Settings'], ProviderSettings]]] = []
+    settings_parsers: List[Tuple[str, Callable]] = []
+    wanted_generators: List[Tuple[str, Callable]] = []
 
-    def register_providers(self, module_name_list):
+    def register_providers(self, module_name_list: List[str]) -> None:
         for module_name in module_name_list:
             self.register_provider(module_name)
 
-    def register_provider(self, module_name):
+    def register_provider(self, module_name: str) -> None:
         # We just split the module and get their last part
         # Only used by resolver since the others define their provider internally
         provider_name = module_name.split(".")[-1]
         for member in _get_provider_submodule_api(module_name, "parsers"):
-            if member not in self.parsers:
+            if member not in self.parsers and issubclass(member, BaseParser):
                 self.register_parser(member)
         for member in _get_provider_submodule_api(module_name, "matchers"):
-            if member not in self.matchers:
+            if member not in self.matchers and issubclass(member, Matcher):
                 self.register_matcher(member)
         for member in _get_provider_submodule_api(module_name, "downloaders"):
-            if member not in self.downloaders:
+            if member not in self.downloaders and issubclass(member, BaseDownloader):
                 self.register_downloader(member)
         resolver = _get_provider_submodule_method(module_name, "utilities", "resolve_url")
         if resolver and resolver not in self.resolvers:
@@ -71,31 +86,31 @@ class ProviderContext:
         if wanted_generator and wanted_generator not in self.wanted_generators:
             self.register_wanted_generator(provider_name, wanted_generator)
 
-    def register_parser(self, obj):
+    def register_parser(self, obj: Type['BaseParser']) -> None:
         if inspect.isclass(obj):
             if obj.name and not obj.ignore:
                 self.parsers.append(obj)
 
-    def register_matcher(self, obj):
+    def register_matcher(self, obj: Type['Matcher']) -> None:
         if inspect.isclass(obj):
             if obj.provider and obj.name:
                 self.matchers.append(obj)
 
-    def register_downloader(self, obj):
+    def register_downloader(self, obj: Type['BaseDownloader']) -> None:
         if inspect.isclass(obj):
             if obj.provider and obj.type:
                 self.downloaders.append(obj)
 
-    def register_resolver(self, provider_name, obj):
+    def register_resolver(self, provider_name: str, obj: Callable) -> None:
         self.resolvers.append((provider_name, obj))
 
-    def register_settings_parser(self, provider_name, obj):
+    def register_settings_parser(self, provider_name: str, obj: Callable) -> None:
         self.settings_parsers.append((provider_name, obj))
 
-    def register_wanted_generator(self, provider_name, obj):
+    def register_wanted_generator(self, provider_name: str, obj: Callable) -> None:
         self.wanted_generators.append((provider_name, obj))
 
-    def get_parsers(self, settings, logger, filter_name=None):
+    def get_parsers(self, settings: 'setup.Settings', logger: OptionalLogger, filter_name: str = None) -> List['BaseParser']:
         parsers_list = list()
         for parser in self.parsers:
             parser_name = getattr(parser, 'name')
@@ -116,7 +131,7 @@ class ProviderContext:
 
         return parsers_list
 
-    def get_parsers_classes(self, filter_name=None):
+    def get_parsers_classes(self, filter_name: str=None) -> List[Type['BaseParser']]:
         parsers_list = list()
         for parser in self.parsers:
             parser_name = getattr(parser, 'name')
@@ -134,7 +149,10 @@ class ProviderContext:
 
         return parsers_list
 
-    def get_downloaders(self, settings, logger, general_utils, filter_name=None, force=False):
+    def get_downloaders(
+            self, settings: 'setup.Settings', logger: OptionalLogger,
+            general_utils: GeneralUtils, filter_name: str = None,
+            force: bool = False) -> List[Tuple['BaseDownloader', int]]:
         downloaders = list()
         for downloader in self.downloaders:
             handler_name = str(downloader)
@@ -143,30 +161,30 @@ class ProviderContext:
                     if force:
                         downloader_instance = downloader(settings, logger, general_utils)
                         downloaders.append(
-                            [downloader_instance, 1]
+                            (downloader_instance, 1)
                         )
                     else:
                         if handler_name in settings.downloaders and settings.downloaders[handler_name] >= 0:
                             downloader_instance = downloader(settings, logger, general_utils)
                             downloaders.append(
-                                [downloader_instance, settings.downloaders[handler_name]]
+                                (downloader_instance, settings.downloaders[handler_name])
                             )
             else:
                 if force:
                     downloader_instance = downloader(settings, logger, general_utils)
                     downloaders.append(
-                        [downloader_instance, 1]
+                        (downloader_instance, 1)
                     )
                 else:
                     if handler_name in settings.downloaders and settings.downloaders[handler_name] >= 0:
                         downloader_instance = downloader(settings, logger, general_utils)
                         downloaders.append(
-                            [downloader_instance, settings.downloaders[handler_name]]
+                            (downloader_instance, settings.downloaders[handler_name])
                         )
 
         return sorted(downloaders, key=itemgetter(1))
 
-    def get_downloaders_name_priority(self, settings, filter_name=None):
+    def get_downloaders_name_priority(self, settings: 'setup.Settings', filter_name: str=None) -> List[Tuple[str, int]]:
         downloaders = list()
         for downloader in self.downloaders:
             handler_name = str(downloader)
@@ -174,25 +192,27 @@ class ProviderContext:
                 if filter_name in handler_name:
                     if handler_name in settings.downloaders:
                         downloaders.append(
-                            [handler_name, settings.downloaders[handler_name]]
+                            (handler_name, settings.downloaders[handler_name])
                         )
                     else:
                         downloaders.append(
-                            [handler_name, -1]
+                            (handler_name, -1)
                         )
             else:
                 if handler_name in settings.downloaders:
                     downloaders.append(
-                        [handler_name, settings.downloaders[handler_name]]
+                        (handler_name, settings.downloaders[handler_name])
                     )
                 else:
                     downloaders.append(
-                        [handler_name, -1]
+                        (handler_name, -1)
                     )
 
         return sorted(downloaders, key=itemgetter(1), reverse=True)
 
-    def get_matchers(self, settings, logger=None, filter_name=None, force=False, matcher_type=''):
+    def get_matchers(self, settings: 'setup.Settings', logger: OptionalLogger=None,
+                     filter_name: str=None, force: bool=False,
+                     matcher_type: str='') -> List[Tuple['Matcher', int]]:
         matchers_list = list()
         if matcher_type:
             packages_filtered = [x for x in self.matchers if x.type == matcher_type]
@@ -204,23 +224,24 @@ class ProviderContext:
                 if filter_name in matcher_name:
                     if force:
                         matcher_instance = matcher(settings, logger)
-                        matchers_list.append([matcher_instance, 1])
+                        matchers_list.append((matcher_instance, 1))
                     else:
                         if matcher_name in settings.matchers and settings.matchers[matcher_name] >= 0:
                             matcher_instance = matcher(settings, logger)
-                            matchers_list.append([matcher_instance, settings.matchers[matcher_name]])
+                            matchers_list.append((matcher_instance, settings.matchers[matcher_name]))
             else:
                 if force:
                     matcher_instance = matcher(settings, logger)
-                    matchers_list.append([matcher_instance, 1])
+                    matchers_list.append((matcher_instance, 1))
                 else:
                     if matcher_name in settings.matchers and settings.matchers[matcher_name] >= 0:
                         matcher_instance = matcher(settings, logger)
-                        matchers_list.append([matcher_instance, settings.matchers[matcher_name]])
+                        matchers_list.append((matcher_instance, settings.matchers[matcher_name]))
 
         return sorted(matchers_list, key=itemgetter(1))
 
-    def get_matchers_name_priority(self, settings, filter_name=None, matcher_type=''):
+    def get_matchers_name_priority(self, settings: 'setup.Settings',
+                                   filter_name: str=None, matcher_type: str='') -> List[Tuple[str, int]]:
         matchers_list = list()
         if matcher_type:
             packages_filtered = [x for x in self.matchers if x.type == matcher_type]
@@ -232,31 +253,31 @@ class ProviderContext:
                 if filter_name in matcher_name:
                     if matcher_name in settings.matchers:
                         matchers_list.append(
-                            [matcher_name, settings.matchers[matcher_name]]
+                            (matcher_name, settings.matchers[matcher_name])
                         )
                     else:
                         matchers_list.append(
-                            [matcher_name, -1]
+                            (matcher_name, -1)
                         )
             else:
                 if matcher_name in settings.matchers:
                     matchers_list.append(
-                        [matcher_name, settings.matchers[matcher_name]]
+                        (matcher_name, settings.matchers[matcher_name])
                     )
                 else:
                     matchers_list.append(
-                        [matcher_name, -1]
+                        (matcher_name, -1)
                     )
 
         return sorted(matchers_list, key=itemgetter(1), reverse=True)
 
-    def resolve_all_urls(self, gallery):
+    def resolve_all_urls(self, gallery: 'models.Gallery') -> str:
         methods = self.get_resolve_methods(gallery.provider)
         for method in methods:
             return method(gallery)
         return "Can't reconstruct URL"
 
-    def get_resolve_methods(self, filter_name=None):
+    def get_resolve_methods(self, filter_name: str = None) -> List[Callable]:
         method_list = list()
         for method_tuple in self.resolvers:
             method_name = method_tuple[0]
@@ -268,7 +289,7 @@ class ProviderContext:
 
         return method_list
 
-    def get_wanted_generators(self, filter_name):
+    def get_wanted_generators(self, filter_name: str = None) -> List[Callable]:
         method_list = list()
         for method_tuple in self.wanted_generators:
             method_name = method_tuple[0]

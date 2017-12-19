@@ -1,11 +1,13 @@
 import os
 import re
 import zipfile
+from typing import Optional, List, Tuple
 
 import requests
 import time
 
 from core.base.matchers import Matcher
+from core.base.types import GalleryData, MatchesValues, DataDict
 from core.base.utilities import (
     filecount_in_zip,
     get_zip_filesize,
@@ -24,38 +26,38 @@ class CoverMatcher(Matcher):
     time_to_wait_after_compare = 10
     default_cutoff = 0
 
-    def format_to_search_title(self, file_name):
+    def format_to_search_title(self, file_name: str) -> str:
         return os.path.join(self.settings.MEDIA_ROOT, file_name)
 
-    def format_to_compare_title(self, file_name):
+    def format_to_compare_title(self, file_name: str) -> str:
         return self.get_title_from_path(file_name)
 
-    def search_method(self, title_to_search):
+    def search_method(self, title_to_search: str) -> bool:
         return self.compare_by_cover(title_to_search)
 
-    def create_closer_matches_values(self, zip_path, cutoff=None, max_matches=20):
+    def create_closer_matches_values(self, zip_path: str, cutoff: Optional[float]=None, max_matches: int=20) -> List[MatchesValues]:
 
         self.values_array = []
-        results = []
+        results: List[MatchesValues] = []
 
         if self.search_method(self.format_to_search_title(zip_path)):
             if self.time_to_wait_after_compare > 0:
                 time.sleep(self.time_to_wait_after_compare)
             galleries_data = self.get_metadata_after_matching()
-            galleries_data = [x for x in galleries_data if not self.general_utils.discard_by_tag_list(x['tags'])]
+            galleries_data = [x for x in galleries_data if not self.general_utils.discard_by_tag_list(x.tags)]
             # We don't call get_list_closer_gallery_titles_from_dict
             # because we assume that a image match is correct already
             if galleries_data:
                 self.values_array = galleries_data
-                results = [[gallery['title'], gallery, 1] for gallery in galleries_data]
+                results = [(gallery.title, gallery, 1) for gallery in galleries_data]
         return results
 
-    def format_match_values(self):
+    def format_match_values(self) -> DataDict:
 
-        self.match_gid = self.match_values['gid']
+        self.match_gid = self.match_values.gid
         values = {
             'title': self.match_title,
-            'title_jpn': self.match_values['title_jpn'],
+            'title_jpn': self.match_values.title_jpn,
             'zipped': self.file_path,
             'crc32': self.crc32,
             'match_type': self.found_by,
@@ -66,7 +68,7 @@ class CoverMatcher(Matcher):
 
         return values
 
-    def compare_by_cover(self, zip_path):
+    def compare_by_cover(self, zip_path: str) -> bool:
 
         if os.path.splitext(zip_path)[1] != '.zip':
             self.gallery_links = []
@@ -121,39 +123,39 @@ class ImageMatcher(Matcher):
     time_to_wait_after_compare = 10
     default_cutoff = 0
 
-    def format_to_search_title(self, file_name):
+    def format_to_search_title(self, file_name: str) -> str:
         return os.path.join(self.settings.MEDIA_ROOT, file_name)
 
-    def format_to_compare_title(self, file_name):
+    def format_to_compare_title(self, file_name: str) -> str:
         return self.get_title_from_path(file_name)
 
-    def search_method(self, title_to_search):
+    def search_method(self, title_to_search: str) -> bool:
         return self.compare_by_image(title_to_search)
 
-    def create_closer_matches_values(self, zip_path, cutoff=None, max_matches=20):
+    def create_closer_matches_values(self, zip_path: str, cutoff: float=None, max_matches: int=20) -> List[MatchesValues]:
 
         self.values_array = []
-        results = []
+        results: List[MatchesValues] = []
         title_to_search = self.format_to_search_title(zip_path)
 
         if self.search_method(title_to_search):
             if self.time_to_wait_after_compare > 0:
                 time.sleep(self.time_to_wait_after_compare)
             galleries_data = self.get_metadata_after_matching()
-            galleries_data = [x for x in galleries_data if not self.general_utils.discard_by_tag_list(x['tags'])]
+            galleries_data = [x for x in galleries_data if not self.general_utils.discard_by_tag_list(x.tags)]
             # We don't call get_list_closer_gallery_titles_from_dict
             # because we assume that a image match is correct already
             if galleries_data:
                 self.values_array = galleries_data
-                results = [[gallery['title'], gallery, 1] for gallery in galleries_data]
+                results = [(gallery.title, gallery, 1) for gallery in galleries_data]
         return results
 
-    def format_match_values(self):
+    def format_match_values(self) -> DataDict:
 
-        self.match_gid = self.match_values['gid']
+        self.match_gid = self.match_values.gid
         values = {
             'title': self.match_title,
-            'title_jpn': self.match_values['title_jpn'],
+            'title_jpn': self.match_values.title_jpn,
             'zipped': self.file_path,
             'crc32': self.crc32,
             'match_type': self.found_by,
@@ -163,7 +165,7 @@ class ImageMatcher(Matcher):
         }
         return values
 
-    def compare_by_image(self, zip_path):
+    def compare_by_image(self, zip_path: str) -> bool:
 
         if os.path.splitext(zip_path)[1] != '.zip':
             self.gallery_links = []
@@ -218,27 +220,27 @@ class TitleMatcher(Matcher):
     time_to_wait_after_compare = 10
     default_cutoff = 0.7
 
-    def format_to_search_title(self, file_name):
+    def format_to_search_title(self, file_name: str) -> str:
         if file_name.endswith('.zip'):
             return clean_title(self.get_title_from_path(file_name))
         else:
             return clean_title(file_name)
 
-    def format_to_compare_title(self, file_name):
+    def format_to_compare_title(self, file_name: str) -> str:
         if file_name.endswith('.zip'):
             return clean_title(self.get_title_from_path(file_name))
         else:
             return clean_title(file_name)
 
-    def search_method(self, title_to_search):
+    def search_method(self, title_to_search: str) -> bool:
         return self.compare_by_title(title_to_search)
 
-    def format_match_values(self):
+    def format_match_values(self) -> DataDict:
 
-        self.match_gid = self.match_values['gid']
+        self.match_gid = self.match_values.gid
         values = {
             'title': self.match_title,
-            'title_jpn': self.match_values['title_jpn'],
+            'title_jpn': self.match_values.title_jpn,
             'zipped': self.file_path,
             'crc32': self.crc32,
             'match_type': self.found_by,
@@ -248,7 +250,7 @@ class TitleMatcher(Matcher):
         }
         return values
 
-    def compare_by_title(self, image_title):
+    def compare_by_title(self, image_title: str) -> bool:
 
         filters = {'f_search': '"' + image_title + '"'}
 
@@ -280,27 +282,27 @@ class TitleGoogleMatcher(Matcher):
     time_to_wait_after_compare = 10
     default_cutoff = 0.7
 
-    def format_to_search_title(self, file_name):
+    def format_to_search_title(self, file_name: str) -> str:
         if file_name.endswith('.zip'):
             return clean_title(self.get_title_from_path(file_name))
         else:
             return clean_title(file_name)
 
-    def format_to_compare_title(self, file_name):
+    def format_to_compare_title(self, file_name: str) -> str:
         if file_name.endswith('.zip'):
             return clean_title(self.get_title_from_path(file_name))
         else:
             return clean_title(file_name)
 
-    def search_method(self, title_to_search):
+    def search_method(self, title_to_search: str) -> bool:
         return self.compare_by_title_google(title_to_search)
 
-    def format_match_values(self):
+    def format_match_values(self) -> DataDict:
 
-        self.match_gid = self.match_values['gid']
+        self.match_gid = self.match_values.gid
         values = {
             'title': self.match_title,
-            'title_jpn': self.match_values['title_jpn'],
+            'title_jpn': self.match_values.title_jpn,
             'zipped': self.file_path,
             'crc32': self.crc32,
             'match_type': self.found_by,
@@ -310,7 +312,7 @@ class TitleGoogleMatcher(Matcher):
         }
         return values
 
-    def compare_by_title_google(self, title):
+    def compare_by_title_google(self, title: str) -> bool:
 
         payload = {'q': 'site:e-hentai.org ' + title}
         r = requests.get("https://www.google.com/search", params=payload, timeout=self.settings.timeout_timer)
@@ -346,7 +348,7 @@ class TitleGoogleMatcher(Matcher):
         else:
             return False
 
-    def get_final_link_from_link(self, link):
+    def get_final_link_from_link(self, link: str) -> str:
 
         time.sleep(self.settings.wait_timer)
         gallery_gid, gallery_token = get_gid_token_from_link(link)

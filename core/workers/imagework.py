@@ -3,13 +3,19 @@ import queue
 
 import logging
 import traceback
+import typing
+
+from core.base.types import OptionalLogger
+
+if typing.TYPE_CHECKING:
+    from viewer.models import Archive
 
 
 class ImageWorker(object):
 
     """description of class"""
 
-    def thumbnails_worker(self):
+    def thumbnails_worker(self) -> None:
 
         while True:
             try:
@@ -23,7 +29,7 @@ class ImageWorker(object):
                 thread_logger = logging.getLogger('viewer.threads')
                 thread_logger.error(traceback.format_exc())
 
-    def file_info_worker(self):
+    def file_info_worker(self) -> None:
 
         while True:
             try:
@@ -37,13 +43,13 @@ class ImageWorker(object):
                 thread_logger = logging.getLogger('viewer.threads')
                 thread_logger.error(traceback.format_exc())
 
-    def __init__(self, crawler_logger, worker_number):
+    def __init__(self, crawler_logger: OptionalLogger, worker_number: int) -> None:
 
         self.worker_number = worker_number + 1
         self.crawler_logger = crawler_logger
-        self.web_queue = queue.Queue()
+        self.web_queue: queue.Queue = queue.Queue()
 
-    def start_info_thread(self):
+    def start_info_thread(self) -> None:
 
         thread_array = []
 
@@ -59,7 +65,7 @@ class ImageWorker(object):
 
         self.crawler_logger.info("All file info threads finished")
 
-    def start_thumbs_thread(self):
+    def start_thumbs_thread(self) -> None:
 
         thread_array = []
 
@@ -75,6 +81,6 @@ class ImageWorker(object):
 
         self.crawler_logger.info("All thumbnail threads finished")
 
-    def enqueue_archive(self, archive):
+    def enqueue_archive(self, archive: 'Archive') -> None:
 
         self.web_queue.put(archive)

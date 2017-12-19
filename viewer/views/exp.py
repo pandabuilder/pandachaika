@@ -9,22 +9,23 @@ from django.contrib.auth.decorators import login_required
 from django.core import serializers
 from django.db import transaction
 from django.db.models import Q
-from django.http import HttpResponse
+from django.http import HttpResponse, HttpRequest
 from django.shortcuts import render
 from django.core.paginator import Paginator, EmptyPage
 from django.urls import reverse
 from django.conf import settings
 
+from core.base.types import DataDict
 from core.base.utilities import timestamp_or_zero, str_to_int
 from viewer.forms import ArchiveSearchForm
-from viewer.models import Gallery, Tag, Archive, Image, UserArchivePrefs
+from viewer.models import Gallery, Tag, Archive, Image, UserArchivePrefs, GalleryQuerySet, ArchiveQuerySet
 from viewer.views.head import archive_filter_keys, filter_archives
 
 crawler_settings = settings.CRAWLER_SETTINGS
 
 
 # @login_required
-def tag_frequency(request):
+def tag_frequency(request: HttpRequest) -> HttpResponse:
     title = request.GET.get("title", '')
     tags = request.GET.get("tags", '')
     if 'clear' in request.GET:
@@ -35,7 +36,7 @@ def tag_frequency(request):
     return render(request, "viewer/graph_tags.html", d)
 
 
-def gallery_frequency(request):
+def gallery_frequency(request: HttpRequest) -> HttpResponse:
     title = request.GET.get("title", '')
     tags = request.GET.get("tags", '')
     if 'clear' in request.GET:
@@ -46,7 +47,7 @@ def gallery_frequency(request):
     return render(request, "viewer/graph_gallery_posted.html", d)
 
 
-def get_gallery_data(data):
+def get_gallery_data(data: DataDict) -> GalleryQuerySet:
     """Quick search of galleries.
     """
 
@@ -94,7 +95,7 @@ def get_gallery_data(data):
     return results
 
 
-def seeder(request):
+def seeder(request: HttpRequest) -> HttpResponse:
     if request.method == 'GET':
         data = request.GET
         if 'title' not in data and 'tags' not in data:
@@ -109,7 +110,7 @@ def seeder(request):
     return HttpResponse(response, content_type="application/json")
 
 
-def release_date_seeder(request):
+def release_date_seeder(request: HttpRequest) -> HttpResponse:
     if request.method == 'GET':
         data = request.GET
         if 'title' not in data and 'tags' not in data:
@@ -124,7 +125,7 @@ def release_date_seeder(request):
     return HttpResponse(response, content_type="application/json")
 
 
-def get_archive_data(data):
+def get_archive_data(data: DataDict) -> ArchiveQuerySet:
     """Quick search of archives.
     """
 
@@ -238,7 +239,7 @@ def get_archive_data(data):
 
 
 # TODO: move modifying actions to POST requests. If something changes here, must update panda-react too.
-def api(request, model=None, obj_id=None, action=None):
+def api(request: HttpRequest, model: str=None, obj_id: str=None, action: str=None) -> HttpResponse:
     if request.method == 'GET':
         data = request.GET
         if model == 'archive' and obj_id is not None:
@@ -367,7 +368,7 @@ def api(request, model=None, obj_id=None, action=None):
             )
         elif model == 'archives':
 
-            display_prms = {}
+            display_prms: DataDict = {}
 
             if "parameters" in request.session:
                 parameters = request.session["parameters"]
@@ -457,6 +458,6 @@ def api(request, model=None, obj_id=None, action=None):
 
 
 @login_required
-def new_image_viewer(request, archive=None, image=None):
+def new_image_viewer(request: HttpRequest, archive: int=None, image: int=None) -> HttpResponse:
 
     return render(request, "viewer/new_image_viewer.html")

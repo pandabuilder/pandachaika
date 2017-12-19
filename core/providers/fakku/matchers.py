@@ -6,6 +6,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from core.base.matchers import Matcher
+from core.base.types import DataDict
 from core.base.utilities import (
     filecount_in_zip,
     get_zip_filesize,
@@ -22,24 +23,24 @@ class TitleMatcher(Matcher):
     time_to_wait_after_compare = 0
     default_cutoff = 0.6
 
-    def format_to_search_title(self, file_name):
+    def format_to_search_title(self, file_name: str) -> str:
         if file_name.endswith('.zip'):
             return clean_title(self.get_title_from_path(file_name))
         else:
             return clean_title(file_name)
 
-    def format_to_compare_title(self, file_name):
+    def format_to_compare_title(self, file_name: str) -> str:
         if file_name.endswith('.zip'):
             return clean_title(self.get_title_from_path(file_name))
         else:
             return clean_title(file_name)
 
-    def search_method(self, title_to_search):
+    def search_method(self, title_to_search: str) -> bool:
         return self.compare_by_title_json(title_to_search)
 
-    def format_match_values(self):
+    def format_match_values(self) -> DataDict:
 
-        self.match_gid = self.match_values['gid']
+        self.match_gid = self.match_values.gid
         values = {
             'title': self.match_title,
             'title_jpn': '',
@@ -53,7 +54,7 @@ class TitleMatcher(Matcher):
 
         return values
 
-    def compare_by_title(self, title):
+    def compare_by_title(self, title: str) -> bool:
 
         r = requests.get(urljoin(constants.main_url, 'search/') + quote(title),
                          headers=self.settings.requests_headers, timeout=self.settings.timeout_timer)
@@ -76,7 +77,7 @@ class TitleMatcher(Matcher):
         else:
             return False
 
-    def compare_by_title_json(self, title):
+    def compare_by_title_json(self, title: str) -> bool:
 
         # https://www.fakku.net/suggest/return%20of%20me
         headers = {

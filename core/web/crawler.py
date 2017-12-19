@@ -2,14 +2,13 @@ import argparse
 import threading
 
 import os
-from logging import Logger
-from typing import Union
+from typing import List, Union
 
 import requests
 from django.db.models import QuerySet
 
 from core.base.setup import Settings
-from core.base.utilities import FakeLogger
+from core.base.types import OptionalLogger, FakeLogger
 from core.downloaders.postdownload import PostDownloader
 from core.base.parsers import InternalParser
 from viewer.models import Gallery, WantedGallery
@@ -21,13 +20,13 @@ class ArgumentParserError(Exception):
 
 class YieldingArgumentParser(argparse.ArgumentParser):
 
-    def error(self, message):
+    def error(self, message: str) -> None:
         raise ArgumentParserError(message)
 
 
 class WebCrawler(object):
 
-    def get_args(self, arg_line):
+    def get_args(self, arg_line: List[str]) -> Union[argparse.Namespace, ArgumentParserError]:
         parser = argparse.ArgumentParser(prog='PandaBackupLinks')
 
         parser.add_argument('url',
@@ -124,12 +123,12 @@ class WebCrawler(object):
 
         return args
 
-    def start_crawling(self, arg_line: str, override_options: Settings=None):
+    def start_crawling(self, arg_line: List[str], override_options: Settings=None):
 
         args = self.get_args(arg_line)
 
-        if self.parse_error:
-            self.logger.error(str(args))
+        if isinstance(args, ArgumentParserError):
+            self.logger.info(str(args))
             return
 
         if override_options:
@@ -138,7 +137,7 @@ class WebCrawler(object):
             current_settings = self.settings
 
         if args.non_verbose:
-            parser_logger: Union[Logger, FakeLogger] = FakeLogger()
+            parser_logger: OptionalLogger = FakeLogger()
         else:
             parser_logger = self.logger
 
@@ -207,7 +206,7 @@ class WebCrawler(object):
         if args.crawl_from_feed:
             for parser in parsers:
                 if parser.name in current_settings.autochecker.providers:
-                    if hasattr(parser, 'crawl_feed') and hasattr(parser, 'get_feed_urls'):
+                    if parser.feed_urls_implemented():
                         args.url.extend(parser.get_feed_urls())
 
         if len(args.url) == 0 and not args.json_source:
@@ -274,7 +273,7 @@ class WebCrawler(object):
         self.logger.info('Web Crawler links crawling done.')
         return
 
-    def __init__(self, settings: Settings, logger: Union[Logger, FakeLogger]) -> None:
+    def __init__(self, settings: Settings, logger: OptionalLogger) -> None:
         self.settings = settings
-        self.logger: Union[Logger, FakeLogger] = logger
+        self.logger: OptionalLogger = logger
         self.parse_error = False

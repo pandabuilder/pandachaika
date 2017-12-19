@@ -15,10 +15,10 @@ class TimedAutoUpdater(BaseScheduler):
     thread_name = 'auto_updater'
 
     @staticmethod
-    def timer_to_seconds(timer):
+    def timer_to_seconds(timer: float) -> float:
         return timer * 24 * 60 * 60
 
-    def job(self):
+    def job(self) -> None:
         while not self.stop.is_set():
 
             seconds_to_wait = self.wait_until_next_run()
@@ -54,9 +54,9 @@ class TimedAutoUpdater(BaseScheduler):
                 else:
                     # Leave only info downloaders, then leave only enabled auto updated providers
                     downloaders = current_settings.provider_context.get_downloaders_name_priority(current_settings, filter_name='info')
-                    downloaders = [x[0] for x in downloaders if x[0].replace("_info", "") in to_update_providers]
+                    downloaders_names = [x[0] for x in downloaders if x[0].replace("_info", "") in to_update_providers]
 
-                    current_settings.allow_downloaders_only(downloaders, True, True, True)
+                    current_settings.allow_downloaders_only(downloaders_names, True, True, True)
 
                     url_list = [x.get_link() for x in galleries]
 

@@ -1,4 +1,8 @@
-from django.db.models import F
+from typing import Optional
+
+from django.db.models import F, QuerySet
+from django.forms import ModelForm
+from django.http import HttpRequest
 
 from viewer.models import (
     Archive,
@@ -13,7 +17,7 @@ from viewer.models import (
     FoundGallery,
     Scheduler,
     ArchiveMatches,
-    Provider, Attribute)
+    Provider, Attribute, ArchiveQuerySet, GalleryQuerySet)
 from django.contrib import admin
 from django.contrib.admin.helpers import ActionForm
 from django import forms
@@ -33,7 +37,7 @@ class ArchiveAdmin(admin.ModelAdmin):
                'mark_source_custom', 'set_reason']
     action_form = UpdateActionForm
 
-    def make_public(self, request, queryset):
+    def make_public(self, request: HttpRequest, queryset: ArchiveQuerySet) -> None:
         rows_updated = queryset.count()
         for archive in queryset:
             archive.set_public()
@@ -42,9 +46,9 @@ class ArchiveAdmin(admin.ModelAdmin):
         else:
             message_bit = "%s archives were" % rows_updated
         self.message_user(request, "%s successfully marked as public." % message_bit)
-    make_public.short_description = "Mark selected archives as public"
+    make_public.short_description = "Mark selected archives as public"  # type: ignore
 
-    def mark_source_custom(self, request, queryset):
+    def mark_source_custom(self, request: HttpRequest, queryset: ArchiveQuerySet) -> None:
         source_type = request.POST['extra_field']
         rows_updated = queryset.update(source_type=source_type)
         if rows_updated == 1:
@@ -52,9 +56,9 @@ class ArchiveAdmin(admin.ModelAdmin):
         else:
             message_bit = "%s archives were" % rows_updated
         self.message_user(request, "%s successfully set as %s source." % (message_bit, source_type))
-    mark_source_custom.short_description = "Update source of selected archives"
+    mark_source_custom.short_description = "Update source of selected archives"  # type: ignore
 
-    def set_reason(self, request, queryset):
+    def set_reason(self, request: HttpRequest, queryset: ArchiveQuerySet) -> None:
         source_type = request.POST['extra_field']
         rows_updated = queryset.update(reason=source_type)
         if rows_updated == 1:
@@ -62,15 +66,15 @@ class ArchiveAdmin(admin.ModelAdmin):
         else:
             message_bit = "%s archives were" % rows_updated
         self.message_user(request, "%s successfully set as reason: %s." % (message_bit, source_type))
-    set_reason.short_description = "Set reason of selected archives"
+    set_reason.short_description = "Set reason of selected archives"  # type: ignore
 
-    def gallery_id(self, obj):
+    def gallery_id(self, obj: Archive) -> Optional[int]:
         if obj.gallery:
             return obj.gallery.id
         else:
             return None
 
-    def save_model(self, request, obj, form, change):
+    def save_model(self, request: HttpRequest, obj: Archive, form: ModelForm, change: bool) -> None:
         if not obj.user:
             obj.user = request.user
         obj.save()
@@ -91,25 +95,25 @@ class GalleryAdmin(admin.ModelAdmin):
     actions = ['make_hidden', 'make_public', 'set_provider']
     action_form = UpdateActionForm
 
-    def make_hidden(self, request, queryset):
+    def make_hidden(self, request: HttpRequest, queryset: GalleryQuerySet) -> None:
         rows_updated = queryset.update(hidden=True)
         if rows_updated == 1:
             message_bit = "1 gallery was"
         else:
             message_bit = "%s galleries were" % rows_updated
         self.message_user(request, "%s successfully marked as hidden." % message_bit)
-    make_hidden.short_description = "Mark selected galleries as hidden"
+    make_hidden.short_description = "Mark selected galleries as hidden"  # type: ignore
 
-    def make_public(self, request, queryset):
+    def make_public(self, request: HttpRequest, queryset: GalleryQuerySet) -> None:
         rows_updated = queryset.update(public=True)
         if rows_updated == 1:
             message_bit = "1 gallery was"
         else:
             message_bit = "%s galleries were" % rows_updated
         self.message_user(request, "%s successfully marked as public." % message_bit)
-    make_public.short_description = "Mark selected galleries as public"
+    make_public.short_description = "Mark selected galleries as public"  # type: ignore
 
-    def set_provider(self, request, queryset):
+    def set_provider(self, request: HttpRequest, queryset: GalleryQuerySet) -> None:
         provider = request.POST['extra_field']
         rows_updated = queryset.update(provider=provider)
         if rows_updated == 1:
@@ -117,7 +121,7 @@ class GalleryAdmin(admin.ModelAdmin):
         else:
             message_bit = "%s galleries were" % rows_updated
         self.message_user(request, "%s successfully set with provider: %s." % (message_bit, provider))
-    set_provider.short_description = "Set provider of selected galleries"
+    set_provider.short_description = "Set provider of selected galleries"  # type: ignore
 
 
 class ImageAdmin(admin.ModelAdmin):
@@ -160,79 +164,79 @@ class WantedGalleryAdmin(admin.ModelAdmin):
 
     inlines = (FoundGalleryInline,)
 
-    def make_public(self, request, queryset):
+    def make_public(self, request: HttpRequest, queryset: QuerySet) -> None:
         rows_updated = queryset.update(public=True)
         if rows_updated == 1:
             message_bit = "1 gallery was"
         else:
             message_bit = "%s galleries were" % rows_updated
         self.message_user(request, "%s successfully marked as public." % message_bit)
-    make_public.short_description = "Mark selected galleries as public"
+    make_public.short_description = "Mark selected galleries as public"  # type: ignore
 
-    def mark_should_search(self, request, queryset):
+    def mark_should_search(self, request: HttpRequest, queryset: QuerySet) -> None:
         rows_updated = queryset.update(should_search=True)
         if rows_updated == 1:
             message_bit = "1 gallery was"
         else:
             message_bit = "%s galleries were" % rows_updated
         self.message_user(request, "%s successfully marked as should search." % message_bit)
-    mark_should_search.short_description = "Mark selected galleries as should search"
+    mark_should_search.short_description = "Mark selected galleries as should search"  # type: ignore
 
-    def mark_not_should_search(self, request, queryset):
+    def mark_not_should_search(self, request: HttpRequest, queryset: QuerySet) -> None:
         rows_updated = queryset.update(should_search=False)
         if rows_updated == 1:
             message_bit = "1 gallery was"
         else:
             message_bit = "%s galleries were" % rows_updated
         self.message_user(request, "%s successfully marked as not should search." % message_bit)
-    mark_not_should_search.short_description = "Mark selected galleries as not should search"
+    mark_not_should_search.short_description = "Mark selected galleries as not should search"  # type: ignore
 
-    def mark_found(self, request, queryset):
+    def mark_found(self, request: HttpRequest, queryset: QuerySet) -> None:
         rows_updated = queryset.update(found=True)
         if rows_updated == 1:
             message_bit = "1 gallery was"
         else:
             message_bit = "%s galleries were" % rows_updated
         self.message_user(request, "%s successfully marked as found." % message_bit)
-    mark_found.short_description = "Mark selected galleries as found"
+    mark_found.short_description = "Mark selected galleries as found"  # type: ignore
 
-    def mark_not_found(self, request, queryset):
+    def mark_not_found(self, request: HttpRequest, queryset: QuerySet) -> None:
         rows_updated = queryset.update(found=False)
         if rows_updated == 1:
             message_bit = "1 gallery was"
         else:
             message_bit = "%s galleries were" % rows_updated
         self.message_user(request, "%s successfully marked as not found." % message_bit)
-    mark_not_found.short_description = "Mark selected galleries as not found"
+    mark_not_found.short_description = "Mark selected galleries as not found"  # type: ignore
 
-    def mark_keep_search(self, request, queryset):
+    def mark_keep_search(self, request: HttpRequest, queryset: QuerySet) -> None:
         rows_updated = queryset.update(keep_searching=True)
         if rows_updated == 1:
             message_bit = "1 gallery was"
         else:
             message_bit = "%s galleries were" % rows_updated
         self.message_user(request, "%s successfully marked as keep searching." % message_bit)
-    mark_keep_search.short_description = "Mark selected galleries as keep searching"
+    mark_keep_search.short_description = "Mark selected galleries as keep searching"  # type: ignore
 
-    def mark_not_keep_search(self, request, queryset):
+    def mark_not_keep_search(self, request: HttpRequest, queryset: QuerySet) -> None:
         rows_updated = queryset.update(keep_searching=False)
         if rows_updated == 1:
             message_bit = "1 gallery was"
         else:
             message_bit = "%s galleries were" % rows_updated
         self.message_user(request, "%s successfully marked as not keep searching." % message_bit)
-    mark_not_keep_search.short_description = "Mark selected galleries as not keep searching"
+    mark_not_keep_search.short_description = "Mark selected galleries as not keep searching"  # type: ignore
 
-    def search_title_from_title(self, request, queryset):
+    def search_title_from_title(self, request: HttpRequest, queryset: QuerySet) -> None:
         rows_updated = queryset.update(search_title=F('title'))
         if rows_updated == 1:
             message_bit = "1 gallery was"
         else:
             message_bit = "%s galleries were" % rows_updated
         self.message_user(request, "%s successfully set search title from title." % message_bit)
-    search_title_from_title.short_description = "Set selected galleries' search title from title"
+    search_title_from_title.short_description = "Set selected galleries' search title from title"  # type: ignore
 
-    def set_reason(self, request, queryset):
+    def set_reason(self, request: HttpRequest, queryset: QuerySet) -> None:
         source_type = request.POST['extra_field']
         rows_updated = queryset.update(reason=source_type)
         if rows_updated == 1:
@@ -240,7 +244,7 @@ class WantedGalleryAdmin(admin.ModelAdmin):
         else:
             message_bit = "%s wanted galleries were" % rows_updated
         self.message_user(request, "%s successfully set as reason: %s." % (message_bit, source_type))
-    set_reason.short_description = "Set reason of selected wanted galleries"
+    set_reason.short_description = "Set reason of selected wanted galleries"  # type: ignore
 
 
 class GalleryMatchAdmin(admin.ModelAdmin):

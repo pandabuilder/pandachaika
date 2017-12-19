@@ -1,14 +1,21 @@
 import os
+import typing
+from typing import Dict
+
+from core.base.types import ProviderSettings
+
+if typing.TYPE_CHECKING:
+    from core.base.setup import Settings
 
 
-class Settings:
-    def __init__(self):
+class OwnSettings(ProviderSettings):
+    def __init__(self) -> None:
         self.archive_dl_folder = ''
 
 
-def parse_config(global_settings, config):
+def parse_config(global_settings: 'Settings', config: Dict[str, typing.Any]) -> 'OwnSettings':
 
-    settings = Settings()
+    settings = OwnSettings()
 
     if 'locations' in config:
         if 'archive_dl_folder' in config['locations']:

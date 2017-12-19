@@ -7,6 +7,7 @@ import argparse
 import cherrypy
 from cherrypy.process import plugins
 from cherrypy.lib import static
+from cherrypy.process.wspbus import Bus
 
 from httplogger import HTTPLogger
 
@@ -19,9 +20,9 @@ __all__ = ['DjangoAppPlugin']
 
 class DjangoAppPlugin(plugins.SimplePlugin):
 
-    def __init__(self, bus, settings_module='settings',
-                 wsgi_http_logger=HTTPLogger,
-                 local_settings=None):
+    def __init__(self, bus: Bus, settings_module: str = 'settings',
+                 wsgi_http_logger: type = HTTPLogger,
+                 local_settings: Settings = None) -> None:
         """ CherryPy engine plugin to configure and mount
         the Django application onto the CherryPy server.
         """
@@ -30,7 +31,7 @@ class DjangoAppPlugin(plugins.SimplePlugin):
         self.wsgi_http_logger = wsgi_http_logger
         self.crawler_settings = local_settings
 
-    def start(self):
+    def start(self) -> None:
         """ When the bus starts, the plugin is also started
         and we load the Django application. We then mount it on
         the CherryPy engine for serving as a WSGI application.
@@ -43,7 +44,10 @@ class DjangoAppPlugin(plugins.SimplePlugin):
 
         from django.core.wsgi import get_wsgi_application
 
-        def corsstaticdir(section, dir, root='', match='', content_types=None, index='', debug=False):
+        def corsstaticdir(
+                section: str, dir: str, root: str = '', match: str = '',
+                content_types: None = None, index: str = '', debug: bool = False
+        ) -> bool:
             cherrypy.response.headers['Access-Control-Allow-Origin'] = '*'
             return static.staticdir(section, dir, root, match, content_types, index, debug)
 

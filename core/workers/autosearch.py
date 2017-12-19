@@ -10,10 +10,10 @@ class TimedAutoCrawler(BaseScheduler):
     thread_name = 'auto_search'
 
     @staticmethod
-    def timer_to_seconds(timer):
+    def timer_to_seconds(timer: float) -> float:
         return timer * 60 * 60
 
-    def job(self):
+    def job(self) -> None:
         while not self.stop.is_set():
             seconds_to_wait = self.wait_until_next_run()
             if self.stop.wait(timeout=seconds_to_wait):

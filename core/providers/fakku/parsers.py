@@ -1,24 +1,29 @@
 # -*- coding: utf-8 -*-
 import re
 import time
+import typing
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import Dict, Any
+from typing import Optional, List, Dict
 
 from bs4 import BeautifulSoup
+from django.db.models import QuerySet
 
 from core.base.parsers import BaseParser
 from core.base.utilities import request_with_retries
+from core.base.types import GalleryData
 from core.base.utilities import translate_tag
 from . import constants
-from . import utilities
+
+if typing.TYPE_CHECKING:
+    from viewer.models import WantedGallery
 
 
 class Parser(BaseParser):
     name = constants.provider_name
     accepted_urls = [constants.no_scheme_url]
 
-    def get_values_from_gallery_link(self, link):
+    def get_values_from_gallery_link(self, link: str) -> Optional[GalleryData]:
 
         response = request_with_retries(
             link,
@@ -40,23 +45,22 @@ class Parser(BaseParser):
         gallery_container = soup.find("div", class_=re.compile("content-wrap"))
 
         if gallery_container:
-            gallery = {
-                'gid': link.replace(constants.main_url + '/', ''),
-                'link': link,
-                'tags': [],
-                'provider': self.name,
-                'title': gallery_container.find("div", class_="content-name").h1.get_text()
-            }
-            if gallery['gid'].startswith('manga'):
-                gallery['category'] = 'Manga'
-            elif gallery['gid'].startswith('doujinshi'):
-                gallery['category'] = 'Doujinshi'
+            gallery = GalleryData(link.replace(constants.main_url + '/', ''))
+            gallery.link = link
+            gallery.tags = []
+            gallery.provider = self.name
+            gallery.title = gallery_container.find("div", class_="content-name").h1.get_text()
+
+            if gallery.gid.startswith('manga'):
+                gallery.category = 'Manga'
+            elif gallery.gid.startswith('doujinshi'):
+                gallery.category = 'Doujinshi'
 
             thumbnail_container = gallery_container.find("img", class_="tablet-50")
             if thumbnail_container:
-                gallery['thumbnail_url'] = thumbnail_container.get("src")
-                if gallery['thumbnail_url'].startswith('//'):
-                    gallery['thumbnail_url'] = 'https:' + gallery['thumbnail_url']
+                gallery.thumbnail_url = thumbnail_container.get("src")
+                if gallery.thumbnail_url.startswith('//'):
+                    gallery.thumbnail_url = 'https:' + gallery.thumbnail_url
 
             is_doujinshi = False
             for gallery_row in gallery_container.find_all("div", {"class": "row"}):
@@ -65,51 +69,51 @@ class Parser(BaseParser):
                 if left_text == "Series":
                     right_text = right_div.get_text()
                     if not right_text == "Original Work":
-                        gallery['tags'].append(
+                        gallery.tags.append(
                             translate_tag("parody:" + right_text))
                 elif left_text == "Artist":
                     for artist in right_div.find_all("a"):
-                        gallery['tags'].append(
+                        gallery.tags.append(
                             translate_tag("artist:" + artist.get_text())
                         )
                 elif left_text == "Magazine":
-                    gallery['tags'].append(
+                    gallery.tags.append(
                         translate_tag("magazine:" + right_div.get_text()))
                 elif left_text == "Publisher":
-                    gallery['tags'].append(
+                    gallery.tags.append(
                         translate_tag("publisher:" + right_div.get_text()))
                 elif left_text == "Circle":
-                    gallery['tags'].append(
+                    gallery.tags.append(
                         translate_tag("group:" + right_div.get_text()))
                 elif left_text == "Language":
-                    gallery['tags'].append(
+                    gallery.tags.append(
                         translate_tag("language:" + right_div.get_text()))
                 elif left_text == "Pages":
                     right_text = right_div.get_text()
                     m = re.search(r'^(\d+)', right_text)
                     if m:
-                        gallery['filecount'] = int(m.group(1))
+                        gallery.filecount = int(m.group(1))
                 elif left_text == "Uploader":
-                    gallery['uploader'], right_date_text = right_div.get_text().split(' on ')
+                    gallery.uploader, right_date_text = right_div.get_text().split(' on ')
                     right_date_text = re.sub(r'(\d+)(st|nd|rd|th)', r'\1', right_date_text)
-                    gallery['posted'] = datetime.strptime(right_date_text, "%B %d, %Y")
+                    gallery.posted = datetime.strptime(right_date_text, "%B %d, %Y")
                 elif left_text == "Description":
-                    gallery['comment'] = right_div.get_text()
+                    gallery.comment = right_div.get_text()
                 elif left_text == "Tags":
                     for tag_a in right_div.find_all("a"):
                         if tag_a.get_text() == 'doujin':
                             is_doujinshi = True
-                        gallery['tags'].append(
+                        gallery.tags.append(
                             translate_tag(tag_a.get_text()))
             if is_doujinshi:
-                gallery['category'] = 'Doujinshi'
+                gallery.category = 'Doujinshi'
             else:
-                gallery['category'] = 'Manga'
+                gallery.category = 'Manga'
         else:
             gallery = None
         return gallery
 
-    def get_values_from_gallery_link_json(self, link):
+    def get_values_from_gallery_link_json(self, link) -> Optional[GalleryData]:
 
         gallery = None
 
@@ -143,41 +147,39 @@ class Parser(BaseParser):
 
         response_data['content'] = defaultdict(str, **response_data['content'])
 
-        gallery: Dict[str, Any] = {
-            'gid': link.replace(constants.api_page + '/', ''),
-            'link': link,
-            'tags': [],
-            'provider': self.name,
-            'title': response_data['content']['content_name'],
-            'comment': response_data['content']['content_description'],
-            'category': response_data['content']['content_category'].capitalize(),
-            'posted': datetime.fromtimestamp(int(response_data['content']['content_date']), timezone.utc),
-            'filesize': int(response_data['content']['content_filesize']),
-            'filecount': int(response_data['content']['content_pages']),
-            'uploader': response_data['content']['content_poster'],
-            'thumbnail_url': response_data['content']['content_images']['cover'],
-        }
+        gallery = GalleryData(link.replace(constants.api_page + '/', ''))
+        gallery.link = link
+        gallery.tags = []
+        gallery.provider = self.name
+        gallery.title = response_data['content']['content_name']
+        gallery.comment = response_data['content']['content_description']
+        gallery.category = response_data['content']['content_category'].capitalize()
+        gallery.posted = datetime.fromtimestamp(int(response_data['content']['content_date']), timezone.utc)
+        gallery.filesize = int(response_data['content']['content_filesize'])
+        gallery.filecount = int(response_data['content']['content_pages'])
+        gallery.uploader = response_data['content']['content_poster']
+        gallery.thumbnail_url = response_data['content']['content_images']['cover']
 
-        if gallery['thumbnail_url'].startswith('//'):
-            gallery['thumbnail_url'] = 'https:' + gallery['thumbnail_url']
+        if gallery.thumbnail_url.startswith('//'):
+            gallery.thumbnail_url = 'https:' + gallery.thumbnail_url
 
-        gallery['tags'].append(translate_tag("language:" + response_data['content']['content_language']))
+        gallery.tags.append(translate_tag("language:" + response_data['content']['content_language']))
 
         for artist in response_data['content']['content_artists']:
-            gallery['tags'].append(translate_tag("artist:" + artist['attribute']))
+            gallery.tags.append(translate_tag("artist:" + artist['attribute']))
 
         for series in response_data['content']['content_series']:
             if not series['attribute'] == 'Original Work':
-                gallery['tags'].append(translate_tag("parody:" + series['attribute']))
+                gallery.tags.append(translate_tag("parody:" + series['attribute']))
 
         for tags in response_data['content']['content_tags']:
-            gallery['tags'].append(translate_tag(tags['attribute']))
+            gallery.tags.append(translate_tag(tags['attribute']))
 
         return gallery
 
     # Even if we just call the single method, it allows to upgrade this easily in case group calls are supported
     # afterwards. Also, we can add a wait_timer here.
-    def get_values_from_gallery_link_list(self, links):
+    def get_values_from_gallery_link_list(self, links: List[str]) -> List[GalleryData]:
         response = []
         for i, element in enumerate(links):
             if i > 0:
@@ -201,31 +203,27 @@ class Parser(BaseParser):
         return response
 
     # We disable FAKKU json here (single point) until it's enabled again.
-    def fetch_gallery_data(self, url):
+    def fetch_gallery_data(self, url) -> Optional[GalleryData]:
         return self.get_values_from_gallery_link(url)
         # return self.get_values_from_gallery_link_json(url)
 
-    def fetch_multiple_gallery_data(self, url_list):
+    def fetch_multiple_gallery_data(self, url_list: List[str]) -> Optional[List[GalleryData]]:
         return self.get_values_from_gallery_link_list(url_list)
 
     @staticmethod
-    def id_from_url(url):
+    def id_from_url(url: str) -> Optional[str]:
         m = re.search(constants.main_url + '/(.+)', url)
         if m and m.group(1):
             return m.group(1)
         else:
             return None
 
-    @staticmethod
-    def resolve_url(gallery):
-        utilities.resolve_url(gallery)
-
-    def crawl_urls(self, urls, wanted_filters=None, wanted_only=False):
+    def crawl_urls(self, urls: List[str], wanted_filters: QuerySet = None, wanted_only: bool = False) -> None:
 
         unique_urls = set()
         gallery_data_list = []
         fetch_format_galleries = []
-        gallery_wanted_lists = defaultdict(list)
+        gallery_wanted_lists: Dict[str, List['WantedGallery']] = defaultdict(list)
 
         if not self.downloaders:
             self.logger.warning('No downloaders enabled, returning.')
@@ -263,11 +261,11 @@ class Parser(BaseParser):
         galleries_data = self.fetch_multiple_gallery_data(fetch_format_galleries)
 
         for internal_gallery_data in galleries_data:
-            if self.general_utils.discard_by_tag_list(internal_gallery_data['tags']):
+            if self.general_utils.discard_by_tag_list(internal_gallery_data.tags):
                 if not self.settings.silent_processing:
                     self.logger.info(
                         "Skipping gallery link {} because it's tagged with global discarded tags".format(
-                            internal_gallery_data['link']
+                            internal_gallery_data.link
                         )
                     )
                 continue
@@ -275,11 +273,11 @@ class Parser(BaseParser):
             if wanted_filters:
                 self.compare_gallery_with_wanted_filters(
                     internal_gallery_data,
-                    internal_gallery_data['link'],
+                    internal_gallery_data.link,
                     wanted_filters,
                     gallery_wanted_lists
                 )
-                if wanted_only and not gallery_wanted_lists[internal_gallery_data['gid']]:
+                if wanted_only and not gallery_wanted_lists[internal_gallery_data.gid]:
                     continue
 
             gallery_data_list.append(internal_gallery_data)

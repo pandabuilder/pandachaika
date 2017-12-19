@@ -1,25 +1,31 @@
 # -*- coding: utf-8 -*-
 import re
 import time
+import typing
 from collections import defaultdict
 from datetime import datetime
+from typing import Optional, List
 from urllib.request import ProxyHandler
 
 import feedparser
 from bs4 import BeautifulSoup
+from django.db.models import QuerySet
 
 from core.base.parsers import BaseParser
 from core.base.utilities import (
     translate_tag_list, unescape, request_with_retries)
+from core.base.types import GalleryData
 from . import constants
-from . import utilities
+
+if typing.TYPE_CHECKING:
+    from viewer.models import WantedGallery
 
 
 class Parser(BaseParser):
     name = constants.provider_name
     accepted_urls = [constants.main_page, constants.rss_url]
 
-    def get_values_from_gallery_link(self, link):
+    def get_values_from_gallery_link(self, link: str) -> Optional[GalleryData]:
 
         response = request_with_retries(
             link,
@@ -62,26 +68,26 @@ class Parser(BaseParser):
         #     thumbnail_url = thumbnail_small_container.get('src')
         thumbnail_url = soup.find("meta", property="og:image")
 
-        gallery = {
-            'gid': match_string.match(soup.find("meta", property="og:link")).group(1),
-            'link': link,
-            'title': soup.find("meta", property="og:title"),
-            'comment': '',
-            'thumbnail_url': thumbnail_url,
-            'category': 'Manga',
-            'uploader': '',
-            'posted': '',
-            'filecount': 0,
-            'filesize': 0,
-            'expunged': False,
-            'rating': '',
-            'tags': translate_tag_list(tags),
-            'content': content_container.encode_contents(),
-        }
+        gallery = GalleryData(
+            match_string.match(soup.find("meta", property="og:link")).group(1),
+            link=link,
+            title=soup.find("meta", property="og:title"),
+            comment='',
+            thumbnail_url=thumbnail_url,
+            category='Manga',
+            uploader='',
+            posted=None,
+            filecount=0,
+            filesize=0,
+            expunged=False,
+            rating='',
+            tags=translate_tag_list(tags),
+            content=content_container.encode_contents(),
+        )
 
         return gallery
 
-    def get_values_from_gallery_link_json(self, link):
+    def get_values_from_gallery_link_json(self, link: str) -> Optional[GalleryData]:
 
         match_string = re.compile(constants.main_page + '/(.+)/$')
 
@@ -140,29 +146,29 @@ class Parser(BaseParser):
         if thumbnail_small_container:
             thumbnail_url = thumbnail_small_container.get('src')
 
-        gallery = {
-            'gid': gallery_slug,
-            'link': link,
-            'title': unescape(api_gallery['title']['rendered']),
-            'comment': '',
-            'thumbnail_url': thumbnail_url,
-            'provider': self.name,
-            'category': 'Manga',
-            'uploader': '',
-            'posted': datetime.strptime(api_gallery['date_gmt'] + '+0000', "%Y-%m-%dT%H:%M:%S%z"),
-            'filecount': 0,
-            'filesize': 0,
-            'expunged': False,
-            'rating': '',
-            'tags': translate_tag_list(tags),
-            'content': api_gallery['content']['rendered'],
-        }
+        gallery = GalleryData(
+            gallery_slug,
+            link=link,
+            title=unescape(api_gallery['title']['rendered']),
+            comment='',
+            thumbnail_url=thumbnail_url,
+            provider=self.name,
+            category='Manga',
+            uploader='',
+            posted=datetime.strptime(api_gallery['date_gmt'] + '+0000', "%Y-%m-%dT%H:%M:%S%z"),
+            filecount=0,
+            filesize=0,
+            expunged=False,
+            rating='',
+            tags=translate_tag_list(tags),
+            content=api_gallery['content']['rendered'],
+        )
 
         return gallery
 
     # Even if we just call the single method, it allows to upgrade this easily in case group calls are supported
     # afterwards. Also, we can add a wait_timer here.
-    def get_values_from_gallery_link_list(self, links):
+    def get_values_from_gallery_link_list(self, links: List[str]) -> Optional[List[GalleryData]]:
         response = []
         for i, element in enumerate(links):
             if i > 0:
@@ -186,10 +192,10 @@ class Parser(BaseParser):
         return response
 
     @staticmethod
-    def get_feed_urls():
+    def get_feed_urls() -> List[str]:
         return [constants.rss_url, ]
 
-    def crawl_feed(self, feed_url=None):
+    def crawl_feed(self, feed_url: str=None) -> List[GalleryData]:
 
         if not feed_url:
             feed_url = constants.rss_url
@@ -223,30 +229,30 @@ class Parser(BaseParser):
                 if thumbnail_small_container:
                     thumbnail_url = thumbnail_small_container.get('src')
 
-            gallery = {
-                'gid': match_string.match(item['link']).group(1),
-                'title': item['title'],
-                'comment': item['description'],
-                'thumbnail_url': thumbnail_url,
-                'provider': self.name,
-                'category': 'Manga',
-                'uploader': item['author'],
-                'posted': datetime.strptime(item['published'], "%a, %d %b %Y %H:%M:%S %z"),
-                'filecount': 0,
-                'filesize': 0,
-                'expunged': False,
-                'rating': '',
-                'tags': translate_tag_list(tags),
-                'content': item['content'][0].value,
-                'link': item['link']
-            }
+            gallery = GalleryData(
+                match_string.match(item['link']).group(1),
+                title=item['title'],
+                comment=item['description'],
+                thumbnail_url=thumbnail_url,
+                provider=self.name,
+                category='Manga',
+                uploader=item['author'],
+                posted=datetime.strptime(item['published'], "%a, %d %b %Y %H:%M:%S %z"),
+                filecount=0,
+                filesize=0,
+                expunged=False,
+                rating='',
+                tags=translate_tag_list(tags),
+                content=item['content'][0].value,
+                link=item['link']
+            )
 
             # Must check here since this method is called after the main check in crawl_urls
-            if self.general_utils.discard_by_tag_list(gallery['tags']):
+            if self.general_utils.discard_by_tag_list(gallery.tags):
                 continue
 
             discard_approved, discard_message = self.discard_gallery_by_internal_checks(
-                gallery['gid'], link=gallery['link']
+                gallery.gid, link=gallery.link
             )
             if discard_approved:
                 if not self.settings.silent_processing:
@@ -257,7 +263,7 @@ class Parser(BaseParser):
 
         return galleries
 
-    def fetch_gallery_data(self, url):
+    def fetch_gallery_data(self, url: str) -> Optional[GalleryData]:
         response = self.get_values_from_gallery_link_json(url)
         if not response:
             self.logger.warning(
@@ -266,27 +272,23 @@ class Parser(BaseParser):
             response = self.get_values_from_gallery_link(url)
         return response
 
-    def fetch_multiple_gallery_data(self, url_list):
+    def fetch_multiple_gallery_data(self, url_list: List[str]) -> List[GalleryData]:
         return self.get_values_from_gallery_link_list(url_list)
 
     @staticmethod
-    def id_from_url(url):
+    def id_from_url(url: str) -> Optional[str]:
         m = re.search(constants.main_page + '/(.+)/$', url)
         if m and m.group(1):
             return m.group(1)
         else:
             return None
 
-    @staticmethod
-    def resolve_url(gallery):
-        utilities.resolve_url(gallery)
-
-    def crawl_urls(self, urls, wanted_filters=None, wanted_only=False):
+    def crawl_urls(self, urls: List[str], wanted_filters: QuerySet=None, wanted_only: bool=False) -> None:
 
         unique_urls = set()
         gallery_data_list = []
         fetch_format_galleries = []
-        gallery_wanted_lists = defaultdict(list)
+        gallery_wanted_lists: typing.Dict[str, List['WantedGallery']] = defaultdict(list)
 
         if not self.downloaders:
             self.logger.warning('No downloaders enabled, returning.')
@@ -315,16 +317,16 @@ class Parser(BaseParser):
                     self.logger.info(discard_message)
                 continue
 
-            fetch_format_galleries.append({'link': gallery})
+            fetch_format_galleries.append(gallery)
 
         galleries_data = self.fetch_multiple_gallery_data(fetch_format_galleries)
 
         for internal_gallery_data in galleries_data:
-            if self.general_utils.discard_by_tag_list(internal_gallery_data['tags']):
+            if self.general_utils.discard_by_tag_list(internal_gallery_data.tags):
                 if not self.settings.silent_processing:
                     self.logger.info(
                         "Skipping gallery link {} because it's tagged with global discarded tags".format(
-                            internal_gallery_data['link']
+                            internal_gallery_data.link
                         )
                     )
                 continue
@@ -332,11 +334,11 @@ class Parser(BaseParser):
             if wanted_filters:
                 self.compare_gallery_with_wanted_filters(
                     internal_gallery_data,
-                    internal_gallery_data['link'],
+                    internal_gallery_data.link,
                     wanted_filters,
                     gallery_wanted_lists
                 )
-                if wanted_only and not gallery_wanted_lists[internal_gallery_data['gid']]:
+                if wanted_only and not gallery_wanted_lists[internal_gallery_data.gid]:
                     continue
 
             gallery_data_list.append(internal_gallery_data)
@@ -353,11 +355,11 @@ class Parser(BaseParser):
                 if wanted_filters:
                     self.compare_gallery_with_wanted_filters(
                         feed_gallery,
-                        feed_gallery['link'],
+                        feed_gallery.link,
                         wanted_filters,
                         gallery_wanted_lists
                     )
-                    if wanted_only and not gallery_wanted_lists[feed_gallery['gid']]:
+                    if wanted_only and not gallery_wanted_lists[feed_gallery.gid]:
                         continue
                 accepted_feed_data.append(feed_gallery)
 

@@ -2,18 +2,21 @@ import logging
 import traceback
 
 import time
+from typing import Iterable, Dict, List, Tuple
 
 from django.conf import settings
+from django.db.models import QuerySet
 
 from core.base.comparison import get_list_closer_gallery_titles_from_list
+from core.base.types import OptionalLogger
 from core.base.utilities import replace_illegal_name, get_title_from_path, clean_title
-from viewer.models import GalleryMatch, Archive, Gallery, ArchiveMatches, FoundGallery
+from viewer.models import GalleryMatch, Archive, Gallery, ArchiveMatches, FoundGallery, ArchiveQuerySet, GalleryQuerySet
 
 crawler_settings = settings.CRAWLER_SETTINGS
 
 
 # WantedGallery
-def create_matches_wanted_galleries_from_providers(wanted_galleries, provider, logger=None):
+def create_matches_wanted_galleries_from_providers(wanted_galleries: QuerySet, provider: str, logger: OptionalLogger=None) -> None:
 
     try:
         matchers = crawler_settings.provider_context.get_matchers(crawler_settings, logger, filter_name=provider, force=True, matcher_type='title')
@@ -50,7 +53,7 @@ def create_matches_wanted_galleries_from_providers(wanted_galleries, provider, l
 
 
 # WantedGallery
-def create_matches_wanted_galleries_from_providers_internal(wanted_galleries, logger=None, provider_filter='', cutoff=0.4, max_matches=20):
+def create_matches_wanted_galleries_from_providers_internal(wanted_galleries: QuerySet, logger: OptionalLogger=None, provider_filter: str='', cutoff: float=0.4, max_matches: int=20) -> None:
 
     try:
         galleries_title_id = []
@@ -61,9 +64,9 @@ def create_matches_wanted_galleries_from_providers_internal(wanted_galleries, lo
             galleries = Gallery.objects.eligible_for_use()
         for gallery in galleries:
             galleries_title_id.append(
-                [clean_title(gallery.title), gallery.pk])
+                (clean_title(gallery.title), gallery.pk))
             galleries_title_id.append(
-                [clean_title(gallery.title_jpn), gallery.pk])
+                (clean_title(gallery.title_jpn), gallery.pk))
 
         if logger:
             logger.info(
@@ -99,7 +102,7 @@ def create_matches_wanted_galleries_from_providers_internal(wanted_galleries, lo
 
 
 # Archive
-def search_for_archives_matches_web(archives, matcher_filter='', logger=None):
+def search_for_archives_matches_web(archives: ArchiveQuerySet, matcher_filter: str='', logger: OptionalLogger=None) -> None:
 
     try:
         if logger:
@@ -165,7 +168,7 @@ def search_for_archives_matches_web(archives, matcher_filter='', logger=None):
 
 
 # Archive
-def match_archives_from_gallery_titles(archives, logger=None, cutoff=0.4, max_matches=20, provider=''):
+def match_archives_from_gallery_titles(archives: ArchiveQuerySet, logger: OptionalLogger = None, cutoff: float = 0.4, max_matches: int = 20, provider: str = '') -> None:
 
     try:
         if not archives:
@@ -184,10 +187,10 @@ def match_archives_from_gallery_titles(archives, logger=None, cutoff=0.4, max_ma
             for gallery in galleries:
                 if gallery.title:
                     galleries_title_id.append(
-                        [replace_illegal_name(gallery.title), gallery.pk])
+                        (replace_illegal_name(gallery.title), gallery.pk))
                 if gallery.title_jpn:
                     galleries_title_id.append(
-                        [replace_illegal_name(gallery.title_jpn), gallery.pk])
+                        (replace_illegal_name(gallery.title_jpn), gallery.pk))
 
             if logger:
                 logger.info(
@@ -244,8 +247,8 @@ def match_archives_from_gallery_titles(archives, logger=None, cutoff=0.4, max_ma
                                     str(galleries_same_size.count()),
                                     archive.zipped.name)
                                     )
-                    for similar in galleries_same_size:
-                        gallery = Gallery.objects.get(pk=similar.pk)
+                    for similar_gallery in galleries_same_size:
+                        gallery = Gallery.objects.get(pk=similar_gallery.pk)
 
                         ArchiveMatches.objects.create(archive=archive,
                                                       gallery=gallery,
@@ -260,7 +263,12 @@ def match_archives_from_gallery_titles(archives, logger=None, cutoff=0.4, max_ma
 
 
 # Archive
-def generate_possible_matches_for_archives(archives, logger=None, cutoff=0.4, max_matches=20, filters=(), match_local=True, match_web=True, update_if_local=False):
+def generate_possible_matches_for_archives(archives: ArchiveQuerySet, logger: OptionalLogger = None,
+                                           cutoff: float = 0.4, max_matches: int = 20,
+                                           filters: Iterable[str] = (),
+                                           match_local: bool = True,
+                                           match_web: bool = True,
+                                           update_if_local: bool = False) -> None:
     # TODO: Not implemented: update_if_local, expose match_by_filesize.
     try:
         if not archives:
@@ -283,7 +291,7 @@ def generate_possible_matches_for_archives(archives, logger=None, cutoff=0.4, ma
         thread_logger.error(traceback.format_exc())
 
 
-def match_external(archives, matcher_filters, logger, cutoff=0.4, max_matches=20):
+def match_external(archives: ArchiveQuerySet, matcher_filters: Iterable[str], logger: OptionalLogger, cutoff: float = 0.4, max_matches: int = 20) -> None:
     matchers_per_matcher_filter = {}
     if matcher_filters:
         for matcher_filter in matcher_filters:
@@ -301,7 +309,7 @@ def match_external(archives, matcher_filters, logger, cutoff=0.4, max_matches=20
             if logger:
                 logger.info("For filter {}, using matcher: {}".format(matcher_filter, str(matcher[0])))
 
-    for i, archive in enumerate(archives, start=1):
+    for i, archive in enumerate(archives, start=1):  # type: ignore
 
         for matcher_filter, matchers in matchers_per_matcher_filter.items():
 
@@ -348,9 +356,12 @@ def match_external(archives, matcher_filters, logger, cutoff=0.4, max_matches=20
                     )
 
 
-def match_internal(archives, providers, logger, cutoff=0.4, max_matches=20, match_by_filesize=True):
-    galleries_per_provider = {}
-    galleries_title_id_per_provider = {}
+def match_internal(archives: ArchiveQuerySet, providers: Iterable[str],
+                   logger: OptionalLogger, cutoff: float = 0.4,
+                   max_matches: int = 20, match_by_filesize: bool = True) -> None:
+
+    galleries_per_provider: Dict[str, GalleryQuerySet] = {}
+    galleries_title_id_per_provider: Dict[str, List[Tuple[str, str]]] = {}
 
     if providers:
         for provider in providers:
@@ -363,12 +374,12 @@ def match_internal(archives, providers, logger, cutoff=0.4, max_matches=20, matc
         for gallery in galleries:
             if gallery.title:
                 galleries_title_id_per_provider[provider].append(
-                    [replace_illegal_name(gallery.title), gallery.pk])
+                    (replace_illegal_name(gallery.title), gallery.pk))
             if gallery.title_jpn:
                 galleries_title_id_per_provider[provider].append(
-                    [replace_illegal_name(gallery.title_jpn), gallery.pk])
+                    (replace_illegal_name(gallery.title_jpn), gallery.pk))
 
-    for i, archive in enumerate(archives, start=1):
+    for i, archive in enumerate(archives, start=1):  # type: ignore
 
         for provider, galleries_title_id in galleries_title_id_per_provider.items():
 
@@ -421,8 +432,8 @@ def match_internal(archives, providers, logger, cutoff=0.4, max_matches=20, matc
                     str(galleries_same_size.count()),
                     archive.title)
                 )
-            for similar in galleries_same_size:
-                gallery = Gallery.objects.get(pk=similar.pk)
+            for similar_gallery in galleries_same_size:
+                gallery = Gallery.objects.get(pk=similar_gallery.pk)
 
                 ArchiveMatches.objects.update_or_create(
                     archive=archive,

@@ -9,7 +9,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
 from django.urls import reverse
 from django.db import transaction
-from django.http import Http404
+from django.http import Http404, HttpRequest
 from django.http import HttpResponseRedirect, HttpResponse
 from django.shortcuts import render
 from django.conf import settings
@@ -31,7 +31,7 @@ frontend_logger = logging.getLogger('viewer.frontend')
 crawler_settings = settings.CRAWLER_SETTINGS
 
 
-def archive_details(request, pk, view="cover"):
+def archive_details(request: HttpRequest, pk: int, view: str = "cover") -> HttpResponse:
     """Archive listing."""
 
     try:
@@ -105,7 +105,7 @@ def archive_details(request, pk, view="cover"):
 
 
 @login_required
-def archive_update(request, pk, tool=None, tool_use_id=None):
+def archive_update(request: HttpRequest, pk: int, tool: str=None, tool_use_id: str=None) -> HttpResponse:
     """Update archive title, rating, tags, archives."""
     if not request.user.is_staff:
         messages.error(request, "You need to be an admin to update an archive.")
@@ -167,7 +167,7 @@ def archive_update(request, pk, tool=None, tool_use_id=None):
             tags = p.getlist("custom_tags")
             for t in tags:
                 lst.append(Tag.objects.get(pk=t))
-            archive.custom_tags = lst
+            archive.custom_tags.set(lst)
         else:
             archive.custom_tags.clear()
         if "possible_matches" in p and p["possible_matches"] != "":
@@ -206,7 +206,7 @@ def archive_update(request, pk, tool=None, tool_use_id=None):
     return HttpResponseRedirect(request.META["HTTP_REFERER"])
 
 
-def archive_download(request, pk):
+def archive_download(request: HttpRequest, pk: int) -> HttpResponse:
     try:
         archive = Archive.objects.get(pk=pk)
     except Archive.DoesNotExist:
@@ -224,7 +224,7 @@ def archive_download(request, pk):
         return HttpResponseRedirect(archive.zipped.url)
 
 
-def archive_thumb(request, pk):
+def archive_thumb(request: HttpRequest, pk: int) -> HttpResponse:
     try:
         archive = Archive.objects.get(pk=pk)
     except Archive.DoesNotExist:
@@ -243,7 +243,7 @@ def archive_thumb(request, pk):
 
 
 @login_required
-def extract_toggle(request, pk):
+def extract_toggle(request: HttpRequest, pk: int) -> HttpResponse:
     """Extract archive toggle."""
 
     if not request.user.is_staff:
@@ -261,7 +261,7 @@ def extract_toggle(request, pk):
 
 
 @login_required
-def public_toggle(request, pk):
+def public_toggle(request: HttpRequest, pk: int) -> HttpResponse:
     """Public archive toggle."""
 
     if not request.user.is_staff:
@@ -282,7 +282,7 @@ def public_toggle(request, pk):
 
 
 @login_required
-def recalc_info(request, pk):
+def recalc_info(request: HttpRequest, pk: int) -> HttpResponse:
     """Recalculate archive info."""
 
     if not request.user.is_staff:
@@ -302,7 +302,7 @@ def recalc_info(request, pk):
 
 
 @login_required
-def recall_api(request, pk):
+def recall_api(request: HttpRequest, pk: int) -> HttpResponse:
     """Recall provider API, if possible."""
 
     if not request.user.is_staff:
@@ -334,7 +334,7 @@ def recall_api(request, pk):
 
 
 @login_required
-def generate_matches(request, pk):
+def generate_matches(request: HttpRequest, pk: int) -> HttpResponse:
     """Generate matches for non-match."""
 
     if not request.user.is_staff:
@@ -375,7 +375,7 @@ def generate_matches(request, pk):
 
 
 @login_required
-def rematch_archive(request, pk):
+def rematch_archive(request: HttpRequest, pk: int) -> HttpResponse:
     """Match an Archive."""
 
     if not request.user.is_staff:
@@ -399,7 +399,7 @@ def rematch_archive(request, pk):
 
 
 @login_required
-def delete_archive(request, pk):
+def delete_archive(request: HttpRequest, pk: int) -> HttpResponse:
     """Delete archive and gallery data if there is any."""
 
     if not request.user.is_staff:
@@ -415,16 +415,16 @@ def delete_archive(request, pk):
         p = request.POST
         if "delete_confirm" in p:
 
-            message = list()
+            message_list = list()
 
             if "delete-archive" in p:
-                message.append('archive entry')
+                message_list.append('archive entry')
             if "delete-gallery" in p:
-                message.append('associated gallery')
+                message_list.append('associated gallery')
             if "delete-file" in p:
-                message.append('associated file')
+                message_list.append('associated file')
 
-            message = 'For archive: {}, deleting: {}'.format(archive.title, ', '.join(message))
+            message = 'For archive: {}, deleting: {}'.format(archive.title, ', '.join(message_list))
 
             frontend_logger.info(message)
             messages.success(request, message)

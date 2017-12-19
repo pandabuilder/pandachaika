@@ -2,13 +2,21 @@
 import configparser
 import os
 import shutil
-
+import typing
 # Reads all providers, to parse each provider specific options into the general settings object.
 # Main concern with this first approach is that a provider could read settings from another provider (cookies, etc).
 # Another option is to have each provider construct it's own settings object, inheriting from this,
 # is that it would need to copy the original settings object each time a provider specific setting is needed.
+from typing import Dict, Any, Optional, Tuple, List
+
+from django.db.models.base import ModelBase
+
 from core.base.providers import ProviderContext
+from core.base.types import DataDict
 from core.workers.holder import WorkerContext
+
+if typing.TYPE_CHECKING:
+    from viewer.models import Gallery, Archive, WantedGallery, FoundGallery
 
 
 class GlobalInfo:
@@ -37,11 +45,11 @@ class ConfigFileError(Exception):
 class AutoCheckerSettings:
     __slots__ = ['enable', 'startup', 'cycle_timer', 'providers']
 
-    def __init__(self):
-        self.enable = False
-        self.startup = False
-        self.cycle_timer = 0
-        self.providers = []
+    def __init__(self) -> None:
+        self.enable: bool = False
+        self.startup: bool = False
+        self.cycle_timer: float = 0
+        self.providers: List[str] = []
 
 
 class AutoWantedSettings:
@@ -49,58 +57,58 @@ class AutoWantedSettings:
         'enable', 'startup', 'cycle_timer', 'providers'
     ]
 
-    def __init__(self):
-        self.enable = False
-        self.startup = False
-        self.cycle_timer = 0
-        self.providers = []
+    def __init__(self) -> None:
+        self.enable: bool = False
+        self.startup: bool = False
+        self.cycle_timer: float = 0
+        self.providers: List[str] = []
 
 
 class AutoUpdaterSettings:
     __slots__ = ['enable', 'startup', 'cycle_timer', 'buffer_delta', 'buffer_back', 'buffer_after', 'providers']
 
-    def __init__(self):
-        self.enable = False
-        self.startup = False
-        self.cycle_timer = 0
-        self.buffer_delta = 0
-        self.buffer_back = 0
-        self.buffer_after = 0
-        self.providers = []
+    def __init__(self) -> None:
+        self.enable: bool = False
+        self.startup: bool = False
+        self.cycle_timer: float = 0
+        self.buffer_delta: int = 0
+        self.buffer_back: int = 0
+        self.buffer_after: int = 0
+        self.providers: List[str] = []
 
 
 class PushoverSettings:
     __slots__ = ['enable', 'user_key', 'token']
 
-    def __init__(self):
-        self.enable = False
-        self.user_key = ''
-        self.token = ''
+    def __init__(self) -> None:
+        self.enable: bool = False
+        self.user_key: str = ''
+        self.token: str = ''
 
 
 class MailSettings:
     __slots__ = ['enable', 'mailhost', 'from_', 'to', 'credentials', 'username', 'password', 'subject']
 
-    def __init__(self):
-        self.enable = False
-        self.mailhost = ''
-        self.from_ = ''
-        self.to = ''
-        self.credentials = None
-        self.username = ''
-        self.password = ''
-        self.subject = 'CherryPy Error'
+    def __init__(self) -> None:
+        self.enable: bool = False
+        self.mailhost: str = ''
+        self.from_: str = ''
+        self.to: str = ''
+        self.credentials: Optional[Tuple[str, str]] = None
+        self.username: str = ''
+        self.password: str = ''
+        self.subject: str = 'CherryPy Error'
 
 
 class ElasticSearchSettings:
     __slots__ = ['enable', 'url', 'max_result_window', 'auto_refresh', 'index_name']
 
-    def __init__(self):
-        self.enable = False
-        self.url = 'http://127.0.0.1:9200/'
-        self.max_result_window = 10000
-        self.auto_refresh = False
-        self.index_name = 'viewer'
+    def __init__(self) -> None:
+        self.enable: bool = False
+        self.url: str = 'http://127.0.0.1:9200/'
+        self.max_result_window: int = 10000
+        self.auto_refresh: bool = False
+        self.index_name: str = 'viewer'
 
 
 class WebServerSettings:
@@ -108,13 +116,13 @@ class WebServerSettings:
         'bind_address', 'bind_port', 'enable_ssl', 'ssl_certificate', 'ssl_private_key', 'write_access_log'
     ]
 
-    def __init__(self):
-        self.bind_address = '127.0.0.1'
-        self.bind_port = 8090
-        self.enable_ssl = 8090
-        self.ssl_certificate = 8090
-        self.ssl_private_key = 8090
-        self.write_access_log = False
+    def __init__(self) -> None:
+        self.bind_address: str = '127.0.0.1'
+        self.bind_port: int = 8090
+        self.enable_ssl: bool = False
+        self.ssl_certificate: str = ''
+        self.ssl_private_key: str = ''
+        self.write_access_log: bool = False
 
 
 class UrlSettings:
@@ -123,13 +131,13 @@ class UrlSettings:
         'viewer_main_url', 'media_url', 'static_url'
     ]
 
-    def __init__(self):
-        self.behind_proxy = False
-        self.enable_public_submit = False
-        self.enable_public_stats = False
-        self.viewer_main_url = ''
-        self.media_url = '/media/'
-        self.static_url = '/static/'
+    def __init__(self) -> None:
+        self.behind_proxy: bool = False
+        self.enable_public_submit: bool = False
+        self.enable_public_stats: bool = False
+        self.viewer_main_url: str = ''
+        self.media_url: str = '/media/'
+        self.static_url: str = '/static/'
 
 
 class Settings:
@@ -137,10 +145,16 @@ class Settings:
     # We are storing the context here, but it should be somewhere else, available globally.
     provider_context = ProviderContext()
     workers = WorkerContext()
+    gallery_model: 'Gallery' = None
+    archive_model: 'Archive' = None
+    found_gallery_model: 'FoundGallery' = None
+    wanted_gallery_model: 'WantedGallery' = None
 
-    def __init__(self, load_from_disk=False, default_dir=None, load_from_config=None):
+    def __init__(self, load_from_disk: bool = False,
+                 default_dir: str = None,
+                 load_from_config: typing.Union[DataDict, configparser.ConfigParser] = None) -> None:
         # INTERNAL USE
-        self.force_dl_type = None
+        self.force_dl_type: Optional[str] = None
         # Used by autoupdater to not overwrite original value, since it would be replaced by provider_info
         self.keep_dl_type = False
         self.archive_reason = ''
@@ -171,26 +185,26 @@ class Settings:
         self.retry_failed = False
         self.internal_matches_for_non_matches = False
         self.timed_downloader_startup = False
-        self.timed_downloader_cycle_timer = 5
+        self.timed_downloader_cycle_timer: float = 5
         self.parallel_post_downloaders = 4
         self.cherrypy_auto_restart = False
         self.add_as_public = False
 
         self.db_engine = 'sqlite'
-        self.database = {}
-        self.torrent = {}
+        self.database: Dict[str, Any] = {}
+        self.torrent: Dict[str, Any] = {}
         self.webserver = WebServerSettings()
         self.urls = UrlSettings()
 
-        self.ftps = {}
+        self.ftps: Dict[str, Any] = {}
 
         self.rematch_file = False
         self.rematch_file_list = ['non-match']
         self.rehash_files = False
-        self.discard_tags = []
+        self.discard_tags: List[str] = []
 
-        self.matchers = {}
-        self.downloaders = {}
+        self.matchers: Dict[str, int] = {}
+        self.downloaders: Dict[str, int] = {}
 
         self.copy_match_file = True
 
@@ -205,9 +219,9 @@ class Settings:
             Gecko/20100101 Firefox/38.0',
         }
 
-        self.providers = {}
+        self.providers: Dict[str, Any] = {}
 
-        self.remote_site = {}
+        self.remote_site: Dict[str, Any] = {}
 
         self.wait_timer = 6
         self.timeout_timer = 25
@@ -223,7 +237,8 @@ class Settings:
             self.config.read_dict(load_from_config)
             self.dict_to_settings(self.config)
 
-    def load_config_from_file(self, default_dir=None):
+    def load_config_from_file(self,
+                              default_dir: str = None) -> None:
         if default_dir:
             self.default_dir = default_dir
         else:
@@ -247,14 +262,14 @@ class Settings:
         self.dict_to_settings(config)
         self.config = config
 
-    def write(self):
+    def write(self) -> None:
         with open(
             os.path.join(self.default_dir, "settings.ini"),
             'w'
         ) as configfile:
             self.config.write(configfile)
 
-    def allow_type_downloaders_only(self, downloader_type):
+    def allow_type_downloaders_only(self, downloader_type: str) -> None:
         for downloader in self.downloaders.keys():
             if downloader.endswith(downloader_type):
                 self.downloaders[downloader] = 1
@@ -262,7 +277,9 @@ class Settings:
                 self.downloaders[downloader] = -1
         self.replace_metadata = False
 
-    def allow_downloaders_only(self, downloaders, replace_existing=True, retry_failed=True, redownload=False):
+    def allow_downloaders_only(self, downloaders: List[str],
+                               replace_existing: bool=True, retry_failed: bool=True,
+                               redownload: bool=False) -> None:
         for downloader in self.downloaders.keys():
             self.downloaders[downloader] = -1
         for count, downloader in reversed(list(enumerate(downloaders))):
@@ -271,7 +288,7 @@ class Settings:
         self.retry_failed = retry_failed
         self.redownload = redownload
 
-    def set_update_metadata_options(self, providers=None):
+    def set_update_metadata_options(self, providers: typing.Iterable[str]=None) -> None:
         if not providers:
             for downloader in self.downloaders.keys():
                 if downloader.endswith("info"):
@@ -293,7 +310,16 @@ class Settings:
         self.update_metadata_mode = True
         self.silent_processing = True
 
-    def dict_to_settings(self, config):
+    @classmethod
+    def set_models(cls, gallery_model: ModelBase,
+                   archive_model: ModelBase, found_gallery_model: ModelBase,
+                   wanted_gallery_model: ModelBase):
+        cls.gallery_model = gallery_model
+        cls.archive_model = archive_model
+        cls.found_gallery_model = found_gallery_model
+        cls.wanted_gallery_model = wanted_gallery_model
+
+    def dict_to_settings(self, config: configparser.ConfigParser) -> None:
 
         if 'requests_headers' in config:
             self.requests_headers.update(config['requests_headers'])

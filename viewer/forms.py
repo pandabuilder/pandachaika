@@ -1,4 +1,5 @@
 ﻿import os
+from typing import Dict, Any, List
 
 from django import forms
 from django.forms.models import BaseModelFormSet, modelformset_factory, ModelChoiceField
@@ -10,7 +11,7 @@ from django.forms.utils import flatatt
 
 from dal import autocomplete
 from dal_jal.widgets import JalWidgetMixin
-from viewer.models import Archive, ArchiveMatches, Image
+from viewer.models import Archive, ArchiveMatches, Image, Gallery
 
 from dal.widgets import (
     WidgetMixin
@@ -62,7 +63,7 @@ class JalTextWidget(JalWidgetMixin, WidgetMixin, forms.TextInput):
 
         return mark_safe(html)
 
-    def build_attrs(self, *args, **kwargs):
+    def build_attrs(self, *args: Any, **kwargs: Any) -> Dict[str, str]:
 
         attrs = {
             'data-autocomplete-choice-selector': '[data-value]',
@@ -81,7 +82,7 @@ class JalTextWidget(JalWidgetMixin, WidgetMixin, forms.TextInput):
 
 
 class MatchesModelChoiceField(ModelChoiceField):
-    def label_from_instance(self, obj):
+    def label_from_instance(self, obj: Gallery) -> str:
         first_artist_tag = obj.tags.first_artist_tag()
         tag_name = ''
         if first_artist_tag:
@@ -202,10 +203,10 @@ class ArchiveSearchSimpleForm(forms.Form):
 
 
 class SpanErrorList(ErrorList):
-    def __str__(self):              # __unicode__ on Python 2
+    def __str__(self) -> str:              # __unicode__ on Python 2
         return self.as_divs()
 
-    def as_divs(self):
+    def as_divs(self) -> str:
         if not self:
             return ''
         return '<div class="errorlist">%s</div>' % ''.join(['<span  class="alert alert-danger error" role="alert">%s</span>' % e for e in self])
@@ -229,7 +230,7 @@ class ArchiveModForm(forms.ModelForm):
             # 'possible_matches': forms.widgets.Select(attrs={'class': 'form-control'}),
         }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         # self.archive = kwargs.pop("archive")
         super(ArchiveModForm, self).__init__(*args, **kwargs)
         self.fields["possible_matches"].queryset = self.instance.possible_matches.order_by(
@@ -313,7 +314,7 @@ class ImageForm(forms.ModelForm):
         model = Image
         fields = ['position']
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super(ImageForm, self).__init__(*args, **kwargs)
 #         self.fields["position"].choices = [
 #             (x, x) for x in Image.objects.filter(
@@ -327,10 +328,10 @@ class ImageForm(forms.ModelForm):
 
 
 class BaseImageFormSet(BaseModelFormSet):
-    def clean(self):
+    def clean(self) -> None:
         if any(self.errors):
             return
-        positions = []
+        positions: List[int] = []
         for form in self.forms:
             position = form.cleaned_data['position']
             if position in positions:

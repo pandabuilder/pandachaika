@@ -10,10 +10,10 @@ class TimedAutoWanted(BaseScheduler):
     thread_name = 'auto_wanted'
 
     @staticmethod
-    def timer_to_seconds(timer):
+    def timer_to_seconds(timer: float) -> float:
         return timer * 60 * 60
 
-    def job(self):
+    def job(self) -> None:
         while not self.stop.is_set():
             seconds_to_wait = self.wait_until_next_run()
             if self.stop.wait(timeout=seconds_to_wait):
@@ -25,7 +25,7 @@ class TimedAutoWanted(BaseScheduler):
 
                     attrs = Attribute.objects.filter(provider__slug=provider_name)
 
-                    for wanted_generator in self.settings.provider_context.get_wanted_generators((provider_name, )):
+                    for wanted_generator in self.settings.provider_context.get_wanted_generators(provider_name):
                         wanted_generator(self.settings, self.crawler_logger, attrs)
 
             self.update_last_run(django_tz.now())

@@ -1,14 +1,19 @@
 import re
+import typing
 from urllib.parse import unquote
 
+from core.base.types import GalleryData
 from . import constants
 
+if typing.TYPE_CHECKING:
+    from viewer.models import Gallery
 
-def resolve_url(gallery):
+
+def resolve_url(gallery: 'Gallery') -> str:
     return '{}/{}/'.format(constants.main_page, gallery.gid)
 
 
-def clean_title(title):
+def clean_title(title: str) -> str:
     # Add missing space
     title = re.sub(r'](\w)', '] \1', title)
     # Remove non characters, keep spaces
@@ -24,7 +29,7 @@ def clean_title(title):
     return title
 
 
-def guess_gallery_read_url(gallery_page_url, gallery, underscore=True):
+def guess_gallery_read_url(gallery_page_url, gallery: GalleryData, underscore=True):
     # Some galleries are badly presented on cafe, we can try to guess based on this:
     # Example 1:
     # https://hentai.cafe/namonashi-unrelenting-perorist-prostration/
@@ -36,9 +41,9 @@ def guess_gallery_read_url(gallery_page_url, gallery, underscore=True):
     # Example 3:
     # https://hentai.cafe/koppori-nama-beer-meeting/
     # https://hentai.cafe/manga/read/custom_hiiragisan/en/0/1/page/1
-    # TODO: Might need to switch from translating from the main URL to from gallery['title']
+    # TODO: Might need to switch from translating from the main URL to from gallery.title
     gallery_page_url = gallery_page_url.replace(constants.main_page, "")
-    artists = [x.replace("artist:", "") for x in gallery['tags'] if x.startswith('artist:')]
+    artists = [x.replace("artist:", "") for x in gallery.tags if x.startswith('artist:')]
     if artists:
         first_artist = artists[0]
         words_on_artist = first_artist.split('_')
