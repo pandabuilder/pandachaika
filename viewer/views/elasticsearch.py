@@ -29,7 +29,7 @@ class ESHomePageView(TemplateView):
 
     template_name = "viewer/elasticsearch.html"
 
-    def get_context_data(self, kwargs: Any) -> Dict[str, Any]:
+    def get_context_data(self, **kwargs: Any) -> Dict[str, Any]:
 
         if not es_client:
             return {'message': 'Elasticsearch is disabled for this instance.'}

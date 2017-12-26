@@ -219,8 +219,9 @@ class BaseParser:
     def id_from_url(url: str) -> str:
         pass
 
-    def id_from_url_implemented(self) -> bool:
-        if type(self).id_from_url is not BaseParser.id_from_url:
+    @classmethod
+    def id_from_url_implemented(cls) -> bool:
+        if cls.id_from_url is not BaseParser.id_from_url:
             return True
         return False
     #

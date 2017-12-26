@@ -1,6 +1,7 @@
 # Chose one depending on database backend
-pymysql
+# mysqlclient
 psycopg2
+# Main
 python-dateutil
 python-pushover
 twitter

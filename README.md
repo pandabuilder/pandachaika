@@ -30,6 +30,8 @@ See requirements.txt.
 
 You can configure the requirements, and remove the modules you aren't going to use (MySQL, rarfile, pushover, etc.)
 
+The [mysqlclient](https://github.com/PyMySQL/mysqlclient-python) python package requires some headers and libraries, check their documentation.
+
 How to run
 ---------------------
 

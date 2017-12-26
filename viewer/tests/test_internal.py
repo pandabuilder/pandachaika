@@ -4,7 +4,7 @@ unittest). These will both pass when you run "manage.py test".
 
 Replace these with more appropriate tests for your application.
 """
-from django.test import TestCase
+from django.test import TestCase, Client
 from django.contrib.auth.models import User
 from django.urls import reverse
 
@@ -30,15 +30,19 @@ class TagTestCase(TestCase):
 class PrivateURLsTest(TestCase):
     def setUp(self):
 
+        # Admin user
         test_admin1 = User.objects.create_user(username='admin1', password='12345')
+        test_admin1.is_staff = True
         test_admin1.save()
 
+        # Registered user
         test_user1 = User.objects.create_user(username='testuser1', password='12345')
         test_user1.save()
 
-        # Archive
+        # Archives
         self.test_book1 = Archive.objects.create(title='sample non public archive', user=test_admin1)
         self.test_book2 = Archive.objects.create(title='sample public archive', user=test_admin1, public=True)
+        self.test_book2 = Archive.objects.create(title='new public archive sample', user=test_admin1, public=True)
 
     def test_redirect_if_not_logged_in(self):
         """Test to deny access to log page"""
@@ -61,3 +65,30 @@ class PrivateURLsTest(TestCase):
     def test_for_public_archive_if_not_logged_in(self):
         resp = self.client.get(reverse('viewer:archive', args=[self.test_book2.pk]))
         self.assertEqual(resp.status_code, 200)
+
+    def test_public_archive_search(self):
+        response = self.client.get(reverse('viewer:archive-search'), {'title': 'archive'})
+        self.assertEqual(response.status_code, 200)
+        # Check that pagination works (only 1 page)
+        self.assertFalse(response.context['results'].has_next())
+        self.assertFalse(response.context['results'].has_previous())
+        # Check that the rendered context contains 2 archives.
+        self.assertEqual(len(response.context['results']), 2)
+
+    def test_logged_in_archive_search(self):
+        # Login, and get the 3 archives.
+        c = Client()
+        c.login(username='testuser1', password='12345')
+        response = c.get(reverse('viewer:archive-search'), {'title': 'archive'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context['results']), 3)
+
+    def test_quick_search(self):
+        # c.login(username='fred', password='secret')
+        response = self.client.get(reverse('viewer:archive-search'), {'qsearch': 'archive'})
+        self.assertEqual(response.status_code, 200)
+        # Check that pagination works (only 1 page)
+        self.assertFalse(response.context['results'].has_next())
+        self.assertFalse(response.context['results'].has_previous())
+        # Check that the rendered context contains 2 archives.
+        self.assertEqual(len(response.context['results']), 2)

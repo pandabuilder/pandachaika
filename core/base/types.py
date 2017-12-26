@@ -51,7 +51,9 @@ class GalleryData:
     def __str__(self) -> str:
         return str(self.__dict__)
 
-    def __eq__(self, other: 'GalleryData') -> bool:
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, GalleryData):
+            return False
         return self.__dict__ == other.__dict__
 
 

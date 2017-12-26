@@ -628,8 +628,8 @@ class Archive(models.Model):
                 'tags': {
                     'type': 'object',
                     'properties': {
-                        'scope': {'type': 'keyword', 'store': 'yes'},
-                        'name': {'type': 'keyword', 'store': 'yes'},
+                        'scope': {'type': 'keyword', 'store': True},
+                        'name': {'type': 'keyword', 'store': True},
                         'full': {'type': 'keyword'},
                     }
                 },

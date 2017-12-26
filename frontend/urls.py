@@ -70,7 +70,7 @@ if settings.DEBUG:
     try:
         import debug_toolbar
         urlpatterns += [
-            url(r'^' + settings.MAIN_URL + r'__debug__/', debug_toolbar.urls),
+            url(r'^' + settings.MAIN_URL + r'__debug__/', include(debug_toolbar.urls)),
         ]
         urlpatterns += static(settings.STATIC_URL,
                               document_root=settings.STATIC_ROOT)
