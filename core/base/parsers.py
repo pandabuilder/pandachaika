@@ -368,12 +368,14 @@ class InternalParser(BaseParser):
 
         galleries_gids = []
         found_galleries = set()
-        total_galleries_filtered = []
+        total_galleries_filtered: List[GalleryData] = []
         gallery_wanted_lists: Dict[str, List['WantedGallery']] = defaultdict(list)
 
         for gallery in dict_list:
             galleries_gids.append(gallery['gid'])
-            total_galleries_filtered.append(gallery)
+            gallery['posted'] = datetime.fromtimestamp(int(gallery['posted']), timezone.utc)
+            gallery_data = GalleryData(**gallery)
+            total_galleries_filtered.append(gallery_data)
 
         for galleries_gid_group in list(chunks(galleries_gids, 900)):
             for found_gallery in self.settings.gallery_model.objects.filter(gid__in=galleries_gid_group):
@@ -388,32 +390,31 @@ class InternalParser(BaseParser):
 
         for gallery in total_galleries_filtered:
 
-            if gallery['gid'] in found_galleries:
+            if gallery.gid in found_galleries:
                 continue
 
-            if self.general_utils.discard_by_tag_list(gallery['tags']):
+            if self.general_utils.discard_by_tag_list(gallery.tags):
                 self.logger.info(
-                    "Skipping gallery {}, because it's tagged with global discarded tags".format(gallery['title'])
+                    "Skipping gallery {}, because it's tagged with global discarded tags".format(gallery.title)
                 )
                 continue
 
             if wanted_filters:
                 self.compare_gallery_with_wanted_filters(
                     gallery,
-                    gallery['link'],
+                    gallery.link,
                     wanted_filters,
                     gallery_wanted_lists
                 )
-                if wanted_only and not gallery_wanted_lists[gallery['gid']]:
+                if wanted_only and not gallery_wanted_lists[gallery.gid]:
                     continue
 
-            self.logger.info("Gallery {} will be processed.".format(gallery['title']))
-            gallery['posted'] = datetime.fromtimestamp(int(gallery['posted']), timezone.utc)
+            self.logger.info("Gallery {} will be processed.".format(gallery.title))
 
-            if gallery['thumbnail']:
-                original_thumbnail_url = gallery['thumbnail_url']
+            if gallery.thumbnail:
+                original_thumbnail_url = gallery.thumbnail_url
 
-                gallery['thumbnail_url'] = gallery['thumbnail']
+                gallery.thumbnail_url = gallery.thumbnail
 
                 gallery = self.settings.gallery_model.objects.update_or_create_from_values(gallery)
 

@@ -623,6 +623,10 @@ def filter_galleries_no_request(filter_args: Dict[str, Any]) -> GalleryQuerySet:
         results = results.filter(posted__gte=filter_args["posted_from"])
     if filter_args["posted_to"]:
         results = results.filter(posted__lte=filter_args["posted_to"])
+    if filter_args["create_from"]:
+        results = results.filter(create_date__gte=filter_args["create_from"])
+    if filter_args["create_to"]:
+        results = results.filter(create_date__lte=filter_args["create_to"])
     if filter_args["category"]:
         results = results.filter(category__icontains=filter_args["category"])
     if filter_args["expunged"]:

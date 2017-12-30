@@ -53,6 +53,7 @@ crawler_settings = settings.CRAWLER_SETTINGS
 gallery_filter_keys = (
     "title", "rating_from", "rating_to", "filesize_from",
     "filesize_to", "filecount_from", "filecount_to", "posted_from", "posted_to",
+    "create_from", "create_to",
     "category", "provider", "dl_type",
     "expunged", "hidden", "fjord", "uploader", "tags", "not_used"
 )
@@ -1626,7 +1627,7 @@ def lists(request: HttpRequest, list_name: str) -> HttpResponse:
         if 'with-possible-matches' in get:
             results = results.annotate(n_possible_matches=Count('possible_matches')).filter(n_possible_matches__gt=0)
 
-        paginator = Paginator(results, 25)
+        paginator = Paginator(results, 100)
         try:
             results = paginator.page(page)
         except (InvalidPage, EmptyPage):

@@ -20,7 +20,7 @@ class GalleryData:
             dl_type: Optional[str] = None, public: Optional[bool] = None,
             content: Optional[str] = None, archiver_key: Optional[str] = None,
             root: Optional[str] = None, filename: Optional[str] = None,
-            queries: Optional[int] = None
+            queries: Optional[int] = None, thumbnail: Optional[str] = None
     ) -> None:
         self.gid = gid
         self.token = token
@@ -35,6 +35,7 @@ class GalleryData:
         self.filesize = filesize
         self.filecount = filecount
         self.uploader = uploader
+        self.thumbnail = thumbnail
         self.thumbnail_url = thumbnail_url
         self.dl_type = dl_type
         self.expunged = expunged

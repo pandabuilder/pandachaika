@@ -1,7 +1,7 @@
 from typing import Optional
 
 from django.db.models import F, QuerySet
-from django.forms import ModelForm
+from django.forms import ModelForm, BaseFormSet
 from django.http import HttpRequest
 
 from viewer.models import (
@@ -78,6 +78,11 @@ class ArchiveAdmin(admin.ModelAdmin):
         if not obj.user:
             obj.user = request.user
         obj.save()
+
+    def save_related(self, request: HttpRequest, form: ModelForm, formsets: BaseFormSet, change):
+        super(ArchiveAdmin, self).save_related(request, form, formsets, change)
+        if form.instance.gallery and form.instance.gallery.tags.all():
+            form.instance.tags.set(form.instance.gallery.tags.all())
 
 
 class TagAdmin(admin.ModelAdmin):
