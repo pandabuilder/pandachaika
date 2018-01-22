@@ -1126,10 +1126,12 @@ class Archive(models.Model):
         else:
             galleries = Gallery.objects.eligible_for_use()
         for gallery in galleries:
-            galleries_title_id.append(
-                (replace_illegal_name(gallery.title), gallery.pk))
-            galleries_title_id.append(
-                (replace_illegal_name(gallery.title_jpn), gallery.pk))
+            if gallery.title:
+                galleries_title_id.append(
+                    (replace_illegal_name(gallery.title), gallery.pk))
+            if gallery.title_jpn:
+                galleries_title_id.append(
+                    (replace_illegal_name(gallery.title_jpn), gallery.pk))
 
         adj_title = replace_illegal_name(
             os.path.basename(self.zipped.name)).replace(".zip", "")
