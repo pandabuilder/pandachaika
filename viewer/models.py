@@ -518,6 +518,8 @@ class Gallery(models.Model):
                     crawler_settings.pushover.user_key,
                     crawler_settings.pushover.token,
                     message,
+                    device=crawler_settings.pushover.device,
+                    sound=crawler_settings.pushover.sound,
                     title="Wanted Gallery match found"
                 )
 

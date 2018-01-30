@@ -3,7 +3,6 @@
 psycopg2
 # Main
 python-dateutil
-python-pushover
 twitter
 beautifulsoup4
 CherryPy>=10

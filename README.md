@@ -28,7 +28,7 @@ Python 3.6 is the target version, won't work on Python 2. Must have been compile
 
 See requirements.txt.
 
-You can configure the requirements, and remove the modules you aren't going to use (MySQL, rarfile, pushover, etc.)
+You can configure the requirements, and remove the modules you aren't going to use (MySQL, rarfile, etc.)
 
 The [mysqlclient](https://github.com/PyMySQL/mysqlclient-python) python package requires some headers and libraries, check their documentation.
 

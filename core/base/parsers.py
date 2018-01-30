@@ -211,6 +211,8 @@ class BaseParser:
                     self.settings.pushover.user_key,
                     self.settings.pushover.token,
                     message,
+                    device=self.settings.pushover.device,
+                    sound=self.settings.pushover.sound,
                     title="Wanted Gallery match found"
                 )
             return

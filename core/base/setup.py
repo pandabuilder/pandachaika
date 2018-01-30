@@ -78,12 +78,14 @@ class AutoUpdaterSettings:
 
 
 class PushoverSettings:
-    __slots__ = ['enable', 'user_key', 'token']
+    __slots__ = ['enable', 'user_key', 'token', 'device', 'sound']
 
     def __init__(self) -> None:
         self.enable: bool = False
         self.user_key: str = ''
         self.token: str = ''
+        self.device: str = None
+        self.sound: str = None
 
 
 class MailSettings:
@@ -383,6 +385,10 @@ class Settings:
                 self.pushover.user_key = config['pushover']['user_key']
             if 'token' in config['pushover']:
                 self.pushover.token = config['pushover']['token']
+            if 'device' in config['pushover']:
+                self.pushover.device = config['pushover']['device']
+            if 'sound' in config['pushover']:
+                self.pushover.sound = config['pushover']['sound']
         if 'mail_logging' in config:
             if 'enable' in config['mail_logging']:
                 self.mail_logging.enable = config['mail_logging'].getboolean('enable')

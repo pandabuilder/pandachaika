@@ -23,17 +23,15 @@ try:
 except ImportError:
     rarfile = None
 
-try:
-    import pushover
-except ImportError:
-    pushover = None
-
 import requests
 
 from core.base import setup
 
 if typing.TYPE_CHECKING:
     from core.workers.schedulers import BaseScheduler
+
+
+PUSHOVER_API_URL = 'https://api.pushover.net/1/messages.json'
 
 
 # The idea of this class is to contain certain methods, to not have to pass arguments that are global.
@@ -520,11 +518,24 @@ class StandardFormatter(logging.Formatter):
         return s
 
 
-def send_pushover_notification(user_key: str, token: str, message: str, title: str = "Alert", sound: str = "intermission", device: str = None) -> bool:
-    if pushover:
-        pushover.init(token)
-        pushover_client = pushover.Client(user_key)
-        pushover_client.send_message(message, title=title, sound=sound, device=device)
+def send_pushover_notification(user_key: str, token: str, message: str, title: str = "Alert", sound: str = None, device: str = None, attachment: str = None) -> bool:
+
+    payload = {
+        'token': token,
+        'user': user_key,
+        'message': message,
+        'title': title,
+        'sound': sound,
+        'device': device
+    }
+
+    if attachment:
+        files = {'attachment': open(attachment, 'rb')}
+        r = requests.post(PUSHOVER_API_URL, data=payload, files=files)
+    else:
+        r = requests.post(PUSHOVER_API_URL, data=payload)
+
+    if r.status_code == 200:
         return True
     else:
         return False
