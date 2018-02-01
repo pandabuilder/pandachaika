@@ -463,7 +463,8 @@ class Gallery(models.Model):
                 gallery__gid=self.gid,
                 gallery__provider=self.provider
             ).first()
-            if already_found:
+            # Skip already found unless it's a submitted gallery.
+            if already_found and not already_found.gallery.is_submitted():
                 continue
             # Skip wanted_filter that's not a global filter or is not for this provider.
             if wanted_filter.provider and wanted_filter.provider != self.provider:
