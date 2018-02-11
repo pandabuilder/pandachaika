@@ -9,8 +9,8 @@ from viewer.views.complete import (
     NonCustomTagAutocomplete, CustomTagAutocomplete,
     GalleryAutocomplete, SourceAutocomplete,
     ReasonAutocomplete, UploaderAutocomplete,
-    WantedGalleryAutocomplete
-)
+    WantedGalleryAutocomplete,
+    CategoryAutocomplete)
 
 admin.autodiscover()
 
@@ -63,6 +63,11 @@ urlpatterns += [
         r'^' + settings.MAIN_URL + r'uploader-autocomplete/$',
         UploaderAutocomplete.as_view(),
         name='uploader-autocomplete',
+    ),
+    url(
+        r'^' + settings.MAIN_URL + r'category-autocomplete/$',
+        CategoryAutocomplete.as_view(),
+        name='category-autocomplete',
     ),
 ]
 

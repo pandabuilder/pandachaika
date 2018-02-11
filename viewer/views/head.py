@@ -63,7 +63,7 @@ archive_filter_keys = (
     "rating_from", "rating_to", "match_type", "posted_from",
     "posted_to", "source_type", "tags", "only_favorites",
     "non_public", "public", "reason",
-    "uploader",
+    "uploader", "category",
     "qsearch"
 )
 
@@ -602,6 +602,8 @@ def filter_archives(request: HttpRequest, session_filters: Dict[str, str], reque
         results = results.filter(reason__icontains=request_filters["reason"])
     if request_filters["uploader"]:
         results = results.filter(gallery__uploader__icontains=request_filters["uploader"])
+    if request_filters["category"]:
+        results = results.filter(gallery__category__icontains=request_filters["category"])
 
     if request_filters["tags"]:
         tags = request_filters["tags"].split(',')
@@ -983,6 +985,8 @@ def filter_archives_simple(params: Dict[str, Any]) -> ArchiveQuerySet:
         results = results.filter(reason__icontains=params["reason"])
     if params["uploader"]:
         results = results.filter(gallery__uploader__icontains=params["uploader"])
+    if params["category"]:
+        results = results.filter(gallery__category__icontains=params["category"])
 
     if params["tags"]:
         tags = params["tags"].split(',')

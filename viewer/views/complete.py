@@ -221,6 +221,20 @@ class UploaderAutocomplete(ArchiveFieldAutocomplete):
         return sources[0:self.limit_choices]
 
 
+class CategoryAutocomplete(ArchiveFieldAutocomplete):
+
+    def choices_for_request(self) -> Iterable[Archive]:
+
+        q = self.request.GET.get('q', '')
+
+        if self.request.user.is_authenticated:
+            sources = Archive.objects.filter(gallery__category__icontains=q).order_by('gallery__category').values_list('gallery__category', flat=True).distinct()
+        else:
+            sources = Archive.objects.filter(gallery__category__icontains=q, public=True).order_by('gallery__category').values_list('gallery__category', flat=True).distinct()
+
+        return sources[0:self.limit_choices]
+
+
 class TagAutocomplete(autocomplete.JalQuerySetView):
 
     model = Tag

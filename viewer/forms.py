@@ -201,6 +201,20 @@ class ArchiveSearchSimpleForm(forms.Form):
         ),
     )
 
+    category = forms.CharField(
+        required=False,
+        label='Category',
+        widget=JalTextWidget(
+            url='category-autocomplete',
+            attrs={
+                'class': 'form-control',
+                'placeholder': '',
+                'data-autocomplete-minimum-characters': 3,
+                'size': 10,
+            },
+        ),
+    )
+
 
 class SpanErrorList(ErrorList):
     def __str__(self) -> str:              # __unicode__ on Python 2
