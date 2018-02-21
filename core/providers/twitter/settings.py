@@ -12,6 +12,7 @@ class OwnSettings(ProviderSettings):
         self.token_secret = ''
         self.consumer_key = ''
         self.consumer_secret = ''
+        self.add_as_public = False
 
 
 def parse_config(global_settings: 'Settings', config: typing.Dict[str, typing.Any]) -> 'OwnSettings':
@@ -26,4 +27,7 @@ def parse_config(global_settings: 'Settings', config: typing.Dict[str, typing.An
             settings.consumer_key = config['general']['consumer_key']
         if 'consumer_secret' in config['general']:
             settings.consumer_secret = config['general']['consumer_secret']
+    if 'wanted' in config:
+        if 'add_as_public' in config['wanted']:
+            settings.add_as_public = config['wanted'].getboolean('add_as_public')
     return settings

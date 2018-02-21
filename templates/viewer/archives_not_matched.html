@@ -14,7 +14,7 @@
     <h2>Archives not matched with any gallery</h2>
     <p class="lead">Number of archives not matched (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
   </div>
-  <form action="{% url 'viewer:lists' 'archives-not-matched' %}" method="GET">
+  <form action="{% url 'viewer:archives-not-matched' %}" method="GET">
     {% for field in form %}
       <div class="page-line">
         {{ field.errors }}
@@ -24,7 +24,7 @@
     <div class="page-line form-inline">
       <button id="toggle-all" class="btn btn-info" type="button">Toggle All</button>
       <button type="submit" name="apply" class="btn btn-default">Search</button>
-      <a class="btn btn-default" href="{% url 'viewer:lists' 'archives-not-matched' %}">Clear</a>
+      <a class="btn btn-default" href="{% url 'viewer:archives-not-matched' %}">Clear</a>
       <input id="checkbox-f1" type="checkbox" name="no-custom-tags" value="1" {% if "no-custom-tags" in request.GET %}checked{% endif %}><label for="checkbox-f1"><span><span></span></span>No custom tags</label>
       <input id="checkbox-f2" type="checkbox" name="with-possible-matches" value="1" {% if "with-possible-matches" in request.GET %}checked{% endif %}><label for="checkbox-f2"><span><span></span></span>With possible matches</label>
     </div>
@@ -47,7 +47,7 @@
         </span>
     </div>
   {% endif %}
-  <form action="{% url 'viewer:lists' 'archives-not-matched' %}" method="POST">{% csrf_token %}
+  <form action="{% url 'viewer:archives-not-matched' %}" method="POST">{% csrf_token %}
     <ul class="list-group">
       {% for archive in results %}
         <li class="list-group-item">

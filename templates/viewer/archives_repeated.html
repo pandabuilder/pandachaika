@@ -14,7 +14,7 @@
       <h2>Galleries with more than one archive</h2>
       <p class="lead">Number of galleries (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
     </div>
-  <form action="{% url 'viewer:lists' 'repeated-archives' %}" method="GET">
+  <form action="{% url 'viewer:repeated-archives' %}" method="GET">
     {% for field in form %}
       <div class="page-line">
         {{ field.errors }}
@@ -23,7 +23,7 @@
     {% endfor %}
     <div class="page-line form-inline">
       <button type="submit" name="apply" class="btn btn-default">Search</button>
-      <a class="btn btn-default" href="{% url 'viewer:lists' 'repeated-archives' %}">Clear</a>
+      <a class="btn btn-default" href="{% url 'viewer:repeated-archives' %}">Clear</a>
       <input id="checkbox-f1" type="checkbox" name="no-custom-tags" value="1" {% if "no-custom-tags" in request.GET %}checked{% endif %}><label for="checkbox-f1"><span><span></span></span>No custom tags</label>
       <input id="checkbox-f2" type="checkbox" name="with-possible-matches" value="1" {% if "with-possible-matches" in request.GET %}checked{% endif %}><label for="checkbox-f2"><span><span></span></span>With possible matches</label>
     </div>
@@ -44,7 +44,7 @@
         </span>
       </div>
     {% endif %}
-    <form action="{% url 'viewer:lists' 'repeated-archives' %}" method="POST">{% csrf_token %}
+    <form action="{% url 'viewer:repeated-archives' %}" method="POST">{% csrf_token %}
     <ul class="list-group">
       {% for gallery in results %}
         <li class="list-group-item">

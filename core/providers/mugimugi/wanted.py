@@ -252,6 +252,7 @@ def wanted_generator(settings: 'Settings', ext_logger: OptionalLogger, attrs: Qu
                             publisher=publisher_name,
                             add_as_hidden=True,
                             reason=attrs.fetch_value('wanted_reason_{}'.format(query_name)) or '',
+                            public=attrs.fetch_value('wanted_public_{}'.format(query_name)) or False,
                             should_search=True,
                             keep_searching=True,
                             category='Manga',

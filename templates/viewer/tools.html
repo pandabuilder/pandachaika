@@ -54,13 +54,6 @@
         <a class="list-group-item" href="{% url 'viewer:tools-id' 'clear_all_archive_possible_matches' %}">Clear all archive possible matches</a>
       </div>
       <div class="list-group col-lg-3 col-md-4 col-sm-6 col-xs-12">
-        <div class="list-group-item active">Lists</div>
-        <a class="list-group-item" href="{% url 'viewer:lists' 'repeated-archives' %}">Display repeated archives (same gallery)</a>
-        <a class="list-group-item" href="{% url 'viewer:lists' 'missing-archives' %}">Display non used panda galleries</a>
-        <a class="list-group-item" href="{% url 'viewer:lists' 'archive-filesize-different' %}">Display galleries with archives not matching filesize</a>
-        <a class="list-group-item" href="{% url 'viewer:lists' 'archive-not-present' %}">Display archives with file not present in filesystem</a>
-      </div>
-      <div class="list-group col-lg-3 col-md-4 col-sm-6 col-xs-12">
         <div class="list-group-item active">Settings file</div>
         <a class="list-group-item" href="{% url 'viewer:tools-id' 'modify_settings' %}">Modify settings file for crawler</a>
         <a class="list-group-item" href="{% url 'viewer:tools-id' 'reload_settings' %}">Reload settings file for crawler</a>

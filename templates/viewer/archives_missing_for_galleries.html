@@ -15,7 +15,7 @@
     <h2>Galleries without associated archives</h2>
     <p class="lead">Number of galleries (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
     </div>
-    <form action="{% url 'viewer:lists' 'missing-archives' %}" method="GET">
+    <form action="{% url 'viewer:missing-archives' %}" method="GET">
       {% for field in form %}
         <div class="page-line">
           {{ field.errors }}
@@ -32,10 +32,10 @@
         </select>
         <input title="Download type" class="form-control" name="dl_type" placeholder="Download type" value="{{ request.GET.dl_type }}">
         <button type="submit" name="apply" class="btn btn-default">Search</button>
-        <a class="btn btn-default" href="{% url 'viewer:lists' 'missing-archives' %}">Clear</a>
+        <a class="btn btn-default" href="{% url 'viewer:missing-archives' %}">Clear</a>
       </div>
     </form>
-    <form action="{% url 'viewer:lists' 'missing-archives' %}{% if request.GET.provider %}?provider={{ request.GET.provider }}{% endif %}" method="POST">{% csrf_token %}
+    <form action="{% url 'viewer:missing-archives' %}{% if request.GET.provider %}?provider={{ request.GET.provider }}{% endif %}" method="POST">{% csrf_token %}
     {% load viewer_extras %}
     <!-- Next/Prev page links  -->
     {% if results.object_list and results.paginator.num_pages > 1 %}

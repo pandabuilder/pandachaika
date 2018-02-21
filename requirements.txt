@@ -3,17 +3,16 @@
 psycopg2
 # Main
 python-dateutil
-twitter
-beautifulsoup4
-CherryPy>=10
-Django>=2.0
-django-compressor
-Pillow>=4.2.0
-rarfile>=2.7
-requests>=2.5.3
+twitter==1.18.0
+beautifulsoup4==4.6.0
+CherryPy>=14
+Django>=2.0.2
+django-compressor==2.1.1
+Pillow>=5.0.0
+rarfile>=3.0
+requests>=2.18.4
 feedparser>=5.2.1
 transmissionrpc>=0.11
 -e git+https://github.com/pandabuilder/django-autocomplete-light.git#egg=django-autocomplete-light
-python-dateutil
 elasticsearch>=6.0.0,<7.0.0
 elasticsearch-dsl>=6.0.0,<7.0.0

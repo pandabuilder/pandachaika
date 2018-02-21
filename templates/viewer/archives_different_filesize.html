@@ -15,7 +15,7 @@
       <h2>Galleries that their associated archives don't match in filesize</h2>
       <p class="lead">Number of galleries (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
     </div>
-  <form action="{% url 'viewer:lists' 'archive-filesize-different' %}" method="GET">
+  <form action="{% url 'viewer:archive-filesize-different' %}" method="GET">
     {% for field in form %}
       <div class="page-line">
         {{ field.errors }}
@@ -30,10 +30,10 @@
         {% endfor %}
       </select>
       <button type="submit" name="apply" class="btn btn-default">Search</button>
-      <a class="btn btn-default" href="{% url 'viewer:lists' 'archive-filesize-different' %}">Clear</a>
+      <a class="btn btn-default" href="{% url 'viewer:archive-filesize-different' %}">Clear</a>
     </div>
   </form>
-  <form action="{% url 'viewer:lists' 'archive-filesize-different' %}{% if request.GET.provider %}?provider={{ request.GET.provider }}{% endif %}" method="POST">{% csrf_token %}
+  <form action="{% url 'viewer:archive-filesize-different' %}{% if request.GET.provider %}?provider={{ request.GET.provider }}{% endif %}" method="POST">{% csrf_token %}
   <!-- Next/Prev page links  -->
     {% if results.object_list and results.paginator.num_pages > 1 %}
       <div class="pagination-top">

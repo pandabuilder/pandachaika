@@ -25,14 +25,14 @@
   {% load viewer_extras %}
     <div><a href="{% url 'viewer:tools-id' 'wanted_galleries_possible_matches' %}">Search wanted galleries by internal galleries</a></div>
 
-    <form action="{% url 'viewer:lists' 'wanted-galleries' %}" method="POST">{% csrf_token %}
+    <form action="{% url 'viewer:wanted-galleries' %}" method="POST">{% csrf_token %}
       <div class="row">
         <div class="col-md-12">
           <button name="clear_all_matches" class="btn btn-default">Clear all matches</button>
         </div>
       </div>
     </form>
-    <form action="{% url 'viewer:lists' 'wanted-galleries' %}" method="GET">
+    <form action="{% url 'viewer:wanted-galleries' %}" method="GET">
       {% for field in form %}
         <div class="page-line">
           {{ field.errors }}
@@ -42,7 +42,7 @@
       <div class="page-line form-inline">
         <button id="toggle-all" class="btn btn-info" type="button">Toggle All</button>
         <button name="apply" class="btn btn-default">Search</button>
-        <a class="btn btn-default" href="{% url 'viewer:lists' 'wanted-galleries' %}">Clear</a>
+        <a class="btn btn-default" href="{% url 'viewer:wanted-galleries' %}">Clear</a>
         <input id="checkbox-f2" type="checkbox" name="wanted-should-search" value="1" {% if "wanted-should-search" in request.GET %}checked{% endif %}><label for="checkbox-f2"><span><span></span></span>Should search</label>
         <input id="checkbox-f3" type="checkbox" name="wanted-should-search-not" value="1" {% if "wanted-should-search-not" in request.GET %}checked{% endif %}><label for="checkbox-f3"><span><span></span></span>Should not search</label>
         <input id="checkbox-f4" type="checkbox" name="with-possible-matches" value="1" {% if "with-possible-matches" in request.GET %}checked{% endif %}><label for="checkbox-f4"><span><span></span></span>With possible matches</label>
@@ -54,7 +54,7 @@
         <input id="checkbox-f8" type="checkbox" name="wanted-no-found-galleries" value="1" {% if "wanted-no-found-galleries" in request.GET %}checked{% endif %}><label for="checkbox-f8"><span><span></span></span>No found galleries</label>
       </div>
     </form>
-    <form action="{% url 'viewer:lists' 'wanted-galleries' %}" method="POST">{% csrf_token %}
+    <form action="{% url 'viewer:wanted-galleries' %}" method="POST">{% csrf_token %}
   <!-- Next/Prev page links  -->
     {% if results.object_list and results.paginator.num_pages > 1 %}
       <div class="pagination-top">

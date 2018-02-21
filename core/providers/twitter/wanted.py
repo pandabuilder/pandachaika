@@ -82,7 +82,8 @@ def wanted_generator(settings: 'Settings', ext_logger: OptionalLogger, attrs: Qu
                                   'book_type': book_type,
                                   'add_as_hidden': True,
                                   'category': 'Manga',
-                                  'reason': 'wanimagazine'}
+                                  'reason': 'wanimagazine',
+                                  'public': own_settings.add_as_public}
                     )
                     if created:
                         wanted_gallery.should_search = True
@@ -140,7 +141,8 @@ def wanted_generator(settings: 'Settings', ext_logger: OptionalLogger, attrs: Qu
                                       'book_type': book_type,
                                       'add_as_hidden': True,
                                       'category': 'Manga',
-                                      'reason': 'wanimagazine'}
+                                      'reason': 'wanimagazine',
+                                      'public': own_settings.add_as_public}
                         )
                         if created:
                             wanted_gallery.should_search = True

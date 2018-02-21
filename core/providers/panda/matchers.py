@@ -1,13 +1,13 @@
 import os
 import re
 import zipfile
-from typing import Optional, List, Tuple
+from typing import Optional, List
 
 import requests
 import time
 
 from core.base.matchers import Matcher
-from core.base.types import GalleryData, MatchesValues, DataDict
+from core.base.types import MatchesValues, DataDict
 from core.base.utilities import (
     filecount_in_zip,
     get_zip_filesize,

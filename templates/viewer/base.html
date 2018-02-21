@@ -56,8 +56,8 @@
             <li class="dropdown">
               <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Help needed <span class="caret"></span></a>
               <ul class="dropdown-menu">
-                <li><a href="{% url 'viewer:lists' 'missing-archives' %}">Missing archives</a></li>
-                <li><a href="{% url 'viewer:lists' 'wanted-galleries' %}">Wanted galleries</a></li>
+                <li><a href="{% url 'viewer:missing-archives' %}">Missing archives</a></li>
+                <li><a href="{% url 'viewer:wanted-galleries' %}">Wanted galleries</a></li>
               </ul>
             </li>
             <li><a href="{% url 'viewer:url-submit' %}">Submit URLs</a></li>
@@ -67,13 +67,14 @@
             <li class="dropdown">
               <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Lists <span class="caret"></span></a>
               <ul class="dropdown-menu">
-                <li><a href="{% url 'viewer:lists' 'repeated-archives' %}">Repeated archives (same gallery)</a></li>
-                <li><a href="{% url 'viewer:lists' 'missing-archives' %}?provider=panda">Non used panda galleries</a></li>
-                <li><a href="{% url 'viewer:lists' 'archive-filesize-different' %}">Archives not matching gallery filesize</a></li>
-                <li><a href="{% url 'viewer:lists' 'archive-not-present' %}">Archives with file not present in filesystem</a></li>
-                <li><a href="{% url 'viewer:lists' 'archives-not-matched' %}">Archives without gallery matches</a></li>
+                <li><a href="{% url 'viewer:repeated-archives' %}">Repeated archives (same gallery)</a></li>
+                <li><a href="{% url 'viewer:missing-archives' %}?provider=panda">Non used panda galleries</a></li>
+                <li><a href="{% url 'viewer:archive-filesize-different' %}">Archives not matching gallery filesize</a></li>
+                <li><a href="{% url 'viewer:archive-not-present' %}">Archives with file not present in filesystem</a></li>
+                <li><a href="{% url 'viewer:archives-not-matched' %}">Archives without gallery matches</a></li>
                 <li class="divider"></li>
-                <li><a href="{% url 'viewer:lists' 'wanted-galleries' %}?{% url_replace 'wanted-not-found' '1' %}">Wanted galleries</a></li>
+                <li><a href="{% url 'viewer:wanted-galleries' %}?{% url_replace 'wanted-not-found' '1' %}">Wanted galleries</a></li>
+                <li><a href="{% url 'viewer:found-galleries' %}">Found galleries log</a></li>
               </ul>
             </li>
             <li class="dropdown">
@@ -104,6 +105,7 @@
                 <li><a href="{% url 'viewer:public-stats' %}">Collection stats</a></li>
                 <li><a href="{% url 'viewer:tag-frequency' %}">Tag frequency</a></li>
                 <li><a href="{% url 'viewer:gallery-frequency' %}">Gallery frequency</a></li>
+                <li><a href="{% url 'viewer:found-galleries' %}">Found galleries log</a></li>
               </ul>
             </li>
             <li><a href="{% url 'viewer:about' %}">About</a></li>

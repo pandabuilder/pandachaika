@@ -25,7 +25,6 @@ from core.base.utilities import (
     replace_illegal_name
 )
 from core.workers.schedulers import BaseScheduler
-from viewer.models import ArchiveQuerySet
 from viewer.models import Archive
 
 

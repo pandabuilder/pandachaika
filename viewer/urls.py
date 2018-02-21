@@ -1,5 +1,5 @@
 from django.conf.urls import url
-from viewer.views import head, browser, wanted, exp, api, archive, admin
+from viewer.views import head, browser, wanted, exp, api, archive, admin, manager
 from viewer.feeds import LatestArchivesFeed
 from viewer.views.elasticsearch import ESHomePageView, autocomplete_view, title_suggest_view
 
@@ -34,7 +34,6 @@ urlpatterns = [
     url(r"^wanted-gallery/(\d+)/$", wanted.wanted_gallery, name='wanted-gallery'),
     url(r"^user-archive-preferences/(\d+)/([\w-]+)/$", head.user_archive_preferences, name='user-archive-preferences'),
     url(r"^submit/$", head.url_submit, name='url-submit'),
-    url(r"^lists/([\w-]+)/$", head.lists, name='lists'),
     url(r"^login/$", head.viewer_login, name='login'),
     url(r"^logout/$", head.viewer_logout, name='logout'),
     url(r"^session-settings/$", head.session_settings, name='session-settings'),
@@ -46,6 +45,17 @@ urlpatterns = [
     url(r"^search/$", head.search, name='archive-search'),
     url(r"^about/$", head.about, name='about'),
     url(r"^$", head.search, name="main-page"),
+]
+
+# Manager lists.
+urlpatterns += [
+    url(r"^repeated-archives/$", manager.repeated_archives_for_galleries, name='repeated-archives'),
+    url(r"^archive-filesize-different/$", manager.archive_filesize_different_from_gallery, name='archive-filesize-different'),
+    url(r"^missing-archives/$", manager.missing_archives_for_galleries, name='missing-archives'),
+    url(r"^archive-not-present/$", manager.archives_not_present_in_filesystem, name='archive-not-present'),
+    url(r"^archives-not-matched/$", manager.archives_not_matched_with_gallery, name='archives-not-matched'),
+    url(r"^wanted-galleries/$", manager.wanted_galleries, name='wanted-galleries'),
+    url(r"^found-galleries/$", manager.found_galleries, name='found-galleries'),
 ]
 
 # Image viewer.

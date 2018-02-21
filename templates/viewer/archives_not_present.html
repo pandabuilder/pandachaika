@@ -14,7 +14,7 @@
     <h2>Archives not in filesystem</h2>
     <p class="lead">Number of archives (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
   </div>
-  <form action="{% url 'viewer:lists' 'archive-not-present' %}" method="GET">
+  <form action="{% url 'viewer:archive-not-present' %}" method="GET">
     {% for field in form %}
       <div class="page-line">
         {{ field.errors }}
@@ -24,7 +24,7 @@
     <div class="page-line form-inline">
       <button id="toggle-all" class="btn btn-info" type="button">Toggle All</button>
       <button type="submit" name="apply" class="btn btn-default">Search</button>
-      <a class="btn btn-default" href="{% url 'viewer:lists' 'archive-not-present' %}">Clear</a>
+      <a class="btn btn-default" href="{% url 'viewer:archive-not-present' %}">Clear</a>
     </div>
   </form>
   <!-- Next/Prev page links  -->
@@ -43,7 +43,7 @@
         </span>
     </div>
   {% endif %}
-  <form action="{% url 'viewer:lists' 'archive-not-present' %}" method="POST">{% csrf_token %}
+  <form action="{% url 'viewer:archive-not-present' %}" method="POST">{% csrf_token %}
     <ul class="list-group">
       {% for archive in results %}
         <li class="list-group-item">
