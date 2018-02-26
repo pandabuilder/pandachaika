@@ -48,6 +48,12 @@ class FolderCrawler(object):
                             help='Most parameters are set from the gallery, but reason is user-defined.'
                                  'Can be set afterwards, but this option sets it when crawling. For new files only')
 
+        parser.add_argument('-source', '--set-source',
+                            required=False,
+                            action='store',
+                            help='Override the default source_type for '
+                                 'archives added from the filesystem (default: folder)')
+
         parser.add_argument('-dmf', '--display-missing-files',
                             required=False,
                             action='store_true',
@@ -373,6 +379,9 @@ class FolderCrawler(object):
         if args.set_reason:
             self.settings.archive_reason = args.set_reason
 
+        if args.set_source:
+            self.settings.archive_source = args.set_source
+
         # The creation of the files list ends here. From here onwards, it's processing them.
 
         if len(files) == 0:
@@ -434,6 +443,8 @@ class FolderCrawler(object):
                         }
                         if self.settings.archive_reason:
                             values.update({'reason': self.settings.archive_reason})
+                        if self.settings.archive_source:
+                            values.update({'source_type': self.settings.archive_source})
                         Archive.objects.update_or_create_by_values_and_gid(
                             values, None, zipped=filepath)
                         continue
@@ -456,6 +467,8 @@ class FolderCrawler(object):
                             }
                             if self.settings.archive_reason:
                                 values.update({'reason': self.settings.archive_reason})
+                            if self.settings.archive_source:
+                                values.update({'source_type': self.settings.archive_source})
                             Archive.objects.add_or_update_from_values(
                                 values, zipped=filepath)
                             continue
@@ -502,6 +515,8 @@ class FolderCrawler(object):
                     }
                     if self.settings.archive_reason:
                         values.update({'reason': self.settings.archive_reason})
+                    if self.settings.archive_source:
+                        values.update({'source_type': self.settings.archive_source})
                     archive = Archive.objects.update_or_create_by_values_and_gid(
                         values, None, zipped=filepath)
 

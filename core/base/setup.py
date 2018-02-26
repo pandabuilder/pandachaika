@@ -160,6 +160,7 @@ class Settings:
         # Used by autoupdater to not overwrite original value, since it would be replaced by provider_info
         self.keep_dl_type = False
         self.archive_reason = ''
+        self.archive_source = ''
         self.silent_processing = False
         self.update_metadata_mode = False
 

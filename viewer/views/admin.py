@@ -616,6 +616,11 @@ def foldercrawler(request: HttpRequest) -> HttpResponse:
             # Force limit string length (reason field max_length)
             current_settings.archive_reason = reason[:200]
 
+        if 'source' in p and p['source'] != '':
+            source = p['source']
+            # Force limit string length (reason field max_length)
+            current_settings.archive_source = source[:50]
+
         if 'keep_this_settings' in p:
             current_settings.write()
             current_settings.load_config_from_file()
