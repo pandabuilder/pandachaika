@@ -110,7 +110,7 @@ class TitleMatcher(Matcher):
             return False
 
         for gallery in response_data:
-            if gallery['type'] in ('doujinshi', 'manga'):
+            if gallery['type'] in ('doujinshi', 'manga', 'hentai'):
                 matches_links.add(urljoin(constants.main_url, gallery['link']))
 
         self.gallery_links = list(matches_links)

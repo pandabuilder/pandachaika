@@ -51,7 +51,7 @@ class Parser(BaseParser):
             gallery.provider = self.name
             gallery.title = gallery_container.find("div", class_="content-name").h1.get_text()
 
-            if gallery.gid.startswith('manga'):
+            if gallery.gid.startswith('manga') or gallery.gid.startswith('hentai'):
                 gallery.category = 'Manga'
             elif gallery.gid.startswith('doujinshi'):
                 gallery.category = 'Doujinshi'
