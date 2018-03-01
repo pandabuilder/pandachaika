@@ -137,9 +137,9 @@ class Matcher(metaclass=Meta):
         self.settings = settings
         self.own_settings = settings.providers[self.provider]
         if not logger:
-            self.logger = logger
+            self.logger: OptionalLogger = FakeLogger()
         else:
-            self.logger = FakeLogger()
+            self.logger = logger
         self.general_utils = GeneralUtils(global_settings=settings)
         self.parser = self.settings.provider_context.get_parsers(self.settings, self.logger, filter_name=self.provider)[0]
         self.found_by = ''
