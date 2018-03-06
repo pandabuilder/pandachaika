@@ -7,6 +7,8 @@ import zipfile
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from itertools import chain
+
+from django.templatetags.static import static
 from os.path import join as pjoin, basename
 from tempfile import NamedTemporaryFile
 from typing import List, Tuple
@@ -830,6 +832,14 @@ class Archive(models.Model):
             return self.gallery.get_link()
         else:
             return ""
+
+    def get_available_thumbnail_plus_size(self) -> Tuple[str, int, int]:
+        if self.thumbnail.name:
+            return self.thumbnail.url, self.thumbnail_height, self.thumbnail_width
+        elif self.gallery and self.gallery.thumbnail.name:
+            return self.gallery.thumbnail.url, self.gallery.thumbnail_height, self.gallery.thumbnail_width
+        else:
+            return static("imgs/no_cover.png"), 290, 196
 
     def calculate_sha1_for_images(self) -> bool:
 

@@ -2,6 +2,7 @@
 <title>{% block title %}{{ archive.title }}{% endblock %}</title>
 {% load staticfiles %}
 {% block content %}
+  {% load viewer_extras %}
   {% if messages %}
     {% for message in messages %}
       <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
@@ -215,19 +216,19 @@
         <li id="img-container">
           {% for img in images.object_list %}
             {% if view == "cover" %}
-              <a href="{% url 'viewer:new-image-viewer' archive.pk images.start_index|add:forloop.counter0 %}">
+              <a href="{% url 'viewer:new-image-viewer' archive.pk images.start_index|add:forloop.counter0 %}?{% url_replace 'extracted' '1' %}">
                 <img class="img-responsive center-block" alt="" src="{% if img.thumbnail.name %}{{ img.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}"/>
               </a>
             {% elif view == "full" %}
-              <a href="{% url 'viewer:new-image-viewer' archive.pk images.start_index|add:forloop.counter0 %}">
+              <a href="{% url 'viewer:new-image-viewer' archive.pk images.start_index|add:forloop.counter0 %}?{% url_replace 'extracted' '1' %}">
                 <img id="img-{{ forloop.counter }}" class="img-responsive center-block" alt="" src="{% if img.image.name %}{{ img.image.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" width="{% if image.is_horizontal %}1500{% else %}1200{% endif %}"/>
               </a>
             {% elif view == "single" %}
-              <a href="{% url 'viewer:new-image-viewer' archive.pk images.start_index|add:forloop.counter0 %}">
+              <a href="{% url 'viewer:new-image-viewer' archive.pk images.start_index|add:forloop.counter0 %}?{% url_replace 'extracted' '1' %}">
                 <img class="img-responsive center-block" alt="" src="{% if img.image.name %}{{ img.image.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" width="{% if image.is_horizontal %}1500{% else %}900{% endif %}"/>
               </a>
             {% elif view == "thumbnails" %}
-              <a href="{% url 'viewer:new-image-viewer' archive.pk images.start_index|add:forloop.counter0 %}">
+              <a href="{% url 'viewer:new-image-viewer' archive.pk images.start_index|add:forloop.counter0 %}?{% url_replace 'extracted' '1' %}">
                 <img class="img-responsive center-block" alt="" src="{% if img.thumbnail.name %}{{ img.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}"/></a>{% endif %}
           {% endfor %}
         </li>
