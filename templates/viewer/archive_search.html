@@ -212,9 +212,11 @@
                         <a class="btn btn-xs btn-default" href="{% url 'viewer:archive-extract-toggle' archive.pk %}">Expand archive</a>
                       {% endif %}
                         <a class="btn btn-xs btn-default" href="{% url 'viewer:archive-download' archive.pk %}">Download archive</a>
+                        <a class="btn btn-xs btn-default" href="{% url 'viewer:archive-download' archive.pk %}?original=1">Download with original name</a>
                       </div>
                     {% else %}
                       <div><a class="btn btn-xs btn-default" href="{% url 'viewer:archive-download' archive.pk %}">Download archive</a></div>
+                      <div><a class="btn btn-xs btn-default" href="{% url 'viewer:archive-download' archive.pk %}?original=1">Download with original name</a></div>
                     {% endif %}
                     <div>
                       {% if archive.tag_lists %}

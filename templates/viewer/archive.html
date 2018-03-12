@@ -132,6 +132,7 @@
         <li class="subtitle">
           <a class="btn btn-default" href="{% url 'viewer:archive-extract-toggle' archive.pk %}">Expand archive</a>
           <a class="btn btn-default" href="{% url 'viewer:archive-download' archive.pk %}">Download archive</a>
+          <a class="btn btn-default" href="{% url 'viewer:archive-download' archive.pk %}?original=1">Download with original name</a>
           {% if archive.thumbnail.name %}
             <a class="btn btn-default img-preview" data-image-url="{{ archive.thumbnail.url }}" rel="popover">Hover for cover</a>
           {% endif %}
@@ -154,6 +155,7 @@
     {% elif archive.crc32 %}
       <li class="subtitle">
         <a class="btn btn-default" href="{% url 'viewer:archive-download' archive.pk %}">Download archive</a>
+        <a class="btn btn-default" href="{% url 'viewer:archive-download' archive.pk %}?original=1">Download with original name</a>
         {% if archive.thumbnail.name %}
           <a class="btn btn-default img-preview" data-image-url="{{ archive.thumbnail.url }}" rel="popover">Hover for cover</a>
         {% endif %}

@@ -2,6 +2,7 @@
 # exclusively.
 
 import logging
+from os.path import basename
 from urllib.parse import quote
 
 from django.contrib import messages
@@ -216,8 +217,12 @@ def archive_download(request: HttpRequest, pk: int) -> HttpResponse:
     if 'HTTP_X_FORWARDED_HOST' in request.META:
         response = HttpResponse()
         response["Content-Type"] = "application/zip"
-        response["Content-Disposition"] = 'attachment; filename*=UTF-8\'\'{0}'.format(
-            archive.pretty_name)
+        if 'original' in request.GET:
+            response["Content-Disposition"] = 'attachment; filename*=UTF-8\'\'{0}'.format(
+                quote(basename(archive.zipped.name)))
+        else:
+            response["Content-Disposition"] = 'attachment; filename*=UTF-8\'\'{0}'.format(
+                archive.pretty_name)
         response['X-Accel-Redirect'] = "/download/{0}".format(quote(archive.zipped.name)).encode('utf-8')
         return response
     else:
