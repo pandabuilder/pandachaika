@@ -1,0 +1,15 @@
+[Unit]
+Description=Panda Backup
+Documentation=https://github.com/pandabuilder/pandachaika
+After=local-fs.target network.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/home/panda/pandabackup/
+ExecStart=/home/panda/pandabackup/env/python /home/panda/pandabackup/server.py -c /home/panda/pandabackup/
+ExecReload=/bin/kill -USR2 $MAINPID
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target

@@ -1,36 +1,39 @@
 #!/bin/sh
 #
-# PROVIDE: panda
+# PROVIDE: pandabackup
 # REQUIRE: LOGIN
 # KEYWORD: shutdown
 
-# Add the following lines to /etc/rc.conf to enable panda:
-# panda_enable:         Set to NO by default. Set it to YES to enable it.
+# Add the following lines to /etc/rc.conf to enable pandabackup:
+# pandabackup_enable:         Set to NO by default. Set it to YES to enable it.
 #
-# panda_user:           The user account PandaBackup daemon runs as what
+# pandabackup_user:           The user account PandaBackup daemon runs as what
 #                       you want it to be.
-# panda_install_dir:    Directory where PandaBackup lives.
+# pandabackup_server_run:     Entry Python script full path.
 #                           
-# panda_conf_dir:       Directory where PandaBackup configuration files live.
+# pandabackup_conf_dir:       Directory where PandaBackup configuration files live.
+#
+# pandabackup_python:         Python Executable location.
 #
 
 . /etc/rc.subr
 
-name=panda
-rcvar=panda_enable
+name=pandabackup
+rcvar=pandabackup_enable
 
 load_rc_config $name
-: ${panda_enable:=no}
-: ${panda_user:=panda}
-: ${panda_install_dir:=/home/panda/pandagallery/}
-: ${panda_conf_dir:=/home/panda/pandagallery/}
+: ${pandabackup_enable:=no}
+: ${pandabackup_user:=panda}
+: ${pandabackup_server_run:=/home/panda/pandabackup/server.py}
+: ${pandabackup_conf_dir:=/home/panda/pandabackup/}
+: ${pandabackup_python:=python3.6}
 
-pidfile="${panda_conf_dir}${name}.pid"
+pidfile="${pandabackup_conf_dir}${name}.pid"
 
-command="${panda_install_dir}server.py"
-command_interpreter="python3.6"
+command="${pandabackup_server_run}"
+command_interpreter="${pandabackup_python}"
 
-panda_flags="-c ${panda_conf_dir} -pf ${pidfile} -d"
+pandabackup_flags="-c ${pandabackup_conf_dir} -pf ${pidfile} -d"
 
 sig_reload="USR2"
 
