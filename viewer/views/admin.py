@@ -361,11 +361,7 @@ def tools(request: HttpRequest, tool: str = "main") -> HttpResponse:
         matching_thread.start()
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
     elif tool == "restart_viewer":
-        crawler_settings.workers.timed_downloader.stop_running()
-        crawler_settings.workers.timed_crawler.stop_running()
-        crawler_settings.workers.timed_auto_wanted.stop_running()
-        if check_for_running_threads():
-            return render_error(request, "Can't restart viewer, some worker threads are still running.")
+        crawler_settings.workers.stop_workers_and_wait()
         if hasattr(signal, 'SIGUSR2'):
             os.kill(os.getpid(), signal.SIGUSR2)
         else:

@@ -115,7 +115,8 @@ class ElasticSearchSettings:
 
 class WebServerSettings:
     __slots__ = [
-        'bind_address', 'bind_port', 'enable_ssl', 'ssl_certificate', 'ssl_private_key', 'write_access_log'
+        'bind_address', 'bind_port', 'enable_ssl', 'ssl_certificate',
+        'ssl_private_key', 'write_access_log', 'log_to_screen'
     ]
 
     def __init__(self) -> None:
@@ -125,6 +126,7 @@ class WebServerSettings:
         self.ssl_certificate: str = ''
         self.ssl_private_key: str = ''
         self.write_access_log: bool = False
+        self.log_to_screen: bool = True
 
 
 class UrlSettings:
@@ -529,6 +531,8 @@ class Settings:
                 self.webserver.ssl_private_key = config['webserver']['ssl_private_key']
             if 'write_access_log' in config['webserver']:
                 self.webserver.write_access_log = config['webserver'].getboolean('write_access_log')
+            if 'log_to_screen' in config['webserver']:
+                self.webserver.log_to_screen = config['webserver'].getboolean('log_to_screen')
         if 'urls' in config:
             if 'media_url' in config['urls']:
                 self.urls.media_url = config['urls']['media_url']

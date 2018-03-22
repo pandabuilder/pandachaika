@@ -1,6 +1,8 @@
 import logging
+from time import sleep
 
 from core.base import setup
+from core.base.utilities import check_for_running_threads
 
 crawler_logger = logging.getLogger('viewer.webcrawler')
 
@@ -78,3 +80,18 @@ class WorkerContext:
         self.timed_updater.pk = obj[0].pk
         if crawler_settings.autoupdater.startup:
             self.timed_updater.start_running(timer=crawler_settings.autoupdater.cycle_timer)
+
+    def command_workers_to_stop(self) -> None:
+
+        self.timed_downloader.stop_running()
+        self.timed_crawler.stop_running()
+        self.timed_auto_wanted.stop_running()
+        self.timed_updater.stop_running()
+
+    # TODO: improve this logic
+    def stop_workers_and_wait(self) -> None:
+
+        self.command_workers_to_stop()
+
+        while check_for_running_threads():
+            sleep(1)

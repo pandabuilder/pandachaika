@@ -116,6 +116,7 @@ if __name__ == '__main__':
         'server.socket_port': cherrypy_port,
         'checker.on': False,
         'engine.autoreload.on': crawler_settings.cherrypy_auto_restart,
+        'log.screen': crawler_settings.webserver.log_to_screen,
     }
 
     if crawler_settings.webserver.enable_ssl:
@@ -127,14 +128,23 @@ if __name__ == '__main__':
 
     cherrypy.config.update(cherrypy_settings)
 
+    def stop_process():
+        crawler_settings.workers.stop_workers_and_wait()
+        cherrypy.engine.exit()
+
+    def restart_process():
+        crawler_settings.workers.stop_workers_and_wait()
+        cherrypy.engine.restart()
+
     user_handler = cherrypy.process.plugins.SignalHandler(cherrypy.engine)
-    user_handler.handlers['SIGUSR2'] = cherrypy.engine.restart
+    user_handler.handlers['SIGUSR2'] = restart_process
+    user_handler.handlers['SIGTERM'] = stop_process
 
     # SIGTERM exits, SIGUSR2 forces restart.
     cherrypy.engine.signal_handler = user_handler
 
     if args.daemonize:
-        # TODO: Daemonizing is stopping the start_workers method form starting workers on startup. Maybe use ready()
+        # TODO: Daemonizing is stopping the start_workers method form starting workers on startup.
         cherrypy.config.update({'log.screen': False})
         plugins.Daemonizer(cherrypy.engine).subscribe()
 
