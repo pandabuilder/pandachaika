@@ -23,8 +23,8 @@
     {% endfor %}
     <div class="page-line form-inline">
       <button id="toggle-all" class="btn btn-info" type="button">Toggle All</button>
-      <button type="submit" name="apply" class="btn btn-default">Search</button>
-      <a class="btn btn-default" href="{% url 'viewer:archive-not-present' %}">Clear</a>
+      <button type="submit" name="apply" class="btn btn-light">Search</button>
+      <a class="btn btn-light" href="{% url 'viewer:archive-not-present' %}">Clear</a>
     </div>
   </form>
   <!-- Next/Prev page links  -->
@@ -51,7 +51,7 @@
           <p>{{ archive.zipped.path }} >> {{ archive.filesize|filesizeformat }} >> {{ archive.filesize }} >> {{ archive.filecount }} >> {{ archive.source_type }}</p>        </li>
       {% endfor %}
     </ul>
-    <button type="submit" name="delete_archives" class="btn btn-default">Delete (WARNING!) selected archives</button>
+    <button type="submit" name="delete_archives" class="btn btn-light">Delete (WARNING!) selected archives</button>
   </form>
   <!-- Next/Prev page links  -->
   {% if results.object_list and results.paginator.num_pages > 1 %}

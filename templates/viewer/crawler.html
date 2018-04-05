@@ -19,10 +19,10 @@
   <div class="form-group">
     <button type="button" class="btn btn-info" data-toggle="collapse" data-target="#priorities">Change default priorities</button>
   </div>
-  <div id="priorities" class="form-horizontal collapse">
+  <div id="priorities" class="collapse">
     {% for name, priority in downloaders %}
       <div class="form-group">
-        <label class="col-sm-1 control-label" for="{{ name }}">{{ name|capfirst }}</label>
+        <label class="col-sm-1 col-form-label" for="{{ name }}">{{ name|capfirst }}</label>
         <div class="col-sm-1">
         <input class="form-control" type="number" id="{{ name }}"
                name="downloaders-{{ name }}"
@@ -32,24 +32,24 @@
     {% endfor %}
   </div>
     <div class="form-group">
-      <label class="control-label">
+      <label class="col-form-label">
         Options
       </label>
-      <div class="checkbox">
-        <input id="checkbox1" type="checkbox" name="replace_metadata" value="1" {% if settings.replace_metadata == 1 %}checked{% endif %}>
-        <label for="checkbox1"><span><span></span></span>
+      <div class="form-check">
+        <input id="checkbox1" type="checkbox" class="form-check-input" name="replace_metadata" value="1" {% if settings.replace_metadata == 1 %}checked{% endif %}>
+        <label class="form-check-label" for="checkbox1"><span><span></span></span>
           Replace
         </label>
       </div>
-      <div class="checkbox">
-        <input id="checkbox2" type="checkbox" name="keep_this_settings" value="1">
-        <label for="checkbox2"><span><span></span></span>
+      <div class="form-check">
+        <input id="checkbox2" type="checkbox" class="form-check-input" name="keep_this_settings" value="1">
+        <label class="form-check-label" for="checkbox2"><span><span></span></span>
           Keep this settings
         </label>
       </div>
-      <div class="checkbox">
-        <input id="checkbox3" type="checkbox" name="run_separate" value="1">
-        <label class="checkbox" for="checkbox3"><span><span></span></span>
+      <div class="form-check">
+        <input id="checkbox3" type="checkbox" class="form-check-input" name="run_separate" value="1">
+        <label class="form-check-label" for="checkbox3"><span><span></span></span>
           Run separate process
         </label>
       </div>
@@ -58,7 +58,7 @@
       <input size="10" class="form-control" name="reason" value="" placeholder="Reason" maxlength="200"/>
     </div>
     <div class="form-group">
-      <button class="btn btn-default">Submit to Web Crawler</button>
+      <button class="btn btn-light">Submit to Web Crawler</button>
     </div>
 
   </form>

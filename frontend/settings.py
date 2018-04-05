@@ -100,6 +100,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'webpack_loader',
     'viewer',
 ]
 
@@ -129,6 +130,13 @@ STATICFILES_FINDERS = [
 STATICFILES_DIRS = (
     os.path.join(BASE_DIR, 'viewer/assets'),
 )
+
+WEBPACK_LOADER = {
+    'DEFAULT': {
+        'BUNDLE_DIR_NAME': '',
+        'STATS_FILE': os.path.join(BASE_DIR, 'webpack-stats.json'),
+    }
+}
 
 if module_exists('compressor'):
     STATICFILES_FINDERS += ['compressor.finders.CompressorFinder']

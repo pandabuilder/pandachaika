@@ -2,10 +2,13 @@
 {% block title %}{{ image_object.archive.title }}{% endblock %}
 {% block sidebar %}{% endblock %}
 {% load staticfiles %}
+{% load render_bundle from webpack_loader %}
 {% block extrahead %}
-  <link href="{% static 'css/main.ecf32a50.css' %}" rel="stylesheet">
+  {% render_bundle 'main' 'css' %}
 {% endblock %}
 
 {% block content %}
-<noscript>You need to enable JavaScript to run this app.</noscript><div id="root"></div><script type="text/javascript" src="{% static 'js/main.966ca804.js' %}"></script>
+<noscript>You need to enable JavaScript to run this app.</noscript>
+  <div id="root"></div>
+  {% render_bundle 'main' 'js' %}
 {% endblock %}

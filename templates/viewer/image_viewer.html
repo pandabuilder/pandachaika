@@ -15,7 +15,7 @@
       <div class="title-img">{{ image_object.archive.title }}</div>
     {% endif %}
     <!-- Pagination top -->
-    <div class="pagination-cen form-inline">
+    <div class="text-center form-inline">
       <nav>
         <ul class="pager">
           <li class="previous"><a href="{{ backurl }}">&larr;</a></li>
@@ -47,13 +47,13 @@
     </div>
     <!-- Image -->
     <div id="img-container">
-      <img class="img-responsive center-block" id="cent-img" src="{{ image_object.image.url }}"
+      <img class="img-fluid mx-auto" id="cent-img" src="{{ image_object.image.url }}"
            width="{% if image_object.is_horizontal %}{% if image_object.image_width >= horizontal|add:"0" %}{{ horizontal }}{% else %}{{ image_object.image_width }}{% endif %}
              {% else %}{% if image_object.image_width >= vertical|add:"0" %}{{ vertical }}{% else %}{{ image_object.image_width }}{% endif %}{% endif %}"/>
       <div class="overlay"><span id="img-counter">{{ image.number }}</span>/{{ image.paginator.num_pages }}</div>
     </div>
     <!-- Pagination bottom -->
-    <div class="pagination-cen form-inline">
+    <div class="text-center form-inline">
       <nav>
         <ul class="pager">
           <li><a class="step-links-first" href="{% url 'viewer:image-viewer' image_object.archive.pk '1' %}#cent-img">&lt;&lt;</a></li>
@@ -82,17 +82,17 @@
           <div class="modal-body">
             <form>
               <div class="form-group">
-                <label for="image-vertical-width" class="control-label">Max vertical width:</label>
+                <label for="image-vertical-width" class="col-form-label">Max vertical width:</label>
                 <input type="number" class="form-control" id="image-vertical-width" autocomplete="off" value="{{ vertical }}">
               </div>
               <div class="form-group">
-                <label for="image-horizontal-width" class="control-label">Max horizontal width:</label>
+                <label for="image-horizontal-width" class="col-form-label">Max horizontal width:</label>
                 <input type="number" class="form-control" id="image-horizontal-width" autocomplete="off" value="{{ horizontal }}">
               </div>
             </form>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+            <button type="button" class="btn btn-light" data-dismiss="modal">Close</button>
             <button type="button" class="btn btn-primary" id="save-changes">Save changes</button>
           </div>
         </div>

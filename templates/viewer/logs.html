@@ -19,8 +19,8 @@
       <input type="text" class="form-control" id="filter" name="filter"  value="{{ request.GET.filter }}">
     </div>
     <div class="form-group">
-      <button type="submit" class="btn btn-default">Apply filter</button>
-      <a class="btn btn-default" href="{% url 'viewer:logs' %}" role="button">Clear</a>
+      <button type="submit" class="btn btn-light">Apply filter</button>
+      <a class="btn btn-light" href="{% url 'viewer:logs' %}" role="button">Clear</a>
     </div>
   </form>
   <!-- Next/Prev page links  -->
@@ -46,9 +46,11 @@
     </div>
   {% endif %}
   <!-- Logs  -->
-  <table class="result-table">
-    {% for log_line in log_lines %}<tr class="result-list"><td>{{ log_line|linebreaksbr|urlize }}</td></tr>{% endfor %}
-  </table>
+  <div class="table-responsive">
+    <table class="table table-sm result-table">
+      {% for log_line in log_lines %}<tr class="result-list"><td>{{ log_line|linebreaksbr|urlize }}</td></tr>{% endfor %}
+    </table>
+  </div>
   <!-- Next/Prev page links  -->
   {% if log_lines.object_list and log_lines.paginator.num_pages > 1 %}
     <div>

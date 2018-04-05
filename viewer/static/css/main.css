@@ -1,3 +1,7 @@
+html {
+  font-size: 0.9em;
+}
+
 body {
   background: #001122;
   color: lightgrey;
@@ -8,7 +12,7 @@ body input,
 select,
 textarea,
 .form-control,
-.btn-default,
+.btn-light,
 .panel {
   background: #29527a;
   border: 1px solid lightgrey;
@@ -22,10 +26,13 @@ body a {
 
 .pagination li > a,
 .pagination li > span {
-  display: inline-block;
   background: #29527a;
   color: lightgrey;
-  padding: 2px 12px;
+}
+
+.mid-item {
+  padding: 0.5rem 0.75rem;
+  line-height: 1.25;
 }
 
 .number-input {
@@ -36,11 +43,15 @@ body a {
   background-color: #29527a;
 }
 
-.pager li > a,
-.pager li > span,
+.pagination li > a,
+.pagination li > div {
+  background: #29527a;
+  border: 1px solid lightgrey;
+  color: lightgrey;
+}
+
 .text-right > a {
-  display: inline-block;
-  padding: 2px 14px;
+  padding: 1px 14px;
   background: #29527a;
   border: 1px solid lightgrey;
   color: lightgrey;
@@ -54,10 +65,10 @@ body a {
   color: black;
 }
 
-.pager .disabled > a,
-.pager .disabled > a:focus,
-.pager .disabled > a:hover,
-.pager .disabled > span {
+.pagination .disabled > a,
+.pagination .disabled > a:focus,
+.pagination .disabled > a:hover,
+.pagination .disabled > span {
   color: #4a4a4a;
 }
 
@@ -70,23 +81,25 @@ body a {
   color: #4a4a4a;
 }
 
-.pagination,
-.pager {
-  margin: 0;
-  border-radius: 4px;
-  text-align: center;
-  display: block;
+.form-control:focus {
+  background-color: #122963;
+  color: lightgrey;
 }
 
-.pagination > li {
-  float: left;
-  display: inline;
-  margin: 0;
-  clear: right;
+input::-webkit-input-placeholder {
+  color: lightgray !important;
 }
 
-.pagination > li.nav-right {
-  float: right;
+input::-moz-placeholder {
+  color: lightgray !important;
+}
+
+input:-ms-input-placeholder {
+  color: lightgray !important;
+}
+
+input::placeholder {
+  color: lightgray !important;
 }
 
 ul.tags {
@@ -115,15 +128,6 @@ ul.result-container {
   margin-left: 20px;
 }
 
-.pagination-top {
-  margin-bottom: 5px;
-  margin-top: 0;
-}
-
-.pagination-cen {
-  text-align: center;
-}
-
 .highlight-option {
   color: LightCoral;
 }
@@ -137,15 +141,15 @@ ul.result-container {
 }
 
 .result-table {
-  font-size: 1em;
-  text-align: left;
-  border: 2px solid lightgrey;
-  border-collapse: collapse;
-  width: 100%;
+  border: 1px solid lightgrey;
 }
 
 .list-group-item:not(.list-revert) {
   background: #003366;
+}
+
+.list-group-item {
+  border-color: #dddddd;
 }
 
 .list-group-item.active {
@@ -419,14 +423,20 @@ img {
   background-color: #122963;
 }
 
-table {
-  text-align: left;
+.w-20 {
+  width: 20%;
 }
 
-table td,
-table th {
-  padding-left: 2px;
-  padding-right: 2px;
+.w-10 {
+  width: 10%;
+}
+
+.w-5 {
+  width: 5%;
+}
+
+.w-40 {
+  width: 40%;
 }
 
 .td-extended {
@@ -492,29 +502,10 @@ table th {
 }
 
 /* bootstrap overriding */
-.navbar-nav > li > a {
-  padding-top: 5px !important;
-  padding-bottom: 5px !important;
-}
-.navbar { min-height: 32px !important; }
-
-.navbar-brand {
-  padding: 0;
-  height: 30px !important;
-}
 
 .navbar-brand > img {
-  height: 100%;
-  padding: 7px;
-  width: auto;
   border: 0;
 }
-
-.navbar-default .navbar-nav > li > a {
-  color: rgba(12, 12, 12, 0.94);
-}
-
-.navbar-form { margin: 0 !important; }
 
 .table-striped > thead {
   background-color: rgba(23, 66, 139, 1);
@@ -659,4 +650,15 @@ input[type=checkbox]:not(old):checked + label > span::before {
 
 #img-container > img#cent-img {
   display: block;
+}
+
+/* Select2 */
+.select2,
+.select2-search__field::placeholder,
+.select2-results__options {
+  color: black !important;
+}
+
+.autocomplete-light-text-widget > .choice {
+  color: black;
 }

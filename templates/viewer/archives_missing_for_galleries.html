@@ -31,8 +31,8 @@
           {% endfor %}
         </select>
         <input title="Download type" class="form-control" name="dl_type" placeholder="Download type" value="{{ request.GET.dl_type }}">
-        <button type="submit" name="apply" class="btn btn-default">Search</button>
-        <a class="btn btn-default" href="{% url 'viewer:missing-archives' %}">Clear</a>
+        <button type="submit" name="apply" class="btn btn-light">Search</button>
+        <a class="btn btn-light" href="{% url 'viewer:missing-archives' %}">Clear</a>
       </div>
     </form>
     <form action="{% url 'viewer:missing-archives' %}{% if request.GET.provider %}?provider={{ request.GET.provider }}{% endif %}" method="POST">{% csrf_token %}
@@ -55,7 +55,7 @@
           </span>
       </div>
     {% endif %}
-      <table class="table table-bordered table-condensed generic-table">
+      <table class="table table-bordered table-sm generic-table">
         <thead>
         <tr>
           <th>Select</th><th>URL</th><th>Title</th><th>Size</th><th>Images</th><th>Source URL | Image</th><th>DL type</th><th>Added</th>
@@ -117,8 +117,8 @@
     <div class="form-group">
       <input size="10" class="form-control" name="reason" value="" placeholder="Reason" maxlength="200"/>
     </div>
-    <button name="download_galleries" class="btn btn-default">Force queue for download</button>
-    <button name="delete_galleries" class="btn btn-default">Delete (WARNING!)</button>
+    <button name="download_galleries" class="btn btn-light">Force queue for download</button>
+    <button name="delete_galleries" class="btn btn-light">Delete (WARNING!)</button>
     </form>
     {% else %}
     <div class="page-header">
@@ -126,7 +126,7 @@
     <p class="lead">If you have any of these galleries, and their unpacked filesize matches the one displayed here, please get in touch.</p>
     </div>
     {% if results.count > 0 %}
-      <table class="table table-bordered table-condensed generic-table">
+      <table class="table table-bordered table-sm generic-table">
         <thead>
         <tr>
           <th>URL</th><th>Title</th><th>Size</th><th>Images</th><th>Source URL | Image</th><th>Posted</th>

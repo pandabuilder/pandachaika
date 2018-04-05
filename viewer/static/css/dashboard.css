@@ -19,10 +19,6 @@
   border: 0;
 }
 
-.pagination {
-  display: inline-block;
-}
-
 .my-group {
   width: 70% !important;
 }
@@ -64,9 +60,9 @@
   padding-left: 20px;
 }
 
-.nav-sidebar > .active > a,
-.nav-sidebar > .active > a:hover,
-.nav-sidebar > .active > a:focus {
+.nav-sidebar > .nav-item > a.active,
+.nav-sidebar > .nav-item > a.active:hover,
+.nav-sidebar > .nav-item > a.active:focus {
   color: #ffffff;
   background-color: #428bca;
 }

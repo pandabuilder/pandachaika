@@ -25,8 +25,8 @@
         </div>
       {% endfor %}
       <div class="page-line form-inline">
-        <button name="apply" class="btn btn-default">Search</button>
-        <a class="btn btn-default" href="{% url 'viewer:found-galleries' %}">Clear</a>
+        <button name="apply" class="btn btn-light">Search</button>
+        <a class="btn btn-light" href="{% url 'viewer:found-galleries' %}">Clear</a>
         <input id="checkbox-f2" type="checkbox" name="wanted-should-search" value="1" {% if "wanted-should-search" in request.GET %}checked{% endif %}><label for="checkbox-f2"><span><span></span></span>Should search</label>
         <input id="checkbox-f3" type="checkbox" name="wanted-should-search-not" value="1" {% if "wanted-should-search-not" in request.GET %}checked{% endif %}><label for="checkbox-f3"><span><span></span></span>Should not search</label>
         <input id="checkbox-f4" type="checkbox" name="with-possible-matches" value="1" {% if "with-possible-matches" in request.GET %}checked{% endif %}><label for="checkbox-f4"><span><span></span></span>With possible matches</label>
@@ -56,7 +56,7 @@
           </span>
       </div>
     {% endif %}
-      <table class="table table-bordered table-condensed generic-table">
+      <table class="table table-bordered table-sm generic-table">
         <thead>
         <tr>
           <th>Wanted Gallery</th><th>Gallery</th><th>Found date</th>
@@ -122,7 +122,7 @@
           </span>
       </div>
     {% endif %}
-      <table class="table table-bordered table-condensed generic-table">
+      <table class="table table-bordered table-sm generic-table">
         <thead>
         <tr>
           <th>Wanted Gallery</th><th>Gallery</th><th>Found date</th>

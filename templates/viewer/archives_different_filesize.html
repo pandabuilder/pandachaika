@@ -29,8 +29,8 @@
           <option value="{{ provider }}" {% if request.GET.provider == provider %} selected{% endif %}>{{ provider }}</option>
         {% endfor %}
       </select>
-      <button type="submit" name="apply" class="btn btn-default">Search</button>
-      <a class="btn btn-default" href="{% url 'viewer:archive-filesize-different' %}">Clear</a>
+      <button type="submit" name="apply" class="btn btn-light">Search</button>
+      <a class="btn btn-light" href="{% url 'viewer:archive-filesize-different' %}">Clear</a>
     </div>
   </form>
   <form action="{% url 'viewer:archive-filesize-different' %}{% if request.GET.provider %}?provider={{ request.GET.provider }}{% endif %}" method="POST">{% csrf_token %}
@@ -84,8 +84,8 @@
           </span>
       </div>
     {% endif %}
-    <button name="delete_archives" class="btn btn-default">Delete selected archives</button>
-    <button name="delete_archives_and_files" class="btn btn-default">Delete (WARNING!) selected archives and files</button>
+    <button name="delete_archives" class="btn btn-light">Delete selected archives</button>
+    <button name="delete_archives_and_files" class="btn btn-light">Delete (WARNING!) selected archives and files</button>
   </form>
 {% endblock %}
 {% block afterJQ %}

@@ -13,7 +13,7 @@
     <p class="lead">Paste URLs that you want to back up, and specify the reason.</p>
     <h4>One per line, an admin will review them later.</h4>
   </div>
-  <form action="{% url 'viewer:url-submit' %}" class="form-horizontal" method="POST">{% csrf_token %}
+  <form action="{% url 'viewer:url-submit' %}" method="POST">{% csrf_token %}
     <div class="form-group">
       <label for="urls">Urls</label>
       <textarea name="urls" class="form-control" id="urls" rows="10"></textarea>
@@ -23,7 +23,7 @@
       <input class="form-control" id="reason" name="reason" maxlength="93">
     </div>
     <div class="form-group">
-      <button class="btn btn-default">Submit URLs</button>
+      <button class="btn btn-light">Submit URLs</button>
     </div>
   </form>
 {% endblock %}

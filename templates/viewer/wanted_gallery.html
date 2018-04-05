@@ -15,25 +15,29 @@
   <ul class="list-group">
     <li class="list-group-item">
       <div class="row">
-        <div class="col-md-6"><label class="label-extended">Title:</label>{{ wanted_gallery.title }}</div>
-      {% if user.is_staff %}
-        <div class="col-md-6 text-right-new">
-          <a href="{% url 'admin:viewer_wantedgallery_change' wanted_gallery.pk %}">Admin page</a>
+        <div class="col"><label class="label-extended">Title:</label>{{ wanted_gallery.title }}</div>
+        {% if user.is_staff %}
+        <div class="d-flex justify-content-end"><a href="{% url 'admin:viewer_wantedgallery_change' wanted_gallery.pk %}">Admin page</a></div>
+        {% endif %}
+      </div>
+    {% if user.is_staff %}
+      <div class="row">
+        <div class="col d-inline-flex justify-content-end">
           <form class="form-inline" action="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}" method="GET">
               <input size="10" class="form-control" name="provider" value="" placeholder="Provider filter"/>
               <input title="Cutoff" size="10" type="number" step="0.01" class="form-control" name="cutoff" value="" placeholder="Cutoff"/>
               <input title="Max matches" size="10" type="number" step="1" class="form-control" name="max-matches" value="20" placeholder="Max Matches"/>
-              <button class="btn btn-default" name="tool" value="search-providers-by-title">set provider matches</button>
-              <button class="btn btn-default" name="tool" value="search-internal-galleries-matches">set internal provider matches</button>
+              <button class="btn btn-light" name="tool" value="search-providers-by-title">set provider matches</button>
+              <button class="btn btn-light" name="tool" value="search-internal-galleries-matches">set internal provider matches</button>
           </form>
           <form class="form-inline" action="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}" method="GET">
-            <button class="btn btn-default" name="tool" value="stop-searching">stop searching</button>
-            <button class="btn btn-default" name="tool" value="toggle-public">Set {% if wanted_gallery.public %}private{% else %}public{% endif %}</button>
-            <button class="btn btn-default" name="tool" value="clear-possible-matches">clear possible matches</button>
+            <button class="btn btn-light" name="tool" value="stop-searching">stop searching</button>
+            <button class="btn btn-light" name="tool" value="toggle-public">Set {% if wanted_gallery.public %}private{% else %}public{% endif %}</button>
+            <button class="btn btn-light" name="tool" value="clear-possible-matches">clear possible matches</button>
           </form>
         </div>
-      {% endif %}
       </div>
+    {% endif %}
     </li>
     <li class="list-group-item"><label class="label-extended">Japanese title:</label>{{ wanted_gallery.title_jpn }}</li>
     <li class="list-group-item"><label class="label-extended">Uses this filters:</label>

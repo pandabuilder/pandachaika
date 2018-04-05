@@ -23,8 +23,8 @@
     {% endfor %}
     <div class="page-line form-inline">
       <button id="toggle-all" class="btn btn-info" type="button">Toggle All</button>
-      <button type="submit" name="apply" class="btn btn-default">Search</button>
-      <a class="btn btn-default" href="{% url 'viewer:archives-not-matched' %}">Clear</a>
+      <button type="submit" name="apply" class="btn btn-light">Search</button>
+      <a class="btn btn-light" href="{% url 'viewer:archives-not-matched' %}">Clear</a>
       <input id="checkbox-f1" type="checkbox" name="no-custom-tags" value="1" {% if "no-custom-tags" in request.GET %}checked{% endif %}><label for="checkbox-f1"><span><span></span></span>No custom tags</label>
       <input id="checkbox-f2" type="checkbox" name="with-possible-matches" value="1" {% if "with-possible-matches" in request.GET %}checked{% endif %}><label for="checkbox-f2"><span><span></span></span>With possible matches</label>
     </div>
@@ -54,7 +54,7 @@
           <input id="sel-{{ archive.id }}" type="checkbox" name="sel-{{ archive.id }}" value="{{ archive.pk }}"><label for="sel-{{ archive.id }}"><span><span></span></span></label><a href="{{ archive.get_absolute_url }}">{{ archive.pk }}</a> >>
           {{ archive.title }} >>
           <span class="dropdown">
-            <button class="btn btn-primary btn-xs dropdown-toggle" type="button" data-toggle="dropdown">generate matches internally<span class="caret"></span></button>
+            <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-toggle="dropdown">generate matches internally<span class="caret"></span></button>
             <ul class="dropdown-menu dropdown-menu-right">
             <li><a href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ api_key }}', '{% static 'favicon-160.png' %}', 'match_archive_internally', {archive: {{ archive.pk }}, provider: ''}); return false;">All</a></li>
               {% for provider in providers %}
@@ -63,7 +63,7 @@
             </ul>
           </span>
           <span class="dropdown">
-            <button class="btn btn-primary btn-xs dropdown-toggle" type="button" data-toggle="dropdown">generate matches internally clear title<span class="caret"></span></button>
+            <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-toggle="dropdown">generate matches internally clear title<span class="caret"></span></button>
             <ul class="dropdown-menu dropdown-menu-right">
             <li><a href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ api_key }}', '{% static 'favicon-160.png' %}', 'match_archive_internally', {archive: {{ archive.pk }}, provider: '', clear: ''}); return false;">All</a></li>
               {% for provider in providers %}
@@ -72,7 +72,7 @@
             </ul>
           </span>
           <span class="dropdown">
-            <button class="btn btn-primary btn-xs dropdown-toggle" type="button" data-toggle="dropdown">generate matches web<span class="caret"></span></button>
+            <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-toggle="dropdown">generate matches web<span class="caret"></span></button>
             <ul class="dropdown-menu dropdown-menu-right">
             <li><a href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ api_key }}', '{% static 'favicon-160.png' %}', 'match_archive', {archive: {{ archive.pk }}, match_filter: ''}); return false;">All</a></li>
               {% for matcher, priority in matchers %}
@@ -90,7 +90,7 @@
             {% endif %}
           {% with matches=archive.possible_galleries %}
             {% if matches|length > 0 %}
-              <table class="table table-bordered table-condensed generic-table">
+              <table class="table table-bordered table-sm generic-table">
                 <thead>
                 <tr>
                   <th>Select</th><th>First Artist</th><th>Title</th><th>URL</th><th>Accuracy</th><th>Posted</th><th>Count</th><th>Size</th>
@@ -144,23 +144,23 @@
         <button class="btn btn-primary dropdown-toggle" type="button" data-toggle="dropdown">Create web matches for selected archives
         <span class="caret"></span></button>
         <ul class="dropdown-menu dropdown-menu-right">
-        <li><button type="submit" name="create_possible_matches" class="btn btn-default" value="">All</button></li>
+        <li><button type="submit" name="create_possible_matches" class="btn btn-light" value="">All</button></li>
           {% for matcher, priority in matchers %}
-            <li><button type="submit" name="create_possible_matches" class="btn btn-default" value="{{ matcher }}">{{ matcher }}</button></li>
+            <li><button type="submit" name="create_possible_matches" class="btn btn-light" value="{{ matcher }}">{{ matcher }}</button></li>
           {% endfor %}
         </ul>
     </span>
     <span class="dropup">
         <button class="btn btn-primary dropdown-toggle" type="button" data-toggle="dropdown">Create internal matches for selected archives<span class="caret"></span></button>
         <ul class="dropdown-menu dropdown-menu-right">
-        <li><button type="submit" name="create_possible_matches_internal" class="btn btn-default" value="">All</button></li>
+        <li><button type="submit" name="create_possible_matches_internal" class="btn btn-light" value="">All</button></li>
           {% for provider in providers %}
-            <li><button type="submit" name="create_possible_matches_internal" class="btn btn-default" value="{{ provider }}">{{ provider }}</button></li>
+            <li><button type="submit" name="create_possible_matches_internal" class="btn btn-light" value="{{ provider }}">{{ provider }}</button></li>
           {% endfor %}
         </ul>
     </span>
-    <button type="submit" name="delete_objects" class="btn btn-default">Delete selected archives</button>
-    <button type="submit" name="delete_archives" class="btn btn-default">Delete (WARNING!) selected archives and files</button>
+    <button type="submit" name="delete_objects" class="btn btn-light">Delete selected archives</button>
+    <button type="submit" name="delete_archives" class="btn btn-light">Delete (WARNING!) selected archives and files</button>
     </div>
   </form>
   <!-- Next/Prev page links  -->

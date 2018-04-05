@@ -26,7 +26,7 @@
         <form action="{% url 'viewer:tools-id' 'search_wanted_galleries_provider_titles' %}" method="GET" role="form">
           <div class="list-group-item form-inline">
             <input size="10" class="form-control" name="provider" value="" placeholder="Provider filter"/>
-            <button class="btn btn-default">Search wanted galleries by provider titles</button>
+            <button class="btn btn-light">Search wanted galleries by provider titles</button>
           </div>
         </form>
         <form action="{% url 'viewer:tools-id' 'wanted_galleries_possible_matches' %}" method="GET" role="form">
@@ -34,13 +34,13 @@
             <input title="Cutoff" size="10" type="number" step="0.01" class="form-control" name="cutoff" value="" placeholder="Cutoff"/>
             <input title="Max matches" size="10" type="number" step="1" class="form-control" name="max-matches" value="20" placeholder="Max Matches"/>
             <input size="10" class="form-control" name="provider" value="" placeholder="Provider filter"/>
-            <button class="btn btn-default">Search wanted galleries by internal galleries</button>
+            <button class="btn btn-light">Search wanted galleries by internal galleries</button>
           </div>
         </form>
         <a class="list-group-item" href="{% url 'viewer:tools-id' 'transfer_missing_downloads' %}">Transfer missing downloads</a>
         <a class="list-group-item" href="{% url 'viewer:tools-id' 'retry_failed' %}">Retry failed downloads</a>
         <form action="{% url 'viewer:tools-id' 'update_newer_than' %}" method="GET" role="form">
-          <div class="list-group-item form-inline">Update gallery metadata newer than date <input size="20" type="text" class="form-control" name="newer_than" value="" placeholder="Newer than date"/><button type="submit" name="apply" class="btn btn-default">Start</button></div>
+          <div class="list-group-item form-inline">Update gallery metadata newer than date <input size="20" type="text" class="form-control" name="newer_than" value="" placeholder="Newer than date"/><button type="submit" name="apply" class="btn btn-light">Start</button></div>
         </form>
         <a class="list-group-item" href="{% url 'viewer:tools-id' 'generate_possible_matches_internally' %}">Generate possible matches for non-matches (all providers)</a>
         <form action="{% url 'viewer:tools-id' 'generate_possible_matches_internally' %}" method="GET" role="form">
@@ -48,7 +48,7 @@
             <input size="10" type="text" class="form-control" name="provider" value="" placeholder="Provider filter"/>
             <input title="Cutoff" size="10" type="number" step="0.01" class="form-control" name="cutoff" value="" placeholder="Cutoff"/>
             <input title="Max matches" size="10" type="number" step="1" class="form-control" name="max-matches" value="20" placeholder="Max Matches"/>
-            <button type="submit" class="btn btn-default">Generate possible matches for non-matches (filter providers)</button>
+            <button type="submit" class="btn btn-light">Generate possible matches for non-matches (filter providers)</button>
           </div>
         </form>
         <a class="list-group-item" href="{% url 'viewer:tools-id' 'clear_all_archive_possible_matches' %}">Clear all archive possible matches</a>
@@ -82,7 +82,7 @@
     <form action="{% url 'viewer:tools-id' 'modify_settings' %}" method="POST">{% csrf_token %}
       <div class="col-md-1">
         <div class="page-line" id="update">
-          <button type="submit" class="btn btn-default">Commit settings</button>
+          <button type="submit" class="btn btn-light">Commit settings</button>
         </div>
       </div>
       <div class="col-md-8">

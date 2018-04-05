@@ -127,12 +127,12 @@ class ArchiveSearchSimpleForm(forms.Form):
     filecount_from = forms.IntegerField(
         required=False,
         label='Images',
-        widget=forms.NumberInput(attrs={'class': 'form-control number-input', 'placeholder': 'from'})
+        widget=forms.NumberInput(attrs={'class': 'form-control number-input mr-sm-1', 'placeholder': 'from'})
     )
     filecount_to = forms.IntegerField(
         required=False,
         label='',
-        widget=forms.NumberInput(attrs={'class': 'form-control number-input', 'placeholder': 'to'})
+        widget=forms.NumberInput(attrs={'class': 'form-control number-input mr-sm-1', 'placeholder': 'to'})
     )
     # Search by rating: is it really needed?
     # rating_from = forms.IntegerField(
@@ -150,13 +150,13 @@ class ArchiveSearchSimpleForm(forms.Form):
     posted_from = forms.DateTimeField(
         required=False,
         label='Posted',
-        widget=forms.DateInput(attrs={'class': 'form-control', 'placeholder': 'from', 'type': 'date', 'size': 9}),
+        widget=forms.DateInput(attrs={'class': 'form-control mr-sm-1', 'placeholder': 'from', 'type': 'date', 'size': 9}),
         input_formats=['%Y-%m-%d']
     )
     posted_to = forms.DateTimeField(
         required=False,
         label='',
-        widget=forms.DateInput(attrs={'class': 'form-control', 'placeholder': 'to', 'type': 'date', 'size': 9}),
+        widget=forms.DateInput(attrs={'class': 'form-control mr-sm-1', 'placeholder': 'to', 'type': 'date', 'size': 9}),
         input_formats=['%Y-%m-%d']
     )
     source_type = forms.CharField(
@@ -165,7 +165,7 @@ class ArchiveSearchSimpleForm(forms.Form):
         widget=JalTextWidget(
             url='source-autocomplete',
             attrs={
-                'class': 'form-control',
+                'class': 'form-control mr-sm-1',
                 'placeholder': 'panda, fakku',
                 'data-autocomplete-minimum-characters': 3,
                 'size': 10,
@@ -179,7 +179,7 @@ class ArchiveSearchSimpleForm(forms.Form):
         widget=JalTextWidget(
             url='reason-autocomplete',
             attrs={
-                'class': 'form-control',
+                'class': 'form-control mr-sm-1',
                 'placeholder': 'wani, etc.',
                 'data-autocomplete-minimum-characters': 3,
                 'size': 10,
@@ -193,7 +193,7 @@ class ArchiveSearchSimpleForm(forms.Form):
         widget=JalTextWidget(
             url='uploader-autocomplete',
             attrs={
-                'class': 'form-control',
+                'class': 'form-control mr-sm-1',
                 'placeholder': '',
                 'data-autocomplete-minimum-characters': 3,
                 'size': 10,

@@ -15,28 +15,29 @@
   {% endif %}
   <!-- Form  -->
   <form action="{% url 'viewer:archive-search' %}" method="GET">
-    <div id="main-search" class="collapse{% if prm.main_filters %} in{% endif %}">
+    <div id="main-search" class="collapse{% if prm.main_filters %} show{% endif %}">
       {% for field in form %}
         <div class="page-line">
           {{ field.errors }}
           {{ field }}
         </div>
       {% endfor %}
-      <div id="extra_filters" class="page-line form-inline collapse{% if prm.extra_filters %} in{% endif %}">
-        {% if user.is_staff %}
-          <input class="form-control" name="filename" value="{{ display_prms.filename }}"
-                 placeholder="Filename"/>
-          <input name="match_type" class="form-control" value="{{ display_prms.match_type }}"
-                 placeholder="Match Type"/>
-        {% endif %}
-        {% for field in form_simple %}
-          {{ field.label_tag }}{{ field }}
-        {% endfor %}
-
+      <div id="extra_filters" class="page-line collapse{% if prm.extra_filters %} show{% endif %}">
+        <div class="form-inline">
+          {% if user.is_staff %}
+            <input class="form-control mr-sm-1" name="filename" value="{{ display_prms.filename }}"
+                   placeholder="Filename"/>
+            <input name="match_type" class="form-control mr-sm-1" value="{{ display_prms.match_type }}"
+                   placeholder="Match Type"/>
+          {% endif %}
+          {% for field in form_simple %}
+            {{ field.label_tag }}{{ field }}
+          {% endfor %}
+        </div>
       </div>
       <div class="page-line form-inline">
         <label for="sort">Sort</label>
-        <select id="sort" name="sort" class="form-control">
+        <select id="sort" name="sort" class="form-control mx-sm-1">
           <option value="posted" {% if prm.sort == "posted" %} selected{% endif %}>posted date</option>
           {% if user.is_staff %}
             <option value="create_date" {% if prm.sort == "create_date" %} selected{% endif %}>create date</option>
@@ -50,15 +51,15 @@
           <option value="filecount" {% if prm.sort == "filecount" %} selected{% endif %}>images</option>
           <option value="filesize" {% if prm.sort == "filesize" %} selected{% endif %}>size</option>
         </select>
-        <select id="asc_desc" name="asc_desc" class="form-control" title="sort_order" aria-label="sort_order">
+        <select id="asc_desc" name="asc_desc" class="form-control mr-sm-1" title="sort_order" aria-label="sort_order">
           <option value="asc" {% if prm.asc_desc == "asc" %} selected{% endif %}>ascending</option>
           <option value="desc" {% if prm.asc_desc == "desc" %} selected{% endif %}>descending</option>
         </select>
-        <button type="submit" name="apply" class="btn btn-default">Search</button>
-        <button type="submit" name="clear" class="btn btn-default">Clear</button>
-        <button type="button" class="btn btn-info" data-toggle="collapse" data-target="#extra_filters">More filters</button>
-        <button type="submit" name="gen-ddl" class="btn btn-default">Generate DDLs</button>
-        <button type="submit" name="rss" onclick="this.form.action='{% url "viewer:archive-rss" %}'; this.form.submit(); this.form.action='{% url "viewer:main-page" %}'; return false;" class="btn btn-default">View as RSS</button>
+        <button type="submit" name="apply" class="btn btn-light mr-sm-1">Search</button>
+        <button type="submit" name="clear" class="btn btn-light mr-sm-1">Clear</button>
+        <button type="button" class="btn btn-info mr-sm-1" data-toggle="collapse" data-target="#extra_filters">More filters</button>
+        <button type="submit" name="gen-ddl" class="btn btn-light mr-sm-1">Generate DDLs</button>
+        <button type="submit" name="rss" onclick="this.form.action='{% url "viewer:archive-rss" %}'; this.form.submit(); this.form.action='{% url "viewer:main-page" %}'; return false;" class="btn btn-light">View as RSS</button>
         {% if user.is_authenticated %}<input id="checkbox1" type="checkbox" name="only_favorites" value="1"
                                              {% if display_prms.only_favorites == '1' %}checked{% endif %}><label
             for="checkbox1"><span><span></span></span>Only favorites</label>{% endif %}
@@ -79,20 +80,20 @@
               {% if results.paginator.num_pages > 1 %}
                 <nav>
                   <ul class="pagination">
-                    <li {% if results.number == 1 %} class="disabled"{% endif %}>
-                      <a href="?{% url_replace 'page' '1' %}" aria-label="First">
+                    <li class="page-item{% if results.number == 1 %} disabled{% endif %}">
+                      <a class="page-link" href="?{% url_replace 'page' '1' %}" aria-label="First">
                         <span aria-hidden="true">&laquo;</span>
                       </a>
                     </li>
                     {% for p in display_prms.page_range %}
-                      <li {% ifequal p results.number %} class="active" {% endifequal %}><a
-                          href="?{% url_replace 'page' p %}">{{ p }}</a></li>
+                      <li class="page-item{% ifequal p results.number %} active{% endifequal %}">
+                        <a class="page-link" href="?{% url_replace 'page' p %}">{{ p }}</a>
+                      </li>
                     {% empty %}
-                      <li class="active"><a href="?{% url_replace 'page' '1' %}">1</a></li>
+                      <li class="page-item active"><a class="page-link" href="?{% url_replace 'page' '1' %}">1</a></li>
                     {% endfor %}
-                    <li {% if results.number == results.paginator.num_pages %}
-                      class="disabled"{% endif %}>
-                      <a href="?{% url_replace 'page' results.paginator.num_pages %}"
+                    <li class="page-item{% if results.number == results.paginator.num_pages %} disabled{% endif %}">
+                      <a class="page-link" href="?{% url_replace 'page' results.paginator.num_pages %}"
                          aria-label="Last">
                         <span aria-hidden="true">&raquo;</span>
                       </a>
@@ -102,29 +103,36 @@
               {% endif %}
             </div>
             <div class="col-md-4">
-              <ul class="pager">
-                {% if results.has_previous %}
-                  <li><a href="?{% url_replace 'page' results.previous_page_number %}">Previous</a></li>
-                {% else %}
-                  <li class="disabled"><a href="#">Previous</a></li>
-                {% endif %}
-                <li class="text-center">
-                  <span>{{ results.paginator.count }} archives, {{ results.paginator.num_pages }} pages</span>
-                </li>
-                {% if results.has_next %}
-                  <li><a href="?{% url_replace 'page' results.next_page_number %}">Next</a></li>
-                {% else %}
-                  <li class="disabled"><a href="#">Next</a></li>
-                {% endif %}
-              </ul>
+              <nav aria-label="Middle navigation">
+                <ul class="pagination justify-content-center">
+                  {% if results.has_previous %}
+                    <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.previous_page_number %}">Previous</a></li>
+                  {% else %}
+                    <li class="page-item disabled"><a class="page-link" href="#">Previous</a></li>
+                  {% endif %}
+                  <li class="page-item">
+                    <div class="mid-item">{{ results.paginator.count }} results</div>
+                  </li>
+                  {% if results.has_next %}
+                    <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.next_page_number %}">Next</a></li>
+                  {% else %}
+                    <li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
+                  {% endif %}
+                </ul>
+              </nav>
             </div>
 
             {% if extra_options %}
-              <div class="col-md-4 text-right">
-                {% for option in extra_options %}
-                  <a href="?{% url_replace 'view' option %}" {% ifequal option prm.view %}
-                     class="active"{% endifequal %}>{{ option }}</a>
-                {% endfor %}
+              <div class="col-md-4 justify-content-end">
+                <nav>
+                  <ul class="pagination justify-content-end">
+                  {% for option in extra_options %}
+                    <li class="page-item{% ifequal option prm.view %} active{% endifequal %}">
+                      <a class="page-link" href="?{% url_replace 'view' option %}">{{ option }}</a>
+                    </li>
+                  {% endfor %}
+                  </ul>
+                </nav>
               </div>
             {% endif %}
           </div>
@@ -138,7 +146,7 @@
                   <a class="cover" href="{% url 'viewer:archive' archive.pk %}">
                     <div class="cover-title" title="{{ archive.title }}">{{ archive.title }}</div>
                     {% with thumbnail_details=archive.get_available_thumbnail_plus_size %}
-                    <img class="image-container center-block" alt="" title="{{ archive.title }}"
+                    <img class="image-container mx-auto" alt="" title="{{ archive.title }}"
                         width="{{ thumbnail_details.2 }}" height="{{ thumbnail_details.1 }}" src="{{ thumbnail_details.0 }}"/>
                     {% endwith %}
                   </a>
@@ -151,47 +159,49 @@
               {% endfor %}
             </div>
           {% elif prm.view == "list" %}
-            <table class="result-table">
+            <div class="table-responsive">
+            <table class="table table-sm table-bordered result-table mb-0">
               <thead>
               <tr>{% if prm.sort == "create_date" %}
-                <th class="col-md-1"><a href="?{% url_replace 'sort' 'create_date' %}">Created</a></th>
+                <th class="w-5"><a href="?{% url_replace 'sort' 'create_date' %}">Created</a></th>
               {% elif prm.sort == "public_date" %}
-                <th class="col-md-1"><a href="?{% url_replace 'sort' 'public_date' %}">Added</a></th>
+                <th><a href="?{% url_replace 'sort' 'public_date' %}">Added</a></th>
               {% else %}
-                <th class="col-md-1"><a href="?{% url_replace 'sort' 'posted' %}">Posted</a></th>
+                <th><a href="?{% url_replace 'sort' 'posted' %}">Posted</a></th>
               {% endif %}
-                  <th class="col-md-9"><a href="?{% url_replace 'sort' 'title' %}">Title</a></th>
-                  <th class="col-md-1">Source</th>
-                  <th class="col-md-1">Reason</th>
-                <th class="col-md-1"><a href="?{% url_replace 'sort' 'filecount' %}">Images</a></th>
-                <th class="col-md-1"><a href="?{% url_replace 'sort' 'filesize' %}">Size</a></th>
+                  <th><a href="?{% url_replace 'sort' 'title' %}">Title</a></th>
+                  <th>Source</th>
+                  <th>Reason</th>
+                <th><a href="?{% url_replace 'sort' 'filecount' %}">Images</a></th>
+                <th><a href="?{% url_replace 'sort' 'filesize' %}">Size</a></th>
               </tr>
               </thead>
               <tbody>
               {% for archive in results.object_list %}
                 <tr class="result-list">
                   {% if prm.sort == "create_date" %}
-                    <td class="col-md-1">{{ archive.create_date|date:"SHORT_DATE_FORMAT" }}</td>
+                    <td>{{ archive.create_date|date:"SHORT_DATE_FORMAT" }}</td>
                   {% elif prm.sort == "public_date" %}
-                    <td class="col-md-1">{{ archive.public_date|date:"SHORT_DATE_FORMAT" }}</td>
+                    <td>{{ archive.public_date|date:"SHORT_DATE_FORMAT" }}</td>
                   {% else %}
-                    <td class="col-md-1">{{ archive.gallery.posted|date:"SHORT_DATE_FORMAT" }}</td>
+                    <td>{{ archive.gallery.posted|date:"SHORT_DATE_FORMAT" }}</td>
                   {% endif %}
-                    <td class="col-md-9"><a href="{% url 'viewer:archive' archive.pk %}" title="{{ archive.title_jpn }}">{{ archive.title }}</a></td>
-                    <td class="col-md-1">{{ archive.source_type }}</td>
-                    <td class="col-md-1">{{ archive.reason }}</td>
-                  <td class="col-md-1">{{ archive.filecount }}</td>
-                  <td class="col-md-1">{{ archive.filesize|filesizeformat }}</td>
+                    <td><a href="{% url 'viewer:archive' archive.pk %}" title="{{ archive.title_jpn }}">{{ archive.title }}</a></td>
+                    <td>{{ archive.source_type }}</td>
+                    <td>{{ archive.reason }}</td>
+                  <td>{{ archive.filecount }}</td>
+                  <td>{{ archive.filesize|filesizeformat }}</td>
                 </tr>
               {% endfor %}
               </tbody>
             </table>
+            </div>
           {% elif prm.view == "extended" %}
-            <table class="result-table">
+            <table class="table table-sm result-table">
               <tbody>
               {% for archive in results.object_list %}
                 <tr>
-                  <td class="td-extended col-md-1">
+                  <td class="td-extended">
                     <a href="{% url 'viewer:archive' archive.pk %}">
                       {% with thumbnail_details=archive.get_available_thumbnail_plus_size %}
                       <img alt="" title="{{ archive.title }}"
@@ -199,25 +209,25 @@
                       {% endwith %}
                     </a>
                   </td>
-                  <td class="td-extended col-md-9">
-                    <div><label class="label-extended">Title:</label>{{ archive.title }}</div>
-                    <div><label class="label-extended">Japanese:</label>{{ archive.title_jpn }}</div>
+                  <td class="td-extended">
+                    <h5>{{ archive.title }}</h5>
+                    <h6>{{ archive.title_jpn }}</h6>
                     {% if user.is_staff %}
-                      <div><label class="label-extended">File:</label>{{ archive.zipped }}</div>
+                      <div><em>{{ archive.zipped }}</em></div>
                       <div>
                       {% if archive.extracted %}
-                        <a class="btn btn-xs btn-info" href="{% url 'viewer:new-image-viewer' archive.pk '1' %}?{% url_replace 'extracted' '1' %}">View online</a>
-                        <a class="btn btn-xs btn-default" href="{% url 'viewer:archive-extract-toggle' archive.pk %}">Reduce archive</a>
+                        <a class="btn btn-sm btn-info" href="{% url 'viewer:new-image-viewer' archive.pk '1' %}?{% url_replace 'extracted' '1' %}">View online</a>
+                        <a class="btn btn-sm btn-light" href="{% url 'viewer:archive-extract-toggle' archive.pk %}">Reduce archive</a>
                       {% else %}
-                        <a class="btn btn-xs btn-default" href="{% url 'viewer:archive-extract-toggle' archive.pk %}">Expand archive</a>
+                        <a class="btn btn-sm btn-light" href="{% url 'viewer:archive-extract-toggle' archive.pk %}">Expand archive</a>
                       {% endif %}
-                        <a class="btn btn-xs btn-default" href="{% url 'viewer:archive-download' archive.pk %}">Download archive</a>
-                        <a class="btn btn-xs btn-default" href="{% url 'viewer:archive-download' archive.pk %}?original=1">Download with original name</a>
+                        <a class="btn btn-sm btn-light" href="{% url 'viewer:archive-download' archive.pk %}">Download archive</a>
+                        <a class="btn btn-sm btn-light" href="{% url 'viewer:archive-download' archive.pk %}?original=1">Download with original name</a>
                       </div>
                     {% else %}
                       <div>
-                        <a class="btn btn-xs btn-default" href="{% url 'viewer:archive-download' archive.pk %}">Download archive</a>
-                        <a class="btn btn-xs btn-default" href="{% url 'viewer:archive-download' archive.pk %}?original=1">Download with original name</a>
+                        <a class="btn btn-sm btn-light" href="{% url 'viewer:archive-download' archive.pk %}">Download archive</a>
+                        <a class="btn btn-sm btn-light" href="{% url 'viewer:archive-download' archive.pk %}?original=1">Download with original name</a>
                       </div>
                     {% endif %}
                     <div>
@@ -255,7 +265,7 @@
                     <div><label class="label-extended">Source URL:</label>{{ archive.gallery.get_link|urlize }}
                     </div>
                   </td>
-                  <td class="td-extended col-md-1">
+                  <td class="td-extended">
                     <div><label class="label-extended">Count:</label>{{ archive.filecount }}</div>
                     <div><label class="label-extended">Size:</label>{{ archive.filesize|filesizeformat }}</div>
                     <div><label class="label-extended">Category:</label>{{ archive.gallery.category }}</div>
@@ -268,7 +278,7 @@
                     {% endif %}
                     <div><label class="label-extended">Fjord:</label>{{ archive.gallery.fjord|yesno }}</div>
                   </td>
-                  <td class="td-extended col-md-1">
+                  <td class="td-extended">
                     <div><label class="label-extended">Source:</label>{{ archive.source_type }}</div>
                     <div><label class="label-extended">Reason:</label>{{ archive.reason }}</div>
                     <div><label class="label-extended">Uploader:</label>{{ archive.gallery.uploader }}</div>
@@ -289,20 +299,20 @@
                 <div class="col-md-4">
                   <nav>
                     <ul class="pagination">
-                      <li {% if results.number == 1 %} class="disabled"{% endif %}>
-                        <a href="?{% url_replace 'page' '1' %}" aria-label="First">
+                      <li class="page-item{% if results.number == 1 %} disabled{% endif %}">
+                        <a class="page-link" href="?{% url_replace 'page' '1' %}" aria-label="First">
                           <span aria-hidden="true">&laquo;</span>
                         </a>
                       </li>
                       {% for p in display_prms.page_range %}
-                        <li {% ifequal p results.number %} class="active" {% endifequal %}><a
-                            href="?{% url_replace 'page' p %}">{{ p }}</a></li>
+                        <li class="page-item{% ifequal p results.number %} active{% endifequal %}">
+                          <a class="page-link" href="?{% url_replace 'page' p %}">{{ p }}</a>
+                        </li>
                       {% empty %}
-                        <li class="active"><a href="?{% url_replace 'page' '1' %}">1</a></li>
+                        <li class="page-item active"><a class="page-link" href="?{% url_replace 'page' '1' %}">1</a></li>
                       {% endfor %}
-                      <li {% if results.number == results.paginator.num_pages %}
-                        class="disabled"{% endif %}>
-                        <a href="?{% url_replace 'page' results.paginator.num_pages %}"
+                      <li class="page-item{% if results.number == results.paginator.num_pages %} disabled{% endif %}">
+                        <a class="page-link" href="?{% url_replace 'page' results.paginator.num_pages %}"
                            aria-label="Last">
                           <span aria-hidden="true">&raquo;</span>
                         </a>
@@ -316,11 +326,9 @@
         {% endif %}
       </ul>
     {% else %}
-      <div class="row">
-        <div class="col-xs-12 text-center">
-          <div><h4><strong>No results</strong></h4></div>
-        </div>
-      </div>
+      <h4 class="text-center">
+        <strong>No results</strong>
+      </h4>
     {% endif %}
   </form>
 {% endblock %}

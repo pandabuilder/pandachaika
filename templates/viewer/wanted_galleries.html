@@ -28,7 +28,7 @@
     <form action="{% url 'viewer:wanted-galleries' %}" method="POST">{% csrf_token %}
       <div class="row">
         <div class="col-md-12">
-          <button name="clear_all_matches" class="btn btn-default">Clear all matches</button>
+          <button name="clear_all_matches" class="btn btn-light">Clear all matches</button>
         </div>
       </div>
     </form>
@@ -41,8 +41,8 @@
       {% endfor %}
       <div class="page-line form-inline">
         <button id="toggle-all" class="btn btn-info" type="button">Toggle All</button>
-        <button name="apply" class="btn btn-default">Search</button>
-        <a class="btn btn-default" href="{% url 'viewer:wanted-galleries' %}">Clear</a>
+        <button name="apply" class="btn btn-light">Search</button>
+        <a class="btn btn-light" href="{% url 'viewer:wanted-galleries' %}">Clear</a>
         <input id="checkbox-f2" type="checkbox" name="wanted-should-search" value="1" {% if "wanted-should-search" in request.GET %}checked{% endif %}><label for="checkbox-f2"><span><span></span></span>Should search</label>
         <input id="checkbox-f3" type="checkbox" name="wanted-should-search-not" value="1" {% if "wanted-should-search-not" in request.GET %}checked{% endif %}><label for="checkbox-f3"><span><span></span></span>Should not search</label>
         <input id="checkbox-f4" type="checkbox" name="with-possible-matches" value="1" {% if "with-possible-matches" in request.GET %}checked{% endif %}><label for="checkbox-f4"><span><span></span></span>With possible matches</label>
@@ -81,7 +81,7 @@
           {% with matches=gallery.possible_galleries announces=gallery.announces.all %}
             {% if matches|length > 0 %}
               <h5>Possible matches</h5>
-              <table class="table table-bordered table-condensed generic-table">
+              <table class="table table-bordered table-sm generic-table">
                 <thead>
                 <tr>
                   <th>Select</th><th>First Artist</th><th>Title</th><th>URL</th><th>Accuracy</th><th>Posted</th><th>Count</th>
@@ -118,7 +118,7 @@
             {% endif %}
             {% if announces.count > 0 %}
               <h5>Announces</h5>
-              <table class="table table-bordered table-condensed generic-table">
+              <table class="table table-bordered table-sm generic-table">
                 <thead>
                 <tr>
                   <th>Source</th><th>Announce Date</th><th>Release date</th><th>Type</th>
@@ -168,13 +168,13 @@
       <input size="10" class="form-control" name="provider" value="" placeholder="Provider filter"/>
       <input title="Cutoff" size="10" type="number" step="0.01" class="form-control" name="cutoff" value="" placeholder="Cutoff"/>
       <input title="Max matches" size="10" type="number" step="1" class="form-control" name="max-matches" value="20" placeholder="Max Matches"/>
-      <button name="search_provider_galleries" class="btn btn-default">Search selected by title on providers</button>
-      <button name="search_provider_galleries_internal" class="btn btn-default">Search selected by title on providers internally</button>
+      <button name="search_provider_galleries" class="btn btn-light">Search selected by title on providers</button>
+      <button name="search_provider_galleries_internal" class="btn btn-light">Search selected by title on providers internally</button>
     </div>
     <div class="form-group">
-    <button name="search_for_galleries" class="btn btn-default">Mark selected as search for</button>
-    <button name="set-public" class="btn btn-default">Mark selected as public</button>
-    <button name="delete_galleries" class="btn btn-default">Delete (WARNING!) selected wanted galleries</button>
+    <button name="search_for_galleries" class="btn btn-light">Mark selected as search for</button>
+    <button name="set-public" class="btn btn-light">Mark selected as public</button>
+    <button name="delete_galleries" class="btn btn-light">Delete (WARNING!) selected wanted galleries</button>
     </div>
   </form>
   {% else %}
@@ -184,7 +184,7 @@
           Title: {{ gallery.title }} >> Release date: {{ gallery.release_date|date }} >> Artists: {{ gallery.artists.all|join:" , " }}
           {% with announces=gallery.announces.all %}
             {% if announces.count > 0 %}
-              <table class="table table-bordered table-condensed generic-table">
+              <table class="table table-bordered table-sm generic-table">
                 <thead>
                 <tr>
                   <th>Thumbnail</th><th>Announce Date</th><th>Release date</th>
