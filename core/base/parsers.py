@@ -302,7 +302,7 @@ class BaseParser:
                             downloader[0].archive_db_entry.reason = wanted_gallery.reason
                             downloader[0].archive_db_entry.simple_save()
                 if downloader[0].archive_db_entry:
-                    if not downloader[0].archive_only:
+                    if not downloader[0].archive_only or downloader[0].gallery_db_entry:
                         self.logger.info("Download complete, using {}. Archive link: {}. Gallery link: {}".format(
                             downloader[0],
                             downloader[0].archive_db_entry.get_absolute_url(),

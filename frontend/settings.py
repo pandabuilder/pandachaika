@@ -288,6 +288,7 @@ PROVIDERS = [
     'core.providers.nhentai',
     'core.providers.panda',
     'core.providers.twitter',
+    'core.providers.chaika',
 ]
 
 PROVIDER_CONTEXT = crawler_settings.provider_context

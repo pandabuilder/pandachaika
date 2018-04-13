@@ -7,6 +7,7 @@ import re
 import logging
 from typing import Dict, Any
 
+from django.core.paginator import Paginator, EmptyPage
 from django.db.models import Q
 from django.http import HttpResponse, HttpRequest
 from django.urls import reverse
@@ -251,6 +252,186 @@ def json_search(request: HttpRequest) -> HttpResponse:
                     'link': gallery.get_link()
                 } for gallery in results
                 ],
+                # indent=2,
+                sort_keys=True,
+                ensure_ascii=False,
+            )
+            return HttpResponse(response, content_type="application/json; charset=utf-8")
+        # this part should be used in conjunction with json crawler provider, to transfer easily already fetch links.
+        # Get more fields from several galleries by doing a simple filtering.
+        # More complete version of the last one, since you also get the archives (DL link only, use the gallery data
+        # to create the final archive).
+        # Gallery search, no pagination
+        elif 'gs' in data:
+
+            args = data.copy()
+
+            for k in gallery_filter_keys:
+                if k not in args:
+                    args[k] = ''
+
+            keys = ("sort", "asc_desc")
+
+            for k in keys:
+                if k not in args:
+                    args[k] = ''
+
+            # args = data
+            if not request.user.is_authenticated:
+                args['public'] = True
+            else:
+                args['public'] = False
+            results = filter_galleries_no_request(args)
+            if not results:
+                return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
+            response = json.dumps(
+                [{
+                    'id': gallery.pk,
+                    'gid': gallery.gid,
+                    'token': gallery.token,
+                    'title': gallery.title,
+                    'title_jpn': gallery.title_jpn,
+                    'category': gallery.category,
+                    'uploader': gallery.uploader,
+                    'comment': gallery.comment,
+                    'posted': int(timestamp_or_zero(gallery.posted)),
+                    'filecount': gallery.filecount,
+                    'filesize': gallery.filesize,
+                    'expunged': gallery.expunged,
+                    'provider': gallery.provider,
+                    'rating': gallery.rating,
+                    'fjord': gallery.fjord,
+                    'tags': gallery.tag_list(),
+                    'link': gallery.get_link(),
+                    'thumbnail': request.build_absolute_uri(
+                        reverse('viewer:gallery-thumb', args=(gallery.pk,))) if gallery.thumbnail else '',
+                    'thumbnail_url': gallery.thumbnail_url,
+                    'archives': [
+                        request.build_absolute_uri(
+                            reverse('viewer:archive-download', args=(archive.pk,))
+                        ) for archive in gallery.archive_set.all()
+                    ],
+                } for gallery in results
+                ],
+                # indent=2,
+                sort_keys=True,
+                ensure_ascii=False,
+            )
+            return HttpResponse(response, content_type="application/json; charset=utf-8")
+        # Gallery search with pagination
+        elif 'gsp' in data:
+
+            args = data.copy()
+
+            for k in gallery_filter_keys:
+                if k not in args:
+                    args[k] = ''
+
+            keys = ("sort", "asc_desc")
+
+            for k in keys:
+                if k not in args:
+                    args[k] = ''
+
+            # args = data
+            if not request.user.is_authenticated:
+                args['public'] = True
+            else:
+                args['public'] = False
+            results = filter_galleries_no_request(args)
+
+            paginator = Paginator(results, 48)
+            try:
+                page = int(args.get("page", '1'))
+            except ValueError:
+                page = 1
+            try:
+                results = paginator.page(page)
+            except EmptyPage:
+                # If page is out of range (e.g. 9999), deliver last page of results.
+                results = paginator.page(paginator.num_pages)
+
+            response = json.dumps(
+                {
+                    'galleries': [{
+                        'id': gallery.pk,
+                        'gid': gallery.gid,
+                        'token': gallery.token,
+                        'title': gallery.title,
+                        'title_jpn': gallery.title_jpn,
+                        'category': gallery.category,
+                        'uploader': gallery.uploader,
+                        'comment': gallery.comment,
+                        'posted': int(timestamp_or_zero(gallery.posted)),
+                        'filecount': gallery.filecount,
+                        'filesize': gallery.filesize,
+                        'expunged': gallery.expunged,
+                        'provider': gallery.provider,
+                        'rating': gallery.rating,
+                        'fjord': gallery.fjord,
+                        'tags': gallery.tag_list(),
+                        'link': gallery.get_link(),
+                        'thumbnail': request.build_absolute_uri(
+                            reverse('viewer:gallery-thumb', args=(gallery.pk,))) if gallery.thumbnail else '',
+                        'thumbnail_url': gallery.thumbnail_url,
+                        'archives': [
+                            request.build_absolute_uri(
+                                reverse('viewer:archive-download', args=(archive.pk,))
+                            ) for archive in gallery.archive_set.all()
+                        ],
+                    } for gallery in results
+                    ],
+                    'has_previous': results.has_previous(),
+                    'has_next': results.has_next(),
+                    'num_pages': paginator.num_pages,
+                    'count': paginator.count,
+                    'number': results.number,
+                },
+                # indent=2,
+                sort_keys=True,
+                ensure_ascii=False,
+            )
+            return HttpResponse(response, content_type="application/json; charset=utf-8")
+        # Gallery data
+        elif 'gd' in data:
+            try:
+                gallery_id = int(data['gd'])
+            except ValueError:
+                return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
+            try:
+                gallery = Gallery.objects.get(pk=gallery_id)
+            except Gallery.DoesNotExist:
+                return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
+            if not gallery.public and not request.user.is_authenticated:
+                return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
+            response = json.dumps(
+                {
+                    'id': gallery.pk,
+                    'gid': gallery.gid,
+                    'token': gallery.token,
+                    'title': gallery.title,
+                    'title_jpn': gallery.title_jpn,
+                    'category': gallery.category,
+                    'uploader': gallery.uploader,
+                    'comment': gallery.comment,
+                    'posted': int(timestamp_or_zero(gallery.posted)),
+                    'filecount': gallery.filecount,
+                    'filesize': gallery.filesize,
+                    'expunged': gallery.expunged,
+                    'provider': gallery.provider,
+                    'rating': gallery.rating,
+                    'fjord': gallery.fjord,
+                    'tags': gallery.tag_list(),
+                    'link': gallery.get_link(),
+                    'thumbnail': request.build_absolute_uri(
+                        reverse('viewer:gallery-thumb', args=(gallery.pk,))) if gallery.thumbnail else '',
+                    'thumbnail_url': gallery.thumbnail_url,
+                    'archives': [
+                        request.build_absolute_uri(
+                            reverse('viewer:archive-download', args=(archive.pk,))
+                        ) for archive in gallery.archive_set.all()
+                    ],
+                },
                 # indent=2,
                 sort_keys=True,
                 ensure_ascii=False,
