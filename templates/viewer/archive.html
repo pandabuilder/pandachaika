@@ -59,11 +59,11 @@
         </tr>
         <tr>
           <th>Source type</th>
-          <td>{{ archive.source_type }}</td>
+          <td><a href="{% url 'viewer:archive-search' %}?source_type={{ archive.source_type }}">{{ archive.source_type }}</a></td>
         </tr>
         <tr>
           <th>Reason</th>
-          <td>{{ archive.reason }}</td>
+          <td><a href="{% url 'viewer:archive-search' %}?reason={{ archive.reason }}">{{ archive.reason }}</a></td>
         </tr>
         <tr>
           {% if user.is_staff %}<th>Added to backup</th><td>{{ archive.create_date|date:"DATETIME_FORMAT" }}</td>
@@ -84,7 +84,7 @@
           </tr>
           <tr>
             <th>Uploader</th>
-            <td>{{ archive.gallery.uploader }}</td>
+            <td><a href="{% url 'viewer:archive-search' %}?uploader={{ archive.gallery.uploader }}">{{ archive.gallery.uploader }}</a></td>
           </tr>
           <tr>
             <th>Metadata</th>
