@@ -100,7 +100,7 @@
                 {% for match in matches %}
                   <tr>
                     <td>
-                      <a href="{% url 'viewer:archive-update-tool-id' archive.pk 'select-as-match' match.gallery.pk %}"><span class="glyphicon glyphicon-ok" aria-hidden="true"></span></a>
+                      <a href="{% url 'viewer:archive-update-tool-id' archive.pk 'select-as-match' match.gallery.pk %}"><i class="fas fa-check"></i></a>
                     </td>
                     <td>
                       {{ match.gallery.artist_tags.0.name }}
