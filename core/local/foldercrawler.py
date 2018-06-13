@@ -490,8 +490,8 @@ class FolderCrawler(object):
                     self.logger.info("Matching with: {}".format(matcher[0]))
                     if matcher[0].start_match(filepath, crc32):
                         match_type = matcher[0].found_by
-                        match_title = matcher[0].match_title
-                        match_link = matcher[0].match_link
+                        match_title = matcher[0].match_title or ''
+                        match_link = matcher[0].match_link or ''
                         match_count = matcher[0].match_count
                         match_result = True
                         break

@@ -295,6 +295,17 @@ def available_filename(root: str, filename: str) -> str:
         return filename
 
 
+def get_base_filename_string_from_gallery_data(gallery_data: GalleryData) -> str:
+    if gallery_data.title:
+        return gallery_data.title
+    elif gallery_data.title_jpn:
+        return gallery_data.title_jpn
+    elif gallery_data.link:
+        return gallery_data.link
+    else:
+        return ''
+
+
 def translate_tag(tag: str) -> str:
     tag = tag.lower()
     tag = tag.replace(" ", "_")
@@ -377,6 +388,8 @@ def get_scored_matches(word: str, possibilities: List[str], n: int=3, cutoff: fl
     s: SequenceMatcher = SequenceMatcher()
     s.set_seq2(word)
     for x in possibilities:
+        if not x:
+            continue
         s.set_seq1(x)
         if s.real_quick_ratio() >= cutoff and s.quick_ratio() >= cutoff and s.ratio() >= cutoff:
             result.append((s.ratio(), x))
@@ -411,7 +424,7 @@ def get_dict_allowed_fields(gallery_data: GalleryData) -> Dict[str, Any]:
     return gallery_dict
 
 
-def previous_and_next(some_iterable: typing.Sequence[T]) -> typing.Iterator[Tuple[T, T, T]]:
+def previous_and_next(some_iterable: typing.Sequence[Optional[T]]) -> typing.Iterator[Tuple[Optional[T], Optional[T], Optional[T]]]:
     prevs, items, nexts = tee(some_iterable, 3)
     prevs = chain([None], prevs)
     nexts = chain(islice(nexts, 1, None), [None])
@@ -451,17 +464,23 @@ def get_thread_status() -> List[Tuple[Tuple[str, str, str], bool]]:
     return info_list
 
 
-def get_schedulers_status(schedulers: List['BaseScheduler']) -> List[Tuple[str, bool, datetime, str, datetime]]:
+def get_schedulers_status(schedulers: List['BaseScheduler']) -> List[Tuple[str, bool, Optional[datetime], str, Optional[datetime]]]:
     info_list = []
 
     for scheduler in schedulers:
+
+        if scheduler.last_run:
+            next_run: Optional[datetime] = scheduler.last_run + timedelta(seconds=scheduler.timer)
+        else:
+            next_run = None
+
         info_list.append(
             (
                 scheduler.thread_name,
                 scheduler.is_running(),
                 scheduler.last_run,
                 str(scheduler.timer) + ", " + str(scheduler.timer / 60),
-                scheduler.last_run + timedelta(seconds=scheduler.timer)
+                next_run
             )
         )
 
@@ -518,7 +537,7 @@ class StandardFormatter(logging.Formatter):
         return s
 
 
-def send_pushover_notification(user_key: str, token: str, message: str, title: str = "Alert", sound: str = None, device: str = None, attachment: str = None) -> bool:
+def send_pushover_notification(user_key: str, token: str, message: str, title: str = "Alert", sound: str = '', device: str = '', attachment: str = '') -> bool:
 
     payload = {
         'token': token,

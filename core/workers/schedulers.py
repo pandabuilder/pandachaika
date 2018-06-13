@@ -8,6 +8,7 @@ import django.utils.timezone as django_tz
 import logging
 
 from core.base.setup import Settings
+from core.base.types import OptionalLogger, RealLogger, FakeLogger
 from viewer.models import Scheduler
 
 
@@ -23,7 +24,12 @@ class BaseScheduler(object):
         if self.force_run_once:
             self.force_run_once: bool = False
             return 0
-        seconds_until = (self.last_run + datetime.timedelta(seconds=int(self.timer)) - django_tz.now()).total_seconds()
+        if self.last_run:
+            seconds_until = (
+                self.last_run + datetime.timedelta(seconds=int(self.timer)) - django_tz.now()
+            ).total_seconds()
+        else:
+            seconds_until = (datetime.timedelta(seconds=int(self.timer)) - django_tz.now()).total_seconds()
         if seconds_until < 0:
             seconds_until = 0
         return seconds_until
@@ -45,14 +51,17 @@ class BaseScheduler(object):
     def job(self) -> None:
         raise NotImplementedError
 
-    def __init__(self, settings: Settings, web_queue=None, crawler_logger=None, timer=1, pk=None) -> None:
+    def __init__(self, settings: Settings, web_queue=None, crawler_logger: OptionalLogger=None, timer=1, pk=None) -> None:
 
-        self.crawler_logger = crawler_logger
+        if not crawler_logger:
+            self.crawler_logger: RealLogger = FakeLogger()
+        else:
+            self.crawler_logger = crawler_logger
         self.settings = settings
         self.stop = threading.Event()
         self.web_queue = web_queue
         self.timer = self.timer_to_seconds(timer)
-        self.job_thread: threading.Thread = None
+        self.job_thread: Optional[threading.Thread] = None
         self.last_run: Optional[datetime.datetime] = None
         self.force_run_once: bool = False
         self.pk = pk

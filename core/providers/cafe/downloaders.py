@@ -3,14 +3,14 @@ import os
 import shutil
 import re
 from tempfile import mkdtemp
-from typing import List
+from typing import List, Optional
 from zipfile import ZipFile
 
 import requests
 from bs4 import BeautifulSoup
 
 from core.base.types import DataDict
-from core.base.utilities import calc_crc32, get_zip_filesize
+from core.base.utilities import calc_crc32, get_zip_filesize, get_base_filename_string_from_gallery_data
 from core.downloaders.handlers import BaseDownloader, BaseInfoDownloader
 from .utilities import guess_gallery_read_url
 from viewer.models import Archive
@@ -26,13 +26,18 @@ class ArchiveDownloader(BaseDownloader):
 
     def start_download(self) -> None:
 
-        self.gallery.title = replace_illegal_name(
-            self.gallery.title)
+        if not self.gallery or not self.gallery.link:
+            return
+
+        to_use_filename = get_base_filename_string_from_gallery_data(self.gallery)
+
+        to_use_filename = replace_illegal_name(to_use_filename)
+
         self.gallery.filename = available_filename(
             self.settings.MEDIA_ROOT,
             os.path.join(
                 self.own_settings.archive_dl_folder,
-                self.gallery.title + '.zip'))
+                to_use_filename + '.zip'))
         if self.gallery.content:
             soup_1 = BeautifulSoup(self.gallery.content, 'html.parser')
         else:
@@ -153,7 +158,10 @@ class ArchiveDownloader(BaseDownloader):
             self.fileDownloaded = 1
             self.return_code = 1
 
-    def update_archive_db(self, default_values: DataDict) -> Archive:
+    def update_archive_db(self, default_values: DataDict) -> Optional['Archive']:
+
+        if not self.gallery:
+            return None
 
         values = {
             'title': self.gallery.title,
@@ -190,13 +198,18 @@ class ArchiveJSDownloader(BaseDownloader):
 
     def start_download(self) -> None:
 
-        self.gallery.title = replace_illegal_name(
-            self.gallery.title)
+        if not self.gallery or not self.gallery.link:
+            return
+
+        to_use_filename = get_base_filename_string_from_gallery_data(self.gallery)
+
+        to_use_filename = replace_illegal_name(to_use_filename)
+
         self.gallery.filename = available_filename(
             self.settings.MEDIA_ROOT,
             os.path.join(
                 self.own_settings.archive_dl_folder,
-                self.gallery.title + '.zip'))
+                to_use_filename + '.zip'))
         if self.gallery.content:
             soup_1 = BeautifulSoup(self.gallery.content, 'html.parser')
         else:
@@ -299,7 +312,10 @@ class ArchiveJSDownloader(BaseDownloader):
             self.logger.error("Wrong HTML code returned, could not download, link: {}".format(gallery_read))
             self.return_code = 0
 
-    def update_archive_db(self, default_values: DataDict) -> Archive:
+    def update_archive_db(self, default_values: DataDict) -> Optional['Archive']:
+
+        if not self.gallery:
+            return None
 
         values = {
             'title': self.gallery.title,

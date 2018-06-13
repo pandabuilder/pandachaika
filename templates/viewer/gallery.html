@@ -23,11 +23,11 @@
         <a href="{% url 'viewer:gallery-tool' gallery.pk 'download' %}">default download</a>
         <span class="dropdown">
           <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-toggle="dropdown">force download<span class="caret"></span></button>
-          <ul class="dropdown-menu dropdown-menu-right">
+          <div class="dropdown-menu dropdown-menu-right">
           {% for downloader, priority in settings.downloaders.items %}
-            <li><a href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ settings.api_key }}', '{% static 'favicon-160.png' %}', 'webcrawler', {link: '{{ gallery.get_link }}', downloader: '{{ downloader }}'}); return false;">{{ downloader }}</a></li>
+            <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ settings.api_key }}', '{% static 'favicon-160.png' %}', 'webcrawler', {link: '{{ gallery.get_link }}', downloader: '{{ downloader }}'}); return false;">{{ downloader }}</a>
           {% endfor %}
-          </ul>
+          </div>
         </span>
       {% endif %}
       </li>

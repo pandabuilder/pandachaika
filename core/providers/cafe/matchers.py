@@ -1,4 +1,5 @@
 import os
+from typing import Optional
 
 from core.base.matchers import Matcher
 from core.base.types import DataDict
@@ -30,7 +31,10 @@ class TitleMatcher(Matcher):
     def search_method(self, title_to_search: str) -> bool:
         return self.compare_by_title(title_to_search)
 
-    def format_match_values(self) -> DataDict:
+    def format_match_values(self) -> Optional[DataDict]:
+
+        if not self.match_values:
+            return None
 
         self.match_gid = self.match_values.gid
         values = {

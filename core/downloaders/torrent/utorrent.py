@@ -1,6 +1,6 @@
 import re
 from tempfile import NamedTemporaryFile
-from typing import Union
+from typing import Union, Optional
 
 import requests
 from requests.exceptions import RequestException
@@ -67,10 +67,14 @@ class uTorrent(TorrentClient):
         self.UTORRENT_URL = '%s:%s/gui/' % (self.address, self.port)
         UTORRENT_URL_TOKEN = '%stoken.html' % self.UTORRENT_URL
         REGEX_UTORRENT_TOKEN = r'<div[^>]*id=[\"\']token[\"\'][^>]*>([^<]*)</div>'
-        self.auth = HTTPBasicAuth(self.user, self.password)
+        self.auth: Optional[HTTPBasicAuth] = HTTPBasicAuth(self.user, self.password)
         try:
             r = requests.get(UTORRENT_URL_TOKEN, auth=self.auth, timeout=25)
-            self.token = re.search(REGEX_UTORRENT_TOKEN, r.text).group(1)
+            result = re.search(REGEX_UTORRENT_TOKEN, r.text)
+            if result:
+                self.token = result.group(1)
+            else:
+                return False
             return True
         except requests.exceptions.RequestException:
             return False
@@ -79,6 +83,6 @@ class uTorrent(TorrentClient):
 
     def __init__(self, address: str='localhost', port: int=8080, user: str='', password: str='', secure: bool=True) -> None:
         super().__init__(address=address, port=port, user=user, password=password, secure=secure)
-        self.auth = None
-        self.token = None
+        self.auth: Optional[HTTPBasicAuth] = None
+        self.token = ''
         self.UTORRENT_URL = ''

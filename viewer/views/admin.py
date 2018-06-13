@@ -141,12 +141,15 @@ def stats_collection(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
-def queue_operations(request: HttpRequest, operation: str, arguments: str=None):
+def queue_operations(request: HttpRequest, operation: str, arguments: str=''):
 
     if not request.user.is_staff:
         return render_error(request, "You need to be an admin to operate the queue.")
     if operation == "remove_by_index":
-        crawler_settings.workers.web_queue.remove_by_index(int(arguments))
+        if arguments:
+            crawler_settings.workers.web_queue.remove_by_index(int(arguments))
+        else:
+            return render_error(request, "Unknown argument.")
     else:
         return render_error(request, "Unknown queue operation.")
 
@@ -265,9 +268,9 @@ def tools(request: HttpRequest, tool: str = "main") -> HttpResponse:
         except ValueError:
             cutoff = 0.4
         try:
-            max_matches = int(request.GET.get('max-matches', '20'))
+            max_matches = int(request.GET.get('max-matches', '10'))
         except ValueError:
-            max_matches = 20
+            max_matches = 10
         frontend_logger.info(
             'Looking for possible matches in gallery database '
             'for non-matched archives (cutoff: {}, max matches: {}) '
@@ -348,9 +351,9 @@ def tools(request: HttpRequest, tool: str = "main") -> HttpResponse:
         except ValueError:
             cutoff = 0.4
         try:
-            max_matches = int(request.GET.get('max-matches', '20'))
+            max_matches = int(request.GET.get('max-matches', '10'))
         except ValueError:
-            max_matches = 20
+            max_matches = 10
 
         matching_thread = threading.Thread(
             name='wanted_local_search_worker',

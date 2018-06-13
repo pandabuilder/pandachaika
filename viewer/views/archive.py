@@ -325,15 +325,17 @@ def recall_api(request: HttpRequest, pk: int) -> HttpResponse:
 
     current_settings = Settings(load_from_config=crawler_settings.config)
 
-    current_settings.set_update_metadata_options(providers=(gallery.provider,))
+    if current_settings.workers.web_queue:
 
-    current_settings.workers.web_queue.enqueue_args_list((gallery.get_link(),), override_options=current_settings)
+        current_settings.set_update_metadata_options(providers=(gallery.provider,))
 
-    frontend_logger.info(
-        'Updating gallery API data for gallery: {} and related archives'.format(
-            gallery.get_absolute_url()
+        current_settings.workers.web_queue.enqueue_args_list((gallery.get_link(),), override_options=current_settings)
+
+        frontend_logger.info(
+            'Updating gallery API data for gallery: {} and related archives'.format(
+                gallery.get_absolute_url()
+            )
         )
-    )
 
     return HttpResponseRedirect(request.META["HTTP_REFERER"])
 
@@ -361,9 +363,9 @@ def generate_matches(request: HttpRequest, pk: int) -> HttpResponse:
     except ValueError:
         cutoff = 0.4
     try:
-        max_matches = int(request.GET.get('max-matches', '20'))
+        max_matches = int(request.GET.get('max-matches', '10'))
     except ValueError:
-        max_matches = 20
+        max_matches = 10
 
     archive.generate_possible_matches(
         clear_title=clear_title, provider_filter=provider_filter,

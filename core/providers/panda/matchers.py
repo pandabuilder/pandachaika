@@ -44,15 +44,19 @@ class CoverMatcher(Matcher):
             if self.time_to_wait_after_compare > 0:
                 time.sleep(self.time_to_wait_after_compare)
             galleries_data = self.get_metadata_after_matching()
-            galleries_data = [x for x in galleries_data if not self.general_utils.discard_by_tag_list(x.tags)]
-            # We don't call get_list_closer_gallery_titles_from_dict
-            # because we assume that a image match is correct already
             if galleries_data:
-                self.values_array = galleries_data
-                results = [(gallery.title, gallery, 1) for gallery in galleries_data]
+                galleries_data = [x for x in galleries_data if not self.general_utils.discard_by_tag_list(x.tags)]
+                # We don't call get_list_closer_gallery_titles_from_dict
+                # because we assume that a image match is correct already
+                if galleries_data:
+                    self.values_array = galleries_data
+                    results = [(gallery.title or gallery.title_jpn or '', gallery, 1) for gallery in galleries_data]
         return results
 
-    def format_match_values(self) -> DataDict:
+    def format_match_values(self) -> Optional[DataDict]:
+
+        if not self.match_values:
+            return None
 
         self.match_gid = self.match_values.gid
         values = {
@@ -142,15 +146,19 @@ class ImageMatcher(Matcher):
             if self.time_to_wait_after_compare > 0:
                 time.sleep(self.time_to_wait_after_compare)
             galleries_data = self.get_metadata_after_matching()
-            galleries_data = [x for x in galleries_data if not self.general_utils.discard_by_tag_list(x.tags)]
-            # We don't call get_list_closer_gallery_titles_from_dict
-            # because we assume that a image match is correct already
             if galleries_data:
-                self.values_array = galleries_data
-                results = [(gallery.title, gallery, 1) for gallery in galleries_data]
+                galleries_data = [x for x in galleries_data if not self.general_utils.discard_by_tag_list(x.tags)]
+                # We don't call get_list_closer_gallery_titles_from_dict
+                # because we assume that a image match is correct already
+                if galleries_data:
+                    self.values_array = galleries_data
+                    results = [(gallery.title or gallery.title_jpn or '', gallery, 1) for gallery in galleries_data]
         return results
 
-    def format_match_values(self) -> DataDict:
+    def format_match_values(self) -> Optional[DataDict]:
+
+        if not self.match_values:
+            return None
 
         self.match_gid = self.match_values.gid
         values = {
@@ -235,7 +243,10 @@ class TitleMatcher(Matcher):
     def search_method(self, title_to_search: str) -> bool:
         return self.compare_by_title(title_to_search)
 
-    def format_match_values(self) -> DataDict:
+    def format_match_values(self) -> Optional[DataDict]:
+
+        if not self.match_values:
+            return None
 
         self.match_gid = self.match_values.gid
         values = {
@@ -297,8 +308,10 @@ class TitleGoogleMatcher(Matcher):
     def search_method(self, title_to_search: str) -> bool:
         return self.compare_by_title_google(title_to_search)
 
-    def format_match_values(self) -> DataDict:
+    def format_match_values(self) -> Optional[DataDict]:
 
+        if not self.match_values:
+            return None
         self.match_gid = self.match_values.gid
         values = {
             'title': self.match_title,

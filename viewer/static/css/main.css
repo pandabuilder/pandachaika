@@ -65,6 +65,10 @@ body a {
   color: black;
 }
 
+.archive-incomplete {
+  color: #f0ad4e;
+}
+
 .pagination .disabled > a,
 .pagination .disabled > a:focus,
 .pagination .disabled > a:hover,

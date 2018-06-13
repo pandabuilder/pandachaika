@@ -469,25 +469,30 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                 response = {}
                 # Used by internal pages and userscript
                 if data['operation'] == 'webcrawler' and 'link' in args:
-                    if 'downloader' in args:
+                    if not crawler_settings.workers.web_queue:
+                        response['error'] = 'The webqueue is not running'
+                    elif 'downloader' in args:
                         current_settings = Settings(load_from_config=crawler_settings.config)
-                        current_settings.allow_downloaders_only([args['downloader']], True, True, True)
-                        archive = None
-                        parsers = current_settings.provider_context.get_parsers(current_settings, crawler_logger)
-                        for parser in parsers:
-                            if parser.id_from_url_implemented():
-                                urls_filtered = parser.filter_accepted_urls((args['link'], ))
-                                for url_filtered in urls_filtered:
-                                    gallery_gid = parser.id_from_url(url_filtered)
-                                    if gallery_gid:
-                                        archive = Archive.objects.filter(gallery__gid=gallery_gid).first()
-                                if urls_filtered:
-                                    break
-                        current_settings.workers.web_queue.enqueue_args_list((args['link'],), override_options=current_settings)
-                        if archive:
-                            response['message'] = "Archive exists, crawling to check for redownload: " + args['link']
+                        if not current_settings.workers.web_queue:
+                            response['error'] = 'The webqueue is not running'
                         else:
-                            response['message'] = "Crawling: " + args['link']
+                            current_settings.allow_downloaders_only([args['downloader']], True, True, True)
+                            archive = None
+                            parsers = current_settings.provider_context.get_parsers(current_settings, crawler_logger)
+                            for parser in parsers:
+                                if parser.id_from_url_implemented():
+                                    urls_filtered = parser.filter_accepted_urls((args['link'], ))
+                                    for url_filtered in urls_filtered:
+                                        gallery_gid = parser.id_from_url(url_filtered)
+                                        if gallery_gid:
+                                            archive = Archive.objects.filter(gallery__gid=gallery_gid).first()
+                                    if urls_filtered:
+                                        break
+                            current_settings.workers.web_queue.enqueue_args_list((args['link'],), override_options=current_settings)
+                            if archive:
+                                response['message'] = "Archive exists, crawling to check for redownload: " + args['link']
+                            else:
+                                response['message'] = "Crawling: " + args['link']
                     else:
                         if 'parentLink' in args:
                             parent_archive = None
@@ -606,7 +611,10 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                             current_settings.allow_type_downloaders_only('info')
                         elif data['operation'] == 'queue_archives':
                             current_settings.allow_type_downloaders_only('fake')
-                        current_settings.workers.web_queue.enqueue_args_list(pages_links, override_options=current_settings)
+                        if current_settings.workers.web_queue:
+                            current_settings.workers.web_queue.enqueue_args_list(pages_links, override_options=current_settings)
+                        else:
+                            pages_links = []
                     return HttpResponse(json.dumps({'result': str(len(pages_links))}), content_type="application/json; charset=utf-8")
                 # Used by remotesite command
                 elif data['operation'] == 'links':
@@ -637,9 +645,9 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                         except ValueError:
                             cutoff = 0.4
                         try:
-                            max_matches = int(request.GET.get('max-matches', '20'))
+                            max_matches = int(request.GET.get('max-matches', '10'))
                         except ValueError:
-                            max_matches = 20
+                            max_matches = 10
 
                         archive.generate_possible_matches(
                             clear_title=clear_title, provider_filter=provider_filter,

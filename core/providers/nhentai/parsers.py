@@ -42,10 +42,21 @@ class Parser(BaseParser):
 
         if soup:
             title_jpn_match = soup.find("div", id=re.compile("info")).h2
-            gallery = GalleryData('nh-' + re.search(r'{}(\d+)'.format(constants.gallery_container_url), link).group(1))
+
+            gallery_id_match = re.search(r'{}(\d+)'.format(constants.gallery_container_url), link)
+
+            if not gallery_id_match:
+                return None
+            gallery_id = 'nh-' + gallery_id_match.group(1)
+
+            gallery = GalleryData(gallery_id)
             gallery.title = soup.h1.get_text()
             gallery.title_jpn = title_jpn_match.get_text() if title_jpn_match else ''
-            gallery.filecount = int(re.search('<div>(\d+) page(s*)</div>', response.text).group(1))
+            gallery_filecount_match = re.search('<div>(\d+) page(s*)</div>', response.text)
+            if gallery_filecount_match:
+                gallery.filecount = int(gallery_filecount_match.group(1))
+            else:
+                gallery.filecount = 0
             gallery.tags = []
             gallery.provider = self.name
             gallery.link = link
@@ -65,7 +76,7 @@ class Parser(BaseParser):
                     gallery.tags.append(translate_tag(tag_scope + ":" + tag_name))
 
         else:
-            gallery = None
+            return None
         return gallery
 
     # Even if we just call the single method, it allows to upgrade this easily in case group calls are supported
@@ -146,6 +157,10 @@ class Parser(BaseParser):
         galleries_data = self.fetch_multiple_gallery_data(fetch_format_galleries)
 
         for internal_gallery_data in galleries_data:
+
+            if not internal_gallery_data.link:
+                continue
+
             if self.general_utils.discard_by_tag_list(internal_gallery_data.tags):
                 if not self.settings.silent_processing:
                     self.logger.info(

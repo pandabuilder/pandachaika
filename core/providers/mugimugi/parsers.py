@@ -25,7 +25,9 @@ class Parser(BaseParser):
 
     def get_galleries_from_xml(self, url_group: Iterable[str]) -> List[GalleryData]:
 
-        galleries_ids = [self.id_from_url(gallery_url).replace('mugi-B', 'B') for gallery_url in url_group]
+        possible_gallery_ids = [self.id_from_url(gallery_url) for gallery_url in url_group]
+
+        galleries_ids = [gallery_id.replace('mugi-B', 'B') for gallery_id in possible_gallery_ids if gallery_id]
 
         galleries = list()
 
@@ -131,6 +133,8 @@ class Parser(BaseParser):
         galleries_data = self.fetch_multiple_gallery_data(fetch_format_galleries)
 
         for internal_gallery_data in galleries_data:
+            if not internal_gallery_data.link:
+                continue
             if self.general_utils.discard_by_tag_list(internal_gallery_data.tags):
                 if not self.settings.silent_processing:
                     self.logger.info(

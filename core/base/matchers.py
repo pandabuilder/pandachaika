@@ -7,7 +7,7 @@ import typing
 
 from core.base.comparison import get_gallery_closer_title_from_gallery_values, get_list_closer_gallery_titles_from_dict
 from core.base.utilities import GeneralUtils
-from core.base.types import GalleryData, OptionalLogger, FakeLogger
+from core.base.types import GalleryData, OptionalLogger, FakeLogger, RealLogger, DataDict
 
 
 if typing.TYPE_CHECKING:
@@ -41,6 +41,8 @@ class Matcher(metaclass=Meta):
             if self.time_to_wait_after_compare > 0:
                 time.sleep(self.time_to_wait_after_compare)
             galleries_data = self.get_metadata_after_matching()
+            if not galleries_data:
+                return 0
             galleries_data = [x for x in galleries_data if not self.general_utils.discard_by_tag_list(x.tags)]
             if not galleries_data:
                 return 0
@@ -56,7 +58,7 @@ class Matcher(metaclass=Meta):
         else:
             return 0
 
-    def create_closer_matches_values(self, title: str, cutoff: float = None, max_matches: int = 20) -> List[Tuple[str, GalleryData, float]]:
+    def create_closer_matches_values(self, title: str, cutoff: Optional[float] = None, max_matches: int = 20) -> List[Tuple[str, GalleryData, float]]:
 
         if cutoff is None:
             cutoff = self.default_cutoff
@@ -69,6 +71,8 @@ class Matcher(metaclass=Meta):
             if self.time_to_wait_after_compare > 0:
                 time.sleep(self.time_to_wait_after_compare)
             galleries_data = self.get_metadata_after_matching()
+            if not galleries_data:
+                return results
             galleries_data = [x for x in galleries_data if not self.general_utils.discard_by_tag_list(x.tags)]
             if galleries_data:
                 self.values_array = galleries_data
@@ -76,10 +80,10 @@ class Matcher(metaclass=Meta):
                     self.format_to_compare_title(title), self.values_array, cutoff, max_matches)
         return results
 
-    def get_metadata_after_matching(self) -> List[GalleryData]:
+    def get_metadata_after_matching(self) -> Optional[List[GalleryData]]:
         return self.parser.fetch_multiple_gallery_data(self.gallery_links)
 
-    def format_match_values(self) -> Dict[str, Any]:
+    def format_match_values(self) -> Optional[DataDict]:
         raise NotImplementedError
 
     def format_to_search_title(self, file_name: str) -> str:
@@ -93,16 +97,25 @@ class Matcher(metaclass=Meta):
 
     def update_archive(self) -> None:
 
+        if not self.settings.archive_model:
+            self.logger.error("Archive model has not been initiated.")
+            return
+
         values = self.format_match_values()
-        if self.settings.archive_reason:
-            values['reason'] = self.settings.archive_reason
-        self.settings.archive_model.objects.update_or_create_by_values_and_gid(
-            values,
-            self.match_gid,
-            zipped=self.file_path
-        )
+        if values:
+            if self.settings.archive_reason:
+                values['reason'] = self.settings.archive_reason
+            self.settings.archive_model.objects.update_or_create_by_values_and_gid(
+                values,
+                self.match_gid,
+                zipped=self.file_path
+            )
 
     def update_gallery_db(self, gallery_data: GalleryData) -> None:
+
+        if not self.settings.gallery_model:
+            self.logger.error("Gallery model has not been initiated.")
+            return
 
         check_exists = self.settings.gallery_model.objects.exists_by_gid(
             gallery_data.gid)
@@ -113,9 +126,9 @@ class Matcher(metaclass=Meta):
 
     def start_match(self, file_path: str, crc32: str) -> bool:
 
-        self.file_path = file_path
+        self.file_path: str = file_path
         # self.file_title = self.get_title_from_path(file_path)
-        self.crc32 = crc32
+        self.crc32: Optional[str] = crc32
 
         self.api_galleries: List[GalleryData] = []
 
@@ -124,7 +137,8 @@ class Matcher(metaclass=Meta):
         if self.return_code == 0:
             return False
 
-        self.update_gallery_db(self.match_values)
+        if self.match_values:
+            self.update_gallery_db(self.match_values)
 
         self.update_archive()
         return True
@@ -137,21 +151,21 @@ class Matcher(metaclass=Meta):
         self.settings = settings
         self.own_settings = settings.providers[self.provider]
         if not logger:
-            self.logger: OptionalLogger = FakeLogger()
+            self.logger: RealLogger = FakeLogger()
         else:
             self.logger = logger
         self.general_utils = GeneralUtils(global_settings=settings)
         self.parser = self.settings.provider_context.get_parsers(self.settings, self.logger, filter_name=self.provider)[0]
         self.found_by = ''
         self.match_gid: Optional[str] = None
-        self.match_link = None
+        self.match_link: Optional[str] = None
         self.values_array = []
         self.match_count = 0
-        self.match_title = None
+        self.match_title: Optional[str] = None
         self.api_galleries = []
-        self.crc32 = None
-        self.file_path = None
+        self.crc32: Optional[str] = None
+        self.file_path: str = ''
         # self.file_title = None
-        self.return_code = None
+        self.return_code: int = 0
         self.gallery_links: List[str] = []
-        self.match_values: GalleryData = None
+        self.match_values: Optional[GalleryData] = None

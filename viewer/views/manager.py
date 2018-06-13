@@ -196,16 +196,21 @@ def missing_archives_for_galleries(request: HttpRequest) -> HttpResponse:
 
                 # Force replace_metadata when queueing from this list, since it's mostly used to download non used.
                 current_settings = Settings(load_from_config=crawler_settings.config)
-                current_settings.replace_metadata = True
-                current_settings.retry_failed = True
 
-                if 'reason' in p and p['reason'] != '':
-                    reason = p['reason']
-                    # Force limit string length (reason field max_length)
-                    current_settings.archive_reason = reason[:200]
+                if current_settings.workers.web_queue:
 
-                current_settings.workers.web_queue.enqueue_args_list((gallery.get_link(),),
-                                                                     override_options=current_settings)
+                    current_settings.replace_metadata = True
+                    current_settings.retry_failed = True
+
+                    if 'reason' in p and p['reason'] != '':
+                        reason = p['reason']
+                        # Force limit string length (reason field max_length)
+                        current_settings.archive_reason = reason[:200]
+
+                    current_settings.workers.web_queue.enqueue_args_list(
+                        (gallery.get_link(),),
+                        override_options=current_settings
+                    )
 
     if 'force_public' in request.GET:
         force_public = True
@@ -359,9 +364,9 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
             except ValueError:
                 cutoff = 0.4
             try:
-                max_matches = int(p.get('max-matches', '20'))
+                max_matches = int(p.get('max-matches', '10'))
             except ValueError:
-                max_matches = 20
+                max_matches = 10
 
             web_match_thread = threading.Thread(
                 name='web_match_worker',
@@ -384,9 +389,9 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
             except ValueError:
                 cutoff = 0.4
             try:
-                max_matches = int(p.get('max-matches', '20'))
+                max_matches = int(p.get('max-matches', '10'))
             except ValueError:
-                max_matches = 20
+                max_matches = 10
 
             frontend_logger.info(
                 'Looking for possible matches in gallery database '
@@ -587,9 +592,9 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
             except ValueError:
                 cutoff = 0.4
             try:
-                max_matches = int(p.get('max-matches', '20'))
+                max_matches = int(p.get('max-matches', '10'))
             except ValueError:
-                max_matches = 20
+                max_matches = 10
 
             message = 'Searching for gallery matches locally in providers for wanted galleries.'
             frontend_logger.info(message)

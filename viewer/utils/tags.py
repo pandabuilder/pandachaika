@@ -20,7 +20,7 @@ def sort_tags(tag_list: QuerySet) -> List[Tuple[str, List['Tag']]]:
 
     remaining_tags = sorted([x for x in tag_list if x.scope not in scope_priorities], key=str)
     if remaining_tags:
-        prioritized_tag_list.append((None, remaining_tags))
+        prioritized_tag_list.append(('', remaining_tags))
 
     return prioritized_tag_list
 

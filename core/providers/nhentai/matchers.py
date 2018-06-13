@@ -1,5 +1,6 @@
 import os
 import re
+from typing import Optional
 
 import requests
 
@@ -34,8 +35,10 @@ class TitleMatcher(Matcher):
     def search_method(self, title_to_search: str) -> bool:
         return self.compare_by_title(title_to_search)
 
-    def format_match_values(self) -> DataDict:
+    def format_match_values(self) -> Optional[DataDict]:
 
+        if not self.match_values:
+            return None
         self.match_gid = self.match_values.gid
         values = {
             'title': self.match_title,

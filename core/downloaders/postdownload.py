@@ -128,7 +128,7 @@ class PostDownloader(object):
             context.check_hostname = False
         else:
             context = ssl.create_default_context()
-        self.ftps = FTP_TLS(
+        self.ftps: Optional[FTP_TLS] = FTP_TLS(
             host=self.settings.ftps['address'],
             user=self.settings.ftps['user'],
             passwd=self.settings.ftps['passwd'],
@@ -141,10 +141,13 @@ class PostDownloader(object):
         self.ftps.prot_p()
 
     def set_current_dir(self, self_dir: str) -> None:
-        self.current_ftp_dir = self_dir
+        self.current_ftp_dir: Optional[str] = self_dir
+        if not self.ftps:
+            return None
         self.ftps.cwd(self_dir)
 
     def download_all_missing(self, archives: Iterable[Archive]=None) -> None:
+
         files_torrent = []
         files_hath = []
 
@@ -166,6 +169,12 @@ class PostDownloader(object):
             return
 
         self.start_connection()
+
+        if not self.ftps:
+            self.logger.error(
+                "Cannot download the archives, the FTP connection is not initialized."
+            )
+            return None
 
         # Hath downloads
         if len(files_hath) > 0:

@@ -160,6 +160,8 @@ class Parser(BaseParser):
         fjord, gid, token = fjord_gid_token_from_link(link)
         time.sleep(self.settings.wait_timer)
         gallery = self.fetch_gallery_data(link)
+        if not gallery or not gallery.token:
+            return 0, None
         discard_approved, discard_message = self.discard_gallery_by_internal_checks(
             gallery_id=gid,
             link=link
@@ -261,7 +263,7 @@ class Parser(BaseParser):
 
         fjord, gid, token = fjord_gid_token_from_link(link)
 
-        if fjord is None and gid is None and token is None:
+        if fjord is None or gid is None or token is None:
             return None
 
         if fjord:
@@ -388,8 +390,9 @@ class Parser(BaseParser):
         for gallery_url in unique_urls:
 
             m = re.search('(.+)/g/(\d+)/(\w+)', gallery_url)
-            gallery_ids.append(m.group(2))
-            total_galleries_filtered.append((gallery_url, m.group(1), m.group(2), m.group(3)))
+            if m:
+                gallery_ids.append(m.group(2))
+                total_galleries_filtered.append((gallery_url, m.group(1), m.group(2), m.group(3)))
 
         for galleries_gid_group in list(chunks(gallery_ids, 900)):
             for found_gallery in Gallery.objects.filter(gid__in=galleries_gid_group):
@@ -513,6 +516,9 @@ class Parser(BaseParser):
 
     def work_gallery_data(self, gallery: GalleryData, gallery_wanted_lists) -> None:
 
+        if not gallery.token:
+            return
+
         m = re.search(constants.default_fjord_tags, ",".join(gallery.tags))
         if m:
             gallery.root = constants.ex_page
@@ -560,9 +566,11 @@ class Parser(BaseParser):
                         self.logger.info("Changed from E-H to EX, was a arbitrary hidden gallery")
                         gallery_page_text = retry_gallery_page_text
                         time.sleep(self.settings.wait_timer)
-                        gallery = self.fetch_gallery_data(gallery.link)
-                        gallery.root = constants.ex_page
-                        gallery.link = link_from_gid_token_fjord(gallery.gid, gallery.token, True)
+                        new_gallery = self.fetch_gallery_data(gallery.link)
+                        if new_gallery and new_gallery.token:
+                            gallery = new_gallery
+                            gallery.root = constants.ex_page
+                            gallery.link = link_from_gid_token_fjord(new_gallery.gid, new_gallery.token, True)
 
             time.sleep(self.settings.wait_timer)
 
@@ -593,7 +601,7 @@ class Parser(BaseParser):
                     self.logger.info("Found non final gallery, next is: {}".format(gallery_parser.non_final_gallery))
                     (exists_next, new_gallery) = self.get_final_gallery_from_link(
                         gallery_parser.non_final_gallery)
-                    if exists_next == 1:
+                    if exists_next == 1 and new_gallery and new_gallery.link:
                         gallery.dl_type = 'skipped:non_final'
                         Gallery.objects.update_or_create_from_values(gallery)
                         discard_approved, discard_message = self.discard_gallery_by_internal_checks(
@@ -608,12 +616,12 @@ class Parser(BaseParser):
                         self.logger.info("Final gallery is: {}".format(new_gallery.link))
                     elif exists_next == 0:
                         self.logger.info(
-                            "Last in sequence: {} is not available, using current one".format(new_gallery.link)
+                            "Last in sequence: {} is not available, using current one".format(gallery.link)
                         )
                     elif exists_next == 2:
                         self.logger.info(
                             "Last in sequence: {} was discarded by global tags, "
-                            "skipping this gallery altogether".format(new_gallery.link)
+                            "skipping this gallery altogether".format(gallery.link)
                         )
                         gallery.dl_type = 'skipped:final_replaced'
                         Gallery.objects.update_or_create_from_values(gallery)
@@ -633,54 +641,60 @@ class Parser(BaseParser):
                             wanted_gallery=wanted_gallery,
                             gallery=downloader[0].gallery_db_entry
                         )
-                        if wanted_gallery.add_as_hidden:
+                        if wanted_gallery.add_as_hidden and downloader[0].gallery_db_entry:
                             downloader[0].gallery_db_entry.hidden = True
                             downloader[0].gallery_db_entry.save()
                         if downloader[0].archive_db_entry and wanted_gallery.reason:
                             downloader[0].archive_db_entry.reason = wanted_gallery.reason
                             downloader[0].archive_db_entry.simple_save()
                     self.last_used_downloader = str(downloader[0])
-                    if downloader[0].archive_db_entry:
-                        self.logger.info(
-                            "Download completed successfully, using {}. Archive link: {}. Gallery link: {}".format(
-                                downloader[0],
-                                downloader[0].archive_db_entry.get_absolute_url(),
-                                downloader[0].gallery_db_entry.get_absolute_url()
+                    if downloader[0].gallery_db_entry:
+                        if downloader[0].archive_db_entry:
+                            self.logger.info(
+                                "Download completed successfully, using {}. Archive link: {}. Gallery link: {}".format(
+                                    downloader[0],
+                                    downloader[0].archive_db_entry.get_absolute_url(),
+                                    downloader[0].gallery_db_entry.get_absolute_url()
+                                )
                             )
-                        )
-                    else:
-                        self.logger.info(
-                            "Download completed successfully (gallery only), using {}. Gallery link: {}".format(
-                                downloader[0],
-                                downloader[0].gallery_db_entry.get_absolute_url()
+                        else:
+                            self.logger.info(
+                                "Download completed successfully (gallery only), using {}. Gallery link: {}".format(
+                                    downloader[0],
+                                    downloader[0].gallery_db_entry.get_absolute_url()
+                                )
                             )
-                        )
                     return
                 if(downloader[0].return_code == 0 and
                         (cnt + 1) == len(self.downloaders)):
-                    if gallery.root == constants.ge_page and not gallery_is_hidden:
+                    if gallery.root == constants.ge_page and not gallery_is_hidden and gallery.token:
                         gallery.root = constants.ex_page
                         gallery.link = link_from_gid_token_fjord(gallery.gid, gallery.token, True)
                         # fetch archiver key again when retrying.
                         new_gallery_data = self.fetch_gallery_data(gallery.link)
-                        gallery.archiver_key = new_gallery_data.archiver_key
-                        self.logger.info("Retrying with fjord link, might be hidden.")
-                        break
+                        if new_gallery_data:
+                            gallery.archiver_key = new_gallery_data.archiver_key
+                            self.logger.info("Retrying with fjord link, might be hidden.")
+                            break
+                        else:
+                            self.logger.error("Could not fetch fjord link.")
                     else:
-                        retry_attempt = False
+                        self.logger.error("Finished retrying using fjord link.")
                     downloader[0].original_gallery = gallery
                     downloader[0].original_gallery.hidden = True
                     downloader[0].original_gallery.dl_type = 'failed'
                     downloader[0].update_gallery_db()
-                    self.last_used_downloader = 'none'
-                    self.logger.warning("Download completed unsuccessfully, set as failed. Gallery link: {}".format(
-                        downloader[0].gallery_db_entry.get_absolute_url()
-                    ))
-                    for wanted_gallery in gallery_wanted_lists[gallery.gid]:
-                        FoundGallery.objects.get_or_create(
-                            wanted_gallery=wanted_gallery,
-                            gallery=downloader[0].gallery_db_entry
-                        )
+                    if downloader[0].gallery_db_entry:
+                        self.last_used_downloader = 'none'
+                        self.logger.warning("Download completed unsuccessfully, set as failed. Gallery link: {}".format(
+                            downloader[0].gallery_db_entry.get_absolute_url()
+                        ))
+                        for wanted_gallery in gallery_wanted_lists[gallery.gid]:
+                            FoundGallery.objects.get_or_create(
+                                wanted_gallery=wanted_gallery,
+                                gallery=downloader[0].gallery_db_entry
+                            )
+                    retry_attempt = False
 
 
 API = (

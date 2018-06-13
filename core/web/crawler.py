@@ -8,7 +8,7 @@ import requests
 from django.db.models import QuerySet
 
 from core.base.setup import Settings
-from core.base.types import OptionalLogger, FakeLogger
+from core.base.types import OptionalLogger, FakeLogger, RealLogger
 from core.downloaders.postdownload import PostDownloader
 from core.base.parsers import InternalParser
 from viewer.models import Gallery, WantedGallery
@@ -185,14 +185,15 @@ class WebCrawler(object):
                 for parser in parsers:
                     urls = parser.filter_accepted_urls(gallery_links)
                     galleries_data = parser.fetch_multiple_gallery_data(urls)
-                    for gallery_data in galleries_data:
+                    if galleries_data:
+                        for gallery_data in galleries_data:
 
-                        single_gallery = Gallery.objects.update_or_create_from_values(gallery_data)
-                        for archive in single_gallery.archive_set.all():
-                            archive.title = archive.gallery.title
-                            archive.title_jpn = archive.gallery.title_jpn
-                            archive.simple_save()
-                            archive.tags.set(archive.gallery.tags.all())
+                            single_gallery = Gallery.objects.update_or_create_from_values(gallery_data)
+                            for archive in single_gallery.archive_set.all():
+                                archive.title = archive.gallery.title
+                                archive.title_jpn = archive.gallery.title_jpn
+                                archive.simple_save()
+                                archive.tags.set(archive.gallery.tags.all())
 
         if args.transfer_missing_downloads:
             post_downloader = PostDownloader(current_settings, self.logger)
@@ -275,5 +276,8 @@ class WebCrawler(object):
 
     def __init__(self, settings: Settings, logger: OptionalLogger) -> None:
         self.settings = settings
-        self.logger: OptionalLogger = logger
+        if not logger:
+            self.logger: RealLogger = FakeLogger()
+        else:
+            self.logger = logger
         self.parse_error = False

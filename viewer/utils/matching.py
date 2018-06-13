@@ -331,29 +331,30 @@ def match_external(archives: ArchiveQuerySet, matcher_filters: Iterable[str], lo
                         }
 
                     )
-                if results:
-                    logger.info(
-                        '{} of {}: Found {} matches (external search) for archive: {} using matcher: {}, '
-                        'Processed search results: {}. '
-                        'Total search results: {}'.format(
-                            i,
-                            archives.count(),
-                            len(results),
-                            archive.title,
-                            matcher[0],
-                            len(matcher[0].values_array),
-                            len(matcher[0].gallery_links)
+                if logger:
+                    if results:
+                        logger.info(
+                            '{} of {}: Found {} matches (external search) for archive: {} using matcher: {}, '
+                            'Processed search results: {}. '
+                            'Total search results: {}'.format(
+                                i,
+                                archives.count(),
+                                len(results),
+                                archive.title,
+                                matcher[0],
+                                len(matcher[0].values_array),
+                                len(matcher[0].gallery_links)
+                            )
                         )
-                    )
-                else:
-                    logger.info(
-                        '{} of {}: Found no matches (external search) for archive: {} using matcher: {}.'.format(
-                            i,
-                            archives.count(),
-                            archive.title,
-                            matcher[0]
+                    else:
+                        logger.info(
+                            '{} of {}: Found no matches (external search) for archive: {} using matcher: {}.'.format(
+                                i,
+                                archives.count(),
+                                archive.title,
+                                matcher[0]
+                            )
                         )
-                    )
 
 
 def match_internal(archives: ArchiveQuerySet, providers: Iterable[str],

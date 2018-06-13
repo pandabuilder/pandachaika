@@ -1,5 +1,5 @@
 -r requirements.txt
 django-debug-toolbar
 django-unused-media
-mypy
+mypy>=0.600
 flake8

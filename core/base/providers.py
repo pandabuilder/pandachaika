@@ -4,7 +4,7 @@ from operator import itemgetter
 from typing import List, Callable, Optional, Tuple, Union, Type
 import typing
 
-from core.base.types import OptionalLogger, ProviderSettings
+from core.base.types import OptionalLogger, RealLogger, ProviderSettings
 from core.base.utilities import GeneralUtils
 from core.base.matchers import Matcher
 from core.base.parsers import BaseParser
@@ -150,7 +150,7 @@ class ProviderContext:
         return parsers_list
 
     def get_downloaders(
-            self, settings: 'setup.Settings', logger: OptionalLogger,
+            self, settings: 'setup.Settings', logger: RealLogger,
             general_utils: GeneralUtils, filter_name: str = None,
             force: bool = False) -> List[Tuple['BaseDownloader', int]]:
         downloaders = list()

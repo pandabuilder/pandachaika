@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Optional
 from urllib.parse import urljoin
 
 from core.base.types import DataDict
@@ -17,10 +17,19 @@ class TorrentDownloader(BaseTorrentDownloader):
         return urljoin(url, 'download')
 
     def start_download(self) -> None:
+
+        if not self.gallery or not self.gallery.link:
+            return
+
         client = get_torrent_client(self.settings.torrent)
         if not client:
             self.return_code = 0
             self.logger.error("No torrent client was found")
+            return
+
+        if not self.gallery.link:
+            self.return_code = 0
+            self.logger.error("No link on gallery")
             return
 
         torrent_link = self.get_download_link(self.gallery.link)
@@ -28,7 +37,10 @@ class TorrentDownloader(BaseTorrentDownloader):
         self.logger.info("Adding torrent to client.")
         self.connect_and_download(client, torrent_link)
 
-    def update_archive_db(self, default_values: DataDict) -> Archive:
+    def update_archive_db(self, default_values: DataDict) -> Optional['Archive']:
+
+        if not self.gallery:
+            return None
 
         values = {
             'title': self.gallery.title,

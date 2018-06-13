@@ -49,9 +49,9 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
         except ValueError:
             cutoff = 0.4
         try:
-            max_matches = int(request.GET.get('max-matches', '20'))
+            max_matches = int(request.GET.get('max-matches', '10'))
         except ValueError:
-            max_matches = 20
+            max_matches = 10
         wanted_gallery_instance.search_gallery_title_internal_matches(
             provider_filter=provider,
             max_matches=max_matches,

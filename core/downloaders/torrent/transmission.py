@@ -1,4 +1,4 @@
-from typing import Dict, Any, Union
+from typing import Dict, Any, Union, Optional
 
 import transmissionrpc
 import os
@@ -68,7 +68,7 @@ class Transmission(TorrentClient):
     def connect(self) -> bool:
         try:
             if 'https://' in self.address:
-                http_handler = TransmissionHTTPSHandler(secure=self.secure)
+                http_handler: Optional[TransmissionHTTPSHandler] = TransmissionHTTPSHandler(secure=self.secure)
             else:
                 http_handler = None
             self.trans = transmissionrpc.Client(
@@ -96,7 +96,7 @@ class TransmissionHTTPSHandler(transmissionrpc.HTTPHandler):
     def __init__(self, secure: bool=True) -> None:
         transmissionrpc.HTTPHandler.__init__(self)
         self.http_opener = build_opener()
-        self.auth: DataDict = None
+        self.auth: DataDict = {}
         self.secure = secure
 
     def set_authentication(self, uri: str, login: str, password: str) -> None:

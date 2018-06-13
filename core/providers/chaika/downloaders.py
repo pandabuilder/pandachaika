@@ -1,4 +1,5 @@
 import os
+from typing import Optional
 
 import requests
 
@@ -18,6 +19,9 @@ class PandaBackupHttpFileDownloader(BaseDownloader):
     provider = constants.provider_name
 
     def start_download(self) -> None:
+
+        if not self.gallery:
+            return
 
         self.logger.info("Downloading an archive: {} from a Panda Backup-like source: {}".format(
             self.gallery.title,
@@ -57,7 +61,10 @@ class PandaBackupHttpFileDownloader(BaseDownloader):
             self.logger.error("Could not download archive")
             self.return_code = 0
 
-    def update_archive_db(self, default_values: DataDict) -> 'Archive':
+    def update_archive_db(self, default_values: DataDict) -> Optional['Archive']:
+
+        if not self.gallery:
+            return None
 
         values = {
             'title': self.gallery.title,

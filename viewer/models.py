@@ -11,7 +11,7 @@ from itertools import chain
 from django.templatetags.static import static
 from os.path import join as pjoin, basename
 from tempfile import NamedTemporaryFile
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from urllib.parse import quote, urlparse
 
 import requests
@@ -298,7 +298,7 @@ class ArchiveManager(models.Manager):
         return self.filter(Q(gallery__gid=gid),
                            Q(filesize=F('gallery__filesize'))).first()
 
-    def update_or_create_by_values_and_gid(self, values: DataDict, gid: str, **kwargs: typing.Any) -> 'Archive':
+    def update_or_create_by_values_and_gid(self, values: DataDict, gid: Optional[str], **kwargs: typing.Any) -> 'Archive':
         archive, _ = self.update_or_create(defaults=values, **kwargs)
         if gid:
             gallery, _ = Gallery.objects.get_or_create(gid=gid)
@@ -454,7 +454,7 @@ class Gallery(models.Model):
         return reverse('viewer:gallery', args=[str(self.id)])
 
     # TODO: Might be not up to date with the one in parser. Refactor it.
-    def match_wanted_galleries(self, crawler_settings: 'Settings'=None, logger: OptionalLogger=None) -> None:
+    def match_wanted_galleries(self, crawler_settings: 'Settings', logger: OptionalLogger=None) -> None:
 
         gallery_wanted_lists: typing.Dict[str, List['WantedGallery']] = defaultdict(list)
 
@@ -1000,6 +1000,7 @@ class Archive(models.Model):
                 doc_type=self._meta.es_type_name,
                 id=prev_pk,
                 refresh=True,
+                request_timeout=30
             )
 
     def simple_save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
@@ -1016,7 +1017,8 @@ class Archive(models.Model):
                     refresh=True,
                     body={
                         'doc': payload
-                    }
+                    },
+                    request_timeout=30
                 )
             else:
                 settings.ES_CLIENT.create(
@@ -1026,7 +1028,8 @@ class Archive(models.Model):
                     refresh=True,
                     body={
                         'doc': payload
-                    }
+                    },
+                    request_timeout=30
                 )
 
     def save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
@@ -1698,7 +1701,7 @@ class AttributeManager(models.Manager):
     def get_queryset(self) -> AttributeQuerySet:
         return AttributeQuerySet(self.model, using=self._db)
 
-    def fetch_value(self, name: str) -> T:
+    def fetch_value(self, name: str) -> Optional[T]:
         return self.get_queryset().fetch_value(name)
 
 

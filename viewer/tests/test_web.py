@@ -56,7 +56,7 @@ class TestPageParsers(TestCase):
             link=gallery_link,
             provider='fakku',
             title='I\'m a Piece of Junk Sexaroid',
-            thumbnail_url='https://t.fakku.net/images/manga/i/im-a-piece-of-junk-sexaroid-english/thumbs/002.thumb.jpg?f=1494532801',
+            thumbnail_url='https://t.fakku.net/images/manga/i/im-a-piece-of-junk-sexaroid-english/thumbs/002.thumb.jpg',
             filecount=16,
             category='Manga',
             tags=[
@@ -108,7 +108,7 @@ class TestPageParsers(TestCase):
                 'artist:kin_no_hiyoko',
                 'artist:masaru_yajiro',
                 'group:da_hootch',
-                'publisher:shikimaya',
+                'publisher:enshodo',
                 'language:english',
                 'anal',
                 'blowjob',
@@ -124,7 +124,7 @@ class TestPageParsers(TestCase):
                 'genderbend',
                 'doujin',
             ],
-            thumbnail_url='https://t.fakku.net/images/manga/t/tsf-story-append-20-english_1497401155_1502575464/thumbs/001.thumb.jpg?f=1497401328',
+            thumbnail_url='https://t.fakku.net/images/manga/t/tsf-story-append-20-english_1497401155_1502575464/thumbs/001.thumb.jpg',
         )
 
         self.assertEqual(data, expected_data)

@@ -84,8 +84,8 @@ class PushoverSettings:
         self.enable: bool = False
         self.user_key: str = ''
         self.token: str = ''
-        self.device: str = None
-        self.sound: str = None
+        self.device: str = ''
+        self.sound: str = ''
 
 
 class MailSettings:
@@ -149,10 +149,10 @@ class Settings:
     # We are storing the context here, but it should be somewhere else, available globally.
     provider_context = ProviderContext()
     workers = WorkerContext()
-    gallery_model: 'Gallery' = None
-    archive_model: 'Archive' = None
-    found_gallery_model: 'FoundGallery' = None
-    wanted_gallery_model: 'WantedGallery' = None
+    gallery_model: Optional['Gallery'] = None
+    archive_model: Optional['Archive'] = None
+    found_gallery_model: Optional['FoundGallery'] = None
+    wanted_gallery_model: Optional['WantedGallery'] = None
 
     def __init__(self, load_from_disk: bool = False,
                  default_dir: str = None,
@@ -234,7 +234,6 @@ class Settings:
         self.fatal = 0
         self.default_dir = ''
 
-        self.config = None
         if load_from_disk:
             self.load_config_from_file(default_dir=default_dir)
         if load_from_config:

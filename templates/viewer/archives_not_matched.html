@@ -55,30 +55,30 @@
           {{ archive.title }} >>
           <span class="dropdown">
             <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-toggle="dropdown">generate matches internally<span class="caret"></span></button>
-            <ul class="dropdown-menu dropdown-menu-right">
-            <li><a href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ api_key }}', '{% static 'favicon-160.png' %}', 'match_archive_internally', {archive: {{ archive.pk }}, provider: ''}); return false;">All</a></li>
+            <div class="dropdown-menu dropdown-menu-right">
+            <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ api_key }}', '{% static 'favicon-160.png' %}', 'match_archive_internally', {archive: {{ archive.pk }}, provider: ''}); return false;">All</a>
               {% for provider in providers %}
-                <li><a href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ api_key }}', '{% static 'favicon-160.png' %}', 'match_archive_internally', {archive: {{ archive.pk }}, provider: '{{ provider }}'}); return false;">{{ provider }}</a></li>
+                <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ api_key }}', '{% static 'favicon-160.png' %}', 'match_archive_internally', {archive: {{ archive.pk }}, provider: '{{ provider }}'}); return false;">{{ provider }}</a>
               {% endfor %}
-            </ul>
+            </div>
           </span>
           <span class="dropdown">
             <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-toggle="dropdown">generate matches internally clear title<span class="caret"></span></button>
-            <ul class="dropdown-menu dropdown-menu-right">
-            <li><a href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ api_key }}', '{% static 'favicon-160.png' %}', 'match_archive_internally', {archive: {{ archive.pk }}, provider: '', clear: ''}); return false;">All</a></li>
+            <div class="dropdown-menu dropdown-menu-right">
+            <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ api_key }}', '{% static 'favicon-160.png' %}', 'match_archive_internally', {archive: {{ archive.pk }}, provider: '', clear: ''}); return false;">All</a>
               {% for provider in providers %}
-                <li><a href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ api_key }}', '{% static 'favicon-160.png' %}', 'match_archive_internally', {archive: {{ archive.pk }}, provider: '{{ provider }}', clear: ''}); return false;">{{ provider }}</a></li>
+                <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ api_key }}', '{% static 'favicon-160.png' %}', 'match_archive_internally', {archive: {{ archive.pk }}, provider: '{{ provider }}', clear: ''}); return false;">{{ provider }}</a>
               {% endfor %}
-            </ul>
+            </div>
           </span>
           <span class="dropdown">
             <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-toggle="dropdown">generate matches web<span class="caret"></span></button>
-            <ul class="dropdown-menu dropdown-menu-right">
-            <li><a href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ api_key }}', '{% static 'favicon-160.png' %}', 'match_archive', {archive: {{ archive.pk }}, match_filter: ''}); return false;">All</a></li>
+            <div class="dropdown-menu dropdown-menu-right">
+            <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ api_key }}', '{% static 'favicon-160.png' %}', 'match_archive', {archive: {{ archive.pk }}, match_filter: ''}); return false;">All</a>
               {% for matcher, priority in matchers %}
-                <li><a href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ api_key }}', '{% static 'favicon-160.png' %}', 'match_archive', {archive: {{ archive.pk }}, match_filter: '{{ matcher }}'}); return false;">{{ matcher }}</a></li>
+                <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ api_key }}', '{% static 'favicon-160.png' %}', 'match_archive', {archive: {{ archive.pk }}, match_filter: '{{ matcher }}'}); return false;">{{ matcher }}</a>
               {% endfor %}
-            </ul>
+            </div>
           </span> >>
           <a href="{% url 'viewer:archive-update-tool' archive.pk 'clear-possible-matches' %}">Clear possible matches</a>
           <p>{{ archive.zipped.path }} >>
@@ -139,7 +139,7 @@
     </ul>
     <div class="form-inline">
       <input title="Cutoff" size="10" type="number" step="0.01" class="form-control" name="cutoff" value="" placeholder="Cutoff"/>
-      <input title="Max matches" size="10" type="number" step="1" class="form-control" name="max-matches" value="20" placeholder="Max Matches"/>
+      <input title="Max matches" size="10" type="number" step="1" class="form-control" name="max-matches" value="10" placeholder="Max Matches"/>
     <span class="dropup">
         <button class="btn btn-primary dropdown-toggle" type="button" data-toggle="dropdown">Create web matches for selected archives
         <span class="caret"></span></button>

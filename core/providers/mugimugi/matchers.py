@@ -1,5 +1,5 @@
 import os
-from typing import List
+from typing import List, Optional
 
 from core.base.matchers import Matcher
 from core.base.types import GalleryData, DataDict
@@ -37,8 +37,10 @@ class TitleMatcher(Matcher):
     def search_method(self, title_to_search: str) -> bool:
         return self.search_using_xml_api(title_to_search)
 
-    def format_match_values(self) -> DataDict:
+    def format_match_values(self) -> Optional[DataDict]:
 
+        if not self.match_values:
+            return None
         self.match_gid = self.match_values.gid
         values = {
             'title': self.match_title,
@@ -105,7 +107,7 @@ class TitleMatcher(Matcher):
 
         self.values_array = galleries
 
-        self.gallery_links = [x.link for x in galleries]
+        self.gallery_links = [x.link for x in galleries if x.link]
         if len(self.gallery_links) > 0:
             self.found_by = self.name
             return True

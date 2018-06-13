@@ -9,7 +9,7 @@ from typing import Optional, List, Union, Dict, Any, Tuple
 class GalleryData:
     def __init__(
             self, gid: str, token: Optional[str] = None,
-            link: Optional[str]=None, tags: Optional[List[str]]=None,
+            link: Optional[str]=None, tags: List[str]=None,
             provider: Optional[str]=None, title: Optional[str]=None,
             title_jpn: Optional[str]=None, comment: Optional[str]=None,
             category: Optional[str]=None, posted: Optional[datetime]=None,
@@ -25,7 +25,10 @@ class GalleryData:
         self.gid = gid
         self.token = token
         self.link = link
-        self.tags = tags
+        if tags:
+            self.tags = tags
+        else:
+            self.tags = []
         self.provider = provider
         self.title = title
         self.title_jpn = title_jpn
@@ -82,6 +85,8 @@ class FakeLogger:
 
 
 OptionalLogger = Optional[Union[logging.Logger, FakeLogger]]
+
+RealLogger = Union[logging.Logger, FakeLogger]
 
 DataDict = Dict[str, Any]
 

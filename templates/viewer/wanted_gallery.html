@@ -26,7 +26,7 @@
           <form class="form-inline" action="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}" method="GET">
               <input size="10" class="form-control" name="provider" value="" placeholder="Provider filter"/>
               <input title="Cutoff" size="10" type="number" step="0.01" class="form-control" name="cutoff" value="" placeholder="Cutoff"/>
-              <input title="Max matches" size="10" type="number" step="1" class="form-control" name="max-matches" value="20" placeholder="Max Matches"/>
+              <input title="Max matches" size="10" type="number" step="1" class="form-control" name="max-matches" value="10" placeholder="Max Matches"/>
               <button class="btn btn-light" name="tool" value="search-providers-by-title">set provider matches</button>
               <button class="btn btn-light" name="tool" value="search-internal-galleries-matches">set internal provider matches</button>
           </form>

@@ -189,13 +189,15 @@ def gallery_details(request: HttpRequest, pk: int, tool: str=None) -> HttpRespon
         if 'downloader' in request.GET:
             current_settings = Settings(load_from_config=crawler_settings.config)
             current_settings.allow_downloaders_only([request.GET['downloader']], True, True, True)
-            current_settings.workers.web_queue.enqueue_args_list((gallery.get_link(),), override_options=current_settings)
+            if current_settings.workers.web_queue:
+                current_settings.workers.web_queue.enqueue_args_list((gallery.get_link(),), override_options=current_settings)
         else:
             # Since this is used from the gallery page mainly to download an already added gallery using
             # downloader settings, force replace_metadata
             current_settings = Settings(load_from_config=crawler_settings.config)
             current_settings.replace_metadata = True
-            current_settings.workers.web_queue.enqueue_args_list((gallery.get_link(),), override_options=current_settings)
+            if current_settings.workers.web_queue:
+                current_settings.workers.web_queue.enqueue_args_list((gallery.get_link(),), override_options=current_settings)
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
 
     if request.user.is_staff and tool == "toggle-hidden":
@@ -215,15 +217,17 @@ def gallery_details(request: HttpRequest, pk: int, tool: str=None) -> HttpRespon
 
         current_settings = Settings(load_from_config=crawler_settings.config)
 
-        current_settings.set_update_metadata_options(providers=(gallery.provider,))
+        if current_settings.workers.web_queue:
 
-        current_settings.workers.web_queue.enqueue_args_list((gallery.get_link(),), override_options=current_settings)
+            current_settings.set_update_metadata_options(providers=(gallery.provider,))
 
-        frontend_logger.info(
-            'Updating gallery API data for gallery: {} and related archives'.format(
-                gallery.get_absolute_url()
+            current_settings.workers.web_queue.enqueue_args_list((gallery.get_link(),), override_options=current_settings)
+
+            frontend_logger.info(
+                'Updating gallery API data for gallery: {} and related archives'.format(
+                    gallery.get_absolute_url()
+                )
             )
-        )
 
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
 
@@ -764,6 +768,9 @@ def url_submit(request: HttpRequest) -> HttpResponse:
 
     if p:
         current_settings = Settings(load_from_config=crawler_settings.config)
+        if not current_settings.workers.web_queue:
+            messages.error(request, 'Cannot submit link currently. Please contact an admin.')
+            return HttpResponseRedirect(reverse('viewer:url-submit'))
         url_set = set()
         # create dictionary of properties for each url
         current_settings.replace_metadata = False

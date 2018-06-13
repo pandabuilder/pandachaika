@@ -59,7 +59,7 @@ class Parser(BaseParser):
             thumbnail_container = gallery_container.find("img", class_="tablet-50")
             if thumbnail_container:
                 gallery.thumbnail_url = thumbnail_container.get("src")
-                if gallery.thumbnail_url.startswith('//'):
+                if gallery.thumbnail_url and gallery.thumbnail_url.startswith('//'):
                     gallery.thumbnail_url = 'https:' + gallery.thumbnail_url
 
             is_doujinshi = False
@@ -110,7 +110,7 @@ class Parser(BaseParser):
             else:
                 gallery.category = 'Manga'
         else:
-            gallery = None
+            return None
         return gallery
 
     def get_values_from_gallery_link_json(self, link) -> Optional[GalleryData]:
@@ -160,7 +160,7 @@ class Parser(BaseParser):
         gallery.uploader = response_data['content']['content_poster']
         gallery.thumbnail_url = response_data['content']['content_images']['cover']
 
-        if gallery.thumbnail_url.startswith('//'):
+        if gallery.thumbnail_url and gallery.thumbnail_url.startswith('//'):
             gallery.thumbnail_url = 'https:' + gallery.thumbnail_url
 
         gallery.tags.append(translate_tag("language:" + response_data['content']['content_language']))
@@ -260,7 +260,14 @@ class Parser(BaseParser):
 
         galleries_data = self.fetch_multiple_gallery_data(fetch_format_galleries)
 
+        if not galleries_data:
+            return
+
         for internal_gallery_data in galleries_data:
+
+            if not internal_gallery_data.link:
+                continue
+
             if self.general_utils.discard_by_tag_list(internal_gallery_data.tags):
                 if not self.settings.silent_processing:
                     self.logger.info(

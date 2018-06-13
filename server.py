@@ -29,7 +29,10 @@ class DjangoAppPlugin(plugins.SimplePlugin):
         plugins.SimplePlugin.__init__(self, bus)
         self.settings_module = settings_module
         self.wsgi_http_logger = wsgi_http_logger
-        self.crawler_settings = local_settings
+        if local_settings:
+            self.crawler_settings = local_settings
+        else:
+            self.crawler_settings = Settings(load_from_disk=True)
 
     def start(self) -> None:
         """ When the bus starts, the plugin is also started

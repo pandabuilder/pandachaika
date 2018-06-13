@@ -16,7 +16,7 @@ from django.db.models import QuerySet
 
 from core.base import utilities
 from core.base.utilities import send_pushover_notification, chunks, compare_search_title_with_strings
-from core.base.types import GalleryData, OptionalLogger, FakeLogger
+from core.base.types import GalleryData, OptionalLogger, FakeLogger, RealLogger
 
 if typing.TYPE_CHECKING:
     from core.downloaders.handlers import BaseDownloader
@@ -57,7 +57,7 @@ class BaseParser:
             return False, 'Gallery link {ext_link} running in update metadata mode, processing.'.format(
                 ext_link=link,
             )
-        if not gallery and gallery_id:
+        if not gallery and (gallery_id and self.settings.gallery_model):
             gallery = self.settings.gallery_model.objects.filter_first(gid=gallery_id)
         if not gallery:
             return False, 'Gallery link {ext_link} has not been added, processing.'.format(
@@ -125,6 +125,11 @@ class BaseParser:
 
     # Priorities are: title, tags then file count.
     def compare_gallery_with_wanted_filters(self, gallery: GalleryData, link: str, wanted_filters: QuerySet, gallery_wanted_lists: Dict[str, List['WantedGallery']]) -> None:
+
+        if not self.settings.found_gallery_model:
+            self.logger.error("FoundGallery model has not been initiated.")
+            return
+
         for wanted_filter in wanted_filters:
             # Skip wanted_filter that's already found.
             already_found = self.settings.found_gallery_model.objects.filter(
@@ -219,7 +224,7 @@ class BaseParser:
             return
 
     @staticmethod
-    def id_from_url(url: str) -> str:
+    def id_from_url(url: str) -> Optional[str]:
         pass
 
     @classmethod
@@ -236,7 +241,7 @@ class BaseParser:
     def get_feed_urls() -> List[str]:
         pass
 
-    def crawl_feed(self, feed_url: str = None) -> typing.Union[List[str], List[GalleryData]]:
+    def crawl_feed(self, feed_url: str = '') -> typing.Union[List[str], List[GalleryData]]:
         pass
 
     def feed_urls_implemented(self) -> bool:
@@ -280,6 +285,10 @@ class BaseParser:
 
     def work_gallery_data(self, gallery: GalleryData, gallery_wanted_lists) -> None:
 
+        if not self.settings.found_gallery_model:
+            self.logger.error("FoundGallery model has not been initiated.")
+            return
+
         if gallery.title is not None:
             self.logger.info("Title: {}. Link: {}".format(gallery.title, gallery.link))
         else:
@@ -288,21 +297,21 @@ class BaseParser:
         for cnt, downloader in enumerate(self.downloaders):
             downloader[0].init_download(copy.deepcopy(gallery))
             if downloader[0].return_code == 1:
-                self.last_used_downloader = str(downloader[0])
+                self.last_used_downloader: str = str(downloader[0])
                 if not downloader[0].archive_only:
                     for wanted_gallery in gallery_wanted_lists[gallery.gid]:
                         self.settings.found_gallery_model.objects.get_or_create(
                             wanted_gallery=wanted_gallery,
                             gallery=downloader[0].gallery_db_entry
                         )
-                        if wanted_gallery.add_as_hidden:
+                        if wanted_gallery.add_as_hidden and downloader[0].gallery_db_entry:
                             downloader[0].gallery_db_entry.hidden = True
                             downloader[0].gallery_db_entry.save()
                         if downloader[0].archive_db_entry and wanted_gallery.reason:
                             downloader[0].archive_db_entry.reason = wanted_gallery.reason
                             downloader[0].archive_db_entry.simple_save()
                 if downloader[0].archive_db_entry:
-                    if not downloader[0].archive_only or downloader[0].gallery_db_entry:
+                    if not downloader[0].archive_only and downloader[0].gallery_db_entry:
                         self.logger.info("Download complete, using {}. Archive link: {}. Gallery link: {}".format(
                             downloader[0],
                             downloader[0].archive_db_entry.get_absolute_url(),
@@ -313,7 +322,7 @@ class BaseParser:
                             downloader[0],
                             downloader[0].archive_db_entry.get_absolute_url(),
                         ))
-                else:
+                elif downloader[0].gallery_db_entry:
                     self.logger.info(
                         "Download completed successfully (gallery only), using {}. Gallery link: {}".format(
                             downloader[0],
@@ -323,8 +332,8 @@ class BaseParser:
                 return
             if(downloader[0].return_code == 0 and
                     (cnt + 1) == len(self.downloaders)):
-                self.last_used_downloader = 'none'
-                if not downloader[0].archive_only:
+                self.last_used_downloader: str = 'none'
+                if not downloader[0].archive_only and downloader[0].gallery_db_entry:
                     downloader[0].original_gallery = gallery
                     downloader[0].original_gallery.dl_type = 'failed'
                     downloader[0].update_gallery_db()
@@ -343,7 +352,7 @@ class BaseParser:
     def __init__(self, settings: 'Settings', logger: OptionalLogger=None) -> None:
         self.settings = settings
         if not logger:
-            self.logger: OptionalLogger = FakeLogger()
+            self.logger: RealLogger = FakeLogger()
         else:
             self.logger = logger
         if self.name in settings.providers:
@@ -361,6 +370,10 @@ class InternalParser(BaseParser):
     ignore = True
 
     def crawl_json(self, json_string: str, wanted_filters: QuerySet=None, wanted_only: bool=False) -> None:
+
+        if not self.settings.gallery_model:
+            return
+
         dict_list = []
         json_decoded = json.loads(json_string)
 

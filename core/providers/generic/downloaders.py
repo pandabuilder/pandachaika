@@ -1,5 +1,5 @@
 import os
-from typing import Any
+from typing import Any, Optional
 
 from core.base.types import DataDict
 from core.base.utilities import replace_illegal_name, available_filename
@@ -20,6 +20,10 @@ class GenericTorrentDownloader(BaseDownloader):
         return url
 
     def start_download(self) -> None:
+
+        if not self.gallery or not self.gallery.link:
+            return
+
         client = get_torrent_client(self.settings.torrent)
         if not client:
             self.return_code = 0
@@ -75,7 +79,10 @@ class GenericTorrentDownloader(BaseDownloader):
             self.return_code = 0
             self.logger.error("There was an error adding the torrent to the client")
 
-    def update_archive_db(self, default_values: DataDict) -> Archive:
+    def update_archive_db(self, default_values: DataDict) -> Optional['Archive']:
+
+        if not self.gallery:
+            return None
 
         values = {
             'title': self.expected_torrent_name,

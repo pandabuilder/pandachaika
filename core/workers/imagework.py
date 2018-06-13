@@ -5,7 +5,7 @@ import logging
 import traceback
 import typing
 
-from core.base.types import OptionalLogger
+from core.base.types import OptionalLogger, RealLogger, FakeLogger
 
 if typing.TYPE_CHECKING:
     from viewer.models import Archive
@@ -46,7 +46,10 @@ class ImageWorker(object):
     def __init__(self, crawler_logger: OptionalLogger, worker_number: int) -> None:
 
         self.worker_number = worker_number + 1
-        self.crawler_logger = crawler_logger
+        if not crawler_logger:
+            self.crawler_logger: RealLogger = FakeLogger()
+        else:
+            self.crawler_logger = crawler_logger
         self.web_queue: queue.Queue = queue.Queue()
 
     def start_info_thread(self) -> None:

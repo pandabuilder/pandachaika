@@ -68,8 +68,12 @@ class Parser(BaseParser):
         #     thumbnail_url = thumbnail_small_container.get('src')
         thumbnail_url = soup.find("meta", property="og:image")
 
+        match_result = match_string.match(soup.find("meta", property="og:link"))
+        if not match_result:
+            return None
+
         gallery = GalleryData(
-            match_string.match(soup.find("meta", property="og:link")).group(1),
+            match_result.group(1),
             link=link,
             title=soup.find("meta", property="og:title"),
             comment='',
@@ -168,7 +172,7 @@ class Parser(BaseParser):
 
     # Even if we just call the single method, it allows to upgrade this easily in case group calls are supported
     # afterwards. Also, we can add a wait_timer here.
-    def get_values_from_gallery_link_list(self, links: List[str]) -> Optional[List[GalleryData]]:
+    def get_values_from_gallery_link_list(self, links: List[str]) -> List[GalleryData]:
         response = []
         for i, element in enumerate(links):
             if i > 0:
@@ -195,7 +199,7 @@ class Parser(BaseParser):
     def get_feed_urls() -> List[str]:
         return [constants.rss_url, ]
 
-    def crawl_feed(self, feed_url: str=None) -> List[GalleryData]:
+    def crawl_feed(self, feed_url: str='') -> List[GalleryData]:
 
         if not feed_url:
             feed_url = constants.rss_url
@@ -229,8 +233,12 @@ class Parser(BaseParser):
                 if thumbnail_small_container:
                     thumbnail_url = thumbnail_small_container.get('src')
 
+            match_result = match_string.match(item['link'])
+            if not match_result:
+                continue
+
             gallery = GalleryData(
-                match_string.match(item['link']).group(1),
+                match_result.group(1),
                 title=item['title'],
                 comment=item['description'],
                 thumbnail_url=thumbnail_url,
@@ -249,6 +257,9 @@ class Parser(BaseParser):
 
             # Must check here since this method is called after the main check in crawl_urls
             if self.general_utils.discard_by_tag_list(gallery.tags):
+                continue
+
+            if not gallery.link:
                 continue
 
             discard_approved, discard_message = self.discard_gallery_by_internal_checks(
@@ -322,6 +333,10 @@ class Parser(BaseParser):
         galleries_data = self.fetch_multiple_gallery_data(fetch_format_galleries)
 
         for internal_gallery_data in galleries_data:
+
+            if not internal_gallery_data.link:
+                continue
+
             if self.general_utils.discard_by_tag_list(internal_gallery_data.tags):
                 if not self.settings.silent_processing:
                     self.logger.info(
@@ -351,6 +366,9 @@ class Parser(BaseParser):
                 self.logger.info("Processing {} galleries from RSS.".format(len(found_feed_data)))
 
             for feed_gallery in found_feed_data:
+
+                if not feed_gallery.link:
+                    continue
 
                 if wanted_filters:
                     self.compare_gallery_with_wanted_filters(

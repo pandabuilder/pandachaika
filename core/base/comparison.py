@@ -60,6 +60,8 @@ def get_list_closer_gallery_titles_from_dict(original: str, gallery_datas: List[
     results: List[Tuple[str, GalleryData, float]] = []
 
     for gallery_data in gallery_datas:
+        if not gallery_data.title:
+            continue
         compare_titles.append(gallery_data.title)
         compare_ids.append((gallery_data.title, gallery_data))
 
@@ -79,9 +81,9 @@ def get_list_closer_gallery_titles_from_dict(original: str, gallery_datas: List[
 
 class ResultContainer:
     def __init__(self) -> None:
-        self.match_title = ''
-        self.match_link = ''
-        self.match_values: GalleryData = None
+        self.match_title: Optional[str] = ''
+        self.match_link: Optional[str] = ''
+        self.match_values: Optional[GalleryData] = None
 
 
 def get_gallery_closer_title_from_gallery_values(original: str, gallery_datas: List[GalleryData], cutoff: float) -> ResultContainer:

@@ -144,7 +144,7 @@
               {% for archive in results.object_list %}
                 <div class="gallery">
                   <a class="cover" href="{% url 'viewer:archive' archive.pk %}">
-                    <div class="cover-title" title="{{ archive.title }}">{{ archive.title }}</div>
+                    <div class="cover-title{% if not archive.crc32 %} archive-incomplete{% endif %}" title="{{ archive.title }}">{{ archive.title }}</div>
                     {% with thumbnail_details=archive.get_available_thumbnail_plus_size %}
                     <img class="image-container mx-auto" alt="" title="{{ archive.title }}"
                         width="{{ thumbnail_details.2 }}" height="{{ thumbnail_details.1 }}" src="{{ thumbnail_details.0 }}"/>
@@ -186,7 +186,7 @@
                   {% else %}
                     <td>{{ archive.gallery.posted|date:"SHORT_DATE_FORMAT" }}</td>
                   {% endif %}
-                    <td><a href="{% url 'viewer:archive' archive.pk %}" title="{{ archive.title_jpn }}">{{ archive.title }}</a></td>
+                    <td><a href="{% url 'viewer:archive' archive.pk %}" class="{% if not archive.crc32 %}archive-incomplete{% endif %}" title="{{ archive.title_jpn }}">{{ archive.title }}</a></td>
                     <td>{{ archive.source_type }}</td>
                     <td>{{ archive.reason }}</td>
                   <td>{{ archive.filecount }}</td>
@@ -210,7 +210,7 @@
                     </a>
                   </td>
                   <td class="td-extended">
-                    <h5>{{ archive.title }}</h5>
+                    <h5 class="{% if not archive.crc32 %}archive-incomplete{% endif %}">{{ archive.title }}</h5>
                     <h6>{{ archive.title_jpn }}</h6>
                     {% if user.is_staff %}
                       <div><em>{{ archive.zipped }}</em></div>
@@ -363,7 +363,7 @@
                         if (response.tags) {
                             tagData[pk] = response.tags.map(tagToHtml);
                             el.unbind('click').popover({
-                                content: tagData[pk],
+                                content: tagData[pk].join(""),
                                 {#            title: 'Dynamic response!',#}
                                 html: true,
                                 {#                        delay: {show: 500, hide: 100}#}

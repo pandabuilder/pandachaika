@@ -7,7 +7,8 @@ import requests
 from bs4 import BeautifulSoup
 
 from core.base.types import DataDict
-from core.base.utilities import calc_crc32, get_zip_filesize, request_with_retries
+from core.base.utilities import calc_crc32, get_zip_filesize, request_with_retries, \
+    get_base_filename_string_from_gallery_data
 from core.downloaders.handlers import BaseDownloader, BaseInfoDownloader, BaseFakeDownloader, BaseTorrentDownloader
 from core.downloaders.torrent import get_torrent_client
 from core.providers.panda.utilities import ArchiveHTMLParser, TorrentHTMLParser
@@ -25,7 +26,7 @@ class ArchiveDownloader(BaseDownloader):
     provider = constants.provider_name
     skip_if_hidden = True
 
-    def request_archive_download(self, root: str, gid: str, token: str, key: str) -> requests.models.Response:
+    def request_archive_download(self, root: str, gid: str, token: str, key: str) -> Optional[requests.models.Response]:
 
         url = root + '/archiver.php'
 
@@ -48,13 +49,28 @@ class ArchiveDownloader(BaseDownloader):
 
     def start_download(self) -> None:
 
-        self.gallery.title = replace_illegal_name(
-            self.gallery.title)
+        if not self.gallery:
+            return
+
+        to_use_filename = get_base_filename_string_from_gallery_data(self.gallery)
+
+        to_use_filename = replace_illegal_name(to_use_filename)
+
         self.gallery.filename = available_filename(
             self.settings.MEDIA_ROOT,
             os.path.join(
                 self.own_settings.archive_dl_folder,
-                self.gallery.title + '.zip'))
+                to_use_filename + '.zip'))
+
+        if not (self.gallery.root and self.gallery.gid and self.gallery.token and self.gallery.archiver_key):
+            self.logger.error('Missing required data -> root: {}, gid: {}, token: {}, archiver_key: {}.'.format(
+                self.gallery.root,
+                self.gallery.gid,
+                self.gallery.token,
+                self.gallery.archiver_key,
+            ))
+            self.return_code = 0
+            return
 
         r = self.request_archive_download(
             self.gallery.root,
@@ -66,6 +82,7 @@ class ArchiveDownloader(BaseDownloader):
         if not r:
             self.logger.error('ERROR: could not get download link.')
             self.return_code = 0
+            return
 
         archive_page_parser = ArchiveHTMLParser()
         archive_page_parser.feed(r.text)
@@ -91,8 +108,8 @@ class ArchiveDownloader(BaseDownloader):
                     timeout=self.settings.timeout_timer
                 )
 
-                if r.status_code == 200:
-                    self.logger.info('Downloading gallery: {}.zip'.format(self.gallery.title))
+                if r and r.status_code == 200:
+                    self.logger.info('Downloading gallery: {}.zip'.format(to_use_filename))
                     filepath = os.path.join(self.settings.MEDIA_ROOT,
                                             self.gallery.filename)
                     with open(filepath, 'wb') as fo:
@@ -110,7 +127,10 @@ class ArchiveDownloader(BaseDownloader):
                     self.logger.error("Could not download archive")
                     self.return_code = 0
 
-    def update_archive_db(self, default_values: DataDict) -> 'Archive':
+    def update_archive_db(self, default_values: DataDict) -> Optional['Archive']:
+
+        if not self.gallery:
+            return None
 
         values = {
             'title': self.gallery.title,
@@ -133,7 +153,7 @@ class TorrentDownloader(BaseTorrentDownloader):
     provider = constants.provider_name
     skip_if_hidden = True
 
-    def request_torrent_download(self, root: str, gid: str, token: str) -> requests.models.Response:
+    def request_torrent_download(self, root: str, gid: str, token: str) -> Optional[requests.models.Response]:
 
         url = root + '/gallerytorrents.php'
 
@@ -154,7 +174,7 @@ class TorrentDownloader(BaseTorrentDownloader):
         return response
 
     @staticmethod
-    def validate_torrent(torrent_link: str, seeds: int, posted_date: str, gallery_posted_date: datetime) -> Tuple[bool, List[str]]:
+    def validate_torrent(torrent_link: str, seeds: int, posted_date: str, gallery_posted_date: Optional[datetime]) -> Tuple[bool, List[str]]:
         validated = True
         reasons = []
         if not torrent_link:
@@ -164,7 +184,7 @@ class TorrentDownloader(BaseTorrentDownloader):
             if seeds <= 0:
                 validated = False
                 reasons.append("Less than 1 seed.")
-            if not posted_date:
+            if not posted_date or not gallery_posted_date:
                 validated = False
                 reasons.append('Did not get a correct posted time.')
             else:
@@ -175,14 +195,33 @@ class TorrentDownloader(BaseTorrentDownloader):
         return validated, reasons
 
     def start_download(self) -> None:
+
+        if not self.gallery:
+            return
+
         client = get_torrent_client(self.settings.torrent)
         if not client:
             self.return_code = 0
             self.logger.error("No torrent client was found")
             return
 
+        if not (self.gallery.root and self.gallery.gid and self.gallery.token):
+            self.logger.error('Missing required data -> root: {}, gid: {}, token: {}.'.format(
+                self.gallery.root,
+                self.gallery.gid,
+                self.gallery.token,
+            ))
+            self.return_code = 0
+            return
+
         r = self.request_torrent_download(
             self.gallery.root, self.gallery.gid, self.gallery.token)
+
+        if not r:
+            self.logger.error('ERROR: could not get download link.')
+            self.return_code = 0
+            return
+
         torrent_page_parser = TorrentHTMLParser()
         torrent_page_parser.feed(r.text)
 
@@ -210,7 +249,10 @@ class TorrentDownloader(BaseTorrentDownloader):
         self.logger.info("Adding torrent to client, seeds: {}".format(torrent_page_parser.seeds))
         self.connect_and_download(client, torrent_link)
 
-    def update_archive_db(self, default_values: DataDict) -> Archive:
+    def update_archive_db(self, default_values: DataDict) -> Optional['Archive']:
+
+        if not self.gallery:
+            return None
 
         values = {
             'title': self.gallery.title,
@@ -240,6 +282,19 @@ class HathDownloader(BaseDownloader):
 
     def start_download(self) -> None:
 
+        if not self.gallery:
+            return
+
+        if not (self.gallery.root and self.gallery.gid and self.gallery.token and self.gallery.archiver_key):
+            self.logger.error('Missing required data -> root: {}, gid: {}, token: {}, archiver_key: {}.'.format(
+                self.gallery.root,
+                self.gallery.gid,
+                self.gallery.token,
+                self.gallery.archiver_key,
+            ))
+            self.return_code = 0
+            return
+
         r = self.request_hath_download(
             self.gallery.root,
             self.gallery.gid,
@@ -247,7 +302,7 @@ class HathDownloader(BaseDownloader):
             self.gallery.archiver_key
         )
 
-        if r.status_code == 200:
+        if r and r.status_code == 200:
 
             r.encoding = 'utf-8'
             soup = BeautifulSoup(r.content, 'html.parser')
@@ -264,12 +319,14 @@ class HathDownloader(BaseDownloader):
             if client_id:
                 self.logger.info("Queued download to client: {}".format(client_id.get_text()))
 
+            to_use_filename = get_base_filename_string_from_gallery_data(self.gallery)
+
             self.gallery.filename = available_filename(
                 self.settings.MEDIA_ROOT,
                 os.path.join(
                     self.own_settings.hath_dl_folder,
                     replace_illegal_name(
-                        self.gallery.title + " [" + str(self.gallery.gid) + "]") + '.zip'
+                        to_use_filename + " [" + str(self.gallery.gid) + "]") + '.zip'
                 )
             )
 
@@ -304,7 +361,10 @@ class HathDownloader(BaseDownloader):
                     return None
         return None
 
-    def update_archive_db(self, default_values: DataDict) -> Archive:
+    def update_archive_db(self, default_values: DataDict) -> Optional['Archive']:
+
+        if not self.gallery:
+            return None
 
         values = {
             'title': self.gallery.title,
@@ -339,6 +399,9 @@ class UrlSubmitDownloader(BaseDownloader):
     skip_if_hidden = False
 
     def start_download(self) -> None:
+
+        if not self.original_gallery:
+            return
 
         if self.settings.force_dl_type:
             self.original_gallery.dl_type = "{}:{}".format(self.type, self.settings.force_dl_type)
