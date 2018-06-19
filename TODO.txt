@@ -11,3 +11,4 @@ TODO: Disable excessive thread usage when using SQLite as a backend.
 TODO: Change remotesite format, send metadata directly, don't send links to crawl and allow other providers. Do this by exposing InternalParser.
 TODO: Each provider should have it's own schedule in auto_wanted.
 TODO: Add itself as a provider (matcher, downloader, parser).
+TODO: Use https://github.com/Jetsetter/dhash to find local matches using thumbnails.

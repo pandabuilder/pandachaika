@@ -599,6 +599,7 @@ class Archive(models.Model):
     thumbnail_height = models.PositiveIntegerField(blank=True, null=True)
     thumbnail_width = models.PositiveIntegerField(blank=True, null=True)
     thumbnail = models.ImageField(
+        blank=True,
         upload_to=thumb_path_handler, default='', max_length=500,
         height_field='thumbnail_height',
         width_field='thumbnail_width')
