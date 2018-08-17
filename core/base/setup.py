@@ -158,7 +158,7 @@ class Settings:
                  default_dir: str = None,
                  load_from_config: typing.Union[DataDict, configparser.ConfigParser] = None) -> None:
         # INTERNAL USE
-        self.force_dl_type: Optional[str] = None
+        self.gallery_reason: Optional[str] = None
         # Used by autoupdater to not overwrite original value, since it would be replaced by provider_info
         self.keep_dl_type = False
         self.archive_reason = ''
@@ -280,6 +280,19 @@ class Settings:
             else:
                 self.downloaders[downloader] = -1
         self.replace_metadata = False
+
+    def disable_provider_downloaders(self, provider_name: str) -> None:
+        for downloader in self.downloaders.keys():
+            downloader_provider = downloader.split("_", maxsplit=1)[0]
+            if downloader_provider == provider_name:
+                self.downloaders[downloader] = -1
+
+    def enable_downloader_only(self, downloader_name: str) -> None:
+        for downloader in self.downloaders.keys():
+            if downloader == downloader_name:
+                self.downloaders[downloader] = 1
+            else:
+                self.downloaders[downloader] = -1
 
     def allow_downloaders_only(self, downloaders: List[str],
                                replace_existing: bool=True, retry_failed: bool=True,

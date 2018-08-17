@@ -45,7 +45,7 @@ class Parser(BaseParser):
         gallery_container = soup.find("div", class_=re.compile("content-wrap"))
 
         if gallery_container:
-            gallery = GalleryData(link.replace(constants.main_url + '/', ''))
+            gallery = GalleryData(link.replace(constants.main_url + '/', '').replace('manga/', 'hentai/'))
             gallery.link = link
             gallery.tags = []
             gallery.provider = self.name
@@ -85,6 +85,13 @@ class Parser(BaseParser):
                 elif left_text == "Circle":
                     gallery.tags.append(
                         translate_tag("group:" + right_div.get_text()))
+                elif left_text == "Event":
+                    gallery.tags.append(
+                        translate_tag("event:" + right_div.get_text()))
+                elif left_text == "Book":
+                    belongs_to_container = right_div.find("a")
+                    if belongs_to_container:
+                        gallery.gallery_container_gid = belongs_to_container.get("href")[1:]
                 elif left_text == "Language":
                     gallery.tags.append(
                         translate_tag("language:" + right_div.get_text()))
@@ -234,7 +241,7 @@ class Parser(BaseParser):
             if constants.no_scheme_url not in url:
                 self.logger.warning("Invalid URL, skipping: {}".format(url))
                 continue
-            url = url.replace('/hentai/', '/manga/')
+            url = url.replace('/manga/', '/hentai/')
             unique_urls.add(url)
 
         for gallery in unique_urls:

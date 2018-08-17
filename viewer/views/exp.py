@@ -318,7 +318,7 @@ def api(request: HttpRequest, model: str=None, obj_id: str=None, action: str=Non
                         'tags': archive.tag_list_sorted(),
                         'extracted': archive.extracted,
                         'image': (request.build_absolute_uri(archive.thumbnail.url) if archive.thumbnail else None),
-                        'lastPosition': int(archive.image_set.count()),
+                        'lastPosition': int(archive.image_set.count()) or archive.filecount,
                         'startImage': archive.image_set.get(position=position).dump_image(request) if archive.extracted else None,
                     },
                     # indent=2,
@@ -401,7 +401,12 @@ def api(request: HttpRequest, model: str=None, obj_id: str=None, action: str=Non
                 else:
                     parameters['sort'] = 'public_date'
 
-            archives_list = filter_archives(request, parameters, display_prms)
+            if data.get('api_key', '') == crawler_settings.api_key:
+                force_private = True
+            else:
+                force_private = False
+
+            archives_list = filter_archives(request, parameters, display_prms, force_private=force_private)
             if 'extracted' in data:
                 archives_list = archives_list.filter(extracted=True)
 

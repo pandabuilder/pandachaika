@@ -206,11 +206,28 @@ def missing_archives_for_galleries(request: HttpRequest) -> HttpResponse:
                         reason = p['reason']
                         # Force limit string length (reason field max_length)
                         current_settings.archive_reason = reason[:200]
+                    elif gallery.reason:
+                        current_settings.archive_reason = gallery.reason
 
                     current_settings.workers.web_queue.enqueue_args_list(
                         (gallery.get_link(),),
                         override_options=current_settings
                     )
+        elif 'recall_api' in p:
+            message = 'Recalling API for {} galleries'.format(results.count())
+            frontend_logger.info(message)
+            messages.success(request, message)
+
+            gallery_links = [x.get_link() for x in results]
+            gallery_providers = list(results.values_list('provider', flat=True).distinct())
+
+            current_settings = Settings(load_from_config=crawler_settings.config)
+
+            if current_settings.workers.web_queue:
+                current_settings.set_update_metadata_options(providers=gallery_providers)
+
+                current_settings.workers.web_queue.enqueue_args_list(gallery_links,
+                                                                     override_options=current_settings)
 
     if 'force_public' in request.GET:
         force_public = True
@@ -232,7 +249,7 @@ def missing_archives_for_galleries(request: HttpRequest) -> HttpResponse:
 
         results = filter_galleries_simple(params)
 
-        results = results.non_used_galleries()
+        results = results.non_used_galleries().prefetch_related('foundgallery_set')
 
         paginator = Paginator(results, 50)
         try:
@@ -242,7 +259,20 @@ def missing_archives_for_galleries(request: HttpRequest) -> HttpResponse:
 
         d = {'results': results, 'providers': providers, 'force_public': force_public, 'form': form}
     else:
-        results = Gallery.objects.non_used_galleries(public=True, provider__contains='panda')
+
+        params = {
+        }
+
+        for k, v in get.items():
+            params[k] = v
+
+        for k in gallery_filter_keys:
+            if k not in params:
+                params[k] = ''
+
+        results = filter_galleries_simple(params)
+
+        results = results.non_used_galleries(public=True, provider__in=['panda', 'fakku'])
         d = {'results': results}
     return render(request, "viewer/archives_missing_for_galleries.html", d)
 

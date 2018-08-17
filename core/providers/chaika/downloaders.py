@@ -4,7 +4,7 @@ from typing import Optional
 import requests
 
 from core.base.types import DataDict
-from core.base.utilities import replace_illegal_name, available_filename, calc_crc32, get_zip_filesize
+from core.base.utilities import replace_illegal_name, available_filename, calc_crc32, get_zip_fileinfo
 
 from . import constants
 
@@ -50,7 +50,7 @@ class PandaBackupHttpFileDownloader(BaseDownloader):
             for chunk in request_file.iter_content(4096):
                 fo.write(chunk)
 
-        self.gallery.filesize = get_zip_filesize(filepath)
+        self.gallery.filesize, self.gallery.filecount = get_zip_fileinfo(filepath)
         if self.gallery.filesize > 0:
             self.crc32 = calc_crc32(filepath)
 

@@ -69,6 +69,12 @@ body a {
   color: #f0ad4e;
 }
 
+.alert-error {
+  color: #721c24;
+  background-color: #f8d7da;
+  border-color: #f5c6cb;
+}
+
 .pagination .disabled > a,
 .pagination .disabled > a:focus,
 .pagination .disabled > a:hover,
@@ -91,19 +97,19 @@ body a {
 }
 
 input::-webkit-input-placeholder {
-  color: lightgray !important;
+  color: darkgrey !important;
 }
 
 input::-moz-placeholder {
-  color: lightgray !important;
+  color: darkgrey !important;
 }
 
 input:-ms-input-placeholder {
-  color: lightgray !important;
+  color: darkgrey !important;
 }
 
 input::placeholder {
-  color: lightgray !important;
+  color: darkgrey !important;
 }
 
 ul.tags {
@@ -671,5 +677,5 @@ input[type=checkbox]:not(old):checked + label > span::before {
 }
 
 .autocomplete-light-text-widget > .choice {
-  color: black;
+  color: black !important;
 }

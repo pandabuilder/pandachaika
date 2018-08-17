@@ -72,6 +72,14 @@
           <td>{{ gallery.get_link|urlize }}</td>
         </tr>
         <tr>
+          <th>Contained in</th>
+          {% if gallery.gallery_container %}
+          <td><a href="{% url 'viewer:gallery' gallery.gallery_container.id %}">{{ gallery.gallery_container }}</a></td>
+          {% else %}
+          <td>None</td>
+          {% endif %}
+        </tr>
+        <tr>
           <th>Posted</th>
           <td>{{ gallery.posted|date:"DATETIME_FORMAT"|default:"None provided" }}</td>
         </tr>
@@ -100,6 +108,10 @@
           <td>{{ gallery.get_status_display }}</td>
         </tr>
         {% if user.is_staff %}
+        <tr>
+          <th>Reason</th>
+          <td>{{ gallery.reason }}</td>
+        </tr>
         <tr>
           <th>Public</th>
           <td>{{ gallery.public|yesno }}</td>
@@ -132,6 +144,13 @@
       <ul>
         {% for archive in gallery.archive_set.all %}
           <li><a href="{% url 'viewer:archive' archive.id %}">{{ archive }}</a>, images: {{ archive.filecount }}, size: {{ archive.filesize|filesizeformat }}</li>
+        {% endfor %}
+      </ul>
+    </li>
+    <li><label class="label-extended">Contained galleries:</label>
+      <ul>
+        {% for gallery in gallery.gallery_contains.all %}
+          <li><a href="{% url 'viewer:gallery' gallery.id %}">{{ gallery }}</a></li>
         {% endfor %}
       </ul>
     </li>

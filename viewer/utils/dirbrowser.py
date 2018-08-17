@@ -14,7 +14,7 @@ class DirBrowser(object):
         p = os.path.normpath(os.path.join(self.path, path))
         if not p.startswith(self.path):
             p = self.path
-        return os.path.relpath(p, self.path)
+        return str(os.path.relpath(p, self.path))
 
     def isdir(self, path: str) -> bool:
         p = os.path.normpath(os.path.join(self.path, path))

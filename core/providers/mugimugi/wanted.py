@@ -227,6 +227,8 @@ def wanted_generator(settings: 'Settings', ext_logger: RealLogger, attrs: QueryS
 
             for gallery_data in api_galleries:
                 if gallery_data.gid not in used_gids:
+                    if not gallery_data.dl_type:
+                        gallery_data.dl_type = 'auto_wanted'
                     gallery = Gallery.objects.add_from_values(gallery_data)
                     # We match anyways in case there's a previous WantedGallery.
                     # Actually, we don't match since we only get metadata here, so it should not count as found.

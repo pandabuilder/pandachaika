@@ -1,8 +1,11 @@
 import os
 from typing import Any, Optional
 
+import requests
+
 from core.base.types import DataDict
-from core.base.utilities import replace_illegal_name, available_filename
+from core.base.utilities import replace_illegal_name, available_filename, get_filename_from_cd, get_zip_fileinfo, \
+    calc_crc32
 from core.downloaders.torrent import get_torrent_client
 
 from core.downloaders.handlers import BaseDownloader
@@ -104,6 +107,102 @@ class GenericTorrentDownloader(BaseDownloader):
         self.expected_torrent_name = ''
 
 
+class GenericArchiveDownloader(BaseDownloader):
+
+    type = 'archive'
+    provider = 'generic'
+    archive_only = True
+
+    @staticmethod
+    def get_download_link(url: str) -> str:
+        return url
+
+    def start_download(self) -> None:
+
+        if not self.gallery or not self.gallery.link:
+            return
+
+        self.logger.info("Downloading an archive from a generic HTTP server: {}".format(
+            self.gallery.link
+        ))
+
+        self.gallery.title = replace_illegal_name(
+            self.gallery.title)
+        self.gallery.filename = available_filename(
+            self.settings.MEDIA_ROOT,
+            os.path.join(
+                self.own_settings.archive_dl_folder,
+                self.gallery.title + '.zip'))
+
+        request_file = requests.get(
+            self.gallery.link,
+            stream='True',
+            headers=self.settings.requests_headers,
+            timeout=self.settings.timeout_timer,
+            cookies=self.own_settings.cookies
+        )
+
+        filename = get_filename_from_cd(request_file.headers.get('content-disposition'))
+
+        if not filename:
+            if self.gallery.link.find('/'):
+                filename = self.gallery.link.rsplit('/', 1)[1]
+
+        if not filename:
+            self.logger.error("Could not find a filename for link: {}".format(
+                self.gallery.link
+            ))
+            self.return_code = 0
+
+        self.gallery.title = filename.replace(".zip", "")
+        self.gallery.filename = replace_illegal_name(available_filename(
+            self.settings.MEDIA_ROOT,
+            os.path.join(
+                self.own_settings.archive_dl_folder,
+                filename)))
+
+        filepath = os.path.join(self.settings.MEDIA_ROOT,
+                                self.gallery.filename)
+        with open(filepath, 'wb') as fo:
+            for chunk in request_file.iter_content(4096):
+                fo.write(chunk)
+
+        self.gallery.filesize, self.gallery.filecount = get_zip_fileinfo(filepath)
+        if self.gallery.filesize > 0:
+            self.crc32 = calc_crc32(filepath)
+
+            self.fileDownloaded = 1
+            self.return_code = 1
+
+        else:
+            self.logger.error("Could not download archive")
+            self.return_code = 0
+
+    def update_archive_db(self, default_values: DataDict) -> Optional['Archive']:
+
+        if not self.gallery:
+            return None
+
+        values = {
+            'title': self.gallery.title,
+            'title_jpn': self.gallery.title_jpn,
+            'zipped': self.gallery.filename,
+            'crc32': self.crc32,
+            'filesize': self.gallery.filesize,
+            'filecount': self.gallery.filecount,
+        }
+        default_values.update(values)
+        return Archive.objects.update_or_create_by_values_and_gid(
+            default_values,
+            self.gallery.gid,
+            zipped=self.gallery.filename
+        )
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+
+
 API = (
     GenericTorrentDownloader,
+    GenericArchiveDownloader,
 )

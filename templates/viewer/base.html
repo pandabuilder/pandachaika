@@ -55,6 +55,15 @@
               <div class="dropdown-menu" aria-labelledby="navbarDropdown">
                 <a class="dropdown-item" href="{% url 'viewer:missing-archives' %}">Missing archives</a>
                 <a class="dropdown-item" href="{% url 'viewer:wanted-galleries' %}">Wanted galleries</a>
+                {% if perms.viewer.approve_gallery %}
+                  <a class="dropdown-item" href="{% url 'viewer:submit-queue' %}">Submit queue</a>
+                {% endif %}
+                {% if perms.viewer.publish_archive %}
+                  <a class="dropdown-item" href="{% url 'viewer:publish-archives' %}">Publish archives</a>
+                {% endif %}
+                {% if perms.viewer.crawler_adder %}
+                  <a class="dropdown-item" href="{% url 'viewer:user-crawler' %}">Add URLs</a>
+                {% endif %}
               </div>
             </li>
             <li class="nav-item"><a class="nav-link" href="{% url 'viewer:url-submit' %}">Submit URLs</a></li>
@@ -72,6 +81,10 @@
                 <div class="dropdown-divider"></div>
                 <a class="dropdown-item" href="{% url 'viewer:wanted-galleries' %}?{% url_replace 'wanted-not-found' '1' %}">Wanted galleries</a>
                 <a class="dropdown-item" href="{% url 'viewer:found-galleries' %}">Found galleries log</a>
+                <div class="dropdown-divider"></div>
+                <a class="dropdown-item" href="{% url 'viewer:submit-queue' %}">Submit queue</a>
+                <a class="dropdown-item" href="{% url 'viewer:publish-archives' %}">Publish archives</a>
+                <a class="dropdown-item" href="{% url 'viewer:user-crawler' %}">Add URLs</a>
               </div>
             </li>
             <li class="nav-item dropdown">
@@ -122,7 +135,16 @@
               <li class="nav-item"><a class="nav-link" href="{% url 'admin:index' %}">Admin</a></li>
             {% endif %}
             {% if user.is_authenticated %}
-              <li class="nav-item"><a class="nav-link" href="{% url 'viewer:logout' %}">Logout</a></li>
+              <li class="nav-item dropdown">
+                <a href="#" class="nav-link dropdown-toggle" id="accountDropdown" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Account <span class="caret"></span></a>
+                <div class="dropdown-menu dropdown-menu-right" aria-labelledby="accountDropdown">
+                  <a class="dropdown-item" href="{% url 'viewer:my-event-log' %}">Event log</a>
+                  <a class="dropdown-item" href="{% url 'viewer:change-password' %}">Change password</a>
+                  <a class="dropdown-item" href="{% url 'viewer:logout' %}">Logout</a>
+                </div>
+              </li>
+            {% else %}
+              <li class="nav-item"><a class="nav-link" href="{% url 'viewer:login' %}">Login</a></li>
             {% endif %}
         </ul>
       </div>

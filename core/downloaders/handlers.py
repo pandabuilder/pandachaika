@@ -30,6 +30,9 @@ class BaseDownloader(metaclass=Meta):
     def __str__(self) -> str:
         return "{}_{}".format(self.provider, self.type)
 
+    def is_generic(self) -> bool:
+        return self.provider == 'generic'
+
     def start_download(self) -> None:
         pass
 
@@ -41,6 +44,10 @@ class BaseDownloader(metaclass=Meta):
             return
         if self.settings.keep_dl_type and self.original_gallery.dl_type is not None:
             self.original_gallery.dl_type = None
+        if self.type == 'submit':
+            self.original_gallery.origin = self.settings.gallery_model.ORIGIN_SUBMITTED
+        if self.settings.gallery_reason:
+            self.original_gallery.reason = self.settings.gallery_reason
         self.gallery_db_entry: Optional['Gallery'] = self.settings.gallery_model.objects.update_or_create_from_values(self.original_gallery)
         if self.gallery_db_entry:
             for archive in self.gallery_db_entry.archive_set.all():

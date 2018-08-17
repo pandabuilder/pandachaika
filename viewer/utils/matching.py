@@ -63,10 +63,12 @@ def create_matches_wanted_galleries_from_providers_internal(wanted_galleries: Qu
         else:
             galleries = Gallery.objects.eligible_for_use()
         for gallery in galleries:
-            galleries_title_id.append(
-                (clean_title(gallery.title), gallery.pk))
-            galleries_title_id.append(
-                (clean_title(gallery.title_jpn), gallery.pk))
+            if gallery.title:
+                galleries_title_id.append(
+                    (clean_title(gallery.title), gallery.pk))
+            if gallery.title_jpn:
+                galleries_title_id.append(
+                    (clean_title(gallery.title_jpn), gallery.pk))
 
         if logger:
             logger.info(

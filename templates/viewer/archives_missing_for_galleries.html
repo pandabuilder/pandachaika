@@ -15,7 +15,7 @@
     <h2>Galleries without associated archives</h2>
     <p class="lead">Number of galleries (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
     </div>
-    <form action="{% url 'viewer:missing-archives' %}" method="GET">
+    <form action="{{ request.get_full_path }}" method="GET">
       {% for field in form %}
         <div class="page-line">
           {{ field.errors }}
@@ -30,12 +30,16 @@
             <option value="{{ provider }}" {% if request.GET.provider == provider %} selected{% endif %}>{{ provider }}</option>
           {% endfor %}
         </select>
+        <label>Filecount</label>
+        <input size="2" type="text" class="form-control mr-sm-1" name="filecount_from" value="{{ request.GET.filecount_from }}" placeholder="from"/>
+        <input size="2" type="text" class="form-control mr-sm-1" name="filecount_to" value="{{ request.GET.filecount_to }}" placeholder="to"/>
+        <input title="Category" class="form-control" name="category" placeholder="Category" value="{{ request.GET.category }}">
         <input title="Download type" class="form-control" name="dl_type" placeholder="Download type" value="{{ request.GET.dl_type }}">
         <button type="submit" name="apply" class="btn btn-light">Search</button>
         <a class="btn btn-light" href="{% url 'viewer:missing-archives' %}">Clear</a>
       </div>
     </form>
-    <form action="{% url 'viewer:missing-archives' %}{% if request.GET.provider %}?provider={{ request.GET.provider }}{% endif %}" method="POST">{% csrf_token %}
+    <form action="{{ request.get_full_path }}" method="POST">{% csrf_token %}
     {% load viewer_extras %}
     <!-- Next/Prev page links  -->
     {% if results.object_list and results.paginator.num_pages > 1 %}
@@ -58,14 +62,14 @@
       <table class="table table-bordered table-sm generic-table">
         <thead>
         <tr>
-          <th>Select</th><th>URL</th><th>Title</th><th>Size</th><th>Images</th><th>Source URL | Image</th><th>DL type</th><th>Added</th>
+          <th>Select</th><th>URL</th><th>Title</th><th>Size</th><th>Images</th><th>Source URL | Image</th><th>Linked to Wanted Gallery?</th><th>DL type</th><th>Reason</th><th>Added</th>
         </tr>
         </thead>
         <tbody>
         {% for gallery in results %}
           <tr>
             <td>
-              <input id="checkbox-{{ gallery.id }}" type="checkbox" name="sel-{{ gallery.id }}" value="{{ gallery.pk }}"><label for="checkbox-{{ gallery.id }}"><span><span></span></span></label>
+              <input id="checkbox-{{ gallery.id }}" class="toggle-list" type="checkbox" name="sel-{{ gallery.id }}" value="{{ gallery.pk }}"><label for="checkbox-{{ gallery.id }}"><span><span></span></span></label>
             </td>
             <td>
               <a href="{% url 'viewer:gallery' gallery.pk %}">{{ gallery.pk }}</a>
@@ -87,7 +91,13 @@
               {% endif %}
             </td>
             <td>
+              {{ gallery.foundgallery_set.count|yesno:"yes,no" }}
+            </td>
+            <td>
               {{ gallery.dl_type }}
+            </td>
+            <td>
+              {{ gallery.reason }}
             </td>
             <td>
               {{ gallery.create_date|date:"DATETIME_FORMAT" }}
@@ -118,18 +128,19 @@
       <input size="10" class="form-control" name="reason" value="" placeholder="Reason" maxlength="200"/>
     </div>
     <button name="download_galleries" class="btn btn-light">Force queue for download</button>
+    <button name="recall_api" class="btn btn-light">Recall API</button>
     <button name="delete_galleries" class="btn btn-light">Delete (WARNING!)</button>
     </form>
     {% else %}
     <div class="page-header">
     <h2>Galleries without associated archives</h2>
-    <p class="lead">If you have any of these galleries, and their unpacked filesize matches the one displayed here, please get in touch.</p>
+    <p class="lead">If you have any of these galleries, and their unpacked filesize matches the one displayed here (for panda links), please get in touch.</p>
     </div>
     {% if results.count > 0 %}
       <table class="table table-bordered table-sm generic-table">
         <thead>
         <tr>
-          <th>URL</th><th>Title</th><th>Size</th><th>Images</th><th>Source URL | Image</th><th>Posted</th>
+          <th>URL</th><th>Title</th><th>Size</th><th>Images</th><th>Source URL | Image</th><th>Category</th>
         </tr>
         </thead>
         <tbody>
@@ -155,7 +166,7 @@
               {% endif %}
             </td>
             <td>
-              {{ gallery.posted|date:"SHORT_DATE_FORMAT" }}
+              {{ gallery.category }}
             </td>
           </tr>
         {% endfor %}
@@ -177,10 +188,6 @@
     <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/text_widget.js' %}"></script>
     <script type="text/javascript" src="{% static 'autocomplete_light/jal.js' %}"></script>
   {% endcompress %}
-<script>
-$('#toggle-all').click(function() {
-    $('td input[type="checkbox"]').click();
-});
-</script>
+  <script type="text/javascript" src="{% static 'js/list_operations.js' %}"></script>
 {% endblock %}
 {% endif %}

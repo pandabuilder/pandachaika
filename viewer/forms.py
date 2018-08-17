@@ -2,6 +2,7 @@
 from typing import Dict, Any, List
 
 from django import forms
+from django.contrib.auth.forms import PasswordChangeForm
 from django.forms.models import BaseModelFormSet, modelformset_factory, ModelChoiceField
 from django.forms.utils import ErrorList
 from django.utils.safestring import mark_safe
@@ -223,7 +224,7 @@ class SpanErrorList(ErrorList):
     def as_divs(self) -> str:
         if not self:
             return ''
-        return '<div class="errorlist">%s</div>' % ''.join(['<span  class="alert alert-danger error" role="alert">%s</span>' % e for e in self])
+        return '<div class="errorlist">%s</div>' % ''.join(['<div  class="alert alert-danger error" role="alert">%s</div>' % e for e in self])
 
 
 class ArchiveModForm(forms.ModelForm):
@@ -360,3 +361,12 @@ ImageFormSet = modelformset_factory(
     Image, form=ImageForm, extra=0,
     formset=BaseImageFormSet,
     can_delete=True)
+
+
+class BootstrapPasswordChangeForm(PasswordChangeForm):
+
+    def __init__(self, user, *args, **kwargs):
+        super().__init__(user, *args, **kwargs)
+        self.fields['old_password'].widget.attrs.update({'class': 'form-control'})
+        self.fields['new_password1'].widget.attrs.update({'class': 'form-control'})
+        self.fields['new_password2'].widget.attrs.update({'class': 'form-control'})

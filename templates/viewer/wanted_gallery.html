@@ -66,6 +66,7 @@
               </li>{% endfor %}
           </ul>
         </li>
+        <li class="list-group-item"><label class="label-extended">Category:</label>{{ wanted_gallery.category }}</li>
         <li class="list-group-item"><label class="label-extended">Wanted page count lower bound:</label>{{ wanted_gallery.wanted_page_count_lower }}</li>
         <li class="list-group-item"><label class="label-extended">Wanted page count upper bound:</label>{{ wanted_gallery.wanted_page_count_upper }}</li>
       </ul>
@@ -82,12 +83,12 @@
       <ul class="list-group">
         {% for found_entry in wanted_gallery.foundgallery_set.all %}
           <li class="list-group-item">
-            Found: <a title="{{ found_entry.gallery.title_jpn }}" href="{% url 'viewer:gallery' found_entry.gallery.pk %}">{{ found_entry.gallery.title }}</a> >> Source URL: {{ found_entry.gallery.get_link|urlize }} >> Found date: {{ found_entry.create_date }} >> Posted date: {{ found_entry.gallery.posted }} >> Number of archives: {{ found_entry.gallery.archive_set.count }} >> File count: {{ found_entry.gallery.filecount }} >> <a href="{% url 'viewer:gallery-tool' found_entry.gallery.pk 'download' %}">Download found gallery</a>
+            Found: <a title="{{ found_entry.gallery.title_jpn }}" href="{% url 'viewer:gallery' found_entry.gallery.pk %}">{{ found_entry.gallery.title }}</a> >> Source URL: {{ found_entry.gallery.get_link|urlize }} >> Found date: {{ found_entry.create_date }} >> Posted date: {{ found_entry.gallery.posted }} >> Number of archives: {{ found_entry.gallery.archive_set.count }}  >> Images: {{ found_entry.gallery.filecount }} >> Size: {{ found_entry.gallery.filesize|filesizeformat }} >> <a href="{% url 'viewer:gallery-tool' found_entry.gallery.pk 'download' %}">Download found gallery</a>
             {% if found_entry.gallery.archive_set.count > 0 %}
               <ul class="list-group">
                 {% for archive in found_entry.gallery.archive_set.all %}
                   <li class="list-group-item">
-                    Archive: <a title="{{ archive.title_jpn }}" href="{% url 'viewer:archive' archive.pk %}">{{ archive.title }}</a> >> <a href="#" data-image-url="{% if archive.thumbnail.name %}{{ archive.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover">Archive thumbnail</a>
+                    Archive: <a title="{{ archive.title_jpn }}" href="{% url 'viewer:archive' archive.pk %}">{{ archive.title }}</a> >> Images: {{ archive.filecount }} >> Size: {{ archive.filesize|filesizeformat }} >> <a href="#" data-image-url="{% if archive.thumbnail.name %}{{ archive.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover">Archive thumbnail</a>
                   </li>
                 {% endfor %}
               </ul>
@@ -116,12 +117,12 @@
       <ul class="list-group">
         {% for match in wanted_gallery.gallerymatch_set.all %}
           <li class="list-group-item">
-            Possible: <a title="{{ match.gallery.title_jpn }}" href="{% url 'viewer:gallery' match.gallery.pk %}">{{ match.gallery.title }}</a> >> <a href="{{ match.gallery.get_link }}" data-image-url="{% if match.gallery.thumbnail.name %}{{ match.gallery.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover">{{ match.gallery.get_link }}</a> >> Accuracy: {{ match.match_accuracy|floatformat:3 }} >> Posted date: {{ match.gallery.posted }} >> Number of archives: {{ match.gallery.archive_set.count }} >> File count: {{ match.gallery.filecount }} >> <a href="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}?tool=select-as-match&tool-id={{ match.gallery.pk }}">select as correct match</a>
+            Possible: <a title="{{ match.gallery.title_jpn }}" href="{% url 'viewer:gallery' match.gallery.pk %}">{{ match.gallery.title }}</a> >> <a href="{{ match.gallery.get_link }}" data-image-url="{% if match.gallery.thumbnail.name %}{{ match.gallery.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover">{{ match.gallery.get_link }}</a> >> Accuracy: {{ match.match_accuracy|floatformat:3 }} >> Posted date: {{ match.gallery.posted }} >> Number of archives: {{ match.gallery.archive_set.count }} >> Images: {{ match.gallery.filecount }} >> Size: {{ match.gallery.filesize|filesizeformat }} >> <a href="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}?tool=select-as-match&tool-id={{ match.gallery.pk }}">select as correct match</a>
             {% if match.gallery.archive_set.count > 0 %}
               <ul class="list-group">
                 {% for archive in match.gallery.archive_set.all %}
                   <li class="list-group-item">
-                    Archive: <a title="{{ archive.title_jpn }}" href="{% url 'viewer:archive' archive.pk %}">{{ archive.title }}</a> >> <a href="#" data-image-url="{% if archive.thumbnail.name %}{{ archive.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover">Archive thumbnail</a>
+                    Archive: <a title="{{ archive.title_jpn }}" href="{% url 'viewer:archive' archive.pk %}">{{ archive.title }}</a> >> Images: {{ archive.filecount }} >> Size: {{ archive.filesize|filesizeformat }} >> <a href="#" data-image-url="{% if archive.thumbnail.name %}{{ archive.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover">Archive thumbnail</a>
                   </li>
                 {% endfor %}
               </ul>

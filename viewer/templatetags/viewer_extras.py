@@ -12,7 +12,7 @@ T = TypeVar('T', float, int)
 @register.simple_tag(takes_context=True)
 def url_replace(context: RequestContext, field: SafeText, value: SafeText) -> str:
     dict_ = context['request'].GET.copy()
-    dict_[field] = value
+    dict_[field] = str(value)
     return dict_.urlencode()
 
 
@@ -20,7 +20,7 @@ def url_replace(context: RequestContext, field: SafeText, value: SafeText) -> st
 def url_multi_replace(context: RequestContext, **kwargs: Any) -> str:
     dict_ = context['request'].GET.copy()
     for key, value in kwargs.items():
-        dict_[key] = value
+        dict_[key] = str(value)
     return dict_.urlencode()
 
 

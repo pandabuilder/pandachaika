@@ -409,7 +409,8 @@ needed_keys = [
     'category', 'uploader', 'posted', 'filecount',
     'filesize', 'expunged', 'rating', 'fjord',
     'hidden', 'dl_type', 'comment', 'thumbnail_url',
-    'public', 'provider',
+    'public', 'provider', 'gallery_container_gid',
+    'status', 'origin', 'reason'
 ]
 
 
@@ -572,13 +573,25 @@ def request_with_retries(
                 r = requests.get(url, **request_dict)
             return r
 
-        except requests.exceptions.Timeout:
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
             if retry_count < retries - 1:
                 if logger:
-                    logger.warning("Request failed, retry: {} of {}".format(retry_count, retries))
+                    logger.warning("Request failed, retry: {} of {}: {}".format(retry_count, retries, str(e)))
                 continue
             else:
                 if logger:
                     logger.error("Failed to reach URL: {}".format(url))
                 return None
     return None
+
+
+def get_filename_from_cd(cd):
+    """
+    Get filename from content-disposition
+    """
+    if not cd:
+        return None
+    fname = re.findall('filename=(.+)', cd)
+    if len(fname) == 0:
+        return None
+    return fname[0]

@@ -11,7 +11,7 @@ class GalleryData:
             self, gid: str, token: Optional[str] = None,
             link: Optional[str]=None, tags: List[str]=None,
             provider: Optional[str]=None, title: Optional[str]=None,
-            title_jpn: Optional[str]=None, comment: Optional[str]=None,
+            title_jpn: Optional[str]=None, comment: Optional[str]=None, gallery_container_gid: Optional[str]=None,
             category: Optional[str]=None, posted: Optional[datetime]=None,
             filesize: Optional[int] = None, filecount: Optional[int] = None,
             expunged: Optional[int] = None, rating: Optional[str] = None,
@@ -20,7 +20,9 @@ class GalleryData:
             dl_type: Optional[str] = None, public: Optional[bool] = None,
             content: Optional[str] = None, archiver_key: Optional[str] = None,
             root: Optional[str] = None, filename: Optional[str] = None,
-            queries: Optional[int] = None, thumbnail: Optional[str] = None
+            queries: Optional[int] = None, thumbnail: Optional[str] = None,
+            status: Optional[int] = None, origin: Optional[int] = None,
+            reason: Optional[str] = None
     ) -> None:
         self.gid = gid
         self.token = token
@@ -29,6 +31,7 @@ class GalleryData:
             self.tags = tags
         else:
             self.tags = []
+        self.gallery_container_gid = gallery_container_gid
         self.provider = provider
         self.title = title
         self.title_jpn = title_jpn
@@ -46,6 +49,9 @@ class GalleryData:
         self.fjord = fjord
         self.hidden = hidden
         self.public = public
+        self.status = status
+        self.origin = origin
+        self.reason = reason
         self.content = content
         self.archiver_key = archiver_key
         self.root = root

@@ -1,0 +1,22 @@
+{% extends "viewer/base.html" %}
+{% block title %}Login | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+
+{% block content %}
+    {% if messages %}
+      {% for message in messages %}
+        <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  <div class="container">
+    <form class="form-signin" action="{% url 'viewer:login' %}" method="POST">{% csrf_token %}
+      <h2 class="form-signin-heading">Panda Backup</h2>
+      <label for="inputUser" class="sr-only">Username</label>
+      <input type="text" id="inputUser" name="username" class="form-control" value="{{ username }}" placeholder="Username" required autofocus>
+      <label for="inputPassword" class="sr-only">Password</label>
+      <input type="password" id="inputPassword" name="password" class="form-control" value="{{ password }}" placeholder="Password" required>
+      <button class="btn btn-lg btn-primary btn-block" name="login" type="submit">Login</button>
+      <input type="hidden" name="next" value="{{ next }}" />
+    </form>
+  </div>
+{% endblock %}

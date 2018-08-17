@@ -1,5 +1,5 @@
 from django.conf.urls import url
-from viewer.views import head, browser, wanted, exp, api, archive, admin, manager
+from viewer.views import head, browser, wanted, exp, api, archive, admin, manager, collaborators
 from viewer.feeds import LatestArchivesFeed
 from viewer.views.elasticsearch import ESHomePageView, autocomplete_view, title_suggest_view
 
@@ -36,6 +36,7 @@ urlpatterns = [
     url(r"^submit/$", head.url_submit, name='url-submit'),
     url(r"^login/$", head.viewer_login, name='login'),
     url(r"^logout/$", head.viewer_logout, name='logout'),
+    url(r"^password/$", head.change_password, name='change-password'),
     url(r"^session-settings/$", head.session_settings, name='session-settings'),
     url(r"^img/(\d+)/$", head.image_url, name='image-url'),
     url(r"^content/panda.user.js$", head.panda_userscript, name='panda-user-script'),
@@ -76,6 +77,15 @@ urlpatterns += [
     url(r"^web-queue/([\w-]+)/([\w-]+)$", admin.queue_operations, name='queue-operations'),
     url(r"^web-crawler/$", admin.crawler, name='crawler'),
     url(r"^folder-crawler/$", admin.foldercrawler, name='folder-crawler'),
+]
+
+# Collaborators.
+urlpatterns += [
+    url(r"^my-event-log/$", collaborators.my_event_log, name='my-event-log'),
+    url(r"^submit-queue/$", collaborators.submit_queue, name='submit-queue'),
+    url(r"^publish-archives/$", collaborators.publish_archives, name='publish-archives'),
+    url(r"^user-crawler/$", collaborators.user_crawler, name='user-crawler'),
+
 ]
 
 urlpatterns += [

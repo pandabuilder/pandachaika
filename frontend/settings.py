@@ -289,6 +289,7 @@ PROVIDERS = [
     'core.providers.panda',
     'core.providers.twitter',
     'core.providers.chaika',
+    'core.providers.mega',
 ]
 
 PROVIDER_CONTEXT = crawler_settings.provider_context

@@ -10,7 +10,8 @@ import requests
 from bs4 import BeautifulSoup
 
 from core.base.types import DataDict
-from core.base.utilities import calc_crc32, get_zip_filesize, get_base_filename_string_from_gallery_data
+from core.base.utilities import calc_crc32, get_base_filename_string_from_gallery_data, \
+    get_zip_fileinfo
 from core.downloaders.handlers import BaseDownloader, BaseInfoDownloader
 from .utilities import guess_gallery_read_url
 from viewer.models import Archive
@@ -142,17 +143,14 @@ class ArchiveDownloader(BaseDownloader):
             self.gallery.filename
         )
 
-        self.gallery.filecount = 0
-
         with ZipFile(file_path, 'w') as archive:
             for (root_path, _, file_names) in os.walk(directory_path):
                 for current_file in file_names:
-                    self.gallery.filecount += 1
                     archive.write(
                         os.path.join(root_path, current_file), arcname=os.path.basename(current_file))
         shutil.rmtree(directory_path, ignore_errors=True)
 
-        self.gallery.filesize = get_zip_filesize(file_path)
+        self.gallery.filesize, self.gallery.filecount = get_zip_fileinfo(file_path)
         if self.gallery.filesize > 0:
             self.crc32 = calc_crc32(file_path)
             self.fileDownloaded = 1
@@ -293,17 +291,14 @@ class ArchiveJSDownloader(BaseDownloader):
                 self.gallery.filename
             )
 
-            self.gallery.filecount = 0
-
             with ZipFile(file_path, 'w') as archive:
                 for (root_path, _, file_names) in os.walk(directory_path):
                     for current_file in file_names:
-                        self.gallery.filecount += 1
                         archive.write(
                             os.path.join(root_path, current_file), arcname=os.path.basename(current_file))
             shutil.rmtree(directory_path, ignore_errors=True)
 
-            self.gallery.filesize = get_zip_filesize(file_path)
+            self.gallery.filesize, self.gallery.filecount = get_zip_fileinfo(file_path)
             if self.gallery.filesize > 0:
                 self.crc32 = calc_crc32(file_path)
                 self.fileDownloaded = 1

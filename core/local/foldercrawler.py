@@ -26,7 +26,7 @@ class ArgumentParserError(Exception):
 
 class YieldingArgumentParser(argparse.ArgumentParser):
 
-    def error(self, message: str) -> None:
+    def error(self, message: str) -> None:  # type: ignore
         raise ArgumentParserError(message)
 
 

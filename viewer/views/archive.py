@@ -67,7 +67,7 @@ def archive_details(request: HttpRequest, pk: int, view: str = "cover") -> HttpR
 
     d = {'archive': archive, 'images': images, 'view': view}
 
-    if view == "edit":
+    if view == "edit" and request.user.is_staff:
 
         paginator = Paginator(archive.image_set.all(), num_images)
         try:

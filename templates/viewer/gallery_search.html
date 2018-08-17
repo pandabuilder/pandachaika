@@ -42,6 +42,8 @@
           <input id="checkbox4" type="checkbox" name="not_used" value="1" {% if display_prms.not_used == '1' %}checked{% endif %}><label for="checkbox4"><span><span></span></span>Not used</label>
         {% endif %}
         <input id="checkbox3" type="checkbox" name="fjord" value="1" {% if display_prms.fjord == '1' %}checked{% endif %}><label for="checkbox3"><span><span></span></span>Fjord</label>
+        <input id="checkbox5" type="checkbox" name="contained" value="1" {% if display_prms.contained == '1' %}checked{% endif %}><label for="checkbox5"><span><span></span></span>Contained</label>
+        <input id="checkbox6" type="checkbox" name="contains" value="1" {% if display_prms.contains == '1' %}checked{% endif %}><label for="checkbox6"><span><span></span></span>Contains</label>
       </div>
       </div>
       <div class="page-line form-inline">
@@ -176,11 +178,9 @@
 
     </div>
   {% else %}
-    <div class="row">
-      <div class="col-xs-12 text-center">
-        <div><h4><strong>No results</strong></h4></div>
-      </div>
-    </div>
+    <h4 class="text-center">
+      <strong>No results</strong>
+    </h4>
   {% endif %}
 {% endblock %}
 {% block afterJQ %}

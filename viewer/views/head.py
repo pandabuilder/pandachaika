@@ -8,7 +8,7 @@ import operator
 from typing import Dict, Any, List
 
 from django.contrib import messages
-from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.http.request import HttpRequest
@@ -29,7 +29,7 @@ from core.base.types import DataDict
 from viewer.forms import (
     ArchiveSearchForm,
     GallerySearchForm,
-    SpanErrorList, ArchiveSearchSimpleForm)
+    SpanErrorList, ArchiveSearchSimpleForm, BootstrapPasswordChangeForm)
 from viewer.models import (
     Archive, Image, Tag, Gallery,
     UserArchivePrefs, WantedGallery,
@@ -46,7 +46,8 @@ gallery_filter_keys = (
     "filesize_to", "filecount_from", "filecount_to", "posted_from", "posted_to",
     "create_from", "create_to",
     "category", "provider", "dl_type",
-    "expunged", "hidden", "fjord", "uploader", "tags", "not_used"
+    "expunged", "hidden", "fjord", "uploader", "tags", "not_used", "reason",
+    "contains", "contained"
 )
 
 archive_filter_keys = (
@@ -84,13 +85,30 @@ def viewer_login(request: HttpRequest) -> HttpResponse:
     else:
         next_url = request.GET.get('next', 'viewer:main-page')
         d = {'next': next_url}
-        return render(request, 'viewer/login.html', d)
+        return render(request, 'viewer/accounts/login.html', d)
 
 
 @login_required
 def viewer_logout(request: HttpRequest) -> HttpResponse:
     logout(request)
     return HttpResponseRedirect(reverse('viewer:main-page'))
+
+
+def change_password(request: HttpRequest) -> HttpResponse:
+    if request.method == 'POST':
+        form = BootstrapPasswordChangeForm(request.user, request.POST, error_class=SpanErrorList)
+        if form.is_valid():
+            user = form.save()
+            update_session_auth_hash(request, user)  # Important!
+            messages.success(request, 'Your password was successfully updated!')
+            return redirect('viewer:change-password')
+        else:
+            messages.error(request, 'Please correct the error below.')
+    else:
+        form = BootstrapPasswordChangeForm(request.user, error_class=SpanErrorList)
+    return render(request, 'viewer/accounts/change_password.html', {
+        'form': form
+    })
 
 
 def session_settings(request: HttpRequest) -> HttpResponse:
@@ -397,7 +415,11 @@ def filter_galleries(request: HttpRequest, session_filters: Dict[str, str], requ
     if request_filters["provider"]:
         results = results.filter(provider=request_filters["provider"])
     if request_filters["not_used"]:
-        results = results.filter(Q(archive__isnull=True))
+        results = results.filter(archive__isnull=True)
+    if request_filters["contained"]:
+        results = results.filter(gallery_container__isnull=False)
+    if request_filters["contains"]:
+        results = results.annotate(num_contains=Count('gallery_contains')).filter(num_contains__gt=0)
 
     if request_filters["tags"]:
         tags = request_filters["tags"].split(',')
@@ -550,7 +572,7 @@ def search(request: HttpRequest, mode: str = 'none', tag: str = None) -> HttpRes
     return render(request, "viewer/archive_search.html", d)
 
 
-def filter_archives(request: HttpRequest, session_filters: Dict[str, str], request_filters: Dict[str, str]) -> ArchiveQuerySet:
+def filter_archives(request: HttpRequest, session_filters: Dict[str, str], request_filters: Dict[str, str], force_private: bool = False) -> ArchiveQuerySet:
     """Filter results through parameters
     and return results list.
     """
@@ -567,7 +589,7 @@ def filter_archives(request: HttpRequest, session_filters: Dict[str, str], reque
 
     results = Archive.objects.order_by(order)
 
-    if not request.user.is_authenticated:
+    if not request.user.is_authenticated and not force_private:
         results = results.filter(public=True)
 
     if request_filters["title"]:
@@ -796,7 +818,7 @@ def url_submit(request: HttpRequest) -> HttpResponse:
         if 'reason' in p and p['reason'] != '':
             reason = p['reason']
             # Force limit string length (dl_type field max_length)
-            current_settings.force_dl_type = reason[:93]
+            current_settings.gallery_reason = reason[:200]
 
         # As a security check, only finally set urls that pass the accepted_urls
         parsers = crawler_settings.provider_context.get_parsers_classes()
@@ -828,13 +850,13 @@ def url_submit(request: HttpRequest) -> HttpResponse:
                             'URL {} was not in the backup and will be added to the submit queue.'.format(url_filtered)
                         )
                         continue
-                    if 'submit' in gallery.dl_type:
+                    if gallery.is_submitted():
                         messages.info(
                             request,
                             'URL {} already exists in the backup and it\'s being reviewed.'.format(url_filtered)
                         )
-                        url_messages.append('{}: Already in submit queue, reason: {}'.format(
-                            url_filtered, gallery.dl_type.replace("submit:", ""))
+                        url_messages.append('{}: Already in submit queue, link: {}, reason: {}'.format(
+                            url_filtered, gallery.get_absolute_url(), gallery.reason)
                         )
                     elif gallery.public:
                         messages.info(
@@ -1087,6 +1109,8 @@ def filter_galleries_simple(params: Dict[str, str]) -> GalleryQuerySet:
         results = results.filter(uploader=params["uploader"])
     if params["dl_type"]:
         results = results.filter(dl_type=params["dl_type"])
+    if params["reason"]:
+        results = results.filter(reason__contains=params["reason"])
     if params["provider"]:
         results = results.filter(provider=params["provider"])
     if params["not_used"]:

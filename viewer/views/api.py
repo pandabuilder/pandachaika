@@ -586,7 +586,7 @@ def json_parser(request: HttpRequest) -> HttpResponse:
 
                     existing_galleries = Gallery.objects.filter(gid__in=gids_list)
                     for gallery_object in existing_galleries:
-                        if "submit" in gallery_object.dl_type:
+                        if gallery_object.is_submitted():
                             gallery_object.delete()
                         # Delete queue galleries that failed, and does not have archives.
                         elif data['operation'] == 'queue_archives' and "failed" in gallery_object.dl_type and not gallery_object.archive_set.all():
@@ -610,6 +610,8 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                         if data['operation'] == 'queue_galleries':
                             current_settings.allow_type_downloaders_only('info')
                         elif data['operation'] == 'queue_archives':
+                            if 'archive_reason' in data:
+                                current_settings.archive_reason = data['archive_reason']
                             current_settings.allow_type_downloaders_only('fake')
                         if current_settings.workers.web_queue:
                             current_settings.workers.web_queue.enqueue_args_list(pages_links, override_options=current_settings)

@@ -3,10 +3,14 @@ import traceback
 from collections import deque
 
 import logging
-from typing import Iterable, Optional
+import typing
+from typing import Iterable, Optional, Callable
 
 from core.base.setup import Settings
 from core.web.crawlerthread import WebCrawler
+
+if typing.TYPE_CHECKING:
+    from viewer.models import Gallery, Archive
 
 
 class WebQueue(object):
@@ -24,7 +28,10 @@ class WebQueue(object):
                 web_crawler = WebCrawler(self.settings, self.crawler_logger)
                 web_crawler.start_crawling(
                     item['args'],
-                    override_options=item['override_options']
+                    override_options=item['override_options'],
+                    archive_callback=item.get('archive_callback', None),
+                    gallery_callback=item.get('gallery_callback', None),
+                    use_argparser=item.get('use_argparser', True)
                 )
                 self.current_processing_items = []
             except BaseException:
@@ -77,7 +84,21 @@ class WebQueue(object):
         self.queue.append({'args': args.split(), 'override_options': None})
         self.start_running()
 
-    def enqueue_args_list(self, args: Iterable[str], override_options: Settings=None) -> None:
+    def enqueue_args_list(
+            self, args: Iterable[str],
+            override_options: Settings=None,
+            archive_callback: Callable[[Optional['Archive'], Optional[str], str], None]=None,
+            gallery_callback: Callable[[Optional['Gallery'], Optional[str], str], None]=None,
+            use_argparser: bool=True
+    ) -> None:
 
-        self.queue.append({'args': args, 'override_options': override_options})
+        self.queue.append(
+            {
+                'args': args,
+                'override_options': override_options,
+                'archive_callback': archive_callback,
+                'gallery_callback': gallery_callback,
+                'use_argparser': use_argparser,
+            }
+        )
         self.start_running()

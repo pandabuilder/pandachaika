@@ -8,6 +8,8 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from itertools import chain
 
+from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.models import ContentType
 from django.templatetags.static import static
 from os.path import join as pjoin, basename
 from tempfile import NamedTemporaryFile
@@ -113,6 +115,17 @@ class GalleryQuerySet(models.QuerySet):
             ~Q(status=Gallery.DELETED),
             ~Q(dl_type__contains='skipped'),
             Q(archive__isnull=True),
+            Q(gallery_container__archive__isnull=True),
+            **kwargs
+        ).order_by('-create_date')
+
+    def submitted_galleries(self, *args: typing.Any, **kwargs: typing.Any) -> QuerySet:
+        return self.filter(
+            Q(origin=Gallery.ORIGIN_SUBMITTED),
+            ~Q(status=Gallery.DELETED),
+            Q(archive__isnull=True),
+            Q(gallery_container__archive__isnull=True),
+            *args,
             **kwargs
         ).order_by('-create_date')
 
@@ -147,6 +160,9 @@ class GalleryManager(models.Manager):
 
     def non_used_galleries(self, **kwargs: typing.Any) -> QuerySet:
         return self.get_queryset().non_used_galleries(**kwargs)
+
+    def submitted_galleries(self, *args: typing.Any, **kwargs: typing.Any) -> QuerySet:
+        return self.get_queryset().submitted_galleries(*args, **kwargs)
 
     def eligible_for_use(self, **kwargs: typing.Any) -> QuerySet:
         return self.get_queryset().eligible_for_use(**kwargs)
@@ -197,6 +213,11 @@ class GalleryManager(models.Manager):
                             name=tag, scope=scope)
                     gallery.tags.add(tag_object)
             values = get_dict_allowed_fields(gallery_data)
+            if 'gallery_container_gid' in values:
+                gallery_container = Gallery.objects.filter(gid=values['gallery_container_gid']).first()
+                if gallery_container:
+                    values['gallery_container'] = gallery_container
+                del values['gallery_container_gid']
             for key, value in values.items():
                 setattr(gallery, key, value)
             gallery.save()
@@ -209,6 +230,11 @@ class GalleryManager(models.Manager):
         tags = gallery_data.tags
 
         values = get_dict_allowed_fields(gallery_data)
+        if 'gallery_container_gid' in values:
+            gallery_container = Gallery.objects.filter(gid=values['gallery_container_gid']).first()
+            if gallery_container:
+                values['gallery_container'] = gallery_container
+            del values['gallery_container_gid']
 
         gallery = Gallery(**values)
         gallery.save()
@@ -234,6 +260,11 @@ class GalleryManager(models.Manager):
         tags = gallery_data.tags
 
         values = get_dict_allowed_fields(gallery_data)
+        if 'gallery_container_gid' in values:
+            gallery_container = Gallery.objects.filter(gid=values['gallery_container_gid']).first()
+            if gallery_container:
+                values['gallery_container'] = gallery_container
+            del values['gallery_container_gid']
 
         gallery, _ = self.update_or_create(defaults=values, gid=values['gid'])
         if tags:
@@ -258,6 +289,11 @@ class GalleryManager(models.Manager):
 
         instance = self.filter(gid=gid, dl_type__contains=dl_type).first()
         if instance:
+            if 'gallery_container_gid' in values:
+                gallery_container = Gallery.objects.filter(gid=values['gallery_container_gid']).first()
+                if gallery_container:
+                    values['gallery_container'] = gallery_container
+                del values['gallery_container_gid']
             for key, value in values.items():
                 setattr(instance, key, value)
             instance.save()
@@ -367,13 +403,25 @@ def gallery_thumb_path_handler(instance: 'Gallery', filename: str) -> str:
 
 class Gallery(models.Model):
     NORMAL = 1
+    # Denied status is intended for submitted galleries that were not accepted by a moderator. Different from deleted.
+    # To remove denied galleries from other lists, an admin should mark as DELETED.
+    DENIED = 4
     # The deleted status hides the gallery from some user facing interfaces, as match galleries, gallery list, etc.
-    # And makes that trying to parse it again results in being skipped.
+    # And makes that trying to parse it again results in it being skipped.
     DELETED = 5
+
+    ORIGIN_NORMAL = 1
+    ORIGIN_SUBMITTED = 2
 
     STATUS_CHOICES = (
         (NORMAL, 'Normal'),
+        (DENIED, 'Denied'),
         (DELETED, 'Deleted'),
+    )
+
+    ORIGIN_CHOICES = (
+        (ORIGIN_NORMAL, 'Normal'),
+        (ORIGIN_SUBMITTED, 'Submitted'),
     )
 
     gid = models.CharField(max_length=200)
@@ -382,6 +430,10 @@ class Gallery(models.Model):
     title_jpn = models.CharField(
         max_length=500, blank=True, null=True, default='')
     tags = models.ManyToManyField(Tag, blank=True, default='')
+    gallery_container = models.ForeignKey(
+        'self', blank=True, null=True, on_delete=models.SET_NULL,
+        related_name='gallery_contains'
+    )
     category = models.CharField(
         max_length=20, blank=True, null=True, default='')
     uploader = models.CharField(
@@ -399,6 +451,7 @@ class Gallery(models.Model):
     provider = models.CharField(
         'Provider', max_length=50, blank=True, null=True, default='')
     dl_type = models.CharField(max_length=100, default='')
+    reason = models.CharField(max_length=200, blank=True, null=True, default='')
     create_date = models.DateTimeField(auto_now_add=True)
     last_modified = models.DateTimeField(auto_now=True, blank=True, null=True)
     thumbnail_url = models.URLField(
@@ -413,11 +466,19 @@ class Gallery(models.Model):
     status = models.SmallIntegerField(
         choices=STATUS_CHOICES, db_index=True, default=NORMAL
     )
+    origin = models.SmallIntegerField(
+        choices=ORIGIN_CHOICES, db_index=True, default=ORIGIN_NORMAL
+    )
 
     objects = GalleryManager()
 
     class Meta:
         verbose_name_plural = "galleries"
+        permissions = (
+            ("publish_gallery", "Can publish available galleries"),
+            ("approve_gallery", "Can approve submitted galleries"),
+            ("crawler_adder", "Can add links to the crawler with more options"),
+        )
 
     def __str__(self) -> str:
         return self.title
@@ -444,8 +505,9 @@ class Gallery(models.Model):
     def is_deleted(self) -> bool:
         return self.status == self.DELETED
 
+    # Kinda not optimal
     def is_submitted(self) -> bool:
-        return 'submit' in self.dl_type
+        return self.origin == self.ORIGIN_SUBMITTED and self.status != self.DENIED and not self.archive_set.all()
 
     def get_link(self) -> str:
         return settings.PROVIDER_CONTEXT.resolve_all_urls(self)
@@ -558,6 +620,10 @@ class Gallery(models.Model):
         self.status = self.DELETED
         self.save()
 
+    def mark_as_denied(self) -> None:
+        self.status = self.DENIED
+        self.save()
+
 
 @receiver(post_delete, sender=Gallery)
 def thumbnail_post_delete_handler(sender: typing.Any, **kwargs: typing.Any) -> None:
@@ -647,8 +713,14 @@ class Archive(models.Model):
                 'source_type': {'type': 'keyword'},
                 'reason': {'type': 'keyword'},
                 'public': {'type': 'boolean'},
+                'category': {'type': 'keyword'},
             }
         }
+        permissions = (
+            ("publish_archive", "Can publish available archives"),
+            ("match_archive", "Can match unmatched archives"),
+            ("upload_with_metadata_archive", "Can upload a file with an associated metadata source"),
+        )
 
     def es_repr(self) -> DataDict:
         data = {}
@@ -693,6 +765,12 @@ class Archive(models.Model):
 
     def get_es_size(self) -> int:
         return self.filesize
+
+    def get_es_category(self) -> typing.Optional[str]:
+        data = None
+        if self.gallery:
+            data = self.gallery.category
+        return data
 
     def get_es_image_count(self) -> int:
         return self.filecount
@@ -778,7 +856,7 @@ class Archive(models.Model):
     def public_toggle(self) -> None:
 
         self.public = not self.public
-        if self.public and os.path.isfile(self.zipped.path):
+        if self.public and os.path.isfile(self.zipped.path) and self.crc32:
             self.generate_image_set()
             self.generate_thumbnails()
             self.calculate_sha1_for_images()
@@ -789,7 +867,7 @@ class Archive(models.Model):
 
     def set_public(self) -> None:
 
-        if not os.path.isfile(self.zipped.path):
+        if not os.path.isfile(self.zipped.path) or not self.crc32:
             return
         self.public = True
         self.generate_image_set()
@@ -1352,6 +1430,13 @@ class UserArchivePrefs(models.Model):
     favorite_group = models.IntegerField('Favorite Group', default=1)
 
 
+class Profile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    bio = models.TextField(max_length=500, blank=True, default='')
+    notify_new_submissions = models.BooleanField(default=False, blank=True)
+    notify_new_private_archive = models.BooleanField(default=False, blank=True)
+
+
 def upload_announce_handler(instance: models.Model, filename: str) -> str:
     return "announces/{id}/fn_{file}{ext}".format(
         id=instance.id,
@@ -1572,11 +1657,12 @@ class WantedGallery(models.Model):
             galleries = Gallery.objects.eligible_for_use()
         galleries = galleries.filter(~Q(foundgallery__wanted_gallery=self))
         for gallery in galleries:
-
-            galleries_title_id.append(
-                (clean_title(gallery.title), gallery.pk))
-            galleries_title_id.append(
-                (clean_title(gallery.title_jpn), gallery.pk))
+            if gallery.title:
+                galleries_title_id.append(
+                    (clean_title(gallery.title), gallery.pk))
+            if gallery.title_jpn:
+                galleries_title_id.append(
+                    (clean_title(gallery.title_jpn), gallery.pk))
 
         similar_list = get_list_closer_gallery_titles_from_list(
             self.search_title, galleries_title_id, cutoff, max_matches)
@@ -1771,3 +1857,19 @@ class Attribute(models.Model):
         super(Attribute, self).save(*args, **kwargs)
 
     value = property(_get_value, _set_value)
+
+
+class EventLog(models.Model):
+    content_type = models.ForeignKey(ContentType, null=True, on_delete=models.SET_NULL)
+    object_id = models.PositiveIntegerField(null=True)
+    content_object = GenericForeignKey('content_type', 'object_id')
+    action = models.CharField(max_length=50, db_index=True)
+    reason = models.CharField(max_length=200, blank=True, null=True, default='')
+    data = models.CharField(max_length=200, blank=True, null=True, default='')
+    result = models.CharField(max_length=200, blank=True, null=True, default='')
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    create_date = models.DateTimeField(default=django_tz.now, db_index=True)
+
+    class Meta:
+        verbose_name_plural = "Event logs"
+        ordering = ['-create_date']

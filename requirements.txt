@@ -5,12 +5,12 @@ psycopg2
 python-dateutil
 twitter==1.18.0
 beautifulsoup4==4.6.0
-CherryPy>=14
-Django>=2.0.2
+CherryPy>=17
+Django>=2.1
 django-compressor==2.1.1
 Pillow>=5.0.0
 rarfile>=3.0
-requests>=2.18.4
+requests>=2.19.0
 feedparser>=5.2.1
 transmissionrpc>=0.11
 -e git+https://github.com/pandabuilder/django-autocomplete-light.git#egg=django-autocomplete-light

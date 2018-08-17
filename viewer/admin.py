@@ -17,6 +17,7 @@ from viewer.models import (
     FoundGallery,
     Scheduler,
     ArchiveMatches,
+    EventLog,
     Provider, Attribute, ArchiveQuerySet, GalleryQuerySet)
 from django.contrib import admin
 from django.contrib.admin.helpers import ActionForm
@@ -93,10 +94,13 @@ class TagAdmin(admin.ModelAdmin):
 
 class GalleryAdmin(admin.ModelAdmin):
     search_fields = ["title", "title_jpn"]
-    raw_id_fields = ("tags",)
+    raw_id_fields = ("tags", "gallery_container")
     list_display = ["__str__", "id", "gid", "token",
                     "category", "filesize", "posted", "filecount", "hidden", "dl_type", "provider"]
-    list_filter = ["category", "expunged", "fjord", "public", "hidden", "dl_type", "provider", "status"]
+    list_filter = [
+        "category", "expunged", "fjord", "public", "hidden", "dl_type",
+        "provider", "status", "origin", "reason"
+    ]
     actions = ['make_hidden', 'make_public', 'set_provider']
     action_form = UpdateActionForm
 
@@ -295,6 +299,14 @@ class ProviderAdmin(admin.ModelAdmin):
     inlines = (AttributeInline,)
 
 
+class EventLogAdmin(admin.ModelAdmin):
+
+    raw_id_fields = ["user"]
+    list_filter = ["action", "create_date"]
+    list_display = ["create_date", "user", "action", "reason", "data", "result"]
+    search_fields = ["user__username", "user__email", "reason", "result"]
+
+
 admin.site.register(Archive, ArchiveAdmin)
 admin.site.register(Tag, TagAdmin)
 admin.site.register(Gallery, GalleryAdmin)
@@ -309,3 +321,4 @@ admin.site.register(FoundGallery, FoundGalleryAdmin)
 admin.site.register(Scheduler, SchedulerAdmin)
 admin.site.register(ArchiveMatches, ArchiveMatchesAdmin)
 admin.site.register(Provider, ProviderAdmin)
+admin.site.register(EventLog, EventLogAdmin)

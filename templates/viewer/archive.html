@@ -33,15 +33,17 @@
           <a href="{% url 'viewer:user-archive-preferences' archive.pk 'favorite' %}">favorite</a>
         {% else %} <a href="{% url 'viewer:user-archive-preferences' archive.pk 'unfavorite' %}">unfavorite</a>
         {% endif %}
+        {% if archive.extracted %}
         <br> View: <a href="{% url 'viewer:archive-details' archive.pk 'cover' %}">cover</a>
         <a href="{% url 'viewer:archive-details' archive.pk 'thumbnails' %}">thumbnails</a>
         <a href="{% url 'viewer:archive-details' archive.pk 'full' %}">full</a>
         <a href="{% url 'viewer:archive-details' archive.pk 'single' %}">single</a>
+        {% endif %}
         {% if user.is_staff %}<a href="{% url 'viewer:archive-details' archive.pk 'edit' %}">edit</a>
         {% endif %}
       </li>
     {% endif %}
-    <li class="title-main">{{ archive.title }}</li>
+    <li class="title-main{% if not archive.crc32 %} archive-incomplete{% endif %}">{{ archive.title }}</li>
     {% if archive.title_jpn %}<li class="subtitle">{{ archive.title_jpn }}</li>{% endif %}
     <li class="subtitle">
       <table>
@@ -66,9 +68,17 @@
           <td><a href="{% url 'viewer:archive-search' %}?reason={{ archive.reason }}">{{ archive.reason }}</a></td>
         </tr>
         <tr>
-          {% if user.is_staff %}<th>Added to backup</th><td>{{ archive.create_date|date:"DATETIME_FORMAT" }}</td>
-          {% else %}<th>Available in backup</th><td>{{ archive.public_date|date:"DATETIME_FORMAT" }}</td>{% endif %}
+          {% if user.is_staff %}
+            <th>Added to backup</th><td>{{ archive.create_date|date:"DATETIME_FORMAT" }}</td>
+          {% else %}
+            <th>Available in backup</th><td>{{ archive.public_date|date:"DATETIME_FORMAT" }}</td>
+          {% endif %}
         </tr>
+      {% if user.is_staff %}
+        <tr>
+          <th>Published date</th><td>{{ archive.public_date|date:"DATETIME_FORMAT" }}</td>
+        </tr>
+      {% endif %}
       </table>
     </li>
     {% if archive.gallery %}

@@ -38,7 +38,7 @@ def get_gid_path_association(site_page, api_key):
     return response_data
 
 
-def send_urls_from_archives(site_page, api_key):
+def send_urls_from_archives(site_page, api_key, reason):
 
     url_list = [x.get_link() for x in Archive.objects.filter(gallery__hidden=True)]
 
@@ -47,6 +47,9 @@ def send_urls_from_archives(site_page, api_key):
         'api_key': api_key,
         'args': url_list
     }
+
+    if reason:
+        data['archive_reason'] = reason
 
     headers = {'Content-Type': 'application/json; charset=utf-8'}
     r = requests.post(
@@ -214,6 +217,11 @@ class Command(BaseCommand):
                                 'Must have been linked to an archive. '
                                 'This will create a fake archive on the remote server '
                                 'that will need to be uploaded with -u'))
+        parser.add_argument('-ar', '--archive_reason',
+                            required=False,
+                            action='store',
+                            default='',
+                            help='Force a reason to the archives being sent.')
         parser.add_argument('-g', '--galleries',
                             required=False,
                             action='store_true',
@@ -233,7 +241,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         start = time.perf_counter()
         if options['archives']:
-            for message in send_urls_from_archives(crawler_settings.remote_site['api_url'], crawler_settings.remote_site['api_key']):
+            for message in send_urls_from_archives(crawler_settings.remote_site['api_url'], crawler_settings.remote_site['api_key'], options['archive_reason']):
                 self.stdout.write(message)
         if options['galleries']:
             for message in send_urls_from_galleries(crawler_settings.remote_site['api_url'], crawler_settings.remote_site['api_key']):

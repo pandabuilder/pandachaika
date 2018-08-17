@@ -25,14 +25,14 @@
   {% load viewer_extras %}
     <div><a href="{% url 'viewer:tools-id' 'wanted_galleries_possible_matches' %}">Search wanted galleries by internal galleries</a></div>
 
-    <form action="{% url 'viewer:wanted-galleries' %}" method="POST">{% csrf_token %}
+    <form action="{{ request.get_full_path }}" method="POST">{% csrf_token %}
       <div class="row">
         <div class="col-md-12">
           <button name="clear_all_matches" class="btn btn-light">Clear all matches</button>
         </div>
       </div>
     </form>
-    <form action="{% url 'viewer:wanted-galleries' %}" method="GET">
+    <form action="{{ request.get_full_path }}" method="GET">
       {% for field in form %}
         <div class="page-line">
           {{ field.errors }}
@@ -54,7 +54,7 @@
         <input id="checkbox-f8" type="checkbox" name="wanted-no-found-galleries" value="1" {% if "wanted-no-found-galleries" in request.GET %}checked{% endif %}><label for="checkbox-f8"><span><span></span></span>No found galleries</label>
       </div>
     </form>
-    <form action="{% url 'viewer:wanted-galleries' %}" method="POST">{% csrf_token %}
+    <form action="{{ request.get_full_path }}" method="POST">{% csrf_token %}
   <!-- Next/Prev page links  -->
     {% if results.object_list and results.paginator.num_pages > 1 %}
       <div class="pagination-top">
@@ -76,7 +76,7 @@
     <ul class="list-group marked">
       {% for gallery in results %}
         <li class="list-group-item">
-          <input id="sel-{{ gallery.id }}" type="checkbox" name="sel-{{ gallery.id }}" value="{{ gallery.pk }}"><label for="sel-{{ gallery.id }}"><span><span></span></span></label><a href="{{ gallery.get_absolute_url }}">{{ gallery.id }}</a>: Title: {{ gallery.title }} >> Artists: {{ gallery.artists.all|join:", " }} >> Release date: {{ gallery.release_date|date }} >> Reason: {{ gallery.reason }} >> Pages: {{ gallery.page_count }} >> Should search: {{ gallery.should_search|yesno }} >> Keep searching: {{ gallery.keep_searching|yesno }} >> Found: {{ gallery.found|yesno }}
+          <input id="sel-{{ gallery.id }}" class="toggle-list" type="checkbox" name="sel-{{ gallery.id }}" value="{{ gallery.pk }}"><label for="sel-{{ gallery.id }}"><span><span></span></span></label><a href="{{ gallery.get_absolute_url }}">{{ gallery.id }}</a>: Title: {{ gallery.title }} >> Artists: {{ gallery.artists.all|join:", " }} >> Release date: {{ gallery.release_date|date }} >> Reason: {{ gallery.reason }} >> Pages: {{ gallery.page_count }} >> Should search: {{ gallery.should_search|yesno }} >> Keep searching: {{ gallery.keep_searching|yesno }} >> Found: {{ gallery.found|yesno }}
           >> <a href="{% url 'viewer:wanted-gallery' gallery.pk %}?tool=clear-possible-matches">clear possible matches</a>
           {% with matches=gallery.possible_galleries announces=gallery.announces.all %}
             {% if matches|length > 0 %}
@@ -84,7 +84,7 @@
               <table class="table table-bordered table-sm generic-table">
                 <thead>
                 <tr>
-                  <th>Select</th><th>First Artist</th><th>Title</th><th>URL</th><th>Accuracy</th><th>Posted</th><th>Count</th>
+                  <th>Select</th><th>First Artist</th><th>Title</th><th>URL</th><th>Accuracy</th><th>Posted</th><th>Count</th><th>Has archives</th>
                 </tr>
                 </thead>
                 <tbody>
@@ -110,6 +110,9 @@
                     </td>
                     <td class="{{ match.gallery.filecount|color_percent:gallery.page_count }}">
                       {{ match.gallery.filecount }}
+                    </td>
+                    <td>
+                      {{ match.gallery.archive_set.all|yesno:"yes,no" }}
                     </td>
                   </tr>
                 {% endfor %}
@@ -226,10 +229,6 @@
     <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/text_widget.js' %}"></script>
     <script type="text/javascript" src="{% static 'autocomplete_light/jal.js' %}"></script>
   {% endcompress %}
-    <script>
-        $('#toggle-all').click(function() {
-            $('.list-group-item input[type="checkbox"]').click();
-        });
-    </script>
+    <script type="text/javascript" src="{% static 'js/list_operations.js' %}"></script>
   {% endblock %}
 {% endif %}

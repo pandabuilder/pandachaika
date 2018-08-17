@@ -1,0 +1,37 @@
+{% extends "viewer/base.html" %}
+{% block title %}User URL Crawler | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+{% block content %}
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+  <!-- Crawler  -->
+  <div class="page-header">
+    <h2>URL Crawler, one URL per line</h2>
+  </div>
+  <form action="{% url 'viewer:user-crawler' %}" method="POST">{% csrf_token %}
+    <div class="form-group">
+      <label for="urls"></label>
+      <textarea name="urls" class="form-control" id="urls" rows="5"></textarea>
+    </div>
+  <div class="form-group">
+    <button type="button" class="btn btn-info" data-toggle="collapse" data-target="#downloaders">Select generic downloaders (careful!)</button>
+  </div>
+  <div id="downloaders" class="collapse">
+  <div class="form-group">
+    <select id="downloader" name="downloader" class="form-control" title="downloader" aria-label="choose_downloader">
+    <option value="no-generic" selected>Auto select downloader (provider-based)</option>
+    {% for name in downloaders %}
+      <option value="{{ name }}">{{ name|capfirst }}</option>
+    {% endfor %}
+    </select>
+  </div>
+  </div>
+  <div class="form-group">
+    <button class="btn btn-light">Submit URLs to Web Crawler</button>
+  </div>
+
+  </form>
+{% endblock %}

@@ -7,8 +7,8 @@ import requests
 from bs4 import BeautifulSoup
 
 from core.base.types import DataDict
-from core.base.utilities import calc_crc32, get_zip_filesize, request_with_retries, \
-    get_base_filename_string_from_gallery_data
+from core.base.utilities import calc_crc32, request_with_retries, \
+    get_base_filename_string_from_gallery_data, get_zip_fileinfo
 from core.downloaders.handlers import BaseDownloader, BaseInfoDownloader, BaseFakeDownloader, BaseTorrentDownloader
 from core.downloaders.torrent import get_torrent_client
 from core.providers.panda.utilities import ArchiveHTMLParser, TorrentHTMLParser
@@ -116,7 +116,7 @@ class ArchiveDownloader(BaseDownloader):
                         for chunk in request_file.iter_content(4096):
                             fo.write(chunk)
 
-                    self.gallery.filesize = get_zip_filesize(filepath)
+                    self.gallery.filesize, self.gallery.filecount = get_zip_fileinfo(filepath)
                     if self.gallery.filesize > 0:
                         self.crc32 = calc_crc32(filepath)
 
@@ -353,9 +353,9 @@ class HathDownloader(BaseDownloader):
                     timeout=self.settings.timeout_timer
                 )
                 return r
-            except requests.exceptions.Timeout:
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
                 if retry_count < 2:
-                    self.logger.warning("Request failed, retrying: {}".format(retry_count))
+                    self.logger.warning("Request failed, retrying {} of {}: {}".format(retry_count, 3, str(e)))
                     continue
                 else:
                     return None
@@ -402,9 +402,6 @@ class UrlSubmitDownloader(BaseDownloader):
 
         if not self.original_gallery:
             return
-
-        if self.settings.force_dl_type:
-            self.original_gallery.dl_type = "{}:{}".format(self.type, self.settings.force_dl_type)
 
         self.logger.info("Adding gallery submission info to database")
 
