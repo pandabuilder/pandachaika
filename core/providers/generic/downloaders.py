@@ -126,14 +126,6 @@ class GenericArchiveDownloader(BaseDownloader):
             self.gallery.link
         ))
 
-        self.gallery.title = replace_illegal_name(
-            self.gallery.title)
-        self.gallery.filename = available_filename(
-            self.settings.MEDIA_ROOT,
-            os.path.join(
-                self.own_settings.archive_dl_folder,
-                self.gallery.title + '.zip'))
-
         request_file = requests.get(
             self.gallery.link,
             stream='True',
