@@ -2,7 +2,6 @@ TODO: Store the queue temporally on the database to prevent queue loss on restar
 TODO: No way to set new WantedGallery from the frontend.
 TODO: Right now we check for gid to see if a gallery is new or existent, but we should check id and provider simultaneously, since different providers could collide. We prevent this now by adding a provider id to the gid, but it makes it awkward to remove it when we need to get the link.
 TODO: Wait timer is defined globally, should be possible to override per provider.
-TODO: Normalize paths before checking zipped field, to allow jumping from operating in Windows to Linux or backwards.
 TODO: Matchers should check if the gallery encountered at first is present locally first, and get their metadata from there, and only after that, get their metadata remotely.
 TODO: Matchers right now call each provider directly, they don't go through the queue, which is not the ideal method, since we could possibly go over the limit for each provider.
 TODO: Matchers should queue the URL (as _info), then fetch the metadata from the database.
@@ -13,5 +12,6 @@ TODO: Each provider should have it's own schedule in auto_wanted.
 TODO: Add itself as a provider (matcher, downloader, parser).
 TODO: Use https://github.com/Jetsetter/dhash to find local matches using thumbnails.
 TODO: Improve the preload login, prioritize next images over last ones, single queue over parallel.
-TODO: Mail notification for gallery submissions to users with "Submit queue" permission.
 TODO: Expose Wanted Galleries (maybe a new view/template in collaborators), also add a new permission to see them.
+TODO: COL: Update archive info (source_type, reason)
+TODO: COL: Enable web matcher

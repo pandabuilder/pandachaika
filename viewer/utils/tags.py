@@ -6,7 +6,10 @@ from django.db.models import QuerySet
 if typing.TYPE_CHECKING:
     from viewer.models import Tag
 
-scope_priorities = ["language", "artist", "group", "parody", "character", "female", "male", "misc"]
+scope_priorities = [
+    "language", "artist", "group", "parody", "character",
+    "female", "male", "misc", "magazine", "publisher"
+]
 
 
 def sort_tags(tag_list: QuerySet) -> List[Tuple[str, List['Tag']]]:

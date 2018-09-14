@@ -60,13 +60,13 @@
         <button type="button" class="btn btn-info mr-sm-1" data-toggle="collapse" data-target="#extra_filters">More filters</button>
         <button type="submit" name="gen-ddl" class="btn btn-light mr-sm-1">Generate DDLs</button>
         <button type="submit" name="rss" onclick="this.form.action='{% url "viewer:archive-rss" %}'; this.form.submit(); this.form.action='{% url "viewer:main-page" %}'; return false;" class="btn btn-light">View as RSS</button>
-        {% if user.is_authenticated %}<input id="checkbox1" type="checkbox" name="only_favorites" value="1"
+        {% if user.is_authenticated %}<input id="checkbox1" class="custom-cb" type="checkbox" name="only_favorites" value="1"
                                              {% if display_prms.only_favorites == '1' %}checked{% endif %}><label
             for="checkbox1"><span><span></span></span>Only favorites</label>{% endif %}
-        {% if user.is_staff %}<input id="checkbox2" type="checkbox" name="non_public" value="1"
+        {% if user.is_staff %}<input id="checkbox2" class="custom-cb" type="checkbox" name="non_public" value="1"
                                      {% if display_prms.non_public == '1' %}checked{% endif %}><label
             for="checkbox2"><span><span></span></span>Only private</label>
-          <input id="checkbox3" type="checkbox" name="public" value="1"
+          <input id="checkbox3" class="custom-cb" type="checkbox" name="public" value="1"
                  {% if display_prms.public == '1' %}checked{% endif %}><label
             for="checkbox3"><span><span></span></span>Only public</label>{% endif %}
       </div>

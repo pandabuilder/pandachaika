@@ -69,7 +69,7 @@
         {% for gallery in results %}
           <tr>
             <td>
-              <input id="checkbox-{{ gallery.id }}" class="toggle-list" type="checkbox" name="sel-{{ gallery.id }}" value="{{ gallery.pk }}"><label for="checkbox-{{ gallery.id }}"><span><span></span></span></label>
+              <input id="checkbox-{{ gallery.id }}" class="toggle-list custom-cb" type="checkbox" name="sel-{{ gallery.id }}" value="{{ gallery.pk }}"><label for="checkbox-{{ gallery.id }}"><span><span></span></span></label>
             </td>
             <td>
               <a href="{% url 'viewer:gallery' gallery.pk %}">{{ gallery.pk }}</a>

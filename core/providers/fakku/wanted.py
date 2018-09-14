@@ -199,7 +199,6 @@ def wanted_generator(settings: 'Settings', ext_logger: RealLogger, attrs: QueryS
                     gallery = Gallery.objects.add_from_values(gallery_data)
                     # We match anyways in case there's a previous WantedGallery.
                     # Actually, we don't match since we only get metadata here, so it should not count as found.
-                    # gallery.match_wanted_galleries(settings=settings, logger=ext_logger)
                     publisher_name = ''
                     publisher = gallery.tags.filter(scope='publisher').first()
                     if publisher:

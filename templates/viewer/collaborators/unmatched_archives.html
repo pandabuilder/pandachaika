@@ -1,5 +1,5 @@
 {% extends "viewer/base.html" %}
-{% block title %}Non-matched archives | {{ block.super }}{% endblock %}
+{% block title %}Archive matching | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
 {% load staticfiles %}
 {% block content %}
@@ -11,10 +11,10 @@
   {% endif %}
   <!-- Non matched archives  -->
   <div class="page-header">
-    <h2>Archives not matched with any gallery</h2>
-    <p class="lead">Number of archives not matched (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
+    <h2>Archive matching</h2>
+    <p class="lead">Number of archives (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
   </div>
-  <form action="{% url 'viewer:archives-not-matched' %}" method="GET">
+  <form action="{% url 'viewer:match-archives' %}" method="GET">
     {% for field in form %}
       <div class="page-line">
         {{ field.errors }}
@@ -24,9 +24,10 @@
     <div class="page-line form-inline">
       <button id="toggle-all" class="btn btn-info" type="button">Toggle All</button>
       <button type="submit" name="apply" class="btn btn-light">Search</button>
-      <a class="btn btn-light" href="{% url 'viewer:archives-not-matched' %}">Clear</a>
-      <input id="checkbox-f1" class="custom-cb" type="checkbox" name="no-custom-tags" value="1" {% if "no-custom-tags" in request.GET %}checked{% endif %}><label for="checkbox-f1"><span><span></span></span>No custom tags</label>
+      <a class="btn btn-light" href="{% url 'viewer:match-archives' %}">Clear</a>
+{#      <input id="checkbox-f1" type="checkbox" name="no-custom-tags" value="1" {% if "no-custom-tags" in request.GET %}checked{% endif %}><label for="checkbox-f1"><span><span></span></span>No custom tags</label>#}
       <input id="checkbox-f2" class="custom-cb" type="checkbox" name="with-possible-matches" value="1" {% if "with-possible-matches" in request.GET %}checked{% endif %}><label for="checkbox-f2"><span><span></span></span>With possible matches</label>
+      <input id="checkbox-f3" class="custom-cb" type="checkbox" name="show-matched" value="1" {% if "show-matched" in request.GET %}checked{% endif %}><label for="checkbox-f3"><span><span></span></span>Show matched</label>
     </div>
   </form>
   <!-- Next/Prev page links  -->
@@ -47,41 +48,14 @@
         </span>
     </div>
   {% endif %}
-  <form action="{% url 'viewer:archives-not-matched' %}" method="POST">{% csrf_token %}
+  <form action="{% url 'viewer:match-archives' %}" method="POST">{% csrf_token %}
     <ul class="list-group">
       {% for archive in results %}
         <li class="list-group-item">
           <input id="sel-{{ archive.id }}" class="toggle-list custom-cb" type="checkbox" name="sel-{{ archive.id }}" value="{{ archive.pk }}"><label for="sel-{{ archive.id }}"><span><span></span></span></label><a href="{{ archive.get_absolute_url }}">{{ archive.pk }}</a> >>
           {{ archive.title }} >>
-          <span class="dropdown">
-            <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-toggle="dropdown">generate matches internally<span class="caret"></span></button>
-            <div class="dropdown-menu dropdown-menu-right">
-            <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ api_key }}', '{% static 'favicon-160.png' %}', 'match_archive_internally', {archive: {{ archive.pk }}, provider: ''}); return false;">All</a>
-              {% for provider in providers %}
-                <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ api_key }}', '{% static 'favicon-160.png' %}', 'match_archive_internally', {archive: {{ archive.pk }}, provider: '{{ provider }}'}); return false;">{{ provider }}</a>
-              {% endfor %}
-            </div>
-          </span>
-          <span class="dropdown">
-            <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-toggle="dropdown">generate matches internally clear title<span class="caret"></span></button>
-            <div class="dropdown-menu dropdown-menu-right">
-            <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ api_key }}', '{% static 'favicon-160.png' %}', 'match_archive_internally', {archive: {{ archive.pk }}, provider: '', clear: ''}); return false;">All</a>
-              {% for provider in providers %}
-                <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ api_key }}', '{% static 'favicon-160.png' %}', 'match_archive_internally', {archive: {{ archive.pk }}, provider: '{{ provider }}', clear: ''}); return false;">{{ provider }}</a>
-              {% endfor %}
-            </div>
-          </span>
-          <span class="dropdown">
-            <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-toggle="dropdown">generate matches web<span class="caret"></span></button>
-            <div class="dropdown-menu dropdown-menu-right">
-            <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ api_key }}', '{% static 'favicon-160.png' %}', 'match_archive', {archive: {{ archive.pk }}, match_filter: ''}); return false;">All</a>
-              {% for matcher, priority in matchers %}
-                <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ api_key }}', '{% static 'favicon-160.png' %}', 'match_archive', {archive: {{ archive.pk }}, match_filter: '{{ matcher }}'}); return false;">{{ matcher }}</a>
-              {% endfor %}
-            </div>
-          </span> >>
-          <a href="{% url 'viewer:archive-update-tool' archive.pk 'clear-possible-matches' %}">Clear possible matches</a>
-          <p>{{ archive.zipped.path }} >>
+          <a href="{% url 'viewer:col-archive-update-tool' archive.pk 'clear-possible-matches' %}">Clear possible matches</a>
+          <p>{{ archive.filename }} >>
             {{ archive.filesize|filesizeformat }}, {{ archive.filesize }} >>
             {{ archive.filecount }} >>
             {{ archive.source_type }} >>
@@ -100,7 +74,7 @@
                 {% for match in matches %}
                   <tr>
                     <td>
-                      <a href="{% url 'viewer:archive-update-tool-id' archive.pk 'select-as-match' match.gallery.pk %}"><i class="fas fa-check"></i></a>
+                      <a href="{% url 'viewer:col-archive-update-tool-id' archive.pk 'select-as-match' match.gallery.pk %}"><i class="fas fa-check"></i></a>
                     </td>
                     <td>
                       {{ match.gallery.artist_tags.0.name }}
@@ -141,26 +115,15 @@
       <input title="Cutoff" size="10" type="number" step="0.01" class="form-control" name="cutoff" value="" placeholder="Cutoff"/>
       <input title="Max matches" size="10" type="number" step="1" class="form-control" name="max-matches" value="10" placeholder="Max Matches"/>
     <span class="dropup">
-        <button class="btn btn-primary dropdown-toggle" type="button" data-toggle="dropdown">Create web matches for selected archives
-        <span class="caret"></span></button>
-        <ul class="dropdown-menu dropdown-menu-right">
-        <li><button type="submit" name="create_possible_matches" class="btn btn-light" value="">All</button></li>
-          {% for matcher, priority in matchers %}
-            <li><button type="submit" name="create_possible_matches" class="btn btn-light" value="{{ matcher }}">{{ matcher }}</button></li>
-          {% endfor %}
-        </ul>
-    </span>
-    <span class="dropup">
         <button class="btn btn-primary dropdown-toggle" type="button" data-toggle="dropdown">Create internal matches for selected archives<span class="caret"></span></button>
         <ul class="dropdown-menu dropdown-menu-right">
-        <li><button type="submit" name="create_possible_matches_internal" class="btn btn-light" value="">All</button></li>
+        <li><button type="submit" name="create_possible_matches" class="btn btn-light" value="">All</button></li>
           {% for provider in providers %}
-            <li><button type="submit" name="create_possible_matches_internal" class="btn btn-light" value="{{ provider }}">{{ provider }}</button></li>
+            <li><button type="submit" name="create_possible_matches" class="btn btn-light" value="{{ provider }}">{{ provider }}</button></li>
           {% endfor %}
         </ul>
     </span>
-    <button type="submit" name="delete_objects" class="btn btn-light">Delete selected archives</button>
-    <button type="submit" name="delete_archives" class="btn btn-light">Delete (WARNING!) selected archives and files</button>
+    <button type="submit" name="clear_possible_matches" class="btn btn-light" value="">Clear possible matches</button>
     </div>
   </form>
   <!-- Next/Prev page links  -->
@@ -193,5 +156,5 @@
     <script type="text/javascript" src="{% static 'autocomplete_light/jal.js' %}"></script>
   {% endcompress %}
   <script type="text/javascript" src="{% static 'js/list_operations.js' %}"></script>
-  <script type="text/javascript" src="{% static 'js/admin.js' %}"></script>
+{#  <script type="text/javascript" src="{% static 'js/admin.js' %}"></script>#}
 {% endblock %}

@@ -12,11 +12,10 @@ from django.contrib.auth import authenticate, login, logout, update_session_auth
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.http.request import HttpRequest
-from django.core.mail import mail_admins
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
 from django.urls import reverse
 from django.db.models import Q, Avg, Max, Min, Sum, Count, QuerySet
-from django.http import Http404
+from django.http import Http404, BadHeaderError
 from django.http import HttpResponseRedirect, HttpResponse
 from django.http.request import QueryDict
 from django.shortcuts import redirect, render
@@ -29,11 +28,12 @@ from core.base.types import DataDict
 from viewer.forms import (
     ArchiveSearchForm,
     GallerySearchForm,
-    SpanErrorList, ArchiveSearchSimpleForm, BootstrapPasswordChangeForm)
+    SpanErrorList, ArchiveSearchSimpleForm, BootstrapPasswordChangeForm, ProfileChangeForm, UserChangeForm)
 from viewer.models import (
     Archive, Image, Tag, Gallery,
     UserArchivePrefs, WantedGallery,
-    ArchiveQuerySet, GalleryQuerySet)
+    ArchiveQuerySet, GalleryQuerySet, users_with_perm, Profile)
+from viewer.utils.functions import send_mass_html_mail
 from viewer.utils.tags import sort_tags
 
 crawler_logger = logging.getLogger('viewer.webcrawler')
@@ -94,6 +94,7 @@ def viewer_logout(request: HttpRequest) -> HttpResponse:
     return HttpResponseRedirect(reverse('viewer:main-page'))
 
 
+@login_required
 def change_password(request: HttpRequest) -> HttpResponse:
     if request.method == 'POST':
         form = BootstrapPasswordChangeForm(request.user, request.POST, error_class=SpanErrorList)
@@ -108,6 +109,31 @@ def change_password(request: HttpRequest) -> HttpResponse:
         form = BootstrapPasswordChangeForm(request.user, error_class=SpanErrorList)
     return render(request, 'viewer/accounts/change_password.html', {
         'form': form
+    })
+
+
+@login_required
+def change_profile(request: HttpRequest) -> HttpResponse:
+    if not hasattr(request.user, 'profile'):
+        Profile.objects.create(user=request.user)
+    if request.method == 'POST':
+        user_form = UserChangeForm(request.POST, instance=request.user, error_class=SpanErrorList)
+        profile_form = ProfileChangeForm(request.POST, instance=request.user.profile, error_class=SpanErrorList)
+        if all((user_form.is_valid(), profile_form.is_valid())):
+            user = user_form.save()
+            profile = profile_form.save(commit=False)
+            profile.user = user
+            profile.save()
+            messages.success(request, 'Your profile was successfully updated!')
+            return redirect('viewer:change-profile')
+        else:
+            messages.error(request, 'Please correct the error below.')
+    else:
+        user_form = UserChangeForm(instance=request.user, error_class=SpanErrorList)
+        profile_form = ProfileChangeForm(instance=request.user.profile, error_class=SpanErrorList)
+    return render(request, 'viewer/accounts/change_profile.html', {
+        'profile_form': profile_form,
+        'user_form': user_form
     })
 
 
@@ -775,8 +801,6 @@ def quick_search(request: HttpRequest, parameters: DataDict, display_parameters:
     return results
 
 
-# TODO: Submissions done before a autocrawler detects a new gallery as wanted,
-# will add the gallery, trigger the wanted filter, but leaving it as not downloaded.
 def url_submit(request: HttpRequest) -> HttpResponse:
     """Submit given URLs."""
 
@@ -801,7 +825,9 @@ def url_submit(request: HttpRequest) -> HttpResponse:
                 current_settings.config['downloaders'][k] = str(-1)
                 current_settings.downloaders[k] = -1
         current_settings.config['downloaders']['panda_submit'] = str(1)
+        current_settings.config['downloaders']['nhentai_submit'] = str(1)
         current_settings.downloaders['panda_submit'] = 1
+        current_settings.downloaders['nhentai_submit'] = 1
         for k, v in p.items():
             if k == "urls":
                 url_list = v.split("\n")
@@ -897,8 +923,26 @@ def url_submit(request: HttpRequest) -> HttpResponse:
         if extra_text:
             admin_messages.append('Extra non-URL text:\n{}'.format("\n".join(extra_text)))
 
-        if current_settings.mail_logging.enable:
-            mail_admins(admin_subject, "\n".join(admin_messages), html_message=urlize("\n".join(admin_messages)))
+        # if current_settings.mail_logging.enable:
+        #     mail_admins(admin_subject, "\n".join(admin_messages), html_message=urlize("\n".join(admin_messages)))
+
+        # Mail users
+        users_to_mail = users_with_perm(
+            'viewer',
+            'approve_gallery',
+            Q(email__isnull=False) | ~Q(email__exact=''),
+            profile__notify_new_submissions=True
+        )
+
+        mails = users_to_mail.values_list('email', flat=True)
+
+        try:
+            frontend_logger.error('New submission: sending emails to enabled users.')
+            # (subject, message, from_email, recipient_list)
+            datatuple = (admin_subject, "\n".join(admin_messages), urlize("\n".join(admin_messages)), crawler_settings.mail_logging.from_, mails)
+            send_mass_html_mail((datatuple, ), fail_silently=True)
+        except BadHeaderError:
+            frontend_logger.error('Failed sending emails: Invalid header found.')
 
         frontend_logger.info("{}\n{}".format(admin_subject, "\n".join(admin_messages)))
 

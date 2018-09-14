@@ -30,8 +30,8 @@ from core.workers.imagework import ImageWorker
 from viewer.models import (
     Archive, Tag, Gallery,
     ArchiveMatches,
-    WantedGallery, FoundGallery
-)
+    WantedGallery, FoundGallery,
+    EventLog)
 from viewer.utils.matching import (
     create_matches_wanted_galleries_from_providers,
     create_matches_wanted_galleries_from_providers_internal,
@@ -156,7 +156,6 @@ def queue_operations(request: HttpRequest, operation: str, arguments: str=''):
     return HttpResponseRedirect(request.META["HTTP_REFERER"])
 
 
-# TODO: Restart workers not working correctly. It sends the stop signal, but tries to start before it finishes.
 @login_required
 def tools(request: HttpRequest, tool: str = "main") -> HttpResponse:
     """Tools listing."""
@@ -638,3 +637,28 @@ def foldercrawler(request: HttpRequest) -> HttpResponse:
     })
 
     return render(request, "viewer/foldercrawler.html", d)
+
+
+@login_required
+def users_event_log(request: HttpRequest) -> HttpResponse:
+    if not request.user.is_staff:
+        return render_error(request, "You need to be an admin to access this page.")
+    get = request.GET
+
+    try:
+        page = int(get.get("page", '1'))
+    except ValueError:
+        page = 1
+
+    results = EventLog.objects.all()
+
+    paginator = Paginator(results, 100)
+    try:
+        results = paginator.page(page)
+    except (InvalidPage, EmptyPage):
+        results = paginator.page(paginator.num_pages)
+
+    d = {
+        'results': results,
+    }
+    return render(request, "viewer/user_event_log.html", d)

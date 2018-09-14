@@ -25,7 +25,7 @@ class PandaBackupHttpFileDownloader(BaseDownloader):
 
         self.logger.info("Downloading an archive: {} from a Panda Backup-like source: {}".format(
             self.gallery.title,
-            self.gallery.archiver_key
+            self.gallery.archiver_key['link']
         ))
 
         self.gallery.title = replace_illegal_name(
@@ -37,7 +37,7 @@ class PandaBackupHttpFileDownloader(BaseDownloader):
                 self.gallery.title + '.zip'))
 
         request_file = requests.get(
-            self.gallery.archiver_key,
+            self.gallery.archiver_key['link'],
             stream='True',
             headers=self.settings.requests_headers,
             timeout=self.settings.timeout_timer,
@@ -73,6 +73,8 @@ class PandaBackupHttpFileDownloader(BaseDownloader):
             'crc32': self.crc32,
             'filesize': self.gallery.filesize,
             'filecount': self.gallery.filecount,
+            'source_type': self.gallery.archiver_key['source'],
+            'reason': self.gallery.archiver_key['reason']
         }
         default_values.update(values)
         return Archive.objects.update_or_create_by_values_and_gid(

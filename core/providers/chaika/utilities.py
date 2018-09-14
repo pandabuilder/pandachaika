@@ -17,7 +17,12 @@ class ChaikaGalleryData(GalleryData):
                  queries: Optional[int] = None, thumbnail: Optional[str] = None, archives: Optional[List[str]] = None,
                  **kwargs: Any
                  ) -> None:
-        super().__init__(gid, token, link, tags, provider, title, title_jpn, comment, category, posted, filesize,
-                         filecount, expunged, rating, fjord, hidden, uploader, thumbnail_url, dl_type, public, content,
-                         archiver_key, root, filename, queries, thumbnail)
+        super().__init__(
+            gid, token=token, link=link, tags=tags, provider=provider, title=title, title_jpn=title_jpn,
+            comment=comment, category=category, posted=posted, filesize=filesize,
+            filecount=filecount, expunged=expunged, rating=rating, fjord=fjord, hidden=hidden,
+            uploader=uploader, thumbnail_url=thumbnail_url, dl_type=dl_type, public=public, content=content,
+            archiver_key=archiver_key, root=root, filename=filename, queries=queries, thumbnail=thumbnail,
+            **kwargs
+        )
         self.archives = archives

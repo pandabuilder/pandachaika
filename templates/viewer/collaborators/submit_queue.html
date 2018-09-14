@@ -34,9 +34,9 @@
         <input size="2" type="text" class="form-control mr-sm-1" name="filecount_to" value="{{ request.GET.filecount_to }}" placeholder="to"/>
         <input title="Category" class="form-control" name="category" placeholder="Category" value="{{ request.GET.category }}">
         <input title="Reason" class="form-control" name="reason" placeholder="Reason" value="{{ request.GET.reason }}">
-        <input id="checkbox-f1" type="checkbox" name="denied" value="1" {% if "denied" in request.GET %}checked{% endif %}><label for="checkbox-f1"><span><span></span></span>Show denied</label>
+        <input id="checkbox-f1" class="custom-cb" type="checkbox" name="denied" value="1" {% if "denied" in request.GET %}checked{% endif %}><label for="checkbox-f1"><span><span></span></span>Show denied</label>
         <button type="submit" name="apply" class="btn btn-light">Search</button>
-        <a class="btn btn-light" href="{% url 'viewer:missing-archives' %}">Clear</a>
+        <a class="btn btn-light" href="{% url 'viewer:submit-queue' %}">Clear</a>
       </div>
     </form>
     <form action="{{ request.get_full_path }}" method="POST">{% csrf_token %}
@@ -69,7 +69,7 @@
         {% for gallery in results %}
           <tr>
             <td>
-              <input id="checkbox-{{ gallery.id }}" class="toggle-list" type="checkbox" name="sel-{{ gallery.id }}" value="{{ gallery.pk }}"><label for="checkbox-{{ gallery.id }}"><span><span></span></span></label>
+              <input id="checkbox-{{ gallery.id }}" class="toggle-list custom-cb" type="checkbox" name="sel-{{ gallery.id }}" value="{{ gallery.pk }}"><label for="checkbox-{{ gallery.id }}"><span><span></span></span></label>
             </td>
             <td>
               <a href="{% url 'viewer:gallery' gallery.pk %}">{{ gallery.pk }}</a>

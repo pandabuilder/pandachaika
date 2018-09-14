@@ -11,7 +11,7 @@
     {% endif %}
     <!-- Galleries not used  -->
     <div class="page-header">
-    <h2>Archives marked as private</h2>
+    <h2>Archives published status</h2>
     <p class="lead">Number of archives (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
     </div>
     <form action="{{ request.get_full_path }}" method="GET">
@@ -29,6 +29,8 @@
         <input title="Category" class="form-control" name="category" placeholder="Category" value="{{ request.GET.category }}">
         <input title="Source type" class="form-control" name="source_type" placeholder="Source type" value="{{ request.GET.source_type }}">
         <input title="Reason" class="form-control" name="reason" placeholder="Reason" value="{{ request.GET.reason }}">
+        <input id="checkbox2" class="custom-cb" type="checkbox" name="non_public" value="1" {% if request.GET.non_public == '1' %}checked{% endif %}><label for="checkbox2"><span><span></span></span>Only private</label>
+        <input id="checkbox3" class="custom-cb" type="checkbox" name="public" value="1" {% if request.GET.public == '1' %}checked{% endif %}><label for="checkbox3"><span><span></span></span>Only public</label>
         <button type="submit" name="apply" class="btn btn-light">Search</button>
         <a class="btn btn-light" href="{% url 'viewer:publish-archives' %}">Clear</a>
       </div>
@@ -56,14 +58,14 @@
       <table class="table table-bordered table-sm generic-table">
         <thead>
         <tr>
-          <th>Select</th><th>Title</th><th>ID</th><th>Gallery ID</th><th>Size</th><th>Images</th><th>Source type</th><th>Reason</th><th>Added</th>
+          <th>Select</th><th>Title</th><th>ID</th><th>Gallery ID</th><th>Size</th><th>Images</th><th>Source type</th><th>Reason</th><th>Added</th><th>Public</th>
         </tr>
         </thead>
         <tbody>
         {% for archive in results %}
           <tr>
             <td>
-              <input id="checkbox-{{ archive.id }}" class="toggle-list" type="checkbox" name="sel-{{ archive.id }}" value="{{ archive.pk }}"><label for="checkbox-{{ archive.id }}"><span><span></span></span></label>
+              <input id="checkbox-{{ archive.id }}" class="toggle-list custom-cb" type="checkbox" name="sel-{{ archive.id }}" value="{{ archive.pk }}"><label for="checkbox-{{ archive.id }}"><span><span></span></span></label>
             </td>
             <td{% if not archive.crc32 %} class="archive-incomplete"{% endif %}>
               {{ archive.title }}
@@ -95,6 +97,9 @@
             <td>
               {{ archive.create_date|date:"DATETIME_FORMAT" }}
             </td>
+            <td>
+              {{ archive.public|yesno }}
+            </td>
           </tr>
         {% endfor %}
         </tbody>
@@ -121,6 +126,7 @@
       <input size="10" class="form-control" name="reason" value="" placeholder="Reason" maxlength="200"/>
     </div>
     <button name="publish_archives" class="btn btn-light">Publish</button>
+    <button name="unpublish_archives" class="btn btn-light">Unpublish</button>
     </form>
 {% endblock %}
 {% block afterJQ %}

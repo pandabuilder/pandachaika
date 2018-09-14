@@ -3,9 +3,6 @@ from datetime import datetime
 from typing import Optional, List, Union, Dict, Any, Tuple
 
 
-# TODO: Define one GalleryData base type, then every provider can subclass it and add their own custom attributes
-
-
 class GalleryData:
     def __init__(
             self, gid: str, token: Optional[str] = None,
@@ -22,7 +19,7 @@ class GalleryData:
             root: Optional[str] = None, filename: Optional[str] = None,
             queries: Optional[int] = None, thumbnail: Optional[str] = None,
             status: Optional[int] = None, origin: Optional[int] = None,
-            reason: Optional[str] = None
+            reason: Optional[str] = None, **kwargs: Any
     ) -> None:
         self.gid = gid
         self.token = token

@@ -549,7 +549,7 @@ img {
 }
 
 /* custom checkbox */
-input[type=checkbox]:not(old) {
+input.custom-cb[type=checkbox]:not(old) {
   width: 2em;
   margin: 0;
   padding: 0;
@@ -557,13 +557,13 @@ input[type=checkbox]:not(old) {
   opacity: 0;
 }
 
-input[type=checkbox]:not(old) + label {
+input.custom-cb[type=checkbox]:not(old) + label {
   display: inline-block;
   margin-left: -2em;
   line-height: 0.5em;
 }
 
-input[type=checkbox]:not(old) + label > span {
+input.custom-cb[type=checkbox]:not(old) + label > span {
   display: inline-block;
   width: 0.875em;
   height: 0.875em;
@@ -579,7 +579,7 @@ input[type=checkbox]:not(old) + label > span {
   vertical-align: bottom;
 }
 
-input[type=checkbox]:not(old):checked + label > span {
+input.custom-cb[type=checkbox]:not(old):checked + label > span {
   background-image: -moz-linear-gradient(#006677, #29527a);
   background-image: -ms-linear-gradient(#006677, #29527a);
   background-image: -o-linear-gradient(#006677, #29527a);
@@ -587,7 +587,7 @@ input[type=checkbox]:not(old):checked + label > span {
   background-image: linear-gradient(#006677, #29527a);
 }
 
-input[type=checkbox]:not(old):checked + label > span::before {
+input.custom-cb[type=checkbox]:not(old):checked + label > span::before {
   content: '✓';
   display: block;
   width: 1em;

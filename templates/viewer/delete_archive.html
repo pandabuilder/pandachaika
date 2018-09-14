@@ -20,16 +20,16 @@
     <form action="{% url 'viewer:archive-delete' archive.pk %}" method="POST">{% csrf_token %}
     <ul class="list-group">
       <li class="list-group-item">
-        <p><input id="checkbox1" type="checkbox" name="delete-archive" value="1" checked><label for="checkbox1"><span><span></span></span></label>Delete archive entry</p>
+        <p><input id="checkbox1" class="custom-cb" type="checkbox" name="delete-archive" value="1" checked><label for="checkbox1"><span><span></span></span></label>Delete archive entry</p>
         <p>{{ archive.title }} >> {{ archive.filesize|filesizeformat }} >> {{ archive.filesize }} >> {{ archive.filecount }} >> {{ archive.source_type }}</p>
       </li>
       <li class="list-group-item">
-        <p><input id="checkbox2" type="checkbox" name="delete-file" value="1"><label for="checkbox2"><span><span></span></span></label>Delete associated file</p>
+        <p><input id="checkbox2" class="custom-cb" type="checkbox" name="delete-file" value="1"><label for="checkbox2"><span><span></span></span></label>Delete associated file</p>
         <p>{{ archive.zipped.path }} >> {{ archive.filesize|filesizeformat }} >> {{ archive.filesize }} >> {{ archive.filecount }} >> {{ archive.source_type }}</p>
       </li>
       {% if archive.gallery %}
         <li class="list-group-item">
-          <p><input id="checkbox3" type="checkbox" name="mark-gallery-deleted" value="1"><label for="checkbox3"><span><span></span></span></label>Mark associated gallery as deleted</p>
+          <p><input id="checkbox3" class="custom-cb" type="checkbox" name="mark-gallery-deleted" value="1"><label for="checkbox3"><span><span></span></span></label>Mark associated gallery as deleted</p>
           <p>{{ archive.gallery.filesize }} >> {{ archive.gallery.filecount }} >> {{ archive.gallery.title }} >> {{ archive.gallery.get_link|urlize }}</p>
         </li>
       {% endif %}

@@ -19,7 +19,7 @@ from urllib.parse import quote, urlparse
 import requests
 from django.core.exceptions import ValidationError
 from django.db.backends.base.base import BaseDatabaseWrapper
-from django.db.models.signals import post_delete
+from django.db.models.signals import post_delete, post_save
 from django.db.models.sql.compiler import SQLCompiler
 from django.dispatch import receiver
 from django.http import HttpRequest
@@ -477,6 +477,7 @@ class Gallery(models.Model):
         permissions = (
             ("publish_gallery", "Can publish available galleries"),
             ("approve_gallery", "Can approve submitted galleries"),
+            ("wanted_gallery_found", "Can be notified of new wanted gallery matches"),
             ("crawler_adder", "Can add links to the crawler with more options"),
         )
 
@@ -514,79 +515,6 @@ class Gallery(models.Model):
 
     def get_absolute_url(self) -> str:
         return reverse('viewer:gallery', args=[str(self.id)])
-
-    # TODO: Might be not up to date with the one in parser. Refactor it.
-    def match_wanted_galleries(self, crawler_settings: 'Settings', logger: OptionalLogger=None) -> None:
-
-        gallery_wanted_lists: typing.Dict[str, List['WantedGallery']] = defaultdict(list)
-
-        for wanted_filter in WantedGallery.objects.eligible_to_search():
-            # Skip wanted_filter that's already found.
-            already_found = FoundGallery.objects.filter(
-                wanted_gallery__pk=wanted_filter.pk,
-                gallery__gid=self.gid,
-                gallery__provider=self.provider
-            ).first()
-            # Skip already found unless it's a submitted gallery.
-            if already_found and not already_found.gallery.is_submitted():
-                continue
-            # Skip wanted_filter that's not a global filter or is not for this provider.
-            if wanted_filter.provider and wanted_filter.provider != self.provider:
-                continue
-            accepted = True
-            if wanted_filter.search_title:
-                accepted = compare_search_title_with_strings(
-                    wanted_filter.search_title, [self.title, self.title_jpn]
-                )
-            if accepted and wanted_filter.unwanted_title:
-                accepted = not compare_search_title_with_strings(
-                    wanted_filter.unwanted_title, [self.title, self.title_jpn]
-                )
-            if accepted & bool(wanted_filter.wanted_tags.all()):
-                if not set(wanted_filter.wanted_tags_list()).issubset(set(self.tag_list())):
-                    accepted = False
-            if accepted & bool(wanted_filter.unwanted_tags.all()):
-                if set(wanted_filter.unwanted_tags_list()).issubset(set(self.tag_list())):
-                    accepted = False
-            if accepted and wanted_filter.wanted_page_count_lower and self.filecount:
-                accepted = self.filecount >= wanted_filter.wanted_page_count_lower
-            if accepted and wanted_filter.wanted_page_count_upper and self.filecount:
-                accepted = self.filecount <= wanted_filter.wanted_page_count_upper
-            if accepted and wanted_filter.category and self.category:
-                accepted = (wanted_filter.category.lower() == self.category.lower())
-            if accepted:
-                gallery_wanted_lists[self.gid].append(wanted_filter)
-                wanted_filter.found = True
-                wanted_filter.date_found = django_tz.now()
-                wanted_filter.save()
-                FoundGallery.objects.get_or_create(wanted_gallery=wanted_filter, gallery=self)
-        if len(gallery_wanted_lists[self.gid]) > 0 and crawler_settings:
-            if logger:
-                logger.info("Gallery link: {}, title: {}, matched filters: {}.".format(
-                    self.get_link(),
-                    self.title,
-                    ", ".join([x.get_absolute_url() for x in gallery_wanted_lists[self.gid]])
-                ))
-
-            notify_wanted_filters = [x.title or 'not set' for x in gallery_wanted_lists[self.gid] if
-                                     x.notify_when_found]
-
-            if notify_wanted_filters and crawler_settings.pushover.enable:
-
-                message = "Title: {}, link: {}, filters titles: {}".format(
-                    self.title,
-                    self.get_link(),
-                    ', '.join(notify_wanted_filters)
-                )
-
-                send_pushover_notification(
-                    crawler_settings.pushover.user_key,
-                    crawler_settings.pushover.token,
-                    message,
-                    device=crawler_settings.pushover.device,
-                    sound=crawler_settings.pushover.sound,
-                    title="Wanted Gallery match found"
-                )
 
     def save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
         super(Gallery, self).save(*args, **kwargs)
@@ -718,7 +646,7 @@ class Archive(models.Model):
         }
         permissions = (
             ("publish_archive", "Can publish available archives"),
-            ("match_archive", "Can match unmatched archives"),
+            ("match_archive", "Can match archives"),
             ("upload_with_metadata_archive", "Can upload a file with an associated metadata source"),
         )
 
@@ -830,6 +758,9 @@ class Archive(models.Model):
             os.path.splitext(self.zipped.name)[1]
         )
 
+    def filename(self) -> str:
+        return os.path.basename(self.zipped.name)
+
     def tags_str(self) -> str:
         lst = [str(x) for x in self.tags.all()] + [str(x) for x in self.custom_tags.all()]
         return ', '.join(lst)
@@ -865,7 +796,7 @@ class Archive(models.Model):
         elif not self.public:
             self.simple_save()
 
-    def set_public(self) -> None:
+    def set_public(self, reason: str='') -> None:
 
         if not os.path.isfile(self.zipped.path) or not self.crc32:
             return
@@ -874,9 +805,27 @@ class Archive(models.Model):
         self.generate_thumbnails()
         self.calculate_sha1_for_images()
         self.public_date = django_tz.now()
+        if reason:
+            self.reason = reason
         self.simple_save()
         if self.gallery:
+            if reason:
+                self.gallery.reason = reason
             self.gallery.public = True
+            self.gallery.save()
+
+    def set_private(self, reason: str='') -> None:
+
+        if not os.path.isfile(self.zipped.path) or not self.crc32:
+            return
+        self.public = False
+        if reason:
+            self.reason = reason
+        self.simple_save()
+        if self.gallery:
+            if reason:
+                self.gallery.reason = reason
+            self.gallery.public = False
             self.gallery.save()
 
     def delete_all_files(self) -> None:
@@ -1324,7 +1273,7 @@ class Archive(models.Model):
         self.gallery_id = matched_gallery.id
         self.title = matched_gallery.title
         self.title_jpn = matched_gallery.title_jpn
-        self.match_type = "manual:cutoff"
+        self.match_type = "manual:user"
         self.possible_matches.clear()
         self.simple_save()
         self.tags.set(matched_gallery.tags.all())
@@ -1435,6 +1384,21 @@ class Profile(models.Model):
     bio = models.TextField(max_length=500, blank=True, default='')
     notify_new_submissions = models.BooleanField(default=False, blank=True)
     notify_new_private_archive = models.BooleanField(default=False, blank=True)
+    notify_wanted_gallery_found = models.BooleanField(default=False, blank=True)
+
+
+@receiver(post_save, sender=User)
+def create_favorites(sender, instance, created, **kwargs):
+    if created:
+        Profile.objects.create(user=instance)
+
+
+def users_with_perm(app: str, perm_name: str, *args: typing.Any, **kwargs: typing.Any):
+    return User.objects.filter(
+        Q(is_superuser=True) |
+        Q(user_permissions__codename=perm_name, user_permissions__content_type__app_label=app) |
+        Q(groups__permissions__codename=perm_name, groups__permissions__content_type__app_label=app)
+    ).filter(*args, **kwargs).distinct()
 
 
 def upload_announce_handler(instance: models.Model, filename: str) -> str:

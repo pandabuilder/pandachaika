@@ -3,6 +3,7 @@ from typing import Dict, Any, List
 
 from django import forms
 from django.contrib.auth.forms import PasswordChangeForm
+from django.contrib.auth.models import User
 from django.forms.models import BaseModelFormSet, modelformset_factory, ModelChoiceField
 from django.forms.utils import ErrorList
 from django.utils.safestring import mark_safe
@@ -12,7 +13,7 @@ from django.forms.utils import flatatt
 
 from dal import autocomplete
 from dal_jal.widgets import JalWidgetMixin
-from viewer.models import Archive, ArchiveMatches, Image, Gallery
+from viewer.models import Archive, ArchiveMatches, Image, Gallery, Profile
 
 from dal.widgets import (
     WidgetMixin
@@ -370,3 +371,26 @@ class BootstrapPasswordChangeForm(PasswordChangeForm):
         self.fields['old_password'].widget.attrs.update({'class': 'form-control'})
         self.fields['new_password1'].widget.attrs.update({'class': 'form-control'})
         self.fields['new_password2'].widget.attrs.update({'class': 'form-control'})
+
+
+class UserChangeForm(forms.ModelForm):
+
+    class Meta:
+        model = User
+        fields = ['email']
+        widgets = {
+            'email': forms.widgets.EmailInput(attrs={'class': 'form-control'}),
+        }
+
+
+class ProfileChangeForm(forms.ModelForm):
+
+    class Meta:
+        model = Profile
+        # exclude = ['user']
+        fields = ['notify_new_submissions', 'notify_new_private_archive', 'notify_wanted_gallery_found']
+        widgets = {
+            'notify_new_submissions': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
+            'notify_new_private_archive': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
+            'notify_wanted_gallery_found': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
+        }

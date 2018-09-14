@@ -307,9 +307,13 @@ def json_search(request: HttpRequest) -> HttpResponse:
                         reverse('viewer:gallery-thumb', args=(gallery.pk,))) if gallery.thumbnail else '',
                     'thumbnail_url': gallery.thumbnail_url,
                     'archives': [
-                        request.build_absolute_uri(
-                            reverse('viewer:archive-download', args=(archive.pk,))
-                        ) for archive in gallery.archive_set.all()
+                        {
+                            'link': request.build_absolute_uri(
+                                reverse('viewer:archive-download', args=(archive.pk,))
+                            ),
+                            'source': archive.source_type,
+                            'reason': archive.reason
+                        } for archive in gallery.archive_set.all()
                     ],
                 } for gallery in results
                 ],
@@ -375,9 +379,13 @@ def json_search(request: HttpRequest) -> HttpResponse:
                             reverse('viewer:gallery-thumb', args=(gallery.pk,))) if gallery.thumbnail else '',
                         'thumbnail_url': gallery.thumbnail_url,
                         'archives': [
-                            request.build_absolute_uri(
-                                reverse('viewer:archive-download', args=(archive.pk,))
-                            ) for archive in gallery.archive_set.all()
+                            {
+                                'link': request.build_absolute_uri(
+                                    reverse('viewer:archive-download', args=(archive.pk,))
+                                ),
+                                'source': archive.source_type,
+                                'reason': archive.reason
+                            } for archive in gallery.archive_set.all()
                         ],
                     } for gallery in results
                     ],
@@ -691,7 +699,6 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                 results = filter_galleries_no_request(args)
                 if not results:
                     return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
-                # TODO: For now, we have to manually update this entry when new fields are added to Gallery.
                 response_text = json.dumps(
                     [{
                         'gid': gallery.gid,

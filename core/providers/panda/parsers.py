@@ -18,6 +18,7 @@ from core.base.utilities import (
     chunks, request_with_retries)
 from core.base.types import GalleryData, DataDict
 from viewer.models import Gallery, Archive, FoundGallery
+from viewer.signals import wanted_gallery_found
 from .utilities import link_from_gid_token_fjord, map_external_gallery_data_to_internal, \
     get_gid_token_from_link, fjord_gid_token_from_link, GalleryHTMLParser, EmptyHTMLParser, SearchHTMLParser
 from . import constants
@@ -647,6 +648,14 @@ class Parser(BaseParser):
                         if downloader[0].archive_db_entry and wanted_gallery.reason:
                             downloader[0].archive_db_entry.reason = wanted_gallery.reason
                             downloader[0].archive_db_entry.simple_save()
+
+                    if len(gallery_wanted_lists[gallery.gid]) > 0:
+                        wanted_gallery_found.send(
+                            sender=self.settings.gallery_model,
+                            gallery=downloader[0].gallery_db_entry,
+                            wanted_gallery_list=gallery_wanted_lists[gallery.gid]
+                        )
+
                     self.last_used_downloader = str(downloader[0])
                     if downloader[0].gallery_db_entry:
                         if downloader[0].archive_db_entry:

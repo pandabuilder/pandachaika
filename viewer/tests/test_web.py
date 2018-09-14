@@ -7,7 +7,6 @@ from core.providers.fakku.parsers import Parser as FakkuParser
 from core.providers.nhentai.parsers import Parser as NhentaiParser
 
 
-# TODO: Fix comparing between GalleryData. Comparison not working yet.
 class TestPageParsers(TestCase):
     maxDiff = None
 

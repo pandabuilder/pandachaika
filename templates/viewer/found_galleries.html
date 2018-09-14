@@ -27,15 +27,15 @@
       <div class="page-line form-inline">
         <button name="apply" class="btn btn-light">Search</button>
         <a class="btn btn-light" href="{% url 'viewer:found-galleries' %}">Clear</a>
-        <input id="checkbox-f2" type="checkbox" name="wanted-should-search" value="1" {% if "wanted-should-search" in request.GET %}checked{% endif %}><label for="checkbox-f2"><span><span></span></span>Should search</label>
-        <input id="checkbox-f3" type="checkbox" name="wanted-should-search-not" value="1" {% if "wanted-should-search-not" in request.GET %}checked{% endif %}><label for="checkbox-f3"><span><span></span></span>Should not search</label>
-        <input id="checkbox-f4" type="checkbox" name="with-possible-matches" value="1" {% if "with-possible-matches" in request.GET %}checked{% endif %}><label for="checkbox-f4"><span><span></span></span>With possible matches</label>
+        <input id="checkbox-f2" class="custom-cb" type="checkbox" name="wanted-should-search" value="1" {% if "wanted-should-search" in request.GET %}checked{% endif %}><label for="checkbox-f2"><span><span></span></span>Should search</label>
+        <input id="checkbox-f3" class="custom-cb" type="checkbox" name="wanted-should-search-not" value="1" {% if "wanted-should-search-not" in request.GET %}checked{% endif %}><label for="checkbox-f3"><span><span></span></span>Should not search</label>
+        <input id="checkbox-f4" class="custom-cb" type="checkbox" name="with-possible-matches" value="1" {% if "with-possible-matches" in request.GET %}checked{% endif %}><label for="checkbox-f4"><span><span></span></span>With possible matches</label>
         <input title="Book type" class="form-control" name="book_type" placeholder="Book type" value="{{ request.GET.book_type }}">
         <input title="Publisher" class="form-control" name="publisher" placeholder="Publisher" value="{{ request.GET.publisher }}">
         <input title="Reason" class="form-control" name="reason" placeholder="Reason" value="{{ request.GET.reason }}">
-        <input id="checkbox-f6" type="checkbox" name="wanted-found" value="1" {% if "wanted-found" in request.GET %}checked{% endif %}><label for="checkbox-f6"><span><span></span></span>Found</label>
-        <input id="checkbox-f7" type="checkbox" name="wanted-not-found" value="1" {% if "wanted-not-found" in request.GET %}checked{% endif %}><label for="checkbox-f7"><span><span></span></span>Not found</label>
-        <input id="checkbox-f8" type="checkbox" name="wanted-no-found-galleries" value="1" {% if "wanted-no-found-galleries" in request.GET %}checked{% endif %}><label for="checkbox-f8"><span><span></span></span>No found galleries</label>
+        <input id="checkbox-f6" class="custom-cb" type="checkbox" name="wanted-found" value="1" {% if "wanted-found" in request.GET %}checked{% endif %}><label for="checkbox-f6"><span><span></span></span>Found</label>
+        <input id="checkbox-f7" class="custom-cb" type="checkbox" name="wanted-not-found" value="1" {% if "wanted-not-found" in request.GET %}checked{% endif %}><label for="checkbox-f7"><span><span></span></span>Not found</label>
+        <input id="checkbox-f8" class="custom-cb" type="checkbox" name="wanted-no-found-galleries" value="1" {% if "wanted-no-found-galleries" in request.GET %}checked{% endif %}><label for="checkbox-f8"><span><span></span></span>No found galleries</label>
       </div>
     </form>
   <!-- Next/Prev page links  -->

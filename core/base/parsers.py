@@ -17,6 +17,7 @@ from django.db.models import QuerySet
 from core.base import utilities
 from core.base.utilities import send_pushover_notification, chunks, compare_search_title_with_strings
 from core.base.types import GalleryData, OptionalLogger, FakeLogger, RealLogger
+from viewer.signals import wanted_gallery_found
 
 if typing.TYPE_CHECKING:
     from core.downloaders.handlers import BaseDownloader
@@ -40,8 +41,6 @@ class BaseParser:
     def fetch_multiple_gallery_data(self, url_list: List[str]) -> Optional[List[GalleryData]]:
         return None
 
-    # TODO: Every time this method is used, it should remove the accepted urls from the original list,
-    # to avoid 2 or more parsers from using the same url.
     @classmethod
     def filter_accepted_urls(cls, urls: Iterable[str]) -> List[str]:
         return [x for x in urls if any(word in x for word in cls.accepted_urls)]
@@ -64,7 +63,6 @@ class BaseParser:
                 ext_link=link,
             )
 
-        # TODO: The setup right now will send 2 notifications if it matches a wanted gallery, on submit and reprocess.
         if gallery.is_submitted():
             message = 'Gallery {title}, {ext_link} marked as submitted: {link}, reprocessing.'.format(
                 ext_link=gallery.get_link(),
@@ -319,6 +317,13 @@ class BaseParser:
                         if downloader[0].archive_db_entry and wanted_gallery.reason:
                             downloader[0].archive_db_entry.reason = wanted_gallery.reason
                             downloader[0].archive_db_entry.simple_save()
+
+                    if len(gallery_wanted_lists[gallery.gid]) > 0:
+                        wanted_gallery_found.send(
+                            sender=self.settings.gallery_model,
+                            gallery=downloader[0].gallery_db_entry,
+                            wanted_gallery_list=gallery_wanted_lists[gallery.gid]
+                        )
                 if downloader[0].archive_db_entry:
                     if not downloader[0].archive_only and downloader[0].gallery_db_entry:
                         self.logger.info("Download complete, using {}. Archive link: {}. Gallery link: {}".format(

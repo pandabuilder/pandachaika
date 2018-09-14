@@ -37,6 +37,7 @@ urlpatterns = [
     url(r"^login/$", head.viewer_login, name='login'),
     url(r"^logout/$", head.viewer_logout, name='logout'),
     url(r"^password/$", head.change_password, name='change-password'),
+    url(r"^profile/$", head.change_profile, name='change-profile'),
     url(r"^session-settings/$", head.session_settings, name='session-settings'),
     url(r"^img/(\d+)/$", head.image_url, name='image-url'),
     url(r"^content/panda.user.js$", head.panda_userscript, name='panda-user-script'),
@@ -77,6 +78,7 @@ urlpatterns += [
     url(r"^web-queue/([\w-]+)/([\w-]+)$", admin.queue_operations, name='queue-operations'),
     url(r"^web-crawler/$", admin.crawler, name='crawler'),
     url(r"^folder-crawler/$", admin.foldercrawler, name='folder-crawler'),
+    url(r"^users-event-log/$", admin.users_event_log, name='users-event-log'),
 ]
 
 # Collaborators.
@@ -85,6 +87,11 @@ urlpatterns += [
     url(r"^submit-queue/$", collaborators.submit_queue, name='submit-queue'),
     url(r"^publish-archives/$", collaborators.publish_archives, name='publish-archives'),
     url(r"^user-crawler/$", collaborators.user_crawler, name='user-crawler'),
+    url(r"^match-archives/$", collaborators.archives_not_matched_with_gallery, name='match-archives'),
+    url(r"^col-update/(\d+)/([\w-]+)/(\d*)/$", collaborators.archive_update, name='col-archive-update-tool-id'),
+    url(r"^col-update/(\d+)/([\w-]+)/$", collaborators.archive_update, name='col-archive-update-tool'),
+    url(r"^col-update/(\d+)/([\w-]+)/([\w-]+)/$", collaborators.archive_update, name='col-archive-update-tool-name'),
+    url(r"^col-update/(\d+)/$", collaborators.archive_update, name='col-archive-update'),
 
 ]
 

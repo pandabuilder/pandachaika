@@ -2,7 +2,7 @@ from typing import Any, Optional
 from urllib.parse import urljoin
 
 from core.base.types import DataDict
-from core.downloaders.handlers import BaseInfoDownloader, BaseTorrentDownloader
+from core.downloaders.handlers import BaseInfoDownloader, BaseTorrentDownloader, BaseDownloader
 from core.downloaders.torrent import get_torrent_client
 from viewer.models import Archive
 from . import constants
@@ -67,7 +67,24 @@ class InfoDownloader(BaseInfoDownloader):
     provider = constants.provider_name
 
 
+class UrlSubmitDownloader(BaseDownloader):
+
+    type = 'submit'
+    provider = constants.provider_name
+    skip_if_hidden = False
+
+    def start_download(self) -> None:
+
+        if not self.original_gallery:
+            return
+
+        self.logger.info("Adding gallery submission info to database")
+
+        self.return_code = 1
+
+
 API = (
     TorrentDownloader,
     InfoDownloader,
+    UrlSubmitDownloader,
 )
