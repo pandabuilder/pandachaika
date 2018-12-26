@@ -40,7 +40,7 @@ class DjangoAppPlugin(plugins.SimplePlugin):
         the CherryPy engine for serving as a WSGI application.
         We let CherryPy serve the application's static files.
         """
-        from frontend import settings
+        from pandabackup import settings
         settings.crawler_settings = self.crawler_settings
 
         os.environ['DJANGO_SETTINGS_MODULE'] = self.settings_module
@@ -155,7 +155,7 @@ if __name__ == '__main__':
         plugins.PIDFile(cherrypy.engine, args.pidfile).subscribe()
 
     DjangoAppPlugin(cherrypy.engine,
-                    settings_module='frontend.settings',
+                    settings_module='pandabackup.settings',
                     local_settings=crawler_settings).subscribe()
 
     cherrypy.log(
