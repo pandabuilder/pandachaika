@@ -38,7 +38,7 @@ def map_external_gallery_data_to_internal(gallery_data: DataDict) -> GalleryData
     return internal_gallery_data
 
 
-def link_from_gid_token_fjord(gid: str, token: str, fjord: bool=False) -> str:
+def link_from_gid_token_fjord(gid: str, token: str, fjord: bool = False) -> str:
     if fjord:
         return '{}/g/{}/{}/'.format(constants.ex_page, gid, token)
     else:
@@ -46,7 +46,7 @@ def link_from_gid_token_fjord(gid: str, token: str, fjord: bool=False) -> str:
 
 
 def get_gid_token_from_link(link: str) -> typing.Tuple[str, str]:
-    m = re.search(".*?/g/(\w+)/(\w+)", link)
+    m = re.search(r".*?/g/(\w+)/(\w+)", link)
 
     if m:
         return m.group(1), m.group(2)
@@ -55,7 +55,7 @@ def get_gid_token_from_link(link: str) -> typing.Tuple[str, str]:
 
 
 def fjord_gid_token_from_link(link: str) -> typing.Tuple[typing.Optional[str], typing.Optional[str], typing.Optional[str]]:
-    m = re.search('(.+)/g/(\d+)/(\w+)', link)
+    m = re.search(r'(.+)/g/(\d+)/(\w+)', link)
     if m:
         return m.group(1), m.group(2), m.group(3)
     else:
@@ -89,8 +89,8 @@ class SearchHTMLParser(HTMLParser):
     def handle_starttag(self, tag: str, attrs: AttrList) -> None:
         if tag == 'a' and self.stop_at_favorites != 1:
             for attr in attrs:
-                if(attr[0] == 'href' and
-                   (constants.ex_page + '/g/' in attr[1] or constants.ge_page + '/g/' in attr[1])):
+                if(attr[0] == 'href'
+                        and (constants.ex_page + '/g/' in attr[1] or constants.ge_page + '/g/' in attr[1])):
                     self.galleries.add(attr[1])
         else:
             self.stop_at_favorites: int = 0
@@ -130,24 +130,24 @@ class GalleryHTMLParser(HTMLParser):
             for attr in attrs:
                 if attr[0] == 'href' and attr[1] == '#':
                     self.found_gallery_link = 1
-                elif(self.found_non_final_gallery == 1 and
-                     attr[0] == 'href' and
-                     '/g/' in attr[1]):
+                elif(self.found_non_final_gallery == 1
+                     and attr[0] == 'href'
+                     and '/g/' in attr[1]):
                     self.non_final_gallery = attr[1]
-                elif(self.found_parent_gallery == 1 and
-                     attr[0] == 'href' and
-                     '/g/' in attr[1]):
+                elif(self.found_parent_gallery == 1
+                     and attr[0] == 'href'
+                     and '/g/' in attr[1]):
                     self.parent_gallery = attr[1]
                     self.found_parent_gallery: int = 0
-                elif(self.found_gallery_link == 1 and
-                     attr[0] == 'onclick' and
-                     'gallerytorrents.php' in attr[1]):
-                    m = re.search('\'(.+)\'', attr[1])
+                elif(self.found_gallery_link == 1
+                     and attr[0] == 'onclick'
+                     and 'gallerytorrents.php' in attr[1]):
+                    m = re.search(r'\'(.+)\'', attr[1])
                     if m:
                         self.torrent_link = m.group(1)
-        if(tag == 'textarea' and
-                attrs[0][0] == 'name' and
-                attrs[0][1] == 'commenttext'):
+        if(tag == 'textarea'
+                and attrs[0][0] == 'name'
+                and attrs[0][1] == 'commenttext'):
             self.stop_at_found: int = 1
             return
         if tag == 'p' and self.found_non_final_gallery == 1:
@@ -183,9 +183,9 @@ class TorrentHTMLParser(HTMLParser):
     def handle_starttag(self, tag: str, attrs: AttrList) -> None:
         if tag == 'a':
             for attr in attrs:
-                if(attr[0] == 'href' and
-                        self.torrent_root_url in attr[1] and
-                        self.seeds > 0):
+                if(attr[0] == 'href'
+                        and self.torrent_root_url in attr[1]
+                        and self.seeds > 0):
                     self.torrent = attr[1]
 
     def handle_data(self, data: str) -> None:
@@ -194,7 +194,7 @@ class TorrentHTMLParser(HTMLParser):
         elif 'Peers:' == data:
             self.found_seed_data = 0
         elif self.found_seed_data == 1:
-            m = re.search('(\d+)', data)
+            m = re.search(r'(\d+)', data)
             if m:
                 self.seeds = int(m.group(1))
 
@@ -203,7 +203,7 @@ class TorrentHTMLParser(HTMLParser):
         elif 'Size:' == data:
             self.found_posted_data = 0
         elif self.found_posted_data == 1:
-            m = re.search('^ (.+)', data)
+            m = re.search(r'^ (.+)', data)
             if m:
                 self.posted_date = m.group(1) + ' +0000'
 

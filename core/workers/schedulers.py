@@ -51,7 +51,7 @@ class BaseScheduler(object):
     def job(self) -> None:
         raise NotImplementedError
 
-    def __init__(self, settings: Settings, web_queue=None, crawler_logger: OptionalLogger=None, timer=1, pk=None) -> None:
+    def __init__(self, settings: Settings, web_queue=None, crawler_logger: OptionalLogger = None, timer=1, pk=None) -> None:
 
         if not crawler_logger:
             self.crawler_logger: RealLogger = FakeLogger()

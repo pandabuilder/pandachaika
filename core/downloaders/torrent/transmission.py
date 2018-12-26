@@ -25,13 +25,13 @@ class Transmission(TorrentClient):
     def __str__(self) -> str:
         return self.name
 
-    def add_url(self, enc_torrent: str, download_dir: str=None) -> bool:
+    def add_url(self, enc_torrent: str, download_dir: str = None) -> bool:
         result = self.add_torrent(enc_torrent, download_dir=download_dir)
         if self.expected_torrent_name:
             self.expected_torrent_name = os.path.splitext(self.expected_torrent_name)[0]
         return result
 
-    def add_torrent(self, enc_torrent: Union[str, bytes], download_dir: str=None) -> bool:
+    def add_torrent(self, enc_torrent: Union[str, bytes], download_dir: str = None) -> bool:
 
         if not self.trans:
             return False
@@ -81,7 +81,7 @@ class Transmission(TorrentClient):
             return False
         return True
 
-    def __init__(self, address: str='localhost', port: int=9091, user: str='', password: str='', secure: bool=True) -> None:
+    def __init__(self, address: str = 'localhost', port: int = 9091, user: str = '', password: str = '', secure: bool = True) -> None:
         super().__init__(address=address, port=port, user=user, password=password, secure=secure)
         self.trans = None
         self.error = ''
@@ -93,7 +93,7 @@ class TransmissionHTTPSHandler(transmissionrpc.HTTPHandler):
     The default HTTPS handler provided with transmissionrpc.
     """
 
-    def __init__(self, secure: bool=True) -> None:
+    def __init__(self, secure: bool = True) -> None:
         transmissionrpc.HTTPHandler.__init__(self)
         self.http_opener = build_opener()
         self.auth: DataDict = {}
@@ -108,9 +108,7 @@ class TransmissionHTTPSHandler(transmissionrpc.HTTPHandler):
             context.check_hostname = False
         self.http_opener = build_opener(HTTPSHandler(context=context))
         self.auth = {'Authorization': 'Basic %s' %
-                     b64encode(str.encode(login +
-                                          ":" +
-                                          password)).decode('utf-8')}
+                     b64encode(str.encode(login + ":" + password)).decode('utf-8')}
 
     def request(self, url: str, query: str, headers: Dict[Any, Any], timeout: int) -> str:
         headers = {**self.auth, **headers}

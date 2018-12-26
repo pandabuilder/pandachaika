@@ -6,7 +6,7 @@
 // @include     http://exhentai.org/*
 // @include     https://e-hentai.org/*
 // @include     https://exhentai.org/*
-// @version     0.1.1
+// @version     0.1.2
 // @grant       GM_xmlhttpRequest
 // ==/UserScript==
 
@@ -83,7 +83,9 @@ function sendWebCrawlerAction ( link, parentLink, action ) {
                 );
             }
             else {
-                spawnNotification(jsonResponse.message, "{{ img_url }}", "Panda Backup");
+                if (Notification.permission === "granted") {
+                    spawnNotification(jsonResponse.message, "{{ img_url }}", "Panda Backup");
+                }
             }
         }
     } );

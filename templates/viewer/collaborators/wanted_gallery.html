@@ -1,0 +1,148 @@
+{% extends "viewer/base.html" %}
+{% block title %}{{ wanted_gallery.title }}{% endblock %}
+{% block sidebar %}{% endblock %}
+
+{% load staticfiles %}
+
+{% block content %}
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+  <!-- Gallery  -->
+
+  <ul class="list-group">
+    <li class="list-group-item">
+      <div class="row">
+        <div class="col"><label class="label-extended">Title:</label>{{ wanted_gallery.title }}</div>
+        {% if perms.viewer.change_wantedgallery %}
+        <div class="d-flex justify-content-end"><button class="btn btn-secondary" id="edit-wanted" data-toggle="collapse" data-target="#add-change-wanted-form" name="edit-wanted" type="button" aria-label="toggle add wanted">Edit <i class="fas fa-chevron-down"></i></button></div>
+        {% endif %}
+      </div>
+    </li>
+    <li class="list-group-item"><label class="label-extended">Japanese title:</label>{{ wanted_gallery.title_jpn }}</li>
+    <li class="list-group-item"><label class="label-extended">Uses this search filters paramters:</label>
+      <ul class="list-group">
+        <li class="list-group-item"><label class="label-extended">Search title:</label>{{ wanted_gallery.search_title }}</li>
+        <li class="list-group-item"><label class="label-extended">Unwanted title:</label>{{ wanted_gallery.unwanted_title }}</li>
+        <li class="list-group-item"><label class="label-extended">Wanted tags:</label>
+          <ul class="list-group simple-tags">
+            {% for tag_list in wanted_tag_lists %}
+              <li>
+                {% if tag_list.0 %}{{ tag_list.0 }}:{% endif %}
+                {% for tag in tag_list.1 %}
+                  <a href="{% url 'viewer:gallery-tag-search' 'gallery-tag' tag %}">{% if tag_list.0 %}{{ tag.name }}{% else %}{{ tag }}{% endif %}</a>
+                {% endfor %}
+              </li>{% endfor %}
+          </ul>
+        </li>
+        <li class="list-group-item"><label class="label-extended">Unwanted tags:</label>
+          <ul class="list-group simple-tags">
+            {% for tag_list in unwanted_tag_lists %}
+              <li>
+                {% if tag_list.0 %}{{ tag_list.0 }}:{% endif %}
+                {% for tag in tag_list.1 %}
+                  <a href="{% url 'viewer:gallery-tag-search' 'gallery-tag' tag %}">{% if tag_list.0 %}{{ tag.name }}{% else %}{{ tag }}{% endif %}</a>
+                {% endfor %}
+              </li>{% endfor %}
+          </ul>
+        </li>
+        <li class="list-group-item"><label class="label-extended">Wanted tags exclusive scope:</label>{{ wanted_gallery.wanted_tags_exclusive_scope|yesno }}</li>
+        <li class="list-group-item"><label class="label-extended">Category:</label>{{ wanted_gallery.category }}</li>
+        <li class="list-group-item"><label class="label-extended">Wanted page count lower bound:</label>{{ wanted_gallery.wanted_page_count_lower }}</li>
+        <li class="list-group-item"><label class="label-extended">Wanted page count upper bound:</label>{{ wanted_gallery.wanted_page_count_upper }}</li>
+        <li class="list-group-item"><label class="label-extended">Provider:</label>{{ wanted_gallery.provider }}</li>
+      </ul>
+    </li>
+    <li class="list-group-item"><label class="label-extended">Uses this search date parameters:</label>
+      <ul class="list-group">
+        <li class="list-group-item"><label class="label-extended">Release date:</label>{{ wanted_gallery.release_date|date }}</li>
+        <li class="list-group-item"><label class="label-extended">Should search:</label>{{ wanted_gallery.should_search|yesno }}</li>
+        <li class="list-group-item"><label class="label-extended">Keep searching:</label>{{ wanted_gallery.keep_searching|yesno }}</li>
+      </ul>
+    </li>
+    <li class="list-group-item"><label class="label-extended">Found:</label>{{ wanted_gallery.found|yesno }}</li>
+    {% if wanted_gallery.found %}
+    <li class="list-group-item"><label class="label-extended">Found galleries:</label>
+      <ul class="list-group">
+        {% for found_entry in wanted_gallery.foundgallery_set.all %}
+          <li class="list-group-item">
+            Found: <a title="{{ found_entry.gallery.title_jpn }}" href="{% url 'viewer:gallery' found_entry.gallery.pk %}">{{ found_entry.gallery.title }}</a> >> Source URL: {{ found_entry.gallery.get_link|urlize }} >> Found date: {{ found_entry.create_date }} >> Posted date: {{ found_entry.gallery.posted }} >> Number of archives: {{ found_entry.gallery.archive_set.count }}  >> Images: {{ found_entry.gallery.filecount }} >> Size: {{ found_entry.gallery.filesize|filesizeformat }}
+            {% if found_entry.gallery.archive_set.count > 0 %}
+              <ul class="list-group">
+                {% for archive in found_entry.gallery.archive_set.all %}
+                  <li class="list-group-item">
+                    Archive: <a title="{{ archive.title_jpn }}" href="{% url 'viewer:archive' archive.pk %}">{{ archive.title }}</a> >> Images: {{ archive.filecount }} >> Size: {{ archive.filesize|filesizeformat }} >> <a href="#" data-image-url="{% if archive.thumbnail.name %}{{ archive.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover">Archive thumbnail</a>
+                  </li>
+                {% endfor %}
+              </ul>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </li>
+  {% endif %}
+    <li class="list-group-item"><label class="label-extended">Reason:</label>{{ wanted_gallery.reason }}</li>
+    <li class="list-group-item"><label class="label-extended">Book type:</label>{{ wanted_gallery.book_type }}</li>
+    <li class="list-group-item"><label class="label-extended">Publisher:</label>{{ wanted_gallery.publisher }}</li>
+    <li class="list-group-item"><label class="label-extended">Pages:</label>{{ wanted_gallery.page_count }}</li>
+    <li class="list-group-item"><label class="label-extended">Artists:</label> {{ wanted_gallery.artists.all|join:", " }}</li>
+    <li class="list-group-item"><label class="label-extended">Announces:</label>
+      <ul class="list-group">
+        {% for announce in wanted_gallery.announces.all %}
+          <li class="list-group-item">
+          Announced: {{ announce.announce_date }} >> Release date: {{ announce.release_date }} >> Type: {{ announce.type }} >> Source: {{ announce.source }}
+            {% if announce.image %}
+              >> <a href="#" data-image-url="{{ announce.image.url }}" class="img-preview" rel="popover">Full image</a>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </li>
+
+{#    <li class="list-group-item"><label class="label-extended">Possible matches:</label>#}
+{#      <ul class="list-group">#}
+{#        {% for match in wanted_gallery.gallerymatch_set.all %}#}
+{#          <li class="list-group-item">#}
+{#            Possible: <a title="{{ match.gallery.title_jpn }}" href="{% url 'viewer:gallery' match.gallery.pk %}">{{ match.gallery.title }}</a> >> <a href="{{ match.gallery.get_link }}" data-image-url="{% if match.gallery.thumbnail.name %}{{ match.gallery.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover">{{ match.gallery.get_link }}</a> >> Accuracy: {{ match.match_accuracy|floatformat:3 }} >> Posted date: {{ match.gallery.posted }} >> Number of archives: {{ match.gallery.archive_set.count }} >> Images: {{ match.gallery.filecount }} >> Size: {{ match.gallery.filesize|filesizeformat }} >> <a href="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}?tool=select-as-match&tool-id={{ match.gallery.pk }}">select as correct match</a>#}
+{#            {% if match.gallery.archive_set.count > 0 %}#}
+{#              <ul class="list-group">#}
+{#                {% for archive in match.gallery.archive_set.all %}#}
+{#                  <li class="list-group-item">#}
+{#                    Archive: <a title="{{ archive.title_jpn }}" href="{% url 'viewer:archive' archive.pk %}">{{ archive.title }}</a> >> Images: {{ archive.filecount }} >> Size: {{ archive.filesize|filesizeformat }} >> <a href="#" data-image-url="{% if archive.thumbnail.name %}{{ archive.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover">Archive thumbnail</a>#}
+{#                  </li>#}
+{#                {% endfor %}#}
+{#              </ul>#}
+{#            {% endif %}#}
+{#          </li>#}
+{#        {% endfor %}#}
+{#      </ul>#}
+{#    </li>#}
+  </ul>
+
+  {% if perms.viewer.change_wantedgallery %}
+  {% include 'viewer/include/wanted_gallery_edit.html' %}
+  {% endif %}
+
+{% endblock %}
+{% block afterJQ %}
+  {% if perms.viewer.change_wantedgallery %}
+  {{ edit_form.media }}
+  {% load compress %}
+  {% compress js %}
+    <script>
+    $('#edit-wanted').click(function () {
+    if($('#edit-wanted i').hasClass('fa-chevron-down'))
+    {
+       $('#edit-wanted').html('Edit <i class="fas fa-chevron-up"></i>');
+    }
+    else
+    {
+        $('#edit-wanted').html('Edit <i class="fas fa-chevron-down"></i>');
+    }
+    });
+    </script>
+  {% endcompress %}
+  {% endif %}
+{% endblock %}

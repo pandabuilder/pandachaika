@@ -18,7 +18,7 @@ class uTorrent(TorrentClient):
     def __str__(self) -> str:
         return self.name
 
-    def add_torrent(self, torrent_data: Union[str, bytes], download_dir: str=None) -> bool:
+    def add_torrent(self, torrent_data: Union[str, bytes], download_dir: str = None) -> bool:
 
         self.total_size = 0
         self.expected_torrent_name = ''
@@ -43,7 +43,7 @@ class uTorrent(TorrentClient):
             lf.close()
             return False
 
-    def add_url(self, url: str, download_dir: str=None) -> bool:
+    def add_url(self, url: str, download_dir: str = None) -> bool:
 
         self.total_size = 0
         self.expected_torrent_name = ''
@@ -81,7 +81,7 @@ class uTorrent(TorrentClient):
         # guid = r.cookies['GUID']
         # self.cookies = dict(GUID=guid)
 
-    def __init__(self, address: str='localhost', port: int=8080, user: str='', password: str='', secure: bool=True) -> None:
+    def __init__(self, address: str = 'localhost', port: int = 8080, user: str = '', password: str = '', secure: bool = True) -> None:
         super().__init__(address=address, port=port, user=user, password=password, secure=secure)
         self.auth: Optional[HTTPBasicAuth] = None
         self.token = ''

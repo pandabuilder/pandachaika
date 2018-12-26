@@ -127,6 +127,9 @@
     </div>
     <button name="publish_archives" class="btn btn-light">Publish</button>
     <button name="unpublish_archives" class="btn btn-light">Unpublish</button>
+    {% if perms.viewer.delete_archive %}
+    <button name="delete_archives" class="btn btn-light">Delete (WARNING!)</button>
+    {% endif %}
     </form>
 {% endblock %}
 {% block afterJQ %}

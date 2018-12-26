@@ -199,7 +199,7 @@ class Parser(BaseParser):
     def get_feed_urls() -> List[str]:
         return [constants.rss_url, ]
 
-    def crawl_feed(self, feed_url: str='') -> List[GalleryData]:
+    def crawl_feed(self, feed_url: str = '') -> List[GalleryData]:
 
         if not feed_url:
             feed_url = constants.rss_url
@@ -294,7 +294,7 @@ class Parser(BaseParser):
         else:
             return None
 
-    def crawl_urls(self, urls: List[str], wanted_filters: QuerySet=None, wanted_only: bool=False) -> None:
+    def crawl_urls(self, urls: List[str], wanted_filters: QuerySet = None, wanted_only: bool = False) -> None:
 
         unique_urls = set()
         gallery_data_list = []

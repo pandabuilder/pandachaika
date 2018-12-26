@@ -1,0 +1,9 @@
+<form action="" method="POST">
+  {% csrf_token %}
+  <div id="change-archive-form" class="collapse page-line">
+    <table class="table">
+      {{ edit_form }}
+    </table>
+    <button type="submit" name="change-archive" value="Submit" class="btn btn-light mr-sm-1">Submit</button>
+  </div>
+</form>

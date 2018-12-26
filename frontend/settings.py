@@ -113,6 +113,15 @@ if module_exists('django_unused_media'):
 if DEBUG and module_exists('debug_toolbar'):
     INSTALLED_APPS += ['debug_toolbar']
 
+if DEBUG and module_exists('django_nose'):
+    INSTALLED_APPS += ['django_nose']
+    TEST_RUNNER = 'django_nose.NoseTestSuiteRunner'
+    NOSE_ARGS = [
+        '--with-coverage',
+        '--cover-package=viewer,core',
+        '--cover-html',
+    ]
+
 MIDDLEWARE = [
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -206,6 +215,9 @@ USE_L10N = True
 
 USE_TZ = True
 
+# File uploads
+
+FILE_UPLOAD_PERMISSIONS = 0o755
 
 # Static files (CSS, JavaScript, Images)
 

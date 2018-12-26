@@ -82,7 +82,7 @@ def discard_by_tag_list(tag_list: List[str], discard_tags: List[str]):
 
 
 def replace_illegal_name(filepath: str) -> str:
-    delete_chars = '\/:*?"<>|'
+    delete_chars = r'\/:*?"<>|'
 
     for c in delete_chars:
         filepath = filepath.replace(c, '')
@@ -282,14 +282,12 @@ def available_filename(root: str, filename: str) -> str:
     if os.path.isfile(filename_full):
         while (
             os.path.isfile(
-                os.path.splitext(filename_full)[0] +
-                "-" + str(extra_text) +
-                os.path.splitext(filename_full)[1])
+                os.path.splitext(filename_full)[0] + "-" + str(extra_text)
+                + os.path.splitext(filename_full)[1])
         ):
             extra_text += 1
         return (
-            os.path.splitext(filename)[0] +
-            "-" + str(extra_text) + os.path.splitext(filename)[1]
+            os.path.splitext(filename)[0] + "-" + str(extra_text) + os.path.splitext(filename)[1]
         )
     else:
         return filename
@@ -339,8 +337,8 @@ def clean_title(title: str) -> str:
 
 
 def format_title_to_wanted_search(title: str) -> str:
-    words_and_ws = re.sub('\W', ' ', title)
-    words_and_ws_once = re.sub('\s+', ' ', words_and_ws)
+    words_and_ws = re.sub(r'\W', ' ', title)
+    words_and_ws_once = re.sub(r'\s+', ' ', words_and_ws)
     return words_and_ws_once
 
 
@@ -367,7 +365,7 @@ def timestamp_or_zero(posted: datetime) -> float:
 def compare_search_title_with_strings(original_title: str, titles: List[str]) -> bool:
     if not original_title:
         return False
-    pattern = '.*?{}.*?'.format(re.sub('\s+', '.+', original_title.lower()))
+    pattern = '.*?{}.*?'.format(re.sub(r'\s+', '.+', original_title.lower()))
     re_object = re.compile(pattern)
     for title in titles:
         # # This search is too simple:
@@ -379,7 +377,7 @@ def compare_search_title_with_strings(original_title: str, titles: List[str]) ->
     return False
 
 
-def get_scored_matches(word: str, possibilities: List[str], n: int=3, cutoff: float=0.6) -> List[Tuple[float, str]]:
+def get_scored_matches(word: str, possibilities: List[str], n: int = 3, cutoff: float = 0.6) -> List[Tuple[float, str]]:
     if not n > 0:
         raise ValueError("n must be > 0: %r" % (n,))
     if not (0.0 <= cutoff <= 1.0):
@@ -452,7 +450,7 @@ def unescape(text: str) -> str:
                 pass
         return in_text  # leave as is
 
-    return re.sub("&#?\w+;", fixup, text)
+    return re.sub(r"&#?\w+;", fixup, text)
 
 
 def get_thread_status() -> List[Tuple[Tuple[str, str, str], bool]]:
@@ -585,7 +583,7 @@ def request_with_retries(
     return None
 
 
-def get_filename_from_cd(cd):
+def get_filename_from_cd(cd: str):
     """
     Get filename from content-disposition
     """

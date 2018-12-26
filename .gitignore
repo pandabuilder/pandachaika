@@ -18,3 +18,5 @@ __pycache__/
 /yarn.lock
 /src/
 /.mypy_cache/
+.coverage
+/cover/

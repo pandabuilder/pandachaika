@@ -51,10 +51,15 @@
           {% if not user.is_staff %}
             <li class="nav-item"><a class="nav-link" href="/ripper/">Rips dir listing</a></li>
             <li class="nav-item dropdown">
-              <a href="#" class="nav-link dropdown-toggle" id="navbarDropdown" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Help needed <span class="caret"></span></a>
+              <a href="#" class="nav-link dropdown-toggle" id="navbarDropdown" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Help needed<span class="caret"></span></a>
               <div class="dropdown-menu" aria-labelledby="navbarDropdown">
                 <a class="dropdown-item" href="{% url 'viewer:missing-archives' %}">Missing archives</a>
                 <a class="dropdown-item" href="{% url 'viewer:wanted-galleries' %}">Wanted galleries</a>
+              </div>
+            </li>
+            <li class="nav-item dropdown">
+              <a href="#" class="nav-link dropdown-toggle" id="navbarDropdown" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Collaborator<span class="caret"></span></a>
+              <div class="dropdown-menu" aria-labelledby="navbarDropdown">
                 {% if perms.viewer.approve_gallery %}
                   <a class="dropdown-item" href="{% url 'viewer:submit-queue' %}">Submit queue</a>
                 {% endif %}
@@ -64,8 +69,14 @@
                 {% if perms.viewer.crawler_adder %}
                   <a class="dropdown-item" href="{% url 'viewer:user-crawler' %}">Add URLs</a>
                 {% endif %}
+                {% if perms.viewer.upload_with_metadata_archive %}
+                  <a class="dropdown-item" href="{% url 'viewer:upload-archive' %}">Upload archive</a>
+                {% endif %}
                 {% if perms.viewer.match_archive %}
                   <a class="dropdown-item" href="{% url 'viewer:match-archives' %}">Match archives</a>
+                {% endif %}
+                {% if perms.viewer.view_wantedgallery %}
+                  <a class="dropdown-item" href="{% url 'viewer:col-wanted-galleries' %}">Wanted galleries</a>
                 {% endif %}
               </div>
             </li>
@@ -74,7 +85,7 @@
           {% if user.is_staff %}
             <li class="nav-item"><a class="nav-link" href="{% url 'viewer:tools' %}">Tools</a></li>
             <li class="nav-item dropdown">
-              <a href="#" class="nav-link dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Lists <span class="caret"></span></a>
+              <a href="#" class="nav-link dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Lists<span class="caret"></span></a>
               <div class="dropdown-menu">
                 <a class="dropdown-item" href="{% url 'viewer:repeated-archives' %}">Repeated archives (same gallery)</a>
                 <a class="dropdown-item" href="{% url 'viewer:missing-archives' %}?provider=panda">Non used panda galleries</a>
@@ -88,12 +99,14 @@
                 <a class="dropdown-item" href="{% url 'viewer:submit-queue' %}">Submit queue</a>
                 <a class="dropdown-item" href="{% url 'viewer:publish-archives' %}?non_public=1">Publish archives</a>
                 <a class="dropdown-item" href="{% url 'viewer:user-crawler' %}">Add URLs</a>
+                <a class="dropdown-item" href="{% url 'viewer:upload-archive' %}">Upload archive</a>
                 <a class="dropdown-item" href="{% url 'viewer:match-archives' %}">Match archives</a>
+                <a class="dropdown-item" href="{% url 'viewer:col-wanted-galleries' %}">Wanted galleries</a>
                 <a class="dropdown-item" href="{% url 'viewer:users-event-log' %}">Users' event log</a>
               </div>
             </li>
             <li class="nav-item dropdown">
-              <a href="#" class="nav-link dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Stats <span class="caret"></span></a>
+              <a href="#" class="nav-link dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Stats<span class="caret"></span></a>
               <div class="dropdown-menu">
                 <a class="dropdown-item" href="{% url 'viewer:stats-collection' %}">Collection</a>
                 <a class="dropdown-item" href="{% url 'viewer:stats-workers' %}">Workers</a>
@@ -141,7 +154,7 @@
             {% endif %}
             {% if user.is_authenticated %}
               <li class="nav-item dropdown">
-                <a href="#" class="nav-link dropdown-toggle" id="accountDropdown" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Account <span class="caret"></span></a>
+                <a href="#" class="nav-link dropdown-toggle" id="accountDropdown" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Account<span class="caret"></span></a>
                 <div class="dropdown-menu dropdown-menu-right" aria-labelledby="accountDropdown">
                   <a class="dropdown-item" href="{% url 'viewer:my-event-log' %}">Event log</a>
                   <a class="dropdown-item" href="{% url 'viewer:change-profile' %}">Change profile</a>

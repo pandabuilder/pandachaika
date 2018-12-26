@@ -1,11 +1,11 @@
 $('#more').click(function () {
-if($('button span').hasClass('fa-chevron-down'))
+if($('#more i').hasClass('fa-chevron-down'))
 {
-   $('#more').html('<span class="fas fa-chevron-up"></span>');
+   $('#more').html('<i class="fas fa-chevron-up"></i>');
 }
 else
-{      
-    $('#more').html('<span class="fas fa-chevron-down"></span>');
+{
+    $('#more').html('<i class="fas fa-chevron-down"></i>');
 }
 });
 

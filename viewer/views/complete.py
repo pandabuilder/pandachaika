@@ -1,7 +1,10 @@
+import json
 import re
 from typing import Iterable, Any
 
 from dal import autocomplete
+from dal.views import BaseQuerySetView
+from dal_select2.views import Select2ViewMixin
 from django import http
 from django.db.models import Q, QuerySet
 from django.http import HttpResponse, HttpRequest
@@ -83,7 +86,7 @@ class GalleryAutocomplete(autocomplete.JalQuerySetView):
 
         q = self.request.GET.get('q', '')
         q_formatted = '%' + q.replace(' ', '%') + '%'
-        m = re.search('(\d+)', q)
+        m = re.search(r'(\d+)', q)
         if m:
             q_object = Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted) | Q(gid__exact=m.group(1))
         else:
@@ -193,6 +196,20 @@ class SourceAutocomplete(ArchiveFieldAutocomplete):
         return sources[0:self.limit_choices]
 
 
+class ProviderAutocomplete(ArchiveFieldAutocomplete):
+
+    def choices_for_request(self) -> Iterable[Archive]:
+
+        q = self.request.GET.get('q', '')
+
+        if self.request.user.is_authenticated:
+            sources = Archive.objects.filter(gallery__provider__icontains=q).order_by('gallery__provider').values_list('gallery__provider', flat=True).distinct()
+        else:
+            sources = Archive.objects.filter(gallery__provider__icontains=q, public=True).order_by('gallery__provider').values_list('gallery__provider', flat=True).distinct()
+
+        return sources[0:self.limit_choices]
+
+
 class ReasonAutocomplete(ArchiveFieldAutocomplete):
 
     def choices_for_request(self) -> Iterable[Archive]:
@@ -283,14 +300,36 @@ class TagAutocomplete(autocomplete.JalQuerySetView):
                 Q(scope__contains=scope_name[0]))
         else:
             results = Tag.objects.filter(
-                Q(name__contains=tag_clean) |
-                Q(scope__contains=tag_clean))
+                Q(name__contains=tag_clean)
+                | Q(scope__contains=tag_clean))
 
         return results.distinct()[0:self.limit_choices]
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.modifier = ''
+
+
+class Select2ViewMixinNoCreate(Select2ViewMixin):
+    def render_to_response(self, context):
+        """Return a JSON response in Select2 format."""
+        return http.HttpResponse(
+            json.dumps({
+                'results': self.get_results(context),
+                'pagination': {
+                    'more': self.has_more(context)
+                }
+            }),
+            content_type='application/json',
+        )
+
+
+class Select2QuerySetViewNoCreate(Select2ViewMixinNoCreate, BaseQuerySetView):
+    """List options for a Select2 widget."""
+
+
+class TagPkAutocomplete(Select2QuerySetViewNoCreate):
+    model = Tag
 
 
 class NonCustomTagAutocomplete(autocomplete.Select2QuerySetView):
@@ -319,8 +358,8 @@ class NonCustomTagAutocomplete(autocomplete.Select2QuerySetView):
                 Q(scope__contains=scope_name[0]))
         else:
             results = Tag.objects.exclude(source='user').filter(
-                Q(name__contains=tag_clean) |
-                Q(scope__contains=tag_clean))
+                Q(name__contains=tag_clean)
+                | Q(scope__contains=tag_clean))
 
         return results.distinct()
 
@@ -361,3 +400,32 @@ class CustomTagAutocomplete(autocomplete.Select2QuerySetView):
                 'id': tag.pk,
                 'text': str(tag),
             })
+
+
+class GallerySelectAutocomplete(autocomplete.Select2QuerySetView):
+    model = Gallery
+    limit_choices = 10
+
+    def get_result_label(self, result: Gallery) -> str:
+        return "{} ({})".format(result.title, result.provider)
+
+    def get_queryset(self) -> QuerySet:
+        qs = Gallery.objects.eligible_for_use()
+
+        q = self.q
+        q_formatted = '%' + q.replace(' ', '%') + '%'
+        m = re.search(r'(\d+)', q)
+        if m:
+            q_object = Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted) | Q(gid__exact=m.group(1))
+        else:
+            q_object = Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted)
+        if self.request.user.is_authenticated:
+            qs = qs.filter(
+                q_object
+            )
+        else:
+            qs = qs.filter(public=True).filter(
+                q_object
+            )
+
+        return qs[0:self.limit_choices]

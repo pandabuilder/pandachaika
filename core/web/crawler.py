@@ -126,10 +126,10 @@ class WebCrawler(object):
     def start_crawling(
             self,
             arg_line: List[str],
-            override_options: Settings=None,
-            archive_callback: Callable[[Optional['Archive'], Optional[str], str], None]=None,
-            gallery_callback: Callable[[Optional['Gallery'], Optional[str], str], None]=None,
-            use_argparser: bool=True,
+            override_options: Settings = None,
+            archive_callback: Callable[[Optional['Archive'], Optional[str], str], None] = None,
+            gallery_callback: Callable[[Optional['Gallery'], Optional[str], str], None] = None,
+            use_argparser: bool = True,
     ):
 
         if use_argparser:
@@ -160,9 +160,9 @@ class WebCrawler(object):
     def start_crawling_parse_args(
             self,
             arg_line: List[str],
-            override_options: Settings=None,
-            archive_callback: Callable[[Optional['Archive'], Optional[str], str], None]=None,
-            gallery_callback: Callable[[Optional['Gallery'], Optional[str], str], None]=None,
+            override_options: Settings = None,
+            archive_callback: Callable[[Optional['Archive'], Optional[str], str], None] = None,
+            gallery_callback: Callable[[Optional['Gallery'], Optional[str], str], None] = None,
     ):
 
         args = self.get_args(arg_line)
@@ -291,9 +291,9 @@ class WebCrawler(object):
     def start_crawling_no_argparser(
             self,
             arg_line: List[str],
-            override_options: Settings=None,
-            archive_callback: Callable[[Optional['Archive'], Optional[str], str], None]=None,
-            gallery_callback: Callable[[Optional['Gallery'], Optional[str], str], None]=None,
+            override_options: Settings = None,
+            archive_callback: Callable[[Optional['Archive'], Optional[str], str], None] = None,
+            gallery_callback: Callable[[Optional['Gallery'], Optional[str], str], None] = None,
     ):
 
         if override_options:

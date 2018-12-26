@@ -118,6 +118,11 @@ ul.tags {
   padding-left: 0;
 }
 
+ul.simple-tags {
+  list-style: none;
+  padding-left: 0;
+}
+
 .line-top {
   border-top: 1px solid #cccccc;
 }
@@ -348,10 +353,10 @@ img {
 }
 
 .title-main {
-  font-size: 1.1em;
-  margin-top: 20px;
+  /*font-size: 1.1em;*/
+  /*margin-top: 20px;*/
   border-bottom: 1px solid #cccccc;
-  padding-left: 4px;
+  /*padding-left: 4px;*/
 }
 
 .title-img {

@@ -81,13 +81,13 @@ class Parser(BaseParser):
 
     @staticmethod
     def id_from_url(url: str) -> Optional[str]:
-        m = re.search('/book/(\w+)/.*', url)
+        m = re.search(r'/book/(\w+)/.*', url)
         if m and m.group(1):
             return 'mugi-B' + m.group(1)
         else:
             return None
 
-    def crawl_urls(self, urls: List[str], wanted_filters: QuerySet=None, wanted_only: bool=False) -> None:
+    def crawl_urls(self, urls: List[str], wanted_filters: QuerySet = None, wanted_only: bool = False) -> None:
 
         unique_urls = set()
         gallery_data_list = []

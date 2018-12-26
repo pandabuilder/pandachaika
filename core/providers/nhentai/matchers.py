@@ -58,7 +58,7 @@ class TitleMatcher(Matcher):
         payload = {'q': title}
         r = requests.get("{}/search/".format(constants.main_page), params=payload, timeout=self.settings.timeout_timer)
 
-        m = re.finditer('a href="/g/(\d+)/"', r.text)
+        m = re.finditer(r'a href="/g/(\d+)/"', r.text)
 
         matches_links = set()
 

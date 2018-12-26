@@ -17,6 +17,7 @@ from core.workers.holder import WorkerContext
 
 if typing.TYPE_CHECKING:
     from viewer.models import Gallery, Archive, WantedGallery, FoundGallery
+    from django.contrib.auth.models import User
 
 
 class GlobalInfo:
@@ -163,6 +164,7 @@ class Settings:
         self.keep_dl_type = False
         self.archive_reason = ''
         self.archive_source = ''
+        self.archive_user: Optional[User] = None
         self.silent_processing = False
         self.update_metadata_mode = False
 
@@ -295,8 +297,8 @@ class Settings:
                 self.downloaders[downloader] = -1
 
     def allow_downloaders_only(self, downloaders: List[str],
-                               replace_existing: bool=True, retry_failed: bool=True,
-                               redownload: bool=False) -> None:
+                               replace_existing: bool = True, retry_failed: bool = True,
+                               redownload: bool = False) -> None:
         for downloader in self.downloaders.keys():
             self.downloaders[downloader] = -1
         for count, downloader in reversed(list(enumerate(downloaders))):
@@ -305,7 +307,7 @@ class Settings:
         self.retry_failed = retry_failed
         self.redownload = redownload
 
-    def set_update_metadata_options(self, providers: typing.Iterable[str]=None) -> None:
+    def set_update_metadata_options(self, providers: typing.Iterable[str] = None) -> None:
         if not providers:
             for downloader in self.downloaders.keys():
                 if downloader.endswith("info"):
@@ -487,8 +489,8 @@ class Settings:
                 self.log_location = os.path.join(self.default_dir, 'viewer.log')
         if 'database' in config:
             self.database = dict(config['database'])
-            if(('db_engine' in config['general']) and
-               (config['general']['db_engine'] == 'sqlite')) or ('db_engine' not in config['general']):
+            if(('db_engine' in config['general'])
+               and (config['general']['db_engine'] == 'sqlite')) or ('db_engine' not in config['general']):
                 if 'sqlite_location' in config['database']:
                     if not os.path.exists(os.path.dirname(self.database['sqlite_location'])):
                         os.makedirs(os.path.dirname(self.database['sqlite_location']))

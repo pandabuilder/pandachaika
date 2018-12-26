@@ -3,3 +3,5 @@ django-debug-toolbar
 django-unused-media
 mypy>=0.600
 flake8
+coverage
+django-nose

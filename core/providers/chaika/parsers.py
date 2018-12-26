@@ -26,11 +26,11 @@ class Parser(BaseParser):
     def get_feed_urls(self) -> List[str]:
         return [self.own_settings.rss_url, ]
 
-    def crawl_feed(self, feed_url: str=None) -> Optional[str]:
+    def crawl_feed(self, feed_url: str = None) -> Optional[str]:
 
         return feed_url
 
-    def crawl_urls(self, urls: List[str], wanted_filters=None, wanted_only: bool=False) -> None:
+    def crawl_urls(self, urls: List[str], wanted_filters=None, wanted_only: bool = False) -> None:
 
         for url in urls:
             response = request_with_retries(

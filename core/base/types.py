@@ -6,10 +6,10 @@ from typing import Optional, List, Union, Dict, Any, Tuple
 class GalleryData:
     def __init__(
             self, gid: str, token: Optional[str] = None,
-            link: Optional[str]=None, tags: List[str]=None,
-            provider: Optional[str]=None, title: Optional[str]=None,
-            title_jpn: Optional[str]=None, comment: Optional[str]=None, gallery_container_gid: Optional[str]=None,
-            category: Optional[str]=None, posted: Optional[datetime]=None,
+            link: Optional[str] = None, tags: List[str] = None,
+            provider: Optional[str] = None, title: Optional[str] = None,
+            title_jpn: Optional[str] = None, comment: Optional[str] = None, gallery_container_gid: Optional[str] = None,
+            category: Optional[str] = None, posted: Optional[datetime] = None,
             filesize: Optional[int] = None, filecount: Optional[int] = None,
             expunged: Optional[int] = None, rating: Optional[str] = None,
             fjord: Optional[bool] = None, hidden: Optional[bool] = None,
@@ -56,6 +56,9 @@ class GalleryData:
         self.queries = queries
 
     def __str__(self) -> str:
+        return str(self.__dict__)
+
+    def __repr__(self) -> str:
         return str(self.__dict__)
 
     def __eq__(self, other: object) -> bool:
@@ -116,7 +119,7 @@ class TorrentClient(object):
     def connect(self) -> bool:
         pass
 
-    def __init__(self, address: str='localhost', port: int=9091, user: str='', password: str='', secure: bool=True) -> None:
+    def __init__(self, address: str = 'localhost', port: int = 9091, user: str = '', password: str = '', secure: bool = True) -> None:
         self.address = address
         self.port = str(port)
         self.user = user

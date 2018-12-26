@@ -22,6 +22,9 @@ def wanted_gallery_found_handler(sender: typing.Any, **kwargs: typing.Any) -> No
 
     notify_wanted_filters = [x.title or 'not set' for x in wanted_gallery_list if x.notify_when_found]
 
+    if not notify_wanted_filters:
+        return
+
     message = "Title: {}, source link: {}, link: {}, filters titles: {}".format(
         gallery.title,
         gallery.get_link(),
@@ -40,10 +43,15 @@ def wanted_gallery_found_handler(sender: typing.Any, **kwargs: typing.Any) -> No
     mails = users_to_mail.values_list('email', flat=True)
 
     try:
-        frontend_logger.error('Wanted Gallery found: sending emails to enabled users.')
+        frontend_logger.info('Wanted Gallery found: sending emails to enabled users.')
         # (subject, message, from_email, recipient_list)
-        datatuple = (
-            "Wanted Gallery match found", message, urlize(message), crawler_settings.mail_logging.from_, mails)
-        send_mass_html_mail((datatuple,), fail_silently=True)
+        datatuples = tuple([(
+            "Wanted Gallery match found",
+            message,
+            urlize(message),
+            crawler_settings.mail_logging.from_,
+            (mail,)
+        ) for mail in mails])
+        send_mass_html_mail(datatuples, fail_silently=True)
     except BadHeaderError:
         frontend_logger.error('Failed sending emails: Invalid header found.')

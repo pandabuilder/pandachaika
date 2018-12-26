@@ -17,9 +17,10 @@ from django.conf import settings
 
 from core.base.setup import Settings
 from core.local.foldercrawlerthread import FolderCrawlerThread
+from viewer.utils.actions import event_log
 from viewer.forms import (
-    ArchiveModForm, ImageFormSet
-)
+    ArchiveModForm, ImageFormSet,
+    ArchiveEditForm)
 from viewer.models import (
     Archive, Tag, Gallery,
     UserArchivePrefs
@@ -102,11 +103,36 @@ def archive_details(request: HttpRequest, pk: int, view: str = "cover") -> HttpR
                 user=request.user.pk, archive=pk)
         d.update({'user_archive_preferences': user_archive_preferences})
 
+    # In-place collaborator edit form
+    if request.user.has_perm('viewer.change_archive'):
+        if request.POST.get('change-archive'):
+            # create a form instance and populate it with data from the request:
+            edit_form = ArchiveEditForm(request.POST, instance=archive)
+            # check whether it's valid:
+            if edit_form.is_valid():
+                new_archive = edit_form.save()
+                message = 'Archive successfully modified'
+                messages.success(request, message)
+                frontend_logger.info("User {}: {}".format(request.user.username, message))
+                event_log(
+                    request.user,
+                    'CHANGE_ARCHIVE',
+                    content_object=new_archive,
+                    result='changed'
+                )
+                # return HttpResponseRedirect(request.META["HTTP_REFERER"])
+            else:
+                messages.error(request, 'The provided data is not valid', extra_tags='danger')
+                # return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        else:
+            edit_form = ArchiveEditForm(instance=archive)
+        d.update({'edit_form': edit_form})
+
     return render(request, "viewer/archive.html", d)
 
 
 @login_required
-def archive_update(request: HttpRequest, pk: int, tool: str=None, tool_use_id: str=None) -> HttpResponse:
+def archive_update(request: HttpRequest, pk: int, tool: str = None, tool_use_id: str = None) -> HttpResponse:
     """Update archive title, rating, tags, archives."""
     if not request.user.is_staff:
         messages.error(request, "You need to be an admin to update an archive.")
@@ -186,7 +212,14 @@ def archive_update(request: HttpRequest, pk: int, tool: str=None, tool_use_id: s
             if 'failed' in matched_gallery.dl_type:
                 matched_gallery.dl_type = 'manual:matched'
                 matched_gallery.save()
-
+        if "alternative_sources" in p:
+            lst = []
+            alternative_sources = p.getlist("alternative_sources")
+            for alternative_gallery in alternative_sources:
+                lst.append(Gallery.objects.get(pk=alternative_gallery))
+            archive.alternative_sources.set(lst)
+        else:
+            archive.alternative_sources.clear()
         archive.simple_save()
 
         messages.success(request, 'Updated archive: ' + str(archive.title))
@@ -277,11 +310,24 @@ def public_toggle(request: HttpRequest, pk: int) -> HttpResponse:
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
 
-    frontend_logger.info('Toggling public status for ' + archive.zipped.name)
-    archive.public_toggle()
-    if archive.gallery:
-        archive.gallery.public = archive.public
-        archive.gallery.save()
+    if archive.public:
+        archive.set_private()
+        frontend_logger.info('Setting public status to: private for ' + archive.zipped.name)
+        event_log(
+            request.user,
+            'PUBLISH_ARCHIVE',
+            content_object=archive,
+            result='published'
+        )
+    else:
+        archive.set_public()
+        frontend_logger.info('Setting public status to: public for ' + archive.zipped.name)
+        event_log(
+            request.user,
+            'UNPUBLISH_ARCHIVE',
+            content_object=archive,
+            result='unpublished'
+        )
 
     return HttpResponseRedirect(request.META["HTTP_REFERER"])
 
@@ -433,8 +479,10 @@ def delete_archive(request: HttpRequest, pk: int) -> HttpResponse:
 
             message = 'For archive: {}, deleting: {}'.format(archive.title, ', '.join(message_list))
 
-            frontend_logger.info(message)
+            frontend_logger.info("User {}: {}".format(request.user.username, message))
             messages.success(request, message)
+
+            gallery = archive.gallery
 
             if "mark-gallery-deleted" in p:
                 archive.gallery.mark_as_deleted()
@@ -444,6 +492,13 @@ def delete_archive(request: HttpRequest, pk: int) -> HttpResponse:
             if "delete-archive" in p:
                 archive.delete_files_but_archive()
                 archive.delete()
+
+            event_log(
+                request.user,
+                'DELETE_ARCHIVE',
+                content_object=gallery,
+                result='deleted'
+            )
 
             return HttpResponseRedirect(reverse('viewer:main-page'))
 

@@ -66,9 +66,11 @@
               </li>{% endfor %}
           </ul>
         </li>
+        <li class="list-group-item"><label class="label-extended">Wanted tags exclusive scope:</label>{{ wanted_gallery.wanted_tags_exclusive_scope|yesno }}</li>
         <li class="list-group-item"><label class="label-extended">Category:</label>{{ wanted_gallery.category }}</li>
         <li class="list-group-item"><label class="label-extended">Wanted page count lower bound:</label>{{ wanted_gallery.wanted_page_count_lower }}</li>
         <li class="list-group-item"><label class="label-extended">Wanted page count upper bound:</label>{{ wanted_gallery.wanted_page_count_upper }}</li>
+        <li class="list-group-item"><label class="label-extended">Provider:</label>{{ wanted_gallery.provider }}</li>
       </ul>
     </li>
     <li class="list-group-item"><label class="label-extended">Book type:</label>{{ wanted_gallery.book_type }}</li>

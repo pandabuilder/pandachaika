@@ -41,7 +41,6 @@ def guess_gallery_read_url(gallery_page_url, gallery: GalleryData, underscore=Tr
     # Example 3:
     # https://hentai.cafe/koppori-nama-beer-meeting/
     # https://hentai.cafe/manga/read/custom_hiiragisan/en/0/1/page/1
-    # TODO: Might need to switch from translating from the main URL to from gallery.title
     gallery_page_url = gallery_page_url.replace(constants.main_page, "")
     artists = [x.replace("artist:", "") for x in gallery.tags if x.startswith('artist:')]
     if artists:

@@ -5,7 +5,7 @@ import json
 import re
 
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 from django.core.paginator import Paginator, EmptyPage
 from django.db.models import Q
@@ -19,7 +19,7 @@ from core.base.utilities import str_to_int
 from core.base.utilities import timestamp_or_zero
 from viewer.models import Archive, Gallery, ArchiveQuerySet, GalleryQuerySet
 from viewer.utils.matching import generate_possible_matches_for_archives
-from viewer.views.head import gallery_filter_keys
+from viewer.views.head import gallery_filter_keys, gallery_order_fields
 
 crawler_logger = logging.getLogger('viewer.webcrawler')
 crawler_settings = settings.CRAWLER_SETTINGS
@@ -285,38 +285,7 @@ def json_search(request: HttpRequest) -> HttpResponse:
             if not results:
                 return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
             response = json.dumps(
-                [{
-                    'id': gallery.pk,
-                    'gid': gallery.gid,
-                    'token': gallery.token,
-                    'title': gallery.title,
-                    'title_jpn': gallery.title_jpn,
-                    'category': gallery.category,
-                    'uploader': gallery.uploader,
-                    'comment': gallery.comment,
-                    'posted': int(timestamp_or_zero(gallery.posted)),
-                    'filecount': gallery.filecount,
-                    'filesize': gallery.filesize,
-                    'expunged': gallery.expunged,
-                    'provider': gallery.provider,
-                    'rating': gallery.rating,
-                    'fjord': gallery.fjord,
-                    'tags': gallery.tag_list(),
-                    'link': gallery.get_link(),
-                    'thumbnail': request.build_absolute_uri(
-                        reverse('viewer:gallery-thumb', args=(gallery.pk,))) if gallery.thumbnail else '',
-                    'thumbnail_url': gallery.thumbnail_url,
-                    'archives': [
-                        {
-                            'link': request.build_absolute_uri(
-                                reverse('viewer:archive-download', args=(archive.pk,))
-                            ),
-                            'source': archive.source_type,
-                            'reason': archive.reason
-                        } for archive in gallery.archive_set.all()
-                    ],
-                } for gallery in results
-                ],
+                gallery_search_results_to_json(request, results),
                 # indent=2,
                 sort_keys=True,
                 ensure_ascii=False,
@@ -357,38 +326,7 @@ def json_search(request: HttpRequest) -> HttpResponse:
 
             response = json.dumps(
                 {
-                    'galleries': [{
-                        'id': gallery.pk,
-                        'gid': gallery.gid,
-                        'token': gallery.token,
-                        'title': gallery.title,
-                        'title_jpn': gallery.title_jpn,
-                        'category': gallery.category,
-                        'uploader': gallery.uploader,
-                        'comment': gallery.comment,
-                        'posted': int(timestamp_or_zero(gallery.posted)),
-                        'filecount': gallery.filecount,
-                        'filesize': gallery.filesize,
-                        'expunged': gallery.expunged,
-                        'provider': gallery.provider,
-                        'rating': gallery.rating,
-                        'fjord': gallery.fjord,
-                        'tags': gallery.tag_list(),
-                        'link': gallery.get_link(),
-                        'thumbnail': request.build_absolute_uri(
-                            reverse('viewer:gallery-thumb', args=(gallery.pk,))) if gallery.thumbnail else '',
-                        'thumbnail_url': gallery.thumbnail_url,
-                        'archives': [
-                            {
-                                'link': request.build_absolute_uri(
-                                    reverse('viewer:archive-download', args=(archive.pk,))
-                                ),
-                                'source': archive.source_type,
-                                'reason': archive.reason
-                            } for archive in gallery.archive_set.all()
-                        ],
-                    } for gallery in results
-                    ],
+                    'galleries': gallery_search_results_to_json(request, results),
                     'has_previous': results.has_previous(),
                     'has_next': results.has_next(),
                     'num_pages': paginator.num_pages,
@@ -451,8 +389,42 @@ def json_search(request: HttpRequest) -> HttpResponse:
         return HttpResponse(json.dumps({'result': "Request must be GET"}), content_type="application/json; charset=utf-8")
 
 
+def gallery_search_results_to_json(request: HttpRequest, galleries: GalleryQuerySet) -> List[Dict[str, Any]]:
+    return [{
+        'id': gallery.pk,
+        'gid': gallery.gid,
+        'token': gallery.token,
+        'title': gallery.title,
+        'title_jpn': gallery.title_jpn,
+        'category': gallery.category,
+        'uploader': gallery.uploader,
+        'comment': gallery.comment,
+        'posted': int(timestamp_or_zero(gallery.posted)),
+        'filecount': gallery.filecount,
+        'filesize': gallery.filesize,
+        'expunged': gallery.expunged,
+        'provider': gallery.provider,
+        'rating': gallery.rating,
+        'fjord': gallery.fjord,
+        'tags': gallery.tag_list(),
+        'link': gallery.get_link(),
+        'thumbnail': request.build_absolute_uri(
+            reverse('viewer:gallery-thumb', args=(gallery.pk,))) if gallery.thumbnail else '',
+        'thumbnail_url': gallery.thumbnail_url,
+        'archives': [
+            {
+                'link': request.build_absolute_uri(
+                    reverse('viewer:archive-download', args=(archive.pk,))
+                ),
+                'source': archive.source_type,
+                'reason': archive.reason
+            } for archive in gallery.archive_set.all()
+        ],
+    } for gallery in galleries
+    ]
+
+
 # Private API, checks for the API key.
-# TODO: Port information fetching options to GET.
 @csrf_exempt
 def json_parser(request: HttpRequest) -> HttpResponse:
     response = {}
@@ -692,10 +664,9 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                         args[k] = ''
 
                 # args = data
-                if not request.user.is_authenticated:
-                    args['public'] = True
-                else:
-                    args['public'] = False
+                # Already authorized by api key.
+                args['public'] = False
+
                 results = filter_galleries_no_request(args)
                 if not results:
                     return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
@@ -766,18 +737,18 @@ def simple_archive_filter(args: str, public: bool = True) -> ArchiveQuerySet:
             tag_name = scope_name[0]
         if tag.startswith("-"):
             results = results.exclude(
-                (Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)) |
-                (Q(custom_tags__name__contains=tag_name) & Q(custom_tags__scope__contains=tag_scope))
+                (Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope))
+                | (Q(custom_tags__name__contains=tag_name) & Q(custom_tags__scope__contains=tag_scope))
             )
         elif tag.startswith("^"):
             results = results.filter(
-                (Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope)) |
-                (Q(custom_tags__name__exact=tag_name) & Q(custom_tags__scope__exact=tag_scope))
+                (Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope))
+                | (Q(custom_tags__name__exact=tag_name) & Q(custom_tags__scope__exact=tag_scope))
             )
         else:
             results = results.filter(
-                (Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)) |
-                (Q(custom_tags__name__contains=tag_name) & Q(custom_tags__scope__contains=tag_scope))
+                (Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope))
+                | (Q(custom_tags__name__contains=tag_name) & Q(custom_tags__scope__contains=tag_scope))
             )
     results = results | results_title
 
@@ -790,7 +761,7 @@ def filter_galleries_no_request(filter_args: Dict[str, Any]) -> GalleryQuerySet:
 
     # sort and filter results by parameters
     order = "posted"
-    if filter_args["sort"]:
+    if filter_args["sort"] and filter_args["sort"] in gallery_order_fields:
         order = filter_args["sort"]
     if filter_args["asc_desc"] == "desc":
         order = '-' + order

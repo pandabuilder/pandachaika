@@ -123,6 +123,7 @@ class TestPageParsers(TestCase):
                 'genderbend',
                 'doujin',
             ],
+            comment="Takumi's life as a girl only continues to get more wild, as he (she?) continues to fall deeper into a life of promiscuity, drugs and unprotected sex with strangers. Will his friend Ryou be able to pull him out of this terrible spiral?",
             thumbnail_url='https://t.fakku.net/images/manga/t/tsf-story-append-20-english_1497401155_1502575464/thumbs/001.thumb.jpg',
         )
 

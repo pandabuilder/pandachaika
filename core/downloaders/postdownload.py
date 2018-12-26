@@ -96,7 +96,7 @@ class PostDownloader(object):
                         "For archive: {} size does not match gallery. Check the file manually.".format(archive)
                     )
 
-    def write_file_update_progress(self, cmd: str, callback: Callable, filesize: int=0, blocksize: int=8192, rest: bool=None) -> str:
+    def write_file_update_progress(self, cmd: str, callback: Callable, filesize: int = 0, blocksize: int = 8192, rest: bool = None) -> str:
         self.ftps.voidcmd('TYPE I')  # type: ignore
         with self.ftps.transfercmd(cmd, rest) as conn:  # type: ignore
             self.current_download['filesize'] = filesize
@@ -146,7 +146,7 @@ class PostDownloader(object):
             return None
         self.ftps.cwd(self_dir)
 
-    def download_all_missing(self, archives: Iterable[Archive]=None) -> None:
+    def download_all_missing(self, archives: Iterable[Archive] = None) -> None:
 
         files_torrent = []
         files_hath = []
@@ -346,7 +346,7 @@ class PostDownloader(object):
 
         self.ftps.close()
 
-    def copy_all_missing(self, mode, archives: Iterable[Archive]=None):
+    def copy_all_missing(self, mode, archives: Iterable[Archive] = None):
         files_torrent = []
         files_hath = []
 
@@ -486,7 +486,7 @@ class PostDownloader(object):
 
                 self.process_downloaded_archive(matched_file[2])
 
-    def transfer_all_missing(self, archives: Iterable[Archive]=None) -> None:
+    def transfer_all_missing(self, archives: Iterable[Archive] = None) -> None:
 
         if self.settings.download_handler.startswith('local'):
             self.copy_all_missing(self.settings.download_handler, archives)
@@ -583,7 +583,7 @@ class TimedPostDownloader(BaseScheduler):
     def current_download(self) -> List[Dict[str, Any]]:
         return [x.current_download for x in self.post_downloader.values()]
 
-    def __init__(self, *args: Any, parallel_post_downloaders: int=4, **kwargs: Any) -> None:
+    def __init__(self, *args: Any, parallel_post_downloaders: int = 4, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.post_downloader: Dict[int, PostDownloader] = {}
         self.post_queue: queue.Queue = queue.Queue()

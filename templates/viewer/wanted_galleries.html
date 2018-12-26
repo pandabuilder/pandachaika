@@ -49,6 +49,7 @@
         <input title="Book type" class="form-control" name="book_type" placeholder="Book type" value="{{ request.GET.book_type }}">
         <input title="Publisher" class="form-control" name="publisher" placeholder="Publisher" value="{{ request.GET.publisher }}">
         <input title="Reason" class="form-control" name="reason" placeholder="Reason" value="{{ request.GET.reason }}">
+        <input title="Provider" class="form-control" name="provider" placeholder="Provider" value="{{ request.GET.provider }}">
         <input id="checkbox-f6" class="custom-cb" type="checkbox" name="wanted-found" value="1" {% if "wanted-found" in request.GET %}checked{% endif %}><label for="checkbox-f6"><span><span></span></span>Found</label>
         <input id="checkbox-f7" class="custom-cb" type="checkbox" name="wanted-not-found" value="1" {% if "wanted-not-found" in request.GET %}checked{% endif %}><label for="checkbox-f7"><span><span></span></span>Not found</label>
         <input id="checkbox-f8" class="custom-cb" type="checkbox" name="wanted-no-found-galleries" value="1" {% if "wanted-no-found-galleries" in request.GET %}checked{% endif %}><label for="checkbox-f8"><span><span></span></span>No found galleries</label>

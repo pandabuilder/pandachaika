@@ -142,8 +142,8 @@ class FTPHandler(object):
         ftps.encoding = 'utf8'
         ftps.prot_p()
         for line in ftps.mlsd(facts=["size"]):
-            if(line[0] == remote_filename and
-                    local_filesize == int(line[1]["size"])):
+            if(line[0] == remote_filename
+                    and local_filesize == int(line[1]["size"])):
                 yield("File exists and size is equal.")
                 ftps.close()
                 return

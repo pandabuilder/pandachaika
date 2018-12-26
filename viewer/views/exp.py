@@ -3,6 +3,7 @@
 
 import json
 import re
+from typing import Dict, Any
 from itertools import chain
 
 from django.contrib.auth.decorators import login_required
@@ -20,6 +21,7 @@ from core.base.utilities import timestamp_or_zero, str_to_int
 from viewer.forms import ArchiveSearchForm
 from viewer.models import Gallery, Tag, Archive, Image, UserArchivePrefs, GalleryQuerySet, ArchiveQuerySet
 from viewer.views.head import archive_filter_keys, filter_archives
+
 
 crawler_settings = settings.CRAWLER_SETTINGS
 
@@ -210,24 +212,24 @@ def get_archive_data(data: DataDict) -> ArchiveQuerySet:
             scope_name = tag_clean.split(":", maxsplit=1)
             if term.startswith("-"):
                 tag_query = (
-                    Q(tags__name__contains=scope_name[1]) &
-                    Q(tags__scope__contains=scope_name[0])
+                    Q(tags__name__contains=scope_name[1])
+                    & Q(tags__scope__contains=scope_name[0])
                 ) if len(scope_name) > 1 else Q(tags__name__contains=scope_name[0])
                 results = results.exclude(
                     tag_query
                 )
             elif term.startswith("^"):
                 tag_query = (
-                    Q(tags__name__exact=scope_name[1]) &
-                    Q(tags__scope__exact=scope_name[0])
+                    Q(tags__name__exact=scope_name[1])
+                    & Q(tags__scope__exact=scope_name[0])
                 ) if len(scope_name) > 1 else Q(tags__name__exact=scope_name[0])
                 results = results.filter(
                     tag_query
                 )
             else:
                 tag_query = (
-                    Q(tags__name__contains=scope_name[1]) &
-                    Q(tags__scope__contains=scope_name[0])
+                    Q(tags__name__contains=scope_name[1])
+                    & Q(tags__scope__contains=scope_name[0])
                 ) if len(scope_name) > 1 else Q(tags__name__contains=scope_name[0])
                 results = results.filter(
                     tag_query
@@ -239,7 +241,7 @@ def get_archive_data(data: DataDict) -> ArchiveQuerySet:
 
 
 # TODO: move modifying actions to POST requests. If something changes here, must update panda-react too.
-def api(request: HttpRequest, model: str=None, obj_id: str=None, action: str=None) -> HttpResponse:
+def api(request: HttpRequest, model: str = None, obj_id: str = None, action: str = None) -> HttpResponse:
     if request.method == 'GET':
         data = request.GET
         if model == 'archive' and obj_id is not None:
@@ -333,39 +335,7 @@ def api(request: HttpRequest, model: str=None, obj_id: str=None, action: str=Non
                 user_arch_ids = UserArchivePrefs.objects.filter(
                     user=request.user.id, favorite_group=int(data["favorites"])).values_list('archive')
                 archives_list = archives_list.filter(id__in=user_arch_ids)
-            paginator = Paginator(archives_list, 48)
-            try:
-                page = int(request.GET.get("page", '1'))
-            except ValueError:
-                page = 1
-            try:
-                archives = paginator.page(page)
-            except EmptyPage:
-                # If page is out of range (e.g. 9999), deliver last page of results.
-                archives = paginator.page(paginator.num_pages)
-            response = json.dumps(
-                {
-                    'objects': [{
-                        'id': archive.pk,
-                        'title': archive.title,
-                        'filecount': archive.filecount,
-                        'filesize': archive.filesize,
-                        'download': request.build_absolute_uri(reverse('viewer:archive-download', args=(archive.pk,))),
-                        'url': request.build_absolute_uri(reverse('viewer:archive', args=(archive.pk,))),
-                        'image': (request.build_absolute_uri(archive.thumbnail.url) if archive.thumbnail else None),
-                        'image_height': (archive.thumbnail_height if archive.thumbnail else None),
-                        'image_width': (archive.thumbnail_width if archive.thumbnail else None),
-                        'tags': archive.tag_list_sorted(),
-                        'extracted': archive.extracted,
-                    } for archive in archives
-                    ],
-                    'has_previous': archives.has_previous(),
-                    'has_next': archives.has_next(),
-                    'num_pages': paginator.num_pages,
-                    'count': paginator.count,
-                    'number': archives.number,
-                }
-            )
+            response = archives_to_json_response(archives_list, request)
         elif model == 'archives':
 
             display_prms: DataDict = {}
@@ -396,7 +366,7 @@ def api(request: HttpRequest, model: str=None, obj_id: str=None, action: str=Non
             if 'asc_desc' not in parameters or parameters['asc_desc'] == '':
                 parameters['asc_desc'] = 'desc'
             if 'sort' not in parameters or parameters['sort'] == '':
-                if request.user.is_authenticated:
+                if request.user.is_authenticated or data.get('api_key', '') == crawler_settings.api_key:
                     parameters['sort'] = 'create_date'
                 else:
                     parameters['sort'] = 'public_date'
@@ -410,39 +380,7 @@ def api(request: HttpRequest, model: str=None, obj_id: str=None, action: str=Non
             if 'extracted' in data:
                 archives_list = archives_list.filter(extracted=True)
 
-            paginator = Paginator(archives_list, 48)
-            try:
-                page = int(request.GET.get("page", '1'))
-            except ValueError:
-                page = 1
-            try:
-                archives = paginator.page(page)
-            except EmptyPage:
-                # If page is out of range (e.g. 9999), deliver last page of results.
-                archives = paginator.page(paginator.num_pages)
-            response = json.dumps(
-                {
-                    'objects': [{
-                        'id': archive.pk,
-                        'title': archive.title,
-                        'filecount': archive.filecount,
-                        'filesize': archive.filesize,
-                        'download': request.build_absolute_uri(reverse('viewer:archive-download', args=(archive.pk,))),
-                        'url': request.build_absolute_uri(reverse('viewer:archive', args=(archive.pk,))),
-                        'image': (request.build_absolute_uri(archive.thumbnail.url) if archive.thumbnail else None),
-                        'image_height': (archive.thumbnail_height if archive.thumbnail else None),
-                        'image_width': (archive.thumbnail_width if archive.thumbnail else None),
-                        'tags': archive.tag_list_sorted(),
-                        'extracted': archive.extracted,
-                    } for archive in archives
-                    ],
-                    'has_previous': archives.has_previous(),
-                    'has_next': archives.has_next(),
-                    'num_pages': paginator.num_pages,
-                    'count': paginator.count,
-                    'number': archives.number,
-                }
-            )
+            response = archives_to_json_response(archives_list, request)
         elif model == 'me':
             response = json.dumps(
                 {
@@ -462,7 +400,44 @@ def api(request: HttpRequest, model: str=None, obj_id: str=None, action: str=Non
     return http_response
 
 
+def archives_to_json_response(archives_list: ArchiveQuerySet, request: HttpRequest) -> str:
+    paginator = Paginator(archives_list, 48)
+    try:
+        page = int(request.GET.get("page", '1'))
+    except ValueError:
+        page = 1
+    try:
+        archives = paginator.page(page)
+    except EmptyPage:
+        # If page is out of range (e.g. 9999), deliver last page of results.
+        archives = paginator.page(paginator.num_pages)
+    response = json.dumps(
+        {
+            'objects': [{
+                'id': archive.pk,
+                'title': archive.title,
+                'filecount': archive.filecount,
+                'filesize': archive.filesize,
+                'download': request.build_absolute_uri(reverse('viewer:archive-download', args=(archive.pk,))),
+                'url': request.build_absolute_uri(reverse('viewer:archive', args=(archive.pk,))),
+                'image': (request.build_absolute_uri(archive.thumbnail.url) if archive.thumbnail else None),
+                'image_height': (archive.thumbnail_height if archive.thumbnail else None),
+                'image_width': (archive.thumbnail_width if archive.thumbnail else None),
+                'tags': archive.tag_list_sorted(),
+                'extracted': archive.extracted,
+            } for archive in archives
+            ],
+            'has_previous': archives.has_previous(),
+            'has_next': archives.has_next(),
+            'num_pages': paginator.num_pages,
+            'count': paginator.count,
+            'number': archives.number,
+        }
+    )
+    return response
+
+
 @login_required
-def new_image_viewer(request: HttpRequest, archive: int=None, image: int=None) -> HttpResponse:
+def new_image_viewer(request: HttpRequest, archive: int = None, image: int = None) -> HttpResponse:
 
     return render(request, "viewer/new_image_viewer.html")

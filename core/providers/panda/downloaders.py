@@ -95,7 +95,7 @@ class ArchiveDownloader(BaseDownloader):
                 self.logger.error('Could not find archive link, page text: {}'.format(r.text))
                 self.return_code = 0
             else:
-                m = re.match("(.*?)(\?.*?)", archive_page_parser.archive)
+                m = re.match(r"(.*?)(\?.*?)", archive_page_parser.archive)
                 if m:
                     archive_page_parser.archive = m.group(1)
 
@@ -242,7 +242,7 @@ class TorrentDownloader(BaseTorrentDownloader):
             self.return_code = 0
             return
 
-        m = re.match("(.*?)(\?p=\d+)", torrent_link)
+        m = re.match(r"(.*?)(\?p=\d+)", torrent_link)
         if m:
             torrent_link = m.group(1)
 

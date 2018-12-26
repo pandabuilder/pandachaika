@@ -2,7 +2,7 @@ import os
 import re
 
 import time
-from typing import List, Tuple, Dict, Any, Optional
+from typing import List, Tuple, Optional
 import typing
 
 from core.base.comparison import get_gallery_closer_title_from_gallery_values, get_list_closer_gallery_titles_from_dict

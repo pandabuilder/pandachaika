@@ -50,7 +50,7 @@ class ESHomePageView(TemplateView):
         try:
             count_result = s.count()
         except elasticsearch.exceptions.RequestError:
-            message = 'Error parsing the query string, check your syntax. This characters must be escaped: + - = && || > < ! ( ) { } [ ] ^ " ~ * ? : \ /'
+            message = 'Error parsing the query string, check your syntax. This characters must be escaped: + - = && || > < ! ( ) { } [ ] ^ " ~ * ? : \\ /'
         per_page = 48
 
         context = super(ESHomePageView, self).get_context_data(**kwargs)

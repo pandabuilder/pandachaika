@@ -59,6 +59,18 @@ archive_filter_keys = (
     "qsearch"
 )
 
+archive_order_fields = (
+    "title", "title_jpn", "rating", "filesize",
+    "filecount", "posted", "create_date", "public_date",
+    "category", "reason", "source_type"
+)
+
+gallery_order_fields = (
+    "title", "title_jpn", "rating", "filesize",
+    "filecount", "posted", "create_date",
+    "category", "provider", "uploader"
+)
+
 wanted_gallery_filter_keys = (
     "title", "wanted_page_count_lower", "wanted_page_count_upper",
     "provider", "not_used", "wanted-should-search", "wanted-should-search-not", "book_type",
@@ -221,7 +233,7 @@ def image_url(request: HttpRequest, pk: int) -> HttpResponse:
         return HttpResponseRedirect(image.image.url)
 
 
-def gallery_details(request: HttpRequest, pk: int, tool: str=None) -> HttpResponse:
+def gallery_details(request: HttpRequest, pk: int, tool: str = None) -> HttpResponse:
     try:
         gallery = Gallery.objects.get(pk=pk)
     except Gallery.DoesNotExist:
@@ -406,7 +418,7 @@ def filter_galleries(request: HttpRequest, session_filters: Dict[str, str], requ
     if session_filters["asc_desc"] == "desc":
         order = '-' + order
 
-    results = Gallery.objects.eligible_for_use().order_by(order)
+    results = Gallery.objects.eligible_for_use()
 
     if not request.user.is_authenticated:
         results = results.filter(public=True)
@@ -441,7 +453,7 @@ def filter_galleries(request: HttpRequest, session_filters: Dict[str, str], requ
     if request_filters["provider"]:
         results = results.filter(provider=request_filters["provider"])
     if request_filters["not_used"]:
-        results = results.filter(archive__isnull=True)
+        results = results.non_used_galleries()
     if request_filters["contained"]:
         results = results.filter(gallery_container__isnull=False)
     if request_filters["contains"]:
@@ -471,6 +483,8 @@ def filter_galleries(request: HttpRequest, session_filters: Dict[str, str], requ
                 results = results.filter(
                     Q(tags__name__contains=tag_name),
                     Q(tags__scope__contains=tag_scope))
+
+    results = results.order_by(order)
 
     results = results.distinct()
 
@@ -604,7 +618,7 @@ def filter_archives(request: HttpRequest, session_filters: Dict[str, str], reque
     """
     # sort and filter results by parameters
     order = "posted"
-    if session_filters["sort"]:
+    if session_filters["sort"] and session_filters["sort"] in archive_order_fields:
         order = session_filters["sort"]
     if order == 'rating':
         order = 'gallery__' + order
@@ -662,24 +676,24 @@ def filter_archives(request: HttpRequest, session_filters: Dict[str, str], reque
                 tag_name = scope_name[0]
             if tag.startswith("-"):
                 tag_query = (
-                    (Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)) |
-                    (Q(custom_tags__name__contains=tag_name) & Q(custom_tags__scope__contains=tag_scope))
+                    (Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope))
+                    | (Q(custom_tags__name__contains=tag_name) & Q(custom_tags__scope__contains=tag_scope))
                 ) if tag_scope != '' else (Q(tags__name__contains=tag_name) | Q(custom_tags__name__contains=tag_name))
                 results = results.exclude(
                     tag_query
                 )
             elif tag.startswith("^"):
                 tag_query = (
-                    (Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope)) |
-                    (Q(custom_tags__name__exact=tag_name) & Q(custom_tags__scope__exact=tag_scope))
+                    (Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope))
+                    | (Q(custom_tags__name__exact=tag_name) & Q(custom_tags__scope__exact=tag_scope))
                 ) if tag_scope != '' else (Q(tags__name__exact=tag_name) | Q(custom_tags__name__exact=tag_name))
                 results = results.filter(
                     tag_query
                 )
             else:
                 tag_query = (
-                    (Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)) |
-                    (Q(custom_tags__name__contains=tag_name) & Q(custom_tags__scope__contains=tag_scope))
+                    (Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope))
+                    | (Q(custom_tags__name__contains=tag_name) & Q(custom_tags__scope__contains=tag_scope))
                 ) if tag_scope != '' else (Q(tags__name__contains=tag_name))
                 results = results.filter(
                     tag_query
@@ -764,18 +778,18 @@ def quick_search(request: HttpRequest, parameters: DataDict, display_parameters:
             tag_name = scope_name[0]
         if tag.startswith("-"):
             results = results.exclude(
-                (Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)) |
-                (Q(custom_tags__name__contains=tag_name) & Q(custom_tags__scope__contains=tag_scope))
+                (Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope))
+                | (Q(custom_tags__name__contains=tag_name) & Q(custom_tags__scope__contains=tag_scope))
             )
         elif tag.startswith("^"):
             results = results.filter(
-                (Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope)) |
-                (Q(custom_tags__name__exact=tag_name) & Q(custom_tags__scope__exact=tag_scope))
+                (Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope))
+                | (Q(custom_tags__name__exact=tag_name) & Q(custom_tags__scope__exact=tag_scope))
             )
         else:
             results = results.filter(
-                (Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)) |
-                (Q(custom_tags__name__contains=tag_name) & Q(custom_tags__scope__contains=tag_scope))
+                (Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope))
+                | (Q(custom_tags__name__contains=tag_name) & Q(custom_tags__scope__contains=tag_scope))
             )
     if results_url:
         results = results | results_title | results_url
@@ -937,10 +951,16 @@ def url_submit(request: HttpRequest) -> HttpResponse:
         mails = users_to_mail.values_list('email', flat=True)
 
         try:
-            frontend_logger.error('New submission: sending emails to enabled users.')
+            frontend_logger.info('New submission: sending emails to enabled users.')
             # (subject, message, from_email, recipient_list)
-            datatuple = (admin_subject, "\n".join(admin_messages), urlize("\n".join(admin_messages)), crawler_settings.mail_logging.from_, mails)
-            send_mass_html_mail((datatuple, ), fail_silently=True)
+            datatuples = tuple([(
+                admin_subject,
+                "\n".join(admin_messages),
+                urlize("\n".join(admin_messages)),
+                crawler_settings.mail_logging.from_,
+                (mail,)
+            ) for mail in mails])
+            send_mass_html_mail(datatuples, fail_silently=True)
         except BadHeaderError:
             frontend_logger.error('Failed sending emails: Invalid header found.')
 
@@ -1066,24 +1086,24 @@ def filter_archives_simple(params: Dict[str, Any]) -> ArchiveQuerySet:
                 tag_name = scope_name[0]
             if tag.startswith("-"):
                 tag_query = (
-                    (Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)) |
-                    (Q(custom_tags__name__contains=tag_name) & Q(custom_tags__scope__contains=tag_scope))
+                    (Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope))
+                    | (Q(custom_tags__name__contains=tag_name) & Q(custom_tags__scope__contains=tag_scope))
                 ) if tag_scope != '' else (Q(tags__name__contains=tag_name) | Q(custom_tags__name__contains=tag_name))
                 results = results.exclude(
                     tag_query
                 )
             elif tag.startswith("^"):
                 tag_query = (
-                    (Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope)) |
-                    (Q(custom_tags__name__exact=tag_name) & Q(custom_tags__scope__exact=tag_scope))
+                    (Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope))
+                    | (Q(custom_tags__name__exact=tag_name) & Q(custom_tags__scope__exact=tag_scope))
                 ) if tag_scope != '' else (Q(tags__name__exact=tag_name) | Q(custom_tags__name__exact=tag_name))
                 results = results.filter(
                     tag_query
                 )
             else:
                 tag_query = (
-                    (Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)) |
-                    (Q(custom_tags__name__contains=tag_name) & Q(custom_tags__scope__contains=tag_scope))
+                    (Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope))
+                    | (Q(custom_tags__name__contains=tag_name) & Q(custom_tags__scope__contains=tag_scope))
                 ) if tag_scope != '' else (Q(tags__name__contains=tag_name))
                 results = results.filter(
                     tag_query
@@ -1241,6 +1261,8 @@ def filter_wanted_galleries_simple(params: Dict[str, Any]) -> QuerySet:
     if params['with-possible-matches']:
         results = results.annotate(
             num_possible=Count('possible_matches')).filter(num_possible__gt=0)
+    if params['provider']:
+        results = results.filter(provider=params['provider'])
 
     if params["tags"]:
         tags = params["tags"].split(',')
@@ -1256,24 +1278,24 @@ def filter_wanted_galleries_simple(params: Dict[str, Any]) -> QuerySet:
                 tag_name = scope_name[0]
             if tag.startswith("-"):
                 tag_query = (
-                    (Q(wanted_tags__name__contains=tag_name) & Q(wanted_tags__scope__contains=tag_scope)) |
-                    (Q(unwanted_tags__name__contains=tag_name) & Q(unwanted_tags__scope__contains=tag_scope))
+                    (Q(wanted_tags__name__contains=tag_name) & Q(wanted_tags__scope__contains=tag_scope))
+                    | (Q(unwanted_tags__name__contains=tag_name) & Q(unwanted_tags__scope__contains=tag_scope))
                 ) if tag_scope != '' else (Q(wanted_tags__name__contains=tag_name) | Q(unwanted_tags__name__contains=tag_name))
                 results = results.exclude(
                     tag_query
                 )
             elif tag.startswith("^"):
                 tag_query = (
-                    (Q(wanted_tags__name__exact=tag_name) & Q(wanted_tags__scope__exact=tag_scope)) |
-                    (Q(unwanted_tags__name__exact=tag_name) & Q(unwanted_tags__scope__exact=tag_scope))
+                    (Q(wanted_tags__name__exact=tag_name) & Q(wanted_tags__scope__exact=tag_scope))
+                    | (Q(unwanted_tags__name__exact=tag_name) & Q(unwanted_tags__scope__exact=tag_scope))
                 ) if tag_scope != '' else (Q(wanted_tags__name__exact=tag_name) | Q(unwanted_tags__name__exact=tag_name))
                 results = results.filter(
                     tag_query
                 )
             else:
                 tag_query = (
-                    (Q(wanted_tags__name__contains=tag_name) & Q(wanted_tags__scope__contains=tag_scope)) |
-                    (Q(unwanted_tags__name__contains=tag_name) & Q(unwanted_tags__scope__contains=tag_scope))
+                    (Q(wanted_tags__name__contains=tag_name) & Q(wanted_tags__scope__contains=tag_scope))
+                    | (Q(unwanted_tags__name__contains=tag_name) & Q(unwanted_tags__scope__contains=tag_scope))
                 ) if tag_scope != '' else (Q(wanted_tags__name__contains=tag_name) | Q(unwanted_tags__name__contains=tag_name))
                 results = results.filter(
                     tag_query

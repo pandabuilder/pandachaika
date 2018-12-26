@@ -512,9 +512,9 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
 
     if not request.user.is_staff:
         results = WantedGallery.objects.filter(
-            Q(should_search=True) &
-            Q(found=False) &
-            Q(public=True)
+            Q(should_search=True)
+            & Q(found=False)
+            & Q(public=True)
         ).prefetch_related(
             'artists',
             'announces'

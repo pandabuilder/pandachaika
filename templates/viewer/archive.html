@@ -11,39 +11,41 @@
   <!-- Archives  -->
   <ul class="info">
     {% if user.is_authenticated %}
-      <li class="right">
-        Archive: {% if user.is_staff %}
-        <a href="{% url 'viewer:archive-extract-toggle' archive.pk %}">{% if images %}reduce{% elif archive.crc32 %}
-          expand{% endif %}</a>
-      {% endif %} {% if user.is_staff %}<a href="{% url 'viewer:archive-recalc-info' archive.pk %}">recalc</a>
-      {% endif %} {% if user.is_staff %}<a href="{% url 'viewer:archive-recall-api' archive.pk %}">
-        recall api
-      </a> {% endif %} {% if user.is_staff %}
-        <a href="{% url 'viewer:archive-rematch' archive.pk %}">rematch</a>
-      {% endif %} {% if user.is_staff %}
-        <a href="{% url 'viewer:archive-delete' archive.pk %}">delete</a>
+      <li><div class="d-flex justify-content-end">
+        <div>Archive:</div>{% if user.is_staff %}
+        <div class="pl-1"><a href="{% url 'viewer:archive-extract-toggle' archive.pk %}">{% if images %}reduce{% elif archive.crc32 %}
+          expand{% endif %}</a></div>
       {% endif %}
+        {% if user.is_staff %}<div class="pl-1"><a href="{% url 'viewer:archive-recalc-info' archive.pk %}">recalc</a></div>
+      {% endif %}
+        {% if user.is_staff %}<div class="pl-1"><a href="{% url 'viewer:archive-recall-api' archive.pk %}">recall api</a></div>{% endif %}
+        {% if user.is_staff %}<div class="pl-1"><a href="{% url 'viewer:archive-rematch' archive.pk %}">rematch</a></div>{% endif %}
+        {% if user.is_staff %}<div class="pl-1"><a href="{% url 'viewer:archive-delete' archive.pk %}">delete</a></div>{% endif %}
         {% if user.is_staff %}
-          {% if archive.gallery %}<a href="{% url 'viewer:gallery-tool' archive.gallery.pk 'toggle-hidden' %}">{% if archive.gallery.hidden %}open{% else %}hidden{% endif %}</a>{% endif %}
-          <a href="{% url 'viewer:archive-public-toggle' archive.pk %}">{% if archive.public %}private{% else %}public{% endif %}</a>
+          {% if archive.gallery %}<div class="pl-1"><a href="{% url 'viewer:gallery-tool' archive.gallery.pk 'toggle-hidden' %}">{% if archive.gallery.hidden %}open{% else %}hidden{% endif %}</a></div>{% endif %}
+          <div class="pl-1"><a href="{% url 'viewer:archive-public-toggle' archive.pk %}">{% if archive.public %}private{% else %}public{% endif %}</a></div>
         {% endif %}
-        {% if user.is_staff %}<a href="{% url 'admin:viewer_archive_change' archive.pk %}">admin</a>
-        {% endif %}
+        {% if user.is_staff %}<div class="pl-1"><a href="{% url 'admin:viewer_archive_change' archive.pk %}">admin</a></div>{% endif %}
         {% if user_archive_preferences.favorite_group == 0 %}
-          <a href="{% url 'viewer:user-archive-preferences' archive.pk 'favorite' %}">favorite</a>
-        {% else %} <a href="{% url 'viewer:user-archive-preferences' archive.pk 'unfavorite' %}">unfavorite</a>
+          <div class="pl-1"><a href="{% url 'viewer:user-archive-preferences' archive.pk 'favorite' %}">favorite</a></div>
+        {% else %} <div class="pl-1"><a href="{% url 'viewer:user-archive-preferences' archive.pk 'unfavorite' %}">unfavorite</a></div>
         {% endif %}
-        {% if archive.extracted %}
-        <br> View: <a href="{% url 'viewer:archive-details' archive.pk 'cover' %}">cover</a>
-        <a href="{% url 'viewer:archive-details' archive.pk 'thumbnails' %}">thumbnails</a>
-        <a href="{% url 'viewer:archive-details' archive.pk 'full' %}">full</a>
-        <a href="{% url 'viewer:archive-details' archive.pk 'single' %}">single</a>
+        {% if user.is_staff %}<div class="pl-1"><a href="{% url 'viewer:archive-details' archive.pk 'edit' %}">edit</a></div>
         {% endif %}
-        {% if user.is_staff %}<a href="{% url 'viewer:archive-details' archive.pk 'edit' %}">edit</a>
-        {% endif %}
+        </div>
       </li>
+      {% if archive.extracted %}
+      <li><div class="d-flex justify-content-end">
+
+          <div class="pl-1">View: <a href="{% url 'viewer:archive-details' archive.pk 'cover' %}">cover</a></div>
+          <div class="pl-1"><a href="{% url 'viewer:archive-details' archive.pk 'thumbnails' %}">thumbnails</a></div>
+          <div class="pl-1"><a href="{% url 'viewer:archive-details' archive.pk 'full' %}">full</a></div>
+          <div class="pl-1"><a href="{% url 'viewer:archive-details' archive.pk 'single' %}">single</a></div>
+        </div>
+      </li>
+      {% endif %}
     {% endif %}
-    <li class="title-main{% if not archive.crc32 %} archive-incomplete{% endif %}">{{ archive.title }}</li>
+    <li class="title-main{% if not archive.crc32 %} archive-incomplete{% endif %}"><h5>{{ archive.title }}</h5></li>
     {% if archive.title_jpn %}<li class="subtitle">{{ archive.title_jpn }}</li>{% endif %}
     <li class="subtitle">
       <table>
@@ -100,6 +102,18 @@
             <th>Metadata</th>
             <td><a href="{% url 'viewer:gallery' archive.gallery_id %}">{% url 'viewer:gallery' archive.gallery_id %}</a></td>
           </tr>
+          <tr>
+            <th>Alternative sources</th>
+            <td>
+              <ul class="simple-tags">
+                {% for alternative_gallery in archive.alternative_sources.all %}
+                  <li>
+                    <a href="{% url 'viewer:gallery' alternative_gallery.pk %}">{{ alternative_gallery.title }}</a>
+                  </li>
+                {% endfor %}
+              </ul>
+            </td>
+          </tr>
         </table>
       </li>
     {% endif %}
@@ -137,17 +151,38 @@
         </ul>
       </li>
     {% endif %}
+    <li class="subtitle">
     {% if user.is_staff %}
       {% if not images and archive.crc32 %}
-        <li class="subtitle">
           <a class="btn btn-light" href="{% url 'viewer:archive-extract-toggle' archive.pk %}">Expand archive</a>
           <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}">Download archive</a>
           <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}?original=1">Download with original name</a>
           {% if archive.thumbnail.name %}
             <a class="btn btn-light img-preview" data-image-url="{{ archive.thumbnail.url }}" rel="popover">Hover for cover</a>
           {% endif %}
-        </li>
       {% endif %}
+      <button class="btn btn-secondary" id="edit-archive" data-toggle="collapse" data-target="#change-archive-form" name="edit-archive" type="button" aria-label="toggle edit archive">Edit <i class="fas fa-chevron-down"></i></button>
+
+    {% elif archive.crc32 %}
+        <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}">Download archive</a>
+        <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}?original=1">Download with original name</a>
+        {% if archive.thumbnail.name %}
+          <a class="btn btn-light img-preview" data-image-url="{{ archive.thumbnail.url }}" rel="popover">Hover for cover</a>
+        {% endif %}
+        {% if perms.viewer.change_archive %}
+        <button class="btn btn-secondary" id="edit-archive" data-toggle="collapse" data-target="#change-archive-form" name="edit-archive" type="button" aria-label="toggle edit archive">Edit <i class="fas fa-chevron-down"></i></button>
+        {% endif %}
+    {% else %}
+        {% if perms.viewer.change_archive %}
+        <button class="btn btn-secondary" id="edit-archive" data-toggle="collapse" data-target="#change-archive-form" name="edit-archive" type="button" aria-label="toggle edit archive">Edit <i class="fas fa-chevron-down"></i></button>
+        {% endif %}
+    {% endif %}
+    </li>
+    {% if perms.viewer.change_archive %}
+    {% include 'viewer/include/archive_edit.html' %}
+    {% endif %}
+     <!-- Pagination and messages -->
+    {% if user.is_staff %}
       {% if images and images.paginator.num_pages > 1 %}
         <!-- Next/Prev page links  -->
         <li class="text-center">
@@ -162,15 +197,8 @@
       {% if not archive.crc32 %}
         The file is still being downloaded, cannot operate it unless it finishes
       {% endif %}
-    {% elif archive.crc32 %}
-      <li class="subtitle">
-        <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}">Download archive</a>
-        <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}?original=1">Download with original name</a>
-        {% if archive.thumbnail.name %}
-          <a class="btn btn-light img-preview" data-image-url="{{ archive.thumbnail.url }}" rel="popover">Hover for cover</a>
-        {% endif %}
-      </li>
     {% endif %}
+
     {% if user.is_staff %}
       {% if view == "edit" %}
         <!-- EDIT VIEW  -->
@@ -259,6 +287,24 @@
   </ul>
 {% endblock %}
 {% block afterJQ %}
+  {% if perms.viewer.change_archive %}
+  {{ edit_form.media }}
+  {% load compress %}
+  {% compress js %}
+    <script>
+    $('#edit-archive').click(function () {
+    if($('#edit-archive i').hasClass('fa-chevron-down'))
+    {
+       $('#edit-archive').html('Edit <i class="fas fa-chevron-up"></i>');
+    }
+    else
+    {
+        $('#edit-archive').html('Edit <i class="fas fa-chevron-down"></i>');
+    }
+    });
+    </script>
+  {% endcompress %}
+  {% endif %}
   {% if user.is_staff %}
     {{ form.media }}
     <script type="text/javascript">

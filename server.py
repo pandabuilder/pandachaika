@@ -159,9 +159,9 @@ if __name__ == '__main__':
                     local_settings=crawler_settings).subscribe()
 
     cherrypy.log(
-        "Loading and serving Panda Backup. Listening on " +
-        crawler_settings.webserver.bind_address + ":" +
-        str(cherrypy_port)
+        "Loading and serving Panda Backup. Listening on "
+        + crawler_settings.webserver.bind_address + ":"
+        + str(cherrypy_port)
     )
 
     cherrypy.quickstart()

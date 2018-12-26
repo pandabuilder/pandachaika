@@ -12,10 +12,12 @@ test:
   stage: test
   script:
   - pip3.6 install -r requirements.txt
+  - pip3.6 install coverage
+  - pip3.6 install django-nose
   - python3.6 manage.py test viewer.tests.test_internal
   - pip3.6 install flake8
-  - pip3.6 install mypy
-  - flake8 --ignore="E501,E402,F401" --exclude="migrations,ENV,src,.mypy_cache" .
+  - pip3.6 install mypy==0.650
+  - flake8 --ignore="E501,E402,F401,W503" --exclude="migrations,ENV,src,.mypy_cache" .
   - mypy . --ignore-missing-imports
   cache:
     paths:

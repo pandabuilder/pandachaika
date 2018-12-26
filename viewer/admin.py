@@ -29,7 +29,7 @@ class UpdateActionForm(ActionForm):
 
 
 class ArchiveAdmin(admin.ModelAdmin):
-    raw_id_fields = ("gallery", "custom_tags", "tags")
+    raw_id_fields = ("gallery", "custom_tags", "tags", "alternative_sources")
     search_fields = ["title", "title_jpn"]
     list_display = ["title", "zipped", "gallery_id", "filesize",
                     "filecount", "create_date"]

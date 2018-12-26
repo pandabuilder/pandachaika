@@ -4,12 +4,14 @@ import shutil
 import typing
 import uuid
 import zipfile
-from collections import Counter, defaultdict
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 from itertools import chain
 
+import elasticsearch
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
+from django.core.files.storage import FileSystemStorage
 from django.templatetags.static import static
 from os.path import join as pjoin, basename
 from tempfile import NamedTemporaryFile
@@ -46,19 +48,30 @@ from core.base.utilities import (
     get_zip_fileinfo, zfill_to_three,
     sha1_from_file_object, discard_zipfile_contents,
     clean_title,
-    compare_search_title_with_strings, request_with_retries, send_pushover_notification)
-from core.base.types import GalleryData, DataDict, OptionalLogger
+    request_with_retries)
+from core.base.types import GalleryData, DataDict
 from core.base.utilities import (
     get_dict_allowed_fields, replace_illegal_name
 )
 from viewer.utils.tags import sort_tags, sort_tags_str
 
-if typing.TYPE_CHECKING:
-    from core.base.setup import Settings
 
 T = typing.TypeVar('T')
 
 options.DEFAULT_NAMES += 'es_index_name', 'es_type_name', 'es_mapping'
+
+
+class OriginalFilenameFileSystemStorage(FileSystemStorage):
+
+    def get_valid_name(self, name):
+        """
+        Return a filename, based on the provided filename, that's suitable for
+        use in the target storage system.
+        """
+        return name
+
+
+fs = OriginalFilenameFileSystemStorage()
 
 
 class SpacedSearch(Lookup):
@@ -116,6 +129,7 @@ class GalleryQuerySet(models.QuerySet):
             ~Q(dl_type__contains='skipped'),
             Q(archive__isnull=True),
             Q(gallery_container__archive__isnull=True),
+            Q(alternative_sources__isnull=True),
             **kwargs
         ).order_by('-create_date')
 
@@ -321,8 +335,8 @@ class ArchiveManager(models.Manager):
 
     def filter_by_dl_remote(self) -> ArchiveQuerySet:
         return self.filter(
-            Q(crc32='') &
-            (
+            Q(crc32='')
+            & (
                 Q(match_type__icontains='torrent') | Q(match_type__icontains='hath')
             )
         )
@@ -503,6 +517,16 @@ class Gallery(models.Model):
         self.public = not self.public
         self.save()
 
+    def set_public(self) -> None:
+
+        self.public = True
+        self.save()
+
+    def set_private(self) -> None:
+
+        self.public = False
+        self.save()
+
     def is_deleted(self) -> bool:
         return self.status == self.DELETED
 
@@ -560,8 +584,7 @@ def thumbnail_post_delete_handler(sender: typing.Any, **kwargs: typing.Any) -> N
 
 
 def archive_path_handler(instance: 'Archive', filename: str) -> str:
-    return "galleries/archive_uploads/{file}".format(id=instance.id,
-                                                     file=filename)
+    return "galleries/archive_uploads/{file}".format(file=filename)
 
 
 def thumb_path_handler(instance: 'Archive', filename: str) -> str:
@@ -574,7 +597,7 @@ class Archive(models.Model):
     title = models.CharField(max_length=500, blank=True, null=True)
     title_jpn = models.CharField(max_length=500, blank=True, null=True, default='')
     zipped = models.FileField(
-        'File', upload_to=archive_path_handler, max_length=500)
+        'File', upload_to=archive_path_handler, max_length=500, storage=fs)
     custom_tags = models.ManyToManyField(Tag, blank=True, default='')
     crc32 = models.CharField('CRC32', max_length=10, blank=True)
     match_type = models.CharField(
@@ -603,6 +626,9 @@ class Archive(models.Model):
         through='ArchiveMatches', through_fields=('archive', 'gallery'))
     extracted = models.BooleanField(default=False)
     tags = models.ManyToManyField(Tag, related_name='gallery_tags', blank=True, default='')
+    alternative_sources = models.ManyToManyField(
+        Gallery, related_name="alternative_sources",
+        blank=True, default='')
 
     objects = ArchiveManager()
 
@@ -780,8 +806,8 @@ class Archive(models.Model):
 
     def images(self) -> str:
         lst = [x.image.name for x in self.image_set.all()]
-        lst = ["<a href='/media/images/extracted/archive_" + str(self.id) +
-               "/full/%s'>%s</a>" % (x, x.split('/')[-1]) for x in lst]
+        lst = ["<a href='/media/images/extracted/archive_" + str(self.id)
+               + "/full/%s'>%s</a>" % (x, x.split('/')[-1]) for x in lst]
         return ', '.join(lst)
 
     def public_toggle(self) -> None:
@@ -796,7 +822,7 @@ class Archive(models.Model):
         elif not self.public:
             self.simple_save()
 
-    def set_public(self, reason: str='') -> None:
+    def set_public(self, reason: str = '') -> None:
 
         if not os.path.isfile(self.zipped.path) or not self.crc32:
             return
@@ -814,7 +840,7 @@ class Archive(models.Model):
             self.gallery.public = True
             self.gallery.save()
 
-    def set_private(self, reason: str='') -> None:
+    def set_private(self, reason: str = '') -> None:
 
         if not os.path.isfile(self.zipped.path) or not self.crc32:
             return
@@ -981,7 +1007,7 @@ class Archive(models.Model):
         self.simple_save()
         return True
 
-    def generate_image_set(self, force: bool=False) -> None:
+    def generate_image_set(self, force: bool = False) -> None:
 
         if not os.path.isfile(self.zipped.path):
             return
@@ -1023,13 +1049,16 @@ class Archive(models.Model):
         prev_pk = self.pk
         super(Archive, self).delete(*args, **kwargs)
         if settings.ES_AUTOREFRESH:
-            settings.ES_CLIENT.delete(
-                index=self._meta.es_index_name,
-                doc_type=self._meta.es_type_name,
-                id=prev_pk,
-                refresh=True,
-                request_timeout=30
-            )
+            try:
+                settings.ES_CLIENT.delete(
+                    index=self._meta.es_index_name,
+                    doc_type=self._meta.es_type_name,
+                    id=prev_pk,
+                    refresh=True,
+                    request_timeout=30
+                )
+            except elasticsearch.exceptions.NotFoundError:
+                pass
 
     def simple_save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
         is_new = self.pk
@@ -1038,16 +1067,20 @@ class Archive(models.Model):
             payload = self.es_repr()
             if is_new is not None:
                 del payload['_id']
-                settings.ES_CLIENT.update(
-                    index=self._meta.es_index_name,
-                    doc_type=self._meta.es_type_name,
-                    id=self.pk,
-                    refresh=True,
-                    body={
-                        'doc': payload
-                    },
-                    request_timeout=30
-                )
+                try:
+                    settings.ES_CLIENT.update(
+                        index=self._meta.es_index_name,
+                        doc_type=self._meta.es_type_name,
+                        id=self.pk,
+                        refresh=True,
+                        body={
+                            'doc': payload
+                        },
+                        request_timeout=30
+                    )
+                except elasticsearch.exceptions.NotFoundError:
+                    pass
+
             else:
                 settings.ES_CLIENT.create(
                     index=self._meta.es_index_name,
@@ -1127,12 +1160,12 @@ class Archive(models.Model):
             self.title_jpn = self.gallery.title_jpn
 
         # crc32
-        if self.crc32 is None:
+        if self.crc32 is None or self.crc32 == '':
             self.crc32 = calc_crc32(self.zipped.path)
 
         # size
-        if self.filesize is None:
-            self.filesize = get_zip_filesize(
+        if self.filesize is None or self.filecount is None:
+            self.filesize, self.filecount = get_zip_fileinfo(
                 self.zipped.path)
 
         self.simple_save(force_update=True)
@@ -1159,7 +1192,7 @@ class Archive(models.Model):
         self.simple_save()
         return True
 
-    def generate_possible_matches(self, cutoff: float=0.4, max_matches: int=20, clear_title: bool=False, provider_filter: str='') -> None:
+    def generate_possible_matches(self, cutoff: float = 0.4, max_matches: int = 20, clear_title: bool = False, provider_filter: str = '') -> None:
         if not self.match_type == 'non-match':
             return
 
@@ -1395,9 +1428,9 @@ def create_favorites(sender, instance, created, **kwargs):
 
 def users_with_perm(app: str, perm_name: str, *args: typing.Any, **kwargs: typing.Any):
     return User.objects.filter(
-        Q(is_superuser=True) |
-        Q(user_permissions__codename=perm_name, user_permissions__content_type__app_label=app) |
-        Q(groups__permissions__codename=perm_name, groups__permissions__content_type__app_label=app)
+        Q(is_superuser=True)
+        | Q(user_permissions__codename=perm_name, user_permissions__content_type__app_label=app)
+        | Q(groups__permissions__codename=perm_name, groups__permissions__content_type__app_label=app)
     ).filter(*args, **kwargs).distinct()
 
 
@@ -1518,10 +1551,10 @@ class WantedGalleryManager(models.Manager):
 
     def eligible_to_search(self) -> QuerySet:
         return self.filter(
-            Q(release_date__lte=django_tz.now(), should_search=True) &
-            (
-                Q(found=False) |
-                Q(found=True, keep_searching=True)
+            Q(release_date__lte=django_tz.now(), should_search=True)
+            & (
+                Q(found=False)
+                | Q(found=True, keep_searching=True)
             )
         )
 
@@ -1549,7 +1582,7 @@ class WantedGallery(models.Model):
     notify_when_found = models.BooleanField('Notify when found', default=True)
     reason = models.CharField(
         'Reason', max_length=200, blank=True, null=True, default='backup')
-    search_title = models.CharField(max_length=500, blank=True, null=True)
+    search_title = models.CharField(max_length=500, blank=True, default='')
     unwanted_title = models.CharField(max_length=500, blank=True, default='')
     wanted_page_count_lower = models.IntegerField(blank=True, default=0)
     wanted_page_count_upper = models.IntegerField(blank=True, default=0)
@@ -1580,6 +1613,11 @@ class WantedGallery(models.Model):
     class Meta:
         verbose_name_plural = "Wanted galleries"
         ordering = ['-release_date']
+        permissions = (
+            ("edit_search_filter_wanted_gallery", "Can edit wanted galleries search filter parameters"),
+            ("edit_search_dates_wanted_gallery", "Can edit wanted galleries search date parameters"),
+            ("edit_search_notify_wanted_gallery", "Can edit wanted galleries search notify parameter"),
+        )
 
     def __str__(self) -> str:
         return self.title
@@ -1612,7 +1650,7 @@ class WantedGallery(models.Model):
         self.release_date = datetime.combine(most_occurring_date, datetime.min.time())
         self.save()
 
-    def search_gallery_title_internal_matches(self, provider_filter: str='', cutoff: float=0.4, max_matches: int=20) -> None:
+    def search_gallery_title_internal_matches(self, provider_filter: str = '', cutoff: float = 0.4, max_matches: int = 20) -> None:
         galleries_title_id = []
 
         if provider_filter:
@@ -1647,6 +1685,11 @@ class WantedGallery(models.Model):
     def set_public(self) -> None:
 
         self.public = True
+        self.save()
+
+    def set_private(self) -> None:
+
+        self.public = False
         self.save()
 
     def get_absolute_url(self) -> str:

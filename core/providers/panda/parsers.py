@@ -39,7 +39,7 @@ class Parser(BaseParser):
 
         for page_link in page_links:
 
-            m = re.search('(.+)/s/(\w+)/(\d+)-(\d+)', page_link)
+            m = re.search(r'(.+)/s/(\w+)/(\d+)-(\d+)', page_link)
             if not m:
                 continue
             api_page_links.append(
@@ -310,7 +310,7 @@ class Parser(BaseParser):
     def get_feed_urls() -> List[str]:
         return [constants.rss_url, ]
 
-    def crawl_feed(self, feed_url: str=None) -> List[str]:
+    def crawl_feed(self, feed_url: str = None) -> List[str]:
 
         urls = []
 
@@ -335,13 +335,13 @@ class Parser(BaseParser):
 
     @staticmethod
     def id_from_url(url: str) -> Optional[str]:
-        m = re.search('(.+)/g/(\d+)/(\w+)', url)
+        m = re.search(r'(.+)/g/(\d+)/(\w+)', url)
         if m and m.group(2):
             return m.group(2)
         else:
             return None
 
-    def crawl_urls(self, urls: List[str], wanted_filters: QuerySet=None, wanted_only: bool=False) -> None:
+    def crawl_urls(self, urls: List[str], wanted_filters: QuerySet = None, wanted_only: bool = False) -> None:
 
         unique_urls = set()
         gallery_data_list = []
@@ -361,8 +361,8 @@ class Parser(BaseParser):
                 self.logger.info("Provided RSS URL, adding {} found links".format(len(feed_links)))
                 continue
 
-            if(constants.ex_page_short not in url and
-                    constants.ge_page_short not in url):
+            if(constants.ex_page_short not in url
+                    and constants.ge_page_short not in url):
                 self.logger.warning("Invalid URL, skipping: {}".format(url))
                 continue
 
@@ -390,7 +390,7 @@ class Parser(BaseParser):
         total_galleries_filtered = []
         for gallery_url in unique_urls:
 
-            m = re.search('(.+)/g/(\d+)/(\w+)', gallery_url)
+            m = re.search(r'(.+)/g/(\d+)/(\w+)', gallery_url)
             if m:
                 gallery_ids.append(m.group(2))
                 total_galleries_filtered.append((gallery_url, m.group(1), m.group(2), m.group(3)))
@@ -597,8 +597,8 @@ class Parser(BaseParser):
                             )
                         )
 
-                if(gallery_parser.found_non_final_gallery == 2 and
-                        self.own_settings.get_newer_gallery):
+                if(gallery_parser.found_non_final_gallery == 2
+                        and self.own_settings.get_newer_gallery):
                     self.logger.info("Found non final gallery, next is: {}".format(gallery_parser.non_final_gallery))
                     (exists_next, new_gallery) = self.get_final_gallery_from_link(
                         gallery_parser.non_final_gallery)
@@ -674,8 +674,8 @@ class Parser(BaseParser):
                                 )
                             )
                     return
-                if(downloader[0].return_code == 0 and
-                        (cnt + 1) == len(self.downloaders)):
+                if(downloader[0].return_code == 0
+                        and (cnt + 1) == len(self.downloaders)):
                     if gallery.root == constants.ge_page and not gallery_is_hidden and gallery.token:
                         gallery.root = constants.ex_page
                         gallery.link = link_from_gid_token_fjord(gallery.gid, gallery.token, True)

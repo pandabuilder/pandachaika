@@ -20,7 +20,6 @@ from core.base.utilities import (
     get_thread_status,
     get_thread_status_bool,
     thread_exists,
-    check_for_running_threads,
     get_schedulers_status)
 from core.local.foldercrawlerthread import FolderCrawlerThread
 from core.web.crawlerthread import CrawlerThread
@@ -110,6 +109,7 @@ def stats_collection(request: HttpRequest) -> HttpResponse:
         "fjord_galleries": Gallery.objects.filter(fjord=True).count(),
         "expunged_galleries": Gallery.objects.filter(expunged=True).count(),
         "n_tags": Tag.objects.count(),
+        "n_tag_scopes": Tag.objects.values('scope').distinct().count(),
         "n_custom_tags": Tag.objects.are_custom().count(),
         "top_10_tags": Tag.objects.annotate(num_gallery=Count('gallery')).order_by('-num_gallery')[:10],
         "top_10_parody_tags": Tag.objects.filter(scope='parody').annotate(
@@ -141,7 +141,7 @@ def stats_collection(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
-def queue_operations(request: HttpRequest, operation: str, arguments: str=''):
+def queue_operations(request: HttpRequest, operation: str, arguments: str = ''):
 
     if not request.user.is_staff:
         return render_error(request, "You need to be an admin to operate the queue.")

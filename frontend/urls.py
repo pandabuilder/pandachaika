@@ -10,7 +10,7 @@ from viewer.views.complete import (
     GalleryAutocomplete, SourceAutocomplete,
     ReasonAutocomplete, UploaderAutocomplete,
     WantedGalleryAutocomplete,
-    CategoryAutocomplete)
+    CategoryAutocomplete, ProviderAutocomplete, TagPkAutocomplete, GallerySelectAutocomplete)
 
 admin.autodiscover()
 
@@ -30,9 +30,19 @@ urlpatterns += [
         name='gallery-autocomplete',
     ),
     url(
+        r'^' + settings.MAIN_URL + r'gallery-select-autocomplete/$',
+        GallerySelectAutocomplete.as_view(),
+        name='gallery-select-autocomplete',
+    ),
+    url(
         r'^' + settings.MAIN_URL + r'tag-autocomplete/$',
         TagAutocomplete.as_view(),
         name='tag-autocomplete',
+    ),
+    url(
+        r'^' + settings.MAIN_URL + r'tag-pk-autocomplete/$',
+        TagPkAutocomplete.as_view(),
+        name='tag-pk-autocomplete',
     ),
     url(
         r'^' + settings.MAIN_URL + r'noncustomtag-autocomplete/$',
@@ -53,6 +63,11 @@ urlpatterns += [
         r'^' + settings.MAIN_URL + r'source-autocomplete/$',
         SourceAutocomplete.as_view(),
         name='source-autocomplete',
+    ),
+    url(
+        r'^' + settings.MAIN_URL + r'provider-autocomplete/$',
+        ProviderAutocomplete.as_view(),
+        name='provider-autocomplete',
     ),
     url(
         r'^' + settings.MAIN_URL + r'reason-autocomplete/$',

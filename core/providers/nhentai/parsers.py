@@ -52,7 +52,7 @@ class Parser(BaseParser):
             gallery = GalleryData(gallery_id)
             gallery.title = soup.h1.get_text()
             gallery.title_jpn = title_jpn_match.get_text() if title_jpn_match else ''
-            gallery_filecount_match = re.search('<div>(\d+) page(s*)</div>', response.text)
+            gallery_filecount_match = re.search(r'<div>(\d+) page(s*)</div>', response.text)
             if gallery_filecount_match:
                 gallery.filecount = int(gallery_filecount_match.group(1))
             else:
@@ -112,7 +112,7 @@ class Parser(BaseParser):
 
     @staticmethod
     def id_from_url(url: str) -> Optional[str]:
-        m = re.search('(.+)/g/(\d+)/*(\d*)', url)
+        m = re.search(r'(.+)/g/(\d+)/*(\d*)', url)
         if m and m.group(2):
             return 'nh-' + m.group(2)
         else:

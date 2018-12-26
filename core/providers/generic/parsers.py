@@ -18,7 +18,7 @@ class GenericParser(BaseParser):
     def filter_accepted_urls(cls, urls: List) -> List:
         return urls
 
-    def crawl_urls(self, urls: List[str], wanted_filters=None, wanted_only: bool=False) -> None:
+    def crawl_urls(self, urls: List[str], wanted_filters=None, wanted_only: bool = False) -> None:
 
         unique_urls = set()
         gallery_data_list = []

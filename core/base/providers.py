@@ -131,7 +131,7 @@ class ProviderContext:
 
         return parsers_list
 
-    def get_parsers_classes(self, filter_name: str=None) -> List[Type['BaseParser']]:
+    def get_parsers_classes(self, filter_name: str = None) -> List[Type['BaseParser']]:
         parsers_list = list()
         for parser in self.parsers:
             parser_name = getattr(parser, 'name')
@@ -184,7 +184,7 @@ class ProviderContext:
 
         return sorted(downloaders, key=itemgetter(1))
 
-    def get_downloaders_name_priority(self, settings: 'setup.Settings', filter_name: str=None) -> List[Tuple[str, int]]:
+    def get_downloaders_name_priority(self, settings: 'setup.Settings', filter_name: str = None) -> List[Tuple[str, int]]:
         downloaders = list()
         for downloader in self.downloaders:
             handler_name = str(downloader)
@@ -210,9 +210,9 @@ class ProviderContext:
 
         return sorted(downloaders, key=itemgetter(1), reverse=True)
 
-    def get_matchers(self, settings: 'setup.Settings', logger: OptionalLogger=None,
-                     filter_name: str=None, force: bool=False,
-                     matcher_type: str='') -> List[Tuple['Matcher', int]]:
+    def get_matchers(self, settings: 'setup.Settings', logger: OptionalLogger = None,
+                     filter_name: str = None, force: bool = False,
+                     matcher_type: str = '') -> List[Tuple['Matcher', int]]:
         matchers_list = list()
         if matcher_type:
             packages_filtered = [x for x in self.matchers if x.type == matcher_type]
@@ -241,7 +241,7 @@ class ProviderContext:
         return sorted(matchers_list, key=itemgetter(1))
 
     def get_matchers_name_priority(self, settings: 'setup.Settings',
-                                   filter_name: str=None, matcher_type: str='') -> List[Tuple[str, int]]:
+                                   filter_name: str = None, matcher_type: str = '') -> List[Tuple[str, int]]:
         matchers_list = list()
         if matcher_type:
             packages_filtered = [x for x in self.matchers if x.type == matcher_type]

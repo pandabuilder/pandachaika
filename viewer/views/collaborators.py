@@ -14,10 +14,13 @@ from core.base.setup import Settings
 from core.base.utilities import thread_exists
 from viewer.utils.matching import generate_possible_matches_for_archives
 from viewer.utils.actions import event_log
-from viewer.forms import GallerySearchForm, ArchiveSearchForm
-from viewer.models import Archive, Gallery, EventLog, ArchiveMatches, Tag
+from viewer.forms import GallerySearchForm, ArchiveSearchForm, WantedGallerySearchForm, WantedGalleryCreateOrEditForm, \
+    ArchiveCreateForm
+from viewer.models import Archive, Gallery, EventLog, ArchiveMatches, Tag, WantedGallery
+from viewer.utils.tags import sort_tags
 from viewer.views.head import frontend_logger, gallery_filter_keys, filter_galleries_simple, \
-    archive_filter_keys, filter_archives_simple, render_error
+    archive_filter_keys, filter_archives_simple, render_error, wanted_gallery_filter_keys, \
+    filter_wanted_galleries_simple
 
 crawler_settings = settings.CRAWLER_SETTINGS
 
@@ -206,7 +209,7 @@ def publish_archives(request: HttpRequest) -> HttpResponse:
                     content_object=archive,
                     result='published'
                 )
-        if 'unpublish_archives' in p:
+        elif 'unpublish_archives' in p:
             for archive in archives:
                 message = 'Unpublishing archive: {}, link: {}'.format(
                     archive.title, archive.get_absolute_url()
@@ -222,6 +225,29 @@ def publish_archives(request: HttpRequest) -> HttpResponse:
                     reason=user_reason,
                     content_object=archive,
                     result='unpublished'
+                )
+        elif 'delete_archives' in p and request.user.has_perm('viewer.delete_archive'):
+            for archive in archives:
+                message = 'Deleting archive: {}, link: {}, with it\'s file: {} and associated gallery: {}'.format(
+                    archive.title, archive.get_absolute_url(),
+                    archive.zipped.path, archive.gallery
+                )
+                if 'reason' in p and p['reason'] != '':
+                    message += ', reason: {}'.format(p['reason'])
+                frontend_logger.info("User {}: {}".format(request.user.username, message))
+                messages.success(request, message)
+                gallery = archive.gallery
+                archive.gallery.mark_as_deleted()
+                archive.gallery = None
+                archive.delete_all_files()
+                archive.delete_files_but_archive()
+                archive.delete()
+                event_log(
+                    request.user,
+                    'DELETE_ARCHIVE',
+                    content_object=gallery,
+                    reason=user_reason,
+                    result='deleted'
                 )
 
     params = {
@@ -328,6 +354,8 @@ def user_crawler(request: HttpRequest) -> HttpResponse:
             source = p['source']
             # Force limit string length (reason field max_length)
             current_settings.archive_source = source[:50]
+
+        current_settings.archive_user = request.user
 
         parsers = crawler_settings.provider_context.get_parsers_classes()
 
@@ -583,7 +611,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
-def archive_update(request: HttpRequest, pk: int, tool: str=None, tool_use_id: str=None) -> HttpResponse:
+def archive_update(request: HttpRequest, pk: int, tool: str = None, tool_use_id: str = None) -> HttpResponse:
     try:
         archive = Archive.objects.get(pk=pk)
     except Archive.DoesNotExist:
@@ -618,3 +646,162 @@ def archive_update(request: HttpRequest, pk: int, tool: str=None, tool_use_id: s
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
     else:
         return render_error(request, 'Unrecognized command')
+
+
+@permission_required('viewer.view_wantedgallery')
+def wanted_galleries(request: HttpRequest) -> HttpResponse:
+    # p = request.POST
+    get = request.GET
+
+    title = get.get("title", '')
+    tags = get.get("tags", '')
+
+    try:
+        page = int(get.get("page", '1'))
+    except ValueError:
+        page = 1
+
+    if 'clear' in get:
+        form = WantedGallerySearchForm()
+    else:
+        form = WantedGallerySearchForm(initial={'title': title, 'tags': tags})
+
+    if request.POST.get('submit-wanted-gallery') and request.user.has_perm('viewer.add_wantedgallery'):
+        # create a form instance and populate it with data from the request:
+        edit_form = WantedGalleryCreateOrEditForm(request.POST)
+        # check whether it's valid:
+        if edit_form.is_valid():
+            new_wanted_gallery = edit_form.save()
+            message = 'New wanted gallery successfully created'
+            messages.success(request, message)
+            frontend_logger.info("User {}: {}".format(request.user.username, message))
+            event_log(
+                request.user,
+                'ADD_WANTED_GALLERY',
+                content_object=new_wanted_gallery,
+                result='created'
+            )
+        else:
+            messages.error(request, 'The provided data is not valid', extra_tags='danger')
+            # return HttpResponseRedirect(request.META["HTTP_REFERER"])
+    else:
+        edit_form = WantedGalleryCreateOrEditForm()
+
+    params = {
+    }
+
+    for k, v in get.items():
+        params[k] = v
+
+    for k in wanted_gallery_filter_keys:
+        if k not in params:
+            params[k] = ''
+
+    results = filter_wanted_galleries_simple(params)
+
+    results = results.prefetch_related(
+        # Prefetch(
+        #     'gallerymatch_set',
+        #     queryset=GalleryMatch.objects.select_related('gallery', 'wanted_gallery').prefetch_related(
+        #         Prefetch(
+        #             'gallery__tags',
+        #             queryset=Tag.objects.filter(scope__exact='artist'),
+        #             to_attr='artist_tags'
+        #         )
+        #     ),
+        #     to_attr='possible_galleries'
+        # ),
+        # 'possible_galleries__gallery__archive_set',
+        'artists',
+        'announces'
+    ).order_by('-release_date')
+
+    paginator = Paginator(results, 100)
+    try:
+        results = paginator.page(page)
+    except (InvalidPage, EmptyPage):
+        results = paginator.page(paginator.num_pages)
+
+    d = {'results': results, 'form': form, 'edit_form': edit_form}
+    return render(request, "viewer/collaborators/wanted_galleries.html", d)
+
+
+@permission_required('viewer.view_wantedgallery')
+def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
+    """WantedGallery listing."""
+    try:
+        wanted_gallery_instance = WantedGallery.objects.get(pk=pk)
+    except WantedGallery.DoesNotExist:
+        raise Http404("Wanted gallery does not exist")
+
+    if request.POST.get('submit-wanted-gallery') and request.user.has_perm('viewer.add_wantedgallery'):
+        # create a form instance and populate it with data from the request:
+        edit_form = WantedGalleryCreateOrEditForm(request.POST, instance=wanted_gallery_instance)
+        # check whether it's valid:
+        if edit_form.is_valid():
+            new_wanted_gallery = edit_form.save()
+            message = 'Wanted gallery successfully modified'
+            messages.success(request, message)
+            frontend_logger.info("User {}: {}".format(request.user.username, message))
+            event_log(
+                request.user,
+                'CHANGE_WANTED_GALLERY',
+                content_object=new_wanted_gallery,
+                result='changed'
+            )
+            # return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        else:
+            messages.error(request, 'The provided data is not valid', extra_tags='danger')
+            # return HttpResponseRedirect(request.META["HTTP_REFERER"])
+    else:
+        edit_form = WantedGalleryCreateOrEditForm(instance=wanted_gallery_instance)
+
+    wanted_tag_lists = sort_tags(wanted_gallery_instance.wanted_tags.all())
+    unwanted_tag_lists = sort_tags(wanted_gallery_instance.unwanted_tags.all())
+
+    d = {
+        'wanted_gallery': wanted_gallery_instance,
+        'wanted_tag_lists': wanted_tag_lists,
+        'unwanted_tag_lists': unwanted_tag_lists,
+        'edit_form': edit_form
+    }
+    return render(request, "viewer/collaborators/wanted_gallery.html", d)
+
+
+@permission_required('viewer.change_wantedgallery')
+def change_wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
+    """WantedGallery listing."""
+    return render_error(request, 'Not implemented')
+
+
+@permission_required('viewer.upload_with_metadata_archive')
+def upload_archive(request: HttpRequest) -> HttpResponse:
+
+    if request.POST.get('submit-archive'):
+        # create a form instance and populate it with data from the request:
+        edit_form = ArchiveCreateForm(request.POST, request.FILES)
+        # check whether it's valid:
+        if edit_form.is_valid():
+            new_archive = edit_form.save(commit=False)
+            new_archive.user = request.user
+            new_archive = edit_form.save()
+            message = 'Archive successfully uploaded'
+            messages.success(request, message)
+            frontend_logger.info("User {}: {}".format(request.user.username, message))
+            event_log(
+                request.user,
+                'ADD_ARCHIVE',
+                content_object=new_archive,
+                result='added'
+            )
+            # return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        else:
+            messages.error(request, 'The provided data is not valid', extra_tags='danger')
+            # return HttpResponseRedirect(request.META["HTTP_REFERER"])
+    else:
+        edit_form = ArchiveCreateForm()
+
+    d = {
+        'edit_form': edit_form
+    }
+    return render(request, "viewer/collaborators/add_archive.html", d)

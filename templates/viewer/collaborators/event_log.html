@@ -1,5 +1,5 @@
 {% extends "viewer/base.html" %}
-{% block title %}My event Log | {{ block.super }}{% endblock %}
+{% block title %}My Event Log | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
 {% load staticfiles %}
 
@@ -10,7 +10,7 @@
         {% endfor %}
     {% endif %}
     <div class="page-header">
-    <h2>My event log</h2>
+    <h2>My Event Log</h2>
     <p class="lead">Number of events (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
     </div>
     {% load viewer_extras %}

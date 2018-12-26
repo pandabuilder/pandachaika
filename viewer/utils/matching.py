@@ -16,7 +16,7 @@ crawler_settings = settings.CRAWLER_SETTINGS
 
 
 # WantedGallery
-def create_matches_wanted_galleries_from_providers(wanted_galleries: QuerySet, provider: str, logger: OptionalLogger=None) -> None:
+def create_matches_wanted_galleries_from_providers(wanted_galleries: QuerySet, provider: str, logger: OptionalLogger = None) -> None:
 
     try:
         matchers = crawler_settings.provider_context.get_matchers(crawler_settings, logger, filter_name=provider, force=True, matcher_type='title')
@@ -53,7 +53,7 @@ def create_matches_wanted_galleries_from_providers(wanted_galleries: QuerySet, p
 
 
 # WantedGallery
-def create_matches_wanted_galleries_from_providers_internal(wanted_galleries: QuerySet, logger: OptionalLogger=None, provider_filter: str='', cutoff: float=0.4, max_matches: int=20) -> None:
+def create_matches_wanted_galleries_from_providers_internal(wanted_galleries: QuerySet, logger: OptionalLogger = None, provider_filter: str = '', cutoff: float = 0.4, max_matches: int = 20) -> None:
 
     try:
         galleries_title_id = []
@@ -104,7 +104,7 @@ def create_matches_wanted_galleries_from_providers_internal(wanted_galleries: Qu
 
 
 # Archive
-def search_for_archives_matches_web(archives: ArchiveQuerySet, matcher_filter: str='', logger: OptionalLogger=None) -> None:
+def search_for_archives_matches_web(archives: ArchiveQuerySet, matcher_filter: str = '', logger: OptionalLogger = None) -> None:
 
     try:
         if logger:

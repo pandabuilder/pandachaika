@@ -47,7 +47,7 @@ def wanted_generator(settings: 'Settings', ext_logger: OptionalLogger, attrs: Qu
                 local_logger.info("Created tweet id: {} matched the pattern. processing".format(tweet_obj.tweet_id))
                 release_type = None
                 release_date = None
-                date_type = re.search('.*?(\d+)/(\d+).*?', match_tweet_type.group(1))
+                date_type = re.search(r'.*?(\d+)/(\d+).*?', match_tweet_type.group(1))
                 announce_date = datetime.strptime(tweet['created_at'], "%a %b %d %H:%M:%S %z %Y")
                 if date_type:
                     release_type = 'release_date'

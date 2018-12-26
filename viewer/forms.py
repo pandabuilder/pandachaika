@@ -4,22 +4,27 @@ from typing import Dict, Any, List
 from django import forms
 from django.contrib.auth.forms import PasswordChangeForm
 from django.contrib.auth.models import User
-from django.forms.models import BaseModelFormSet, modelformset_factory, ModelChoiceField
+from django.core.exceptions import ValidationError
+from django.core.files.uploadedfile import TemporaryUploadedFile
+from django.forms.models import BaseModelFormSet, modelformset_factory, ModelChoiceField, ModelForm
 from django.forms.utils import ErrorList
 from django.utils.safestring import mark_safe
 from django.utils.encoding import force_text
 from django.forms.utils import flatatt
+from django.conf import settings
 
 
 from dal import autocomplete
 from dal_jal.widgets import JalWidgetMixin
-from viewer.models import Archive, ArchiveMatches, Image, Gallery, Profile
+from viewer.models import Archive, ArchiveMatches, Image, Gallery, Profile, WantedGallery
 
 from dal.widgets import (
     WidgetMixin
 )
 
 from django.utils.translation import ugettext_lazy
+
+crawler_settings = settings.CRAWLER_SETTINGS
 
 
 class JalTextWidget(JalWidgetMixin, WidgetMixin, forms.TextInput):
@@ -232,12 +237,17 @@ class ArchiveModForm(forms.ModelForm):
 
     class Meta:
         model = Archive
-        fields = ['title', 'title_jpn', 'source_type', 'reason', 'possible_matches', 'custom_tags', 'zipped']
+        fields = ['title', 'title_jpn', 'source_type', 'reason', 'possible_matches', 'custom_tags', 'zipped',
+                  'alternative_sources']
         widgets = {
             'custom_tags': autocomplete.ModelSelect2Multiple(
                 url='customtag-autocomplete',
                 # widget_attrs={'data-widget-bootstrap': 'customtag-widget', },
                 attrs={'size': 1, 'data-placeholder': 'Custom tag name', 'class': 'form-control'}),
+            'alternative_sources': autocomplete.ModelSelect2Multiple(
+                url='gallery-select-autocomplete',
+                # widget_attrs={'data-widget-bootstrap': 'customtag-widget', },
+                attrs={'size': 1, 'data-placeholder': 'Alternative source', 'class': 'form-control'}),
             'title': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'title_jpn': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'source_type': forms.widgets.TextInput(attrs={'class': 'form-control'}),
@@ -322,6 +332,150 @@ class WantedGallerySearchForm(forms.Form):
     )
 
 
+class Html5DateInput(forms.DateInput):
+    input_type = 'date'
+
+
+class WantedGalleryCreateOrEditForm(ModelForm):
+
+    class Meta:
+        model = WantedGallery
+        fields = [
+            'title', 'title_jpn', 'search_title', 'unwanted_title', 'wanted_tags', 'unwanted_tags',
+            'wanted_tags_exclusive_scope', 'category', 'wanted_page_count_lower', 'wanted_page_count_upper',
+            'provider', 'release_date', 'should_search', 'keep_searching', 'reason', 'book_type', 'publisher',
+            'page_count'
+        ]
+        help_texts = {
+            'title': 'Informative only',
+            'title_jpn': 'Informative only',
+            'search_title': 'Text in Gallery title to match',
+            'unwanted_title': 'Text in Gallery title to exclude',
+            'wanted_tags': 'Tags in Gallery that must exist',
+            'unwanted_tags': 'Tags in Gallery that must not exist',
+            'wanted_tags_exclusive_scope': 'Do not accept Galleries that have '
+                                           'more than 1 tag in the same wanted tag scope',
+            'category': 'Category in Gallery to match',
+            'wanted_page_count_lower': 'Gallery must have more or equal than this value (0 is ignored)',
+            'wanted_page_count_upper': 'Gallery must have less or equal than this value (0 is ignored)',
+            'provider': 'Limit the provider to match (panda, fakku, etc). Default is search in all providers',
+            'release_date': 'This Gallery will only be searched when the current date is higher than this value',
+            'should_search': 'Enable searching for this Gallery',
+            'keep_searching': 'Keep searching for this Gallery after one successful match',
+            'reason': 'Informative only',
+            'book_type': 'Informative only',
+            'publisher': 'Informative only',
+            'page_count': 'Informative only'
+        }
+        widgets = {
+            'title': forms.widgets.TextInput(attrs={'class': 'form-control'}),
+            'title_jpn': forms.widgets.TextInput(attrs={'class': 'form-control'}),
+            'search_title': forms.widgets.TextInput(attrs={'class': 'form-control'}),
+            'unwanted_title': forms.widgets.TextInput(attrs={'class': 'form-control'}),
+            'wanted_tags': autocomplete.ModelSelect2Multiple(
+                url='tag-pk-autocomplete',
+                # widget_attrs={'data-widget-bootstrap': 'customtag-widget', },
+                attrs={'data-placeholder': 'Tag name', 'class': 'form-control'}
+            ),
+            'unwanted_tags': autocomplete.ModelSelect2Multiple(
+                url='tag-pk-autocomplete',
+                # widget_attrs={'data-widget-bootstrap': 'customtag-widget', },
+                attrs={'data-placeholder': 'Tag name', 'class': 'form-control'}
+            ),
+            'wanted_tags_exclusive_scope': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
+            'category': forms.widgets.TextInput(attrs={'class': 'form-control'}),
+            'wanted_page_count_lower': forms.widgets.NumberInput(attrs={'min': 0, 'class': 'form-control'}),
+            'wanted_page_count_upper': forms.widgets.NumberInput(attrs={'min': 0, 'class': 'form-control'}),
+            'provider': JalTextWidget(
+                url='provider-autocomplete',
+                attrs={
+                    'class': 'form-control',
+                    'placeholder': '',
+                    'data-autocomplete-minimum-characters': 3,
+                    'data-autocomplete-xhr-wait': 50,
+                    'data-autocomplete-auto-hilight-first': 0,
+                    'data-autocomplete-bind-mouse-down': 0,
+                },
+            ),
+            'release_date': Html5DateInput(attrs={'class': 'form-control'}),
+            'should_search': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
+            'keep_searching': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
+            'reason': forms.widgets.TextInput(attrs={'class': 'form-control'}),
+            'book_type': forms.widgets.TextInput(attrs={'class': 'form-control'}),
+            'publisher': forms.widgets.TextInput(attrs={'class': 'form-control'}),
+            'page_count': forms.widgets.NumberInput(attrs={'min': 0, 'class': 'form-control'}),
+        }
+
+
+class ArchiveCreateForm(ModelForm):
+
+    class Meta:
+        model = Archive
+        fields = [
+            'zipped', 'title', 'title_jpn', 'gallery', 'source_type', 'reason'
+        ]
+        widgets = {
+            'zipped': forms.widgets.FileInput(attrs={'class': 'form-control'}),
+            'title': forms.widgets.TextInput(attrs={'class': 'form-control'}),
+            'title_jpn': forms.widgets.TextInput(attrs={'class': 'form-control'}),
+            'source_type': forms.widgets.TextInput(attrs={'class': 'form-control'}),
+            'reason': forms.widgets.TextInput(attrs={'class': 'form-control'}),
+            'gallery': autocomplete.ModelSelect2(
+                url='gallery-select-autocomplete',
+                # widget_attrs={'data-widget-bootstrap': 'customtag-widget', },
+                attrs={'size': 1, 'data-placeholder': 'Gallery', 'class': 'form-control'}),
+        }
+
+    def clean_zipped(self) -> TemporaryUploadedFile:
+        zipped = self.cleaned_data['zipped']
+        full_path = os.path.join(crawler_settings.MEDIA_ROOT, "galleries/archive_uploads/{file}".format(file=zipped.name))
+        if os.path.isfile(full_path):
+            raise ValidationError('There is already a file with that name on the file system')
+        return zipped
+
+
+class ArchiveEditForm(ModelForm):
+
+    class Meta:
+        model = Archive
+        fields = [
+            'title', 'title_jpn', 'gallery', 'source_type', 'reason'
+        ]
+        widgets = {
+            'title': forms.widgets.TextInput(attrs={'class': 'form-control'}),
+            'title_jpn': forms.widgets.TextInput(attrs={'class': 'form-control'}),
+            'source_type': forms.widgets.TextInput(attrs={'class': 'form-control'}),
+            'reason': forms.widgets.TextInput(attrs={'class': 'form-control'}),
+            'gallery': autocomplete.ModelSelect2(
+                url='gallery-select-autocomplete',
+                # widget_attrs={'data-widget-bootstrap': 'customtag-widget', },
+                attrs={'size': 1, 'data-placeholder': 'Gallery', 'class': 'form-control'}),
+        }
+
+    def save(self, commit=True):
+        """
+        Save this form's self.instance object if commit=True. Otherwise, add
+        a save_m2m() method to the form which can be called after the instance
+        is saved manually at a later time. Return the model instance.
+        """
+        if self.errors:
+            raise ValueError(
+                "The %s could not be %s because the data didn't validate." % (
+                    self.instance._meta.object_name,
+                    'created' if self.instance._state.adding else 'changed',
+                )
+            )
+        if commit:
+            # If committing, save the instance and the m2m data immediately.
+            self.instance.simple_save()
+            self._save_m2m()
+        else:
+            # If not committing, add a method to the form to allow deferred
+            # saving of m2m data.
+            self.save_m2m = self._save_m2m
+        return self.instance
+
+
 class ImageForm(forms.ModelForm):
     position = forms.IntegerField(required=True,
                                   widget=forms.NumberInput(attrs={'size': 10}))
@@ -352,8 +506,8 @@ class BaseImageFormSet(BaseModelFormSet):
             position = form.cleaned_data['position']
             if position in positions:
                 raise forms.ValidationError(
-                    "Images positions must be unique: " +
-                    str(position)
+                    "Images positions must be unique: "
+                    + str(position)
                 )
             positions.append(position)
 

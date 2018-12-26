@@ -50,7 +50,7 @@ class BaseParser:
     # If it has no archives, to force processing, 'replace_metadata' must be set
     # Skipped galleries are not processed again.
     # We don't log directly here because some methods would spam otherwise (feed crawling)
-    def discard_gallery_by_internal_checks(self, gallery_id: str=None, link: str='', gallery: 'Gallery'=None) -> Tuple[bool, str]:
+    def discard_gallery_by_internal_checks(self, gallery_id: str = None, link: str = '', gallery: 'Gallery' = None) -> Tuple[bool, str]:
 
         if self.settings.update_metadata_mode:
             return False, 'Gallery link {ext_link} running in update metadata mode, processing.'.format(
@@ -249,7 +249,7 @@ class BaseParser:
 
     def crawl_urls_caller(
             self, urls: List[str],
-            wanted_filters: QuerySet=None, wanted_only: bool=False
+            wanted_filters: QuerySet = None, wanted_only: bool = False
     ):
         try:
             self.crawl_urls(
@@ -352,8 +352,7 @@ class BaseParser:
                     if self.gallery_callback:
                         self.gallery_callback(downloader[0].gallery_db_entry, gallery.link, 'success')
                 return
-            if(downloader[0].return_code == 0 and
-                    (cnt + 1) == len(self.downloaders)):
+            if(downloader[0].return_code == 0 and (cnt + 1) == len(self.downloaders)):
                 self.last_used_downloader: str = 'none'
                 if not downloader[0].archive_only and downloader[0].gallery_db_entry:
                     downloader[0].original_gallery = gallery
@@ -375,7 +374,7 @@ class BaseParser:
                     if self.gallery_callback:
                         self.gallery_callback(None, gallery.link, 'failed')
 
-    def __init__(self, settings: 'Settings', logger: OptionalLogger=None) -> None:
+    def __init__(self, settings: 'Settings', logger: OptionalLogger = None) -> None:
         self.settings = settings
         if not logger:
             self.logger: RealLogger = FakeLogger()
@@ -397,7 +396,7 @@ class InternalParser(BaseParser):
     name = ''
     ignore = True
 
-    def crawl_json(self, json_string: str, wanted_filters: QuerySet=None, wanted_only: bool=False) -> None:
+    def crawl_json(self, json_string: str, wanted_filters: QuerySet = None, wanted_only: bool = False) -> None:
 
         if not self.settings.gallery_model:
             return
@@ -432,14 +431,18 @@ class InternalParser(BaseParser):
                     self.logger.info(discard_message)
                     found_galleries.add(found_gallery.gid)
 
-        for gallery in total_galleries_filtered:
+        for count, gallery in enumerate(total_galleries_filtered):
 
             if gallery.gid in found_galleries:
                 continue
 
             if self.general_utils.discard_by_tag_list(gallery.tags):
                 self.logger.info(
-                    "Skipping gallery {}, because it's tagged with global discarded tags".format(gallery.title)
+                    "Gallery {} of {}: Skipping gallery {}, because it's tagged with global discarded tags".format(
+                        count,
+                        len(total_galleries_filtered),
+                        gallery.title
+                    )
                 )
                 continue
 
@@ -453,7 +456,13 @@ class InternalParser(BaseParser):
                 if wanted_only and not gallery_wanted_lists[gallery.gid]:
                     continue
 
-            self.logger.info("Gallery {} will be processed.".format(gallery.title))
+            self.logger.info(
+                "Gallery {} of {}:  Gallery {} will be processed.".format(
+                    count,
+                    len(total_galleries_filtered),
+                    gallery.title
+                )
+            )
 
             if gallery.thumbnail:
                 original_thumbnail_url = gallery.thumbnail_url

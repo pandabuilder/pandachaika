@@ -81,6 +81,8 @@ class BaseDownloader(metaclass=Meta):
                 default_values['reason'] = self.settings.archive_reason
             if self.settings.archive_source:
                 default_values['source_type'] = self.settings.archive_source
+            if self.settings.archive_user:
+                default_values['user'] = self.settings.archive_user
 
             self.archive_db_entry: Optional['Archive'] = self.update_archive_db(default_values)
 

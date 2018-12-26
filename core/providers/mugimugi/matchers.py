@@ -41,6 +41,7 @@ class TitleMatcher(Matcher):
 
         if not self.match_values:
             return None
+
         self.match_gid = self.match_values.gid
         values = {
             'title': self.match_title,
