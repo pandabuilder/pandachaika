@@ -337,7 +337,7 @@ class ArchiveManager(models.Manager):
         return self.filter(
             Q(crc32='')
             & (
-                Q(match_type__icontains='torrent') | Q(match_type__icontains='hath')
+                Q(match_type='torrent') | Q(match_type='hath')
             )
         )
 
@@ -1482,19 +1482,8 @@ class Announce(models.Model):
             tf2.write(chunk)
         self.image.save(os.path.splitext(img_link)[1], File(tf2), save=False)
         tf2.close()
-        im = PImage.open(self.image.path)
-        if im.mode != 'RGB':
-            im = im.convert('RGB')
 
-        # large thumbnail
-        im.thumbnail((200, 290), PImage.ANTIALIAS)
-        thumb_relative_path = upload_announce_thumb_handler(self, os.path.splitext(img_link)[1])
-        thumb_fn = pjoin(settings.MEDIA_ROOT, thumb_relative_path)
-        os.makedirs(os.path.dirname(thumb_fn), exist_ok=True)
-        im.save(thumb_fn, "JPEG")
-        self.thumbnail.name = thumb_relative_path
-
-        self.save()
+        self.regen_tn()
 
     def copy_img(self, img_path: str) -> None:
         tf2 = NamedTemporaryFile()
@@ -1503,19 +1492,8 @@ class Announce(models.Model):
 
         self.image.save(os.path.splitext(img_path)[1], File(tf2), save=False)
         tf2.close()
-        im = PImage.open(self.image.path)
-        if im.mode != 'RGB':
-            im = im.convert('RGB')
 
-        # large thumbnail
-        im.thumbnail((200, 290), PImage.ANTIALIAS)
-        thumb_relative_path = upload_announce_thumb_handler(self, os.path.splitext(img_path)[1])
-        thumb_fn = pjoin(settings.MEDIA_ROOT, thumb_relative_path)
-        os.makedirs(os.path.dirname(thumb_fn), exist_ok=True)
-        im.save(thumb_fn, "JPEG")
-        self.thumbnail.name = thumb_relative_path
-
-        self.save()
+        self.regen_tn()
 
     def regen_tn(self) -> None:
         if not self.image:
@@ -1526,11 +1504,11 @@ class Announce(models.Model):
 
         # large thumbnail
         im.thumbnail((200, 290), PImage.ANTIALIAS)
-
-        thumb_fn = upload_announce_thumb_handler(self, os.path.splitext(self.image.name)[1])
+        thumb_relative_path = upload_announce_thumb_handler(self, os.path.splitext(self.image.name)[1])
+        thumb_fn = pjoin(settings.MEDIA_ROOT, thumb_relative_path)
         os.makedirs(os.path.dirname(thumb_fn), exist_ok=True)
-        im.save(pjoin(settings.MEDIA_ROOT, thumb_fn), "JPEG")
-        self.thumbnail.name = thumb_fn
+        im.save(thumb_fn, "JPEG")
+        self.thumbnail.name = thumb_relative_path
 
         self.save()
 
@@ -1880,3 +1858,6 @@ class EventLog(models.Model):
     class Meta:
         verbose_name_plural = "Event logs"
         ordering = ['-create_date']
+        permissions = (
+            ("read_all_logs", "Can view a general log from all users"),
+        )

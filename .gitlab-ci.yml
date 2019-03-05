@@ -1,8 +1,7 @@
 before_script:
-  - python3.6 --version
-  - pip3.6 -V
-  - virtualenv --version
-  - virtualenv -p python3.6 ENV
+  - python3.7 --version
+  - pip3.7 -V
+  - python3.7 -m venv ENV
   - source ENV/bin/activate
 
 stages:
@@ -11,12 +10,12 @@ stages:
 test:
   stage: test
   script:
-  - pip3.6 install -r requirements.txt
-  - pip3.6 install coverage
-  - pip3.6 install django-nose
-  - python3.6 manage.py test viewer.tests.test_internal
-  - pip3.6 install flake8
-  - pip3.6 install mypy==0.650
+  - pip3.7 install -r requirements.txt
+  - pip3.7 install coverage
+  - pip3.7 install django-nose
+  - python3.7 manage.py test viewer.tests.test_internal
+  - pip3.7 install flake8
+  - pip3.7 install mypy==0.660
   - flake8 --ignore="E501,E402,F401,W503" --exclude="migrations,ENV,src,.mypy_cache" .
   - mypy . --ignore-missing-imports
   cache:

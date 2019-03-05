@@ -20,3 +20,4 @@ __pycache__/
 /.mypy_cache/
 .coverage
 /cover/
+/venv/

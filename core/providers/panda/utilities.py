@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 import re
 from html.parser import HTMLParser
 
+from bs4 import BeautifulSoup
+
 from core.base.types import DataDict, GalleryData
 from core.base.utilities import unescape, translate_tag_list
 from . import constants
@@ -105,20 +107,6 @@ class SearchHTMLParser(HTMLParser):
         self.stop_at_favorites: int = 0
 
 
-class EmptyHTMLParser(HTMLParser):
-
-    def error(self, message: str) -> None:
-        pass
-
-    def handle_data(self, data: str) -> None:
-        if data == 'No hits found':
-            self.empty_search = 1
-
-    def __init__(self) -> None:
-        HTMLParser.__init__(self)
-        self.empty_search = 0
-
-
 class GalleryHTMLParser(HTMLParser):
 
     def error(self, message: str) -> None:
@@ -216,19 +204,18 @@ class TorrentHTMLParser(HTMLParser):
         self.seeds = 0
 
 
-class ArchiveHTMLParser(HTMLParser):
+ARCHIVE_ROOT_URL = '/archive/'
 
-    def error(self, message: str) -> None:
-        pass
 
-    archive_root_url = '/archive/'
+def contains_archive_root(href: str) -> bool:
+    return ARCHIVE_ROOT_URL in href
 
-    def handle_starttag(self, tag: str, attrs: AttrList) -> None:
-        if tag == 'a':
-            for attr in attrs:
-                if attr[0] == 'href' and self.archive_root_url in attr[1]:
-                    self.archive = attr[1]
 
-    def __init__(self) -> None:
-        HTMLParser.__init__(self)
-        self.archive = ''
+def get_archive_link_from_html_page(page_text: str) -> str:
+    soup = BeautifulSoup(page_text, 'html.parser')
+    archive_link = soup.find("a", href=contains_archive_root)
+
+    if not archive_link:
+        return ''
+
+    return archive_link.href

@@ -259,10 +259,9 @@ def wanted_generator(settings: 'Settings', ext_logger: RealLogger, attrs: QueryS
                             category='Manga',
                         )
                         for artist in gallery.tags.filter(scope='artist'):
-                            artist_obj, artist_created = Artist.objects.get_or_create(
-                                name_jpn=artist.name,
-                                defaults={'name': artist.name}
-                            )
+                            artist_obj = Artist.objects.filter(name_jpn=artist.name).first()
+                            if not artist_obj:
+                                artist_obj = Artist.objects.create(name=artist.name, name_jpn=artist.name)
                             wanted_gallery.artists.add(artist_obj)
                         ext_logger.info(
                             "Created wanted gallery ({}): {}, search title: {}".format(

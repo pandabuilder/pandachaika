@@ -24,7 +24,7 @@ Requirements
 
 Know how to run a Python program and how to install packages.
 
-Python 3.6 is the target version, won't work on Python 2. Must have been compiled with sqlite support (If you're using that database).
+Python 3.7 is the target version, won't work on Python 2. Must have been compiled with sqlite support (If you're using that database).
 
 See requirements.txt.
 

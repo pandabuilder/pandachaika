@@ -14,7 +14,7 @@ from django.contrib.auth.models import User
 from django.http.request import HttpRequest
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
 from django.urls import reverse
-from django.db.models import Q, Avg, Max, Min, Sum, Count, QuerySet
+from django.db.models import Q, Avg, Max, Min, Sum, Count, QuerySet, F
 from django.http import Http404, BadHeaderError
 from django.http import HttpResponseRedirect, HttpResponse
 from django.http.request import QueryDict
@@ -413,12 +413,13 @@ def filter_galleries(request: HttpRequest, session_filters: Dict[str, str], requ
 
     # sort and filter results by parameters
     order = "posted"
+    needs_distinct = False
     if session_filters["sort"]:
         order = session_filters["sort"]
     if session_filters["asc_desc"] == "desc":
-        order = '-' + order
-
-    results = Gallery.objects.eligible_for_use()
+        results = Gallery.objects.order_by(F(order).desc(nulls_last=True))
+    else:
+        results = Gallery.objects.order_by(F(order).asc(nulls_last=True))
 
     if not request.user.is_authenticated:
         results = results.filter(public=True)
@@ -460,6 +461,7 @@ def filter_galleries(request: HttpRequest, session_filters: Dict[str, str], requ
         results = results.annotate(num_contains=Count('gallery_contains')).filter(num_contains__gt=0)
 
     if request_filters["tags"]:
+        needs_distinct = True
         tags = request_filters["tags"].split(',')
         for tag in tags:
             tag = tag.strip().replace(" ", "_")
@@ -484,9 +486,8 @@ def filter_galleries(request: HttpRequest, session_filters: Dict[str, str], requ
                     Q(tags__name__contains=tag_name),
                     Q(tags__scope__contains=tag_scope))
 
-    results = results.order_by(order)
-
-    results = results.distinct()
+    if needs_distinct:
+        results = results.distinct()
 
     return results
 
@@ -618,16 +619,20 @@ def filter_archives(request: HttpRequest, session_filters: Dict[str, str], reque
     """
     # sort and filter results by parameters
     order = "posted"
+    sorting_field = order
+    needs_distinct = False
     if session_filters["sort"] and session_filters["sort"] in archive_order_fields:
         order = session_filters["sort"]
+        sorting_field = order
     if order == 'rating':
         order = 'gallery__' + order
     elif order == 'posted':
         order = 'gallery__' + order
-    if session_filters["asc_desc"] == "desc":
-        order = '-' + order
 
-    results = Archive.objects.order_by(order)
+    if session_filters["asc_desc"] == "desc":
+        results = Archive.objects.order_by(F(order).desc(nulls_last=True))
+    else:
+        results = Archive.objects.order_by(F(order).asc(nulls_last=True))
 
     if not request.user.is_authenticated and not force_private:
         results = results.filter(public=True)
@@ -641,8 +646,10 @@ def filter_archives(request: HttpRequest, session_filters: Dict[str, str], reque
         results = results.filter(zipped__icontains=request_filters["filename"])
     if request_filters["rating_from"]:
         results = results.filter(gallery__rating__gte=float(request_filters["rating_from"]))
+        needs_distinct = True
     if request_filters["rating_to"]:
         results = results.filter(gallery__rating__lte=float(request_filters["rating_to"]))
+        needs_distinct = True
     if request_filters["filecount_from"]:
         results = results.filter(filecount__gte=int(request_filters["filecount_from"]))
     if request_filters["filecount_to"]:
@@ -659,10 +666,13 @@ def filter_archives(request: HttpRequest, session_filters: Dict[str, str], reque
         results = results.filter(reason__icontains=request_filters["reason"])
     if request_filters["uploader"]:
         results = results.filter(gallery__uploader__icontains=request_filters["uploader"])
+        needs_distinct = True
     if request_filters["category"]:
         results = results.filter(gallery__category__icontains=request_filters["category"])
+        needs_distinct = True
 
     if request_filters["tags"]:
+        needs_distinct = True
         tags = request_filters["tags"].split(',')
         for tag in tags:
             tag = tag.strip().replace(" ", "_")
@@ -710,13 +720,25 @@ def filter_archives(request: HttpRequest, session_filters: Dict[str, str], reque
         results = results.filter(public=True)
 
     if session_filters["view"] == "list":
-        results = results.distinct().select_related('gallery')
+        if sorting_field == 'rating':
+            if needs_distinct:
+                results = results.distinct().select_related('gallery')
+            else:
+                results = results.select_related('gallery')
+        elif sorting_field == 'posted':
+            if needs_distinct:
+                results = results.distinct().select_related('gallery')
+            else:
+                results = results.select_related('gallery')
+        else:
+            if needs_distinct:
+                results = results.distinct()
     elif session_filters["view"] == "cover":
         results = results.distinct()
     elif session_filters["view"] == "extended":
         results = results.distinct().select_related('gallery').\
             prefetch_related(
-                'tags').prefetch_related('custom_tags')
+                'tags').prefetch_related('custom_tags').defer('gallery__comment')
     else:
         results = results.distinct()
     return results
@@ -732,10 +754,12 @@ def quick_search(request: HttpRequest, parameters: DataDict, display_parameters:
         order = 'gallery__' + order
     if order == 'posted':
         order = 'gallery__' + order
-    if parameters["asc_desc"] == "desc":
-        order = '-' + order
 
-    results = Archive.objects.order_by(order)
+    if parameters["asc_desc"] == "desc":
+        # order = '-' + order
+        results = Archive.objects.order_by(F(order).desc(nulls_last=True))
+    else:
+        results = Archive.objects.order_by(F(order).asc(nulls_last=True))
 
     if not request.user.is_authenticated:
         results = results.filter(public=True)
@@ -1037,10 +1061,12 @@ def filter_archives_simple(params: Dict[str, Any]) -> ArchiveQuerySet:
         order = 'gallery__' + order
     elif order == 'posted':
         order = 'gallery__' + order
-    if params["asc_desc"] == "desc":
-        order = '-' + order
 
-    results = Archive.objects.order_by(order)
+    if params["asc_desc"] == "desc":
+        # order = '-' + order
+        results = Archive.objects.order_by(F(order).desc(nulls_last=True))
+    else:
+        results = Archive.objects.order_by(F(order).asc(nulls_last=True))
 
     if params["title"]:
         q_formatted = '%' + params["title"].replace(' ', '%') + '%'
@@ -1140,9 +1166,9 @@ def filter_galleries_simple(params: Dict[str, str]) -> GalleryQuerySet:
     if 'sort' in params and params["sort"]:
         order = params["sort"]
     if 'asc_desc' in params and params["asc_desc"] == "desc":
-        order = '-' + order
-
-    results = Gallery.objects.order_by(order)
+        results = Gallery.objects.order_by(F(order).desc(nulls_last=True))
+    else:
+        results = Gallery.objects.order_by(F(order).asc(nulls_last=True))
 
     if params["title"]:
         q_formatted = '%' + params["title"].replace(' ', '%') + '%'

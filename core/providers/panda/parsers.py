@@ -20,7 +20,7 @@ from core.base.types import GalleryData, DataDict
 from viewer.models import Gallery, Archive, FoundGallery
 from viewer.signals import wanted_gallery_found
 from .utilities import link_from_gid_token_fjord, map_external_gallery_data_to_internal, \
-    get_gid_token_from_link, fjord_gid_token_from_link, GalleryHTMLParser, EmptyHTMLParser, SearchHTMLParser
+    get_gid_token_from_link, fjord_gid_token_from_link, GalleryHTMLParser, SearchHTMLParser
 from . import constants
 from . import utilities
 
@@ -117,9 +117,25 @@ class Parser(BaseParser):
                 headers=self.settings.requests_headers,
                 timeout=self.settings.timeout_timer
             ).text
-            empty_page_parser = EmptyHTMLParser()
-            empty_page_parser.feed(main_page_text)
-            if empty_page_parser.empty_search:
+
+            response = request_with_retries(
+                url,
+                {
+                    'headers': self.settings.requests_headers,
+                    'timeout': self.settings.timeout_timer,
+                    'cookies': self.own_settings.cookies
+                },
+                post=False,
+                logger=self.logger
+            )
+
+            if not response:
+                self.logger.info("Got no response, stopping")
+                break
+
+            response.encoding = 'utf-8'
+
+            if 'No hits found' in response.text:
                 self.logger.info("Empty page found, ending")
                 break
             else:

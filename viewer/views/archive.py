@@ -315,18 +315,18 @@ def public_toggle(request: HttpRequest, pk: int) -> HttpResponse:
         frontend_logger.info('Setting public status to: private for ' + archive.zipped.name)
         event_log(
             request.user,
-            'PUBLISH_ARCHIVE',
+            'UNPUBLISH_ARCHIVE',
             content_object=archive,
-            result='published'
+            result='unpublished'
         )
     else:
         archive.set_public()
         frontend_logger.info('Setting public status to: public for ' + archive.zipped.name)
         event_log(
             request.user,
-            'UNPUBLISH_ARCHIVE',
+            'PUBLISH_ARCHIVE',
             content_object=archive,
-            result='unpublished'
+            result='published'
         )
 
     return HttpResponseRedirect(request.META["HTTP_REFERER"])

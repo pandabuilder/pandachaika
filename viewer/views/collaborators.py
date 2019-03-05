@@ -303,6 +303,29 @@ def my_event_log(request: HttpRequest) -> HttpResponse:
     return render(request, "viewer/collaborators/event_log.html", d)
 
 
+@permission_required('viewer.read_all_logs')
+def users_event_log(request: HttpRequest) -> HttpResponse:
+    get = request.GET
+
+    try:
+        page = int(get.get("page", '1'))
+    except ValueError:
+        page = 1
+
+    results = EventLog.objects.all()
+
+    paginator = Paginator(results, 100)
+    try:
+        results = paginator.page(page)
+    except (InvalidPage, EmptyPage):
+        results = paginator.page(paginator.num_pages)
+
+    d = {
+        'results': results,
+    }
+    return render(request, "viewer/collaborators/user_event_log.html", d)
+
+
 @permission_required('viewer.crawler_adder')
 def user_crawler(request: HttpRequest) -> HttpResponse:
     """Crawl given URLs."""

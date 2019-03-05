@@ -133,8 +133,10 @@ class Parser(BaseParser):
         galleries_data = self.fetch_multiple_gallery_data(fetch_format_galleries)
 
         for internal_gallery_data in galleries_data:
+
             if not internal_gallery_data.link:
                 continue
+
             if self.general_utils.discard_by_tag_list(internal_gallery_data.tags):
                 if not self.settings.silent_processing:
                     self.logger.info(

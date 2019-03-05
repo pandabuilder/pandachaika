@@ -106,10 +106,9 @@ def wanted_generator(settings: 'Settings', ext_logger: OptionalLogger, attrs: Qu
                         wanted_gallery.calculate_nearest_release_date()
 
                     for artist in artists:
-                        artist_obj, artist_created = Artist.objects.get_or_create(
-                            name_jpn=artist,
-                            defaults={'name': artist}
-                        )
+                        artist_obj = Artist.objects.filter(name_jpn=artist).first()
+                        if not artist_obj:
+                            artist_obj = Artist.objects.create(name=artist, name_jpn=artist)
                         wanted_gallery.artists.add(artist_obj)
 
                 match_artist_title = re.search('^(.+?)『(.+?)』.*', match_tweet_type.group(2))
@@ -122,15 +121,21 @@ def wanted_generator(settings: 'Settings', ext_logger: OptionalLogger, attrs: Qu
                     if '最新刊' in artist:
                         artist = artist.replace('最新刊', '')
                         book_type = 'new_publication'
-                        cover_artist, cover_artist_created = Artist.objects.get_or_create(name_jpn=artist, defaults={'name': artist})
+                        cover_artist = Artist.objects.filter(name_jpn=artist).first()
+                        if not cover_artist:
+                            cover_artist = Artist.objects.create(name=artist, name_jpn=artist)
                     elif '初単行本' in artist and ('『' not in artist and '』' not in artist):
                         artist = artist.replace('初単行本', '')
                         book_type = 'first_book'
-                        cover_artist, cover_artist_created = Artist.objects.get_or_create(name_jpn=artist, defaults={'name': artist})
+                        cover_artist = Artist.objects.filter(name_jpn=artist).first()
+                        if not cover_artist:
+                            cover_artist = Artist.objects.create(name=artist, name_jpn=artist)
                     elif '表紙が目印の' in artist:
                         artist = artist.replace('表紙が目印の', '')
                         book_type = "magazine"
-                        cover_artist, cover_artist_created = Artist.objects.get_or_create(name_jpn=artist, defaults={'name': artist})
+                        cover_artist = Artist.objects.filter(name_jpn=artist).first()
+                        if not cover_artist:
+                            cover_artist = Artist.objects.create(name=artist, name_jpn=artist)
                     if book_type:
                         wanted_gallery, created = WantedGallery.objects.update_or_create(
                             title_jpn=title,
@@ -164,10 +169,9 @@ def wanted_generator(settings: 'Settings', ext_logger: OptionalLogger, attrs: Qu
                             announce.save_img(cover_url)
                             wanted_gallery.calculate_nearest_release_date()
 
-                        artist_obj, artist_created = Artist.objects.get_or_create(
-                            name_jpn=artist,
-                            defaults={'name': artist}
-                        )
+                        artist_obj = Artist.objects.filter(name_jpn=artist).first()
+                        if not artist_obj:
+                            artist_obj = Artist.objects.create(name=artist, name_jpn=artist)
                         wanted_gallery.artists.add(artist_obj)
             else:
                 local_logger.info("Created tweet id: {} did not match the pattern".format(tweet_obj.tweet_id))

@@ -11,5 +11,4 @@ TODO: Each provider should have it's own schedule in auto_wanted.
 TODO: Add itself as a provider (matcher, downloader, parser).
 TODO: Use https://github.com/Jetsetter/dhash to find local matches using thumbnails.
 TODO: Improve the preload login, prioritize next images over last ones, single queue over parallel.
-TODO: COL: Update archive info (source_type, reason)
-TODO: COL: Enable web matcher
+TODO: COL: Enable web matcher.

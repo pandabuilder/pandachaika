@@ -637,28 +637,3 @@ def foldercrawler(request: HttpRequest) -> HttpResponse:
     })
 
     return render(request, "viewer/foldercrawler.html", d)
-
-
-@login_required
-def users_event_log(request: HttpRequest) -> HttpResponse:
-    if not request.user.is_staff:
-        return render_error(request, "You need to be an admin to access this page.")
-    get = request.GET
-
-    try:
-        page = int(get.get("page", '1'))
-    except ValueError:
-        page = 1
-
-    results = EventLog.objects.all()
-
-    paginator = Paginator(results, 100)
-    try:
-        results = paginator.page(page)
-    except (InvalidPage, EmptyPage):
-        results = paginator.page(paginator.num_pages)
-
-    d = {
-        'results': results,
-    }
-    return render(request, "viewer/user_event_log.html", d)

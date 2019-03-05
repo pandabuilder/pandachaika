@@ -78,7 +78,6 @@ urlpatterns += [
     url(r"^web-queue/([\w-]+)/([\w-]+)$", admin.queue_operations, name='queue-operations'),
     url(r"^web-crawler/$", admin.crawler, name='crawler'),
     url(r"^folder-crawler/$", admin.foldercrawler, name='folder-crawler'),
-    url(r"^users-event-log/$", admin.users_event_log, name='users-event-log'),
 ]
 
 # Collaborators.
@@ -96,6 +95,7 @@ urlpatterns += [
     url(r"^col-update/(\d+)/([\w-]+)/$", collaborators.archive_update, name='col-archive-update-tool'),
     url(r"^col-update/(\d+)/([\w-]+)/([\w-]+)/$", collaborators.archive_update, name='col-archive-update-tool-name'),
     url(r"^col-update/(\d+)/$", collaborators.archive_update, name='col-archive-update'),
+    url(r"^users-event-log/$", collaborators.users_event_log, name='users-event-log'),
 
 ]
 

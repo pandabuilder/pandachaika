@@ -1,0 +1,95 @@
+{% extends "viewer/base.html" %}
+{% block title %}Users' Event Log | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+{% load staticfiles %}
+
+{% block content %}
+    {% if messages %}
+        {% for message in messages %}
+        <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+        {% endfor %}
+    {% endif %}
+    <div class="page-header">
+    <h2>Users' Event Log</h2>
+    <p class="lead">Number of events (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
+    </div>
+    {% load viewer_extras %}
+    <!-- Next/Prev page links  -->
+    {% if results.object_list and results.paginator.num_pages > 1 %}
+      <div class="pagination-top">
+          <span class="step-links">
+              <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
+            {% if results.has_previous %}
+              <a href= "?{% url_replace 'page' results.previous_page_number %}"> previous &lt;&lt; </a>
+            {% endif %}
+            <span class="current">
+                  &nbsp;Page {{ results.number }} of {{ results.paginator.num_pages }}
+              </span>
+            {% if results.has_next %}
+              <a href="?{% url_replace 'page' results.next_page_number %}"> &gt;&gt; next</a>
+            {% endif %}
+            <a href="?{% url_replace 'page' results.paginator.num_pages %}"> &gt;&gt; last</a>
+          </span>
+      </div>
+    {% endif %}
+      <table class="table table-bordered table-sm generic-table">
+        <thead>
+        <tr>
+          <th>User</th><th>Action</th><th>Reason</th><th>Data</th><th>Result</th><th>Object link</th><th>Date</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for event in results %}
+          <tr>
+            <td>
+              {{ event.user }}
+            </td>
+            <td>
+              {{ event.action }}
+            </td>
+            <td>
+              {{ event.reason }}
+            </td>
+            <td>
+              {{ event.data }}
+            </td>
+            <td>
+              {{ event.result }}
+            </td>
+            <td>
+              {% if event.object_id %}
+                {% if event.content_object.get_absolute_url %}
+                  <a href="{{ event.content_object.get_absolute_url }}">{{ event.content_object }}</a>
+                {% else %}
+                  {{ event.content_object }}
+                {% endif %}
+              {% else %}
+                None
+              {% endif %}
+            </td>
+            <td>
+              {{ event.create_date|date:"DATETIME_FORMAT" }}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    <!-- Next/Prev page links  -->
+      {% if results.object_list and results.paginator.num_pages > 1 %}
+        <div class="pagination-top">
+            <span class="step-links">
+                <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
+              {% if results.has_previous %}
+                <a href= "?{% url_replace 'page' results.previous_page_number %}"> previous &lt;&lt; </a>
+              {% endif %}
+              <span class="current">
+                    &nbsp;Page {{ results.number }} of {{ results.paginator.num_pages }}
+                </span>
+              {% if results.has_next %}
+                <a href="?{% url_replace 'page' results.next_page_number %}"> &gt;&gt; next</a>
+              {% endif %}
+              <a href="?{% url_replace 'page' results.paginator.num_pages %}"> &gt;&gt; last</a>
+            </span>
+        </div>
+      {% endif %}
+{% endblock %}

@@ -395,8 +395,6 @@ def api(request: HttpRequest, model: str = None, obj_id: str = None, action: str
         response = json.dumps({'result': "Unsupported request method"})
 
     http_response = HttpResponse(response, content_type="application/json; charset=utf-8")
-    http_response['Access-Control-Allow-Origin'] = 'http://localhost:3000'
-    http_response['Access-Control-Allow-Credentials'] = 'true'
     return http_response
 
 

@@ -11,7 +11,7 @@ from core.base.utilities import calc_crc32, request_with_retries, \
     get_base_filename_string_from_gallery_data, get_zip_fileinfo
 from core.downloaders.handlers import BaseDownloader, BaseInfoDownloader, BaseFakeDownloader, BaseTorrentDownloader
 from core.downloaders.torrent import get_torrent_client
-from core.providers.panda.utilities import ArchiveHTMLParser, TorrentHTMLParser
+from core.providers.panda.utilities import TorrentHTMLParser, get_archive_link_from_html_page
 from viewer.models import Archive
 from core.base.utilities import (available_filename,
                                  replace_illegal_name)
@@ -84,25 +84,27 @@ class ArchiveDownloader(BaseDownloader):
             self.return_code = 0
             return
 
-        archive_page_parser = ArchiveHTMLParser()
-        archive_page_parser.feed(r.text)
+        r.encoding = 'utf-8'
 
         if 'Invalid archiver key' in r.text:
             self.logger.error("Invalid archiver key received.")
             self.return_code = 0
         else:
-            if archive_page_parser.archive == '':
+
+            archive_link = get_archive_link_from_html_page(r.text)
+
+            if archive_link == '':
                 self.logger.error('Could not find archive link, page text: {}'.format(r.text))
                 self.return_code = 0
             else:
-                m = re.match(r"(.*?)(\?.*?)", archive_page_parser.archive)
+                m = re.match(r"(.*?)(\?.*?)", archive_link)
                 if m:
-                    archive_page_parser.archive = m.group(1)
+                    archive_link = m.group(1)
 
-                self.logger.info('Got link: {}, from url: {}'.format(archive_page_parser.archive, r.url))
+                self.logger.info('Got link: {}, from url: {}'.format(archive_link, r.url))
 
                 request_file = requests.get(
-                    archive_page_parser.archive + '?start=1',
+                    archive_link + '?start=1',
                     stream='True',
                     headers=self.settings.requests_headers,
                     timeout=self.settings.timeout_timer

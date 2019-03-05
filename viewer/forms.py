@@ -439,7 +439,7 @@ class ArchiveEditForm(ModelForm):
     class Meta:
         model = Archive
         fields = [
-            'title', 'title_jpn', 'gallery', 'source_type', 'reason'
+            'title', 'title_jpn', 'gallery', 'alternative_sources', 'source_type', 'reason'
         ]
         widgets = {
             'title': forms.widgets.TextInput(attrs={'class': 'form-control'}),
@@ -447,6 +447,10 @@ class ArchiveEditForm(ModelForm):
             'source_type': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'reason': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'gallery': autocomplete.ModelSelect2(
+                url='gallery-select-autocomplete',
+                # widget_attrs={'data-widget-bootstrap': 'customtag-widget', },
+                attrs={'size': 1, 'data-placeholder': 'Gallery', 'class': 'form-control'}),
+            'alternative_sources': autocomplete.ModelSelect2Multiple(
                 url='gallery-select-autocomplete',
                 # widget_attrs={'data-widget-bootstrap': 'customtag-widget', },
                 attrs={'size': 1, 'data-placeholder': 'Gallery', 'class': 'form-control'}),

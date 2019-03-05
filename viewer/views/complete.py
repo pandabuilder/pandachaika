@@ -39,7 +39,7 @@ class ArchiveAutocomplete(autocomplete.JalQuerySetView):
         return HttpResponse(self.autocomplete_html_format % html)
 
     def choices_for_request(self) -> Iterable[Archive]:
-        qs = Archive.objects.all()
+        qs = Archive.objects.all().order_by('pk')
 
         q = self.request.GET.get('q', '')
         q_formatted = '%' + q.replace(' ', '%') + '%'
@@ -82,7 +82,7 @@ class GalleryAutocomplete(autocomplete.JalQuerySetView):
         return HttpResponse(self.autocomplete_html_format % html)
 
     def choices_for_request(self) -> Iterable[Gallery]:
-        qs = Gallery.objects.eligible_for_use()
+        qs = Gallery.objects.eligible_for_use().order_by('pk')
 
         q = self.request.GET.get('q', '')
         q_formatted = '%' + q.replace(' ', '%') + '%'
@@ -130,7 +130,7 @@ class WantedGalleryAutocomplete(autocomplete.JalQuerySetView):
         return HttpResponse(self.autocomplete_html_format % html)
 
     def choices_for_request(self) -> Iterable[WantedGallery]:
-        qs = WantedGallery.objects.all()
+        qs = WantedGallery.objects.all().order_by('pk')
 
         q = self.request.GET.get('q', '')
         q_formatted = '%' + q.replace(' ', '%') + '%'
@@ -303,7 +303,7 @@ class TagAutocomplete(autocomplete.JalQuerySetView):
                 Q(name__contains=tag_clean)
                 | Q(scope__contains=tag_clean))
 
-        return results.distinct()[0:self.limit_choices]
+        return results.distinct().order_by('pk')[0:self.limit_choices]
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -361,7 +361,7 @@ class NonCustomTagAutocomplete(autocomplete.Select2QuerySetView):
                 Q(name__contains=tag_clean)
                 | Q(scope__contains=tag_clean))
 
-        return results.distinct()
+        return results.distinct().order_by('pk')
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -407,10 +407,10 @@ class GallerySelectAutocomplete(autocomplete.Select2QuerySetView):
     limit_choices = 10
 
     def get_result_label(self, result: Gallery) -> str:
-        return "{} ({})".format(result.title, result.provider)
+        return "({}) ({}) {}".format(result.pk, result.title, result.provider)
 
     def get_queryset(self) -> QuerySet:
-        qs = Gallery.objects.eligible_for_use()
+        qs = Gallery.objects.eligible_for_use().order_by('pk')
 
         q = self.q
         q_formatted = '%' + q.replace(' ', '%') + '%'

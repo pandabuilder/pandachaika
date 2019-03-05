@@ -1,3 +1,5 @@
+import threading
+
 import django.utils.timezone as django_tz
 from django.db import connection
 
@@ -25,7 +27,14 @@ class TimedAutoWanted(BaseScheduler):
 
                     attrs = Attribute.objects.filter(provider__slug=provider_name)
 
-                    for wanted_generator in self.settings.provider_context.get_wanted_generators(provider_name):
-                        wanted_generator(self.settings, self.crawler_logger, attrs)
+                    for count, wanted_generator in enumerate(self.settings.provider_context.get_wanted_generators(provider_name)):
+                        # wanted_generator(self.settings, self.crawler_logger, attrs)
+                        wanted_generator_thread = threading.Thread(
+                            name="{}-{}-{}".format(self.thread_name, provider_name, count),
+                            target=wanted_generator,
+                            args=(self.settings, self.crawler_logger, attrs)
+                        )
+                        wanted_generator_thread.daemon = True
+                        wanted_generator_thread.start()
 
             self.update_last_run(django_tz.now())
