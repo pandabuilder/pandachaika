@@ -105,6 +105,8 @@ class Matcher(metaclass=Meta):
         if values:
             if self.settings.archive_reason:
                 values['reason'] = self.settings.archive_reason
+            if self.settings.archive_details:
+                values['details'] = self.settings.archive_details
             self.settings.archive_model.objects.update_or_create_by_values_and_gid(
                 values,
                 self.match_gid,

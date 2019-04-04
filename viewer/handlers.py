@@ -20,16 +20,20 @@ def wanted_gallery_found_handler(sender: typing.Any, **kwargs: typing.Any) -> No
     gallery: Gallery = kwargs['gallery']
     wanted_gallery_list: typing.List[WantedGallery] = kwargs['wanted_gallery_list']
 
-    notify_wanted_filters = [x.title or 'not set' for x in wanted_gallery_list if x.notify_when_found]
+    notify_wanted_filters = [
+        "({}, {})".format((x.title or 'not set'), (x.reason or 'not set')) for x in
+        wanted_gallery_list if x.notify_when_found
+    ]
 
     if not notify_wanted_filters:
         return
 
-    message = "Title: {}, source link: {}, link: {}, filters titles: {}".format(
+    message = "Title: {}, source link: {}, link: {}\nFilters title, reason: {}\nGallery tags: {}".format(
         gallery.title,
         gallery.get_link(),
         gallery.get_absolute_url(),
-        ', '.join(notify_wanted_filters)
+        ', '.join(notify_wanted_filters),
+        '\n'.join(gallery.tag_list_sorted())
     )
 
     # Mail users

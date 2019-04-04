@@ -81,6 +81,12 @@ class WebCrawler(object):
                             help='Most parameters are set from the gallery, but reason is user-defined.'
                                  'Can be set afterwards, but this option sets it when crawling')
 
+        parser.add_argument('-details', '--set-details',
+                            required=False,
+                            action='store',
+                            help='Most parameters are set from the gallery, but details is user-defined.'
+                                 'Can be set afterwards, but this option sets it when crawling')
+
         parser.add_argument('-wanted', '--wanted-only',
                             required=False,
                             action='store_true',
@@ -213,6 +219,9 @@ class WebCrawler(object):
         if args.set_reason:
             current_settings.archive_reason = args.set_reason
             current_settings.gallery_reason = args.set_reason
+
+        if args.set_details:
+            current_settings.archive_details = args.set_details
 
         parsers = current_settings.provider_context.get_parsers(current_settings, parser_logger)
 

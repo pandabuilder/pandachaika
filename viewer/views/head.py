@@ -703,8 +703,8 @@ def filter_archives(request: HttpRequest, session_filters: Dict[str, str], reque
             else:
                 tag_query = (
                     (Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope))
-                    | (Q(custom_tags__name__contains=tag_name) & Q(custom_tags__scope__contains=tag_scope))
-                ) if tag_scope != '' else (Q(tags__name__contains=tag_name))
+                    # | (Q(custom_tags__name__contains=tag_name) & Q(custom_tags__scope__contains=tag_scope))
+                ) if tag_scope != '' else (Q(tags__name__contains=tag_name) | Q(custom_tags__name__contains=tag_name))
                 results = results.filter(
                     tag_query
                 )
@@ -860,8 +860,8 @@ def url_submit(request: HttpRequest) -> HttpResponse:
         current_settings.replace_metadata = False
         current_settings.config['allowed']['replace_metadata'] = 'no'
         for k, v in current_settings.config['downloaders'].items():
-                current_settings.config['downloaders'][k] = str(-1)
-                current_settings.downloaders[k] = -1
+            current_settings.config['downloaders'][k] = str(-1)
+            current_settings.downloaders[k] = -1
         current_settings.config['downloaders']['panda_submit'] = str(1)
         current_settings.config['downloaders']['nhentai_submit'] = str(1)
         current_settings.downloaders['panda_submit'] = 1

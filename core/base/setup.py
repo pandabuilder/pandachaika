@@ -164,6 +164,7 @@ class Settings:
         self.keep_dl_type = False
         self.archive_reason = ''
         self.archive_source = ''
+        self.archive_details = ''
         self.archive_user: Optional[User] = None
         self.silent_processing = False
         self.update_metadata_mode = False

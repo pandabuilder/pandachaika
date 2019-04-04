@@ -93,7 +93,7 @@
               <table class="table table-bordered table-sm generic-table">
                 <thead>
                 <tr>
-                  <th>Select</th><th>First Artist</th><th>Title</th><th>URL</th><th>Accuracy</th><th>Posted</th><th>Count</th><th>Size</th>
+                  <th>Select</th><th>First Artist</th><th>Title</th><th>URL</th><th>Type</th><th>Accuracy</th><th>Posted</th><th>Count</th><th>Size</th>
                 </tr>
                 </thead>
                 <tbody>
@@ -115,6 +115,9 @@
                     </td>
                     <td>
                       {{ match.gallery.get_link|urlize }}
+                    </td>
+                    <td>
+                      {{ match.match_type }}
                     </td>
                     <td class="{{ match.match_accuracy|color_percent:1 }}">
                       {{ match.match_accuracy|floatformat:3 }}

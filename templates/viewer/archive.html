@@ -69,6 +69,12 @@
           <th>Reason</th>
           <td><a href="{% url 'viewer:archive-search' %}?reason={{ archive.reason }}">{{ archive.reason }}</a></td>
         </tr>
+        {% if user.is_authenticated %}
+          <tr>
+          <th>Details</th>
+          <td>{{ archive.details }}</td>
+        </tr>
+        {% endif %}
         <tr>
           {% if user.is_staff %}
             <th>Added to backup</th><td>{{ archive.create_date|date:"DATETIME_FORMAT" }}</td>

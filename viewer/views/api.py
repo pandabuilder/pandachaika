@@ -592,6 +592,8 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                         elif data['operation'] == 'queue_archives':
                             if 'archive_reason' in data:
                                 current_settings.archive_reason = data['archive_reason']
+                            if 'archive_details' in data:
+                                current_settings.archive_details = data['archive_details']
                             current_settings.allow_type_downloaders_only('fake')
                         if current_settings.workers.web_queue:
                             current_settings.workers.web_queue.enqueue_args_list(pages_links, override_options=current_settings)

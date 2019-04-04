@@ -6,7 +6,7 @@
 // @include     http://exhentai.org/*
 // @include     https://e-hentai.org/*
 // @include     https://exhentai.org/*
-// @version     0.1.2
+// @version     0.1.5
 // @grant       GM_xmlhttpRequest
 // ==/UserScript==
 
@@ -97,7 +97,7 @@ function modifyDivList(currentDiv) {
     var galleryLink = currentDiv.getElementsByTagName('a')[0].getAttribute('href');
 
     var div2 =document.createElement('div');
-    div2.setAttribute('class','it3');
+    div2.style.margin ='5px 0px 0px 0px';
     div2.innerHTML ='<img class="n" src="https://exhentai.org/img/t.png" alt="T" title="' +galleryLink +'"/></img>';
     div2.addEventListener('click',function () { sendWebCrawlerAction(galleryLink, null); });
     currentDiv.parentNode.appendChild(div2);
@@ -106,17 +106,17 @@ function modifyDivList(currentDiv) {
 
 function modifyDivThumbnail(currentDiv) {
 
-    var galleryLink =currentDiv.getElementsByClassName('id3')[0].getElementsByTagName('a')[0].getAttribute('href');
-    var rightBot =currentDiv.getElementsByClassName('id4')[0].getElementsByClassName('id44')[0];
+    var galleryLink =currentDiv.getElementsByClassName('gl3t')[0].getElementsByTagName('a')[0].getAttribute('href');
+    var rightBot =currentDiv.getElementsByClassName('gl5t')[0].getElementsByClassName('gldown')[0];
 
     var div2 =document.createElement('div');
-    div2.style.float ='left';
-    div2.style.margin ='0px 0px 0px 10px';
+    div2.style.float ='right';
+    div2.style.margin ='5px -20px 0px 10px';
     div2.innerHTML = '<img class="tn" src="https://exhentai.org/img/t.png" alt="T" title="' + galleryLink + '"/></img>';
     div2.addEventListener('click',function () {
         sendWebCrawlerAction(galleryLink, null);
     });
-    rightBot.appendChild(div2);
+    rightBot.parentNode.appendChild(div2);
 
 }
 
@@ -215,7 +215,7 @@ color: black;\
         return true;
     }
     //Main page, list mode
-    var list =document.getElementsByClassName('it5');
+    var list =document.getElementsByClassName('gl3m');
     if (list.length !==0) {
         for(var i =0; i <list.length; i++) {
             (modifyDivList(list[i]));
@@ -223,7 +223,7 @@ color: black;\
         return true;
     }
     //Main page, thumbnails mode
-    var list2 =document.getElementsByClassName('id1');
+    var list2 =document.getElementsByClassName('gl1t');
     if(list2.length !==0) {
         for(var j =0; j <list2.length; j++) {
             (modifyDivThumbnail(list2[j]));

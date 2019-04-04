@@ -238,7 +238,7 @@ class ArchiveModForm(forms.ModelForm):
     class Meta:
         model = Archive
         fields = ['title', 'title_jpn', 'source_type', 'reason', 'possible_matches', 'custom_tags', 'zipped',
-                  'alternative_sources']
+                  'alternative_sources', 'details']
         widgets = {
             'custom_tags': autocomplete.ModelSelect2Multiple(
                 url='customtag-autocomplete',
@@ -253,6 +253,7 @@ class ArchiveModForm(forms.ModelForm):
             'source_type': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'reason': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'zipped': forms.widgets.TextInput(attrs={'class': 'form-control'}),
+            'details': forms.widgets.Textarea(attrs={'class': 'form-control'}),
             # 'possible_matches': forms.widgets.Select(attrs={'class': 'form-control'}),
         }
 
@@ -412,7 +413,7 @@ class ArchiveCreateForm(ModelForm):
     class Meta:
         model = Archive
         fields = [
-            'zipped', 'title', 'title_jpn', 'gallery', 'source_type', 'reason'
+            'zipped', 'title', 'title_jpn', 'gallery', 'source_type', 'reason', 'details'
         ]
         widgets = {
             'zipped': forms.widgets.FileInput(attrs={'class': 'form-control'}),
@@ -424,6 +425,7 @@ class ArchiveCreateForm(ModelForm):
                 url='gallery-select-autocomplete',
                 # widget_attrs={'data-widget-bootstrap': 'customtag-widget', },
                 attrs={'size': 1, 'data-placeholder': 'Gallery', 'class': 'form-control'}),
+            'details': forms.widgets.Textarea(attrs={'class': 'form-control'}),
         }
 
     def clean_zipped(self) -> TemporaryUploadedFile:
@@ -439,7 +441,7 @@ class ArchiveEditForm(ModelForm):
     class Meta:
         model = Archive
         fields = [
-            'title', 'title_jpn', 'gallery', 'alternative_sources', 'source_type', 'reason'
+            'title', 'title_jpn', 'gallery', 'alternative_sources', 'source_type', 'reason', 'details'
         ]
         widgets = {
             'title': forms.widgets.TextInput(attrs={'class': 'form-control'}),
@@ -454,6 +456,7 @@ class ArchiveEditForm(ModelForm):
                 url='gallery-select-autocomplete',
                 # widget_attrs={'data-widget-bootstrap': 'customtag-widget', },
                 attrs={'size': 1, 'data-placeholder': 'Gallery', 'class': 'form-control'}),
+            'details': forms.widgets.Textarea(attrs={'class': 'form-control'}),
         }
 
     def save(self, commit=True):

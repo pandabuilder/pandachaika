@@ -132,6 +132,7 @@ def search_for_archives_matches_web(archives: ArchiveQuerySet, matcher_filter: s
                     ArchiveMatches.objects.update_or_create(
                         archive=archive_obj,
                         gallery=gallery,
+                        match_type=matcher.type,
                         defaults={
                             'match_accuracy': result[2],
                         }
@@ -234,6 +235,7 @@ def match_archives_from_gallery_titles(archives: ArchiveQuerySet, logger: Option
 
                         ArchiveMatches.objects.create(archive=archive,
                                                       gallery=gallery,
+                                                      match_type='title',
                                                       match_accuracy=similar[2])
 
                 if archive.filesize <= 0:
@@ -254,6 +256,7 @@ def match_archives_from_gallery_titles(archives: ArchiveQuerySet, logger: Option
 
                         ArchiveMatches.objects.create(archive=archive,
                                                       gallery=gallery,
+                                                      match_type='size',
                                                       match_accuracy=1)
 
         if logger:
@@ -328,6 +331,7 @@ def match_external(archives: ArchiveQuerySet, matcher_filters: Iterable[str], lo
                     ArchiveMatches.objects.update_or_create(
                         archive=archive,
                         gallery=gallery,
+                        match_type=matcher[0].type,
                         defaults={
                             'match_accuracy': result[2],
                         }
@@ -408,6 +412,7 @@ def match_internal(archives: ArchiveQuerySet, providers: Iterable[str],
                     ArchiveMatches.objects.update_or_create(
                         archive=archive,
                         gallery=gallery,
+                        match_type='title',
                         match_accuracy=similar[2]
                     )
 
@@ -441,5 +446,6 @@ def match_internal(archives: ArchiveQuerySet, providers: Iterable[str],
                 ArchiveMatches.objects.update_or_create(
                     archive=archive,
                     gallery=gallery,
+                    match_type='size',
                     match_accuracy=1
                 )

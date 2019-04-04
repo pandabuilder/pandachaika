@@ -200,12 +200,14 @@ class BaseParser:
                 ", ".join([x.get_absolute_url() for x in gallery_wanted_lists[gallery.gid]])
             ))
 
-            notify_wanted_filters = [x.title or 'not set' for x in gallery_wanted_lists[gallery.gid] if
-                                     x.notify_when_found]
+            notify_wanted_filters = [
+                "({}, {})".format((x.title or 'not set'), (x.reason or 'not set')) for x in
+                gallery_wanted_lists[gallery.gid] if x.notify_when_found
+            ]
 
             if notify_wanted_filters and self.settings.pushover.enable:
 
-                message = "Title: {}, link: {}, filters titles: {}".format(
+                message = "Title: {}, link: {}\nFilters title, reason: {}".format(
                     gallery.title,
                     link,
                     ', '.join(notify_wanted_filters)

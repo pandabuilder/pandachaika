@@ -14,8 +14,8 @@ test:
   - pip3.7 install coverage
   - pip3.7 install django-nose
   - python3.7 manage.py test viewer.tests.test_internal
-  - pip3.7 install flake8
-  - pip3.7 install mypy==0.660
+  - pip3.7 install flake8==3.7.7
+  - pip3.7 install mypy==0.670
   - flake8 --ignore="E501,E402,F401,W503" --exclude="migrations,ENV,src,.mypy_cache" .
   - mypy . --ignore-missing-imports
   cache:

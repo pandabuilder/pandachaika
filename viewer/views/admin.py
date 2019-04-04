@@ -557,6 +557,7 @@ def crawler(request: HttpRequest) -> HttpResponse:
             reason = p['reason']
             # Force limit string length (reason field max_length)
             current_settings.archive_reason = reason[:200]
+            current_settings.gallery_reason = reason[:200]
 
         if 'keep_this_settings' in p:
             current_settings.write()

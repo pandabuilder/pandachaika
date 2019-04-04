@@ -465,7 +465,7 @@ class Gallery(models.Model):
     provider = models.CharField(
         'Provider', max_length=50, blank=True, null=True, default='')
     dl_type = models.CharField(max_length=100, default='')
-    reason = models.CharField(max_length=200, blank=True, null=True, default='')
+    reason = models.CharField(max_length=200, blank=True, null=True, default='backup')
     create_date = models.DateTimeField(auto_now_add=True)
     last_modified = models.DateTimeField(auto_now=True, blank=True, null=True)
     thumbnail_url = models.URLField(
@@ -629,6 +629,8 @@ class Archive(models.Model):
     alternative_sources = models.ManyToManyField(
         Gallery, related_name="alternative_sources",
         blank=True, default='')
+    details = models.TextField(
+        blank=True, null=True, default='')
 
     objects = ArchiveManager()
 
@@ -1228,6 +1230,7 @@ class Archive(models.Model):
 
                 ArchiveMatches.objects.create(archive=self,
                                               gallery=gallery,
+                                              match_type='title',
                                               match_accuracy=similar[2])
 
         if self.filesize <= 0:
@@ -1241,6 +1244,7 @@ class Archive(models.Model):
 
                 ArchiveMatches.objects.create(archive=self,
                                               gallery=gallery,
+                                              match_type='size',
                                               match_accuracy=1)
 
     def recalc_filesize(self) -> None:
@@ -1320,6 +1324,8 @@ class Archive(models.Model):
 class ArchiveMatches(models.Model):
     archive = models.ForeignKey(Archive, on_delete=models.CASCADE)
     gallery = models.ForeignKey(Gallery, on_delete=models.CASCADE)
+    match_type = models.CharField(
+        'Match type', max_length=40, blank=True, null=True, default='')
     match_accuracy = models.FloatField(
         'Match accuracy', blank=True, null=True, default=0.0)
 

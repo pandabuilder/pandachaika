@@ -443,6 +443,8 @@ class FolderCrawler(object):
                         }
                         if self.settings.archive_reason:
                             values.update({'reason': self.settings.archive_reason})
+                        if self.settings.archive_details:
+                            values.update({'details': self.settings.archive_details})
                         if self.settings.archive_source:
                             values.update({'source_type': self.settings.archive_source})
                         Archive.objects.update_or_create_by_values_and_gid(
@@ -467,6 +469,8 @@ class FolderCrawler(object):
                             }
                             if self.settings.archive_reason:
                                 values.update({'reason': self.settings.archive_reason})
+                            if self.settings.archive_details:
+                                values.update({'details': self.settings.archive_details})
                             if self.settings.archive_source:
                                 values.update({'source_type': self.settings.archive_source})
                             Archive.objects.add_or_update_from_values(
@@ -515,6 +519,8 @@ class FolderCrawler(object):
                     }
                     if self.settings.archive_reason:
                         values.update({'reason': self.settings.archive_reason})
+                    if self.settings.archive_details:
+                        values.update({'details': self.settings.archive_details})
                     if self.settings.archive_source:
                         values.update({'source_type': self.settings.archive_source})
                     archive = Archive.objects.update_or_create_by_values_and_gid(
