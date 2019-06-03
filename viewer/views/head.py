@@ -52,6 +52,7 @@ gallery_filter_keys = (
 
 archive_filter_keys = (
     "title", "filename", "filecount_from", "filecount_to",
+    "filesize_from", "filesize_to",
     "rating_from", "rating_to", "match_type", "posted_from",
     "posted_to", "source_type", "tags", "only_favorites",
     "non_public", "public", "reason",
@@ -459,6 +460,8 @@ def filter_galleries(request: HttpRequest, session_filters: Dict[str, str], requ
         results = results.filter(gallery_container__isnull=False)
     if request_filters["contains"]:
         results = results.annotate(num_contains=Count('gallery_contains')).filter(num_contains__gt=0)
+    if request_filters["reason"]:
+        results = results.filter(reason__contains=request_filters["reason"])
 
     if request_filters["tags"]:
         needs_distinct = True
@@ -640,7 +643,7 @@ def filter_archives(request: HttpRequest, session_filters: Dict[str, str], reque
     if request_filters["title"]:
         q_formatted = '%' + request_filters["title"].replace(' ', '%') + '%'
         results = results.filter(
-            Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted)
+            Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted) | Q(original_filename__ss=q_formatted)
         )
     if request_filters["filename"]:
         results = results.filter(zipped__icontains=request_filters["filename"])
@@ -654,6 +657,10 @@ def filter_archives(request: HttpRequest, session_filters: Dict[str, str], reque
         results = results.filter(filecount__gte=int(request_filters["filecount_from"]))
     if request_filters["filecount_to"]:
         results = results.filter(filecount__lte=int(request_filters["filecount_to"]))
+    if request_filters["filesize_from"]:
+        results = results.filter(filesize__gte=int(request_filters["filesize_from"]))
+    if request_filters["filesize_to"]:
+        results = results.filter(filesize__lte=int(request_filters["filesize_to"]))
     if request_filters["posted_from"]:
         results = results.filter(gallery__posted__gte=request_filters["posted_from"])
     if request_filters["posted_to"]:
@@ -786,7 +793,7 @@ def quick_search(request: HttpRequest, parameters: DataDict, display_parameters:
 
     q_formatted = '%' + display_parameters["qsearch"].replace(' ', '%') + '%'
     results_title = results.filter(
-        Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted)
+        Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted) | Q(original_filename__ss=q_formatted)
     )
 
     tags = display_parameters["qsearch"].split(',')
@@ -1205,6 +1212,8 @@ def filter_galleries_simple(params: Dict[str, str]) -> GalleryQuerySet:
         results = results.filter(provider=params["provider"])
     if params["not_used"]:
         results = results.filter(Q(archive__isnull=True))
+    if params["reason"]:
+        results = results.filter(reason__contains=params["reason"])
 
     if params["tags"]:
         tags = params["tags"].split(',')

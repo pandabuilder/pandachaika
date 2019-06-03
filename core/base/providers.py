@@ -24,7 +24,7 @@ def _get_provider_submodule_api(module_name: str, submodule_name: str) -> List[A
         importlib.import_module(module_name, package='__path__')
     except ImportError:
         return []
-    if importlib.util.find_spec(sub_module):
+    if importlib.util.find_spec(sub_module):  # type: ignore
         site = importlib.import_module(sub_module, package=module_name)
         if hasattr(site, 'API'):
             return list(getattr(site, 'API'))
@@ -38,7 +38,7 @@ def _get_provider_submodule_method(module_name: str, submodule_name: str, method
         importlib.import_module(module_name, package='__path__')
     except ImportError:
         return None
-    if importlib.util.find_spec(sub_module):
+    if importlib.util.find_spec(sub_module):  # type: ignore
         site = importlib.import_module(sub_module, package=module_name)
         if hasattr(site, method_name):
             obj = getattr(site, method_name)
@@ -77,13 +77,13 @@ class ProviderContext:
             if member not in self.downloaders and issubclass(member, BaseDownloader):
                 self.register_downloader(member)
         resolver = _get_provider_submodule_method(module_name, "utilities", "resolve_url")
-        if resolver and resolver not in self.resolvers:
+        if resolver and (provider_name, resolver) not in self.resolvers:
             self.register_resolver(provider_name, resolver)
         settings_parser = _get_provider_submodule_method(module_name, "settings", "parse_config")
-        if settings_parser and settings_parser not in self.settings_parsers:
+        if settings_parser and (provider_name, settings_parser) not in self.settings_parsers:
             self.register_settings_parser(provider_name, settings_parser)
         wanted_generator = _get_provider_submodule_method(module_name, "wanted", "wanted_generator")
-        if wanted_generator and wanted_generator not in self.wanted_generators:
+        if wanted_generator and (provider_name, wanted_generator) not in self.wanted_generators:
             self.register_wanted_generator(provider_name, wanted_generator)
 
     def register_parser(self, obj: Type['BaseParser']) -> None:

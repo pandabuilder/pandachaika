@@ -222,6 +222,17 @@ class ArchiveSearchSimpleForm(forms.Form):
         ),
     )
 
+    filesize_from = forms.IntegerField(
+        required=False,
+        label='Size',
+        widget=forms.NumberInput(attrs={'class': 'form-control mr-sm-1', 'placeholder': 'from'})
+    )
+    filesize_to = forms.IntegerField(
+        required=False,
+        label='',
+        widget=forms.NumberInput(attrs={'class': 'form-control mr-sm-1', 'placeholder': 'to'})
+    )
+
 
 class SpanErrorList(ErrorList):
     def __str__(self) -> str:              # __unicode__ on Python 2
@@ -424,7 +435,7 @@ class ArchiveCreateForm(ModelForm):
             'gallery': autocomplete.ModelSelect2(
                 url='gallery-select-autocomplete',
                 # widget_attrs={'data-widget-bootstrap': 'customtag-widget', },
-                attrs={'size': 1, 'data-placeholder': 'Gallery', 'class': 'form-control'}),
+                attrs={'size': 1, 'data-placeholder': 'Gallery', 'class': 'form-control', 'data-width': '100%'}),
             'details': forms.widgets.Textarea(attrs={'class': 'form-control'}),
         }
 
@@ -450,12 +461,10 @@ class ArchiveEditForm(ModelForm):
             'reason': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'gallery': autocomplete.ModelSelect2(
                 url='gallery-select-autocomplete',
-                # widget_attrs={'data-widget-bootstrap': 'customtag-widget', },
-                attrs={'size': 1, 'data-placeholder': 'Gallery', 'class': 'form-control'}),
+                attrs={'size': 1, 'data-placeholder': 'Gallery', 'class': 'form-control', 'data-width': '100%'}),
             'alternative_sources': autocomplete.ModelSelect2Multiple(
                 url='gallery-select-autocomplete',
-                # widget_attrs={'data-widget-bootstrap': 'customtag-widget', },
-                attrs={'size': 1, 'data-placeholder': 'Gallery', 'class': 'form-control'}),
+                attrs={'size': 1, 'data-placeholder': 'Gallery', 'class': 'form-control', 'data-width': '100%'}),
             'details': forms.widgets.Textarea(attrs={'class': 'form-control'}),
         }
 

@@ -42,31 +42,40 @@ def wanted_generator(settings: 'Settings', ext_logger: OptionalLogger, attrs: Qu
             if not tweet_created:
                 continue
 
-            match_tweet_type = re.search('【(.+)】(.*)', tweet['text'])
+            local_logger.info("Created tweet id: {}processing.".format(tweet_obj.tweet_id))
+
+            match_tweet_type = re.search('【(.+)】(.*)', tweet['text'], re.DOTALL)
             if match_tweet_type:
-                local_logger.info("Created tweet id: {} matched the pattern. processing".format(tweet_obj.tweet_id))
+                local_logger.info("Matched pattern (date_type: {}, artist: {}),".format(
+                    match_tweet_type.group(1), match_tweet_type.group(2))
+                )
                 release_type = None
                 release_date = None
-                date_type = re.search(r'.*?(\d+)/(\d+).*?', match_tweet_type.group(1))
+                date_type = re.search(r'.*?(\d+)/(\d+).*?', match_tweet_type.group(1), re.DOTALL)
                 announce_date = datetime.strptime(tweet['created_at'], "%a %b %d %H:%M:%S %z %Y")
                 if date_type:
                     release_type = 'release_date'
                     release_date = announce_date.replace(month=int(date_type.group(1)), day=int(date_type.group(2)), hour=0, minute=0, second=0)
-                new_book_type = re.search('新刊情報', match_tweet_type.group(1))
+                new_book_type = re.search('新刊情報', match_tweet_type.group(1), re.DOTALL)
                 if new_book_type:
                     release_type = 'new_publication'
                     release_date = datetime.strptime(tweet['created_at'], "%a %b %d %H:%M:%S %z %Y")
-                out_today_type = re.search('本日発売', match_tweet_type.group(1))
+                out_today_type = re.search('本日発売', match_tweet_type.group(1), re.DOTALL)
                 if out_today_type:
                     release_type = 'out_today'
                     release_date = datetime.strptime(tweet['created_at'], "%a %b %d %H:%M:%S %z %Y")
-                out_tomorrow_type = re.search('明日発売', match_tweet_type.group(1))
+                out_tomorrow_type = re.search('明日発売', match_tweet_type.group(1), re.DOTALL)
                 if out_tomorrow_type:
                     release_type = 'out_tomorrow'
                     release_date = datetime.strptime(tweet['created_at'], "%a %b %d %H:%M:%S %z %Y") + timedelta(days=1)
 
-                match_title_artists = re.search('^『(.+?)』は＜(.+)＞', match_tweet_type.group(2))
+                match_title_artists = re.search('^『(.+?)』は＜(.+)＞', match_tweet_type.group(2), re.DOTALL)
                 if match_title_artists and release_type:
+
+                    local_logger.info("Matched pattern (title: {}, artists: {}), release_type: {}.".format(
+                        match_title_artists.group(1), match_title_artists.group(2), release_type)
+                    )
+
                     title = match_title_artists.group(1)
                     title = title.replace("X-EROS#", "X-EROS #")
                     artists = set(match_title_artists.group(2).replace('ほか', '').split('/'))
@@ -103,7 +112,9 @@ def wanted_generator(settings: 'Settings', ext_logger: OptionalLogger, attrs: Qu
                     )
                     if announce_created and cover_url:
                         announce.save_img(cover_url)
-                        wanted_gallery.calculate_nearest_release_date()
+                        # wanted_gallery.calculate_nearest_release_date()
+                        wanted_gallery.release_date = release_date
+                        wanted_gallery.save()
 
                     for artist in artists:
                         artist_obj = Artist.objects.filter(name_jpn=artist).first()
@@ -111,8 +122,13 @@ def wanted_generator(settings: 'Settings', ext_logger: OptionalLogger, attrs: Qu
                             artist_obj = Artist.objects.create(name=artist, name_jpn=artist)
                         wanted_gallery.artists.add(artist_obj)
 
-                match_artist_title = re.search('^(.+?)『(.+?)』.*', match_tweet_type.group(2))
+                match_artist_title = re.search('^(.+?)『(.+?)』.*', match_tweet_type.group(2), re.DOTALL)
                 if match_artist_title and release_type:
+
+                    local_logger.info("Matched pattern (artist: {}, title: {}), release type: {}.".format(
+                        match_artist_title.group(1), match_artist_title.group(2), release_type)
+                    )
+
                     artist = match_artist_title.group(1)
                     title = match_artist_title.group(2)
                     title = title.replace("X-EROS#", "X-EROS #")
@@ -167,7 +183,9 @@ def wanted_generator(settings: 'Settings', ext_logger: OptionalLogger, attrs: Qu
                         )
                         if announce_created and cover_url:
                             announce.save_img(cover_url)
-                            wanted_gallery.calculate_nearest_release_date()
+                            # wanted_gallery.calculate_nearest_release_date()
+                            wanted_gallery.release_date = release_date
+                            wanted_gallery.save()
 
                         artist_obj = Artist.objects.filter(name_jpn=artist).first()
                         if not artist_obj:

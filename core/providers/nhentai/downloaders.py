@@ -34,7 +34,7 @@ class TorrentDownloader(BaseTorrentDownloader):
 
         torrent_link = self.get_download_link(self.gallery.link)
 
-        self.logger.info("Adding torrent to client.")
+        self.logger.info("Adding torrent to client. Link: {}". format(torrent_link))
         self.connect_and_download(client, torrent_link)
 
     def update_archive_db(self, default_values: DataDict) -> Optional['Archive']:

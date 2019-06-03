@@ -19,7 +19,7 @@ from core.base.utilities import str_to_int
 from core.base.utilities import timestamp_or_zero
 from viewer.models import Archive, Gallery, ArchiveQuerySet, GalleryQuerySet
 from viewer.utils.matching import generate_possible_matches_for_archives
-from viewer.views.head import gallery_filter_keys, gallery_order_fields
+from viewer.views.head import gallery_filter_keys, gallery_order_fields, filter_archives_simple, archive_filter_keys
 
 crawler_logger = logging.getLogger('viewer.webcrawler')
 crawler_settings = settings.CRAWLER_SETTINGS
@@ -147,6 +147,37 @@ def json_search(request: HttpRequest) -> HttpResponse:
                 # indent=2,
                 sort_keys=True,
                 ensure_ascii=False,
+            )
+            return HttpResponse(response, content_type="application/json; charset=utf-8")
+        # Get reduced number of fields from several archives by doing filtering.
+        elif 'qa' in data:
+
+            archive_args = request.GET.copy()
+
+            params = {
+                'sort': 'create_date',
+                'asc_desc': 'desc',
+            }
+
+            for k, v in archive_args.items():
+                params[k] = v
+
+            for k in archive_filter_keys:
+                if k not in params:
+                    params[k] = ''
+
+            results = filter_archives_simple(params)
+
+            if not request.user.is_authenticated:
+                results = results.filter(public=True).order_by('-public_date')
+
+            response = json.dumps(
+                [{
+                    'id': o.pk,
+                    'title': o.title,
+                    'tags': o.tag_list(),
+                    'url': reverse('viewer:archive-download', args=(o.pk,))} for o in results
+                 ]
             )
             return HttpResponse(response, content_type="application/json; charset=utf-8")
         # Get reduced number of fields from several archives by doing a simple filtering.
@@ -723,7 +754,7 @@ def simple_archive_filter(args: str, public: bool = True) -> ArchiveQuerySet:
 
     q_formatted = '%' + args.replace(' ', '%') + '%'
     results_title = results.filter(
-        Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted)
+        Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted) | Q(original_filename__ss=q_formatted)
     )
 
     tags = args.split(',')
@@ -776,7 +807,7 @@ def filter_galleries_no_request(filter_args: Dict[str, Any]) -> GalleryQuerySet:
     if filter_args["title"]:
         q_formatted = '%' + filter_args["title"].replace(' ', '%') + '%'
         results = results.filter(
-            Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted)
+            Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted) | Q(archive__original_filename__ss=q_formatted)
         )
     if filter_args["rating_from"]:
         results = results.filter(rating__gte=float(filter_args["rating_from"]))
@@ -812,6 +843,8 @@ def filter_galleries_no_request(filter_args: Dict[str, Any]) -> GalleryQuerySet:
         results = results.filter(provider=filter_args["provider"])
     if filter_args["dl_type"]:
         results = results.filter(dl_type=filter_args["dl_type"])
+    if filter_args["reason"]:
+        results = results.filter(reason__icontains=filter_args["reason"])
 
     if filter_args["tags"]:
         tags = filter_args["tags"].split(',')

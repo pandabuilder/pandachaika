@@ -43,7 +43,7 @@
     <form action="{{ request.get_full_path }}" method="POST">{% csrf_token %}
   <!-- Next/Prev page links  -->
     {% if results.object_list and results.paginator.num_pages > 1 %}
-      <div class="pagination-top">
+      <div>
           <span class="step-links">
               <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
             {% if results.has_previous %}
@@ -117,7 +117,7 @@
                 {% for announce in announces %}
                   <tr>
                     <td>
-                      {% if announce.thumbnail.name %}<a href="#" data-image-url="{{ announce.thumbnail.url }}" class="img-preview" rel="popover">{{ announce.source }}</a>{% else %}No thumbnail{% endif %}
+                      {% if announce.thumbnail.name %}<a href="#" data-image-url="{{ announce.thumbnail.url }}" class="img-preview" rel="popover">{{ announce.source }}</a>{% else %}{{ announce.source }}{% endif %}
                     </td>
                     <td>
                       {{ announce.announce_date }}
@@ -141,30 +141,20 @@
     {% if results.object_list and results.paginator.num_pages > 1 %}
       <div>
           <span class="step-links">
-              {% if results.has_previous %}
-                <a href= "?page={{ results.previous_page_number }}">previous &lt;&lt; </a>
-              {% endif %}
+              <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
+            {% if results.has_previous %}
+              <a href= "?{% url_replace 'page' results.previous_page_number %}"> previous &lt;&lt; </a>
+            {% endif %}
             <span class="current">
                   &nbsp;Page {{ results.number }} of {{ results.paginator.num_pages }}
               </span>
             {% if results.has_next %}
-              <a href="?page={{ results.next_page_number }}"> &gt;&gt; next</a>
+              <a href="?{% url_replace 'page' results.next_page_number %}"> &gt;&gt; next</a>
             {% endif %}
+            <a href="?{% url_replace 'page' results.paginator.num_pages %}"> &gt;&gt; last</a>
           </span>
       </div>
     {% endif %}
-{#    <div class="form-group form-inline">#}
-{#      <input size="10" class="form-control" name="provider" value="" placeholder="Provider filter"/>#}
-{#      <input title="Cutoff" size="10" type="number" step="0.01" class="form-control" name="cutoff" value="" placeholder="Cutoff"/>#}
-{#      <input title="Max matches" size="10" type="number" step="1" class="form-control" name="max-matches" value="10" placeholder="Max Matches"/>#}
-{#      <button name="search_provider_galleries" class="btn btn-light">Search selected by title on providers</button>#}
-{#      <button name="search_provider_galleries_internal" class="btn btn-light">Search selected by title on providers internally</button>#}
-{#    </div>#}
-{#    <div class="form-group">#}
-{#    <button name="search_for_galleries" class="btn btn-light">Mark selected as search for</button>#}
-{#    <button name="set-public" class="btn btn-light">Mark selected as public</button>#}
-{#    <button name="delete_galleries" class="btn btn-light">Delete (WARNING!) selected wanted galleries</button>#}
-{#    </div>#}
   </form>
 {% endblock %}
 {% block afterJQ %}

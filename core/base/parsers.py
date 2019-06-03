@@ -141,6 +141,16 @@ class BaseParser:
             # Skip wanted_filter that's not a global filter or is not for this provider.
             if wanted_filter.provider and wanted_filter.provider != self.name:
                 continue
+            if wanted_filter.wanted_providers:
+                wanted_providers = wanted_filter.wanted_providers.split()
+                found_wanted_provider = False
+                for wanted_provider in wanted_providers:
+                    wanted_provider = wanted_provider.strip()
+                    if wanted_provider and wanted_provider != self.name:
+                        found_wanted_provider = True
+                        break
+                if not found_wanted_provider:
+                    continue
             accepted = True
             if wanted_filter.search_title:
                 titles = []

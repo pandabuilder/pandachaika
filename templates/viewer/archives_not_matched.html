@@ -31,7 +31,7 @@
   </form>
   <!-- Next/Prev page links  -->
   {% if results.object_list and results.paginator.num_pages > 1 %}
-    <div class="pagination-top">
+    <div>
         <span class="step-links">
             <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
           {% if results.has_previous %}

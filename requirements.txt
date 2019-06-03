@@ -6,7 +6,7 @@ python-dateutil
 twitter==1.18.0
 beautifulsoup4>=4.6.0
 CherryPy>=17
-Django==2.2
+Django==2.2.1
 django-compressor>=2.1.1
 Pillow>=6.0.0
 rarfile>=3.0
@@ -15,5 +15,4 @@ feedparser>=5.2.1
 transmissionrpc>=0.11
 -e git+https://github.com/pandabuilder/django-autocomplete-light.git#egg=django-autocomplete-light
 django-webpack-loader
-elasticsearch>=6.0.0,<7.0.0
-elasticsearch-dsl>=6.0.0,<7.0.0
+elasticsearch-dsl>=7.0.0,<8.0.0

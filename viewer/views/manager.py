@@ -1,4 +1,5 @@
 import threading
+from itertools import groupby
 from typing import List
 
 from django.contrib import messages
@@ -84,6 +85,167 @@ def repeated_archives_for_galleries(request: HttpRequest) -> HttpResponse:
 
     d = {'results': results, 'form': form}
     return render(request, "viewer/archives_repeated.html", d)
+
+
+@staff_member_required(login_url='viewer:login')
+def repeated_archives_by_field(request: HttpRequest) -> HttpResponse:
+    p = request.POST
+    get = request.GET
+
+    title = get.get("title", '')
+    tags = get.get("tags", '')
+
+    if 'clear' in get:
+        form = ArchiveSearchForm()
+    else:
+        form = ArchiveSearchForm(initial={'title': title, 'tags': tags})
+
+    if p:
+        pks = []
+        for k, v in p.items():
+            if k.startswith("del-"):
+                # k, pk = k.split('-')
+                # results[pk][k] = v
+                pks.append(v)
+        archives = Archive.objects.filter(id__in=pks).order_by('-create_date')
+        if 'delete_archives' in p:
+            for archive in archives:
+                message = 'Removing archive: {} and deleting file: {}'.format(
+                    archive.title, archive.zipped.path
+                )
+                frontend_logger.info(message)
+                messages.success(request, message)
+                archive.gallery.mark_as_deleted()
+                archive.delete_all_files()
+                archive.delete()
+        elif 'delete_objects' in p:
+            for archive in archives:
+                message = 'Removing archive: {}, keeping file: {}'.format(
+                    archive.title, archive.zipped.path
+                )
+                frontend_logger.info(message)
+                messages.success(request, message)
+                archive.gallery.mark_as_deleted()
+                archive.delete_files_but_archive()
+                archive.delete()
+
+    params = {
+        'sort': 'create_date',
+        'asc_desc': 'desc',
+        'filename': title,
+    }
+
+    for k, v in get.items():
+        params[k] = v
+
+    for k in archive_filter_keys:
+        if k not in params:
+            params[k] = ''
+
+    results = filter_archives_simple(params)
+
+    if 'no-custom-tags' in get:
+        results = results.annotate(num_custom_tags=Count('custom_tags')).filter(num_custom_tags=0)
+
+    by_filesize = dict()
+    by_crc32 = dict()
+
+    for k, v in groupby(results.order_by('filesize'), lambda x: x.filesize):
+        objects = list(v)
+        if len(objects) > 1:
+            by_filesize[k] = objects
+
+    for k, v in groupby(results.order_by('crc32'), lambda x: x.crc32):
+        objects = list(v)
+        if len(objects) > 1:
+            by_crc32[k] = objects
+
+    # paginator = Paginator(results, 100)
+    # try:
+    #     results = paginator.page(page)
+    # except (InvalidPage, EmptyPage):
+    #     results = paginator.page(paginator.num_pages)
+
+    d = {
+        'by_filesize': by_filesize,
+        'by_crc32': by_crc32,
+        'form': form
+    }
+    return render(request, "viewer/archives_repeated_by_fields.html", d)
+
+
+@staff_member_required(login_url='viewer:login')
+def repeated_galleries_by_field(request: HttpRequest) -> HttpResponse:
+    p = request.POST
+    get = request.GET
+
+    title = get.get("title", '')
+    tags = get.get("tags", '')
+
+    if 'clear' in get:
+        form = GallerySearchForm()
+    else:
+        form = GallerySearchForm(initial={'title': title, 'tags': tags})
+
+    if p:
+        pks = []
+        for k, v in p.items():
+            if k.startswith("del-"):
+                # k, pk = k.split('-')
+                # results[pk][k] = v
+                pks.append(v)
+        results = Gallery.objects.filter(id__in=pks).order_by('-create_date')
+
+        if 'delete_galleries' in p:
+            for gallery in results:
+                message = 'Removing gallery: {}, link: {}'.format(gallery.title, gallery.get_link())
+                frontend_logger.info(message)
+                messages.success(request, message)
+                gallery.mark_as_deleted()
+
+    params = {
+        'sort': 'create_date',
+        'asc_desc': 'desc',
+    }
+
+    for k, v in get.items():
+        params[k] = v
+
+    for k in gallery_filter_keys:
+        if k not in params:
+            params[k] = ''
+
+    results = filter_galleries_simple(params)
+
+    results = results.eligible_for_use().exclude(title__exact='')
+
+    if 'has-archives' in get:
+        results = results.annotate(
+            archives=Count('archive')
+        ).filter(archives__gt=0)
+
+    by_title = dict()
+
+    if 'same-uploader' in get:
+        for k, v in groupby(results.order_by('title', 'uploader'), lambda x: (x.title, x.uploader)):
+            objects = list(v)
+            if len(objects) > 1:
+                by_title[k] = objects
+    else:
+        for k, v in groupby(results.order_by('title'), lambda x: x.title):
+            objects = list(v)
+            if len(objects) > 1:
+                by_title[k] = objects
+
+    providers = Gallery.objects.all().values_list('provider', flat=True).distinct()
+
+    d = {
+        'by_title': by_title,
+        'form': form,
+        'providers': providers
+    }
+
+    return render(request, "viewer/galleries_repeated_by_fields.html", d)
 
 
 @staff_member_required(login_url='viewer:login')
@@ -376,7 +538,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                 )
                 frontend_logger.info(message)
                 messages.success(request, message)
-                archive.delete_files_but_archive()
+                archive.delete_all_files()
                 archive.delete()
         elif 'delete_objects' in p:
             for archive in archives:
@@ -385,6 +547,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                 )
                 frontend_logger.info(message)
                 messages.success(request, message)
+                archive.delete_files_but_archive()
                 archive.delete()
         elif 'create_possible_matches' in p:
             if thread_exists('web_match_worker'):
@@ -590,6 +753,15 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
 
             provider = p.get('provider', '')
 
+            try:
+                cutoff = float(p.get('cutoff', '0.4'))
+            except ValueError:
+                cutoff = 0.4
+            try:
+                max_matches = int(p.get('max-matches', '10'))
+            except ValueError:
+                max_matches = 10
+
             message = 'Searching for gallery matches in providers for wanted galleries.'
             frontend_logger.info(message)
             messages.success(request, message)
@@ -598,7 +770,10 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
                 name='web_search_worker',
                 target=create_matches_wanted_galleries_from_providers,
                 args=(results, provider),
-                kwargs={'logger': frontend_logger})
+                kwargs={
+                    'logger': frontend_logger,
+                    'cutoff': cutoff, 'max_matches': max_matches,
+                })
             panda_search_thread.daemon = True
             panda_search_thread.start()
         elif 'search_provider_galleries_internal' in p:
@@ -628,6 +803,11 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
             except ValueError:
                 max_matches = 10
 
+            try:
+                must_be_used = bool(p.get('must-be-used', False))
+            except ValueError:
+                must_be_used = False
+
             message = 'Searching for gallery matches locally in providers for wanted galleries.'
             frontend_logger.info(message)
             messages.success(request, message)
@@ -638,7 +818,8 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
                 args=(results,),
                 kwargs={
                     'logger': frontend_logger, 'provider_filter': provider,
-                    'cutoff': cutoff, 'max_matches': max_matches
+                    'cutoff': cutoff, 'max_matches': max_matches,
+                    'must_be_used': must_be_used
                 }
             )
             matching_thread.daemon = True

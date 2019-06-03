@@ -41,8 +41,8 @@ class WebCrawler(object):
 
         parser.add_argument('-rf', '--retry-failed',
                             required=False,
-                            action='store_true',
-                            help="Retry download of galleries marked as failed")
+                            action='store',
+                            help="Retry download of galleries marked as failed. Can filter by provider")
 
         parser.add_argument('-rwf', '--retry-wrong-filesize',
                             required=False,
@@ -109,6 +109,12 @@ class WebCrawler(object):
                             action='store',
                             nargs='*',
                             help='List of provider names to exclude from some of the tools.')
+
+        parser.add_argument('-wt', '--wait-timer',
+                            type=int,
+                            required=False,
+                            action='store',
+                            help='Override the wait timer.')
 
         parser.add_argument('-nv', '--non-verbose',
                             required=False,
@@ -187,15 +193,20 @@ class WebCrawler(object):
         else:
             parser_logger = self.logger
 
+        if args.wait_timer:
+            current_settings.wait_timer = args.wait_timer
+
         if args.retry_failed:
             current_settings.retry_failed = True
-            found_galleries = Gallery.objects.filter_dl_type('failed')
+            current_settings.replace_metadata = True
+            found_galleries = Gallery.objects.filter_dl_type('failed', provider=args.retry_failed)
             if found_galleries:
                 for gallery in found_galleries:
                     args.url.append(gallery.get_link())
 
         if args.retry_dl_type:
             current_settings.retry_failed = True
+            current_settings.replace_metadata = True
             found_galleries = Gallery.objects.filter_dl_type(args.retry_dl_type)
             if found_galleries:
                 for gallery in found_galleries:
@@ -203,6 +214,7 @@ class WebCrawler(object):
 
         if args.retry_wrong_filesize:
             current_settings.retry_failed = True
+            current_settings.replace_metadata = True
             all_galleries = Gallery.objects.different_filesize_archive()
             if all_galleries:
                 for gallery in all_galleries:

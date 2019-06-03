@@ -107,8 +107,8 @@ class ManagerTest(TestCase):
         test_user1.save()
 
         # Galleries
-        self.test_gallery1 = Gallery.objects.create(title='sample non public gallery 1')
-        self.test_gallery2 = Gallery.objects.create(title='sample non public gallery 2')
+        self.test_gallery1 = Gallery.objects.create(title='sample non public gallery 1', gid='344', provider='panda')
+        self.test_gallery2 = Gallery.objects.create(title='sample non public gallery 2', gid='342', provider='test')
 
         # Archives
         self.test_book1 = Archive.objects.create(title='archive 1', user=test_admin1, gallery=self.test_gallery1)

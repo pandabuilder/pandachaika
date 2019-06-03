@@ -23,6 +23,7 @@ urlpatterns = [
     url(r"^archive/(\d+)/rematch/$", archive.rematch_archive, name='archive-rematch'),
     url(r"^archive/(\d+)/delete/$", archive.delete_archive, name='archive-delete'),
     url(r"^archive/(\d+)/download/$", archive.archive_download, name='archive-download'),
+    url(r"^archive/(\d+)/ext-download/$", archive.archive_ext_download, name='archive-ext-download'),
     url(r"^archive/(\d+)/thumb/$", archive.archive_thumb, name='archive-thumb'),
     url(r"^update/(\d+)/([\w-]+)/(\d*)/$", archive.archive_update, name='archive-update-tool-id'),
     url(r"^update/(\d+)/([\w-]+)/$", archive.archive_update, name='archive-update-tool'),
@@ -52,6 +53,8 @@ urlpatterns = [
 # Manager lists.
 urlpatterns += [
     url(r"^repeated-archives/$", manager.repeated_archives_for_galleries, name='repeated-archives'),
+    url(r"^archives-by-field/$", manager.repeated_archives_by_field, name='archives-by-field'),
+    url(r"^galleries-by-field/$", manager.repeated_galleries_by_field, name='galleries-by-field'),
     url(r"^archive-filesize-different/$", manager.archive_filesize_different_from_gallery, name='archive-filesize-different'),
     url(r"^missing-archives/$", manager.missing_archives_for_galleries, name='missing-archives'),
     url(r"^archive-not-present/$", manager.archives_not_present_in_filesystem, name='archive-not-present'),

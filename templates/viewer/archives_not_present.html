@@ -29,7 +29,7 @@
   </form>
   <!-- Next/Prev page links  -->
   {% if results.object_list and results.paginator.num_pages > 1 %}
-    <div class="pagination-top">
+    <div>
         <span class="step-links">
             {% if results.has_previous %}
               <a href= "?page={{ results.previous_page_number }}">previous &lt;&lt; </a>

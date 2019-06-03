@@ -5,6 +5,7 @@ from core.base.setup import Settings
 from core.base.types import GalleryData
 from core.providers.fakku.parsers import Parser as FakkuParser
 from core.providers.nhentai.parsers import Parser as NhentaiParser
+from core.providers.nexus.parsers import Parser as NexusParser
 
 
 class TestPageParsers(TestCase):
@@ -125,6 +126,46 @@ class TestPageParsers(TestCase):
             ],
             comment="Takumi's life as a girl only continues to get more wild, as he (she?) continues to fall deeper into a life of promiscuity, drugs and unprotected sex with strangers. Will his friend Ryou be able to pull him out of this terrible spiral?",
             thumbnail_url='https://t.fakku.net/images/manga/t/tsf-story-append-20-english_1497401155_1502575464/thumbs/001.thumb.jpg',
+        )
+
+        self.assertEqual(data, expected_data)
+
+    def test_nexus_parser(self):
+        """Test Nexus gallery page parser"""
+        settings = Settings(load_from_disk=True)
+
+        gallery_link = 'https://hentainexus.com/view/5665'
+        parser = NexusParser(settings)
+        data = parser.fetch_gallery_data(gallery_link)
+
+        expected_data = GalleryData(
+            '5665',
+            link=gallery_link,
+            archiver_key='https://hentainexus.com/zip/5665',
+            provider='nexus',
+            title='Sase-san is Very Popular',
+            thumbnail_url='https://static.hentainexus.com/content/5665/cover.jpg',
+            filecount=16,
+            filesize=0,
+            expunged=False,
+            posted=None,
+            category='Manga',
+            tags=[
+                'artist:wantan_meo',
+                'language:english',
+                'magazine:comic_kairakuten_2019-04',
+                'parody:original_work',
+                'publisher:fakku',
+                'creampie',
+                'fangs',
+                'hairy',
+                'hentai',
+                'office_lady',
+                'oppai',
+                'uncensored',
+                'vanilla',
+            ],
+            comment='Let\'s chug \'em down! ♪',
         )
 
         self.assertEqual(data, expected_data)

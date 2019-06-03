@@ -45,11 +45,11 @@ class ArchiveAutocomplete(autocomplete.JalQuerySetView):
         q_formatted = '%' + q.replace(' ', '%') + '%'
         if self.request.user.is_authenticated:
             qs = qs.filter(
-                Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted)
+                Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted) | Q(original_filename__ss=q_formatted)
             )
         else:
             qs = qs.filter(public=True).order_by('-public_date').filter(
-                Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted)
+                Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted) | Q(original_filename__ss=q_formatted)
             )
 
         return qs[0:self.limit_choices]

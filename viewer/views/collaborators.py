@@ -76,7 +76,7 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
                 )
         elif 'download_galleries' in p:
             for gallery in results:
-                message = 'Queueing gallery: {}, link: {}, sourcelink: {}'.format(
+                message = 'Queueing gallery: {}, link: {}, source link: {}'.format(
                     gallery.title, gallery.get_absolute_url(), gallery.get_link()
                 )
                 if 'reason' in p and p['reason'] != '':
@@ -241,7 +241,6 @@ def publish_archives(request: HttpRequest) -> HttpResponse:
                 archive.gallery.mark_as_deleted()
                 archive.gallery = None
                 archive.delete_all_files()
-                archive.delete_files_but_archive()
                 archive.delete()
                 event_log(
                     request.user,
@@ -250,6 +249,44 @@ def publish_archives(request: HttpRequest) -> HttpResponse:
                     reason=user_reason,
                     result='deleted'
                 )
+        elif 'update_metadata' in p and request.user.has_perm('viewer.update_metadata'):
+            for archive in archives:
+                gallery = archive.gallery
+
+                message = 'Updating gallery API data for gallery: {} and related archives'.format(
+                    gallery.get_absolute_url()
+                )
+                if 'reason' in p and p['reason'] != '':
+                    message += ', reason: {}'.format(p['reason'])
+                frontend_logger.info("User {}: {}".format(request.user.username, message))
+                messages.success(request, message)
+
+                current_settings = Settings(load_from_config=crawler_settings.config)
+
+                if current_settings.workers.web_queue:
+                    current_settings.set_update_metadata_options(providers=(gallery.provider,))
+
+                    def gallery_callback(x: Optional['Gallery'], crawled_url: Optional[str], result: str) -> None:
+                        event_log(
+                            request.user,
+                            'UPDATE_METADATA',
+                            reason=user_reason,
+                            content_object=x,
+                            result=result,
+                            data=crawled_url
+                        )
+
+                    current_settings.workers.web_queue.enqueue_args_list(
+                        (gallery.get_link(),),
+                        override_options=current_settings,
+                        gallery_callback=gallery_callback
+                    )
+
+                    frontend_logger.info(
+                        'Updating gallery API data for gallery: {} and related archives'.format(
+                            gallery.get_absolute_url()
+                        )
+                    )
 
     params = {
         'sort': 'create_date',

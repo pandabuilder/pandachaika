@@ -133,7 +133,7 @@ class WebServerSettings:
 class UrlSettings:
     __slots__ = [
         'behind_proxy', 'enable_public_submit', 'enable_public_stats',
-        'viewer_main_url', 'media_url', 'static_url'
+        'viewer_main_url', 'media_url', 'static_url', 'external_media_server'
     ]
 
     def __init__(self) -> None:
@@ -143,6 +143,7 @@ class UrlSettings:
         self.viewer_main_url: str = ''
         self.media_url: str = '/media/'
         self.static_url: str = '/static/'
+        self.external_media_server = ''
 
 
 class Settings:
@@ -561,6 +562,8 @@ class Settings:
                 self.urls.enable_public_submit = config['urls'].getboolean('enable_public_submit')
             if 'enable_public_stats' in config['urls']:
                 self.urls.enable_public_stats = config['urls'].getboolean('enable_public_stats')
+            if 'external_media_server' in config['urls']:
+                self.urls.external_media_server = config['urls']['external_media_server']
         if 'remote_site' in config:
             if 'api_url' in config['remote_site']:
                 self.remote_site['api_url'] = config['remote_site']['api_url']

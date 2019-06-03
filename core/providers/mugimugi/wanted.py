@@ -229,6 +229,7 @@ def wanted_generator(settings: 'Settings', ext_logger: RealLogger, attrs: QueryS
                 if gallery_data.gid not in used_gids:
                     if not gallery_data.dl_type:
                         gallery_data.dl_type = 'auto_wanted'
+                    gallery_data.reason = attrs.fetch_value('wanted_reason_{}'.format(query_name)) or 'backup'
                     gallery = Gallery.objects.add_from_values(gallery_data)
                     # We match anyways in case there's a previous WantedGallery.
                     # Actually, we don't match since we only get metadata here, so it should not count as found.
@@ -254,8 +255,10 @@ def wanted_generator(settings: 'Settings', ext_logger: RealLogger, attrs: QueryS
                             add_as_hidden=True,
                             reason=attrs.fetch_value('wanted_reason_{}'.format(query_name)) or '',
                             public=attrs.fetch_value('wanted_public_{}'.format(query_name)) or False,
-                            should_search=True,
-                            keep_searching=True,
+                            should_search=attrs.fetch_value('wanted_should_search_{}'.format(query_name)) or True,
+                            keep_searching=attrs.fetch_value('wanted_keep_searching_{}'.format(query_name)) or True,
+                            provider=attrs.fetch_value('wanted_provider_{}'.format(query_name)) or '',
+                            wanted_providers=attrs.fetch_value('wanted_providers_{}'.format(query_name)) or '',
                             category='Manga',
                         )
                         for artist in gallery.tags.filter(scope='artist'):

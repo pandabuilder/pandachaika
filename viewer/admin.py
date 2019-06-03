@@ -93,7 +93,7 @@ class TagAdmin(admin.ModelAdmin):
 
 
 class GalleryAdmin(admin.ModelAdmin):
-    search_fields = ["title", "title_jpn"]
+    search_fields = ["title", "title_jpn", "gid"]
     raw_id_fields = ("tags", "gallery_container")
     list_display = ["__str__", "id", "gid", "token",
                     "category", "filesize", "posted", "filecount", "hidden", "dl_type", "provider"]
@@ -101,7 +101,7 @@ class GalleryAdmin(admin.ModelAdmin):
         "category", "expunged", "fjord", "public", "hidden", "dl_type",
         "provider", "status", "origin", "reason"
     ]
-    actions = ['make_hidden', 'make_public', 'set_provider']
+    actions = ['make_hidden', 'make_public', 'set_provider', 'set_reason']
     action_form = UpdateActionForm
 
     def make_hidden(self, request: HttpRequest, queryset: GalleryQuerySet) -> None:
@@ -131,6 +131,16 @@ class GalleryAdmin(admin.ModelAdmin):
             message_bit = "%s galleries were" % rows_updated
         self.message_user(request, "%s successfully set with provider: %s." % (message_bit, provider))
     set_provider.short_description = "Set provider of selected galleries"  # type: ignore
+
+    def set_reason(self, request: HttpRequest, queryset: GalleryQuerySet) -> None:
+        reason = request.POST['extra_field']
+        rows_updated = queryset.update(reason=reason)
+        if rows_updated == 1:
+            message_bit = "1 gallery was"
+        else:
+            message_bit = "%s galleries were" % rows_updated
+        self.message_user(request, "%s successfully set with reason: %s." % (message_bit, reason))
+    set_reason.short_description = "Set reason of selected galleries"  # type: ignore
 
 
 class ImageAdmin(admin.ModelAdmin):

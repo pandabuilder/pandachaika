@@ -218,4 +218,4 @@ def get_archive_link_from_html_page(page_text: str) -> str:
     if not archive_link:
         return ''
 
-    return archive_link.href
+    return str(archive_link.get('href'))

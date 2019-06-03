@@ -66,11 +66,11 @@ class Parser(BaseParser):
             for gallery_row in gallery_container.find_all("div", {"class": "row"}):
                 left_text = gallery_row.find("div", {"class": "row-left"}).get_text()
                 right_div = gallery_row.find("div", {"class": "row-right"})
-                if left_text == "Series":
+                if left_text == "Series" or left_text == "Parody":
                     right_text = right_div.get_text()
-                    if not right_text == "Original Work":
-                        gallery.tags.append(
-                            translate_tag("parody:" + right_text))
+                    # if not right_text == "Original Work":
+                    gallery.tags.append(
+                        translate_tag("parody:" + right_text))
                 elif left_text == "Artist":
                     for artist in right_div.find_all("a"):
                         gallery.tags.append(
@@ -107,7 +107,7 @@ class Parser(BaseParser):
                 elif left_text == "Description":
                     gallery.comment = right_div.get_text()
                 elif left_text == "Tags":
-                    for tag_a in right_div.find_all("a"):
+                    for tag_a in right_div.find_all("a", href=lambda x: x and '/tags/' in x):
                         if tag_a.get_text() == 'doujin':
                             is_doujinshi = True
                         gallery.tags.append(

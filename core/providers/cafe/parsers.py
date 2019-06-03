@@ -214,7 +214,9 @@ class Parser(BaseParser):
         match_string = re.compile(constants.main_page + '/(.+)/$')
         skip_tags = ['Uncategorized']
 
-        self.logger.info("Provided RSS URL, adding {} found links".format(len(feed['items'])))
+        self.logger.info("Provided RSS URL for provider ({}), adding {} found links".format(
+            self.name, len(feed['items']))
+        )
 
         for item in feed['items']:
             tags = [x.term for x in item['tags'] if x.term not in skip_tags]

@@ -374,7 +374,10 @@ class Parser(BaseParser):
             if constants.rss_url in url:
                 feed_links = self.crawl_feed(url)
                 unique_urls.update(feed_links)
-                self.logger.info("Provided RSS URL, adding {} found links".format(len(feed_links)))
+                self.logger.info("Provided RSS URL for provider ({}), adding {} found links".format(
+                    self.name,
+                    len(feed_links))
+                )
                 continue
 
             if(constants.ex_page_short not in url

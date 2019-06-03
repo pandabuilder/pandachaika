@@ -49,7 +49,7 @@ def color_percent(fraction: int, total: int) -> str:
         if float(fraction_i) > float(total):
             fraction_i = float(fraction_i) - 2 * (float(fraction_i) - float(total))
         result = ((float(fraction_i) / float(total)) * 100)
-        if result == 100:
+        if result >= 100:
             return 'total'
         elif result > 90:
             return 'very-high'

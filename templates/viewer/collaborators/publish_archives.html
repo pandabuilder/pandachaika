@@ -39,7 +39,7 @@
     {% load viewer_extras %}
     <!-- Next/Prev page links  -->
     {% if results.object_list and results.paginator.num_pages > 1 %}
-      <div class="pagination-top">
+      <div>
           <span class="step-links">
               <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
             {% if results.has_previous %}
@@ -106,7 +106,7 @@
       </table>
     <!-- Next/Prev page links  -->
       {% if results.object_list and results.paginator.num_pages > 1 %}
-        <div class="pagination-top">
+        <div>
             <span class="step-links">
                 <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
               {% if results.has_previous %}
@@ -127,6 +127,9 @@
     </div>
     <button name="publish_archives" class="btn btn-light">Publish</button>
     <button name="unpublish_archives" class="btn btn-light">Unpublish</button>
+    {% if perms.viewer.update_metadata %}
+    <button name="update_metadata" class="btn btn-light">Update metadata</button>
+    {% endif %}
     {% if perms.viewer.delete_archive %}
     <button name="delete_archives" class="btn btn-light">Delete (WARNING!)</button>
     {% endif %}

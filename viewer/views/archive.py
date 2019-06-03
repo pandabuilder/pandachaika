@@ -262,6 +262,28 @@ def archive_download(request: HttpRequest, pk: int) -> HttpResponse:
         return HttpResponseRedirect(archive.zipped.url)
 
 
+def archive_ext_download(request: HttpRequest, pk: int) -> HttpResponse:
+    try:
+        archive = Archive.objects.get(pk=pk)
+    except Archive.DoesNotExist:
+        raise Http404("Archive does not exist")
+    if not archive.public and not request.user.is_authenticated:
+        raise Http404("Archive is not public")
+
+    if 'original' in request.GET:
+        filename = quote(basename(archive.zipped.name))
+    else:
+        filename = archive.pretty_name
+
+    redirect_url = "{0}/{1}?filename={2}".format(
+        crawler_settings.urls.external_media_server,
+        quote(archive.zipped.name),
+        filename
+    ).encode('utf-8')
+
+    return HttpResponseRedirect(redirect_url)
+
+
 def archive_thumb(request: HttpRequest, pk: int) -> HttpResponse:
     try:
         archive = Archive.objects.get(pk=pk)
@@ -493,9 +515,12 @@ def delete_archive(request: HttpRequest, pk: int) -> HttpResponse:
                 archive.delete_files_but_archive()
                 archive.delete()
 
+            user_reason = p.get('reason', '')
+
             event_log(
                 request.user,
                 'DELETE_ARCHIVE',
+                reason=user_reason,
                 content_object=gallery,
                 result='deleted'
             )

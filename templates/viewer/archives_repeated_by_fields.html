@@ -1,0 +1,140 @@
+{% extends "viewer/base.html" %}
+{% block title %}Repeated archives by field | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+{% load staticfiles %}
+{% block content %}
+  {% load viewer_extras %}
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+  <!-- Non matched archives  -->
+  <div class="page-header">
+    <h2>Archives repeated by fields</h2>
+    <p class="lead">Number of archive groups (by filesize, by crc32): {{ by_filesize|length }}, {{ by_crc32|length }}</p>
+  </div>
+  <form action="{% url 'viewer:archives-by-field' %}" method="GET">
+    {% for field in form %}
+      <div class="page-line">
+        {{ field.errors }}
+        {{ field }}
+      </div>
+    {% endfor %}
+    <div class="page-line form-inline">
+      <button id="toggle-all" class="btn btn-info" type="button">Toggle All</button>
+      <button type="submit" name="apply" class="btn btn-light">Search</button>
+      <a class="btn btn-light" href="{% url 'viewer:archives-by-field' %}">Clear</a>
+      <input id="checkbox-f1" class="custom-cb" type="checkbox" name="no-custom-tags" value="1" {% if "no-custom-tags" in request.GET %}checked{% endif %}><label for="checkbox-f1"><span><span></span></span>No custom tags</label>
+    </div>
+  </form>
+  <form action="{% url 'viewer:archives-by-field' %}" method="POST">{% csrf_token %}
+    <ul class="list-group">
+      {% for archive_group_key, archive_group_value in by_filesize.items %}
+        <label for="del-{{ archive_group_key }}">Filesize: {{ archive_group_key }}</label>
+        <table class="table table-bordered table-sm generic-table">
+          <thead>
+          <tr>
+            <th>Select</th><th>Title</th><th>File</th><th>Source</th><th>Reason</th><th>Count</th><th>Size</th><th>Date</th>
+          </tr>
+          </thead>
+          <tbody>
+          {% for archive in archive_group_value %}
+            <tr>
+              <td>
+                <input id="del-{{ archive.id }}" class="toggle-list custom-cb" type="checkbox" name="del-{{ archive.id }}" value="{{ archive.pk }}"><label for="del-{{ archive.id }}"><span><span></span></span></label>
+              </td>
+              <td>
+              {% if archive.thumbnail.name %}
+                <a href="{% url 'viewer:archive' archive.pk %}" data-image-url="{{ archive.thumbnail.url }}" class="img-preview" rel="popover">{{ archive.title }}</a>
+              {% else %}
+                <a href="{% url 'viewer:archive' archive.pk %}">{{ archive.title }}</a>
+              {% endif %}
+              </td>
+              <td>
+                {{ archive.zipped }}
+              </td>
+              <td>
+                {{ archive.source_type }}
+              </td>
+              <td>
+                {{ archive.reason }}
+              </td>
+              <td>
+                {{ archive.filecount }}
+              </td>
+              <td>
+                {{ archive.filesize }}
+              </td>
+              <td>
+                {{ archive.create_date|date:"DATETIME_FORMAT" }}
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% endfor %}
+    </ul>
+    <ul class="list-group">
+      {% for archive_group_key, archive_group_value in by_crc32.items %}
+        <label for="del-{{ archive_group_key }}">CRC32: {{ archive_group_key }}</label>
+        <table class="table table-bordered table-sm generic-table">
+          <thead>
+          <tr>
+            <th>Select</th><th>Title</th><th>File</th><th>Source</th><th>Reason</th><th>Count</th><th>Size</th><th>Date</th>
+          </tr>
+          </thead>
+          <tbody>
+          {% for archive in archive_group_value %}
+            <tr>
+              <td>
+                <input id="del-{{ archive.id }}" class="toggle-list custom-cb" type="checkbox" name="del-{{ archive.id }}" value="{{ archive.pk }}"><label for="del-{{ archive.id }}"><span><span></span></span></label>
+              </td>
+              <td>
+              {% if archive.thumbnail.name %}
+                <a href="{% url 'viewer:archive' archive.pk %}" data-image-url="{{ archive.thumbnail.url }}" class="img-preview" rel="popover">{{ archive.title }}</a>
+              {% else %}
+                <a href="{% url 'viewer:archive' archive.pk %}">{{ archive.title }}</a>
+              {% endif %}
+              </td>
+              <td>
+                {{ archive.zipped }}
+              </td>
+              <td>
+                {{ archive.source_type }}
+              </td>
+              <td>
+                {{ archive.reason }}
+              </td>
+              <td>
+                {{ archive.filecount }}
+              </td>
+              <td>
+                {{ archive.filesize }}
+              </td>
+              <td>
+                {{ archive.create_date|date:"DATETIME_FORMAT" }}
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% endfor %}
+    </ul>
+    <button type="submit" name="delete_objects" class="btn btn-light">Delete selected archives</button>
+    <button type="submit" name="delete_archives" class="btn btn-light">Delete (WARNING!) selected archives and files</button>
+  </form>
+{% endblock %}
+{% block afterJQ %}
+  {% load compress %}
+  {% compress css %}
+    <link href="{% static 'autocomplete_light/vendor/jal/src/style.css' %}" type="text/css" media="all" rel="stylesheet" />
+  {% endcompress %}
+  {% compress js %}
+    <script type="text/javascript" src="{% static 'autocomplete_light/jquery.init.js' %}"></script>
+    <script type="text/javascript" src="{% static 'autocomplete_light/autocomplete.init.js' %}"></script>
+    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/autocomplete.js' %}"></script>
+    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/text_widget.js' %}"></script>
+    <script type="text/javascript" src="{% static 'autocomplete_light/jal.js' %}"></script>
+  {% endcompress %}
+{% endblock %}

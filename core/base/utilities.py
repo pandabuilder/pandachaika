@@ -502,7 +502,7 @@ def get_thread_status_bool() -> Dict[str, bool]:
 def check_for_running_threads() -> bool:
     thread_list = threading.enumerate()
     for thread_name in setup.GlobalInfo.worker_threads:
-        if any([thread.name == thread_name for thread in thread_list]):
+        if any([thread.name == thread_name[0] for thread in thread_list]):
             return True
     return False
 

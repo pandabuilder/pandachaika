@@ -93,6 +93,8 @@
               <a href="#" class="nav-link dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Lists<span class="caret"></span></a>
               <div class="dropdown-menu">
                 <a class="dropdown-item" href="{% url 'viewer:repeated-archives' %}">Repeated archives (same gallery)</a>
+                <a class="dropdown-item" href="{% url 'viewer:archives-by-field' %}">Repeated archives by field</a>
+                <a class="dropdown-item" href="{% url 'viewer:galleries-by-field' %}">Repeated galleries by field</a>
                 <a class="dropdown-item" href="{% url 'viewer:missing-archives' %}?provider=panda">Non used panda galleries</a>
                 <a class="dropdown-item" href="{% url 'viewer:archive-filesize-different' %}">Archives not matching gallery filesize</a>
                 <a class="dropdown-item" href="{% url 'viewer:archive-not-present' %}">Archives with file not present in filesystem</a>
@@ -146,7 +148,7 @@
         </ul>
         <form action="{% url 'viewer:archive-search' %}" class="d-inline w-100 mx-2 my-auto" role="search">
           <div class="input-group">
-            <input class="form-control form-control-sm mr-sm-2" name="qsearch" placeholder="Title, tag or source URL archive quick search" autocomplete="off" value="{{ display_prms.qsearch }}" type="text" aria-label="quick text">
+            <input class="form-control mr-sm-2" name="qsearch" placeholder="Title, tag or source URL archive quick search" autocomplete="off" value="{{ display_prms.qsearch }}" type="text" aria-label="quick text">
             <span>
             <button class="btn btn-secondary my-2 my-sm-0" type="submit" aria-label="quick search"><i class="fas fa-search"></i></button>
             <button class="btn btn-secondary my-2 my-sm-0" id="more" data-toggle="collapse" data-target="#main-search" name="main_filters" type="button" aria-label="toggle search"><i class="fas fa-chevron-{% if prm.main_filters %}up{% else %}down{% endif %}"></i></button>

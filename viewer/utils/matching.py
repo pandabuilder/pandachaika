@@ -5,7 +5,7 @@ import time
 from typing import Iterable, Dict, List, Tuple
 
 from django.conf import settings
-from django.db.models import QuerySet
+from django.db.models import QuerySet, Q
 
 from core.base.comparison import get_list_closer_gallery_titles_from_list
 from core.base.types import OptionalLogger
@@ -16,16 +16,19 @@ crawler_settings = settings.CRAWLER_SETTINGS
 
 
 # WantedGallery
-def create_matches_wanted_galleries_from_providers(wanted_galleries: QuerySet, provider: str, logger: OptionalLogger = None) -> None:
+def create_matches_wanted_galleries_from_providers(
+        wanted_galleries: QuerySet, provider: str, logger: OptionalLogger = None,
+        cutoff: float = 0.4, max_matches: int = 20
+) -> None:
 
     try:
         matchers = crawler_settings.provider_context.get_matchers(crawler_settings, logger, filter_name=provider, force=True, matcher_type='title')
         for matcher_element in matchers:
             matcher = matcher_element[0]
             for wanted_gallery in wanted_galleries:
-                results = matcher.create_closer_matches_values(wanted_gallery.search_title)
+                results = matcher.create_closer_matches_values(wanted_gallery.search_title, cutoff=cutoff, max_matches=max_matches)
                 for gallery_data in results:
-                    gallery_data[1]['dl_type'] = 'gallery_match'
+                    gallery_data[1].dl_type = 'gallery_match'
                     gallery = Gallery.objects.update_or_create_from_values(gallery_data[1])
                     if gallery:
                         GalleryMatch.objects.get_or_create(
@@ -53,7 +56,11 @@ def create_matches_wanted_galleries_from_providers(wanted_galleries: QuerySet, p
 
 
 # WantedGallery
-def create_matches_wanted_galleries_from_providers_internal(wanted_galleries: QuerySet, logger: OptionalLogger = None, provider_filter: str = '', cutoff: float = 0.4, max_matches: int = 20) -> None:
+def create_matches_wanted_galleries_from_providers_internal(
+        wanted_galleries: QuerySet, logger: OptionalLogger = None,
+        provider_filter: str = '', cutoff: float = 0.4, max_matches: int = 20,
+        must_be_used: bool = False
+) -> None:
 
     try:
         galleries_title_id = []
@@ -62,6 +69,13 @@ def create_matches_wanted_galleries_from_providers_internal(wanted_galleries: Qu
             galleries = Gallery.objects.eligible_for_use(provider__contains=provider_filter)
         else:
             galleries = Gallery.objects.eligible_for_use()
+
+        if must_be_used:
+            galleries = galleries.filter(
+                Q(archive__isnull=False)
+                | (Q(gallery_container__isnull=False) & Q(gallery_container__archive__isnull=False))
+            )
+
         for gallery in galleries:
             if gallery.title:
                 galleries_title_id.append(

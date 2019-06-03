@@ -353,10 +353,7 @@ img {
 }
 
 .title-main {
-  /*font-size: 1.1em;*/
-  /*margin-top: 20px;*/
   border-bottom: 1px solid #cccccc;
-  /*padding-left: 4px;*/
 }
 
 .title-img {
@@ -528,6 +525,11 @@ img {
 .navbar-brand > img {
   border: 0;
 }
+
+.table {
+  color: lightgrey;
+}
+
 
 .table-striped > thead {
   background-color: rgba(23, 66, 139, 1);

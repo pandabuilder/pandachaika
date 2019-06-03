@@ -140,7 +140,7 @@
           </li>{% endfor %}
       </ul>
     </li>
-    <li><label class="label-extended">Related archives:</label>
+    <li class="line-top"><label class="label-extended">Related archives:</label>
       <ul>
         {% for archive in gallery.archive_set.all %}
           <li><a href="{% url 'viewer:archive' archive.id %}">{{ archive }}</a>, images: {{ archive.filecount }}, size: {{ archive.filesize|filesizeformat }}</li>

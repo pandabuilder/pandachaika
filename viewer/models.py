@@ -97,6 +97,7 @@ class SpacedSearch(Lookup):
 
 
 models.CharField.register_lookup(SpacedSearch)
+models.FileField.register_lookup(SpacedSearch)
 
 
 class TagManager(models.Manager):
@@ -198,8 +199,8 @@ class GalleryManager(models.Manager):
     #         **kwargs
     #     ).prefetch_related('archive_set').order_by('-create_date')
 
-    def filter_dl_type(self, dl_type_filter: str) -> QuerySet:
-        return self.filter(dl_type__icontains=dl_type_filter)
+    def filter_dl_type(self, dl_type_filter: str, **kwargs: typing.Any) -> QuerySet:
+        return self.filter(dl_type__icontains=dl_type_filter, **kwargs)
 
     def filter_dl_type_and_posted_dates(self, dl_type_filter: str, start_date: datetime, end_date: datetime) -> QuerySet:
         return self.filter(posted__gte=start_date,
@@ -494,6 +495,9 @@ class Gallery(models.Model):
             ("wanted_gallery_found", "Can be notified of new wanted gallery matches"),
             ("crawler_adder", "Can add links to the crawler with more options"),
         )
+        constraints = [
+            models.UniqueConstraint(fields=['gid', 'provider'], name='unique_gallery')
+        ]
 
     def __str__(self) -> str:
         return self.title
@@ -598,6 +602,7 @@ class Archive(models.Model):
     title_jpn = models.CharField(max_length=500, blank=True, null=True, default='')
     zipped = models.FileField(
         'File', upload_to=archive_path_handler, max_length=500, storage=fs)
+    original_filename = models.CharField('Original Filename', max_length=500, blank=True, null=True)
     custom_tags = models.ManyToManyField(Tag, blank=True, default='')
     crc32 = models.CharField('CRC32', max_length=10, blank=True)
     match_type = models.CharField(
@@ -675,6 +680,7 @@ class Archive(models.Model):
         permissions = (
             ("publish_archive", "Can publish available archives"),
             ("match_archive", "Can match archives"),
+            ("update_metadata", "Can update metadata"),
             ("upload_with_metadata_archive", "Can upload a file with an associated metadata source"),
         )
 
@@ -1170,6 +1176,10 @@ class Archive(models.Model):
             self.filesize, self.filecount = get_zip_fileinfo(
                 self.zipped.path)
 
+        # original_filename
+        if self.original_filename is None or self.original_filename == '':
+            self.original_filename = os.path.basename(self.zipped.name)
+
         self.simple_save(force_update=True)
 
     def rename_zipped_tail(self, new_file_name: str) -> bool:
@@ -1258,6 +1268,11 @@ class Archive(models.Model):
             self.filesize, self.filecount = get_zip_fileinfo(
                 self.zipped.path)
             self.crc32 = calc_crc32(self.zipped.path)
+            super(Archive, self).save()
+
+    def set_original_filename(self) -> None:
+        if os.path.isfile(self.zipped.path):
+            self.original_filename = os.path.basename(self.zipped.name)
             super(Archive, self).save()
 
     def generate_thumbnails(self) -> bool:
@@ -1577,6 +1592,8 @@ class WantedGallery(models.Model):
         max_length=20, blank=True, null=True, default='')
     provider = models.CharField(
         'Provider', max_length=50, blank=True, null=True, default='')
+    wanted_providers = models.CharField(
+        'Providers', max_length=500, blank=True, null=True, default='')
     found_galleries = models.ManyToManyField(
         Gallery, related_name="found_galleries",
         blank=True,
