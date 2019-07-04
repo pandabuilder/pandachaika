@@ -4,9 +4,10 @@ from collections import deque
 
 import logging
 import typing
-from typing import Iterable, Optional, Callable
+from typing import Iterable, Optional, Callable, List
 
 from core.base.setup import Settings
+from core.base.types import QueueItem
 from core.web.crawlerthread import WebCrawler
 
 if typing.TYPE_CHECKING:
@@ -16,6 +17,14 @@ if typing.TYPE_CHECKING:
 class WebQueue(object):
 
     """Queue handler for downloads."""
+
+    def __init__(self, settings: Settings, crawler_logger=None) -> None:
+        self.settings = settings
+        self.crawler_logger = crawler_logger
+        self.queue: deque = deque()
+        self.web_queue_thread: Optional[threading.Thread] = None
+        self.current_processing_items: List[QueueItem] = []
+        self.thread_name = 'web_queue'
 
     def web_worker(self) -> None:
         while True:
@@ -37,14 +46,6 @@ class WebQueue(object):
             except BaseException:
                 thread_logger = logging.getLogger('viewer.threads')
                 thread_logger.error(traceback.format_exc())
-
-    def __init__(self, settings: Settings, crawler_logger=None) -> None:
-        self.settings = settings
-        self.crawler_logger = crawler_logger
-        self.queue: deque = deque()
-        self.web_queue_thread: Optional[threading.Thread] = None
-        self.current_processing_items = []
-        self.thread_name = 'web_queue'
 
     def start_running(self) -> None:
 

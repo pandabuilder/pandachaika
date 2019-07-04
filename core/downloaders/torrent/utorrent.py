@@ -15,6 +15,12 @@ class uTorrent(TorrentClient):
     convert_to_base64 = False
     send_url = False
 
+    def __init__(self, address: str = 'localhost', port: int = 8080, user: str = '', password: str = '', secure: bool = True) -> None:
+        super().__init__(address=address, port=port, user=user, password=password, secure=secure)
+        self.auth: Optional[HTTPBasicAuth] = None
+        self.token = ''
+        self.UTORRENT_URL = ''
+
     def __str__(self) -> str:
         return self.name
 
@@ -67,7 +73,7 @@ class uTorrent(TorrentClient):
         self.UTORRENT_URL = '%s:%s/gui/' % (self.address, self.port)
         UTORRENT_URL_TOKEN = '%stoken.html' % self.UTORRENT_URL
         REGEX_UTORRENT_TOKEN = r'<div[^>]*id=[\"\']token[\"\'][^>]*>([^<]*)</div>'
-        self.auth: Optional[HTTPBasicAuth] = HTTPBasicAuth(self.user, self.password)
+        self.auth = HTTPBasicAuth(self.user, self.password)
         try:
             r = requests.get(UTORRENT_URL_TOKEN, auth=self.auth, timeout=25)
             result = re.search(REGEX_UTORRENT_TOKEN, r.text)
@@ -80,9 +86,3 @@ class uTorrent(TorrentClient):
             return False
         # guid = r.cookies['GUID']
         # self.cookies = dict(GUID=guid)
-
-    def __init__(self, address: str = 'localhost', port: int = 8080, user: str = '', password: str = '', secure: bool = True) -> None:
-        super().__init__(address=address, port=port, user=user, password=password, secure=secure)
-        self.auth: Optional[HTTPBasicAuth] = None
-        self.token = ''
-        self.UTORRENT_URL = ''

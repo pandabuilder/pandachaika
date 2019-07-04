@@ -4,6 +4,9 @@ from typing import List, Tuple
 
 class DirBrowser(object):
 
+    def __init__(self, path: str) -> None:
+        self.path = os.path.normpath(path)
+
     def realpath(self, path: str) -> str:
         p = os.path.normpath(os.path.join(self.path, path))
         if not p.startswith(self.path):
@@ -40,6 +43,3 @@ class DirBrowser(object):
         if not p.startswith(self.path):
             p = self.path
         return p
-
-    def __init__(self, path: str) -> None:
-        self.path = os.path.normpath(path)

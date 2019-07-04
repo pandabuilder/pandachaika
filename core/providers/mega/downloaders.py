@@ -17,6 +17,9 @@ class MegaArchiveDownloader(BaseDownloader):
     provider = 'mega'
     archive_only = True
 
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+
     def start_download(self) -> None:
 
         if not self.gallery or not self.gallery.link:
@@ -130,9 +133,6 @@ class MegaArchiveDownloader(BaseDownloader):
             None,
             zipped=self.gallery.filename
         )
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
 
 
 API = (

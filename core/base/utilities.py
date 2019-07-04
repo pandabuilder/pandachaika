@@ -37,6 +37,9 @@ PUSHOVER_API_URL = 'https://api.pushover.net/1/messages.json'
 # The idea of this class is to contain certain methods, to not have to pass arguments that are global.
 class GeneralUtils:
 
+    def __init__(self, global_settings: 'setup.Settings') -> None:
+        self.settings = global_settings
+
     def discard_by_tag_list(self, tag_list: Optional[List[str]]):
 
         if self.settings.update_metadata_mode:
@@ -60,9 +63,6 @@ class GeneralUtils:
             return r.content
         else:
             return base64.encodebytes(r.content).decode('utf-8')
-
-    def __init__(self, global_settings: 'setup.Settings') -> None:
-        self.settings = global_settings
 
 
 def discard_string_by_cutoff(base: str, compare: str, cutoff: float) -> bool:

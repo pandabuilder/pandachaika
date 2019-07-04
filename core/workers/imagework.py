@@ -15,6 +15,15 @@ class ImageWorker(object):
 
     """description of class"""
 
+    def __init__(self, crawler_logger: OptionalLogger, worker_number: int) -> None:
+
+        self.worker_number = worker_number + 1
+        if not crawler_logger:
+            self.crawler_logger: RealLogger = FakeLogger()
+        else:
+            self.crawler_logger = crawler_logger
+        self.web_queue: queue.Queue = queue.Queue()
+
     def thumbnails_worker(self) -> None:
 
         while True:
@@ -42,15 +51,6 @@ class ImageWorker(object):
             except BaseException:
                 thread_logger = logging.getLogger('viewer.threads')
                 thread_logger.error(traceback.format_exc())
-
-    def __init__(self, crawler_logger: OptionalLogger, worker_number: int) -> None:
-
-        self.worker_number = worker_number + 1
-        if not crawler_logger:
-            self.crawler_logger: RealLogger = FakeLogger()
-        else:
-            self.crawler_logger = crawler_logger
-        self.web_queue: queue.Queue = queue.Queue()
 
     def start_info_thread(self) -> None:
 

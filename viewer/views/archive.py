@@ -182,6 +182,7 @@ def archive_update(request: HttpRequest, pk: int, tool: str = None, tool_use_id:
         archive.title_jpn = p["title_jpn"]
         archive.source_type = p["source_type"]
         archive.reason = p["reason"]
+        archive.details = p["details"]
 
         if "zipped" in p:
             if p["zipped"] != '' and p["zipped"] != archive.zipped:
@@ -222,7 +223,7 @@ def archive_update(request: HttpRequest, pk: int, tool: str = None, tool_use_id:
             archive.alternative_sources.clear()
         archive.simple_save()
 
-        messages.success(request, 'Updated archive: ' + str(archive.title))
+        messages.success(request, 'Updated archive: {}'.format(archive.title))
 
     else:
         image_formset = ImageFormSet(

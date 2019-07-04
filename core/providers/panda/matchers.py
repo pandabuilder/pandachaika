@@ -250,7 +250,7 @@ class TitleGoogleMatcher(TitleMatcher):
         else:
             gallery_parser = GalleryHTMLParser()
             gallery_parser.feed(gallery_page_text)
-            if gallery_parser.found_non_final_gallery == 2:
+            if gallery_parser.found_non_final_gallery == 2 and gallery_parser.non_final_gallery:
                 return self.get_final_link_from_link(gallery_parser.non_final_gallery)
         return gallery_link
 

@@ -30,6 +30,29 @@ class Matcher(metaclass=Meta):
     time_to_wait_after_compare = 0
     default_cutoff = 0.5
 
+    def __init__(self, settings: 'Settings', logger: OptionalLogger) -> None:
+        self.settings = settings
+        self.own_settings = settings.providers[self.provider]
+        if not logger:
+            self.logger: RealLogger = FakeLogger()
+        else:
+            self.logger = logger
+        self.general_utils = GeneralUtils(global_settings=settings)
+        self.parser = self.settings.provider_context.get_parsers(self.settings, self.logger, filter_name=self.provider)[0]
+        self.found_by = ''
+        self.match_gid: Optional[str] = None
+        self.match_link: Optional[str] = None
+        self.values_array: List[GalleryData] = []
+        self.match_count = 0
+        self.match_title: Optional[str] = None
+        self.api_galleries: List[GalleryData] = []
+        self.crc32: Optional[str] = None
+        self.file_path: str = ''
+        # self.file_title = None
+        self.return_code: int = 0
+        self.gallery_links: List[str] = []
+        self.match_values: Optional[GalleryData] = None
+
     def __str__(self) -> str:
         return "{}_{}".format(self.provider, self.name)
 
@@ -63,7 +86,7 @@ class Matcher(metaclass=Meta):
         if cutoff is None:
             cutoff = self.default_cutoff
 
-        self.values_array: List[GalleryData] = []
+        self.values_array = []
         results: List[Tuple[str, GalleryData, float]] = []
         title_to_search = self.format_to_search_title(title)
 
@@ -128,11 +151,11 @@ class Matcher(metaclass=Meta):
 
     def start_match(self, file_path: str, crc32: str) -> bool:
 
-        self.file_path: str = file_path
+        self.file_path = file_path
         # self.file_title = self.get_title_from_path(file_path)
-        self.crc32: Optional[str] = crc32
+        self.crc32 = crc32
 
-        self.api_galleries: List[GalleryData] = []
+        self.api_galleries = []
 
         self.return_code = self.get_closer_match(file_path)
 
@@ -148,26 +171,3 @@ class Matcher(metaclass=Meta):
     @staticmethod
     def get_title_from_path(path: str) -> str:
         return re.sub('[_]', ' ', os.path.splitext(os.path.basename(path))[0])
-
-    def __init__(self, settings: 'Settings', logger: OptionalLogger) -> None:
-        self.settings = settings
-        self.own_settings = settings.providers[self.provider]
-        if not logger:
-            self.logger: RealLogger = FakeLogger()
-        else:
-            self.logger = logger
-        self.general_utils = GeneralUtils(global_settings=settings)
-        self.parser = self.settings.provider_context.get_parsers(self.settings, self.logger, filter_name=self.provider)[0]
-        self.found_by = ''
-        self.match_gid: Optional[str] = None
-        self.match_link: Optional[str] = None
-        self.values_array = []
-        self.match_count = 0
-        self.match_title: Optional[str] = None
-        self.api_galleries = []
-        self.crc32: Optional[str] = None
-        self.file_path: str = ''
-        # self.file_title = None
-        self.return_code: int = 0
-        self.gallery_links: List[str] = []
-        self.match_values: Optional[GalleryData] = None

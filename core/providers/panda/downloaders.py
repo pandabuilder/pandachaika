@@ -155,6 +155,10 @@ class TorrentDownloader(BaseTorrentDownloader):
     provider = constants.provider_name
     skip_if_hidden = True
 
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.expected_torrent_name = ''
+
     def request_torrent_download(self, root: str, gid: str, token: str) -> Optional[requests.models.Response]:
 
         url = root + '/gallerytorrents.php'
@@ -229,6 +233,11 @@ class TorrentDownloader(BaseTorrentDownloader):
 
         torrent_link = torrent_page_parser.torrent
 
+        if not torrent_link:
+            self.logger.error('ERROR: could not get torrent link.')
+            self.return_code = 0
+            return
+
         validated, reasons = self.validate_torrent(
             torrent_link,
             torrent_page_parser.seeds,
@@ -245,7 +254,7 @@ class TorrentDownloader(BaseTorrentDownloader):
             return
 
         m = re.match(r"(.*?)(\?p=\d+)", torrent_link)
-        if m:
+        if m and m.group(1):
             torrent_link = m.group(1)
 
         self.logger.info("Adding torrent to client, seeds: {}".format(torrent_page_parser.seeds))
@@ -270,10 +279,6 @@ class TorrentDownloader(BaseTorrentDownloader):
             self.gallery.gid,
             zipped=self.gallery.filename
         )
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-        self.expected_torrent_name = ''
 
 
 class HathDownloader(BaseDownloader):

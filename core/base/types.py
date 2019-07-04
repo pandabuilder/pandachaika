@@ -110,6 +110,15 @@ class TorrentClient(object):
     send_url = False
     type = 'torrent_handler'
 
+    def __init__(self, address: str = 'localhost', port: int = 9091, user: str = '', password: str = '', secure: bool = True) -> None:
+        self.address = address
+        self.port = str(port)
+        self.user = user
+        self.password = password
+        self.secure = secure
+        self.total_size = 0
+        self.expected_torrent_name = ''
+
     def add_torrent(self, torrent_data: Union[str, bytes], download_dir: str = None) -> bool:
         pass
 
@@ -119,11 +128,5 @@ class TorrentClient(object):
     def connect(self) -> bool:
         pass
 
-    def __init__(self, address: str = 'localhost', port: int = 9091, user: str = '', password: str = '', secure: bool = True) -> None:
-        self.address = address
-        self.port = str(port)
-        self.user = user
-        self.password = password
-        self.secure = secure
-        self.total_size = 0
-        self.expected_torrent_name = ''
+
+QueueItem = Dict[str, Any]

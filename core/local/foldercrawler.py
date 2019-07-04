@@ -32,6 +32,11 @@ class YieldingArgumentParser(argparse.ArgumentParser):
 
 class FolderCrawler(object):
 
+    def __init__(self, settings: Settings, logger) -> None:
+        self.settings = settings
+        self.logger = logger
+        self.parse_error = False
+
     def get_args(self, arg_line: List[str]) -> Union[argparse.Namespace, ArgumentParserError]:
 
         parser = YieldingArgumentParser(prog='PandaBackupFolder')
@@ -561,8 +566,3 @@ class FolderCrawler(object):
             galleries_title_gid.append(
                 (replace_illegal_name(gallery.title), gallery.id))
         return archives_title_gid, galleries_title_gid
-
-    def __init__(self, settings: Settings, logger) -> None:
-        self.settings = settings
-        self.logger = logger
-        self.parse_error = False

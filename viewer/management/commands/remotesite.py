@@ -117,6 +117,12 @@ def send_urls_fakku(site_page, api_key):
 
 class FTPHandler(object):
 
+    def __init__(self, c_settings, print_method=print):
+        self.settings = c_settings
+        self.upload_current = 0
+        self.upload_total = 0
+        self.print_method = print_method
+
     def upload_archive_file(self, local_filename, remote_filename, target_dir):
 
         yield("Uploading {} to FTP in directory: {}, filename: {}".format(local_filename, target_dir, remote_filename))
@@ -198,12 +204,6 @@ class FTPHandler(object):
                 yield("Not local match for {}".format(remote_archive['zipped']))
 
         yield("Remote upload finished.")
-
-    def __init__(self, c_settings, print_method=print):
-        self.settings = c_settings
-        self.upload_current = 0
-        self.upload_total = 0
-        self.print_method = print_method
 
 
 class Command(BaseCommand):

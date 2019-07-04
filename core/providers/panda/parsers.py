@@ -209,7 +209,7 @@ class Parser(BaseParser):
 
         gallery_parser = GalleryHTMLParser()
         gallery_parser.feed(gallery_page_text)
-        if gallery_parser.found_non_final_gallery == 2:
+        if gallery_parser.found_non_final_gallery == 2 and gallery_parser.non_final_gallery:
             return self.get_final_gallery_from_link(gallery_parser.non_final_gallery)
         return 1, gallery
 
@@ -600,7 +600,7 @@ class Parser(BaseParser):
 
                 # What this does is log a parent gallery if we are downloading a newer one.
                 # Maybe this should be an option, because we are deleting files from disk.
-                if gallery_parser.found_parent_gallery:
+                if gallery_parser.found_parent_gallery and gallery_parser.parent_gallery:
                     parent_gid, parent_token = get_gid_token_from_link(gallery_parser.parent_gallery)
                     archives = Archive.objects.filter(
                         gallery__gid__exact=parent_gid,
@@ -617,7 +617,8 @@ class Parser(BaseParser):
                         )
 
                 if(gallery_parser.found_non_final_gallery == 2
-                        and self.own_settings.get_newer_gallery):
+                        and self.own_settings.get_newer_gallery
+                        and gallery_parser.non_final_gallery):
                     self.logger.info("Found non final gallery, next is: {}".format(gallery_parser.non_final_gallery))
                     (exists_next, new_gallery) = self.get_final_gallery_from_link(
                         gallery_parser.non_final_gallery)

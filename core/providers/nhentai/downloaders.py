@@ -12,6 +12,10 @@ class TorrentDownloader(BaseTorrentDownloader):
 
     provider = constants.provider_name
 
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.expected_torrent_name = ''
+
     @staticmethod
     def get_download_link(url: str) -> str:
         return urljoin(url, 'download')
@@ -56,10 +60,6 @@ class TorrentDownloader(BaseTorrentDownloader):
             self.gallery.gid,
             zipped=self.gallery.filename
         )
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-        self.expected_torrent_name = ''
 
 
 class InfoDownloader(BaseInfoDownloader):

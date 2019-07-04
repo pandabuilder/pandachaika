@@ -26,6 +26,14 @@ class YieldingArgumentParser(argparse.ArgumentParser):
 
 class WebCrawler(object):
 
+    def __init__(self, settings: Settings, logger: OptionalLogger) -> None:
+        self.settings = settings
+        if not logger:
+            self.logger: RealLogger = FakeLogger()
+        else:
+            self.logger = logger
+        self.parse_error = False
+
     def get_args(self, arg_line: List[str]) -> Union[argparse.Namespace, ArgumentParserError]:
         parser = YieldingArgumentParser(prog='PandaBackupLinks')
 
@@ -413,11 +421,3 @@ class WebCrawler(object):
                             archive.title_jpn = archive.gallery.title_jpn
                             archive.simple_save()
                             archive.tags.set(archive.gallery.tags.all())
-
-    def __init__(self, settings: Settings, logger: OptionalLogger) -> None:
-        self.settings = settings
-        if not logger:
-            self.logger: RealLogger = FakeLogger()
-        else:
-            self.logger = logger
-        self.parse_error = False

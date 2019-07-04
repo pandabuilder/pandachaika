@@ -30,6 +30,20 @@ from viewer.models import Archive
 
 class PostDownloader(object):
 
+    def __init__(self, settings: 'Settings', logger, web_queue=None) -> None:
+        self.settings = settings
+        self.web_queue = web_queue
+        self.logger = logger
+        self.ftps: Optional[FTP_TLS] = None
+        self.current_ftp_dir: Optional[str] = None
+        self.current_download: DataDict = {
+            'filename': '',
+            'blocksize': 0,
+            'speed': 0,
+            'index': 0,
+            'total': 0,
+        }
+
     def process_downloaded_archive(self, archive: Archive) -> None:
         if os.path.isfile(archive.zipped.path):
             except_at_open = False
@@ -128,7 +142,7 @@ class PostDownloader(object):
             context.check_hostname = False
         else:
             context = ssl.create_default_context()
-        self.ftps: Optional[FTP_TLS] = FTP_TLS(
+        self.ftps = FTP_TLS(
             host=self.settings.ftps['address'],
             user=self.settings.ftps['user'],
             passwd=self.settings.ftps['passwd'],
@@ -141,7 +155,7 @@ class PostDownloader(object):
         self.ftps.prot_p()
 
     def set_current_dir(self, self_dir: str) -> None:
-        self.current_ftp_dir: Optional[str] = self_dir
+        self.current_ftp_dir = self_dir
         if not self.ftps:
             return None
         self.ftps.cwd(self_dir)
@@ -500,24 +514,16 @@ class PostDownloader(object):
                     return
             self.logger.error("Download failed, restart limit reached (3), ending")
 
-    def __init__(self, settings: 'Settings', logger, web_queue=None) -> None:
-        self.settings = settings
-        self.web_queue = web_queue
-        self.logger = logger
-        self.ftps: Optional[FTP_TLS] = None
-        self.current_ftp_dir: Optional[str] = None
-        self.current_download: DataDict = {
-            'filename': '',
-            'blocksize': 0,
-            'speed': 0,
-            'index': 0,
-            'total': 0,
-        }
-
 
 class TimedPostDownloader(BaseScheduler):
 
     thread_name = 'post_downloader'
+
+    def __init__(self, *args: Any, parallel_post_downloaders: int = 4, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.post_downloader: Dict[int, PostDownloader] = {}
+        self.post_queue: queue.Queue = queue.Queue()
+        self.parallel_post_downloaders = parallel_post_downloaders
 
     @staticmethod
     def timer_to_seconds(timer: float) -> float:
@@ -527,7 +533,7 @@ class TimedPostDownloader(BaseScheduler):
         while not self.stop.is_set():
             seconds_to_wait = self.wait_until_next_run()
             if self.stop.wait(timeout=seconds_to_wait):
-                self.post_downloader: Dict[int, PostDownloader] = {}
+                self.post_downloader = {}
                 return
 
             found_archives = Archive.objects.filter_by_dl_remote()
@@ -582,9 +588,3 @@ class TimedPostDownloader(BaseScheduler):
 
     def current_download(self) -> List[Dict[str, Any]]:
         return [x.current_download for x in self.post_downloader.values()]
-
-    def __init__(self, *args: Any, parallel_post_downloaders: int = 4, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-        self.post_downloader: Dict[int, PostDownloader] = {}
-        self.post_queue: queue.Queue = queue.Queue()
-        self.parallel_post_downloaders = parallel_post_downloaders

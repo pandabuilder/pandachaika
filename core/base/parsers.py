@@ -30,6 +30,22 @@ class BaseParser:
     ignore = False
     accepted_urls: List[str] = []
 
+    def __init__(self, settings: 'Settings', logger: OptionalLogger = None) -> None:
+        self.settings = settings
+        if not logger:
+            self.logger: RealLogger = FakeLogger()
+        else:
+            self.logger = logger
+        if self.name in settings.providers:
+            self.own_settings = settings.providers[self.name]
+        else:
+            self.own_settings = None
+        self.general_utils = utilities.GeneralUtils(self.settings)
+        self.downloaders: List[Tuple['BaseDownloader', int]] = self.settings.provider_context.get_downloaders(self.settings, self.logger, self.general_utils, filter_name=self.name)
+        self.last_used_downloader: str = 'none'
+        self.archive_callback: Optional[Callable[[Optional['Archive'], Optional[str], str], None]] = None
+        self.gallery_callback: Optional[Callable[[Optional['Gallery'], Optional[str], str], None]] = None
+
     # We need this dispatcher because some provider have multiple ways of getting data (single, multiple),
     # or some have priorities (json fetch, crawl gallery page).
     # Each provider should set in this method how it needs to call everything, and could even check against a setting
@@ -316,7 +332,7 @@ class BaseParser:
         for cnt, downloader in enumerate(self.downloaders):
             downloader[0].init_download(copy.deepcopy(gallery))
             if downloader[0].return_code == 1:
-                self.last_used_downloader: str = str(downloader[0])
+                self.last_used_downloader = str(downloader[0])
                 if not downloader[0].archive_only:
                     for wanted_gallery in gallery_wanted_lists[gallery.gid]:
                         self.settings.found_gallery_model.objects.get_or_create(
@@ -365,7 +381,7 @@ class BaseParser:
                         self.gallery_callback(downloader[0].gallery_db_entry, gallery.link, 'success')
                 return
             if(downloader[0].return_code == 0 and (cnt + 1) == len(self.downloaders)):
-                self.last_used_downloader: str = 'none'
+                self.last_used_downloader = 'none'
                 if not downloader[0].archive_only and downloader[0].gallery_db_entry:
                     downloader[0].original_gallery = gallery
                     downloader[0].original_gallery.dl_type = 'failed'
@@ -385,22 +401,6 @@ class BaseParser:
                     ))
                     if self.gallery_callback:
                         self.gallery_callback(None, gallery.link, 'failed')
-
-    def __init__(self, settings: 'Settings', logger: OptionalLogger = None) -> None:
-        self.settings = settings
-        if not logger:
-            self.logger: RealLogger = FakeLogger()
-        else:
-            self.logger = logger
-        if self.name in settings.providers:
-            self.own_settings = settings.providers[self.name]
-        else:
-            self.own_settings = None
-        self.general_utils = utilities.GeneralUtils(self.settings)
-        self.downloaders: List[Tuple['BaseDownloader', int]] = self.settings.provider_context.get_downloaders(self.settings, self.logger, self.general_utils, filter_name=self.name)
-        self.last_used_downloader: str = 'none'
-        self.archive_callback: Optional[Callable[[Optional['Archive'], Optional[str], str], None]] = None
-        self.gallery_callback: Optional[Callable[[Optional['Gallery'], Optional[str], str], None]] = None
 
 
 # This assumes we got the data in the format that the API uses ("gc" format).

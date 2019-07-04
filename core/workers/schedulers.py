@@ -16,13 +16,28 @@ class BaseScheduler(object):
 
     thread_name = 'task'
 
+    def __init__(self, settings: Settings, web_queue=None, crawler_logger: OptionalLogger = None, timer=1, pk=None) -> None:
+
+        if not crawler_logger:
+            self.crawler_logger: RealLogger = FakeLogger()
+        else:
+            self.crawler_logger = crawler_logger
+        self.settings = settings
+        self.stop = threading.Event()
+        self.web_queue = web_queue
+        self.timer = self.timer_to_seconds(timer)
+        self.job_thread: Optional[threading.Thread] = None
+        self.last_run: Optional[datetime.datetime] = None
+        self.force_run_once: bool = False
+        self.pk = pk
+
     @staticmethod
     def timer_to_seconds(timer: float) -> float:
         return timer * 60 * 60
 
     def wait_until_next_run(self) -> float:
         if self.force_run_once:
-            self.force_run_once: bool = False
+            self.force_run_once = False
             return 0
         if self.last_run:
             seconds_until = (
@@ -39,7 +54,7 @@ class BaseScheduler(object):
         if schedule:
             schedule.last_run = last_run
             schedule.save()
-        self.last_run: Optional[datetime.datetime] = last_run
+        self.last_run = last_run
 
     def job_container(self) -> None:
         try:
@@ -51,21 +66,6 @@ class BaseScheduler(object):
     def job(self) -> None:
         raise NotImplementedError
 
-    def __init__(self, settings: Settings, web_queue=None, crawler_logger: OptionalLogger = None, timer=1, pk=None) -> None:
-
-        if not crawler_logger:
-            self.crawler_logger: RealLogger = FakeLogger()
-        else:
-            self.crawler_logger = crawler_logger
-        self.settings = settings
-        self.stop = threading.Event()
-        self.web_queue = web_queue
-        self.timer = self.timer_to_seconds(timer)
-        self.job_thread: Optional[threading.Thread] = None
-        self.last_run: Optional[datetime.datetime] = None
-        self.force_run_once: bool = False
-        self.pk = pk
-
     def start_running(self, timer=None) -> None:
 
         if self.is_running():
@@ -73,7 +73,7 @@ class BaseScheduler(object):
 
         schedule = Scheduler.objects.get(pk=self.pk)
         if schedule:
-            self.last_run: Optional[datetime.datetime] = schedule.last_run
+            self.last_run = schedule.last_run
 
         if timer:
             self.timer = self.timer_to_seconds(timer)

@@ -22,6 +22,11 @@ class Transmission(TorrentClient):
     convert_to_base64 = True
     send_url = False
 
+    def __init__(self, address: str = 'localhost', port: int = 9091, user: str = '', password: str = '', secure: bool = True) -> None:
+        super().__init__(address=address, port=port, user=user, password=password, secure=secure)
+        self.trans = None
+        self.error = ''
+
     def __str__(self) -> str:
         return self.name
 
@@ -80,11 +85,6 @@ class Transmission(TorrentClient):
         except transmissionrpc.TransmissionError:
             return False
         return True
-
-    def __init__(self, address: str = 'localhost', port: int = 9091, user: str = '', password: str = '', secure: bool = True) -> None:
-        super().__init__(address=address, port=port, user=user, password=password, secure=secure)
-        self.trans = None
-        self.error = ''
 
 
 class TransmissionHTTPSHandler(transmissionrpc.HTTPHandler):

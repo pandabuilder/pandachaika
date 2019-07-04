@@ -263,6 +263,10 @@ class TagAutocomplete(autocomplete.JalQuerySetView):
     autocomplete_html_format = '%s'
     limit_choices = 10
 
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.modifier = ''
+
     def render_to_response(self, context: Context) -> HttpResponse:
 
         html = ''.join(
@@ -305,10 +309,6 @@ class TagAutocomplete(autocomplete.JalQuerySetView):
 
         return results.distinct().order_by('pk')[0:self.limit_choices]
 
-    def __init__(self, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
-        self.modifier = ''
-
 
 class Select2ViewMixinNoCreate(Select2ViewMixin):
     def render_to_response(self, context):
@@ -334,6 +334,10 @@ class TagPkAutocomplete(Select2QuerySetViewNoCreate):
 
 class NonCustomTagAutocomplete(autocomplete.Select2QuerySetView):
     model = Tag
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.modifier = ''
 
     def get_result_value(self, result: Tag) -> str:
         return self.modifier + str(result)
@@ -362,10 +366,6 @@ class NonCustomTagAutocomplete(autocomplete.Select2QuerySetView):
                 | Q(scope__contains=tag_clean))
 
         return results.distinct().order_by('pk')
-
-    def __init__(self, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
-        self.modifier = ''
 
 
 class CustomTagAutocomplete(autocomplete.Select2QuerySetView):

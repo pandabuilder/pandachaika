@@ -3,7 +3,7 @@ import re
 import time
 import typing
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional, List, Dict
 
 from bs4 import BeautifulSoup
@@ -120,70 +120,6 @@ class Parser(BaseParser):
             return None
         return gallery
 
-    def get_values_from_gallery_link_json(self, link) -> Optional[GalleryData]:
-
-        gallery = None
-
-        link = link.replace(constants.main_url, constants.api_page)
-
-        response = request_with_retries(
-            link,
-            {
-                'headers': self.settings.requests_headers,
-                'timeout': self.settings.timeout_timer,
-            },
-            post=False,
-            logger=self.logger
-        )
-
-        if not response:
-            return None
-
-        response.encoding = 'utf-8'
-        try:
-            response_data = response.json()
-        except(ValueError, KeyError):
-            self.logger.error("Error parsing response to JSON: {}".format(response.text))
-            return gallery
-
-        if 'error' in response_data:
-            return gallery
-
-        if 'content' in response_data and not response_data['content']:
-            return gallery
-
-        response_data['content'] = defaultdict(str, **response_data['content'])
-
-        gallery = GalleryData(link.replace(constants.api_page + '/', ''))
-        gallery.link = link
-        gallery.tags = []
-        gallery.provider = self.name
-        gallery.title = response_data['content']['content_name']
-        gallery.comment = response_data['content']['content_description']
-        gallery.category = response_data['content']['content_category'].capitalize()
-        gallery.posted = datetime.fromtimestamp(int(response_data['content']['content_date']), timezone.utc)
-        gallery.filesize = int(response_data['content']['content_filesize'])
-        gallery.filecount = int(response_data['content']['content_pages'])
-        gallery.uploader = response_data['content']['content_poster']
-        gallery.thumbnail_url = response_data['content']['content_images']['cover']
-
-        if gallery.thumbnail_url and gallery.thumbnail_url.startswith('//'):
-            gallery.thumbnail_url = 'https:' + gallery.thumbnail_url
-
-        gallery.tags.append(translate_tag("language:" + response_data['content']['content_language']))
-
-        for artist in response_data['content']['content_artists']:
-            gallery.tags.append(translate_tag("artist:" + artist['attribute']))
-
-        for series in response_data['content']['content_series']:
-            if not series['attribute'] == 'Original Work':
-                gallery.tags.append(translate_tag("parody:" + series['attribute']))
-
-        for tags in response_data['content']['content_tags']:
-            gallery.tags.append(translate_tag(tags['attribute']))
-
-        return gallery
-
     # Even if we just call the single method, it allows to upgrade this easily in case group calls are supported
     # afterwards. Also, we can add a wait_timer here.
     def get_values_from_gallery_link_list(self, links: List[str]) -> List[GalleryData]:
@@ -212,7 +148,6 @@ class Parser(BaseParser):
     # We disable FAKKU json here (single point) until it's enabled again.
     def fetch_gallery_data(self, url) -> Optional[GalleryData]:
         return self.get_values_from_gallery_link(url)
-        # return self.get_values_from_gallery_link_json(url)
 
     def fetch_multiple_gallery_data(self, url_list: List[str]) -> Optional[List[GalleryData]]:
         return self.get_values_from_gallery_link_list(url_list)

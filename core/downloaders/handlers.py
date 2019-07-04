@@ -27,6 +27,19 @@ class BaseDownloader(metaclass=Meta):
     archive_only = False
     skip_if_hidden = False
 
+    def __init__(self, settings: 'Settings', logger: RealLogger, general_utils: GeneralUtils) -> None:
+        self.settings = settings
+        self.logger = logger
+        self.general_utils = general_utils
+        self.own_settings = settings.providers[self.provider]
+        self.fileDownloaded = 0
+        self.return_code = 0
+        self.gallery_db_entry: Optional['Gallery'] = None
+        self.archive_db_entry: Optional['Archive'] = None
+        self.crc32: str = ''
+        self.original_gallery: Optional[GalleryData] = None
+        self.gallery: Optional[GalleryData] = None
+
     def __str__(self) -> str:
         return "{}_{}".format(self.provider, self.type)
 
@@ -48,7 +61,7 @@ class BaseDownloader(metaclass=Meta):
             self.original_gallery.origin = self.settings.gallery_model.ORIGIN_SUBMITTED
         if self.settings.gallery_reason:
             self.original_gallery.reason = self.settings.gallery_reason
-        self.gallery_db_entry: Optional['Gallery'] = self.settings.gallery_model.objects.update_or_create_from_values(self.original_gallery)
+        self.gallery_db_entry = self.settings.gallery_model.objects.update_or_create_from_values(self.original_gallery)
         if self.gallery_db_entry:
             for archive in self.gallery_db_entry.archive_set.all():
                 archive.title = archive.gallery.title
@@ -58,8 +71,8 @@ class BaseDownloader(metaclass=Meta):
 
     def init_download(self, gallery: GalleryData) -> None:
 
-        self.original_gallery: Optional[GalleryData] = copy.deepcopy(gallery)
-        self.gallery: Optional[GalleryData] = gallery
+        self.original_gallery = copy.deepcopy(gallery)
+        self.gallery = gallery
 
         self.original_gallery.dl_type = self.type
         self.start_download()
@@ -86,20 +99,7 @@ class BaseDownloader(metaclass=Meta):
             if self.settings.archive_user:
                 default_values['user'] = self.settings.archive_user
 
-            self.archive_db_entry: Optional['Archive'] = self.update_archive_db(default_values)
-
-    def __init__(self, settings: 'Settings', logger: RealLogger, general_utils: GeneralUtils) -> None:
-        self.settings = settings
-        self.logger = logger
-        self.general_utils = general_utils
-        self.own_settings = settings.providers[self.provider]
-        self.fileDownloaded = 0
-        self.return_code = 0
-        self.gallery_db_entry: Optional['Gallery'] = None
-        self.archive_db_entry: Optional['Archive'] = None
-        self.crc32: str = ''
-        self.original_gallery: Optional[GalleryData] = None
-        self.gallery: Optional[GalleryData] = None
+            self.archive_db_entry = self.update_archive_db(default_values)
 
 
 class BaseInfoDownloader(BaseDownloader):
@@ -157,6 +157,10 @@ class BaseTorrentDownloader(BaseDownloader):
 
     type = 'torrent'
 
+    def __init__(self, *args: typing.Any, **kwargs: typing.Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.expected_torrent_name = ''
+
     def connect_and_download(self, client: TorrentClient, torrent_link: str) -> None:
         if not self.gallery:
             return None
@@ -195,7 +199,3 @@ class BaseTorrentDownloader(BaseDownloader):
         else:
             self.return_code = 0
             self.logger.error("There was an error adding the torrent to the client")
-
-    def __init__(self, *args: typing.Any, **kwargs: typing.Any) -> None:
-        super().__init__(*args, **kwargs)
-        self.expected_torrent_name = ''

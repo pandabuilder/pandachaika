@@ -1,18 +1,28 @@
 import logging
+import typing
 from time import sleep
+from typing import Optional
 
 from core.base import setup
 from core.base.utilities import check_for_running_threads
+
+if typing.TYPE_CHECKING:
+    from core.downloaders.postdownload import TimedPostDownloader
+    from core.workers.autosearch import TimedAutoCrawler
+    from core.workers.autoupdate import TimedAutoUpdater
+    from core.workers.auto_wanted import TimedAutoWanted
+    from core.workers.webqueue import WebQueue
+    from viewer.models import Scheduler
 
 crawler_logger = logging.getLogger('viewer.webcrawler')
 
 
 class WorkerContext:
-    web_queue = None
-    timed_crawler = None
-    timed_auto_wanted = None
-    timed_updater = None
-    timed_downloader = None
+    web_queue: Optional['WebQueue'] = None
+    timed_crawler: Optional['TimedAutoCrawler'] = None
+    timed_auto_wanted: Optional['TimedAutoWanted'] = None
+    timed_updater: Optional['TimedAutoUpdater'] = None
+    timed_downloader: Optional['TimedPostDownloader'] = None
 
     def start_workers(self, crawler_settings: 'setup.Settings') -> None:
 
@@ -83,10 +93,14 @@ class WorkerContext:
 
     def command_workers_to_stop(self) -> None:
 
-        self.timed_downloader.stop_running()
-        self.timed_crawler.stop_running()
-        self.timed_auto_wanted.stop_running()
-        self.timed_updater.stop_running()
+        if self.timed_downloader:
+            self.timed_downloader.stop_running()
+        if self.timed_crawler:
+            self.timed_crawler.stop_running()
+        if self.timed_auto_wanted:
+            self.timed_auto_wanted.stop_running()
+        if self.timed_updater:
+            self.timed_updater.stop_running()
 
     # TODO: improve this logic
     def stop_workers_and_wait(self) -> None:

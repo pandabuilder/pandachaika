@@ -79,11 +79,16 @@ def request_data_from_gid_token_iterable(api_token_iterable: typing.Iterable[typ
     }
 
 
-AttrList = typing.List[typing.Tuple[str, str]]
+AttrList = typing.List[typing.Tuple[str, typing.Optional[str]]]
 
 
 # TODO: This parsers should be migrated to bs4, they were written before using bs4 in the project.
 class SearchHTMLParser(HTMLParser):
+
+    def __init__(self) -> None:
+        HTMLParser.__init__(self)
+        self.galleries: typing.Set[str] = set()
+        self.stop_at_favorites: int = 0
 
     def error(self, message: str) -> None:
         pass
@@ -92,63 +97,17 @@ class SearchHTMLParser(HTMLParser):
         if tag == 'a' and self.stop_at_favorites != 1:
             for attr in attrs:
                 if(attr[0] == 'href'
-                        and (constants.ex_page + '/g/' in attr[1] or constants.ge_page + '/g/' in attr[1])):
-                    self.galleries.add(attr[1])
+                        and (constants.ex_page + '/g/' in str(attr[1]) or constants.ge_page + '/g/' in str(attr[1]))):
+                    self.galleries.add(str(attr[1]))
         else:
-            self.stop_at_favorites: int = 0
+            self.stop_at_favorites = 0
 
     def handle_data(self, data: str) -> None:
         if data == 'Popular Right Now':
             self.stop_at_favorites = 1
 
-    def __init__(self) -> None:
-        HTMLParser.__init__(self)
-        self.galleries: typing.Set[str] = set()
-        self.stop_at_favorites: int = 0
-
 
 class GalleryHTMLParser(HTMLParser):
-
-    def error(self, message: str) -> None:
-        pass
-
-    def handle_starttag(self, tag: str, attrs: AttrList) -> None:
-        if tag == 'a' and self.stop_at_found != 1:
-            self.found_gallery_link = 0
-            for attr in attrs:
-                if attr[0] == 'href' and attr[1] == '#':
-                    self.found_gallery_link = 1
-                elif(self.found_non_final_gallery == 1
-                     and attr[0] == 'href'
-                     and '/g/' in attr[1]):
-                    self.non_final_gallery = attr[1]
-                elif(self.found_parent_gallery == 1
-                     and attr[0] == 'href'
-                     and '/g/' in attr[1]):
-                    self.parent_gallery = attr[1]
-                    self.found_parent_gallery: int = 0
-                elif(self.found_gallery_link == 1
-                     and attr[0] == 'onclick'
-                     and 'gallerytorrents.php' in attr[1]):
-                    m = re.search(r'\'(.+)\'', attr[1])
-                    if m:
-                        self.torrent_link = m.group(1)
-        if(tag == 'textarea'
-                and attrs[0][0] == 'name'
-                and attrs[0][1] == 'commenttext'):
-            self.stop_at_found: int = 1
-            return
-        if tag == 'p' and self.found_non_final_gallery == 1:
-            for attr in attrs:
-                if attr[0] == 'class' and attr[1] == 'ip':
-                    self.found_non_final_gallery: int = 2
-
-    def handle_data(self, data: str) -> None:
-        if 'The uploader has made available \
-        newer versions of this gallery:' in data:
-            self.found_non_final_gallery = 1
-        elif 'Parent:' == data:
-            self.found_parent_gallery = 1
 
     def __init__(self) -> None:
         HTMLParser.__init__(self, convert_charrefs=True)
@@ -160,8 +119,57 @@ class GalleryHTMLParser(HTMLParser):
         self.found_gallery_link: int = 0
         self.non_final_gallery: str = ''
 
+    def error(self, message: str) -> None:
+        pass
+
+    def handle_starttag(self, tag: str, attrs: AttrList) -> None:
+        if tag == 'a' and self.stop_at_found != 1:
+            self.found_gallery_link = 0
+            for attr in attrs:
+                if attr[0] == 'href' and str(attr[1]) == '#':
+                    self.found_gallery_link = 1
+                elif(self.found_non_final_gallery == 1
+                     and attr[0] == 'href'
+                     and '/g/' in str(attr[1])):
+                    self.non_final_gallery = str(attr[1])
+                elif(self.found_parent_gallery == 1
+                     and attr[0] == 'href'
+                     and '/g/' in str(attr[1])):
+                    self.parent_gallery = str(attr[1])
+                    self.found_parent_gallery = 0
+                elif(self.found_gallery_link == 1
+                     and attr[0] == 'onclick'
+                     and 'gallerytorrents.php' in str(attr[1])):
+                    m = re.search(r'\'(.+)\'', str(attr[1]))
+                    if m and m.group(1):
+                        self.torrent_link = m.group(1)
+        if(tag == 'textarea'
+                and attrs[0][0] == 'name'
+                and attrs[0][1] == 'commenttext'):
+            self.stop_at_found = 1
+            return
+        if tag == 'p' and self.found_non_final_gallery == 1:
+            for attr in attrs:
+                if attr[0] == 'class' and attr[1] == 'ip':
+                    self.found_non_final_gallery = 2
+
+    def handle_data(self, data: str) -> None:
+        if 'The uploader has made available \
+        newer versions of this gallery:' in data:
+            self.found_non_final_gallery = 1
+        elif 'Parent:' == data:
+            self.found_parent_gallery = 1
+
 
 class TorrentHTMLParser(HTMLParser):
+
+    def __init__(self) -> None:
+        HTMLParser.__init__(self, convert_charrefs=True)
+        self.torrent = ''
+        self.found_seed_data = 0
+        self.found_posted_data = 0
+        self.posted_date = ''
+        self.seeds = 0
 
     def error(self, message: str) -> None:
         pass
@@ -172,9 +180,9 @@ class TorrentHTMLParser(HTMLParser):
         if tag == 'a':
             for attr in attrs:
                 if(attr[0] == 'href'
-                        and self.torrent_root_url in attr[1]
+                        and self.torrent_root_url in str(attr[1])
                         and self.seeds > 0):
-                    self.torrent = attr[1]
+                    self.torrent = str(attr[1])
 
     def handle_data(self, data: str) -> None:
         if 'Seeds:' == data:
@@ -194,14 +202,6 @@ class TorrentHTMLParser(HTMLParser):
             m = re.search(r'^ (.+)', data)
             if m:
                 self.posted_date = m.group(1) + ' +0000'
-
-    def __init__(self) -> None:
-        HTMLParser.__init__(self, convert_charrefs=True)
-        self.torrent = ''
-        self.found_seed_data = 0
-        self.found_posted_data = 0
-        self.posted_date = ''
-        self.seeds = 0
 
 
 ARCHIVE_ROOT_URL = '/archive/'

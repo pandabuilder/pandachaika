@@ -1333,6 +1333,11 @@ class Archive(models.Model):
             matched_gallery.public = True
             matched_gallery.save()
 
+    def similar_archives(self, num_common_tags: int = 0, **kwargs: typing.Any) -> ArchiveQuerySet:
+        return Archive.objects.filter(tags__in=self.tags.all(), **kwargs).exclude(pk=self.pk).\
+            annotate(num_common_tags=Count('pk')).filter(num_common_tags__gt=num_common_tags).distinct().\
+            order_by('-num_common_tags')
+
 # Admin
 
 

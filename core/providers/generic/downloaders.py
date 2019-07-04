@@ -18,6 +18,10 @@ class GenericTorrentDownloader(BaseDownloader):
     provider = 'generic'
     archive_only = True
 
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.expected_torrent_name = ''
+
     @staticmethod
     def get_download_link(url: str) -> str:
         return url
@@ -102,16 +106,15 @@ class GenericTorrentDownloader(BaseDownloader):
             zipped=self.gallery.filename
         )
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-        self.expected_torrent_name = ''
-
 
 class GenericArchiveDownloader(BaseDownloader):
 
     type = 'archive'
     provider = 'generic'
     archive_only = True
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
 
     @staticmethod
     def get_download_link(url: str) -> str:
@@ -189,9 +192,6 @@ class GenericArchiveDownloader(BaseDownloader):
             self.gallery.gid,
             zipped=self.gallery.filename
         )
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
 
 
 API = (

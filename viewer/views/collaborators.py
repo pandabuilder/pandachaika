@@ -105,7 +105,7 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
                         # Force limit string length (reason field max_length)
                         current_settings.archive_reason = reason[:200]
                         current_settings.archive_details = gallery.reason
-                        gallery.reason = reason[:200]
+                        current_settings.gallery_reason = reason[:200]
                     elif gallery.reason:
                         current_settings.archive_reason = gallery.reason
 
