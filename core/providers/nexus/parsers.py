@@ -36,6 +36,7 @@ class Parser(BaseParser):
         )
 
         if not response:
+            self.logger.error("Got no response from: {}".format(link))
             return None
 
         response.encoding = 'utf-8'
@@ -46,9 +47,10 @@ class Parser(BaseParser):
 
         soup = BeautifulSoup(response.text, 'html.parser')
 
-        content_container = soup.find("div", class_="container")
+        content_container = soup.find_all("div", class_="container")[1]
 
         if not content_container:
+            self.logger.error("Could not find content container")
             return None
 
         is_doujinshi = False
@@ -91,6 +93,7 @@ class Parser(BaseParser):
 
         match_result = match_string.match(soup.find("meta", property="og:url").get('content'))
         if not match_result:
+            self.logger.error("Could not find gallery info container")
             return None
 
         gallery_id = match_result.group(1)
@@ -202,9 +205,10 @@ class Parser(BaseParser):
 
         soup = BeautifulSoup(response.text, 'html.parser')
 
-        content_container = soup.find("div", class_="container")
+        content_container = soup.find("div", class_="columns")
 
         if not content_container:
+            self.logger.error("Content container not found, returning")
             return urls
 
         url_containers = content_container.find_all("a", href=match_string)

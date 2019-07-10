@@ -120,6 +120,7 @@ if __name__ == '__main__':
         'checker.on': False,
         'engine.autoreload.on': crawler_settings.cherrypy_auto_restart,
         'log.screen': crawler_settings.webserver.log_to_screen,
+        'server.max_request_body_size': 0,
     }
 
     if crawler_settings.webserver.enable_ssl:
