@@ -1,5 +1,5 @@
 {% extends "viewer/base.html" %}
-<title>{% block title %}{{ archive.title }}{% endblock %}</title>
+<title>{% block title %}{{ archive.title }} | {{ block.super }}{% endblock %}</title>
 {% load staticfiles %}
 {% block content %}
   {% load viewer_extras %}
@@ -116,6 +116,20 @@
                   <li>
                     <a href="{% url 'viewer:gallery' alternative_gallery.pk %}">{{ alternative_gallery.title }}</a>
                   </li>
+                {% endfor %}
+              </ul>
+            </td>
+          </tr>
+          <tr>
+            <th>Groups</th>
+            <td>
+              <ul class="simple-tags">
+                {% for archive_group in archive.archive_groups.all %}
+                  {% if user.is_authenticated or archive_group.public %}
+                    <li>
+                      <a href="{% url 'viewer:archive-group' archive_group.title_slug %}">{{ archive_group.title }}</a>
+                    </li>
+                  {% endif %}
                 {% endfor %}
               </ul>
             </td>

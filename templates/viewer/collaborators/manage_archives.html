@@ -1,5 +1,5 @@
 {% extends "viewer/base.html" %}
-{% block title %}Publish archives | {{ block.super }}{% endblock %}
+{% block title %}Manage archives | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
 {% load staticfiles %}
 
@@ -11,7 +11,7 @@
     {% endif %}
     <!-- Galleries not used  -->
     <div class="page-header">
-    <h2>Archives published status</h2>
+    <h2>Manage archives</h2>
     <p class="lead">Number of archives (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
     </div>
     <form action="{{ request.get_full_path }}" method="GET">
@@ -32,7 +32,7 @@
         <input id="checkbox2" class="custom-cb" type="checkbox" name="non_public" value="1" {% if request.GET.non_public == '1' %}checked{% endif %}><label for="checkbox2"><span><span></span></span>Only private</label>
         <input id="checkbox3" class="custom-cb" type="checkbox" name="public" value="1" {% if request.GET.public == '1' %}checked{% endif %}><label for="checkbox3"><span><span></span></span>Only public</label>
         <button type="submit" name="apply" class="btn btn-light">Search</button>
-        <a class="btn btn-light" href="{% url 'viewer:publish-archives' %}">Clear</a>
+        <a class="btn btn-light" href="{% url 'viewer:manage-archives' %}">Clear</a>
       </div>
     </form>
     <form action="{{ request.get_full_path }}" method="POST">{% csrf_token %}
@@ -125,8 +125,16 @@
     <div class="form-group">
       <input size="10" class="form-control" name="reason" value="" placeholder="Reason" maxlength="200"/>
     </div>
+    {% if perms.viewer.change_archivegroup %}
+    <table class="table">
+      {{ group_form }}
+    </table>
+    <button name="add_to_group" class="btn btn-light">Add to Group</button>
+    {% endif %}
+    {% if perms.viewer.publish_archive %}
     <button name="publish_archives" class="btn btn-light">Publish</button>
     <button name="unpublish_archives" class="btn btn-light">Unpublish</button>
+    {% endif %}
     {% if perms.viewer.update_metadata %}
     <button name="update_metadata" class="btn btn-light">Update metadata</button>
     {% endif %}
@@ -136,6 +144,9 @@
     </form>
 {% endblock %}
 {% block afterJQ %}
+  {% if perms.viewer.change_archivegroup %}
+  {{ group_form.media }}
+  {% endif %}
   {% load compress %}
   {% compress css %}
     <link href="{% static 'autocomplete_light/vendor/jal/src/style.css' %}" type="text/css" media="all" rel="stylesheet" />

@@ -64,8 +64,8 @@
                 {% if perms.viewer.approve_gallery %}
                   <a class="dropdown-item" href="{% url 'viewer:submit-queue' %}">Submit queue</a>
                 {% endif %}
-                {% if perms.viewer.publish_archive %}
-                  <a class="dropdown-item" href="{% url 'viewer:publish-archives' %}?non_public=1">Publish archives</a>
+                {% if perms.viewer.manage_archive %}
+                  <a class="dropdown-item" href="{% url 'viewer:manage-archives' %}?non_public=1">Manage archives</a>
                 {% endif %}
                 {% if perms.viewer.crawler_adder %}
                   <a class="dropdown-item" href="{% url 'viewer:user-crawler' %}">Add URLs</a>
@@ -82,6 +82,8 @@
                 {% if perms.viewer.read_all_logs %}
                   <a class="dropdown-item" href="{% url 'viewer:users-event-log' %}">Users' event log</a>
                 {% endif %}
+                  <div class="dropdown-divider"></div>
+                  <a class="dropdown-item" href="{% url 'viewer:archive-groups' %}">Archive Groups</a>
               </div>
             </li>
             {% endif %}
@@ -104,7 +106,7 @@
                 <a class="dropdown-item" href="{% url 'viewer:found-galleries' %}">Found galleries log</a>
                 <div class="dropdown-divider"></div>
                 <a class="dropdown-item" href="{% url 'viewer:submit-queue' %}">Submit queue</a>
-                <a class="dropdown-item" href="{% url 'viewer:publish-archives' %}?non_public=1">Publish archives</a>
+                <a class="dropdown-item" href="{% url 'viewer:manage-archives' %}?non_public=1">Manage archives</a>
                 <a class="dropdown-item" href="{% url 'viewer:user-crawler' %}">Add URLs</a>
                 <a class="dropdown-item" href="{% url 'viewer:upload-archive' %}">Upload archive</a>
                 <a class="dropdown-item" href="{% url 'viewer:match-archives' %}">Match archives</a>
@@ -130,6 +132,7 @@
                 <a class="dropdown-item" href="{% url 'viewer:public-stats' %}">Collection stats</a>
                 <a class="dropdown-item" href="{% url 'viewer:tag-frequency' %}">Tag frequency</a>
                 <a class="dropdown-item" href="{% url 'viewer:gallery-frequency' %}">Gallery frequency</a>
+                <a class="dropdown-item" href="{% url 'viewer:archive-groups' %}">Archive Groups</a>
               </div>
             </li>
           {% else %}

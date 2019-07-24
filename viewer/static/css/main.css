@@ -370,6 +370,20 @@ img {
   overflow: hidden;
 }
 
+.archive-complete-container {
+  text-align: center;
+}
+
+.archive-complete-title {
+  font-size: 0.70em;
+  height: 24px;
+  overflow: hidden;
+  width: 200px;
+  white-space: normal;
+  line-height: 1.1;
+  margin: auto;
+}
+
 .caption {
   max-height: 35px;
   line-height: 15px;
@@ -677,7 +691,9 @@ input.custom-cb[type=checkbox]:not(old):checked + label > span::before {
 
 /* Select2 */
 .select2,
+.select2-selection,
 .select2-search__field::placeholder,
+.select2-search__field,
 .select2-results__options {
   color: black !important;
 }

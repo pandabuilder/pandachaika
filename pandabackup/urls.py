@@ -10,7 +10,8 @@ from viewer.views.complete import (
     GalleryAutocomplete, SourceAutocomplete,
     ReasonAutocomplete, UploaderAutocomplete,
     WantedGalleryAutocomplete,
-    CategoryAutocomplete, ProviderAutocomplete, TagPkAutocomplete, GallerySelectAutocomplete)
+    CategoryAutocomplete, ProviderAutocomplete, TagPkAutocomplete, GallerySelectAutocomplete, ArchiveSelectAutocomplete,
+    ArchiveGroupAutocomplete, ArchiveGroupSelectAutocomplete)
 
 admin.autodiscover()
 
@@ -23,6 +24,21 @@ urlpatterns += [
         r'^' + settings.MAIN_URL + r'archive-autocomplete/$',
         ArchiveAutocomplete.as_view(),
         name='archive-autocomplete',
+    ),
+    url(
+        r'^' + settings.MAIN_URL + r'archive-group-autocomplete/$',
+        ArchiveGroupAutocomplete.as_view(),
+        name='archive-group-autocomplete',
+    ),
+    url(
+        r'^' + settings.MAIN_URL + r'archive-group-select-autocomplete/$',
+        ArchiveGroupSelectAutocomplete.as_view(),
+        name='archive-group-select-autocomplete',
+    ),
+    url(
+        r'^' + settings.MAIN_URL + r'archive-select-autocomplete/$',
+        ArchiveSelectAutocomplete.as_view(),
+        name='archive-select-autocomplete',
     ),
     url(
         r'^' + settings.MAIN_URL + r'gallery-autocomplete/$',

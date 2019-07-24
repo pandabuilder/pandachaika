@@ -1,5 +1,5 @@
 {% extends "viewer/base.html" %}
-{% block title %}{{ image_object.archive.title }}{% endblock %}
+{% block title %}{{ image_object.archive.title }} | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
 {% load staticfiles %}
 {% load render_bundle from webpack_loader %}

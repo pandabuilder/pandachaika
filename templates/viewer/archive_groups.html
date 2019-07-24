@@ -1,0 +1,154 @@
+{% extends "viewer/base.html" %}
+{% block title %}Archive groups | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+{% load staticfiles %}
+
+{% block content %}
+  {% load viewer_extras %}
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+  <!-- Archive groups  -->
+  {% if perms.viewer.add_archivegroup %}
+  <button class="btn btn-secondary" id="add-archive-group" data-toggle="collapse" data-target="#add-change-archive-group-form" name="add-archive-group" type="button" aria-label="toggle add wanted">Add Archive Group <i class="fas fa-chevron-down"></i></button>
+  {% include 'viewer/include/archive_group_edit.html' %}
+  {% endif %}
+  <div class="page-header">
+    <h2>Archive groups (showing first 6 archives)</h2>
+    <p class="lead">Number of archive groups (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
+  </div>
+  <form action="{% url 'viewer:archive-groups' %}" method="GET">
+    {% for field in form %}
+      <div class="page-line">
+        {{ field.errors }}
+        {{ field }}
+      </div>
+    {% endfor %}
+    <div class="page-line form-inline">
+      <button type="submit" name="apply" class="btn btn-light">Search</button>
+      <a class="btn btn-light" href="{% url 'viewer:archive-groups' %}">Clear</a>
+    </div>
+  </form>
+  <!-- Next/Prev page links  -->
+  {% if results.object_list and results.paginator.num_pages > 1 %}
+    <div>
+        <span class="step-links">
+            <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
+          {% if results.has_previous %}
+            <a href= "?{% url_replace 'page' results.previous_page_number %}"> previous &lt;&lt; </a>
+          {% endif %}
+          <span class="current">
+                &nbsp;Page {{ results.number }} of {{ results.paginator.num_pages }}
+            </span>
+          {% if results.has_next %}
+            <a href="?{% url_replace 'page' results.next_page_number %}"> &gt;&gt; next</a>
+          {% endif %}
+          <a href="?{% url_replace 'page' results.paginator.num_pages %}"> &gt;&gt; last</a>
+        </span>
+    </div>
+  {% endif %}
+  <ul class="list-group">
+    {% for archive_group in results %}
+      <hr class="mt-2 mb-5">
+        <div class="arch-cont">
+        <h4><a href="{% url 'viewer:archive-group' archive_group.title_slug %}">{{ archive_group.title }}</a></h4>
+        {% for archive_entry in archive_group.archivegroup_entries|slice:":6" %}
+          {% with archive=archive_entry.archive %}
+          <div class="gallery">
+            <a class="cover" href="{% url 'viewer:archive' archive.pk %}">
+              <div class="cover-title{% if not archive.crc32 %} archive-incomplete{% endif %}" title="{{ archive_entry.title }}">{{ archive_entry.title }}</div>
+              {% with thumbnail_details=archive.get_available_thumbnail_plus_size %}
+              <img class="image-container mx-auto" alt="" title="{{ archive.title }}"
+                  width="{{ thumbnail_details.2 }}" height="{{ thumbnail_details.1 }}" src="{{ thumbnail_details.0 }}"/>
+              {% endwith %}
+            </a>
+            <div class="caption">
+              {{ archive.filecount }} | {{ archive.filesize|filesizeformat }} | {% if archive.crc32 %}<a href="{% url 'viewer:archive-download' archive.pk %}">DL</a>{% else %}DL{% endif %} | <a class="tag-preview" tabindex="0" role="button" data-toggle="popover" data-trigger="focus" data-pk="{{ archive.pk }}">Tags</a>
+              {% if user.is_authenticated and archive.extracted %}| <a href="{% url 'viewer:new-image-viewer' archive.pk '1' %}?{% url_replace 'extracted' '1' %}">View</a>{% endif %}
+            </div>
+          </div>
+          {% endwith %}
+        {% endfor %}
+        </div>
+    {% endfor %}
+  </ul>
+  <!-- Next/Prev page links  -->
+  {% if results.object_list and results.paginator.num_pages > 1 %}
+    <div>
+        <span class="step-links">
+            {% if results.has_previous %}
+              <a href= "?page={{ results.previous_page_number }}">previous &lt;&lt; </a>
+            {% endif %}
+          <span class="current">
+                &nbsp;Page {{ results.number }} of {{ results.paginator.num_pages }}
+            </span>
+          {% if results.has_next %}
+            <a href="?page={{ results.next_page_number }}"> &gt;&gt; next</a>
+          {% endif %}
+        </span>
+    </div>
+  {% endif %}
+{% endblock %}
+{% block afterJQ %}
+  {% load compress %}
+  {% if perms.viewer.add_archivegroup %}
+  {{ edit_form.media }}
+  {% compress js %}
+    <script>
+    $('#add-archive-group').click(function () {
+    if($('#add-archive-group i').hasClass('fa-chevron-down'))
+    {
+       $('#add-archive-group').html('Add Archive Group <i class="fas fa-chevron-up"></i>');
+    }
+    else
+    {
+        $('#add-archive-group').html('Add Archive Group <i class="fas fa-chevron-down"></i>');
+    }
+    });
+     document.getElementById("id_archives").nextSibling.style.width = "100%";
+    </script>
+  {% endcompress %}
+  {% endif %}
+  {% compress css %}
+    <link href="{% static 'autocomplete_light/vendor/jal/src/style.css' %}" type="text/css" media="all" rel="stylesheet" />
+  {% endcompress %}
+  {% compress js %}
+    <script>
+    var tagData = {};
+    var tagUrl = '{% url 'viewer:api' %}?at=';
+    function tagToHtml (tag) {
+        return '<div class="tag">' + tag + '</div>'
+    }
+    $(document).ready(function() {
+        $(".tag-preview").click(function() {
+            var el = $(this);
+            var pk = $(this).data('pk');
+            if (tagData[pk]) {
+                return tagData[pk];
+            }
+            else {
+                $.get(tagUrl + pk, function(response) {
+                    if (response.tags) {
+                        tagData[pk] = response.tags.map(tagToHtml);
+                        el.unbind('click').popover({
+                            content: tagData[pk].join(""),
+                            {#            title: 'Dynamic response!',#}
+                            html: true,
+                            {#                        delay: {show: 500, hide: 100}#}
+                        }).popover('show');
+                    }
+                });
+            }
+        });
+    });
+
+    </script>
+    <script type="text/javascript" src="{% static 'autocomplete_light/jquery.init.js' %}"></script>
+    <script type="text/javascript" src="{% static 'autocomplete_light/autocomplete.init.js' %}"></script>
+    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/autocomplete.js' %}"></script>
+    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/text_widget.js' %}"></script>
+    <script type="text/javascript" src="{% static 'autocomplete_light/jal.js' %}"></script>
+  {% endcompress %}
+{% endblock %}

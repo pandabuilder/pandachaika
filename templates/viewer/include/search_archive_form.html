@@ -1,0 +1,113 @@
+<form action="{{ request.get_full_path }}" method="GET">
+  {% for field in search_form %}
+    <div class="page-line">
+      {{ field.errors }}
+      {{ field }}
+    </div>
+  {% endfor %}
+  <div class="page-line form-inline">
+    <button id="toggle-all" class="btn btn-info" type="button">Toggle All</button>
+    <label>Filecount</label>
+    <input size="2" type="text" class="form-control mr-sm-1" name="filecount_from" value="{{ request.GET.filecount_from }}" placeholder="from"/>
+    <input size="2" type="text" class="form-control mr-sm-1" name="filecount_to" value="{{ request.GET.filecount_to }}" placeholder="to"/>
+    <input title="Category" class="form-control" name="category" placeholder="Category" value="{{ request.GET.category }}">
+    <input title="Source type" class="form-control" name="source_type" placeholder="Source type" value="{{ request.GET.source_type }}">
+    <input title="Reason" class="form-control" name="reason" placeholder="Reason" value="{{ request.GET.reason }}">
+    <input id="checkbox2" class="custom-cb" type="checkbox" name="non_public" value="1" {% if request.GET.non_public == '1' %}checked{% endif %}><label for="checkbox2"><span><span></span></span>Only private</label>
+    <input id="checkbox3" class="custom-cb" type="checkbox" name="public" value="1" {% if request.GET.public == '1' %}checked{% endif %}><label for="checkbox3"><span><span></span></span>Only public</label>
+    <button type="submit" name="apply" class="btn btn-light">Search</button>
+    <a class="btn btn-light" href="{{ request.path }}">Clear</a>
+  </div>
+</form>
+<form action="{{ request.get_full_path }}" method="POST">{% csrf_token %}
+{% load viewer_extras %}
+<!-- Next/Prev page links  -->
+{% if search_results.object_list and search_results.paginator.num_pages > 1 %}
+  <div>
+      <span class="step-links">
+          <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
+        {% if search_results.has_previous %}
+          <a href= "?{% url_replace 'page' search_results.previous_page_number %}"> previous &lt;&lt; </a>
+        {% endif %}
+        <span class="current">
+              &nbsp;Page {{ search_results.number }} of {{ search_results.paginator.num_pages }}
+          </span>
+        {% if search_results.has_next %}
+          <a href="?{% url_replace 'page' search_results.next_page_number %}"> &gt;&gt; next</a>
+        {% endif %}
+        <a href="?{% url_replace 'page' search_results.paginator.num_pages %}"> &gt;&gt; last</a>
+      </span>
+  </div>
+{% endif %}
+  <table class="table table-bordered table-sm generic-table">
+    <thead>
+    <tr>
+      <th>Select</th><th>Title</th><th>ID</th><th>Gallery ID</th><th>Size</th><th>Images</th><th>Source type</th><th>Reason</th><th>Added</th><th>Public</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for archive in search_results %}
+      <tr>
+        <td>
+          <input id="checkbox-{{ archive.id }}" class="toggle-list custom-cb" type="checkbox" name="sel-{{ archive.id }}" value="{{ archive.pk }}"><label for="checkbox-{{ archive.id }}"><span><span></span></span></label>
+        </td>
+        <td{% if not archive.crc32 %} class="archive-incomplete"{% endif %}>
+          {{ archive.title }}
+        </td>
+        <td>
+          {% if archive.thumbnail.name %}
+            <a href="{% url 'viewer:archive' archive.pk %}" class="img-preview" data-image-url="{{ archive.thumbnail.url }}" rel="popover">{{ archive.pk }}</a>
+          {% else %}
+            <a href="{% url 'viewer:archive' archive.pk %}">{{ archive.pk }}</a>
+          {% endif %}
+        </td>
+        <td>
+          {% if archive.gallery %}
+          <a href="{% url 'viewer:gallery' archive.gallery.pk %}">{{ archive.gallery.pk }}</a>
+          {% endif %}
+        </td>
+        <td>
+          {{ archive.filesize }} ({{ archive.filesize|filesizeformat }})
+        </td>
+        <td>
+          {{ archive.filecount }}
+        </td>
+        <td>
+          {{ archive.source_type }}
+        </td>
+        <td>
+          {{ archive.reason }}
+        </td>
+        <td>
+          {{ archive.create_date|date:"DATETIME_FORMAT" }}
+        </td>
+        <td>
+          {{ archive.public|yesno }}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+<!-- Next/Prev page links  -->
+  {% if search_results.object_list and search_results.paginator.num_pages > 1 %}
+    <div>
+        <span class="step-links">
+            <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
+          {% if search_results.has_previous %}
+            <a href= "?{% url_replace 'page' search_results.previous_page_number %}"> previous &lt;&lt; </a>
+          {% endif %}
+          <span class="current">
+                &nbsp;Page {{ search_results.number }} of {{ search_results.paginator.num_pages }}
+            </span>
+          {% if search_results.has_next %}
+            <a href="?{% url_replace 'page' search_results.next_page_number %}"> &gt;&gt; next</a>
+          {% endif %}
+          <a href="?{% url_replace 'page' search_results.paginator.num_pages %}"> &gt;&gt; last</a>
+        </span>
+    </div>
+  {% endif %}
+<div class="form-group">
+  <input size="10" class="form-control" name="reason" value="" placeholder="Reason" maxlength="200"/>
+</div>
+<button name="add_to_group" class="btn btn-light">Add to Group</button>
+</form>

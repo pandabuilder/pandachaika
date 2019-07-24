@@ -1,0 +1,82 @@
+{% extends "viewer/base.html" %}
+{% block title %}{{ archive_group.title }} | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+
+{% load staticfiles %}
+
+{% block content %}
+  {% load viewer_extras %}
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+  <!-- ArchiveGroup  -->
+  <div class="container">
+    <div class="row">
+    <div class="col-md-10 col-sm-12">
+        <h3>{{ archive_group.title }}</h3>
+    </div>
+      {% if perms.viewer.change_archivegroup %}
+      <div class="col-md-2 col-sm-12">
+        <a class="btn btn-secondary float-right" href="{% url 'viewer:archive-group-edit' archive_group.title_slug %}" role="button">Edit</a>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  <div class="arch-cont">
+  {% for archive_entry in archive_group.archivegroupentry_set.all %}
+    {% with archive=archive_entry.archive %}
+    <div class="gallery">
+      <a class="cover" href="{% url 'viewer:archive' archive.pk %}">
+        <div class="cover-title{% if not archive.crc32 %} archive-incomplete{% endif %}" title="{{ archive_entry.title }}">{{ archive_entry.title }}</div>
+        {% with thumbnail_details=archive.get_available_thumbnail_plus_size %}
+        <img class="image-container mx-auto" alt="" title="{{ archive.title }}"
+            width="{{ thumbnail_details.2 }}" height="{{ thumbnail_details.1 }}" src="{{ thumbnail_details.0 }}"/>
+        {% endwith %}
+      </a>
+      <div class="caption">
+        {{ archive.filecount }} | {{ archive.filesize|filesizeformat }} | {% if archive.crc32 %}<a href="{% url 'viewer:archive-download' archive.pk %}">DL</a>{% else %}DL{% endif %} | <a class="tag-preview" tabindex="0" role="button" data-toggle="popover" data-trigger="focus" data-pk="{{ archive.pk }}">Tags</a>
+        {% if user.is_authenticated and archive.extracted %}| <a href="{% url 'viewer:new-image-viewer' archive.pk '1' %}?{% url_replace 'extracted' '1' %}">View</a>{% endif %}
+      </div>
+    </div>
+    {% endwith %}
+  {% endfor %}
+  </div>
+
+{% endblock %}
+{% block afterJQ %}
+  {% load compress %}
+  {% compress js %}
+    <script>
+    var tagData = {};
+    var tagUrl = '{% url 'viewer:api' %}?at=';
+    function tagToHtml (tag) {
+        return '<div class="tag">' + tag + '</div>'
+    }
+    $(document).ready(function() {
+        $(".tag-preview").click(function() {
+            var el = $(this);
+            var pk = $(this).data('pk');
+            if (tagData[pk]) {
+                return tagData[pk];
+            }
+            else {
+                $.get(tagUrl + pk, function(response) {
+                    if (response.tags) {
+                        tagData[pk] = response.tags.map(tagToHtml);
+                        el.unbind('click').popover({
+                            content: tagData[pk].join(""),
+                            {#            title: 'Dynamic response!',#}
+                            html: true,
+                            {#                        delay: {show: 500, hide: 100}#}
+                        }).popover('show');
+                    }
+                });
+            }
+        });
+    });
+
+    </script>
+  {% endcompress %}
+{% endblock %}

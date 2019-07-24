@@ -16,7 +16,7 @@ from django.conf import settings
 
 from dal import autocomplete
 from dal_jal.widgets import JalWidgetMixin
-from viewer.models import Archive, ArchiveMatches, Image, Gallery, Profile, WantedGallery
+from viewer.models import Archive, ArchiveMatches, Image, Gallery, Profile, WantedGallery, ArchiveGroup
 
 from dal.widgets import (
     WidgetMixin
@@ -95,6 +95,25 @@ class MatchesModelChoiceField(ModelChoiceField):
         if first_artist_tag:
             tag_name = obj.tags.first_artist_tag().name
         return "{} >> {} >> {} >> {} >> {} >> {}".format(tag_name, obj.pk, obj.title, obj.provider, obj.filecount, obj.filesize)
+
+
+class ArchiveGroupSearchForm(forms.Form):
+
+    title = forms.CharField(
+        required=False,
+        widget=JalTextWidget(
+            url='archive-group-autocomplete',
+            attrs={
+                'class': 'form-control',
+                'aria-label': 'title',
+                'placeholder': 'Title, mouse click on autocomplete opens it',
+                'data-autocomplete-minimum-characters': 3,
+                'data-autocomplete-xhr-wait': 50,
+                'data-autocomplete-auto-hilight-first': 0,
+                'data-autocomplete-bind-mouse-down': 0,
+            },
+        ),
+    )
 
 
 class ArchiveSearchForm(forms.Form):
@@ -242,6 +261,18 @@ class SpanErrorList(ErrorList):
         if not self:
             return ''
         return '<div class="errorlist">%s</div>' % ''.join(['<div  class="alert alert-danger error" role="alert">%s</div>' % e for e in self])
+
+
+class ArchiveGroupSelectForm(forms.Form):
+
+    archive_group = forms.ModelMultipleChoiceField(
+        required=False,
+        queryset=ArchiveGroup.objects.none(),
+        widget=autocomplete.ModelSelect2Multiple(
+            url='archive-group-select-autocomplete',
+            # widget_attrs={'data-widget-bootstrap': 'customtag-widget', },
+            attrs={'size': 1, 'data-placeholder': 'Group name', 'class': 'form-control'}),
+    )
 
 
 class ArchiveModForm(forms.ModelForm):
@@ -417,6 +448,33 @@ class WantedGalleryCreateOrEditForm(ModelForm):
             'publisher': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'page_count': forms.widgets.NumberInput(attrs={'min': 0, 'class': 'form-control'}),
         }
+
+
+class ArchiveGroupCreateOrEditForm(ModelForm):
+
+    class Meta:
+        model = ArchiveGroup
+        fields = [
+            'title', 'details', 'archives', 'position', 'public'
+        ]
+        widgets = {
+            'title': forms.widgets.TextInput(attrs={'class': 'form-control'}),
+            'details': forms.widgets.Textarea(attrs={'class': 'form-control'}),
+            'archives': autocomplete.ModelSelect2Multiple(
+                url='archive-select-autocomplete',
+                # widget_attrs={'data-widget-bootstrap': 'customtag-widget', },
+                attrs={'data-placeholder': 'Archive name', 'class': 'form-control', 'data-html': True}
+            ),
+            'position': forms.widgets.NumberInput(attrs={'min': 0, 'class': 'form-control'}),
+            'public': forms.widgets.CheckboxInput(attrs={'class': 'form-control'})
+        }
+
+    def save(self, commit=True):
+        archive_group = super(ArchiveGroupCreateOrEditForm, self).save(commit=commit)
+
+        for archive_group_entry in archive_group.archivegroupentry_set.all():
+            archive_group_entry.save()
+        return archive_group
 
 
 class ArchiveCreateForm(ModelForm):

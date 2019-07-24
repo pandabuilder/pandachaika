@@ -6,6 +6,8 @@ from django.http import HttpRequest
 
 from viewer.models import (
     Archive,
+    ArchiveGroup,
+    ArchiveGroupEntry,
     Tag,
     Gallery,
     Image,
@@ -84,6 +86,26 @@ class ArchiveAdmin(admin.ModelAdmin):
         super(ArchiveAdmin, self).save_related(request, form, formsets, change)
         if form.instance.gallery and form.instance.gallery.tags.all():
             form.instance.tags.set(form.instance.gallery.tags.all())
+
+
+class ArchiveGroupEntryInline(admin.TabularInline):
+    model = ArchiveGroupEntry
+    extra = 2
+    raw_id_fields = ("archive_group", "archive",)
+
+
+class ArchiveGroupAdmin(admin.ModelAdmin):
+    search_fields = ["title", "archive_group__title"]
+    list_display = ["id", "title", "position", "public", "create_date"]
+    list_filter = ["public"]
+
+    inlines = (ArchiveGroupEntryInline,)
+
+
+class ArchiveGroupEntryAdmin(admin.ModelAdmin):
+    search_fields = ["title", "archive_group__title"]
+    raw_id_fields = ("archive", )
+    list_display = ["id", "archive_group", "archive", "title", "position"]
 
 
 class TagAdmin(admin.ModelAdmin):
@@ -318,6 +340,8 @@ class EventLogAdmin(admin.ModelAdmin):
 
 
 admin.site.register(Archive, ArchiveAdmin)
+admin.site.register(ArchiveGroup, ArchiveGroupAdmin)
+admin.site.register(ArchiveGroupEntry, ArchiveGroupEntryAdmin)
 admin.site.register(Tag, TagAdmin)
 admin.site.register(Gallery, GalleryAdmin)
 admin.site.register(Image, ImageAdmin)

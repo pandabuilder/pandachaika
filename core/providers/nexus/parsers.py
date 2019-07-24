@@ -47,7 +47,7 @@ class Parser(BaseParser):
 
         soup = BeautifulSoup(response.text, 'html.parser')
 
-        content_container = soup.find_all("div", class_="container")[1]
+        content_container = soup.find_all("div", class_="container")[0]
 
         if not content_container:
             self.logger.error("Could not find content container")

@@ -158,7 +158,7 @@
   </form>
 {% endblock %}
 {% block afterJQ %}
-  {% if perms.viewer.approve_gallery %}
+  {% if perms.viewer.add_wantedgallery %}
   {{ edit_form.media }}
   {% load compress %}
   {% compress js %}

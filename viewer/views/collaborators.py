@@ -15,8 +15,9 @@ from core.base.utilities import thread_exists
 from viewer.utils.matching import generate_possible_matches_for_archives
 from viewer.utils.actions import event_log
 from viewer.forms import GallerySearchForm, ArchiveSearchForm, WantedGallerySearchForm, WantedGalleryCreateOrEditForm, \
-    ArchiveCreateForm
-from viewer.models import Archive, Gallery, EventLog, ArchiveMatches, Tag, WantedGallery
+    ArchiveCreateForm, ArchiveGroupSelectForm
+from viewer.models import Archive, Gallery, EventLog, ArchiveMatches, Tag, WantedGallery, ArchiveGroup, \
+    ArchiveGroupEntry
 from viewer.utils.tags import sort_tags
 from viewer.views.head import frontend_logger, gallery_filter_keys, filter_galleries_simple, \
     archive_filter_keys, filter_archives_simple, render_error, wanted_gallery_filter_keys, \
@@ -165,8 +166,8 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
     return render(request, "viewer/collaborators/submit_queue.html", d)
 
 
-@permission_required('viewer.publish_archive')
-def publish_archives(request: HttpRequest) -> HttpResponse:
+@permission_required('viewer.manage_archive')
+def manage_archives(request: HttpRequest) -> HttpResponse:
     p = request.POST
     get = request.GET
 
@@ -193,7 +194,7 @@ def publish_archives(request: HttpRequest) -> HttpResponse:
                 # results[pk][k] = v
                 pks.append(v)
         archives = Archive.objects.filter(id__in=pks).order_by('-create_date')
-        if 'publish_archives' in p:
+        if 'publish_archives' in p and request.user.has_perm('viewer.publish_archive'):
             for archive in archives:
                 message = 'Publishing archive: {}, link: {}'.format(
                     archive.title, archive.get_absolute_url()
@@ -210,7 +211,7 @@ def publish_archives(request: HttpRequest) -> HttpResponse:
                     content_object=archive,
                     result='published'
                 )
-        elif 'unpublish_archives' in p:
+        elif 'unpublish_archives' in p and request.user.has_perm('viewer.publish_archive'):
             for archive in archives:
                 message = 'Unpublishing archive: {}, link: {}'.format(
                     archive.title, archive.get_absolute_url()
@@ -287,6 +288,34 @@ def publish_archives(request: HttpRequest) -> HttpResponse:
                             gallery.get_absolute_url()
                         )
                     )
+        elif 'add_to_group' in p and request.user.has_perm('viewer.change_archivegroup'):
+
+            if 'archive_group' in p:
+                archive_group_ids = p.getlist('archive_group')
+                archive_groups = ArchiveGroup.objects.filter(pk__in=archive_group_ids)
+
+                for archive in archives:
+                    for archive_group in archive_groups:
+                        if not ArchiveGroupEntry.objects.filter(archive=archive, archive_group=archive_group).exists():
+
+                            archive_group_entry = ArchiveGroupEntry(archive=archive, archive_group=archive_group)
+                            archive_group_entry.save()
+
+                            message = 'Adding archive: {}, link: {}, to group: {}, link {}'.format(
+                                archive.title, archive.get_absolute_url(),
+                                archive_group.title, archive_group.get_absolute_url()
+                            )
+                            if 'reason' in p and p['reason'] != '':
+                                message += ', reason: {}'.format(p['reason'])
+                            frontend_logger.info("User {}: {}".format(request.user.username, message))
+                            messages.success(request, message)
+                            event_log(
+                                request.user,
+                                'ADD_ARCHIVE_TO_GROUP',
+                                content_object=archive,
+                                reason=user_reason,
+                                result='added'
+                            )
 
     params = {
         'sort': 'create_date',
@@ -315,7 +344,12 @@ def publish_archives(request: HttpRequest) -> HttpResponse:
         'results': results,
         'form': form
     }
-    return render(request, "viewer/collaborators/publish_archives.html", d)
+
+    if request.user.has_perm('viewer.change_archivegroup'):
+        group_form = ArchiveGroupSelectForm()
+        d.update(group_form=group_form)
+
+    return render(request, "viewer/collaborators/manage_archives.html", d)
 
 
 @login_required
@@ -795,7 +829,7 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
     except WantedGallery.DoesNotExist:
         raise Http404("Wanted gallery does not exist")
 
-    if request.POST.get('submit-wanted-gallery') and request.user.has_perm('viewer.add_wantedgallery'):
+    if request.POST.get('submit-wanted-gallery') and request.user.has_perm('viewer.change_wantedgallery'):
         # create a form instance and populate it with data from the request:
         edit_form = WantedGalleryCreateOrEditForm(request.POST, instance=wanted_gallery_instance)
         # check whether it's valid:
@@ -827,12 +861,6 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
         'edit_form': edit_form
     }
     return render(request, "viewer/collaborators/wanted_gallery.html", d)
-
-
-@permission_required('viewer.change_wantedgallery')
-def change_wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
-    """WantedGallery listing."""
-    return render_error(request, 'Not implemented')
 
 
 @permission_required('viewer.upload_with_metadata_archive')

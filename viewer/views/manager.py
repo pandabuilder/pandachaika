@@ -14,6 +14,7 @@ from core.base.setup import Settings
 from core.base.utilities import thread_exists
 from viewer.forms import GallerySearchForm, ArchiveSearchForm, WantedGallerySearchForm
 from viewer.models import Archive, Gallery, ArchiveMatches, Tag, WantedGallery, GalleryMatch, FoundGallery
+from viewer.utils.actions import event_log
 from viewer.utils.matching import generate_possible_matches_for_archives, \
     create_matches_wanted_galleries_from_providers, create_matches_wanted_galleries_from_providers_internal
 from viewer.views.head import render_error, frontend_logger, gallery_filter_keys, filter_galleries_simple, \
@@ -108,6 +109,9 @@ def repeated_archives_by_field(request: HttpRequest) -> HttpResponse:
                 # results[pk][k] = v
                 pks.append(v)
         archives = Archive.objects.filter(id__in=pks).order_by('-create_date')
+
+        user_reason = p.get('reason', '')
+
         if 'delete_archives' in p:
             for archive in archives:
                 message = 'Removing archive: {} and deleting file: {}'.format(
@@ -115,9 +119,20 @@ def repeated_archives_by_field(request: HttpRequest) -> HttpResponse:
                 )
                 frontend_logger.info(message)
                 messages.success(request, message)
+
+                gallery = archive.gallery
                 archive.gallery.mark_as_deleted()
                 archive.delete_all_files()
                 archive.delete()
+
+                event_log(
+                    request.user,
+                    'DELETE_ARCHIVE',
+                    reason=user_reason,
+                    content_object=gallery,
+                    result='deleted'
+                )
+
         elif 'delete_objects' in p:
             for archive in archives:
                 message = 'Removing archive: {}, keeping file: {}'.format(
@@ -125,9 +140,19 @@ def repeated_archives_by_field(request: HttpRequest) -> HttpResponse:
                 )
                 frontend_logger.info(message)
                 messages.success(request, message)
+
+                gallery = archive.gallery
                 archive.gallery.mark_as_deleted()
                 archive.delete_files_but_archive()
                 archive.delete()
+
+                event_log(
+                    request.user,
+                    'DELETE_ARCHIVE',
+                    reason=user_reason,
+                    content_object=gallery,
+                    result='deleted'
+                )
 
     params = {
         'sort': 'create_date',
@@ -197,11 +222,22 @@ def repeated_galleries_by_field(request: HttpRequest) -> HttpResponse:
         results = Gallery.objects.filter(id__in=pks).order_by('-create_date')
 
         if 'delete_galleries' in p:
+
+            user_reason = p.get('reason', '')
+
             for gallery in results:
                 message = 'Removing gallery: {}, link: {}'.format(gallery.title, gallery.get_link())
                 frontend_logger.info(message)
                 messages.success(request, message)
                 gallery.mark_as_deleted()
+
+                event_log(
+                    request.user,
+                    'DELETE_GALLERY',
+                    reason=user_reason,
+                    content_object=gallery,
+                    result='deleted'
+                )
 
     params = {
         'sort': 'create_date',

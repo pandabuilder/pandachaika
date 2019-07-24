@@ -1,5 +1,5 @@
 {% extends "viewer/base.html" %}
-{% block title %}{{ gallery.title }}{% endblock %}
+{% block title %}{{ gallery.title }} | {{ block.super }}{% endblock %}
 {% load staticfiles %}
 {% block sidebar %}{% endblock %}
 

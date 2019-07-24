@@ -1,5 +1,7 @@
 from django.conf.urls import url
-from viewer.views import head, browser, wanted, exp, api, archive, admin, manager, collaborators
+from django.urls import path
+
+from viewer.views import head, browser, wanted, exp, api, archive, admin, manager, collaborators, groups
 from viewer.feeds import LatestArchivesFeed
 from viewer.views.elasticsearch import ESHomePageView, autocomplete_view, title_suggest_view
 
@@ -88,10 +90,9 @@ urlpatterns += [
     url(r"^my-event-log/$", collaborators.my_event_log, name='my-event-log'),
     url(r"^submit-queue/$", collaborators.submit_queue, name='submit-queue'),
     url(r"^upload-archive/$", collaborators.upload_archive, name='upload-archive'),
-    url(r"^publish-archives/$", collaborators.publish_archives, name='publish-archives'),
+    url(r"^manage-archives/$", collaborators.manage_archives, name='manage-archives'),
     url(r"^col-wanted-galleries/$", collaborators.wanted_galleries, name='col-wanted-galleries'),
     url(r"^col-wanted-gallery/(\d+)/$", collaborators.wanted_gallery, name='col-wanted-gallery'),
-    url(r"^col-change-wanted-gallery/(\d+)/$", collaborators.change_wanted_gallery, name='col-change-wanted-gallery'),
     url(r"^user-crawler/$", collaborators.user_crawler, name='user-crawler'),
     url(r"^match-archives/$", collaborators.archives_not_matched_with_gallery, name='match-archives'),
     url(r"^col-update/(\d+)/([\w-]+)/(\d*)/$", collaborators.archive_update, name='col-archive-update-tool-id'),
@@ -100,6 +101,15 @@ urlpatterns += [
     url(r"^col-update/(\d+)/$", collaborators.archive_update, name='col-archive-update'),
     url(r"^users-event-log/$", collaborators.users_event_log, name='users-event-log'),
 
+]
+
+# Archive groups.
+urlpatterns += [
+    url(r"^archive-groups/$", groups.archive_groups_explorer, name='archive-groups'),
+    path("archive-group/<slug:slug>/", groups.archive_group, name='archive-group'),
+    path("archive-group/<int:pk>/", groups.archive_group, name='archive-group'),
+    path("archive-group-edit/<slug:slug>/", groups.archive_group_edit, name='archive-group-edit'),
+    path("archive-group-edit/<int:pk>/", groups.archive_group_edit, name='archive-group-edit'),
 ]
 
 urlpatterns += [

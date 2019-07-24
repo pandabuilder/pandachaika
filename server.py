@@ -128,6 +128,7 @@ if __name__ == '__main__':
             'server.ssl_module': 'builtin',
             'server.ssl_certificate': crawler_settings.webserver.ssl_certificate,
             'server.ssl_private_key': crawler_settings.webserver.ssl_private_key,
+            'response.timeout': 600,
         })
 
     cherrypy.config.update(cherrypy_settings)

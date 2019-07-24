@@ -38,6 +38,35 @@ def get_gid_path_association(site_page, api_key):
     return response_data
 
 
+def send_urls_from_archive_list(site_page, api_key, reason, details, archive_ids):
+
+    url_list = [x.get_link() for x in Archive.objects.filter(pk__inn=archive_ids)]
+
+    data = {
+        'operation': 'queue_archives',
+        'api_key': api_key,
+        'args': url_list
+    }
+
+    if reason:
+        data['archive_reason'] = reason
+    if details:
+        data['archive_details'] = details
+
+    headers = {'Content-Type': 'application/json; charset=utf-8'}
+    r = requests.post(
+        site_page,
+        data=json.dumps(data),
+        headers={**headers},
+        timeout=25
+    )
+    try:
+        response_data = r.json()
+        yield("Number of new galleries queued: {}".format(response_data['result']))
+    except(ValueError, KeyError):
+        yield("Error parsing the response: {}".format(r.text))
+
+
 def send_urls_from_archives(site_page, api_key, reason, details):
 
     url_list = [x.get_link() for x in Archive.objects.filter(gallery__hidden=True)]
@@ -219,6 +248,12 @@ class Command(BaseCommand):
                                 'Must have been linked to an archive. '
                                 'This will create a fake archive on the remote server '
                                 'that will need to be uploaded with -u'))
+        parser.add_argument('-as', '--archive_specify',
+                            required=False,
+                            action='store',
+                            nargs='+',
+                            type=int,
+                            help='Specify list of archive ids to send.')
         parser.add_argument('-ar', '--archive_reason',
                             required=False,
                             action='store',
@@ -247,6 +282,15 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         start = time.perf_counter()
+        if options['archive_specify']:
+            for message in send_urls_from_archive_list(
+                    crawler_settings.remote_site['api_url'],
+                    crawler_settings.remote_site['api_key'],
+                    options['archive_reason'],
+                    options['archive_details'],
+                    options['archive_specify'],
+            ):
+                self.stdout.write(message)
         if options['archives']:
             for message in send_urls_from_archives(crawler_settings.remote_site['api_url'], crawler_settings.remote_site['api_key'], options['archive_reason'], options['archive_details']):
                 self.stdout.write(message)

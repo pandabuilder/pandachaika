@@ -37,7 +37,7 @@ class TimedAutoUpdater(BaseScheduler):
                 end_date = django_tz.now() - timedelta(days=self.settings.autoupdater.buffer_after)
                 to_update_providers = current_settings.autoupdater.providers
 
-                galleries = Gallery.objects.filter(
+                galleries = Gallery.objects.eligible_for_use(
                     posted__gte=start_date,
                     posted__lte=end_date,
                     provider__in=to_update_providers

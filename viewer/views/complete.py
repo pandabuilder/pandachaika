@@ -9,8 +9,9 @@ from django import http
 from django.db.models import Q, QuerySet
 from django.http import HttpResponse, HttpRequest
 from django.template import Context
+from django.utils.html import format_html
 
-from viewer.models import Archive, Tag, Gallery, WantedGallery
+from viewer.models import Archive, Tag, Gallery, WantedGallery, ArchiveGroup
 
 
 class ArchiveAutocomplete(autocomplete.JalQuerySetView):
@@ -141,6 +142,48 @@ class WantedGalleryAutocomplete(autocomplete.JalQuerySetView):
             )
         else:
             qs = []
+
+        return qs[0:self.limit_choices]
+
+
+class ArchiveGroupAutocomplete(autocomplete.JalQuerySetView):
+    model = ArchiveGroup
+
+    choice_html_format = u'''
+        <a class="block choice" data-value="%s" href="%s">%s</a>
+    '''
+    empty_html_format = '<span class="block"><em>%s</em></span>'
+    autocomplete_html_format = '%s'
+    limit_choices = 10
+
+    def choice_html(self, choice: ArchiveGroup) -> str:
+        return self.choice_html_format % (choice.title,
+                                          choice.get_absolute_url(),
+                                          choice.title)
+
+    def render_to_response(self, context: Context) -> HttpResponse:
+
+        html = ''.join(
+            [self.choice_html(c) for c in self.choices_for_request()])
+
+        if not html:
+            html = self.empty_html_format % 'No matches found'
+
+        return HttpResponse(self.autocomplete_html_format % html)
+
+    def choices_for_request(self) -> Iterable[ArchiveGroup]:
+        qs = ArchiveGroup.objects.all().order_by('position')
+
+        q = self.request.GET.get('q', '')
+        q_formatted = '%' + q.replace(' ', '%') + '%'
+        if self.request.user.is_authenticated:
+            qs = qs.filter(
+                Q(title__ss=q_formatted)
+            )
+        else:
+            qs = qs.filter(public=True).filter(
+                Q(title__ss=q_formatted)
+            )
 
         return qs[0:self.limit_choices]
 
@@ -426,6 +469,60 @@ class GallerySelectAutocomplete(autocomplete.Select2QuerySetView):
         else:
             qs = qs.filter(public=True).filter(
                 q_object
+            )
+
+        return qs[0:self.limit_choices]
+
+
+class ArchiveSelectAutocomplete(autocomplete.Select2QuerySetView):
+    model = Archive
+    limit_choices = 10
+
+    # def get_result_label(self, result: Archive) -> str:
+    #     return "({}) ({}) {}".format(result.pk, result.title, result.source_type)
+
+    def get_result_label(self, result: Archive) -> str:
+        return format_html('<div class="archive-complete-container"><div class="archive-complete-title">{}</div><img src="{}"></div>', result.title, result.thumbnail.url)
+
+    def get_queryset(self) -> QuerySet:
+        qs = Archive.objects.all().order_by('pk')
+
+        q = self.q
+        q_formatted = '%' + q.replace(' ', '%') + '%'
+
+        q_object = Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted) | Q(original_filename__ss=q_formatted)
+
+        if self.request.user.is_authenticated:
+            qs = qs.filter(
+                q_object
+            )
+        else:
+            qs = qs.filter(public=True).filter(
+                q_object
+            )
+
+        return qs[0:self.limit_choices]
+
+
+class ArchiveGroupSelectAutocomplete(autocomplete.Select2QuerySetView):
+    model = ArchiveGroup
+    limit_choices = 10
+
+    def get_result_label(self, result: ArchiveGroup) -> str:
+        return "({}) ({})".format(result.pk, result.title)
+
+    def get_queryset(self) -> QuerySet:
+        qs = ArchiveGroup.objects.all().order_by('position')
+
+        q = self.q
+        q_formatted = '%' + q.replace(' ', '%') + '%'
+        if self.request.user.is_authenticated:
+            qs = qs.filter(
+                Q(title__ss=q_formatted)
+            )
+        else:
+            qs = qs.filter(public=True).filter(
+                Q(title__ss=q_formatted)
             )
 
         return qs[0:self.limit_choices]

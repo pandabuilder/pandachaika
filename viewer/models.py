@@ -1,4 +1,5 @@
-﻿import os
+﻿import itertools
+import os
 import re
 import shutil
 import typing
@@ -25,6 +26,7 @@ from django.db.models.signals import post_delete, post_save
 from django.db.models.sql.compiler import SQLCompiler
 from django.dispatch import receiver
 from django.http import HttpRequest
+from django.utils.text import slugify
 
 try:
     from PIL import Image as PImage
@@ -679,6 +681,7 @@ class Archive(models.Model):
         }
         permissions = (
             ("publish_archive", "Can publish available archives"),
+            ("manage_archive", "Can manage available archives"),
             ("match_archive", "Can match archives"),
             ("update_metadata", "Can update metadata"),
             ("upload_with_metadata_archive", "Can upload a file with an associated metadata source"),
@@ -1339,6 +1342,71 @@ class Archive(models.Model):
             order_by('-num_common_tags')
 
 # Admin
+
+
+class ArchiveGroup(models.Model):
+    title = models.CharField(max_length=500, blank=False, null=False)
+    title_slug = models.SlugField(unique=True)
+    details = models.TextField(
+        blank=True, null=True, default='')
+    archives = models.ManyToManyField(
+        Archive, related_name="archive_groups",
+        blank=True, default='',
+        through='ArchiveGroupEntry', through_fields=('archive_group', 'archive'))
+    position = models.PositiveIntegerField(default=1)
+    public = models.BooleanField(default=False)
+    create_date = models.DateTimeField(auto_now_add=True)
+    last_modified = models.DateTimeField(auto_now=True, blank=True, null=True)
+
+    class Meta:
+        verbose_name_plural = "Archive groups"
+        ordering = ['position']
+
+    def __str__(self) -> str:
+        return self.title
+
+    def get_absolute_url(self) -> str:
+        return reverse('viewer:archive-group', args=[str(self.title_slug)])
+
+    def save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
+        if not self.title_slug:
+
+            slug_candidate = slug_original = slugify(self.title, allow_unicode=True)
+            for i in itertools.count(1):
+                if not ArchiveGroup.objects.filter(title_slug=slug_candidate).exists():
+                    break
+                slug_candidate = '{}-{}'.format(slug_original, i)
+
+            self.title_slug = slug_candidate
+        super().save(*args, **kwargs)
+
+
+class ArchiveGroupEntry(models.Model):
+    archive_group = models.ForeignKey(ArchiveGroup, on_delete=models.CASCADE)
+    archive = models.ForeignKey(Archive, on_delete=models.CASCADE)
+    title = models.CharField(max_length=500, blank=True, default='')
+    position = models.PositiveIntegerField(blank=True, null=True)
+
+    class Meta:
+        verbose_name_plural = "Archive group entries"
+        ordering = ['position']
+
+    def save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
+        if not self.position:
+            last_position = ArchiveGroupEntry.objects.filter(
+                archive_group=self.archive_group
+            ).exclude(position__isnull=True).order_by('-position').first()
+
+            if last_position is None or last_position.position is None:
+                position_candidate = 1
+            else:
+                position_candidate = last_position.position + 1
+
+            self.position = position_candidate
+
+        self.title = self.title or self.archive.title
+
+        super().save(*args, **kwargs)
 
 
 class ArchiveMatches(models.Model):
