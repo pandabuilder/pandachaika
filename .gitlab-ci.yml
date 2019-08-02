@@ -14,10 +14,10 @@ test:
   - pip3.7 install coverage
   - pip3.7 install django-nose
   - python3.7 manage.py test viewer.tests.test_internal
-  - pip3.7 install flake8==3.7.7
-  - pip3.7 install mypy==0.711
-  - flake8 --ignore="E501,E402,F401,W503,F811" --exclude="migrations,ENV,src,.mypy_cache" .
-  - mypy . --ignore-missing-imports --strict-equality --new-semantic-analyzer
+  - pip3.7 install flake8==3.7.8
+  - pip3.7 install mypy==0.720
+  - flake8 --ignore="E501,E402,F401,W503,F811" --exclude="migrations,ENV,venv,src,.mypy_cache" .
+  - mypy . --ignore-missing-imports --strict-equality
   cache:
     paths:
     - .mypy_cache

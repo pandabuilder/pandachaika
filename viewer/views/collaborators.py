@@ -5,7 +5,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import permission_required, login_required
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
-from django.db.models import Q, Prefetch, Count
+from django.db.models import Q, Prefetch, Count, Case, When
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect, Http404
 from django.shortcuts import render
 from django.urls import reverse
@@ -53,10 +53,13 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
                 # k, pk = k.split('-')
                 # results[pk][k] = v
                 pks.append(v)
+
+        preserved = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(pks)])
+
         if 'denied' in get:
-            results = Gallery.objects.submitted_galleries(id__in=pks).order_by('-create_date')
+            results = Gallery.objects.submitted_galleries(id__in=pks).order_by(preserved)
         else:
-            results = Gallery.objects.submitted_galleries(~Q(status=Gallery.DENIED), id__in=pks).order_by('-create_date')
+            results = Gallery.objects.submitted_galleries(~Q(status=Gallery.DENIED), id__in=pks).order_by(preserved)
 
         if 'deny_galleries' in p:
             for gallery in results:
@@ -193,7 +196,10 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                 # k, pk = k.split('-')
                 # results[pk][k] = v
                 pks.append(v)
-        archives = Archive.objects.filter(id__in=pks).order_by('-create_date')
+
+        preserved = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(pks)])
+
+        archives = Archive.objects.filter(id__in=pks).order_by(preserved)
         if 'publish_archives' in p and request.user.has_perm('viewer.publish_archive'):
             for archive in archives:
                 message = 'Publishing archive: {}, link: {}'.format(
@@ -292,7 +298,10 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
 
             if 'archive_group' in p:
                 archive_group_ids = p.getlist('archive_group')
-                archive_groups = ArchiveGroup.objects.filter(pk__in=archive_group_ids)
+
+                preserved = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(archive_group_ids)])
+
+                archive_groups = ArchiveGroup.objects.filter(pk__in=archive_group_ids).order_by(preserved)
 
                 for archive in archives:
                     for archive_group in archive_groups:
@@ -615,7 +624,10 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                 # k, pk = k.split('-')
                 # results[pk][k] = v
                 pks.append(v)
-        archives = Archive.objects.filter(id__in=pks).order_by('-create_date')
+
+        preserved = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(pks)])
+
+        archives = Archive.objects.filter(id__in=pks).order_by(preserved)
         if 'create_possible_matches' in p:
             if thread_exists('match_unmatched_worker'):
                 return render_error(request, "Local matching worker is already running.")

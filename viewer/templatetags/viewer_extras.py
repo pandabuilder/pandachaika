@@ -10,6 +10,18 @@ T = TypeVar('T', float, int)
 
 
 @register.simple_tag(takes_context=True)
+def url_toggle(context: RequestContext, field: SafeText) -> str:
+    dict_ = context['request'].GET.copy()
+
+    if field in dict_:
+        del dict_[field]
+    else:
+        dict_[field] = ''
+
+    return dict_.urlencode()
+
+
+@register.simple_tag(takes_context=True)
 def url_replace(context: RequestContext, field: SafeText, value: SafeText) -> str:
     dict_ = context['request'].GET.copy()
     dict_[field] = str(value)

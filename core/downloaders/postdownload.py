@@ -508,8 +508,10 @@ class PostDownloader(object):
             for retry_count in range(3):
                 try:
                     self.download_all_missing(archives)
-                except (ConnectionResetError, socket.timeout, TimeoutError):
-                    self.logger.error("Download failed, restarting connection. Retry: {} of 3".format(retry_count + 1))
+                except (ConnectionResetError, socket.timeout, TimeoutError) as e:
+                    self.logger.error(
+                        "Download failed, restarting connection. Retry: {} of 3. Error: {}".format(retry_count + 1, e)
+                    )
                 else:
                     return
             self.logger.error("Download failed, restart limit reached (3), ending")

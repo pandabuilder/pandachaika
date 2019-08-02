@@ -101,6 +101,11 @@ class WebCrawler(object):
                             help='A mode to accept only links that match any of the wanted gallery filters.'
                                  'This is set automatically when running the autosearch.')
 
+        parser.add_argument('-nwc', '--no-wanted-check',
+                            required=False,
+                            action='store_true',
+                            help='A mode to crawl galleries without checking against wanted galleries.')
+
         parser.add_argument('-um', '--update-mode',
                             required=False,
                             action='store_true',
@@ -267,6 +272,8 @@ class WebCrawler(object):
         if args.update_mode or current_settings.update_metadata_mode:
             wanted_filters: QuerySet = []
             current_settings.update_metadata_mode = True
+        elif args.no_wanted_check:
+            wanted_filters = []
         else:
             wanted_filters = WantedGallery.objects.eligible_to_search()
         if args.wanted_only and not wanted_filters:

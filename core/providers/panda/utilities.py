@@ -41,10 +41,12 @@ def map_external_gallery_data_to_internal(gallery_data: DataDict) -> GalleryData
 
 
 def link_from_gid_token_fjord(gid: str, token: str, fjord: bool = False) -> str:
-    if fjord:
-        return '{}/g/{}/{}/'.format(constants.ex_page, gid, token)
-    else:
-        return '{}/g/{}/{}/'.format(constants.ge_page, gid, token)
+    # TODO: RIP panda
+    # if fjord:
+    #     return '{}/g/{}/{}/'.format(constants.ex_page, gid, token)
+    # else:
+    #     return '{}/g/{}/{}/'.format(constants.ge_page, gid, token)
+    return '{}/g/{}/{}/'.format(constants.ge_page, gid, token)
 
 
 def get_gid_token_from_link(link: str) -> typing.Tuple[str, str]:
@@ -65,10 +67,12 @@ def fjord_gid_token_from_link(link: str) -> typing.Tuple[typing.Optional[str], t
 
 
 def resolve_url(gallery: 'Gallery') -> str:
-    if gallery.fjord:
-        return '{}/g/{}/{}/'.format(constants.ex_page, gallery.gid, gallery.token)
-    else:
-        return '{}/g/{}/{}/'.format(constants.ge_page, gallery.gid, gallery.token)
+    # TODO: RIP panda
+    # if gallery.fjord:
+    #     return '{}/g/{}/{}/'.format(constants.ex_page, gallery.gid, gallery.token)
+    # else:
+    #     return '{}/g/{}/{}/'.format(constants.ge_page, gallery.gid, gallery.token)
+    return '{}/g/{}/{}/'.format(constants.ge_page, gallery.gid, gallery.token)
 
 
 def request_data_from_gid_token_iterable(api_token_iterable: typing.Iterable[typing.Tuple[str, str]]) -> typing.Dict[str, typing.Any]:

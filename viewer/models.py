@@ -404,7 +404,14 @@ class Tag(models.Model):
     source = models.CharField(
         'Source', max_length=50, blank=True, null=True, default='web')
     create_date = models.DateTimeField(auto_now_add=True)
+
     objects = TagManager()
+
+    class Meta:
+        unique_together = [['scope', 'name']]
+
+    def natural_key(self):
+        return self.scope, self.name
 
     def __str__(self) -> str:
         if self.scope != '':

@@ -1,3 +1,4 @@
+<div id="search-archive-form">
 <form action="{{ request.get_full_path }}" method="GET">
   {% for field in search_form %}
     <div class="page-line">
@@ -6,7 +7,25 @@
     </div>
   {% endfor %}
   <div class="page-line form-inline">
-    <button id="toggle-all" class="btn btn-info" type="button">Toggle All</button>
+    <label for="sort">Sort</label>
+    <select id="sort" name="sort" class="form-control mx-sm-1">
+      <option value="posted" {% if request.GET.sort == "posted" %} selected{% endif %}>posted date</option>
+      {% if user.is_staff %}
+        <option value="create_date" {% if request.GET.sort == "create_date" %} selected{% endif %}>create date</option>
+        <option value="public_date" {% if request.GET.sort == "public_date" %} selected{% endif %}>public date</option>
+      {% else %}
+        <option value="public_date" {% if request.GET.sort == "public_date" %} selected{% endif %}>public date</option>
+      {% endif %}
+      <option value="title" {% if request.GET.sort == "title" %} selected{% endif %}>title</option>
+      <option value="title_jpn" {% if request.GET.sort == "title_jpn" %} selected{% endif %}>title jpn</option>
+      <option value="rating" {% if request.GET.sort == "rating" %} selected{% endif %}>rating</option>
+      <option value="filecount" {% if request.GET.sort == "filecount" %} selected{% endif %}>images</option>
+      <option value="filesize" {% if request.GET.sort == "filesize" %} selected{% endif %}>size</option>
+    </select>
+    <select id="asc_desc" name="asc_desc" class="form-control mr-sm-1" title="sort_order" aria-label="sort_order">
+      <option value="asc" {% if request.GET.asc_desc == "asc" %} selected{% endif %}>ascending</option>
+      <option value="desc" {% if request.GET.asc_desc == "desc" %} selected{% endif %}>descending</option>
+    </select>
     <label>Filecount</label>
     <input size="2" type="text" class="form-control mr-sm-1" name="filecount_from" value="{{ request.GET.filecount_from }}" placeholder="from"/>
     <input size="2" type="text" class="form-control mr-sm-1" name="filecount_to" value="{{ request.GET.filecount_to }}" placeholder="to"/>
@@ -15,9 +34,14 @@
     <input title="Reason" class="form-control" name="reason" placeholder="Reason" value="{{ request.GET.reason }}">
     <input id="checkbox2" class="custom-cb" type="checkbox" name="non_public" value="1" {% if request.GET.non_public == '1' %}checked{% endif %}><label for="checkbox2"><span><span></span></span>Only private</label>
     <input id="checkbox3" class="custom-cb" type="checkbox" name="public" value="1" {% if request.GET.public == '1' %}checked{% endif %}><label for="checkbox3"><span><span></span></span>Only public</label>
-    <button type="submit" name="apply" class="btn btn-light">Search</button>
-    <a class="btn btn-light" href="{{ request.path }}">Clear</a>
+    <input id="checkbox4" class="custom-cb" type="checkbox" name="groupless" value="1" {% if request.GET.groupless == '1' %}checked{% endif %}><label for="checkbox4"><span><span></span></span>Groupless</label>
   </div>
+  <div class="page-line form-inline">
+    <button id="toggle-all" class="btn btn-info" type="button">Toggle All</button>
+    <button type="submit" name="apply" class="btn btn-light">Search</button>
+    <a class="btn btn-light" href="{{ request.path }}?add_multiple=">Clear</a>
+  </div>
+  <input id="add_multiple" name="add_multiple" type="hidden" value="">
 </form>
 <form action="{{ request.get_full_path }}" method="POST">{% csrf_token %}
 {% load viewer_extras %}
@@ -109,5 +133,7 @@
 <div class="form-group">
   <input size="10" class="form-control" name="reason" value="" placeholder="Reason" maxlength="200"/>
 </div>
-<button name="add_to_group" class="btn btn-light">Add to Group</button>
+<input id="add_multiple" name="add_multiple" type="hidden" value="">
+<button name="add_to_group" class="btn btn-light">Add Multiple to Group</button>
 </form>
+</div>

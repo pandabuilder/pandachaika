@@ -145,10 +145,13 @@ class Parser(BaseParser):
                 )
                 main_page_parser = SearchHTMLParser()
                 main_page_parser.feed(main_page_text)
-                self.logger.info("number of galleries found: {}".format(len(main_page_parser.galleries)))
+                self.logger.info("Number of galleries found: {}".format(len(main_page_parser.galleries)))
                 if len(main_page_parser.galleries) >= 1:
                     for gallery_url in main_page_parser.galleries:
                         unique_urls.add(gallery_url)
+                else:
+                    self.logger.info("Empty page found, ending")
+                    break
                 if 0 < self.own_settings.stop_page_number <= current_page:
                     self.logger.info(
                         "Got to stop page number: {}, "
@@ -190,10 +193,12 @@ class Parser(BaseParser):
             return 2, None
 
         gallery.link = link
-        if fjord:
-            gallery.root = constants.ex_page
-        else:
-            gallery.root = constants.ge_page
+        # TODO: Disabled, RIP panda
+        # if fjord:
+        #     gallery.root = constants.ex_page
+        # else:
+        #     gallery.root = constants.ge_page
+        gallery.root = constants.ge_page
         if 'Gallery Not Available' in gallery_page_text:
             if not fjord:
                 time.sleep(self.settings.wait_timer)
@@ -453,7 +458,7 @@ class Parser(BaseParser):
             return
 
         fetch_format_galleries_chunks = list(chunks(fetch_format_galleries, 25))
-        fjord_galleries = []
+        fjord_galleries: List[str] = []
         for i, group in enumerate(fetch_format_galleries_chunks):
             # Set based on recommendation in official documentation
             if i % 3 == 2:
@@ -520,12 +525,13 @@ class Parser(BaseParser):
                     if wanted_only and not gallery_wanted_lists[internal_gallery_data.gid]:
                         continue
 
-                m = re.search(constants.default_fjord_tags, ",".join(internal_gallery_data.tags))
-
-                if m and self.own_settings.cookies:
-                    fjord_galleries.append(link_from_gid_token_fjord(gallery_data['gid'], gallery_data['token'], True))
-                else:
-                    gallery_data_list.append(internal_gallery_data)
+                # TODO: Temp fix for ex.
+                # m = re.search(constants.default_fjord_tags, ",".join(internal_gallery_data.tags))
+                #
+                # if m and self.own_settings.cookies:
+                #     fjord_galleries.append(link_from_gid_token_fjord(gallery_data['gid'], gallery_data['token'], True))
+                # else:
+                gallery_data_list.append(internal_gallery_data)
 
         fjord_galleries_data = self.fetch_multiple_gallery_data(fjord_galleries)
 
@@ -539,13 +545,15 @@ class Parser(BaseParser):
         if not gallery.token:
             return
 
-        m = re.search(constants.default_fjord_tags, ",".join(gallery.tags))
-        if m:
-            gallery.root = constants.ex_page
-            gallery.link = link_from_gid_token_fjord(gallery.gid, gallery.token, True)
-        else:
-            gallery.root = constants.ge_page
-            gallery.link = link_from_gid_token_fjord(gallery.gid, gallery.token, False)
+        # TODO: temp fix for ex
+        # m = re.search(constants.default_fjord_tags, ",".join(gallery.tags))
+        #
+        # if m:
+        #     gallery.root = constants.ex_page
+        #     gallery.link = link_from_gid_token_fjord(gallery.gid, gallery.token, True)
+        # else:
+        gallery.root = constants.ge_page
+        gallery.link = link_from_gid_token_fjord(gallery.gid, gallery.token, False)
 
         self.logger.info("Title: {}. Link: {}".format(gallery.title, gallery.link))
 
@@ -696,19 +704,23 @@ class Parser(BaseParser):
                     return
                 if(downloader[0].return_code == 0
                         and (cnt + 1) == len(self.downloaders)):
-                    if gallery.root == constants.ge_page and not gallery_is_hidden and gallery.token:
-                        gallery.root = constants.ex_page
-                        gallery.link = link_from_gid_token_fjord(gallery.gid, gallery.token, True)
-                        # fetch archiver key again when retrying.
-                        new_gallery_data = self.fetch_gallery_data(gallery.link)
-                        if new_gallery_data:
-                            gallery.archiver_key = new_gallery_data.archiver_key
-                            self.logger.info("Retrying with fjord link, might be hidden.")
-                            break
-                        else:
-                            self.logger.error("Could not fetch fjord link.")
-                    else:
-                        self.logger.error("Finished retrying using fjord link.")
+                    # TODO: Disabled, RIP panda
+                    # if gallery.root == constants.ge_page and not gallery_is_hidden and gallery.token:
+                    #     gallery.root = constants.ex_page
+                    #     gallery.link = link_from_gid_token_fjord(gallery.gid, gallery.token, True)
+                    #     # fetch archiver key again when retrying.
+                    #     new_gallery_data = self.fetch_gallery_data(gallery.link)
+                    #     if new_gallery_data:
+                    #         gallery.archiver_key = new_gallery_data.archiver_key
+                    #         self.logger.info("Retrying with fjord link, might be hidden.")
+                    #         break
+                    #     else:
+                    #         self.logger.error("Could not fetch fjord link.")
+                    # else:
+                    #     self.logger.error("Finished retrying using fjord link.")
+
+                    self.logger.error("Retrying disabled, panda does not work anymore.")
+
                     downloader[0].original_gallery = gallery
                     downloader[0].original_gallery.hidden = True
                     downloader[0].original_gallery.dl_type = 'failed'

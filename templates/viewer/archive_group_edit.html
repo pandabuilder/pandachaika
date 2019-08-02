@@ -12,14 +12,23 @@
     {% endfor %}
   {% endif %}
   <!-- ArchiveGroup  -->
-  <h3>{{ archive_group.title }}</h3>
-  <div class="d-flex justify-content-end">
-    <button class="btn btn-secondary" id="edit-archive-group" data-toggle="collapse" data-target="#add-change-archive-group-form" name="edit-archive-group" type="button" aria-label="toggle add archive group">Edit <i class="fas fa-chevron-down"></i></button>
-    <a class="btn btn-secondary float-right" href="{% url 'viewer:archive-group' archive_group.title_slug %}" role="button">View</a>
+  <div class="container">
+    <div class="row">
+    <div class="col-md-8 col-sm-12">
+        <h3>{{ archive_group.title }}</h3>
+    </div>
+      <div class="col-md-4 col-sm-12">
+        <button class="btn btn-secondary float-right" id="edit-archive-group" data-toggle="collapse" data-target="#add-change-archive-group-form" name="edit-archive-group" type="button" aria-label="toggle edit archive group">Edit <i class="fas fa-chevron-down"></i></button>
+        <a class="btn {% if 'add_multiple' in request.GET %}btn-info{% else %}btn-secondary{% endif %} float-right" href="?{% url_toggle 'add_multiple' %}" role="button">Add Multiple Archives</a>
+        <a class="btn btn-secondary float-right" href="{% url 'viewer:archive-group' archive_group.title_slug %}" role="button">View</a>
+      </div>
+    </div>
   </div>
-  {% include 'viewer/include/archive_group_edit.html' %}
-    <div class="page-line">
-      {% include 'viewer/include/search_archive_form.html' %}
+  <div class="page-line">
+    {% include 'viewer/include/archive_group_edit.html' %}
+    {% if 'add_multiple' in request.GET %}
+    {% include 'viewer/include/search_archive_form.html' %}
+    {% endif %}
     </div>
   <div class="arch-cont">
   {% for archive_entry in archive_group.archivegroupentry_set.all %}
@@ -44,10 +53,14 @@
 {% endblock %}
 {% block afterJQ %}
   {% load compress %}
-  {{ edit_form.media }}
-  {{ search_form.media }}
+  {{ archive_group_entry_formset.media }}
   {% compress css %}
     <link href="{% static 'autocomplete_light/vendor/jal/src/style.css' %}" type="text/css" media="all" rel="stylesheet" />
+  {% endcompress %}
+  {% compress js %}
+    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/autocomplete.js' %}"></script>
+    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/text_widget.js' %}"></script>
+    <script type="text/javascript" src="{% static 'autocomplete_light/jal.js' %}"></script>
   {% endcompress %}
   {% compress js %}
     <script>
@@ -62,14 +75,7 @@
     }
     });
     </script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/jquery.init.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/autocomplete.init.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/autocomplete.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/text_widget.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/jal.js' %}"></script>
     <script type="text/javascript" src="{% static 'js/list_operations.js' %}"></script>
-  {% endcompress %}
-  {% compress js %}
     <script>
     var tagData = {};
     var tagUrl = '{% url 'viewer:api' %}?at=';
@@ -89,9 +95,7 @@
                         tagData[pk] = response.tags.map(tagToHtml);
                         el.unbind('click').popover({
                             content: tagData[pk].join(""),
-                            {#            title: 'Dynamic response!',#}
                             html: true,
-                            {#                        delay: {show: 500, hide: 100}#}
                         }).popover('show');
                     }
                 });

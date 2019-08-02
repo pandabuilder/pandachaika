@@ -1,12 +1,14 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
-from django.db.models import Q, Prefetch, F
-from django.http import HttpRequest, HttpResponse, Http404
+from django.db.models import Q, Prefetch, F, Case, When
+from django.http import HttpRequest, HttpResponse, Http404, HttpResponseRedirect
 from django.shortcuts import render
+from django.urls import reverse
 
 from viewer.utils.actions import event_log
-from viewer.forms import ArchiveGroupSearchForm, ArchiveGroupCreateOrEditForm, ArchiveSearchForm
+from viewer.forms import ArchiveGroupSearchForm, ArchiveGroupCreateOrEditForm, ArchiveSearchForm, \
+    ArchiveGroupEntryFormSet
 from viewer.models import ArchiveGroup, ArchiveGroupEntry, Archive
 
 from viewer.views.head import frontend_logger, archive_filter_keys, filter_archives_simple
@@ -118,9 +120,9 @@ def archive_group_edit(request: HttpRequest, pk: int = None, slug: str = None) -
     """ArchiveGroup listing."""
     try:
         if pk is not None:
-            archive_group_instance = ArchiveGroup.objects.get(pk=pk)
+            archive_group_instance = ArchiveGroup.objects.prefetch_related('archivegroupentry_set__archive').get(pk=pk)
         elif slug is not None:
-            archive_group_instance = ArchiveGroup.objects.get(title_slug=slug)
+            archive_group_instance = ArchiveGroup.objects.prefetch_related('archivegroupentry_set__archive').get(title_slug=slug)
         else:
             raise Http404("Archive Group does not exist")
     except ArchiveGroup.DoesNotExist:
@@ -140,9 +142,19 @@ def archive_group_edit(request: HttpRequest, pk: int = None, slug: str = None) -
     if request.POST.get('submit-archive-group'):
         # create a form instance and populate it with data from the request:
         edit_form = ArchiveGroupCreateOrEditForm(request.POST, instance=archive_group_instance)
+        archive_group_entry_formset = ArchiveGroupEntryFormSet(request.POST, instance=archive_group_instance)
+
         # check whether it's valid:
-        if edit_form.is_valid():
+        if edit_form.is_valid() and archive_group_entry_formset.is_valid():
             new_archive_group = edit_form.save()
+
+            # archive_group_entry_formset.save()
+            archive_group_entries = archive_group_entry_formset.save(commit=False)
+            for archive_group_entry in archive_group_entries:
+                archive_group_entry.save()
+            for archive_group_entry in archive_group_entry_formset.deleted_objects:
+                archive_group_entry.delete()
+
             message = 'Archive group successfully modified'
             messages.success(request, message)
             frontend_logger.info("User {}: {}".format(request.user.username, message))
@@ -152,12 +164,20 @@ def archive_group_edit(request: HttpRequest, pk: int = None, slug: str = None) -
                 content_object=new_archive_group,
                 result='changed'
             )
-            # return HttpResponseRedirect(request.META["HTTP_REFERER"])
+            return HttpResponseRedirect(reverse('viewer:archive-group-edit', args=[archive_group_instance.title_slug]))
         else:
             messages.error(request, 'The provided data is not valid', extra_tags='danger')
-            # return HttpResponseRedirect(request.META["HTTP_REFERER"])
+
+        # archive_group_entry_formset = ArchiveGroupEntryFormSet(
+        #     request.POST,
+        #     initial=[{'archive_group_id': archive_group_instance.id}] * 2,
+        #     queryset=ArchiveGroupEntry.objects.filter(archive_group=archive_group_instance),
+        #     prefix='archive_group_entries'
+        # )
+
     else:
         edit_form = ArchiveGroupCreateOrEditForm(instance=archive_group_instance)
+        archive_group_entry_formset = ArchiveGroupEntryFormSet(instance=archive_group_instance)
 
     if 'add_to_group' in p:
 
@@ -167,7 +187,10 @@ def archive_group_edit(request: HttpRequest, pk: int = None, slug: str = None) -
                 # k, pk = k.split('-')
                 # results[pk][k] = v
                 pks.append(v)
-        archives = Archive.objects.filter(id__in=pks).order_by('-create_date')
+
+        preserved = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(pks)])
+
+        archives = Archive.objects.filter(id__in=pks).order_by(preserved)
 
         for archive in archives:
             if not ArchiveGroupEntry.objects.filter(archive=archive, archive_group=archive_group_instance).exists():
@@ -191,6 +214,12 @@ def archive_group_edit(request: HttpRequest, pk: int = None, slug: str = None) -
                     result='added'
                 )
 
+        return HttpResponseRedirect(
+            reverse(
+                'viewer:archive-group-edit', args=[archive_group_instance.title_slug]
+            ) + '?' + request.META['QUERY_STRING']
+        )
+
     d.update(edit_form=edit_form)
 
     # Multi add search form
@@ -203,36 +232,46 @@ def archive_group_edit(request: HttpRequest, pk: int = None, slug: str = None) -
     except ValueError:
         page = 1
 
-    if 'clear' in get:
-        search_form = ArchiveSearchForm()
-    else:
-        search_form = ArchiveSearchForm(initial={'title': title, 'tags': tags})
+    if 'add_multiple' in get:
+        if 'clear' in get:
+            search_form = ArchiveSearchForm()
+        else:
+            search_form = ArchiveSearchForm(initial={'title': title, 'tags': tags})
 
-    params = {
-        'sort': 'create_date',
-        'asc_desc': 'desc',
-        'filename': title,
-    }
+        params = {
+            'sort': get.get("sort", 'create_date'),
+            'asc_desc': get.get("asc_desc", 'desc'),
+        }
 
-    for k, v in get.items():
-        params[k] = v
+        for k, v in get.items():
+            params[k] = v
 
-    for k in archive_filter_keys:
-        if k not in params:
-            params[k] = ''
+        for k in archive_filter_keys:
+            if k not in params:
+                params[k] = ''
 
-    search_results = filter_archives_simple(params)
+        search_results = filter_archives_simple(params)
 
-    search_results = search_results.exclude(archive_groups=archive_group_instance)
+        search_results = search_results.exclude(archive_groups=archive_group_instance)
 
-    search_results = search_results.prefetch_related('gallery')
+        if 'groupless' in get and get['groupless']:
+            search_results = search_results.filter(archive_groups__isnull=True)
 
-    paginator = Paginator(search_results, 100)
-    try:
-        search_results = paginator.page(page)
-    except (InvalidPage, EmptyPage):
-        search_results = paginator.page(paginator.num_pages)
+        search_results = search_results.prefetch_related('gallery')
 
-    d.update(search_form=search_form, search_results=search_results)
+        paginator = Paginator(search_results, 100)
+        try:
+            search_results = paginator.page(page)
+        except (InvalidPage, EmptyPage):
+            search_results = paginator.page(paginator.num_pages)
+
+        d.update(
+            search_form=search_form,
+            search_results=search_results,
+        )
+
+    d.update(
+        archive_group_entry_formset=archive_group_entry_formset
+    )
 
     return render(request, "viewer/archive_group_edit.html", d)

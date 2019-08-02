@@ -369,7 +369,7 @@ def recalc_info(request: HttpRequest, pk: int) -> HttpResponse:
 
     frontend_logger.info('Recalculating file info for ' + archive.zipped.name)
     archive.recalc_fileinfo()
-    archive.generate_image_set(force=True)
+    archive.generate_image_set(force=False)
     archive.generate_thumbnails()
 
     return HttpResponseRedirect(request.META["HTTP_REFERER"])

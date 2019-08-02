@@ -474,12 +474,36 @@ class GallerySelectAutocomplete(autocomplete.Select2QuerySetView):
         return qs[0:self.limit_choices]
 
 
-class ArchiveSelectAutocomplete(autocomplete.Select2QuerySetView):
+class ArchiveSelectSimpleAutocomplete(autocomplete.Select2QuerySetView):
     model = Archive
     limit_choices = 10
 
-    # def get_result_label(self, result: Archive) -> str:
-    #     return "({}) ({}) {}".format(result.pk, result.title, result.source_type)
+    def get_result_label(self, result: Archive) -> str:
+        return "({}) ({}) {}".format(result.pk, result.title, result.source_type)
+
+    def get_queryset(self) -> QuerySet:
+        qs = Archive.objects.all().order_by('pk')
+
+        q = self.q
+        q_formatted = '%' + q.replace(' ', '%') + '%'
+
+        q_object = Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted) | Q(original_filename__ss=q_formatted)
+
+        if self.request.user.is_authenticated:
+            qs = qs.filter(
+                q_object
+            )
+        else:
+            qs = qs.filter(public=True).filter(
+                q_object
+            )
+
+        return qs[0:self.limit_choices]
+
+
+class ArchiveSelectAutocomplete(autocomplete.Select2QuerySetView):
+    model = Archive
+    limit_choices = 10
 
     def get_result_label(self, result: Archive) -> str:
         return format_html('<div class="archive-complete-container"><div class="archive-complete-title">{}</div><img src="{}"></div>', result.title, result.thumbnail.url)

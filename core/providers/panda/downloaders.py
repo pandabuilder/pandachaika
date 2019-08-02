@@ -340,7 +340,10 @@ class HathDownloader(BaseDownloader):
             self.fileDownloaded = 1
             self.return_code = 1
         else:
-            self.logger.error('Did not get 200 response.')
+            if r:
+                self.logger.error('Did not get a 200 response, text: {}'.format(r.text))
+            else:
+                self.logger.error('Did not get a response')
             self.return_code = 0
 
     def request_hath_download(self, root: str, gid: str, token: str, key: str) -> Optional[requests.models.Response]:
@@ -348,6 +351,8 @@ class HathDownloader(BaseDownloader):
         url = root + '/archiver.php'
 
         params = {'gid': gid, 'token': token, 'or': key}
+
+        # self.logger.info("Requesting hath download to URL: {}".format(url))
 
         for retry_count in range(3):
             try:

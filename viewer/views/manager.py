@@ -5,7 +5,7 @@ from typing import List
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
-from django.db.models import Prefetch, Count, Q
+from django.db.models import Prefetch, Count, Q, Case, When
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.conf import settings
@@ -378,7 +378,10 @@ def missing_archives_for_galleries(request: HttpRequest) -> HttpResponse:
                 # k, pk = k.split('-')
                 # results[pk][k] = v
                 pks.append(v)
-        results = Gallery.objects.filter(id__in=pks).order_by('-create_date')
+
+        preserved = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(pks)])
+
+        results = Gallery.objects.filter(id__in=pks).order_by(preserved)
 
         if 'delete_galleries' in p:
             for gallery in results:
@@ -566,7 +569,10 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                 # k, pk = k.split('-')
                 # results[pk][k] = v
                 pks.append(v)
-        archives = Archive.objects.filter(id__in=pks).order_by('-create_date')
+
+        preserved = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(pks)])
+
+        archives = Archive.objects.filter(id__in=pks).order_by(preserved)
         if 'delete_archives' in p:
             for archive in archives:
                 message = 'Removing archive not matched: {} and deleting file: {}'.format(

@@ -6,7 +6,8 @@ from django.contrib.auth.forms import PasswordChangeForm
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import TemporaryUploadedFile
-from django.forms.models import BaseModelFormSet, modelformset_factory, ModelChoiceField, ModelForm
+from django.forms.models import BaseModelFormSet, modelformset_factory, ModelChoiceField, ModelForm, \
+    inlineformset_factory, BaseInlineFormSet
 from django.forms.utils import ErrorList
 from django.utils.safestring import mark_safe
 from django.utils.encoding import force_text
@@ -16,7 +17,8 @@ from django.conf import settings
 
 from dal import autocomplete
 from dal_jal.widgets import JalWidgetMixin
-from viewer.models import Archive, ArchiveMatches, Image, Gallery, Profile, WantedGallery, ArchiveGroup
+from viewer.models import Archive, ArchiveMatches, Image, Gallery, Profile, WantedGallery, ArchiveGroup, \
+    ArchiveGroupEntry
 
 from dal.widgets import (
     WidgetMixin
@@ -270,7 +272,6 @@ class ArchiveGroupSelectForm(forms.Form):
         queryset=ArchiveGroup.objects.none(),
         widget=autocomplete.ModelSelect2Multiple(
             url='archive-group-select-autocomplete',
-            # widget_attrs={'data-widget-bootstrap': 'customtag-widget', },
             attrs={'size': 1, 'data-placeholder': 'Group name', 'class': 'form-control'}),
     )
 
@@ -284,11 +285,9 @@ class ArchiveModForm(forms.ModelForm):
         widgets = {
             'custom_tags': autocomplete.ModelSelect2Multiple(
                 url='customtag-autocomplete',
-                # widget_attrs={'data-widget-bootstrap': 'customtag-widget', },
                 attrs={'size': 1, 'data-placeholder': 'Custom tag name', 'class': 'form-control'}),
             'alternative_sources': autocomplete.ModelSelect2Multiple(
                 url='gallery-select-autocomplete',
-                # widget_attrs={'data-widget-bootstrap': 'customtag-widget', },
                 attrs={'size': 1, 'data-placeholder': 'Alternative source', 'class': 'form-control'}),
             'title': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'title_jpn': forms.widgets.TextInput(attrs={'class': 'form-control'}),
@@ -296,17 +295,12 @@ class ArchiveModForm(forms.ModelForm):
             'reason': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'zipped': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'details': forms.widgets.Textarea(attrs={'class': 'form-control'}),
-            # 'possible_matches': forms.widgets.Select(attrs={'class': 'form-control'}),
         }
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        # self.archive = kwargs.pop("archive")
         super(ArchiveModForm, self).__init__(*args, **kwargs)
         self.fields["possible_matches"].queryset = self.instance.possible_matches.order_by(
             "-archivematches__match_accuracy")
-#     custom_tags = forms.ModelMultipleChoiceField(required=False,
-#                                                  queryset=CustomTag.objects.all(),
-#                                                  widget=autocomplete_light.MultipleChoiceWidget('CustomTagAutocomplete'))
 
     possible_matches = MatchesModelChoiceField(
         required=False,
@@ -417,12 +411,10 @@ class WantedGalleryCreateOrEditForm(ModelForm):
             'unwanted_title': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'wanted_tags': autocomplete.ModelSelect2Multiple(
                 url='tag-pk-autocomplete',
-                # widget_attrs={'data-widget-bootstrap': 'customtag-widget', },
                 attrs={'data-placeholder': 'Tag name', 'class': 'form-control'}
             ),
             'unwanted_tags': autocomplete.ModelSelect2Multiple(
                 url='tag-pk-autocomplete',
-                # widget_attrs={'data-widget-bootstrap': 'customtag-widget', },
                 attrs={'data-placeholder': 'Tag name', 'class': 'form-control'}
             ),
             'wanted_tags_exclusive_scope': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
@@ -455,16 +447,11 @@ class ArchiveGroupCreateOrEditForm(ModelForm):
     class Meta:
         model = ArchiveGroup
         fields = [
-            'title', 'details', 'archives', 'position', 'public'
+            'title', 'details', 'position', 'public'
         ]
         widgets = {
             'title': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'details': forms.widgets.Textarea(attrs={'class': 'form-control'}),
-            'archives': autocomplete.ModelSelect2Multiple(
-                url='archive-select-autocomplete',
-                # widget_attrs={'data-widget-bootstrap': 'customtag-widget', },
-                attrs={'data-placeholder': 'Archive name', 'class': 'form-control', 'data-html': True}
-            ),
             'position': forms.widgets.NumberInput(attrs={'min': 0, 'class': 'form-control'}),
             'public': forms.widgets.CheckboxInput(attrs={'class': 'form-control'})
         }
@@ -475,6 +462,43 @@ class ArchiveGroupCreateOrEditForm(ModelForm):
         for archive_group_entry in archive_group.archivegroupentry_set.all():
             archive_group_entry.save()
         return archive_group
+
+
+class ArchiveGroupEntryForm(ModelForm):
+
+    class Meta:
+        model = ArchiveGroupEntry
+        fields = ['archive', 'title', 'position']
+        widgets = {
+            'title': forms.widgets.TextInput(attrs={'class': 'form-control'}),
+            'position': forms.widgets.NumberInput(attrs={'class': 'form-control'}),
+            'archive': autocomplete.ModelSelect2(
+                url='archive-select-simple-autocomplete',
+                attrs={
+                    'size': 1, 'data-placeholder': 'Archive', 'class': 'form-control',
+                    'data-width': '100%'
+                }),
+        }
+
+
+class BaseArchiveGroupEntryFormSet(BaseInlineFormSet):
+    def clean(self) -> None:
+        super().clean()
+        if any(self.errors):
+            return
+        positions: List[int] = []
+        for form in self.forms:
+            if 'position' in form.cleaned_data:
+                position = form.cleaned_data['position']
+                if position in positions:
+                    raise forms.ValidationError("Positions must be unique: {}".format(position))
+                positions.append(position)
+
+
+ArchiveGroupEntryFormSet = inlineformset_factory(
+    ArchiveGroup, ArchiveGroupEntry, form=ArchiveGroupEntryForm, extra=2,
+    formset=BaseArchiveGroupEntryFormSet,
+    can_delete=True)
 
 
 class ArchiveCreateForm(ModelForm):
@@ -492,7 +516,6 @@ class ArchiveCreateForm(ModelForm):
             'reason': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'gallery': autocomplete.ModelSelect2(
                 url='gallery-select-autocomplete',
-                # widget_attrs={'data-widget-bootstrap': 'customtag-widget', },
                 attrs={'size': 1, 'data-placeholder': 'Gallery', 'class': 'form-control', 'data-width': '100%'}),
             'details': forms.widgets.Textarea(attrs={'class': 'form-control'}),
         }
@@ -560,11 +583,6 @@ class ImageForm(forms.ModelForm):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super(ImageForm, self).__init__(*args, **kwargs)
-#         self.fields["position"].choices = [
-#             (x, x) for x in Image.objects.filter(
-#                 archive=self.instance.archive
-#             ).values_list('position', flat=True)
-#         ]
         if self.instance.image:
             self.fields["position"].label = os.path.basename(self.instance.image.path)
         else:
@@ -579,10 +597,7 @@ class BaseImageFormSet(BaseModelFormSet):
         for form in self.forms:
             position = form.cleaned_data['position']
             if position in positions:
-                raise forms.ValidationError(
-                    "Images positions must be unique: "
-                    + str(position)
-                )
+                raise forms.ValidationError("Images positions must be unique: {}".format(position))
             positions.append(position)
 
 
@@ -615,7 +630,6 @@ class ProfileChangeForm(forms.ModelForm):
 
     class Meta:
         model = Profile
-        # exclude = ['user']
         fields = ['notify_new_submissions', 'notify_new_private_archive', 'notify_wanted_gallery_found']
         widgets = {
             'notify_new_submissions': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
