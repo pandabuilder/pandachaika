@@ -30,6 +30,7 @@ from django.utils.text import slugify
 
 try:
     from PIL import Image as PImage
+    PImage.MAX_IMAGE_PIXELS = 200000000
 except ImportError:
     PImage = None
 import django.db.models.options as options

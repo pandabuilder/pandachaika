@@ -2,14 +2,15 @@ import os
 import sys
 import pkgutil
 import inspect
-from typing import Any, Dict, Optional
+import types
+from typing import Any, Dict, Optional, Union
 
 from core.base.types import TorrentClient
 
 
 def get_torrent_client(torrent_settings: Dict[str, Any]) -> Optional[TorrentClient]:
     client = None
-    torrent_module = None
+    torrent_module: Union[Optional[types.ModuleType], str] = None
     for module_name in modules_name:
         if module_name == torrent_settings['client']:
             if module_name not in sys.modules:
@@ -18,7 +19,7 @@ def get_torrent_client(torrent_settings: Dict[str, Any]) -> Optional[TorrentClie
             else:
                 torrent_module = module_name
     if not torrent_module:
-        return torrent_module
+        return None
     for _, obj in inspect.getmembers(torrent_module):
         if inspect.isclass(obj) and hasattr(obj, 'type') and 'torrent_handler' in getattr(obj, 'type'):
             client = obj(

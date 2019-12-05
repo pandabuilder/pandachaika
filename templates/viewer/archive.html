@@ -97,6 +97,10 @@
             <td>{{ archive.get_link|urlize }}</td>
           </tr>
           <tr>
+            <th>Description</th>
+            <td>{{ archive.gallery.comment }}</td>
+          </tr>
+          <tr>
             <th>Posted</th>
             <td>{{ archive.gallery.posted|date:"DATETIME_FORMAT" }}</td>
           </tr>

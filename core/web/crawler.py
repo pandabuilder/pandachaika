@@ -5,7 +5,7 @@ import os
 from typing import List, Union, Callable, Optional
 
 import requests
-from django.db.models import QuerySet
+from django.db.models import QuerySet, Q
 
 from core.base.setup import Settings
 from core.base.types import OptionalLogger, FakeLogger, RealLogger
@@ -68,6 +68,12 @@ class WebCrawler(object):
                             action='store',
                             help='Update metadata for galleries newer than a created date')
 
+        parser.add_argument('-umt', '--update-missing-thumbnails',
+                            type=int,
+                            required=False,
+                            action='store',
+                            help='Update metadata for galleries with missing thumbnails, limiting by older ones')
+
         parser.add_argument('-tmd', '--transfer-missing-downloads',
                             required=False,
                             action='store_true',
@@ -106,18 +112,24 @@ class WebCrawler(object):
                             action='store_true',
                             help='A mode to crawl galleries without checking against wanted galleries.')
 
+        parser.add_argument('-frm', '--force-replace-metadata',
+                            required=False,
+                            action='store_true',
+                            help='A mode to force processing galleries with no archives associated.'
+                                 'Without this active, galleries already in the system won\'t download archives.')
+
         parser.add_argument('-um', '--update-mode',
                             required=False,
                             action='store_true',
                             help='Mode set when updating existing galleries, so that filters are not applied.')
 
-        parser.add_argument('-ip', '--include-provider',
+        parser.add_argument('-ip', '--include-providers',
                             required=False,
                             action='store',
                             nargs='*',
                             help='List of provider names to include (exclusively) from some of the tools.')
 
-        parser.add_argument('-ep', '--exclude-provider',
+        parser.add_argument('-ep', '--exclude-providers',
                             required=False,
                             action='store',
                             nargs='*',
@@ -237,6 +249,10 @@ class WebCrawler(object):
 
             self.update_galleries_newer_than(args, current_settings, parser_logger)
 
+        if args.update_missing_thumbnails is not None:
+
+            self.update_galleries_missing_thumbnails(args, current_settings, parser_logger)
+
         if args.transfer_missing_downloads:
             post_downloader = PostDownloader(current_settings, self.logger)
             post_downloader.transfer_all_missing()
@@ -280,9 +296,11 @@ class WebCrawler(object):
             self.logger.info('Started wanted galleries only mode, but no eligible filter was found.')
             return
 
+        if args.force_replace_metadata:
+            current_settings.replace_metadata = True
+
         # This parser get imported directly since it's for JSON data, not for crawling URLs yet.
         if args.json_source:
-
             self.crawl_json_source(args, current_settings, parser_logger, wanted_filters)
 
         # This threading implementation waits for all providers to end to return.
@@ -424,6 +442,42 @@ class WebCrawler(object):
 
                         single_gallery = Gallery.objects.update_or_create_from_values(gallery_data)
                         for archive in single_gallery.archive_set.all():
+                            archive.title = archive.gallery.title
+                            archive.title_jpn = archive.gallery.title_jpn
+                            archive.simple_save()
+                            archive.tags.set(archive.gallery.tags.all())
+
+    def update_galleries_missing_thumbnails(self, args, current_settings, parser_logger):
+        galleries = Gallery.objects.filter(
+            Q(thumbnail_url='') | Q(thumbnail='')
+        ).order_by('id')
+
+        if args.include_providers:
+            galleries = galleries.filter(provider__in=args.include_providers)
+        if args.exclude_providers:
+            galleries = galleries.exclude(provider__in=args.exclude_providers)
+
+        if args.update_missing_thumbnails:
+            galleries = galleries[:args.update_missing_thumbnails]
+
+        if galleries:
+            self.logger.info("Updating metadata for {} galleries with missing thumbnail".format(
+                galleries.count())
+            )
+
+            gallery_links = [gallery.get_link() for gallery in galleries]
+
+            parsers = current_settings.provider_context.get_parsers(current_settings, parser_logger)
+
+            for parser in parsers:
+                urls = parser.filter_accepted_urls(gallery_links)
+                galleries_data = parser.fetch_multiple_gallery_data(urls)
+                if galleries_data:
+                    for gallery_data in galleries_data:
+
+                        gallery = self.settings.gallery_model.objects.update_or_create_from_values(gallery_data)
+
+                        for archive in gallery.archive_set.all():
                             archive.title = archive.gallery.title
                             archive.title_jpn = archive.gallery.title_jpn
                             archive.simple_save()
