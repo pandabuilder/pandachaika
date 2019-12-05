@@ -197,6 +197,34 @@ def tools(request: HttpRequest, tool: str = "main") -> HttpResponse:
                     extra_tags='danger'
                 )
             return HttpResponseRedirect(request.META["HTTP_REFERER"])
+    elif tool == "update_missing_thumbnails":
+        p = request.GET
+        if p and 'limit_number' in p:
+
+            try:
+                limit_number = int(p['limit_number'])
+
+                provider = request.GET.get('provider', '')
+                if provider:
+                    crawler_settings.workers.web_queue.enqueue_args_list(
+                        ('-umt', str(limit_number), '-ip', provider)
+                    )
+                else:
+                    crawler_settings.workers.web_queue.enqueue_args_list(
+                        ('-umt', str(limit_number))
+                    )
+                messages.success(
+                    request,
+                    'Updating galleries missing thumbnails, limiting to older {}'.format(limit_number)
+                )
+
+            except ValueError:
+                messages.error(
+                    request,
+                    'Invalid limit.',
+                    extra_tags='danger'
+                )
+            return HttpResponseRedirect(request.META["HTTP_REFERER"])
     elif tool == "generate_missing_thumbs":
         archives = Archive.objects.filter(thumbnail='')
         for archive in archives:

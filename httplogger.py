@@ -39,7 +39,7 @@ class HTTPLogger(_cplogging.LogManager):
             s = SMTPHandler(  # type: ignore
                 crawler_settings.mail_logging.mailhost,
                 crawler_settings.mail_logging.from_,
-                crawler_settings.mail_logging.to,
+                [crawler_settings.mail_logging.to, ],
                 subject=crawler_settings.mail_logging.subject,
                 credentials=crawler_settings.mail_logging.credentials
             )

@@ -481,10 +481,10 @@ class InternalParser(BaseParser):
 
                 gallery.thumbnail_url = gallery.thumbnail
 
-                gallery = self.settings.gallery_model.objects.update_or_create_from_values(gallery)
+                gallery_instance = self.settings.gallery_model.objects.update_or_create_from_values(gallery)
 
-                gallery.thumbnail_url = original_thumbnail_url
+                gallery_instance.thumbnail_url = original_thumbnail_url
 
-                gallery.save()
+                gallery_instance.save()
             else:
                 self.settings.gallery_model.objects.update_or_create_from_values(gallery)

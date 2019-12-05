@@ -29,7 +29,10 @@ class uTorrent(TorrentClient):
         self.total_size = 0
         self.expected_torrent_name = ''
         lf = NamedTemporaryFile()
-        lf.write(torrent_data)
+        if isinstance(torrent_data, bytes):
+            lf.write(torrent_data)
+        else:
+            lf.write(str.encode(torrent_data))
 
         params = {'action': 'add-file', 'token': self.token}
         files = {'torrent_file': open(lf.name, 'rb')}

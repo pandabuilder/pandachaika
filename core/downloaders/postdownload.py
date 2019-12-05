@@ -95,7 +95,7 @@ class PostDownloader(object):
                     return
                 if 'panda' in archive.source_type:
                     self.logger.info(
-                        "For archive: [} size does not match gallery, "
+                        "For archive: {} size does not match gallery, "
                         "downloading again from panda_archive.".format(updated_archive)
                     )
                     if self.web_queue:
