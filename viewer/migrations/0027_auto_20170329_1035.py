@@ -56,7 +56,7 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='announce',
             name='thumbnail',
-            field=models.ImageField(blank=True, height_field='thumbnail_height', max_length=500, null=True, upload_to=viewer.models.upload_announce_thumb_handler, width_field='thumbnail_width'),
+            field=models.ImageField(blank=True, height_field='thumbnail_height', max_length=500, null=True, upload_to=viewer.models.upload_mention_thumb_handler, width_field='thumbnail_width'),
         ),
         migrations.AlterField(
             model_name='archive',

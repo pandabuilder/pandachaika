@@ -26,11 +26,12 @@ def match_tweet_with_wanted_galleries(tweet_obj: TweetPost, settings: 'Settings'
         release_type = None
         release_date = None
         date_type = re.search(r'.*?(\d+)/(\d+).*?', match_tweet_type.group(1), re.DOTALL)
-        announce_date = tweet_obj.posted_date
+        mention_date = tweet_obj.posted_date
         if date_type:
             release_type = 'release_date'
-            release_date = announce_date.replace(month=int(date_type.group(1)), day=int(date_type.group(2)), hour=0,
-                                                 minute=0, second=0)
+            release_date = mention_date.replace(
+                month=int(date_type.group(1)), day=int(date_type.group(2)), hour=0, minute=0, second=0
+            )
         new_book_type = re.search('新刊情報', match_tweet_type.group(1), re.DOTALL)
         if new_book_type:
             release_type = 'new_publication'
@@ -81,14 +82,14 @@ def match_tweet_with_wanted_galleries(tweet_obj: TweetPost, settings: 'Settings'
                         title
                     )
                 )
-            announce, announce_created = wanted_gallery.announces.get_or_create(
-                announce_date=announce_date,
+            mention, mention_created = wanted_gallery.mentions.get_or_create(
+                mention_date=mention_date,
                 release_date=release_date,
                 type=release_type,
                 source=source,
             )
-            if announce_created and tweet_obj.media_url:
-                announce.save_img(tweet_obj.media_url)
+            if mention_created and tweet_obj.media_url:
+                mention.save_img(tweet_obj.media_url)
                 # wanted_gallery.calculate_nearest_release_date()
                 wanted_gallery.release_date = release_date
                 wanted_gallery.save()
@@ -154,14 +155,14 @@ def match_tweet_with_wanted_galleries(tweet_obj: TweetPost, settings: 'Settings'
                             title
                         )
                     )
-                announce, announce_created = wanted_gallery.announces.get_or_create(
-                    announce_date=announce_date,
+                mention, mention_created = wanted_gallery.mentions.get_or_create(
+                    mention_date=mention_date,
                     release_date=release_date,
                     type=release_type,
                     source=source,
                 )
-                if announce_created and tweet_obj.media_url:
-                    announce.save_img(tweet_obj.media_url)
+                if mention_created and tweet_obj.media_url:
+                    mention.save_img(tweet_obj.media_url)
                     # wanted_gallery.calculate_nearest_release_date()
                     wanted_gallery.release_date = release_date
                     wanted_gallery.save()

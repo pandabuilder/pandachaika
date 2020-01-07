@@ -9,6 +9,8 @@ if typing.TYPE_CHECKING:
 class OwnSettings(ProviderSettings):
     def __init__(self) -> None:
         self.api_key = ''
+        # Automatically add this text to "unwanted_title" field on generated wanted galleries
+        self.unwanted_title = ''
 
 
 def parse_config(global_settings: 'Settings', config: typing.Dict[str, typing.Any]) -> 'OwnSettings':
@@ -17,4 +19,7 @@ def parse_config(global_settings: 'Settings', config: typing.Dict[str, typing.An
     if 'general' in config:
         if 'api_key' in config['general']:
             settings.api_key = config['general']['api_key']
+    if 'wanted' in config:
+        if 'unwanted_title' in config['wanted']:
+            settings.unwanted_title = config['wanted']['unwanted_title']
     return settings

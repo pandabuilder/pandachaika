@@ -55,7 +55,7 @@ class AutoCheckerSettings:
 
 class AutoWantedSettings:
     __slots__ = [
-        'enable', 'startup', 'cycle_timer', 'providers'
+        'enable', 'startup', 'cycle_timer', 'providers', 'unwanted_title'
     ]
 
     def __init__(self) -> None:
@@ -63,6 +63,7 @@ class AutoWantedSettings:
         self.startup: bool = False
         self.cycle_timer: float = 0
         self.providers: List[str] = []
+        self.unwanted_title: str = ''
 
 
 class AutoUpdaterSettings:
@@ -397,6 +398,8 @@ class Settings:
                 self.auto_wanted.cycle_timer = int(config['auto_wanted']['cycle_timer'])
             if 'providers' in config['auto_wanted']:
                 self.auto_wanted.providers = config['auto_wanted']['providers'].split(",")
+            if 'unwanted_title' in config['auto_wanted']:
+                self.auto_wanted.unwanted_title = config['auto_wanted']['unwanted_title']
         if 'pushover' in config:
             if 'enable' in config['pushover']:
                 self.pushover.enable = config['pushover'].getboolean('enable')

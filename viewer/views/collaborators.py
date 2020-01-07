@@ -820,7 +820,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
         # ),
         # 'possible_galleries__gallery__archive_set',
         'artists',
-        'announces'
+        'mentions'
     ).order_by('-release_date')
 
     paginator = Paginator(results, 100)

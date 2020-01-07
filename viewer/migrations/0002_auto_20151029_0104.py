@@ -21,10 +21,10 @@ class Migration(migrations.Migration):
                 ('release_date', models.DateTimeField(blank=True, verbose_name='Release date', null=True)),
                 ('source', models.CharField(blank=True, null=True, default='', max_length=50)),
                 ('comment', models.CharField(blank=True, null=True, default='', max_length=100)),
-                ('image', models.ImageField(height_field='image_height', null=True, width_field='image_width', upload_to=viewer.models.upload_announce_handler, blank=True, max_length=500)),
+                ('image', models.ImageField(height_field='image_height', null=True, width_field='image_width', upload_to=viewer.models.upload_mention_handler, blank=True, max_length=500)),
                 ('image_height', models.PositiveIntegerField()),
                 ('image_width', models.PositiveIntegerField()),
-                ('thumbnail', models.ImageField(blank=True, upload_to=viewer.models.upload_announce_thumb_handler, null=True, max_length=500)),
+                ('thumbnail', models.ImageField(blank=True, upload_to=viewer.models.upload_mention_thumb_handler, null=True, max_length=500)),
             ],
         ),
         migrations.CreateModel(

@@ -365,7 +365,7 @@ def timestamp_or_zero(posted: datetime) -> float:
 def compare_search_title_with_strings(original_title: str, titles: List[str]) -> bool:
     if not original_title:
         return False
-    pattern = '.*?{}.*?'.format(re.sub(r'\s+', '.+', original_title.lower()))
+    pattern = '.*?{}.*?'.format(re.sub(r'\\\s+', '.+', re.escape(original_title.lower())))
     re_object = re.compile(pattern)
     for title in titles:
         # # This search is too simple:

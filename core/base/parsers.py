@@ -12,10 +12,11 @@ import traceback
 
 from collections import defaultdict
 
-from django.db.models import QuerySet
+from django.db.models import QuerySet, Q, Value, CharField
+from django.db.models.functions import Concat, Replace
 
 from core.base import utilities
-from core.base.utilities import send_pushover_notification, chunks, compare_search_title_with_strings
+from core.base.utilities import send_pushover_notification, chunks
 from core.base.types import GalleryData, OptionalLogger, FakeLogger, RealLogger
 from viewer.signals import wanted_gallery_found
 
@@ -144,7 +145,32 @@ class BaseParser:
             self.logger.error("FoundGallery model has not been initiated.")
             return
 
-        for wanted_filter in wanted_filters:
+        if gallery.title or gallery.title_jpn:
+            q_objects = Q()
+            q_objects_unwanted = Q()
+            if gallery.title:
+                wanted_filters = wanted_filters.annotate(g_title=Value(gallery.title, output_field=CharField()))
+                q_objects.add(Q(g_title__ss=Concat(Value('%'), Replace('search_title', Value(' '), Value('%')), Value('%'))), Q.OR)
+                q_objects_unwanted.add(~Q(g_title__ss=Concat(Value('%'), Replace('unwanted_title', Value(' '), Value('%')), Value('%'))), Q.AND)
+            if gallery.title_jpn:
+                wanted_filters = wanted_filters.annotate(g_title_jpn=Value(gallery.title_jpn, output_field=CharField()))
+                q_objects.add(Q(g_title_jpn__ss=Concat(Value('%'), Replace('search_title', Value(' '), Value('%')), Value('%'))), Q.OR)
+                q_objects_unwanted.add(~Q(g_title_jpn__ss=Concat(Value('%'), Replace('unwanted_title', Value(' '), Value('%')), Value('%'))), Q.AND)
+
+            filtered_wanted = wanted_filters.filter(
+                Q(search_title__isnull=True) | Q(search_title='') | q_objects
+            ).filter(
+                Q(unwanted_title__isnull=True) | Q(unwanted_title='') | q_objects_unwanted
+            )
+
+        else:
+            filtered_wanted = wanted_filters.filter(
+                Q(search_title__isnull=True) | Q(search_title='')
+            ).filter(
+                Q(unwanted_title__isnull=True) | Q(unwanted_title='')
+            )
+
+        for wanted_filter in filtered_wanted:
             # Skip wanted_filter that's already found.
             already_found = self.settings.found_gallery_model.objects.filter(
                 wanted_gallery__pk=wanted_filter.pk,
@@ -157,36 +183,11 @@ class BaseParser:
             # Skip wanted_filter that's not a global filter or is not for this provider.
             if wanted_filter.provider and wanted_filter.provider != self.name:
                 continue
-            if wanted_filter.wanted_providers:
-                wanted_providers = wanted_filter.wanted_providers.split()
-                found_wanted_provider = False
-                for wanted_provider in wanted_providers:
-                    wanted_provider = wanted_provider.strip()
-                    if wanted_provider and wanted_provider != self.name:
-                        found_wanted_provider = True
-                        break
-                if not found_wanted_provider:
+            if wanted_filter.wanted_providers.count():
+                if not wanted_filter.wanted_providers.filter(slug=self.name).first():
                     continue
             accepted = True
-            if wanted_filter.search_title:
-                titles = []
-                if gallery.title is not None and gallery.title:
-                    titles.append(gallery.title)
-                if gallery.title_jpn is not None and gallery.title_jpn:
-                    titles.append(gallery.title_jpn)
-                accepted = compare_search_title_with_strings(
-                    wanted_filter.search_title, titles
-                )
-            if accepted and wanted_filter.unwanted_title:
-                titles = []
-                if gallery.title is not None and gallery.title:
-                    titles.append(gallery.title)
-                if gallery.title_jpn is not None and gallery.title_jpn:
-                    titles.append(gallery.title_jpn)
-                accepted = not compare_search_title_with_strings(
-                    wanted_filter.unwanted_title, titles
-                )
-            if accepted & bool(wanted_filter.wanted_tags.all()):
+            if bool(wanted_filter.wanted_tags.all()):
                 if not set(wanted_filter.wanted_tags_list()).issubset(set(gallery.tags)):
                     accepted = False
                 # Do not accept galleries that have more than 1 tag in the same wanted tag scope.

@@ -225,9 +225,20 @@ def wanted_generator(settings: 'Settings', ext_logger: RealLogger, attrs: QueryS
                             should_search=attrs.fetch_value('wanted_should_search_{}'.format(query_name)) or False,
                             keep_searching=attrs.fetch_value('wanted_keep_searching_{}'.format(query_name)) or False,
                             notify_when_found=attrs.fetch_value('wanted_notify_when_found_{}'.format(query_name)) or False,
-                            provider=attrs.fetch_value('wanted_provider_{}'.format(query_name)) or '',
-                            wanted_providers=attrs.fetch_value('wanted_providers_{}'.format(query_name)) or '',
                         )
+                        wanted_provider_string = attrs.fetch_value('wanted_provider_{}'.format(query_name))
+                        if wanted_provider_string:
+                            wanted_provider_instance = Provider.objects.filter(slug=wanted_provider_string).first()
+                            if wanted_provider_instance:
+                                wanted_gallery.wanted_providers.add(wanted_provider_instance)
+                        wanted_providers_string = attrs.fetch_value('wanted_providers_{}'.format(query_name))
+                        if wanted_providers_string:
+                            for wanted_provider in wanted_providers_string.split():
+                                wanted_provider = wanted_provider.strip()
+                                wanted_provider_instance = Provider.objects.filter(slug=wanted_provider).first()
+                                if wanted_provider_instance:
+                                    wanted_gallery.wanted_providers.add(wanted_provider_instance)
+
                         for artist in gallery.tags.filter(scope='artist'):
                             artist_obj = Artist.objects.filter(name=artist.name).first()
                             if not artist_obj:
@@ -245,14 +256,14 @@ def wanted_generator(settings: 'Settings', ext_logger: RealLogger, attrs: QueryS
 
                     for wanted_gallery in wanted_galleries:
 
-                        announce, announce_created = wanted_gallery.announces.get_or_create(
-                            announce_date=gallery.create_date,
+                        mention, mention_created = wanted_gallery.mentions.get_or_create(
+                            mention_date=gallery.create_date,
                             release_date=gallery.posted,
                             type='release_date',
                             source=constants.provider_name,
                         )
-                        if announce_created and gallery.thumbnail:
-                            announce.copy_img(gallery.thumbnail.path)
+                        if mention_created and gallery.thumbnail:
+                            mention.copy_img(gallery.thumbnail.path)
                             wanted_gallery.calculate_nearest_release_date()
 
             # galleries.extend(api_galleries)

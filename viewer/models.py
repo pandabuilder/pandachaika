@@ -409,6 +409,7 @@ class Tag(models.Model):
     objects = TagManager()
 
     class Meta:
+        ordering = ['-id']
         unique_together = [['scope', 'name']]
 
     def natural_key(self):
@@ -1536,22 +1537,22 @@ def users_with_perm(app: str, perm_name: str, *args: typing.Any, **kwargs: typin
     ).filter(*args, **kwargs).distinct()
 
 
-def upload_announce_handler(instance: models.Model, filename: str) -> str:
-    return "announces/{id}/fn_{file}{ext}".format(
+def upload_mention_handler(instance: models.Model, filename: str) -> str:
+    return "mentions/{id}/fn_{file}{ext}".format(
         id=instance.id,
         file=uuid.uuid4(),
         ext=filename)
 
 
-def upload_announce_thumb_handler(instance: models.Model, filename: str) -> str:
-    return "announces/{id}/tn_{file}{ext}".format(
+def upload_mention_thumb_handler(instance: models.Model, filename: str) -> str:
+    return "mentions/{id}/tn_{file}{ext}".format(
         id=instance.id,
         file=uuid.uuid4(),
         ext=filename)
 
 
-class Announce(models.Model):
-    announce_date = models.DateTimeField('Announce date', blank=True, null=True)
+class Mention(models.Model):
+    mention_date = models.DateTimeField('Mention date', blank=True, null=True)
     release_date = models.DateTimeField('Release date', blank=True, null=True)
     type = models.CharField(
         max_length=50, blank=True, null=True, default='')
@@ -1559,7 +1560,7 @@ class Announce(models.Model):
         max_length=50, blank=True, null=True, default='')
     comment = models.CharField(
         max_length=100, blank=True, null=True, default='')
-    image = models.ImageField(upload_to=upload_announce_handler, blank=True,
+    image = models.ImageField(upload_to=upload_mention_handler, blank=True,
                               null=True, max_length=500,
                               height_field='image_height',
                               width_field='image_width')
@@ -1568,13 +1569,13 @@ class Announce(models.Model):
     thumbnail_height = models.PositiveIntegerField(blank=True, null=True)
     thumbnail_width = models.PositiveIntegerField(blank=True, null=True)
     thumbnail = models.ImageField(
-        upload_to=upload_announce_thumb_handler, blank=True,
+        upload_to=upload_mention_thumb_handler, blank=True,
         null=True, max_length=500,
         height_field='thumbnail_height',
         width_field='thumbnail_width')
 
     def __str__(self) -> str:
-        return str(self.announce_date)
+        return str(self.mention_date)
 
     def save_img(self, img_link: str) -> None:
         tf2 = NamedTemporaryFile()
@@ -1606,7 +1607,7 @@ class Announce(models.Model):
 
         # large thumbnail
         im.thumbnail((200, 290), PImage.ANTIALIAS)
-        thumb_relative_path = upload_announce_thumb_handler(self, os.path.splitext(self.image.name)[1])
+        thumb_relative_path = upload_mention_thumb_handler(self, os.path.splitext(self.image.name)[1])
         thumb_fn = pjoin(settings.MEDIA_ROOT, thumb_relative_path)
         os.makedirs(os.path.dirname(thumb_fn), exist_ok=True)
         im.save(thumb_fn, "JPEG")
@@ -1619,6 +1620,8 @@ class Artist(models.Model):
     name = models.CharField(
         max_length=50, blank=True, null=True, default='')
     name_jpn = models.CharField(
+        max_length=50, blank=True, null=True, default='')
+    twitter_handle = models.CharField(
         max_length=50, blank=True, null=True, default='')
 
     def __str__(self) -> str:
@@ -1651,7 +1654,7 @@ class WantedGallery(models.Model):
         'Publisher', max_length=20, blank=True, null=True, default='')
     public = models.BooleanField(default=False)
     release_date = models.DateTimeField('Release date', blank=True, null=True, default=django_tz.now)
-    announces = models.ManyToManyField(Announce, blank=True)
+    mentions = models.ManyToManyField(Mention, blank=True)
     artists = models.ManyToManyField(Artist, blank=True)
     cover_artist = models.ForeignKey(
         Artist, blank=True, null=True, related_name="cover_artist", on_delete=models.SET_NULL)
@@ -1671,10 +1674,10 @@ class WantedGallery(models.Model):
     unwanted_tags = models.ManyToManyField(Tag, blank=True, related_name="unwanted_tags")
     category = models.CharField(
         max_length=20, blank=True, null=True, default='')
+    # TODO: migrate all instances to use wanted_providers instead, and then delete this field (redundant).
     provider = models.CharField(
         'Provider', max_length=50, blank=True, null=True, default='')
-    wanted_providers = models.CharField(
-        'Providers', max_length=500, blank=True, null=True, default='')
+    wanted_providers = models.ManyToManyField('Provider', blank=True)
     found_galleries = models.ManyToManyField(
         Gallery, related_name="found_galleries",
         blank=True,
@@ -1704,12 +1707,12 @@ class WantedGallery(models.Model):
     def __str__(self) -> str:
         return self.title
 
-    def announces_str(self) -> str:
-        lst = [str(x) for x in self.announces.all()]
+    def mentions_str(self) -> str:
+        lst = [str(x) for x in self.mentions.all()]
         return ', '.join(lst)
 
-    def announces_list(self) -> List[str]:
-        lst = [str(x) for x in self.announces.all()]
+    def mentions_list(self) -> List[str]:
+        lst = [str(x) for x in self.mentions.all()]
         return lst
 
     def wanted_tags_list(self) -> List[str]:
@@ -1721,13 +1724,13 @@ class WantedGallery(models.Model):
         return lst
 
     def calculate_nearest_release_date(self) -> None:
-        if not self.announces:
+        if not self.mentions:
             return
-        announce_dates = self.announces.exclude(release_date=None).values_list('release_date', flat=True)
-        if not announce_dates:
+        mention_dates = self.mentions.exclude(release_date=None).values_list('release_date', flat=True)
+        if not mention_dates:
             return
-        announce_dates = [x.date() for x in announce_dates]
-        date_count = Counter(announce_dates)
+        mention_dates = [x.date() for x in mention_dates]
+        date_count = Counter(mention_dates)
         most_occurring_date = date_count.most_common(1)[0][0]
         self.release_date = datetime.combine(most_occurring_date, datetime.min.time())
         self.save()

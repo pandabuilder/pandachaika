@@ -1,4 +1,5 @@
 provider_name = 'nexus'
+home_page = 'https://hentainexus.com'
 
 main_page = 'https://hentainexus.com'
 

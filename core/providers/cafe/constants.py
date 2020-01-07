@@ -1,4 +1,5 @@
 provider_name = 'cafe'
+home_page = 'https://hentai.cafe'
 
 main_page = 'https://hentai.cafe'
 

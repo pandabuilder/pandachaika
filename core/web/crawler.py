@@ -313,7 +313,13 @@ class WebCrawler(object):
                 urls = parser.filter_accepted_urls(list(to_use_urls))
                 if urls:
                     to_use_urls = to_use_urls.difference(set(urls))
-                    self.logger.info('Crawling {} links from provider {}.'.format(len(urls), parser.name))
+                    self.logger.info(
+                        'Crawling {} links from provider {}. Wanted galleries to check: {}'.format(
+                            len(urls),
+                            parser.name,
+                            wanted_filters.count() if wanted_filters else 0
+                        )
+                    )
                     provider_thread = threading.Thread(
                         name='provider_{}_thread'.format(parser.name),
                         target=parser.crawl_urls_caller,
@@ -332,7 +338,13 @@ class WebCrawler(object):
                 urls = parser.filter_accepted_urls(to_use_urls)
                 if urls:
                     to_use_urls = to_use_urls.difference(set(urls))
-                    self.logger.info('Crawling {} links from provider {}.'.format(len(urls), parser.name))
+                    self.logger.info(
+                        'Crawling {} links from provider {}. Wanted galleries to check: {}'.format(
+                            len(urls),
+                            parser.name,
+                            wanted_filters.count() if wanted_filters else 0
+                        )
+                    )
                     parser.crawl_urls(
                         urls,
                         wanted_filters=wanted_filters,

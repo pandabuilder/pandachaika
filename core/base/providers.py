@@ -1,6 +1,7 @@
 import importlib
 import inspect
 from operator import itemgetter
+from types import ModuleType
 from typing import List, Callable, Optional, Tuple, Union, Type
 import typing
 
@@ -47,6 +48,18 @@ def _get_provider_submodule_method(module_name: str, submodule_name: str, method
     return None
 
 
+def _get_provider_submodule(module_name: str, submodule_name: str) -> Optional[ModuleType]:
+    sub_module = "{}.{}".format(module_name, submodule_name)
+    try:
+        importlib.import_module(module_name, package='__path__')
+    except ImportError:
+        return None
+    if importlib.util.find_spec(sub_module):  # type: ignore
+        site = importlib.import_module(sub_module, package=module_name)
+        return site
+    return None
+
+
 # We should only create one ProviderContext over the program lifetime,
 # to avoid having to search the file system every time it's created.
 # This is why this should be outside Settings
@@ -58,6 +71,7 @@ class ProviderContext:
     resolvers: List[Tuple[str, Callable[['setup.Settings'], ProviderSettings]]] = []
     settings_parsers: List[Tuple[str, Callable]] = []
     wanted_generators: List[Tuple[str, Callable]] = []
+    constants: List[Tuple[str, ModuleType]] = []
 
     def register_providers(self, module_name_list: List[str]) -> None:
         for module_name in module_name_list:
@@ -85,6 +99,9 @@ class ProviderContext:
         wanted_generator = _get_provider_submodule_method(module_name, "wanted", "wanted_generator")
         if wanted_generator and (provider_name, wanted_generator) not in self.wanted_generators:
             self.register_wanted_generator(provider_name, wanted_generator)
+        constants_module = _get_provider_submodule(module_name, "constants")
+        if constants_module and (provider_name, constants_module) not in self.constants:
+            self.register_constants(provider_name, constants_module)
 
     def register_parser(self, obj: Type['BaseParser']) -> None:
         if inspect.isclass(obj):
@@ -109,6 +126,9 @@ class ProviderContext:
 
     def register_wanted_generator(self, provider_name: str, obj: Callable) -> None:
         self.wanted_generators.append((provider_name, obj))
+
+    def register_constants(self, provider_name: str, obj: ModuleType) -> None:
+        self.constants.append((provider_name, obj))
 
     def get_parsers(self, settings: 'setup.Settings', logger: OptionalLogger, filter_name: str = None) -> List['BaseParser']:
         parsers_list = list()
@@ -300,6 +320,18 @@ class ProviderContext:
                 method_list.append(method_tuple[1])
 
         return method_list
+
+    def get_constants(self, filter_name: str = None) -> List[ModuleType]:
+        constants_list = list()
+        for module_tuple in self.constants:
+            module_name = module_tuple[0]
+            if filter_name:
+                if module_name is filter_name:
+                    constants_list.append(module_tuple[1])
+            else:
+                constants_list.append(module_tuple[1])
+
+        return constants_list
 
     # def __init__(self, settings=None, logger=None):
     #     self.settings = settings

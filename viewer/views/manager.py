@@ -121,7 +121,8 @@ def repeated_archives_by_field(request: HttpRequest) -> HttpResponse:
                 messages.success(request, message)
 
                 gallery = archive.gallery
-                archive.gallery.mark_as_deleted()
+                if gallery and gallery.archive_set.count() <= 1:
+                    archive.gallery.mark_as_deleted()
                 archive.delete_all_files()
                 archive.delete()
 
@@ -724,7 +725,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
             & Q(public=True)
         ).prefetch_related(
             'artists',
-            'announces'
+            'mentions'
         ).order_by('-release_date')
         return render(request, "viewer/wanted_galleries.html", {'results': results})
 
@@ -898,7 +899,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
         ),
         'possible_galleries__gallery__archive_set',
         'artists',
-        'announces'
+        'mentions'
     ).order_by('-release_date')
 
     paginator = Paginator(results, 100)
@@ -907,9 +908,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
     except (InvalidPage, EmptyPage):
         results = paginator.page(paginator.num_pages)
 
-    matchers = crawler_settings.provider_context.get_matchers_name_priority(crawler_settings, matcher_type='title')
-
-    d = {'results': results, 'title_matchers': matchers, 'form': form}
+    d = {'results': results, 'form': form}
     return render(request, "viewer/wanted_galleries.html", d)
 
 

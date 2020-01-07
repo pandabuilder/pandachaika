@@ -3,7 +3,6 @@
 
 import json
 import re
-from typing import Dict, Any
 from itertools import chain
 
 from django.contrib.auth.decorators import login_required

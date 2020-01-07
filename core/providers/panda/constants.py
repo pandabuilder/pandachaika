@@ -1,4 +1,5 @@
 provider_name = 'panda'
+home_page = 'https://e-hentai.org'
 
 # TODO: RIP panda
 # image_search_link = 'http://ul.exhentai.org/image_lookup.php'

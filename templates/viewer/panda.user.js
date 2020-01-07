@@ -6,7 +6,7 @@
 // @include     http://exhentai.org/*
 // @include     https://e-hentai.org/*
 // @include     https://exhentai.org/*
-// @version     0.1.5
+// @version     0.1.6
 // @grant       GM_xmlhttpRequest
 // ==/UserScript==
 
@@ -98,7 +98,7 @@ function modifyDivList(currentDiv) {
 
     var div2 =document.createElement('div');
     div2.style.margin ='5px 0px 0px 0px';
-    div2.innerHTML ='<img class="n" src="https://exhentai.org/img/t.png" alt="T" title="' +galleryLink +'"/></img>';
+    div2.innerHTML ='<img class="n" src="https://ehgt.org/g/t.png" alt="T" title="' +galleryLink +'"/></img>';
     div2.addEventListener('click',function () { sendWebCrawlerAction(galleryLink, null); });
     currentDiv.parentNode.appendChild(div2);
 
@@ -112,7 +112,7 @@ function modifyDivThumbnail(currentDiv) {
     var div2 =document.createElement('div');
     div2.style.float ='right';
     div2.style.margin ='5px -20px 0px 10px';
-    div2.innerHTML = '<img class="tn" src="https://exhentai.org/img/t.png" alt="T" title="' + galleryLink + '"/></img>';
+    div2.innerHTML = '<img class="tn" src="https://ehgt.org/g/t.png" alt="T" title="' + galleryLink + '"/></img>';
     div2.addEventListener('click',function () {
         sendWebCrawlerAction(galleryLink, null);
     });
@@ -208,7 +208,7 @@ color: black;\
             var galleryLink =document.URL;
             var div2 =document.createElement('div');
             div2.setAttribute('class','it3');
-            div2.innerHTML ='<img class="n" src="https://exhentai.org/img/t.png" alt="T" title="' +galleryLink +'"/></img>';
+            div2.innerHTML ='<img class="n" src="https://ehgt.org/g/t.png" alt="T" title="' +galleryLink +'"/></img>';
             div2.addEventListener('click',function () { sendWebCrawlerAction(galleryLink, parentLink); });
             container.appendChild(div2);
         }());

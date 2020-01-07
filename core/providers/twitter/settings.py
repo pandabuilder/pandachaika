@@ -13,6 +13,8 @@ class OwnSettings(ProviderSettings):
         self.consumer_key = ''
         self.consumer_secret = ''
         self.add_as_public = False
+        # Automatically add this text to "unwanted_title" field on generated wanted galleries
+        self.unwanted_title = ''
 
 
 def parse_config(global_settings: 'Settings', config: typing.Dict[str, typing.Any]) -> 'OwnSettings':
@@ -30,4 +32,6 @@ def parse_config(global_settings: 'Settings', config: typing.Dict[str, typing.An
     if 'wanted' in config:
         if 'add_as_public' in config['wanted']:
             settings.add_as_public = config['wanted'].getboolean('add_as_public')
+        if 'unwanted_title' in config['wanted']:
+            settings.unwanted_title = config['wanted']['unwanted_title']
     return settings

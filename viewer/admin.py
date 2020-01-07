@@ -12,7 +12,7 @@ from viewer.models import (
     Gallery,
     Image,
     WantedGallery,
-    Announce,
+    Mention,
     Artist,
     GalleryMatch,
     TweetPost,
@@ -178,9 +178,9 @@ class ArtistAdmin(admin.ModelAdmin):
     list_display = ["id", "name", "name_jpn"]
 
 
-class AnnounceAdmin(admin.ModelAdmin):
+class MentionAdmin(admin.ModelAdmin):
     # search_fields = ["name", "scope"]
-    list_display = ["id", "announce_date", "release_date", "type", "source", "comment", "thumbnail"]
+    list_display = ["id", "mention_date", "release_date", "type", "source", "comment", "thumbnail"]
     list_filter = ["type", "source"]
 
 
@@ -194,7 +194,7 @@ class WantedGalleryAdmin(admin.ModelAdmin):
     search_fields = ["title", "title_jpn"]
     list_display = ["id", "title", "title_jpn", "search_title", "release_date", "book_type",
                     "publisher", "should_search", "keep_searching", "found", "date_found"]
-    raw_id_fields = ("announces", "wanted_tags", "unwanted_tags",)
+    raw_id_fields = ("mentions", "wanted_tags", "unwanted_tags",)
     list_filter = ["book_type", "publisher", "should_search", "keep_searching", "found", "reason", "public"]
     actions = ['make_public', 'mark_should_search', 'mark_not_should_search',
                'mark_keep_search', 'mark_not_keep_search',
@@ -347,7 +347,7 @@ admin.site.register(Gallery, GalleryAdmin)
 admin.site.register(Image, ImageAdmin)
 
 admin.site.register(Artist, ArtistAdmin)
-admin.site.register(Announce, AnnounceAdmin)
+admin.site.register(Mention, MentionAdmin)
 admin.site.register(WantedGallery, WantedGalleryAdmin)
 admin.site.register(GalleryMatch, GalleryMatchAdmin)
 admin.site.register(TweetPost, TweetPostAdmin)

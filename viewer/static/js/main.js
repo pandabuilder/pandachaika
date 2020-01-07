@@ -13,6 +13,8 @@ $('.img-preview').popover({
     trigger : 'hover',
     html : true,
     content : function(){
-        return '<img src="'+$(this).data('imageUrl')+'">';
+        return $(this).data('height') ?
+        '<img height="' + $(this).data('height') + '" width="' + $(this).data('width') + '" src="'+$(this).data('imageUrl')+'">' :
+            '<img src="'+$(this).data('imageUrl')+'">';
     }
 });

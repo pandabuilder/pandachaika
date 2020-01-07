@@ -118,12 +118,9 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
         wanted_tag_lists = sort_tags(wanted_gallery_instance.wanted_tags.all())
         unwanted_tag_lists = sort_tags(wanted_gallery_instance.unwanted_tags.all())
 
-        matchers = crawler_settings.provider_context.get_matchers_name_priority(crawler_settings, matcher_type='title')
-
         d = {
             'wanted_gallery': wanted_gallery_instance,
             'wanted_tag_lists': wanted_tag_lists,
             'unwanted_tag_lists': unwanted_tag_lists,
-            'title_matchers': matchers
         }
     return render(request, "viewer/wanted_gallery.html", d)

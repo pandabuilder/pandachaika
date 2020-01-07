@@ -110,7 +110,12 @@ def archive_details(request: HttpRequest, pk: int, view: str = "cover") -> HttpR
             edit_form = ArchiveEditForm(request.POST, instance=archive)
             # check whether it's valid:
             if edit_form.is_valid():
-                new_archive = edit_form.save()
+                new_archive = edit_form.save(commit=False)
+                new_archive.simple_save()
+                edit_form.save_m2m()
+                if new_archive.gallery and new_archive.gallery.tags.all():
+                    new_archive.tags.set(new_archive.gallery.tags.all())
+
                 message = 'Archive successfully modified'
                 messages.success(request, message)
                 frontend_logger.info("User {}: {}".format(request.user.username, message))

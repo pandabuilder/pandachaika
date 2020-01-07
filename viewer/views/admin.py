@@ -29,8 +29,7 @@ from core.workers.imagework import ImageWorker
 from viewer.models import (
     Archive, Tag, Gallery,
     ArchiveMatches,
-    WantedGallery, FoundGallery,
-    EventLog)
+    WantedGallery, FoundGallery)
 from viewer.utils.matching import (
     create_matches_wanted_galleries_from_providers,
     create_matches_wanted_galleries_from_providers_internal,

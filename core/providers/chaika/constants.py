@@ -1,4 +1,5 @@
 provider_name = 'chaika'
+home_page = 'https://panda.chaika.moe'
 
 base_url = 'https://panda.chaika.moe'
 

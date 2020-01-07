@@ -17,7 +17,7 @@
       <p class="lead">Number of wanted galleries (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
     {% else %}
       <p class="lead">Number of wanted galleries: {{ results|length }}</p>
-      <p>Data is obtained from multiple sources (automatically, so the parsing can break sometimes). Gallery release date is the most occurring date in the announces.</p>
+      <p>Data is obtained from multiple sources (automatically, so the parsing can break sometimes). Gallery release date is the most occurring date in the mentions.</p>
       <p>If there's a wanted gallery that has a gallery posted somewhere or you have the file, please submit the URL or get in contact.</p>
     {% endif %}
   </div>
@@ -78,7 +78,7 @@
       {% for gallery in results %}
         <li class="list-group-item">
           <input id="sel-{{ gallery.id }}" class="toggle-list custom-cb" type="checkbox" name="sel-{{ gallery.id }}" value="{{ gallery.pk }}"><label for="sel-{{ gallery.id }}"><span><span></span></span></label><a href="{{ gallery.get_absolute_url }}">{{ gallery.id }}</a>: Title: {{ gallery.title }} >> Artists: {{ gallery.artists.all|join:", " }} >> Release date: {{ gallery.release_date|date }} >> Reason: {{ gallery.reason }} >> Pages: {{ gallery.page_count }} >> Should search: {{ gallery.should_search|yesno }} >> Keep searching: {{ gallery.keep_searching|yesno }} >> Found: {{ gallery.found|yesno }}
-          {% with matches=gallery.possible_galleries announces=gallery.announces.all %}
+          {% with matches=gallery.possible_galleries mentions=gallery.mentions.all %}
             {% if matches|length > 0 %}
               <h5>Possible matches >> <a href="{% url 'viewer:wanted-gallery' gallery.pk %}?tool=clear-possible-matches">clear possible matches</a></h5>
               <table class="table table-bordered table-sm generic-table">
@@ -122,28 +122,28 @@
                 </tbody>
               </table>
             {% endif %}
-            {% if announces.count > 0 %}
-              <h5>Announces</h5>
+            {% if mentions.count > 0 %}
+              <h5>Mentions</h5>
               <table class="table table-bordered table-sm generic-table">
                 <thead>
                 <tr>
-                  <th>Source</th><th>Announce Date</th><th>Release date</th><th>Type</th>
+                  <th>Source</th><th>Mention Date</th><th>Release date</th><th>Type</th>
                 </tr>
                 </thead>
                 <tbody>
-                {% for announce in announces %}
+                {% for mention in mentions %}
                   <tr>
                     <td>
-                      {% if announce.thumbnail.name %}<a href="#" data-image-url="{{ announce.thumbnail.url }}" class="img-preview" rel="popover">{{ announce.source }}</a>{% else %}{{ announce.source }}{% endif %}
+                      {% if mention.thumbnail.name %}<a href="#" data-image-url="{{ mention.thumbnail.url }}" class="img-preview" rel="popover">{{ mention.source }}</a>{% else %}{{ mention.source }}{% endif %}
                     </td>
                     <td>
-                      {{ announce.announce_date }}
+                      {{ mention.mention_date }}
                     </td>
                     <td>
-                      {{ announce.release_date }}
+                      {{ mention.release_date }}
                     </td>
                     <td>
-                      {{ announce.type }}
+                      {{ mention.type }}
                     </td>
                   </tr>
                 {% endfor %}
@@ -191,25 +191,25 @@
       {% for gallery in results %}
         <li class="list-group-item">
           Title: {{ gallery.title }} >> Release date: {{ gallery.release_date|date }} >> Artists: {{ gallery.artists.all|join:" , " }}
-          {% with announces=gallery.announces.all %}
-            {% if announces.count > 0 %}
+          {% with mentions=gallery.mentions.all %}
+            {% if mentions.count > 0 %}
               <table class="table table-bordered table-sm generic-table">
                 <thead>
                 <tr>
-                  <th>Thumbnail</th><th>Announce Date</th><th>Release date</th>
+                  <th>Thumbnail</th><th>Mention Date</th><th>Release date</th>
                 </tr>
                 </thead>
                 <tbody>
-                {% for announce in announces %}
+                {% for mention in mentions %}
                   <tr>
                     <td>
-                      {% if announce.thumbnail.name %}<a href="#" data-image-url="{{ announce.thumbnail.url }}" class="img-preview" rel="popover">Thumbnail</a>{% else %}No thumbnail{% endif %}
+                      {% if mention.thumbnail.name %}<a href="#" data-image-url="{{ mention.thumbnail.url }}" class="img-preview" rel="popover">Thumbnail</a>{% else %}No thumbnail{% endif %}
                     </td>
                     <td>
-                      {{ announce.announce_date }}
+                      {{ mention.mention_date }}
                     </td>
                     <td>
-                      {{ announce.release_date }}
+                      {{ mention.release_date }}
                     </td>
                   </tr>
                 {% endfor %}

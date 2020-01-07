@@ -55,6 +55,8 @@ Run "python manage.py collectstatic", to collect the static files (to serve from
 
 Run "python manage.py compress", to compress js/css static files.
 
+Run "python manage.py providers --scan-register", to register starting information to the database.
+
 To use Elasticsearch, after you install it correctly, check settings.ini accordingly and run "python manage.py push-to-index -r -p".
 
 Start the webserver with "python server.py".
