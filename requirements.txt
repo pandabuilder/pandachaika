@@ -6,7 +6,7 @@ python-dateutil
 twitter==1.18.0
 beautifulsoup4>=4.8.1
 CherryPy>=18.5.0
-Django==2.2.9
+Django==2.2.10
 django-compressor>=2.3
 Pillow>=6.2.1
 rarfile>=3.1
