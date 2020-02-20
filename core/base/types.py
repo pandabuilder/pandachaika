@@ -54,6 +54,7 @@ class GalleryData:
         self.root = root
         self.filename = filename
         self.queries = queries
+        self.extra_data: Dict = {}
 
     def __str__(self) -> str:
         return str(self.__dict__)
@@ -118,6 +119,7 @@ class TorrentClient(object):
         self.secure = secure
         self.total_size = 0
         self.expected_torrent_name = ''
+        self.set_expected = True
 
     def add_torrent(self, torrent_data: Union[str, bytes], download_dir: str = None) -> bool:
         pass

@@ -1016,6 +1016,8 @@ def public_stats(request: HttpRequest) -> HttpResponse:
             Avg('filesize'), Max('filesize'), Min('filesize'), Sum('filesize')),
         "n_tags": Tag.objects.filter(gallery_tags__public=True).distinct().count(),
         "top_10_tags": Tag.objects.filter(gallery_tags__public=True).distinct().annotate(
+            num_archive=Count('gallery_tags')).order_by('-num_archive')[:10],
+        "top_10_artist_tags": Tag.objects.filter(scope='artist', gallery_tags__public=True).distinct().annotate(
             num_archive=Count('gallery_tags')).order_by('-num_archive')[:10]
     }
 

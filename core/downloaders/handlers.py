@@ -3,7 +3,6 @@ import os
 import typing
 from typing import Optional
 
-
 from core.base.utilities import GeneralUtils, replace_illegal_name, get_base_filename_string_from_gallery_data
 from core.base.types import GalleryData, RealLogger, TorrentClient, DataDict
 
@@ -181,8 +180,11 @@ class BaseTorrentDownloader(BaseDownloader):
             )
         if result:
             if client.expected_torrent_name:
-                self.expected_torrent_name = "{} [{}]".format(client.expected_torrent_name, self.gallery.gid)
+                self.expected_torrent_name = "{} [{}]".format(
+                    client.expected_torrent_name, self.gallery.gid
+                )
             else:
+
                 to_use_filename = get_base_filename_string_from_gallery_data(self.gallery)
 
                 self.expected_torrent_name = "{} [{}]".format(
@@ -195,6 +197,12 @@ class BaseTorrentDownloader(BaseDownloader):
             self.gallery.filename = os.path.join(
                 self.own_settings.torrent_dl_folder,
                 replace_illegal_name(self.expected_torrent_name) + '.zip'
+            )
+            self.logger.info(
+                "Torrent added, expecting downloaded name: {}, local name: {}".format(
+                    self.expected_torrent_name,
+                    self.gallery.filename
+                )
             )
         else:
             self.return_code = 0

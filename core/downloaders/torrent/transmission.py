@@ -41,7 +41,9 @@ class Transmission(TorrentClient):
         if not self.trans:
             return False
         self.total_size = 0
-        self.expected_torrent_name = ''
+
+        if self.set_expected:
+            self.expected_torrent_name = ''
 
         try:
             torr = self.trans.add_torrent(
@@ -50,12 +52,13 @@ class Transmission(TorrentClient):
                 timeout=25
             )
 
-            self.expected_torrent_name = torr.name
+            if self.set_expected:
+                self.expected_torrent_name = torr.name
 
             c = self.trans.get_files(torr.id)
             for file_t in c[torr.id]:
                 self.total_size += int(c[torr.id][file_t]['size'])
-                if torr.name == c[torr.id][file_t]['name']:
+                if self.set_expected and torr.name == c[torr.id][file_t]['name']:
                     self.expected_torrent_name = os.path.splitext(
                         self.expected_torrent_name)[0]
 

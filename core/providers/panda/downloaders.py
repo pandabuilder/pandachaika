@@ -1,7 +1,8 @@
 import os
 import re
-from datetime import datetime
-from typing import List, Tuple, Any, Optional
+from datetime import datetime, timezone, timedelta
+from typing import List, Tuple, Any, Optional, Dict
+import html
 
 import requests
 from bs4 import BeautifulSoup
@@ -281,6 +282,123 @@ class TorrentDownloader(BaseTorrentDownloader):
         )
 
 
+class TorrentAPIDownloader(BaseTorrentDownloader):
+
+    type = 'torrent_api'
+    provider = constants.provider_name
+    skip_if_hidden = False
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.expected_torrent_name = ''
+
+    def choose_torrent(self, torrents: List[Dict]) -> Optional[Dict]:
+
+        if not self.gallery:
+            return None
+
+        chosen_torrent_date: Optional[Dict] = None
+        chosen_torrent_size: Optional[Dict] = None
+        chosen_size_difference: int = -1
+        chosen_date_difference: timedelta = timedelta.max
+
+        for torrent_info in torrents:
+            if torrent_info['added'] and self.gallery.posted is not None:
+                if datetime.fromtimestamp(int(torrent_info['added']), timezone.utc) < self.gallery.posted:
+                    continue
+                date_difference = datetime.fromtimestamp(int(torrent_info['added']), timezone.utc) - self.gallery.posted
+                if date_difference < chosen_date_difference:
+                    chosen_torrent_date = torrent_info
+                    chosen_date_difference = date_difference
+            if torrent_info['fsize'] and self.gallery.filesize is not None:
+                size_different = abs(int(torrent_info['fsize']) - self.gallery.filesize)
+                if chosen_size_difference == -1 or size_different < chosen_size_difference:
+                    chosen_torrent_size = torrent_info
+                    chosen_size_difference = size_different
+
+        if chosen_torrent_size is not None and chosen_torrent_date is not None:
+            if chosen_torrent_size['hash'] == chosen_torrent_date['hash']:
+                return chosen_torrent_size
+            else:
+                return chosen_torrent_size
+        elif chosen_torrent_size is not None:
+            return chosen_torrent_size
+        else:
+            return chosen_torrent_date
+
+    @staticmethod
+    def format_torrent_magnet_url(torrent_hash: str) -> str:
+        torrent_magnet = "magnet:?xt=urn:btih:{}&tr={}".format(
+            torrent_hash,
+            constants.ge_torrent_tracker_announce
+        )
+        return torrent_magnet
+
+    def start_download(self) -> None:
+
+        if not self.gallery:
+            return
+
+        if 'torrentcount' not in self.gallery.extra_data or 'torrents' not in self.gallery.extra_data:
+            self.logger.error('Missing required extra data -> torrentcount, torrents.')
+            self.return_code = 0
+            return
+
+        if int(self.gallery.extra_data['torrentcount']) <= 0:
+            self.logger.error('No torrents reported in API response.')
+            self.return_code = 0
+            return
+
+        client = get_torrent_client(self.settings.torrent)
+        if not client:
+            self.return_code = 0
+            self.logger.error("No torrent client was found")
+            return
+
+        chosen_torrent = self.choose_torrent(self.gallery.extra_data['torrents'])
+
+        if not chosen_torrent:
+            self.return_code = 0
+            self.logger.error("Could not find a suitable torrent.")
+            return
+
+        client.send_url = True
+        client.set_expected = False
+
+        torrent_magnet_url = self.format_torrent_magnet_url(chosen_torrent['hash'])
+        client.expected_torrent_name = html.unescape(chosen_torrent['name'])
+
+        self.logger.info(
+            "Adding torrent to client, magnet link: {}, filesize: {}, date: {}, expected name: {}".format(
+                torrent_magnet_url,
+                chosen_torrent['fsize'],
+                datetime.fromtimestamp(int(chosen_torrent['added']), timezone.utc),
+                html.unescape(chosen_torrent['name'])
+            )
+        )
+        self.connect_and_download(client, torrent_magnet_url)
+
+    def update_archive_db(self, default_values: DataDict) -> Optional['Archive']:
+
+        if not self.gallery:
+            return None
+
+        values = {
+            'title': self.gallery.title,
+            'title_jpn': self.gallery.title_jpn,
+            'zipped': self.gallery.filename,
+            'crc32': self.crc32,
+            'filesize': self.gallery.filesize,
+            'filecount': self.gallery.filecount,
+        }
+        default_values.update(values)
+        return Archive.objects.update_or_create_by_values_and_gid(
+            default_values,
+            self.gallery.gid,
+            zipped=self.gallery.filename
+        )
+
+
 class HathDownloader(BaseDownloader):
 
     type = 'hath'
@@ -423,6 +541,7 @@ class UrlSubmitDownloader(BaseDownloader):
 API = (
     ArchiveDownloader,
     TorrentDownloader,
+    TorrentAPIDownloader,
     HathDownloader,
     InfoDownloader,
     FakeDownloader,

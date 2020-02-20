@@ -42,11 +42,11 @@ def wanted_generator(settings: 'Settings', ext_logger: OptionalLogger, attrs: Qu
             if not tweet_created:
                 continue
 
-            local_logger.info("Created tweet id: {}processing.".format(tweet_obj.tweet_id))
+            local_logger.info("Created tweet id: {}, processing...".format(tweet_obj.tweet_id))
 
             match_tweet_type = re.search('【(.+)】(.*)', tweet['text'], re.DOTALL)
             if match_tweet_type:
-                local_logger.info("Matched pattern (date_type: {}, artist: {}),".format(
+                local_logger.info("Matched pattern (date_type: {}, title, artist: {}),".format(
                     match_tweet_type.group(1), match_tweet_type.group(2))
                 )
                 release_type = None

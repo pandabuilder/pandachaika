@@ -10,7 +10,7 @@ from django.forms.models import BaseModelFormSet, modelformset_factory, ModelCho
     inlineformset_factory, BaseInlineFormSet
 from django.forms.utils import ErrorList
 from django.utils.safestring import mark_safe
-from django.utils.encoding import force_text
+from django.utils.encoding import force_str
 from django.forms.utils import flatatt
 from django.conf import settings
 
@@ -24,7 +24,7 @@ from dal.widgets import (
     WidgetMixin
 )
 
-from django.utils.translation import ugettext_lazy
+from django.utils.translation import gettext_lazy
 
 crawler_settings = settings.CRAWLER_SETTINGS
 
@@ -66,7 +66,7 @@ class JalTextWidget(JalWidgetMixin, WidgetMixin, forms.TextInput):
         '''.format(
             id=attrs['id'],
             name=name,
-            value=force_text('' if value is None else value),
+            value=force_str('' if value is None else value),
             attrs=flatatt(self.build_attrs(attrs)),
         )
 
@@ -78,7 +78,7 @@ class JalTextWidget(JalWidgetMixin, WidgetMixin, forms.TextInput):
             'data-autocomplete-choice-selector': '[data-value]',
             'data-widget-bootstrap': 'text',
             'data-autocomplete-url': self.url,
-            'placeholder': ugettext_lazy('type some text to search in this autocomplete'),
+            'placeholder': gettext_lazy('type some text to search in this autocomplete'),
         }
 
         attrs.update(self.attrs)

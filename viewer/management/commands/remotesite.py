@@ -40,7 +40,7 @@ def get_gid_path_association(site_page, api_key):
 
 def send_urls_from_archive_list(site_page, api_key, reason, details, archive_ids):
 
-    url_list = [x.get_link() for x in Archive.objects.filter(pk__inn=archive_ids)]
+    url_list = [x.get_link() for x in Archive.objects.filter(pk__in=archive_ids)]
 
     data = {
         'operation': 'queue_archives',

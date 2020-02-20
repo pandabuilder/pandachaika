@@ -118,6 +118,11 @@ class WebCrawler(object):
                             help='A mode to force processing galleries with no archives associated.'
                                  'Without this active, galleries already in the system won\'t download archives.')
 
+        parser.add_argument('-ff', '--force-failed',
+                            required=False,
+                            action='store_true',
+                            help='A mode to force processing galleries with retry failed as status.')
+
         parser.add_argument('-um', '--update-mode',
                             required=False,
                             action='store_true',
@@ -298,6 +303,9 @@ class WebCrawler(object):
 
         if args.force_replace_metadata:
             current_settings.replace_metadata = True
+
+        if args.force_failed:
+            current_settings.retry_failed = True
 
         # This parser get imported directly since it's for JSON data, not for crawling URLs yet.
         if args.json_source:

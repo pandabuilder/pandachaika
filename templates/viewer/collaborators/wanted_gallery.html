@@ -2,7 +2,7 @@
 {% block title %}{{ wanted_gallery.title }} | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
 
-{% load staticfiles %}
+{% load static %}
 
 {% block content %}
   {% if messages %}
@@ -336,7 +336,7 @@
             <td>{{ mention.type }}</td>
             <td>{{ mention.source }}</td>
             <td>{% if mention.image %}
-              <a href="{{ mention.image.url }}" data-image-url="{{ mention.image.url }}" class="img-preview" rel="popover" data-height="290" data-width="200">Image</a>{% endif %}</td>
+              <a href="{{ mention.image.url }}" data-image-url="{{ mention.thumbnail.url }}" class="img-preview" rel="popover">Image</a>{% endif %}</td>
           </tr>
         {% endfor %}
         </tbody>

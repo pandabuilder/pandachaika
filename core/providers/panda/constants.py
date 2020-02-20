@@ -30,3 +30,5 @@ api_data = {
     'namespace': '1',
     'gidlist': []
 }
+
+ge_torrent_tracker_announce = 'http://ehtracker.org/announce'

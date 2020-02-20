@@ -1,7 +1,7 @@
 {% extends "viewer/base.html" %}
 {% block title %}{{ image_object.archive.title }} | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
-{% load staticfiles %}
+{% load static %}
 {% block content %}
   {% load viewer_extras %}
   {% with vertical=request.session.viewer_parameters.image_width_vertical|default:"900" horizontal=request.session.viewer_parameters.image_width_horizontal|default:"1500" %}

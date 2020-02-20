@@ -149,10 +149,14 @@ WEBPACK_LOADER = {
 
 if module_exists('compressor'):
     STATICFILES_FINDERS += ['compressor.finders.CompressorFinder']
-    COMPRESS_CSS_FILTERS = [
-        'compressor.filters.css_default.CssAbsoluteFilter',
-        'compressor.filters.cssmin.rCSSMinFilter'
-    ]
+    COMPRESS_FILTERS = {
+        'css':
+            [
+                'compressor.filters.css_default.CssAbsoluteFilter',
+                'compressor.filters.cssmin.rCSSMinFilter'
+            ],
+        'js': ['compressor.filters.jsmin.JSMinFilter']
+    }
     COMPRESS_ENABLED = not DEBUG
     COMPRESS_OFFLINE = True
 

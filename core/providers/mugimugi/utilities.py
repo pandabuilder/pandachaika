@@ -109,6 +109,11 @@ def convert_api_response_text_to_gallery_dicts(text: str) -> List[GalleryData]:
         if found_data_language is not None and not (found_data_language.text == '' or found_data_language.text is None):
             gallery.tags.append(translate_tag("language:" + translate_language_code(found_data_language.text)))
 
+        # Add non-h as a tag.
+        found_age = book.find('DATA_AGE')
+        if found_age is not None and not (found_age.text == '' or found_age.text is None) and found_age.text == '0':
+            gallery.tags.append(translate_tag('non-h'))
+
         galleries.append(gallery)
 
     return galleries

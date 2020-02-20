@@ -16,11 +16,11 @@ def match_tweet_with_wanted_galleries(tweet_obj: TweetPost, settings: 'Settings'
     publisher = 'wanimagazine'
     source = 'twitter'
 
-    yield("Tweet id: {}, processing.".format(tweet_obj.tweet_id))
+    yield "Tweet id: {}, processing...".format(tweet_obj.tweet_id)
 
     match_tweet_type = re.search('【(.+)】(.*)', tweet_obj.text, re.DOTALL)
     if match_tweet_type:
-        yield("Matched pattern (date_type: {}, artist: {}),".format(
+        yield("Matched pattern (date_type: {}, title, artist: {}),".format(
             match_tweet_type.group(1).replace('\n', ''), match_tweet_type.group(2).replace('\n', ''))
         )
         release_type = None

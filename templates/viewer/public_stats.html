@@ -69,5 +69,15 @@
         {% endfor %}
       </ul>
     </div>
+    <div class="card panel col-sm-6 col-md-4">
+      <div class="card-header">10 most used artist tags</div>
+      <ul class="list-group">
+        {% for tag in stats.top_10_artist_tags %}
+          <li class="list-group-item">
+            <a href="{% url 'viewer:archive-tag-search' 'tag' tag %}">{{ tag }}</a>, used {{ tag.num_archive }} times<br>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
   </div>
 {% endblock %}

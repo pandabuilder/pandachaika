@@ -32,6 +32,10 @@ def map_external_gallery_data_to_internal(gallery_data: DataDict) -> GalleryData
         rating=gallery_data['rating'],
         tags=translate_tag_list(gallery_data['tags']),
     )
+
+    internal_gallery_data.extra_data['torrents'] = gallery_data['torrents']
+    internal_gallery_data.extra_data['torrentcount'] = gallery_data['torrentcount']
+
     m = re.search(constants.default_fjord_tags, ",".join(internal_gallery_data.tags))
     if m:
         internal_gallery_data.fjord = True

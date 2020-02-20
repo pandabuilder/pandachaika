@@ -224,13 +224,7 @@ class Parser(BaseParser):
         return urls
 
     def fetch_gallery_data(self, url: str) -> Optional[GalleryData]:
-        response = self.get_values_from_gallery_link(url)
-        if not response:
-            self.logger.warning(
-                "Could not fetch from API for gallery: {}, retrying from gallery page.".format(url)
-            )
-            response = self.get_values_from_gallery_link(url)
-        return response
+        return self.get_values_from_gallery_link(url)
 
     def fetch_multiple_gallery_data(self, url_list: List[str]) -> List[GalleryData]:
         return self.get_values_from_gallery_link_list(url_list)

@@ -41,7 +41,7 @@ from django.db import models
 from django.db.models import Q, F, Count, QuerySet
 import django.utils.timezone as django_tz
 from django.db.models import Lookup
-from django.utils.translation import ugettext_lazy as _
+from django.utils.translation import gettext_lazy as _
 from django.conf import settings
 
 
@@ -129,7 +129,7 @@ class GalleryQuerySet(models.QuerySet):
 
     def non_used_galleries(self, **kwargs: typing.Any) -> QuerySet:
         return self.filter(
-            ~Q(status=Gallery.DELETED),
+            Q(status=Gallery.NORMAL),
             ~Q(dl_type__contains='skipped'),
             Q(archive__isnull=True),
             Q(gallery_container__archive__isnull=True),
@@ -341,7 +341,7 @@ class ArchiveManager(models.Manager):
         return self.filter(
             Q(crc32='')
             & (
-                Q(match_type='torrent') | Q(match_type='hath')
+                Q(match_type__startswith='torrent') | Q(match_type__startswith='hath')
             )
         )
 

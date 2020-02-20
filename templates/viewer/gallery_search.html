@@ -1,11 +1,9 @@
 {% extends "viewer/base.html" %}
 {% block title %}Galleries | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
-
-{% load staticfiles %}
+{% load static %}
 
 {% block content %}
-  {% load static %}
   {% load viewer_extras %}
   {% if messages %}
     {% for message in messages %}

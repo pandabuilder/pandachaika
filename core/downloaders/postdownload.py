@@ -283,7 +283,7 @@ class PostDownloader(object):
                             os.path.basename(archive.zipped.path))[0].replace(' [' + archive.gallery.gid + ']', '')
                     else:
                         cleaned_torrent_name = os.path.splitext(os.path.basename(archive.zipped.path))[0]
-                    if replace_illegal_name(os.path.splitext(line[0])[0]) in cleaned_torrent_name:
+                    if replace_illegal_name(os.path.splitext(line[0])[0]) == cleaned_torrent_name:
                         if line[1]["type"] == 'dir':
                             files_matched_torrent.append((line[0], line[1]["type"], 0, archive))
                         else:
@@ -452,7 +452,7 @@ class PostDownloader(object):
                             os.path.basename(archive.zipped.path))[0].replace(' [' + archive.gallery.gid + ']', '')
                     else:
                         cleaned_torrent_name = os.path.splitext(os.path.basename(archive.zipped.path))[0]
-                    if replace_illegal_name(os.path.splitext(filename)[0]) in cleaned_torrent_name:
+                    if replace_illegal_name(os.path.splitext(filename)[0]) == cleaned_torrent_name:
                         files_matched_torrent.append([filename, not os.path.isfile(
                             os.path.join(self.settings.torrent['download_dir'], filename)), archive])
 

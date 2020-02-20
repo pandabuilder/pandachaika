@@ -1,6 +1,6 @@
 {% extends "viewer/base.html" %}
 <title>{% block title %}{{ archive.title }} | {{ block.super }}{% endblock %}</title>
-{% load staticfiles %}
+{% load static %}
 {% block content %}
   {% load viewer_extras %}
   {% if messages %}

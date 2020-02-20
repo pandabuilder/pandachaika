@@ -1,7 +1,7 @@
 {% extends "viewer/base.html" %}
 {% block title %}Tag frequency | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
-{% load staticfiles %}
+{% load static %}
 {% block extrahead %}
   <script src="{% static 'js/vendor/d3.min.js' %}"></script>
   <script src="{% static 'js/vendor/d3.tip.0.6.7.js' %}"></script>
