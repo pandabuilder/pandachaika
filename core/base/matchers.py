@@ -97,6 +97,9 @@ class Matcher(metaclass=Meta):
             if not galleries_data:
                 return results
             galleries_data = [x for x in galleries_data if not self.general_utils.discard_by_tag_list(x.tags)]
+            self.logger.info(
+                "For matcher: {}, found {} results before filtering.".format(str(self), len(galleries_data))
+            )
             if galleries_data:
                 self.values_array = galleries_data
                 results = get_list_closer_gallery_titles_from_dict(

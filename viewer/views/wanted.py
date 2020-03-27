@@ -41,14 +41,32 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
             raise Http404("Wanted gallery does not exist")
         if tool == 'search-providers-by-title':
             provider = request.GET.get('provider', '')
+            try:
+                cutoff = float(request.GET.get('cutoff', '0.4'))
+            except ValueError:
+                cutoff = 0.4
+            try:
+                max_matches = int(request.GET.get('max-matches', '10'))
+            except ValueError:
+                max_matches = 10
             matchers = crawler_settings.provider_context.get_matchers(
                 crawler_settings, frontend_logger, filter_name=provider, force=True, matcher_type='title'
             )
             for matcher_element in matchers:
                 matcher = matcher_element[0]
-                results = matcher.create_closer_matches_values(wanted_gallery_instance.search_title)
+                results = matcher.create_closer_matches_values(
+                    wanted_gallery_instance.search_title,
+                    cutoff=cutoff,
+                    max_matches=max_matches
+                )
+                frontend_logger.info(
+                    "Matcher: {} found {} results.".format(
+                        str(matcher),
+                        len(results)
+                    )
+                )
                 for gallery_data in results:
-                    gallery_data[1]['dl_type'] = 'gallery_match'
+                    gallery_data[1].dl_type = 'gallery_match'
                     gallery = Gallery.objects.update_or_create_from_values(gallery_data[1])
                     if gallery:
                         GalleryMatch.objects.get_or_create(
