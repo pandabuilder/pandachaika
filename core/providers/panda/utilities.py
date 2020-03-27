@@ -24,7 +24,7 @@ def map_external_gallery_data_to_internal(gallery_data: DataDict) -> GalleryData
         thumbnail_url=gallery_data['thumb'],
         category=gallery_data['category'],
         provider=constants.provider_name,
-        uploader=gallery_data['uploader'],
+        uploader=unescape(gallery_data['uploader']),
         posted=datetime.fromtimestamp(int(gallery_data['posted']), timezone.utc),
         filecount=gallery_data['filecount'],
         filesize=gallery_data['filesize'],
@@ -36,6 +36,8 @@ def map_external_gallery_data_to_internal(gallery_data: DataDict) -> GalleryData
     internal_gallery_data.extra_data['torrents'] = gallery_data['torrents']
     internal_gallery_data.extra_data['torrentcount'] = gallery_data['torrentcount']
 
+    internal_gallery_data.root = constants.ge_page
+
     m = re.search(constants.default_fjord_tags, ",".join(internal_gallery_data.tags))
     if m:
         internal_gallery_data.fjord = True
@@ -45,11 +47,6 @@ def map_external_gallery_data_to_internal(gallery_data: DataDict) -> GalleryData
 
 
 def link_from_gid_token_fjord(gid: str, token: str, fjord: bool = False) -> str:
-    # TODO: RIP panda
-    # if fjord:
-    #     return '{}/g/{}/{}/'.format(constants.ex_page, gid, token)
-    # else:
-    #     return '{}/g/{}/{}/'.format(constants.ge_page, gid, token)
     return '{}/g/{}/{}/'.format(constants.ge_page, gid, token)
 
 
@@ -71,11 +68,6 @@ def fjord_gid_token_from_link(link: str) -> typing.Tuple[typing.Optional[str], t
 
 
 def resolve_url(gallery: 'Gallery') -> str:
-    # TODO: RIP panda
-    # if gallery.fjord:
-    #     return '{}/g/{}/{}/'.format(constants.ex_page, gallery.gid, gallery.token)
-    # else:
-    #     return '{}/g/{}/{}/'.format(constants.ge_page, gallery.gid, gallery.token)
     return '{}/g/{}/{}/'.format(constants.ge_page, gallery.gid, gallery.token)
 
 

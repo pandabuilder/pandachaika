@@ -260,7 +260,7 @@
                         </ul>
                       {% endif %}
                     </div>
-                    <div><label class="label-extended">Source URL:</label>{{ archive.gallery.get_link|urlize }}
+                    <div><label class="label-extended">Source URL:</label>{{ archive.gallery.get_link|urlize }}, <a href="{{ archive.get_link|derefer }}">derefered</a>
                     </div>
                   </td>
                   <td class="td-extended">

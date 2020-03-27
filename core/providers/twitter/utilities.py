@@ -65,12 +65,15 @@ def match_tweet_with_wanted_galleries(tweet_obj: TweetPost, settings: 'Settings'
                 title_jpn=title,
                 search_title=format_title_to_wanted_search(title),
                 publisher=publisher,
-                defaults={'title': title,
-                          'book_type': book_type,
-                          'add_as_hidden': True,
-                          'category': 'Manga',
-                          'reason': 'wanimagazine',
-                          'public': own_settings.add_as_public}
+                defaults={
+                    'title': title,
+                    'book_type': book_type,
+                    'add_as_hidden': True,
+                    'category': 'Manga',
+                    'reason': 'wanimagazine',
+                    'public': own_settings.add_as_public,
+                    'unwanted_title': own_settings.unwanted_title or settings.auto_wanted.unwanted_title
+                }
             )
             if created:
                 wanted_gallery.should_search = True
@@ -88,6 +91,15 @@ def match_tweet_with_wanted_galleries(tweet_obj: TweetPost, settings: 'Settings'
                 type=release_type,
                 source=source,
             )
+
+            if mention_created:
+                yield (
+                    "Created mention for wanted gallery: {}, mention date: {}".format(
+                        wanted_gallery.get_absolute_url(),
+                        mention_date
+                    )
+                )
+
             if mention_created and tweet_obj.media_url:
                 mention.save_img(tweet_obj.media_url)
                 # wanted_gallery.calculate_nearest_release_date()
@@ -95,9 +107,17 @@ def match_tweet_with_wanted_galleries(tweet_obj: TweetPost, settings: 'Settings'
                 wanted_gallery.save()
 
             for artist in artists:
-                artist_obj = Artist.objects.filter(name_jpn=artist).first()
+                artist_name = artist
+                twitter_handle = ''
+                match_artist_handle = re.search('^(.+?)（@(.+?)）', artist, re.DOTALL)
+                if match_artist_handle:
+                    artist_name = match_artist_handle.group(1)
+                    twitter_handle = match_artist_handle.group(2)
+                artist_obj = Artist.objects.filter(name_jpn=artist_name).first()
                 if not artist_obj:
-                    artist_obj = Artist.objects.create(name=artist, name_jpn=artist)
+                    artist_obj = Artist.objects.create(
+                        name=artist_name, name_jpn=artist_name, twitter_handle=twitter_handle
+                    )
                 wanted_gallery.artists.add(artist_obj)
 
         match_artist_title = re.search('^(.+?)『(.+?)』.*', match_tweet_type.group(2), re.DOTALL)
@@ -110,28 +130,40 @@ def match_tweet_with_wanted_galleries(tweet_obj: TweetPost, settings: 'Settings'
             )
 
             artist = match_artist_title.group(1)
+            artist_name = artist
+            twitter_handle = ''
+            match_artist_handle = re.search('^(.+?)（@(.+?)）', artist, re.DOTALL)
+            if match_artist_handle:
+                artist_name = match_artist_handle.group(1)
+                twitter_handle = match_artist_handle.group(2)
             title = match_artist_title.group(2)
             title = title.replace("X-EROS#", "X-EROS #")
             cover_artist = None
             book_type = None
             if '最新刊' in artist:
-                artist = artist.replace('最新刊', '')
+                artist_name = artist_name.replace('最新刊', '')
                 book_type = 'new_publication'
-                cover_artist = Artist.objects.filter(name_jpn=artist).first()
+                cover_artist = Artist.objects.filter(name_jpn=artist_name).first()
                 if not cover_artist:
-                    cover_artist = Artist.objects.create(name=artist, name_jpn=artist)
+                    cover_artist = Artist.objects.create(
+                        name=artist_name, name_jpn=artist_name, twitter_handle=twitter_handle
+                    )
             elif '初単行本' in artist and ('『' not in artist and '』' not in artist):
-                artist = artist.replace('初単行本', '')
+                artist_name = artist_name.replace('初単行本', '')
                 book_type = 'first_book'
-                cover_artist = Artist.objects.filter(name_jpn=artist).first()
+                cover_artist = Artist.objects.filter(name_jpn=artist_name).first()
                 if not cover_artist:
-                    cover_artist = Artist.objects.create(name=artist, name_jpn=artist)
+                    cover_artist = Artist.objects.create(
+                        name=artist_name, name_jpn=artist_name, twitter_handle=twitter_handle
+                    )
             elif '表紙が目印の' in artist:
-                artist = artist.replace('表紙が目印の', '')
+                artist_name = artist_name.replace('表紙が目印の', '')
                 book_type = "magazine"
-                cover_artist = Artist.objects.filter(name_jpn=artist).first()
+                cover_artist = Artist.objects.filter(name_jpn=artist_name).first()
                 if not cover_artist:
-                    cover_artist = Artist.objects.create(name=artist, name_jpn=artist)
+                    cover_artist = Artist.objects.create(
+                        name=artist_name, name_jpn=artist_name, twitter_handle=twitter_handle
+                    )
             if book_type:
                 wanted_gallery, created = WantedGallery.objects.update_or_create(
                     title_jpn=title,
@@ -161,6 +193,15 @@ def match_tweet_with_wanted_galleries(tweet_obj: TweetPost, settings: 'Settings'
                     type=release_type,
                     source=source,
                 )
+
+                if mention_created:
+                    yield (
+                        "Created mention for wanted gallery: {}, mention date: {}".format(
+                            wanted_gallery.get_absolute_url(),
+                            mention_date
+                        )
+                    )
+
                 if mention_created and tweet_obj.media_url:
                     mention.save_img(tweet_obj.media_url)
                     # wanted_gallery.calculate_nearest_release_date()
@@ -169,5 +210,7 @@ def match_tweet_with_wanted_galleries(tweet_obj: TweetPost, settings: 'Settings'
 
                 artist_obj = Artist.objects.filter(name_jpn=artist).first()
                 if not artist_obj:
-                    artist_obj = Artist.objects.create(name=artist, name_jpn=artist)
+                    artist_obj = Artist.objects.create(
+                        name=artist_name, name_jpn=artist_name, twitter_handle=twitter_handle
+                    )
                 wanted_gallery.artists.add(artist_obj)

@@ -258,6 +258,10 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                 )
         elif 'update_metadata' in p and request.user.has_perm('viewer.update_metadata'):
             for archive in archives:
+
+                if not archive.gallery_id:
+                    continue
+
                 gallery = archive.gallery
 
                 message = 'Updating gallery API data for gallery: {} and related archives'.format(

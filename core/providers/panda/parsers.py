@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
-import copy
 import json
 import re
 import time
 import typing
 import urllib.parse
 from collections import defaultdict
-from typing import Optional, Tuple, Iterable, List, Dict, Set
+from typing import Optional, Iterable, List, Dict, Set
 from urllib.request import ProxyHandler
 
 import feedparser
@@ -17,10 +16,9 @@ from core.base.parsers import BaseParser
 from core.base.utilities import (
     chunks, request_with_retries)
 from core.base.types import GalleryData, DataDict
-from viewer.models import Gallery, Archive, FoundGallery
-from viewer.signals import wanted_gallery_found
+from viewer.models import Gallery
 from .utilities import link_from_gid_token_fjord, map_external_gallery_data_to_internal, \
-    get_gid_token_from_link, fjord_gid_token_from_link, GalleryHTMLParser, SearchHTMLParser
+    get_gid_token_from_link, fjord_gid_token_from_link, SearchHTMLParser
 from . import constants
 from . import utilities
 
@@ -168,56 +166,6 @@ class Parser(BaseParser):
 
         return unique_urls
 
-    def get_final_gallery_from_link(self, link: str) -> Tuple[int, Optional[GalleryData]]:
-
-        time.sleep(self.settings.wait_timer)
-        gallery_page_text = requests.get(
-            link,
-            cookies=self.own_settings.cookies,
-            headers=self.settings.requests_headers,
-            timeout=self.settings.timeout_timer
-        ).text
-        fjord, gid, token = fjord_gid_token_from_link(link)
-        time.sleep(self.settings.wait_timer)
-        gallery = self.fetch_gallery_data(link)
-        if not gallery or not gallery.token:
-            return 0, None
-        discard_approved, discard_message = self.discard_gallery_by_internal_checks(
-            gallery_id=gid,
-            link=link
-        )
-
-        if discard_approved:
-            if not self.settings.silent_processing:
-                self.logger.info(discard_message)
-            return 2, None
-
-        gallery.link = link
-        # TODO: Disabled, RIP panda
-        # if fjord:
-        #     gallery.root = constants.ex_page
-        # else:
-        #     gallery.root = constants.ge_page
-        gallery.root = constants.ge_page
-        if 'Gallery Not Available' in gallery_page_text:
-            if not fjord:
-                time.sleep(self.settings.wait_timer)
-                gallery.root = constants.ex_page
-                gallery.link = link_from_gid_token_fjord(gallery.gid, gallery.token, True)
-                gallery_page_text = requests.get(
-                    gallery.link,
-                    cookies=self.own_settings.cookies,
-                    headers=self.settings.requests_headers,
-                    timeout=self.settings.timeout_timer
-                ).text
-                time.sleep(self.settings.wait_timer)
-
-        gallery_parser = GalleryHTMLParser()
-        gallery_parser.feed(gallery_page_text)
-        if gallery_parser.found_non_final_gallery == 2 and gallery_parser.non_final_gallery:
-            return self.get_final_gallery_from_link(gallery_parser.non_final_gallery)
-        return 1, gallery
-
     def get_values_from_gallery_link_list(self, url_list: Iterable[str]) -> List[GalleryData]:
 
         gid_token_chunks = list(chunks([get_gid_token_from_link(link) for link in url_list], 25))
@@ -244,7 +192,7 @@ class Parser(BaseParser):
             headers = {'Content-Type': 'application/json'}
 
             response = request_with_retries(
-                constants.ex_api_url,
+                constants.ge_api_url,
                 {
                     'data': json.dumps(data),
                     'headers': {**headers, **self.settings.requests_headers},
@@ -288,17 +236,12 @@ class Parser(BaseParser):
         if fjord is None or gid is None or token is None:
             return None
 
-        if fjord:
-            api_page = constants.ex_api_url
-        else:
-            api_page = constants.ge_api_url
-
         data = utilities.request_data_from_gid_token_iterable([(gid, token)])
 
         headers = {'Content-Type': 'application/json'}
 
         response = request_with_retries(
-            api_page,
+            constants.ge_api_url,
             {
                 'data': json.dumps(data),
                 'headers': {**headers, **self.settings.requests_headers},
@@ -458,7 +401,6 @@ class Parser(BaseParser):
             return
 
         fetch_format_galleries_chunks = list(chunks(fetch_format_galleries, 25))
-        fjord_galleries: List[str] = []
         for i, group in enumerate(fetch_format_galleries_chunks):
             # Set based on recommendation in official documentation
             if i % 3 == 2:
@@ -507,6 +449,7 @@ class Parser(BaseParser):
                     continue
                 internal_gallery_data = map_external_gallery_data_to_internal(gallery_data)
                 link = link_from_gid_token_fjord(gallery_data['gid'], gallery_data['token'], False)
+                internal_gallery_data.link = link
 
                 if self.general_utils.discard_by_tag_list(internal_gallery_data.tags):
                     if not self.settings.silent_processing:
@@ -525,217 +468,9 @@ class Parser(BaseParser):
                     if wanted_only and not gallery_wanted_lists[internal_gallery_data.gid]:
                         continue
 
-                # TODO: Temp fix for ex.
-                # m = re.search(constants.default_fjord_tags, ",".join(internal_gallery_data.tags))
-                #
-                # if m and self.own_settings.cookies:
-                #     fjord_galleries.append(link_from_gid_token_fjord(gallery_data['gid'], gallery_data['token'], True))
-                # else:
                 gallery_data_list.append(internal_gallery_data)
 
-        fjord_galleries_data = self.fetch_multiple_gallery_data(fjord_galleries)
-
-        if fjord_galleries_data:
-            gallery_data_list.extend(fjord_galleries_data)
-
         self.pass_gallery_data_to_downloaders(gallery_data_list, gallery_wanted_lists)
-
-    def work_gallery_data(self, gallery: GalleryData, gallery_wanted_lists) -> None:
-
-        if not gallery.token:
-            return
-
-        # TODO: temp fix for ex
-        # m = re.search(constants.default_fjord_tags, ",".join(gallery.tags))
-        #
-        # if m:
-        #     gallery.root = constants.ex_page
-        #     gallery.link = link_from_gid_token_fjord(gallery.gid, gallery.token, True)
-        # else:
-        gallery.root = constants.ge_page
-        gallery.link = link_from_gid_token_fjord(gallery.gid, gallery.token, False)
-
-        self.logger.info("Title: {}. Link: {}".format(gallery.title, gallery.link))
-
-        gallery_is_hidden = False
-        gallery.hidden = False
-
-        if self.own_settings.crawl_gallery_page:
-            gallery_page_text = requests.get(
-                gallery.link,
-                cookies=self.own_settings.cookies,
-                headers=self.settings.requests_headers,
-                timeout=self.settings.timeout_timer
-            ).text
-
-            if 'Gallery Not Available' in gallery_page_text:
-                if gallery.root == constants.ex_page:
-                    self.logger.warning('EX Gallery not available, probably taken down/hidden')
-                    gallery_is_hidden = True
-                    gallery.hidden = True
-                elif gallery.root == constants.ge_page:
-                    time.sleep(self.settings.wait_timer)
-                    gallery.root = constants.ex_page
-                    gallery.link = link_from_gid_token_fjord(gallery.gid, gallery.token, True)
-                    retry_gallery_page_text = requests.get(
-                        gallery.link,
-                        cookies=self.own_settings.cookies,
-                        headers=self.settings.requests_headers,
-                        timeout=self.settings.timeout_timer).text
-                    if 'Gallery Not Available' in retry_gallery_page_text:
-                        self.logger.warning(
-                            'Tried EX gallery instead of E-H for '
-                            'arbitrary hidden galleries, also not '
-                            'available, probably taken down/hidden'
-                        )
-                        gallery_is_hidden = True
-                        gallery.hidden = True
-                    else:
-                        self.logger.info("Changed from E-H to EX, was a arbitrary hidden gallery")
-                        gallery_page_text = retry_gallery_page_text
-                        time.sleep(self.settings.wait_timer)
-                        new_gallery = self.fetch_gallery_data(gallery.link)
-                        if new_gallery and new_gallery.token:
-                            gallery = new_gallery
-                            gallery.root = constants.ex_page
-                            gallery.link = link_from_gid_token_fjord(new_gallery.gid, new_gallery.token, True)
-
-            time.sleep(self.settings.wait_timer)
-
-            if not gallery_is_hidden:
-                gallery_parser = GalleryHTMLParser()
-                gallery_parser.feed(gallery_page_text)
-
-                # What this does is log a parent gallery if we are downloading a newer one.
-                # Maybe this should be an option, because we are deleting files from disk.
-                if gallery_parser.found_parent_gallery and gallery_parser.parent_gallery:
-                    parent_gid, parent_token = get_gid_token_from_link(gallery_parser.parent_gallery)
-                    archives = Archive.objects.filter(
-                        gallery__gid__exact=parent_gid,
-                        gallery__token__exact=parent_token
-                    )
-                    for archive in archives:
-                        self.logger.warning(
-                            "Gallery: {} has a parent gallery {}, "
-                            "which is matched with archive: {}. You might want to delete them.".format(
-                                gallery.link,
-                                archive.gallery.get_absolute_url(),
-                                archive.get_absolute_url()
-                            )
-                        )
-
-                if(gallery_parser.found_non_final_gallery == 2
-                        and self.own_settings.get_newer_gallery
-                        and gallery_parser.non_final_gallery):
-                    self.logger.info("Found non final gallery, next is: {}".format(gallery_parser.non_final_gallery))
-                    (exists_next, new_gallery) = self.get_final_gallery_from_link(
-                        gallery_parser.non_final_gallery)
-                    if exists_next == 1 and new_gallery and new_gallery.link:
-                        gallery.dl_type = 'skipped:non_final'
-                        Gallery.objects.update_or_create_from_values(gallery)
-                        discard_approved, discard_message = self.discard_gallery_by_internal_checks(
-                            gallery_id=new_gallery.gid,
-                            link=new_gallery.link
-                        )
-                        if discard_approved:
-                            if not self.settings.silent_processing:
-                                self.logger.info(discard_message)
-                            return
-                        gallery = new_gallery
-                        self.logger.info("Final gallery is: {}".format(new_gallery.link))
-                    elif exists_next == 0:
-                        self.logger.info(
-                            "Last in sequence: {} is not available, using current one".format(gallery.link)
-                        )
-                    elif exists_next == 2:
-                        self.logger.info(
-                            "Last in sequence: {} was discarded by global tags, "
-                            "skipping this gallery altogether".format(gallery.link)
-                        )
-                        gallery.dl_type = 'skipped:final_replaced'
-                        Gallery.objects.update_or_create_from_values(gallery)
-                        return
-
-        retry_attempt = True
-        while retry_attempt:
-
-            for cnt, downloader in enumerate(self.downloaders):
-                if not gallery_is_hidden or not downloader[0].skip_if_hidden:
-                    downloader[0].init_download(copy.deepcopy(gallery))
-                else:
-                    downloader[0].return_code = 0
-                if downloader[0].return_code == 1:
-                    for wanted_gallery in gallery_wanted_lists[gallery.gid]:
-                        FoundGallery.objects.get_or_create(
-                            wanted_gallery=wanted_gallery,
-                            gallery=downloader[0].gallery_db_entry
-                        )
-                        if wanted_gallery.add_as_hidden and downloader[0].gallery_db_entry:
-                            downloader[0].gallery_db_entry.hidden = True
-                            downloader[0].gallery_db_entry.save()
-                        if downloader[0].archive_db_entry and wanted_gallery.reason:
-                            downloader[0].archive_db_entry.reason = wanted_gallery.reason
-                            downloader[0].archive_db_entry.simple_save()
-
-                    if len(gallery_wanted_lists[gallery.gid]) > 0:
-                        wanted_gallery_found.send(
-                            sender=self.settings.gallery_model,
-                            gallery=downloader[0].gallery_db_entry,
-                            wanted_gallery_list=gallery_wanted_lists[gallery.gid]
-                        )
-
-                    self.last_used_downloader = str(downloader[0])
-                    if downloader[0].gallery_db_entry:
-                        if downloader[0].archive_db_entry:
-                            self.logger.info(
-                                "Download completed successfully, using {}. Archive link: {}. Gallery link: {}".format(
-                                    downloader[0],
-                                    downloader[0].archive_db_entry.get_absolute_url(),
-                                    downloader[0].gallery_db_entry.get_absolute_url()
-                                )
-                            )
-                        else:
-                            self.logger.info(
-                                "Download completed successfully (gallery only), using {}. Gallery link: {}".format(
-                                    downloader[0],
-                                    downloader[0].gallery_db_entry.get_absolute_url()
-                                )
-                            )
-                    return
-                if(downloader[0].return_code == 0
-                        and (cnt + 1) == len(self.downloaders)):
-                    # TODO: Disabled, RIP panda
-                    # if gallery.root == constants.ge_page and not gallery_is_hidden and gallery.token:
-                    #     gallery.root = constants.ex_page
-                    #     gallery.link = link_from_gid_token_fjord(gallery.gid, gallery.token, True)
-                    #     # fetch archiver key again when retrying.
-                    #     new_gallery_data = self.fetch_gallery_data(gallery.link)
-                    #     if new_gallery_data:
-                    #         gallery.archiver_key = new_gallery_data.archiver_key
-                    #         self.logger.info("Retrying with fjord link, might be hidden.")
-                    #         break
-                    #     else:
-                    #         self.logger.error("Could not fetch fjord link.")
-                    # else:
-                    #     self.logger.error("Finished retrying using fjord link.")
-
-                    self.logger.error("Retrying disabled, panda does not work anymore.")
-
-                    downloader[0].original_gallery = gallery
-                    downloader[0].original_gallery.hidden = True
-                    downloader[0].original_gallery.dl_type = 'failed'
-                    downloader[0].update_gallery_db()
-                    if downloader[0].gallery_db_entry:
-                        self.last_used_downloader = 'none'
-                        self.logger.warning("Download completed unsuccessfully, set as failed. Gallery link: {}".format(
-                            downloader[0].gallery_db_entry.get_absolute_url()
-                        ))
-                        for wanted_gallery in gallery_wanted_lists[gallery.gid]:
-                            FoundGallery.objects.get_or_create(
-                                wanted_gallery=wanted_gallery,
-                                gallery=downloader[0].gallery_db_entry
-                            )
-                    retry_attempt = False
 
 
 API = (

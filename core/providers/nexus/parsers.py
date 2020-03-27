@@ -14,6 +14,7 @@ from core.base.utilities import (
     translate_tag_list, request_with_retries)
 from core.base.types import GalleryData
 from . import constants
+from viewer.models import Gallery
 
 if typing.TYPE_CHECKING:
     from viewer.models import WantedGallery
@@ -185,41 +186,85 @@ class Parser(BaseParser):
         if not feed_url:
             feed_url = constants.rss_url
 
-        response = request_with_retries(
-            feed_url,
-            {
-                'headers': self.settings.requests_headers,
-                'timeout': self.settings.timeout_timer,
-            },
-            post=False,
-            logger=self.logger
-        )
+        current_page = 1
 
-        if not response:
-            self.logger.error("No response from URL: {}, returning".format(feed_url))
-            return urls
+        m = re.search(r".*?/page/(\d+)", feed_url)
+        if m and m.group(1):
+            current_page = int(m.group(1))
+            feed_url = constants.rss_url
 
-        response.encoding = 'utf-8'
+        while True:
 
-        match_string = re.compile(r"/view/(\d+)/*$")
+            paged_feed_url = "{}/page/{}".format(feed_url, current_page)
 
-        soup = BeautifulSoup(response.text, 'html.parser')
+            if current_page > 1:
+                time.sleep(self.settings.wait_timer)
 
-        content_container = soup.find("div", class_="columns")
+            response = request_with_retries(
+                paged_feed_url,
+                {
+                    'headers': self.settings.requests_headers,
+                    'timeout': self.settings.timeout_timer,
+                },
+                post=False,
+                logger=self.logger
+            )
 
-        if not content_container:
-            self.logger.error("Content container not found, returning")
-            return urls
+            if not response:
+                self.logger.error("No response from URL: {}, returning".format(paged_feed_url))
+                return urls
 
-        url_containers = content_container.find_all("a", href=match_string)
+            response.encoding = 'utf-8'
 
-        for url_container in url_containers:
+            match_string = re.compile(r"/view/(\d+)/*$")
 
-            url_link = url_container.get('href')
+            soup = BeautifulSoup(response.text, 'html.parser')
 
-            complete_url = "{}{}".format(constants.main_page, url_link)
+            content_container = soup.find("div", class_="columns")
 
-            urls.append(complete_url)
+            if not content_container:
+                self.logger.error("Content container not found, returning")
+                return urls
+
+            url_containers = content_container.find_all("a", href=match_string)
+
+            current_gids: List[str] = []
+
+            for url_container in url_containers:
+
+                url_link = url_container.get('href')
+
+                complete_url = "{}{}".format(constants.main_page, url_link)
+
+                gid = self.id_from_url(complete_url)
+
+                if gid:
+                    current_gids.append(gid)
+
+            if len(current_gids) < 1:
+                self.logger.info(
+                    'Got to page {}, and we got less than 1 gallery, '
+                    'meaning there is no more pages, stopping'.format(current_page)
+                )
+                break
+
+            used = Gallery.objects.filter(gid__in=current_gids, provider=constants.provider_name)
+
+            if used.count() == len(current_gids):
+                self.logger.info(
+                    'Got to page {}, it has already been processed entirely, stopping'.format(current_page)
+                )
+                break
+
+            used_gids = used.values_list('gid', flat=True)
+
+            current_urls: List[str] = [
+                '{}/view/{}'.format(constants.main_page, x) for x in list(set(current_gids).difference(used_gids))
+            ]
+
+            urls.extend(current_urls)
+
+            current_page += 1
 
         return urls
 

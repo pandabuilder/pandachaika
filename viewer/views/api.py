@@ -769,19 +769,46 @@ def simple_archive_filter(args: str, public: bool = True) -> ArchiveQuerySet:
             tag_scope = ''
             tag_name = scope_name[0]
         if tag.startswith("-"):
+            if tag_name != '' and tag_scope != '':
+                tag_query = (
+                    (Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope))
+                    | (Q(custom_tags__name__contains=tag_name) & Q(custom_tags__scope__contains=tag_scope))
+                )
+            elif tag_name != '':
+                tag_query = (Q(tags__name__contains=tag_name) | Q(custom_tags__name__contains=tag_name))
+            else:
+                tag_query = (Q(tags__scope__contains=tag_scope) | Q(custom_tags__scope__contains=tag_scope))
+
             results = results.exclude(
-                (Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope))
-                | (Q(custom_tags__name__contains=tag_name) & Q(custom_tags__scope__contains=tag_scope))
+                tag_query
             )
         elif tag.startswith("^"):
+            if tag_name != '' and tag_scope != '':
+                tag_query = (
+                    (Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope))
+                    | (Q(custom_tags__name__exact=tag_name) & Q(custom_tags__scope__exact=tag_scope))
+                )
+            elif tag_name != '':
+                tag_query = (Q(tags__name__exact=tag_name) | Q(custom_tags__name__exact=tag_name))
+            else:
+                tag_query = (Q(tags__scope__exact=tag_scope) | Q(custom_tags__scope__exact=tag_scope))
+
             results = results.filter(
-                (Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope))
-                | (Q(custom_tags__name__exact=tag_name) & Q(custom_tags__scope__exact=tag_scope))
+                tag_query
             )
         else:
+            if tag_name != '' and tag_scope != '':
+                tag_query = (
+                    (Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope))
+                    | (Q(custom_tags__name__contains=tag_name) & Q(custom_tags__scope__contains=tag_scope))
+                )
+            elif tag_name != '':
+                tag_query = (Q(tags__name__contains=tag_name) | Q(custom_tags__name__contains=tag_name))
+            else:
+                tag_query = (Q(tags__scope__contains=tag_scope) | Q(custom_tags__scope__contains=tag_scope))
+
             results = results.filter(
-                (Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope))
-                | (Q(custom_tags__name__contains=tag_name) & Q(custom_tags__scope__contains=tag_scope))
+                tag_query
             )
     results = results | results_title
 
@@ -859,17 +886,38 @@ def filter_galleries_no_request(filter_args: Dict[str, Any]) -> GalleryQuerySet:
                 tag_scope = ''
                 tag_name = scope_name[0]
             if tag.startswith("-"):
+                if tag_name != '' and tag_scope != '':
+                    tag_query = Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)
+                elif tag_name != '':
+                    tag_query = Q(tags__name__contains=tag_name)
+                else:
+                    tag_query = Q(tags__scope__contains=tag_scope)
+
                 results = results.exclude(
-                    Q(tags__name__contains=tag_name),
-                    Q(tags__scope__contains=tag_scope))
+                    tag_query
+                )
             elif tag.startswith("^"):
+                if tag_name != '' and tag_scope != '':
+                    tag_query = Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope)
+                elif tag_name != '':
+                    tag_query = Q(tags__name__exact=tag_name)
+                else:
+                    tag_query = Q(tags__scope__exact=tag_scope)
+
                 results = results.filter(
-                    Q(tags__name__exact=tag_name),
-                    Q(tags__scope__exact=tag_scope))
+                    tag_query
+                )
             else:
+                if tag_name != '' and tag_scope != '':
+                    tag_query = Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)
+                elif tag_name != '':
+                    tag_query = Q(tags__name__contains=tag_name)
+                else:
+                    tag_query = Q(tags__scope__contains=tag_scope)
+
                 results = results.filter(
-                    Q(tags__name__contains=tag_name),
-                    Q(tags__scope__contains=tag_scope))
+                    tag_query
+                )
 
     results = results.distinct()
 

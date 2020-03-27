@@ -1,11 +1,13 @@
 import logging
 import typing
+from urllib.parse import urljoin
 
 from django.conf import settings
 from django.core.mail import BadHeaderError
 from django.db.models import Q
 from django.dispatch import receiver
-from django.utils.html import urlize
+from django.urls import reverse
+from django.utils.html import urlize, linebreaks
 
 from viewer.models import Gallery, users_with_perm, WantedGallery
 from viewer.signals import wanted_gallery_found
@@ -28,12 +30,18 @@ def wanted_gallery_found_handler(sender: typing.Any, **kwargs: typing.Any) -> No
     if not notify_wanted_filters:
         return
 
+    main_url = crawler_settings.urls.main_webserver_url
+
     message = "Title: {}, source link: {}, link: {}\nFilters title, reason: {}\nGallery tags: {}".format(
         gallery.title,
         gallery.get_link(),
-        gallery.get_absolute_url(),
+        urljoin(main_url, gallery.get_absolute_url()),
         ', '.join(notify_wanted_filters),
         '\n'.join(gallery.tag_list_sorted())
+    )
+
+    message += '\nYou can manage the archives in: {}'.format(
+        urljoin(main_url, reverse('viewer:manage-archives'))
     )
 
     # Mail users
@@ -52,7 +60,7 @@ def wanted_gallery_found_handler(sender: typing.Any, **kwargs: typing.Any) -> No
         datatuples = tuple([(
             "Wanted Gallery match found",
             message,
-            urlize(message),
+            urlize(linebreaks(message)),
             crawler_settings.mail_logging.from_,
             (mail,)
         ) for mail in mails])

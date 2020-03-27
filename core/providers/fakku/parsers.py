@@ -76,6 +76,11 @@ class Parser(BaseParser):
                         gallery.tags.append(
                             translate_tag("artist:" + artist.get_text())
                         )
+                elif left_text == "Author":
+                    for author in right_div.find_all("a"):
+                        gallery.tags.append(
+                            translate_tag("author:" + author.get_text())
+                        )
                 elif left_text == "Magazine":
                     gallery.tags.append(
                         translate_tag("magazine:" + right_div.get_text()))

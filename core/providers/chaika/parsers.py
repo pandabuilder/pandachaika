@@ -2,7 +2,7 @@
 import typing
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Iterable
 
 from core.base.parsers import BaseParser
 
@@ -20,11 +20,13 @@ if typing.TYPE_CHECKING:
 class Parser(BaseParser):
     name = constants.provider_name
     ignore = False
-    # TODO: way too simple url filter. Should check settings somehow.
     accepted_urls = ['gs=', 'gsp=', 'gd=']
 
+    def filter_accepted_urls(self, urls: Iterable[str]) -> List[str]:
+        return [x for x in urls if any(word in x for word in self.accepted_urls) and x in self.own_settings.url]
+
     def get_feed_urls(self) -> List[str]:
-        return [self.own_settings.rss_url, ]
+        return [self.own_settings.feed_url, ]
 
     def crawl_feed(self, feed_url: str = None) -> Optional[str]:
 

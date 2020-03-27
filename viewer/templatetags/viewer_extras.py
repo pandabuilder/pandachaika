@@ -1,4 +1,5 @@
 from typing import Any, TypeVar, Union, ItemsView
+from urllib import parse
 
 from django import template
 from django.template import RequestContext
@@ -77,5 +78,12 @@ def color_percent(fraction: int, total: int) -> str:
 def format_setting_value(value: T) -> Union[T, ItemsView[str, Any]]:
     if hasattr(value, '__dict__'):
         return vars(value).items()
+    elif hasattr(value, '__slots__'):
+        return {k: getattr(value, k) for k in value.__slots__}.items()
     else:
         return value
+
+
+@register.filter
+def derefer(link: str) -> str:
+    return ' http://dereferer.org/?{}'.format(parse.quote(link))

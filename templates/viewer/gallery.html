@@ -4,6 +4,7 @@
 {% block sidebar %}{% endblock %}
 
 {% block content %}
+  {% load viewer_extras %}
   {% if messages %}
     {% for message in messages %}
       <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
@@ -69,7 +70,7 @@
         </tr>
         <tr>
           <th>Source URL</th>
-          <td>{{ gallery.get_link|urlize }}</td>
+          <td>{{ gallery.get_link|urlize }}, <a href="{{ gallery.get_link|derefer }}">derefered</a></td>
         </tr>
         <tr>
           <th>Contained in</th>

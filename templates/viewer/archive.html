@@ -94,7 +94,7 @@
         <table>
           <tr>
             <th>Source metadata</th>
-            <td>{{ archive.get_link|urlize }}</td>
+            <td>{{ archive.get_link|urlize }}, <a href="{{ archive.get_link|derefer }}">derefered</a></td>
           </tr>
           <tr>
             <th>Description</th>

@@ -12,8 +12,6 @@ class OwnSettings(ProviderSettings):
         self.cookies: DataDict = {}
         self.hath_dl_folder = ''
         self.local_hath_folder = ''
-        self.get_newer_gallery = False
-        self.crawl_gallery_page = False
         self.stop_page_number = 0
         self.remote_hath_dir = ''
         self.archive_dl_folder = ''
@@ -40,10 +38,6 @@ def parse_config(global_settings: 'Settings', config: typing.Dict[str, typing.An
     if 'general' in config:
         if 'stop_page_number' in config['general']:
             settings.stop_page_number = int(config['general']['stop_page_number'])
-        if 'crawl_gallery_page' in config['general']:
-            settings.crawl_gallery_page = config['general'].getboolean('crawl_gallery_page')
-        if 'get_newer_gallery' in config['general']:
-            settings.get_newer_gallery = config['general'].getboolean('get_newer_gallery')
         if 'accepted_rss_categories' in config['general']:
             settings.accepted_rss_categories = config['general']['accepted_rss_categories'].split(",")
     if 'cookies' in config:

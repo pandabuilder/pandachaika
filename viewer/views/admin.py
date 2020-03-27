@@ -47,7 +47,7 @@ crawler_settings = settings.CRAWLER_SETTINGS
 
 @login_required
 def stats_settings(request: HttpRequest) -> HttpResponse:
-    """Display setting objects."""
+    """Display settings objects."""
 
     if not request.user.is_staff:
         return render_error(request, "You need to be an admin to view setting objects.")

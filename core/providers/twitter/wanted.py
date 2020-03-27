@@ -47,7 +47,8 @@ def wanted_generator(settings: 'Settings', ext_logger: OptionalLogger, attrs: Qu
             match_tweet_type = re.search('【(.+)】(.*)', tweet['text'], re.DOTALL)
             if match_tweet_type:
                 local_logger.info("Matched pattern (date_type: {}, title, artist: {}),".format(
-                    match_tweet_type.group(1), match_tweet_type.group(2))
+                    match_tweet_type.group(1).replace('\n', ''),
+                    match_tweet_type.group(2).replace('\n', ''))
                 )
                 release_type = None
                 release_date = None
@@ -73,7 +74,9 @@ def wanted_generator(settings: 'Settings', ext_logger: OptionalLogger, attrs: Qu
                 if match_title_artists and release_type:
 
                     local_logger.info("Matched pattern (title: {}, artists: {}), release_type: {}.".format(
-                        match_title_artists.group(1), match_title_artists.group(2), release_type)
+                        match_title_artists.group(1).replace('\n', ''),
+                        match_title_artists.group(2).replace('\n', ''),
+                        release_type)
                     )
 
                     title = match_title_artists.group(1)
@@ -113,6 +116,15 @@ def wanted_generator(settings: 'Settings', ext_logger: OptionalLogger, attrs: Qu
                         type=release_type,
                         source=source,
                     )
+
+                    if mention_created:
+                        yield (
+                            "Created mention for wanted gallery: {}, mention date: {}".format(
+                                wanted_gallery.get_absolute_url(),
+                                mention_date
+                            )
+                        )
+
                     if mention_created and cover_url:
                         mention.save_img(cover_url)
                         # wanted_gallery.calculate_nearest_release_date()
@@ -120,15 +132,16 @@ def wanted_generator(settings: 'Settings', ext_logger: OptionalLogger, attrs: Qu
                         wanted_gallery.save()
 
                     for artist in artists:
+                        artist_name = artist
                         twitter_handle = ''
                         match_artist_handle = re.search('^(.+?)（@(.+?)）', artist, re.DOTALL)
                         if match_artist_handle:
-                            artist = match_artist_handle.group(1)
+                            artist_name = match_artist_handle.group(1)
                             twitter_handle = match_artist_handle.group(2)
-                        artist_obj = Artist.objects.filter(name_jpn=artist).first()
+                        artist_obj = Artist.objects.filter(name_jpn=artist_name).first()
                         if not artist_obj:
                             artist_obj = Artist.objects.create(
-                                name=artist, name_jpn=artist, twitter_handle=twitter_handle
+                                name=artist_name, name_jpn=artist_name, twitter_handle=twitter_handle
                             )
                         wanted_gallery.artists.add(artist_obj)
 
@@ -136,42 +149,45 @@ def wanted_generator(settings: 'Settings', ext_logger: OptionalLogger, attrs: Qu
                 if match_artist_title and release_type:
 
                     local_logger.info("Matched pattern (artist: {}, title: {}), release type: {}.".format(
-                        match_artist_title.group(1), match_artist_title.group(2), release_type)
+                        match_artist_title.group(1).replace('\n', ''),
+                        match_artist_title.group(2).replace('\n', ''),
+                        release_type)
                     )
 
                     artist = match_artist_title.group(1)
+                    artist_name = artist
                     twitter_handle = ''
                     match_artist_handle = re.search('^(.+?)（@(.+?)）', artist, re.DOTALL)
                     if match_artist_handle:
-                        artist = match_artist_handle.group(1)
+                        artist_name = match_artist_handle.group(1)
                         twitter_handle = match_artist_handle.group(2)
                     title = match_artist_title.group(2)
                     title = title.replace("X-EROS#", "X-EROS #")
                     cover_artist = None
                     book_type = None
                     if '最新刊' in artist:
-                        artist = artist.replace('最新刊', '')
+                        artist_name = artist_name.replace('最新刊', '')
                         book_type = 'new_publication'
-                        cover_artist = Artist.objects.filter(name_jpn=artist).first()
+                        cover_artist = Artist.objects.filter(name_jpn=artist_name).first()
                         if not cover_artist:
                             cover_artist = Artist.objects.create(
-                                name=artist, name_jpn=artist, twitter_handle=twitter_handle
+                                name=artist_name, name_jpn=artist_name, twitter_handle=twitter_handle
                             )
                     elif '初単行本' in artist and ('『' not in artist and '』' not in artist):
-                        artist = artist.replace('初単行本', '')
+                        artist_name = artist_name.replace('初単行本', '')
                         book_type = 'first_book'
-                        cover_artist = Artist.objects.filter(name_jpn=artist).first()
+                        cover_artist = Artist.objects.filter(name_jpn=artist_name).first()
                         if not cover_artist:
                             cover_artist = Artist.objects.create(
-                                name=artist, name_jpn=artist, twitter_handle=twitter_handle
+                                name=artist_name, name_jpn=artist_name, twitter_handle=twitter_handle
                             )
                     elif '表紙が目印の' in artist:
-                        artist = artist.replace('表紙が目印の', '')
+                        artist_name = artist_name.replace('表紙が目印の', '')
                         book_type = "magazine"
-                        cover_artist = Artist.objects.filter(name_jpn=artist).first()
+                        cover_artist = Artist.objects.filter(name_jpn=artist_name).first()
                         if not cover_artist:
                             cover_artist = Artist.objects.create(
-                                name=artist, name_jpn=artist, twitter_handle=twitter_handle
+                                name=artist_name, name_jpn=artist_name, twitter_handle=twitter_handle
                             )
                     if book_type:
                         wanted_gallery, created = WantedGallery.objects.update_or_create(
@@ -202,16 +218,25 @@ def wanted_generator(settings: 'Settings', ext_logger: OptionalLogger, attrs: Qu
                             type=release_type,
                             source=source,
                         )
+
+                        if mention_created:
+                            yield (
+                                "Created mention for wanted gallery: {}, mention date: {}".format(
+                                    wanted_gallery.get_absolute_url(),
+                                    mention_date
+                                )
+                            )
+
                         if mention_created and cover_url:
                             mention.save_img(cover_url)
                             # wanted_gallery.calculate_nearest_release_date()
                             wanted_gallery.release_date = release_date
                             wanted_gallery.save()
 
-                        artist_obj = Artist.objects.filter(name_jpn=artist).first()
+                        artist_obj = Artist.objects.filter(name_jpn=artist_name).first()
                         if not artist_obj:
                             artist_obj = Artist.objects.create(
-                                name=artist, name_jpn=artist, twitter_handle=twitter_handle
+                                name=artist_name, name_jpn=artist_name, twitter_handle=twitter_handle
                             )
                         wanted_gallery.artists.add(artist_obj)
             else:

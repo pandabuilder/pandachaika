@@ -116,14 +116,14 @@ class PostDownloader(object):
             self.current_download['filesize'] = filesize
             self.current_download['downloaded'] = 0
             self.current_download['filename'] = cmd.replace('RETR ', '')
-            start = time.clock()
+            start = time.perf_counter()
             while 1:
                 data = conn.recv(blocksize)
                 if not data:
                     break
                 downloaded = len(data)
                 self.current_download['downloaded'] += downloaded
-                current = time.clock()
+                current = time.perf_counter()
                 if current > start:
                     self.current_download['speed'] = self.current_download['downloaded'] / ((current - start) * 1024)
                 callback(data)

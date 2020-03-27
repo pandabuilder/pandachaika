@@ -143,7 +143,8 @@ class ArchiveSearchForm(forms.Form):
             attrs={
                 'class': 'form-control',
                 'aria-label': 'tags',
-                'placeholder': 'Comma separated tags. - to exclude, ^ for exact matching',
+                'placeholder': 'Comma separated tags. - to exclude, ^ for exact matching.'
+                               ' End a term with : to match scope only',
                 'data-autocomplete-minimum-characters': 3,
             },
         ),
@@ -332,7 +333,8 @@ class GallerySearchForm(forms.Form):
             url='tag-autocomplete',
             attrs={
                 'class': 'form-control',
-                'placeholder': 'Comma separated tags. - to exclude, ^ for exact matching',
+                'placeholder': 'Comma separated tags. - to exclude, ^ for exact matching.'
+                               ' End a term with : to match scope only',
                 'data-autocomplete-minimum-characters': 3,
             },
         ),
@@ -362,7 +364,8 @@ class WantedGallerySearchForm(forms.Form):
             url='tag-autocomplete',
             attrs={
                 'class': 'form-control',
-                'placeholder': 'Comma separated tags. - to exclude, ^ for exact matching',
+                'placeholder': 'Comma separated tags. - to exclude, ^ for exact matching.'
+                               ' End a term with : to match scope only',
                 'data-autocomplete-minimum-characters': 3,
             },
         ),

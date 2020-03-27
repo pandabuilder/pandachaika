@@ -259,10 +259,6 @@ class BaseParser:
         if cls.id_from_url is not BaseParser.id_from_url:
             return True
         return False
-    #
-    # @staticmethod
-    # def resolve_url(gallery):
-    #     pass
 
     @staticmethod
     def get_feed_urls() -> List[str]:

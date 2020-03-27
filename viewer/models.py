@@ -6,7 +6,7 @@ import typing
 import uuid
 import zipfile
 from collections import Counter
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date
 from itertools import chain
 
 import elasticsearch
@@ -1730,7 +1730,7 @@ class WantedGallery(models.Model):
         if not mention_dates:
             return
         mention_dates = [x.date() for x in mention_dates]
-        date_count = Counter(mention_dates)
+        date_count: typing.Counter[date] = Counter(mention_dates)
         most_occurring_date = date_count.most_common(1)[0][0]
         self.release_date = datetime.combine(most_occurring_date, datetime.min.time())
         self.save()

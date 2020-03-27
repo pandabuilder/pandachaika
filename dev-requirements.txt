@@ -1,7 +1,7 @@
 -r requirements.txt
 django-debug-toolbar
 django-unused-media
-mypy==0.760
+mypy==0.770
 flake8==3.7.9
 coverage
 django-nose
