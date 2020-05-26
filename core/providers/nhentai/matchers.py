@@ -8,7 +8,7 @@ from core.base.matchers import Matcher
 from core.base.types import DataDict
 from core.base.utilities import (
     filecount_in_zip,
-    get_zip_filesize)
+    get_zip_filesize, construct_request_dict)
 from . import constants
 
 
@@ -55,8 +55,13 @@ class TitleMatcher(Matcher):
 
     def compare_by_title(self, title: str) -> bool:
 
-        payload = {'q': title}
-        r = requests.get("{}/search/".format(constants.main_page), params=payload, timeout=self.settings.timeout_timer)
+        request_dict = construct_request_dict(self.settings, self.own_settings)
+        request_dict['params'] = {'q': title}
+
+        r = requests.get(
+            "{}/search/".format(constants.main_page),
+            **request_dict
+        )
 
         m = re.finditer(r'a href="/g/(\d+)/"', r.text)
 

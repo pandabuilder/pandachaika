@@ -14,7 +14,7 @@ from django.db.models import QuerySet
 
 from core.base.parsers import BaseParser
 from core.base.utilities import (
-    chunks, request_with_retries)
+    chunks, request_with_retries, construct_request_dict)
 from core.base.types import GalleryData, DataDict
 from viewer.models import Gallery
 from .utilities import link_from_gid_token_fjord, map_external_gallery_data_to_internal, \
@@ -48,7 +48,7 @@ class Parser(BaseParser):
         for i, group in enumerate(api_page_links_chunks):
 
             if i % 3 == 2:
-                time.sleep(self.settings.wait_timer)
+                time.sleep(self.own_settings.wait_timer)
 
             data = {
                 'method': 'gtoken',
@@ -56,13 +56,13 @@ class Parser(BaseParser):
 
             headers = {'Content-Type': 'application/json'}
 
+            request_dict = construct_request_dict(self.settings, self.own_settings)
+            request_dict['headers'] = {**headers, **self.settings.requests_headers}
+            request_dict['data'] = json.dumps(data)
+
             response = request_with_retries(
                 constants.ge_api_url,
-                {
-                    'data': json.dumps(data),
-                    'headers': {**headers, **self.settings.requests_headers},
-                    'timeout': self.settings.timeout_timer
-                },
+                request_dict,
                 post=True,
                 logger=self.logger
             )
@@ -109,20 +109,18 @@ class Parser(BaseParser):
                     list(parsed[0:4]) + [new_query] + list(parsed[5:]))
                 current_page = 0
 
+            request_dict = construct_request_dict(self.settings, self.own_settings)
+
             main_page_text = requests.get(
                 url,
-                cookies=self.own_settings.cookies,
-                headers=self.settings.requests_headers,
-                timeout=self.settings.timeout_timer
+                **request_dict
             ).text
+
+            request_dict = construct_request_dict(self.settings, self.own_settings)
 
             response = request_with_retries(
                 url,
-                {
-                    'headers': self.settings.requests_headers,
-                    'timeout': self.settings.timeout_timer,
-                    'cookies': self.own_settings.cookies
-                },
+                request_dict,
                 post=False,
                 logger=self.logger
             )
@@ -162,7 +160,7 @@ class Parser(BaseParser):
                 new_query = urllib.parse.urlencode(query, doseq=True)
                 url = urllib.parse.urlunparse(
                     list(parsed[0:4]) + [new_query] + list(parsed[5:]))
-                time.sleep(self.settings.wait_timer)
+                time.sleep(self.own_settings.wait_timer)
 
         return unique_urls
 
@@ -175,7 +173,7 @@ class Parser(BaseParser):
         for i, group in enumerate(gid_token_chunks):
 
             if i % 3 == 2:
-                time.sleep(self.settings.wait_timer)
+                time.sleep(self.own_settings.wait_timer)
             if not self.settings.silent_processing:
                 self.logger.info(
                     "Calling fjord API ({}). "
@@ -191,14 +189,13 @@ class Parser(BaseParser):
 
             headers = {'Content-Type': 'application/json'}
 
+            request_dict = construct_request_dict(self.settings, self.own_settings)
+            request_dict['headers'] = {**headers, **self.settings.requests_headers}
+            request_dict['data'] = json.dumps(data)
+
             response = request_with_retries(
                 constants.ge_api_url,
-                {
-                    'data': json.dumps(data),
-                    'headers': {**headers, **self.settings.requests_headers},
-                    'cookies': self.own_settings.cookies,
-                    'timeout': self.settings.timeout_timer
-                },
+                request_dict,
                 post=True,
                 logger=self.logger
             )
@@ -240,14 +237,13 @@ class Parser(BaseParser):
 
         headers = {'Content-Type': 'application/json'}
 
+        request_dict = construct_request_dict(self.settings, self.own_settings)
+        request_dict['headers'] = {**headers, **self.settings.requests_headers}
+        request_dict['data'] = json.dumps(data)
+
         response = request_with_retries(
             constants.ge_api_url,
-            {
-                'data': json.dumps(data),
-                'headers': {**headers, **self.settings.requests_headers},
-                'cookies': self.own_settings.cookies,
-                'timeout': self.settings.timeout_timer
-            },
+            request_dict,
             post=True,
             logger=self.logger
         )
@@ -276,14 +272,28 @@ class Parser(BaseParser):
 
     def crawl_feed(self, feed_url: str = None) -> List[str]:
 
-        urls = []
+        urls: List[str] = []
 
         if not feed_url:
             feed_url = constants.rss_url
-        feed = feedparser.parse(
+
+        request_dict = construct_request_dict(self.settings, self.own_settings)
+
+        response = request_with_retries(
             feed_url,
-            handlers=ProxyHandler,
-            request_headers=self.settings.requests_headers
+            request_dict,
+            post=False,
+            logger=self.logger
+        )
+
+        if not response:
+            self.logger.error("Got no response from feed URL: {}".format(feed_url))
+            return urls
+
+        response.encoding = 'utf-8'
+
+        feed = feedparser.parse(
+            response.text
         )
 
         for item in feed['items']:
@@ -404,7 +414,7 @@ class Parser(BaseParser):
         for i, group in enumerate(fetch_format_galleries_chunks):
             # Set based on recommendation in official documentation
             if i % 3 == 2:
-                time.sleep(self.settings.wait_timer)
+                time.sleep(self.own_settings.wait_timer)
             if not self.settings.silent_processing:
                 self.logger.info(
                     "Calling non-fjord API ({}). "
@@ -420,13 +430,13 @@ class Parser(BaseParser):
 
             headers = {'Content-Type': 'application/json'}
 
+            request_dict = construct_request_dict(self.settings, self.own_settings)
+            request_dict['headers'] = {**headers, **self.settings.requests_headers}
+            request_dict['data'] = json.dumps(data)
+
             response = request_with_retries(
                 constants.ge_api_url,
-                {
-                    'data': json.dumps(data),
-                    'headers': {**headers, **self.settings.requests_headers},
-                    'timeout': self.settings.timeout_timer
-                },
+                request_dict,
                 post=True,
                 logger=self.logger
             )

@@ -12,7 +12,7 @@ from core.base.utilities import (
     filecount_in_zip,
     get_zip_filesize,
     discard_zipfile_contents, zfill_to_three,
-    sha1_from_file_object, clean_title)
+    sha1_from_file_object, clean_title, construct_request_dict)
 from core.providers.panda.utilities import link_from_gid_token_fjord, get_gid_token_from_link, SearchHTMLParser, \
     GalleryHTMLParser
 from . import constants
@@ -96,12 +96,12 @@ class ImageMatcher(Matcher):
                    'fs_covers': 1 if only_cover else 0,
                    'fs_similar': 0}
 
+        request_dict = construct_request_dict(self.settings, self.own_settings)
+        request_dict['params'] = payload
+
         r = requests.get(
             constants.ex_page,
-            params=payload,
-            cookies=self.own_settings.cookies,
-            headers=self.settings.requests_headers,
-            timeout=self.settings.timeout_timer
+            **request_dict
         )
 
         my_zip.close()
@@ -171,12 +171,12 @@ class TitleMatcher(Matcher):
 
         filters = {'f_search': '"' + image_title + '"'}
 
+        request_dict = construct_request_dict(self.settings, self.own_settings)
+        request_dict['params'] = filters
+
         r = requests.get(
             constants.ex_page,
-            params=filters,
-            cookies=self.own_settings.cookies,
-            headers=self.settings.requests_headers,
-            timeout=self.settings.timeout_timer
+            **request_dict
         )
 
         parser = SearchHTMLParser()
@@ -200,7 +200,14 @@ class TitleGoogleMatcher(TitleMatcher):
     def compare_by_title_google(self, title: str) -> bool:
 
         payload = {'q': 'site:e-hentai.org ' + title}
-        r = requests.get("https://www.google.com/search", params=payload, timeout=self.settings.timeout_timer)
+
+        request_dict = construct_request_dict(self.settings, self.own_settings)
+        request_dict['params'] = payload
+
+        r = requests.get(
+            "https://www.google.com/search",
+            **request_dict
+        )
 
         matches_links = set()
 
@@ -235,14 +242,15 @@ class TitleGoogleMatcher(TitleMatcher):
 
     def get_final_link_from_link(self, link: str) -> str:
 
-        time.sleep(self.settings.wait_timer)
+        time.sleep(self.own_settings.wait_timer)
         gallery_gid, gallery_token = get_gid_token_from_link(link)
         gallery_link = link_from_gid_token_fjord(gallery_gid, gallery_token, True)
+
+        request_dict = construct_request_dict(self.settings, self.own_settings)
+
         gallery_page_text = requests.get(
             gallery_link,
-            cookies=self.own_settings.cookies,
-            headers=self.settings.requests_headers,
-            timeout=self.settings.timeout_timer
+            **request_dict
         ).text
 
         if 'Gallery Not Available' in gallery_page_text:

@@ -192,7 +192,8 @@ class WebCrawler(object):
                 self.logger.info('Crawling a Panda Backup JSON string from a file.')
         else:
             response = requests.get(
-                args.json_source
+                args.json_source,
+                timeout=current_settings.timeout_timer
             )
             json_string = response.text
             self.logger.info('Crawling a Panda Backup JSON string from a URL.')
@@ -269,7 +270,11 @@ class WebCrawler(object):
         if args.set_details:
             current_settings.archive_details = args.set_details
 
-        parsers = current_settings.provider_context.get_parsers(current_settings, parser_logger)
+        provider_filter_list: List[str] = []
+        if args.include_providers:
+            provider_filter_list.extend(args.include_providers)
+
+        parsers = current_settings.provider_context.get_parsers(current_settings, parser_logger, filter_names=provider_filter_list)
 
         if archive_callback or gallery_callback:
             for parser in parsers:
@@ -502,3 +507,5 @@ class WebCrawler(object):
                             archive.title_jpn = archive.gallery.title_jpn
                             archive.simple_save()
                             archive.tags.set(archive.gallery.tags.all())
+        else:
+            self.logger.info("No galleries with missing thumbnail after applying filters")

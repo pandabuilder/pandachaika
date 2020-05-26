@@ -6,7 +6,7 @@ from core.base.types import GalleryData, DataDict
 from core.base.utilities import (
     filecount_in_zip,
     get_zip_filesize,
-    clean_title, request_with_retries)
+    clean_title, request_with_retries, construct_request_dict)
 from core.providers.mugimugi.utilities import convert_api_response_text_to_gallery_dicts
 from . import constants
 
@@ -76,12 +76,11 @@ class TitleMatcher(Matcher):
                 page
             )
 
+            request_dict = construct_request_dict(self.settings, self.own_settings)
+
             response = request_with_retries(
                 link,
-                {
-                    'headers': self.settings.requests_headers,
-                    'timeout': self.settings.timeout_timer,
-                },
+                request_dict,
                 post=False,
                 logger=self.logger
             )

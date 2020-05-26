@@ -30,7 +30,11 @@ class Parser(BaseParser):
                 self.logger.warning("Invalid URL, skipping: {}".format(url))
                 continue
 
-            url = url.replace(constants.base_url, constants.old_base_url)
+            if '/file/' in url:
+                if constants.old_base_url in url:
+                    url = url.replace(constants.old_base_url, constants.base_url)
+            else:
+                url = url.replace(constants.base_url, constants.old_base_url)
 
             unique_urls.add(url)
 

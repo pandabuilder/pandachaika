@@ -25,6 +25,7 @@ class BaseScheduler(object):
         self.settings = settings
         self.stop = threading.Event()
         self.web_queue = web_queue
+        self.original_timer = timer
         self.timer = self.timer_to_seconds(timer)
         self.job_thread: Optional[threading.Thread] = None
         self.last_run: Optional[datetime.datetime] = None

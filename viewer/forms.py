@@ -195,7 +195,7 @@ class ArchiveSearchSimpleForm(forms.Form):
             url='source-autocomplete',
             attrs={
                 'class': 'form-control mr-sm-1',
-                'placeholder': 'panda, fakku',
+                'placeholder': 'panda, etc.',
                 'data-autocomplete-minimum-characters': 3,
                 'size': 10,
             },

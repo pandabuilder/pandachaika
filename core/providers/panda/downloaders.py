@@ -9,7 +9,7 @@ from bs4 import BeautifulSoup
 
 from core.base.types import DataDict
 from core.base.utilities import calc_crc32, request_with_retries, \
-    get_base_filename_string_from_gallery_data, get_zip_fileinfo
+    get_base_filename_string_from_gallery_data, get_zip_fileinfo, construct_request_dict
 from core.downloaders.handlers import BaseDownloader, BaseInfoDownloader, BaseFakeDownloader, BaseTorrentDownloader
 from core.downloaders.torrent import get_torrent_client
 from core.providers.panda.utilities import TorrentHTMLParser, get_archive_link_from_html_page
@@ -33,15 +33,13 @@ class ArchiveDownloader(BaseDownloader):
 
         params = {'gid': gid, 'token': token, 'or': key}
 
+        request_dict = construct_request_dict(self.settings, self.own_settings)
+        request_dict['params'] = params
+        request_dict['data'] = constants.archive_download_data
+
         response = request_with_retries(
             url,
-            {
-                'params': params,
-                'cookies': self.own_settings.cookies,
-                'data': constants.archive_download_data,
-                'headers': self.settings.requests_headers,
-                'timeout': self.settings.timeout_timer
-            },
+            request_dict,
             post=True,
             logger=self.logger
         )
@@ -104,11 +102,12 @@ class ArchiveDownloader(BaseDownloader):
 
                 self.logger.info('Got link: {}, from url: {}'.format(archive_link, r.url))
 
+                request_dict = construct_request_dict(self.settings, self.own_settings)
+
                 request_file = requests.get(
                     archive_link + '?start=1',
                     stream='True',
-                    headers=self.settings.requests_headers,
-                    timeout=self.settings.timeout_timer
+                    **request_dict
                 )
 
                 if r and r.status_code == 200:
@@ -166,14 +165,12 @@ class TorrentDownloader(BaseTorrentDownloader):
 
         params = {'gid': gid, 't': token}
 
+        request_dict = construct_request_dict(self.settings, self.own_settings)
+        request_dict['params'] = params
+
         response = request_with_retries(
             url,
-            {
-                'params': params,
-                'cookies': self.own_settings.cookies,
-                'headers': self.settings.requests_headers,
-                'timeout': self.settings.timeout_timer
-            },
+            request_dict,
             post=True,
             logger=self.logger
         )
@@ -472,15 +469,15 @@ class HathDownloader(BaseDownloader):
 
         # self.logger.info("Requesting hath download to URL: {}".format(url))
 
+        request_dict = construct_request_dict(self.settings, self.own_settings)
+        request_dict['params'] = params
+        request_dict['data'] = {'hathdl_xres': 'org'}
+
         for retry_count in range(3):
             try:
                 r = requests.post(
                     url,
-                    params=params,
-                    cookies=self.own_settings.cookies,
-                    data={'hathdl_xres': 'org'},
-                    headers=self.settings.requests_headers,
-                    timeout=self.settings.timeout_timer
+                    **request_dict
                 )
                 return r
             except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:

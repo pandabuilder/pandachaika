@@ -6,7 +6,7 @@ import django.utils.timezone as django_tz
 from django.db.models import QuerySet
 
 from core.base.types import RealLogger, DataDict
-from core.base.utilities import request_with_retries, format_title_to_wanted_search
+from core.base.utilities import request_with_retries, format_title_to_wanted_search, construct_request_dict
 from core.providers.mugimugi.utilities import convert_api_response_text_to_gallery_dicts
 from viewer.models import Gallery, WantedGallery, Provider, Artist
 from . import constants
@@ -166,12 +166,11 @@ def wanted_generator(settings: 'Settings', ext_logger: RealLogger, attrs: QueryS
                 ))
                 return
 
+            request_dict = construct_request_dict(settings, own_settings)
+
             response = request_with_retries(
                 link,
-                {
-                    'headers': settings.requests_headers,
-                    'timeout': settings.timeout_timer,
-                },
+                request_dict,
                 post=False,
                 logger=ext_logger
             )

@@ -1,10 +1,9 @@
 import os
 from typing import Optional
 
-import requests
-
 from core.base.types import DataDict
-from core.base.utilities import replace_illegal_name, available_filename, calc_crc32, get_zip_fileinfo
+from core.base.utilities import replace_illegal_name, available_filename, calc_crc32, get_zip_fileinfo, \
+    construct_request_dict, request_with_retries
 
 from . import constants
 
@@ -36,14 +35,17 @@ class PandaBackupHttpFileDownloader(BaseDownloader):
                 self.own_settings.archive_dl_folder,
                 self.gallery.title + '.zip'))
 
-        request_file = requests.get(
+        request_dict = construct_request_dict(self.settings, self.own_settings)
+        request_dict['stream'] = True
+        request_file = request_with_retries(
             self.gallery.archiver_key['link'],
-            stream='True',
-            headers=self.settings.requests_headers,
-            timeout=self.settings.timeout_timer,
-            cookies=self.own_settings.cookies
+            request_dict,
+            logger=self.logger
         )
-
+        if not request_file:
+            self.logger.error("Could not download archive")
+            self.return_code = 0
+            return
         filepath = os.path.join(self.settings.MEDIA_ROOT,
                                 self.gallery.filename)
         with open(filepath, 'wb') as fo:

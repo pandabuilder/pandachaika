@@ -47,7 +47,7 @@ gallery_filter_keys = (
     "create_from", "create_to",
     "category", "provider", "dl_type",
     "expunged", "hidden", "fjord", "uploader", "tags", "not_used", "reason",
-    "contains", "contained"
+    "contains", "contained", "deleted"
 )
 
 archive_filter_keys = (
@@ -347,6 +347,8 @@ def gallery_list(request: HttpRequest, mode: str = 'none', tag: str = None) -> H
         if k not in display_prms:
             display_prms[k] = ''
 
+    parameters['show_source'] = False
+
     if "clear" in get:
         for k in gallery_filter_keys:
             display_prms[k] = ''
@@ -361,6 +363,8 @@ def gallery_list(request: HttpRequest, mode: str = 'none', tag: str = None) -> H
             for k, v in get.items():
                 if k in parameters:
                     parameters[k] = v
+                    print(k)
+                    print(v)
                 elif k in display_prms:
                     display_prms[k] = v
     # Fill default parameters
@@ -409,6 +413,13 @@ def gallery_list(request: HttpRequest, mode: str = 'none', tag: str = None) -> H
     return render(request, "viewer/gallery_search.html", d)
 
 
+filter_galleries_defer = (
+    "origin", "status", "thumbnail_url", "dl_type", "public", "fjord",
+    "hidden", "rating", "expunged", "comment", "gallery_container_id", "uploader",
+    "reason", "last_modified"
+)
+
+
 def filter_galleries(request: HttpRequest, session_filters: Dict[str, str], request_filters: Dict[str, str]) -> GalleryQuerySet:
     """Filter gallery results through parameters and return results list."""
 
@@ -435,9 +446,9 @@ def filter_galleries(request: HttpRequest, session_filters: Dict[str, str], requ
     if request_filters["rating_to"]:
         results = results.filter(rating__lte=float(request_filters["rating_to"]))
     if request_filters["filecount_from"]:
-        results = results.filter(filecount__gte=int(request_filters["filecount_from"]))
+        results = results.filter(filecount__gte=int(float(request_filters["filecount_from"])))
     if request_filters["filecount_to"]:
-        results = results.filter(filecount__lte=int(request_filters["filecount_to"]))
+        results = results.filter(filecount__lte=int(float(request_filters["filecount_to"])))
     if request_filters["filesize_from"]:
         results = results.filter(filesize__gte=float(request_filters["filesize_from"]))
     if request_filters["filesize_to"]:
@@ -446,22 +457,28 @@ def filter_galleries(request: HttpRequest, session_filters: Dict[str, str], requ
         results = results.filter(category__icontains=request_filters["category"])
     if request_filters["expunged"]:
         results = results.filter(expunged=request_filters["expunged"])
-    if request_filters["hidden"]:
-        results = results.filter(hidden=request_filters["hidden"])
     if request_filters["fjord"]:
         results = results.filter(fjord=request_filters["fjord"])
     if request_filters["uploader"]:
         results = results.filter(uploader=request_filters["uploader"])
     if request_filters["provider"]:
         results = results.filter(provider=request_filters["provider"])
-    if request_filters["not_used"]:
-        results = results.non_used_galleries()
+
     if request_filters["contained"]:
         results = results.filter(gallery_container__isnull=False)
     if request_filters["contains"]:
         results = results.annotate(num_contains=Count('gallery_contains')).filter(num_contains__gt=0)
     if request_filters["reason"]:
         results = results.filter(reason__contains=request_filters["reason"])
+    if request.user.is_staff:
+        if request_filters["not_used"]:
+            results = results.non_used_galleries()
+        if request_filters["hidden"]:
+            results = results.filter(hidden=request_filters["hidden"])
+        if "deleted" not in request_filters or not request_filters["deleted"]:
+            results = results.filter(~Q(status=Gallery.DELETED))
+    else:
+        results = results.filter(~Q(status=Gallery.DELETED))
 
     if request_filters["tags"]:
         needs_distinct = True
@@ -512,6 +529,9 @@ def filter_galleries(request: HttpRequest, session_filters: Dict[str, str], requ
 
     if needs_distinct:
         results = results.distinct()
+
+    # Remove fields that are admin related, not public facing
+    results = results.defer(*filter_galleries_defer)
 
     return results
 
@@ -675,13 +695,13 @@ def filter_archives(request: HttpRequest, session_filters: Dict[str, str], reque
         results = results.filter(gallery__rating__lte=float(request_filters["rating_to"]))
         needs_distinct = True
     if request_filters["filecount_from"]:
-        results = results.filter(filecount__gte=int(request_filters["filecount_from"]))
+        results = results.filter(filecount__gte=int(float(request_filters["filecount_from"])))
     if request_filters["filecount_to"]:
-        results = results.filter(filecount__lte=int(request_filters["filecount_to"]))
+        results = results.filter(filecount__lte=int(float(request_filters["filecount_to"])))
     if request_filters["filesize_from"]:
-        results = results.filter(filesize__gte=int(request_filters["filesize_from"]))
+        results = results.filter(filesize__gte=int(float(request_filters["filesize_from"])))
     if request_filters["filesize_to"]:
-        results = results.filter(filesize__lte=int(request_filters["filesize_to"]))
+        results = results.filter(filesize__lte=int(float(request_filters["filesize_to"])))
     if request_filters["posted_from"]:
         results = results.filter(gallery__posted__gte=request_filters["posted_from"])
     if request_filters["posted_to"]:
@@ -788,6 +808,9 @@ def filter_archives(request: HttpRequest, session_filters: Dict[str, str], reque
                 'tags').prefetch_related('custom_tags').defer('gallery__comment')
     else:
         results = results.distinct()
+
+    results = results.defer("details")
+
     return results
 
 
@@ -910,6 +933,9 @@ def quick_search(request: HttpRequest, parameters: DataDict, display_parameters:
                 'tags').prefetch_related('custom_tags')
     else:
         results = results.distinct()
+
+    results = results.defer("details")
+
     return results
 
 
@@ -994,7 +1020,7 @@ def url_submit(request: HttpRequest) -> HttpResponse:
                             'URL {} already exists in the backup and it\'s being reviewed.'.format(url_filtered)
                         )
                         url_messages.append('{}: Already in submit queue, link: {}, reason: {}'.format(
-                            url_filtered, gallery.get_absolute_url(), gallery.reason)
+                            url_filtered, request.build_absolute_uri(gallery.get_absolute_url()), gallery.reason)
                         )
                     elif gallery.public:
                         messages.info(
@@ -1162,9 +1188,9 @@ def filter_archives_simple(params: Dict[str, Any]) -> ArchiveQuerySet:
     if params["rating_to"]:
         results = results.filter(gallery__rating__lte=float(params["rating_to"]))
     if params["filecount_from"]:
-        results = results.filter(filecount__gte=int(params["filecount_from"]))
+        results = results.filter(filecount__gte=int(float(params["filecount_from"])))
     if params["filecount_to"]:
-        results = results.filter(filecount__lte=int(params["filecount_to"]))
+        results = results.filter(filecount__lte=int(float(params["filecount_to"])))
     if params["posted_from"]:
         results = results.filter(gallery__posted__gte=params["posted_from"])
     if params["posted_to"]:
@@ -1280,9 +1306,9 @@ def filter_galleries_simple(params: Dict[str, str]) -> GalleryQuerySet:
     if params["rating_to"]:
         results = results.filter(rating__lte=float(params["rating_to"]))
     if params["filecount_from"]:
-        results = results.filter(filecount__gte=int(params["filecount_from"]))
+        results = results.filter(filecount__gte=int(float(params["filecount_from"])))
     if params["filecount_to"]:
-        results = results.filter(filecount__lte=int(params["filecount_to"]))
+        results = results.filter(filecount__lte=int(float(params["filecount_to"])))
     if params["filesize_from"]:
         results = results.filter(filesize__gte=float(params["filesize_from"]))
     if params["filesize_to"]:

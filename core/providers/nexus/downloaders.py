@@ -5,7 +5,7 @@ import requests
 
 from core.base.types import DataDict
 from core.base.utilities import calc_crc32, get_base_filename_string_from_gallery_data, \
-    get_zip_fileinfo
+    get_zip_fileinfo, construct_request_dict
 from core.downloaders.handlers import BaseDownloader, BaseInfoDownloader
 from viewer.models import Archive
 from core.base.utilities import (available_filename,
@@ -33,12 +33,12 @@ class ArchiveDownloader(BaseDownloader):
                 self.own_settings.archive_dl_folder,
                 to_use_filename + '.zip'))
 
+        request_dict = construct_request_dict(self.settings, self.own_settings)
+
         request_file = requests.get(
             self.gallery.archiver_key,
             stream='True',
-            headers=self.settings.requests_headers,
-            timeout=self.settings.timeout_timer,
-            cookies=self.own_settings.cookies
+            **request_dict
         )
 
         filepath = os.path.join(self.settings.MEDIA_ROOT,

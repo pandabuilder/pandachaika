@@ -177,13 +177,13 @@ def get_archive_data(data: DataDict) -> ArchiveQuerySet:
     if 'rating_to' in data:
         results = results.filter(gallery__rating__lte=float(data['rating_to']))
     if 'filecount_from' in data:
-        results = results.filter(filecount__gte=int(data['filecount_from']))
+        results = results.filter(filecount__gte=int(float(data['filecount_from'])))
     if 'filecount_to' in data:
-        results = results.filter(filecount__lte=int(data['filecount_to']))
+        results = results.filter(filecount__lte=int(float(data['filecount_to'])))
     if 'filesize_from' in data:
-        results = results.filter(filesize__gte=int(data['filesize_from']))
+        results = results.filter(filesize__gte=int(float(data['filesize_from'])))
     if 'filesize_to' in data:
-        results = results.filter(filesize__lte=int(data['filesize_to']))
+        results = results.filter(filesize__lte=int(float(data['filesize_to'])))
     if 'posted_from' in data:
         results = results.filter(gallery__posted__gte=data['posted_from'])
     if 'posted_to' in data:

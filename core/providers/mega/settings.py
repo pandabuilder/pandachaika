@@ -8,25 +8,23 @@ if typing.TYPE_CHECKING:
 
 
 class OwnSettings(ProviderSettings):
-    def __init__(self) -> None:
+    def __init__(self, global_settings: 'Settings', config: typing.Dict[str, typing.Any]) -> None:
+        super().__init__(global_settings, config)
         self.archive_dl_folder = ''
         self.megadl_executable_path = ''
-        self.megadl_executable_name = 'megadl'
+        self.megadl_executable_name = 'megatools'
         self.extra_megadl_arguments = []
-        self.proxy = ''
 
 
 def parse_config(global_settings: 'Settings', config: typing.Dict[str, typing.Any]) -> 'OwnSettings':
 
-    settings = OwnSettings()
+    settings = OwnSettings(global_settings, config)
 
     if 'general' in config:
         if 'megadl_executable_path' in config['general']:
             settings.megadl_executable_path = config['general']['megadl_executable_path']
         if 'megadl_executable_name' in config['general']:
             settings.megadl_executable_name = config['general']['megadl_executable_name']
-        if 'proxy' in config['general']:
-            settings.proxy = config['general']['proxy']
         # | separated list
         if 'extra_megadl_arguments' in config['general']:
             settings.extra_megadl_arguments = config['general']['extra_megadl_arguments'].split("|")

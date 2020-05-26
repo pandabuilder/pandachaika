@@ -7,14 +7,12 @@ if typing.TYPE_CHECKING:
 
 
 class OwnSettings(ProviderSettings):
-    def __init__(self) -> None:
-        self.cookies: DataDict = {}
+    def __init__(self, global_settings: 'Settings', config: typing.Dict[str, typing.Any]) -> None:
+        super().__init__(global_settings, config)
 
 
 def parse_config(global_settings: 'Settings', config: typing.Dict[str, typing.Any]) -> 'OwnSettings':
 
-    settings = OwnSettings()
+    settings = OwnSettings(global_settings, config)
 
-    if 'cookies' in config:
-        settings.cookies.update(config['cookies'])
     return settings

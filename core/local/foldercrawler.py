@@ -495,7 +495,12 @@ class FolderCrawler(object):
 
                 for i, matcher in enumerate(matchers_list):
                     if i > 0:
-                        time.sleep(self.settings.wait_timer)
+                        current_provider = matchers_list[i][0].provider
+                        # wait always in current_provider, independently of last used provider
+                        if current_provider in self.settings.providers:
+                            time.sleep(self.settings.providers[current_provider].wait_timer)
+                        else:
+                            time.sleep(self.settings.wait_timer)
                     self.logger.info("Matching with: {}".format(matcher[0]))
                     if matcher[0].start_match(filepath, crc32):
                         match_type = matcher[0].found_by

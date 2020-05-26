@@ -47,6 +47,7 @@ def create_matches_wanted_galleries_from_providers(
                         logger.info(
                             'Searched for wanted gallery: {} in panda, no match found'.format(wanted_gallery.title)
                         )
+                # same wait_timer for all providers
                 time.sleep(crawler_settings.wait_timer)
         if logger:
             logger.info('Search ended.')
@@ -140,7 +141,7 @@ def search_for_archives_matches_web(archives: ArchiveQuerySet, matcher_filter: s
                 elif matcher.type == 'image':
                     results = matcher.create_closer_matches_values(archive_obj.zipped.name)
                 else:
-                    results = []
+                    results = matcher.create_closer_matches_values(archive_obj.zipped.name)
                 for result in results:
                     gallery = Gallery.objects.update_or_create_from_values(result[1])
                     ArchiveMatches.objects.update_or_create(
@@ -176,6 +177,7 @@ def search_for_archives_matches_web(archives: ArchiveQuerySet, matcher_filter: s
                                 len(matcher.gallery_links)
                             )
                         )
+                # same wait_timer for all providers
                 time.sleep(crawler_settings.wait_timer)
         if logger:
             logger.info('Search ended.')
@@ -339,7 +341,7 @@ def match_external(archives: ArchiveQuerySet, matcher_filters: Iterable[str], lo
                 elif matcher[0].type == 'image':
                     results = matcher[0].create_closer_matches_values(archive.zipped.name)
                 else:
-                    results = []
+                    results = matcher[0].create_closer_matches_values(archive.zipped.name)
                 for result in results:
                     gallery = Gallery.objects.update_or_create_from_values(result[1])
                     ArchiveMatches.objects.update_or_create(

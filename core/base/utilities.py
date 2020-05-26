@@ -29,6 +29,7 @@ from core.base import setup
 
 if typing.TYPE_CHECKING:
     from core.workers.schedulers import BaseScheduler
+    from core.base.types import ProviderSettings
 
 
 PUSHOVER_API_URL = 'https://api.pushover.net/1/messages.json'
@@ -458,7 +459,7 @@ def get_thread_status() -> List[Tuple[Tuple[str, str, str], bool]]:
 
     thread_list = threading.enumerate()
     for thread_info in setup.GlobalInfo.worker_threads:
-        info_list.append((thread_info, any([thread.name == thread_info[0] for thread in thread_list])))
+        info_list.append((thread_info, any([thread_info[0] == thread.name for thread in thread_list])))
 
     return info_list
 
@@ -491,7 +492,7 @@ def get_thread_status_bool() -> Dict[str, bool]:
 
     thread_list = threading.enumerate()
     for thread_info in setup.GlobalInfo.worker_threads:
-        if any([thread.name == thread_info[0] for thread in thread_list]):
+        if any([thread_info[0] == thread.name for thread in thread_list]):
             info_dict[thread_info[0]] = True
         else:
             info_dict[thread_info[0]] = False
@@ -502,7 +503,7 @@ def get_thread_status_bool() -> Dict[str, bool]:
 def check_for_running_threads() -> bool:
     thread_list = threading.enumerate()
     for thread_name in setup.GlobalInfo.worker_threads:
-        if any([thread.name == thread_name[0] for thread in thread_list]):
+        if any([thread_name[0] == thread.name for thread in thread_list]):
             return True
     return False
 
@@ -581,6 +582,17 @@ def request_with_retries(
                     logger.error("Failed to reach URL: {}".format(url))
                 return None
     return None
+
+
+def construct_request_dict(settings: 'setup.Settings', own_settings: 'ProviderSettings') -> Dict[str, Any]:
+    request_dict = {
+        'headers': settings.requests_headers,
+        'cookies': own_settings.cookies,
+        'timeout': own_settings.timeout_timer,
+    }
+    if own_settings.proxies:
+        request_dict['proxies'] = own_settings.proxies
+    return request_dict
 
 
 def get_filename_from_cd(cd: str):

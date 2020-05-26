@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup
 from django.db.models import QuerySet
 
 from core.base.types import RealLogger, DataDict
-from core.base.utilities import request_with_retries, format_title_to_wanted_search
+from core.base.utilities import request_with_retries, format_title_to_wanted_search, construct_request_dict
 from viewer.models import Gallery, WantedGallery, Provider, Artist
 from . import constants
 
@@ -57,7 +57,7 @@ def wanted_generator(settings: 'Settings', ext_logger: RealLogger, attrs: QueryS
             rounds += 1
 
             if rounds > 1:
-                time.sleep(settings.wait_timer)
+                time.sleep(own_settings.wait_timer)
 
             ext_logger.info('Querying {} for auto wanted galleries, query name: {}, options: {}'.format(
                 constants.provider_name, query_name, str(query_values))
@@ -99,13 +99,11 @@ def wanted_generator(settings: 'Settings', ext_logger: RealLogger, attrs: QueryS
 
             link = urllib.parse.urljoin(constants.main_url, full_url)
 
+            request_dict = construct_request_dict(settings, own_settings)
+
             response = request_with_retries(
                 link,
-                {
-                    'headers': settings.requests_headers,
-                    'timeout': settings.timeout_timer,
-                    'cookies': own_settings.cookies
-                },
+                request_dict,
                 post=False,
                 logger=ext_logger
             )

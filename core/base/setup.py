@@ -22,7 +22,7 @@ if typing.TYPE_CHECKING:
 
 class GlobalInfo:
 
-    worker_threads = (
+    worker_threads = [
         ('match_unmatched_worker', 'Matches unmatched galleries', 'processor'),
         ('web_search_worker', 'Matches unmatched galleries with web providers', 'processor'),
         ('wanted_local_search_worker', 'Matches unmatched wanted galleries with the internal database', 'processor'),
@@ -32,10 +32,9 @@ class GlobalInfo:
         ('webcrawler', 'Processes gallery links, can coexist with web_queue', 'processor'),
         ('foldercrawler', 'Processes galleries on the filesystem', 'processor'),
         ('post_downloader', 'Transfers archives downloaded with other programs (torrent, hath)', 'scheduler'),
-        ('auto_search', 'Parses search providers for new galleries that matches set filters', 'scheduler'),
         ('auto_updater', 'Auto updates existing gallery metadata after being added, to get new metadata', 'scheduler'),
         ('auto_wanted', 'Parses providers for new galleries to create wanted galleries entries', 'scheduler'),
-    )
+    ]
 
 
 class ConfigFileError(Exception):
@@ -385,6 +384,8 @@ class Settings:
                 self.discard_tags = config['general']['discard_tags'].split(",")
             if 'add_as_public' in config['general']:
                 self.add_as_public = config['general'].getboolean('add_as_public')
+            if 'timeout_timer' in config['general']:
+                self.timeout_timer = int(config['general']['timeout_timer'])
         if 'matchers' in config:
             for matcher in config['matchers']:
                 self.matchers[matcher] = int(config['matchers'][matcher])

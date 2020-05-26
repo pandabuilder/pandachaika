@@ -260,28 +260,28 @@
                         </ul>
                       {% endif %}
                     </div>
-                    <div><label class="label-extended">Source URL:</label>{{ archive.gallery.get_link|urlize }}, <a href="{{ archive.get_link|derefer }}">derefered</a>
-                    </div>
+                    {% if archive.gallery %}<div><label class="label-extended">Source URL:</label>{{ archive.gallery.get_link|urlize }}, <a href="{{ archive.get_link|derefer }}">derefered</a>
+                    </div>{% else %}<div>No associated gallery</div>{% endif %}
                   </td>
                   <td class="td-extended">
                     <div><label class="label-extended">Count:</label>{{ archive.filecount }}</div>
                     <div><label class="label-extended">Size:</label>{{ archive.filesize|filesizeformat }}</div>
-                    <div><label class="label-extended">Category:</label>{{ archive.gallery.category }}</div>
-                    <div><label class="label-extended">Posted:</label>{{ archive.gallery.posted|date:"SHORT_DATE_FORMAT" }}</div>
+                    {% if archive.gallery %}<div><label class="label-extended">Category:</label>{{ archive.gallery.category }}</div>{% endif %}
+                    {% if archive.gallery %}<div><label class="label-extended">Posted:</label>{{ archive.gallery.posted|date:"SHORT_DATE_FORMAT" }}</div>{% endif %}
                     {% if user.is_staff %}
                       <div><label class="label-extended">Created:</label>{{ archive.create_date|date:"SHORT_DATE_FORMAT" }}</div>
                       <div><label class="label-extended">Published:</label>{{ archive.public_date|date:"SHORT_DATE_FORMAT" }}</div>
                     {% else %}
                       <div><label class="label-extended">Added:</label>{{ archive.public_date|date:"SHORT_DATE_FORMAT" }}</div>
                     {% endif %}
-                    <div><label class="label-extended">Fjord:</label>{{ archive.gallery.fjord|yesno }}</div>
+                    {% if archive.gallery %}<div><label class="label-extended">Fjord:</label>{{ archive.gallery.fjord|yesno }}</div>{% endif %}
                   </td>
                   <td class="td-extended">
                     <div><label class="label-extended">Source:</label>{{ archive.source_type }}</div>
                     <div><label class="label-extended">Reason:</label>{{ archive.reason }}</div>
-                    <div><label class="label-extended">Uploader:</label>{{ archive.gallery.uploader }}</div>
-                    <div><label class="label-extended">Rating:</label>{{ archive.gallery.rating }}</div>
-                    {% if user.is_staff %}<div><label class="label-extended">Hidden:</label>{{ archive.gallery.hidden|yesno }}</div>{% endif %}
+                    {% if archive.gallery %}<div><label class="label-extended">Uploader:</label>{{ archive.gallery.uploader }}</div>{% endif %}
+                    {% if archive.gallery %}<div><label class="label-extended">Rating:</label>{{ archive.gallery.rating }}</div>{% endif %}
+                    {% if user.is_staff and archive.gallery %}<div><label class="label-extended">Hidden:</label>{{ archive.gallery.hidden|yesno }}</div>{% endif %}
                   </td>
                 </tr>
               {% endfor %}

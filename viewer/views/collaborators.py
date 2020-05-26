@@ -904,7 +904,20 @@ def upload_archive(request: HttpRequest) -> HttpResponse:
             messages.error(request, 'The provided data is not valid', extra_tags='danger')
             # return HttpResponseRedirect(request.META["HTTP_REFERER"])
     else:
-        edit_form = ArchiveCreateForm()
+
+        if 'gallery' in request.GET:
+            try:
+                gallery_id = int(request.GET['gallery'])
+                try:
+                    gallery = Gallery.objects.get(pk=gallery_id)
+                except Gallery.DoesNotExist:
+                    gallery = None
+            except ValueError:
+                gallery = None
+        else:
+            gallery = None
+
+        edit_form = ArchiveCreateForm(initial={'gallery': gallery})
 
     d = {
         'edit_form': edit_form

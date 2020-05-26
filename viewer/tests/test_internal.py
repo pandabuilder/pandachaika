@@ -94,7 +94,7 @@ class PrivateURLsTest(TestCase):
         self.assertEqual(len(response.context['results']), 2)
 
 
-class ManagerTest(TestCase):
+class GeneralPagesTest(TestCase):
     def setUp(self):
 
         # Admin user
@@ -109,6 +109,7 @@ class ManagerTest(TestCase):
         # Galleries
         self.test_gallery1 = Gallery.objects.create(title='sample non public gallery 1', gid='344', provider='panda')
         self.test_gallery2 = Gallery.objects.create(title='sample non public gallery 2', gid='342', provider='test')
+        self.test_gallery3 = Gallery.objects.create(title='sample non public gallery 3', gid='897', provider='test', public=True)
 
         # Archives
         self.test_book1 = Archive.objects.create(title='archive 1', user=test_admin1, gallery=self.test_gallery1)
@@ -139,3 +140,41 @@ class ManagerTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(Archive.objects.count(), 5)
         self.assertEqual(len(response.context['results']), 1)
+
+        # Tools page
+        response = c.get(reverse('viewer:tools'))
+        self.assertEqual(response.status_code, 200)
+
+    def test_main_pages_anonymous(self):
+        c = Client()
+        # c.login(username='admin1', password='12345')
+        response = c.get(reverse('viewer:archive-search'))
+        self.assertEqual(response.status_code, 200)
+        response = c.get(reverse('viewer:archive-search'), {'view': 'cover'})
+        self.assertEqual(response.status_code, 200)
+        response = c.get(reverse('viewer:archive-search'), {'view': 'extended'})
+        self.assertEqual(response.status_code, 200)
+
+        response = c.get(reverse('viewer:gallery-list'))
+        self.assertEqual(response.status_code, 200)
+
+        response = c.get(reverse('viewer:missing-archives'))
+        self.assertEqual(response.status_code, 200)
+
+        response = c.get(reverse('viewer:wanted-galleries'))
+        self.assertEqual(response.status_code, 200)
+
+        # Depends on settings.ini
+        # response = c.get(reverse('viewer:url-submit'))
+        # self.assertEqual(response.status_code, 200)
+
+        response = c.get(reverse('viewer:about'))
+        self.assertEqual(response.status_code, 200)
+
+    def test_element_pages_anonymous(self):
+        c = Client()
+        # c.login(username='admin1', password='12345')
+        response = c.get(reverse('viewer:archive', args=[self.test_book2.pk]))
+        self.assertEqual(response.status_code, 200)
+        response = c.get(reverse('viewer:gallery', args=[self.test_gallery3.pk]))
+        self.assertEqual(response.status_code, 200)

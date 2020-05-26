@@ -1,5 +1,6 @@
 import importlib
 import inspect
+import logging
 from operator import itemgetter
 from types import ModuleType
 from typing import List, Callable, Optional, Tuple, Union, Type
@@ -17,6 +18,7 @@ if typing.TYPE_CHECKING:
 
 
 AcceptableModules = Union[Type['BaseParser'], Type['Matcher'], Type['BaseDownloader']]
+debugger_logger = logging.getLogger('viewer.debugger')
 
 
 def _get_provider_submodule_api(module_name: str, submodule_name: str) -> List[AcceptableModules]:
@@ -75,6 +77,7 @@ class ProviderContext:
 
     def register_providers(self, module_name_list: List[str]) -> None:
         for module_name in module_name_list:
+
             self.register_provider(module_name)
 
     def register_provider(self, module_name: str) -> None:
@@ -83,24 +86,31 @@ class ProviderContext:
         provider_name = module_name.split(".")[-1]
         for member in _get_provider_submodule_api(module_name, "parsers"):
             if member not in self.parsers and issubclass(member, BaseParser):
+                debugger_logger.debug("For provider: {}, registering parser: {}".format(provider_name, member))
                 self.register_parser(member)
         for member in _get_provider_submodule_api(module_name, "matchers"):
             if member not in self.matchers and issubclass(member, Matcher):
+                debugger_logger.debug("For provider: {}, registering matcher: {}".format(provider_name, member))
                 self.register_matcher(member)
         for member in _get_provider_submodule_api(module_name, "downloaders"):
             if member not in self.downloaders and issubclass(member, BaseDownloader):
+                debugger_logger.debug("For provider: {}, registering downloader: {}".format(provider_name, member))
                 self.register_downloader(member)
         resolver = _get_provider_submodule_method(module_name, "utilities", "resolve_url")
         if resolver and (provider_name, resolver) not in self.resolvers:
+            debugger_logger.debug("For provider: {}, registering resolver".format(provider_name))
             self.register_resolver(provider_name, resolver)
         settings_parser = _get_provider_submodule_method(module_name, "settings", "parse_config")
         if settings_parser and (provider_name, settings_parser) not in self.settings_parsers:
+            debugger_logger.debug("For provider: {}, registering settings parser".format(provider_name))
             self.register_settings_parser(provider_name, settings_parser)
         wanted_generator = _get_provider_submodule_method(module_name, "wanted", "wanted_generator")
         if wanted_generator and (provider_name, wanted_generator) not in self.wanted_generators:
+            debugger_logger.debug("For provider: {}, registering wanted generator".format(provider_name))
             self.register_wanted_generator(provider_name, wanted_generator)
         constants_module = _get_provider_submodule(module_name, "constants")
         if constants_module and (provider_name, constants_module) not in self.constants:
+            debugger_logger.debug("For provider: {}, registering constants".format(provider_name))
             self.register_constants(provider_name, constants_module)
 
     def register_parser(self, obj: Type['BaseParser']) -> None:
@@ -130,7 +140,7 @@ class ProviderContext:
     def register_constants(self, provider_name: str, obj: ModuleType) -> None:
         self.constants.append((provider_name, obj))
 
-    def get_parsers(self, settings: 'setup.Settings', logger: OptionalLogger, filter_name: str = None) -> List['BaseParser']:
+    def get_parsers(self, settings: 'setup.Settings', logger: OptionalLogger, filter_name: str = None, filter_names: List[str] = None) -> List['BaseParser']:
         parsers_list = list()
         for parser in self.parsers:
             parser_name = getattr(parser, 'name')
@@ -141,7 +151,14 @@ class ProviderContext:
                         parsers_list.append(parser_instance)
                     else:
                         parsers_list.insert(0, parser_instance)
-
+            elif filter_names:
+                for current_filter_name in filter_names:
+                    if current_filter_name in parser_name:
+                        parser_instance = parser(settings, logger)
+                        if parser_name == 'generic':
+                            parsers_list.append(parser_instance)
+                        else:
+                            parsers_list.insert(0, parser_instance)
             else:
                 parser_instance = parser(settings, logger)
                 if parser_name == 'generic':

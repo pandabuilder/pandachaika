@@ -1,6 +1,9 @@
 import logging
 from datetime import datetime
+import typing
 from typing import Optional, List, Union, Dict, Any, Tuple
+if typing.TYPE_CHECKING:
+    from core.base.setup import Settings
 
 
 class GalleryData:
@@ -101,7 +104,31 @@ MatchesValues = Tuple[str, GalleryData, float]
 
 
 class ProviderSettings:
-    pass
+    def __init__(self, global_settings: 'Settings', config: Dict[str, Any]) -> None:
+        self.cookies: DataDict = {}
+        self.proxy: str = ""
+        self.proxies: DataDict = {}
+        self.timeout_timer: int = global_settings.timeout_timer
+        self.autochecker_timer: float = global_settings.autochecker.cycle_timer
+        self.autochecker_enable: bool = global_settings.autochecker.enable
+        self.wait_timer: int = global_settings.wait_timer
+
+        if 'cookies' in config:
+            self.cookies.update(config['cookies'])
+        if 'general' in config:
+            if 'proxy' in config['general']:
+                self.proxy = config['general']['proxy']
+                self.proxies = {'http': config['general']['proxy'], 'https': config['general']['proxy']}
+            if 'timeout_timer' in config['general']:
+                self.timeout_timer = int(config['general']['timeout_timer'])
+            if 'autochecker_timer' in config['general']:
+                self.autochecker_timer = float(config['general']['autochecker_timer'])
+            if 'autochecker_enable' in config['general']:
+                self.autochecker_enable = config['general'].getboolean('autochecker_enable')
+            if 'wait_timer' in config['general']:
+                self.wait_timer = int(config['general']['wait_timer'])
+        if 'proxies' in config:
+            self.proxies.update(config['proxies'])
 
 
 class TorrentClient(object):

@@ -309,7 +309,10 @@ class BaseParser:
 
         for i, gallery in enumerate(gallery_data_list, start=1):
             if not self.last_used_downloader.endswith('info') and not self.last_used_downloader.endswith('none'):
-                time.sleep(self.settings.wait_timer)
+                if self.own_settings:
+                    time.sleep(self.own_settings.wait_timer)
+                else:
+                    time.sleep(self.settings.wait_timer)
             self.logger.info("Working with gallery {} of {}".format(i, gallery_count))
             if self.settings.add_as_public:
                 gallery.public = True
@@ -351,25 +354,29 @@ class BaseParser:
                         )
                 if downloader[0].archive_db_entry:
                     if not downloader[0].archive_only and downloader[0].gallery_db_entry:
-                        self.logger.info("Download complete, using {}. Archive link: {}. Gallery link: {}".format(
-                            downloader[0],
-                            downloader[0].archive_db_entry.get_absolute_url(),
-                            downloader[0].gallery_db_entry.get_absolute_url()
-                        ))
+                        self.logger.info(
+                            "Download complete, using downloader:  {}. Archive link: {}. Gallery link: {}".format(
+                                downloader[0],
+                                downloader[0].archive_db_entry.get_absolute_url(),
+                                downloader[0].gallery_db_entry.get_absolute_url()
+                            )
+                        )
                         if self.gallery_callback:
                             self.gallery_callback(downloader[0].gallery_db_entry, gallery.link, 'success')
                         if self.archive_callback:
                             self.archive_callback(downloader[0].archive_db_entry, gallery.link, 'success')
                     else:
-                        self.logger.info("Download complete, using {}. Archive link: {}. No gallery associated".format(
-                            downloader[0],
-                            downloader[0].archive_db_entry.get_absolute_url(),
-                        ))
+                        self.logger.info(
+                            "Download complete, using downloader: {}. Archive link: {}. No gallery associated".format(
+                                downloader[0],
+                                downloader[0].archive_db_entry.get_absolute_url(),
+                            )
+                        )
                         if self.archive_callback:
                             self.archive_callback(downloader[0].archive_db_entry, gallery.link, 'success')
                 elif downloader[0].gallery_db_entry:
                     self.logger.info(
-                        "Download completed successfully (gallery only), using {}. Gallery link: {}".format(
+                        "Download completed successfully (gallery only), using downloader: {}. Gallery link: {}".format(
                             downloader[0],
                             downloader[0].gallery_db_entry.get_absolute_url()
                         )
@@ -377,27 +384,47 @@ class BaseParser:
                     if self.gallery_callback:
                         self.gallery_callback(downloader[0].gallery_db_entry, gallery.link, 'success')
                 return
-            if(downloader[0].return_code == 0 and (cnt + 1) == len(self.downloaders)):
+            elif downloader[0].return_code == 0 and (cnt + 1) == len(self.downloaders):
                 self.last_used_downloader = 'none'
-                if not downloader[0].archive_only and downloader[0].gallery_db_entry:
+                if not downloader[0].archive_only:
                     downloader[0].original_gallery = gallery
                     downloader[0].original_gallery.dl_type = 'failed'
                     downloader[0].update_gallery_db()
-                    self.logger.warning("Download completed unsuccessfully, set as failed. Gallery link: {}".format(
-                        downloader[0].gallery_db_entry.get_absolute_url()
-                    ))
-                    if self.gallery_callback:
-                        self.gallery_callback(downloader[0].gallery_db_entry, gallery.link, 'failed')
-                    for wanted_gallery in gallery_wanted_lists[gallery.gid]:
-                        self.settings.found_gallery_model.objects.get_or_create(
-                            wanted_gallery=wanted_gallery,
-                            gallery=downloader[0].gallery_db_entry
+                    if downloader[0].gallery_db_entry:
+                        self.logger.warning(
+                            "Download completed unsuccessfully using downloader: {},"
+                            " set as failed as it\'s the last one. Gallery link: {}".format(
+                                downloader[0],
+                                downloader[0].gallery_db_entry.get_absolute_url()
+                            )
+                        )
+                        if self.gallery_callback:
+                            self.gallery_callback(downloader[0].gallery_db_entry, gallery.link, 'failed')
+                        for wanted_gallery in gallery_wanted_lists[gallery.gid]:
+                            self.settings.found_gallery_model.objects.get_or_create(
+                                wanted_gallery=wanted_gallery,
+                                gallery=downloader[0].gallery_db_entry
+                            )
+                    else:
+                        self.logger.warning(
+                            "Download completed unsuccessfully using downloader: {},"
+                            " could not set as failed, no entry was updated on the database".format(
+                                downloader[0]
+                            )
                         )
                 else:
-                    self.logger.warning("Download completed unsuccessfully, no entry was updated on the database".format(
-                    ))
+                    self.logger.warning(
+                        "Download completed unsuccessfully using downloader: {},"
+                        " no entry was updated on the database".format(downloader[0])
+                    )
                     if self.gallery_callback:
                         self.gallery_callback(None, gallery.link, 'failed')
+            else:
+                self.logger.info(
+                    "Download was unsuccessful, using downloader {}. Trying with the next downloader.".format(
+                        downloader[0],
+                    )
+                )
 
 
 # This assumes we got the data in the format that the API uses ("gc" format).

@@ -8,7 +8,7 @@ from core.base.parsers import BaseParser
 
 
 # Generic parser, meaning that only downloads archives, no metadata.
-from core.base.utilities import chunks, request_with_retries
+from core.base.utilities import chunks, request_with_retries, construct_request_dict
 
 from .utilities import ChaikaGalleryData
 from . import constants
@@ -23,7 +23,7 @@ class Parser(BaseParser):
     accepted_urls = ['gs=', 'gsp=', 'gd=']
 
     def filter_accepted_urls(self, urls: Iterable[str]) -> List[str]:
-        return [x for x in urls if any(word in x for word in self.accepted_urls) and x in self.own_settings.url]
+        return [x for x in urls if any(word in x for word in self.accepted_urls) and self.own_settings.url in x]
 
     def get_feed_urls(self) -> List[str]:
         return [self.own_settings.feed_url, ]
@@ -34,14 +34,12 @@ class Parser(BaseParser):
 
     def crawl_urls(self, urls: List[str], wanted_filters=None, wanted_only: bool = False) -> None:
 
+        request_dict = construct_request_dict(self.settings, self.own_settings)
+
         for url in urls:
             response = request_with_retries(
                 url,
-                {
-                    'headers': self.settings.requests_headers,
-                    'timeout': self.settings.timeout_timer,
-                    'cookies': self.own_settings.cookies
-                },
+                request_dict,
                 post=False,
                 logger=self.logger
             )
@@ -83,10 +81,10 @@ class Parser(BaseParser):
                     )
 
                     if discard_approved:
-                        self.logger.info(discard_message)
+                        self.logger.info("{} Real GID: {}".format(discard_message, found_gallery.gid))
                         found_galleries.add(found_gallery.gid)
 
-            for gallery in total_galleries_filtered:
+            for count, gallery in enumerate(total_galleries_filtered):
 
                 if gallery.gid in found_galleries:
                     continue
@@ -107,7 +105,14 @@ class Parser(BaseParser):
                     if wanted_only and not gallery_wanted_lists[gallery.gid]:
                         continue
 
-                self.logger.info("Gallery {} will be processed.".format(gallery.title))
+                self.logger.info(
+                    "Gallery {} of {}: Gallery {} (GID: {}) will be processed.".format(
+                        count,
+                        len(total_galleries_filtered),
+                        gallery.title,
+                        gallery.gid
+                    )
+                )
 
                 if gallery.thumbnail:
                     original_thumbnail_url = gallery.thumbnail_url

@@ -74,11 +74,10 @@ def stats_workers(request: HttpRequest) -> HttpResponse:
         "web_queue": crawler_settings.workers.web_queue,
         "post_downloader": crawler_settings.workers.timed_downloader,
         "schedulers": get_schedulers_status([
-            crawler_settings.workers.timed_crawler,
             crawler_settings.workers.timed_downloader,
             crawler_settings.workers.timed_auto_wanted,
             crawler_settings.workers.timed_updater
-        ])
+        ] + crawler_settings.workers.timed_auto_crawlers)
     }
 
     d = {'stats': stats_dict}
@@ -158,7 +157,7 @@ def queue_operations(request: HttpRequest, operation: str, arguments: str = ''):
 
 
 @login_required
-def tools(request: HttpRequest, tool: str = "main") -> HttpResponse:
+def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpResponse:
     """Tools listing."""
     settings_text = ''
     if not request.user.is_staff:
@@ -449,15 +448,46 @@ def tools(request: HttpRequest, tool: str = "main") -> HttpResponse:
         crawler_settings.workers.timed_downloader.start_running(timer=crawler_settings.timed_downloader_cycle_timer)
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
     elif tool == "start_timed_crawler":
-        crawler_settings.workers.timed_crawler.start_running(timer=crawler_settings.autochecker.cycle_timer)
+        if tool_arg:
+            for provider_auto_crawler in crawler_settings.workers.timed_auto_crawlers:
+                if provider_auto_crawler.provider_name == tool_arg:
+                    provider_auto_crawler.start_running(
+                        timer=crawler_settings.providers[provider_auto_crawler.provider_name].autochecker_timer
+                    )
+                    break
+        else:
+            for provider_auto_crawler in crawler_settings.workers.timed_auto_crawlers:
+                provider_auto_crawler.start_running(
+                    timer=crawler_settings.providers[provider_auto_crawler.provider_name].autochecker_timer
+                )
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
     elif tool == "stop_timed_crawler":
-        crawler_settings.workers.timed_crawler.stop_running()
+        if tool_arg:
+            for provider_auto_crawler in crawler_settings.workers.timed_auto_crawlers:
+                if provider_auto_crawler.provider_name == tool_arg:
+                    provider_auto_crawler.stop_running()
+                    break
+        else:
+            for provider_auto_crawler in crawler_settings.workers.timed_auto_crawlers:
+                provider_auto_crawler.stop_running()
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
     elif tool == "force_run_timed_crawler":
-        crawler_settings.workers.timed_crawler.stop_running()
-        crawler_settings.workers.timed_crawler.force_run_once = True
-        crawler_settings.workers.timed_crawler.start_running(timer=crawler_settings.autochecker.cycle_timer)
+        if tool_arg:
+            for provider_auto_crawler in crawler_settings.workers.timed_auto_crawlers:
+                if provider_auto_crawler.provider_name == tool_arg:
+                    provider_auto_crawler.stop_running()
+                    provider_auto_crawler.force_run_once = True
+                    provider_auto_crawler.start_running(
+                        timer=crawler_settings.providers[provider_auto_crawler.provider_name].autochecker_timer
+                    )
+                    break
+        else:
+            for provider_auto_crawler in crawler_settings.workers.timed_auto_crawlers:
+                provider_auto_crawler.stop_running()
+                provider_auto_crawler.force_run_once = True
+                provider_auto_crawler.start_running(
+                    timer=crawler_settings.providers[provider_auto_crawler.provider_name].autochecker_timer
+                )
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
     elif tool == "start_timed_updater":
         crawler_settings.workers.timed_updater.start_running(timer=crawler_settings.autoupdater.cycle_timer)
@@ -487,7 +517,14 @@ def tools(request: HttpRequest, tool: str = "main") -> HttpResponse:
 
     threads_status = get_thread_status_bool()
 
-    d = {'tool': tool, 'settings_text': settings_text, 'threads_status': threads_status}
+    autochecker_providers = (
+        (provider_name, threads_status['auto_search_' + provider_name]) for provider_name in crawler_settings.autochecker.providers if 'auto_search_' + provider_name in threads_status
+    )
+
+    d = {
+        'tool': tool, 'settings_text': settings_text, 'threads_status': threads_status,
+        'autochecker_providers': autochecker_providers
+    }
 
     return render(request, "viewer/tools.html", d)
 

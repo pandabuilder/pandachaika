@@ -45,6 +45,9 @@ LOGGING: Dict[str, Any] = {
         'simple': {
             'format': '%(levelname)s %(message)s[0m'
         },
+        'console': {
+            'format': '%(asctime)-.19s [%(module)s] %(levelname)s %(message)s'
+        },
         'standard': {
             '()': 'core.base.utilities.StandardFormatter',
             'format': '%(asctime)-.19s %(levelname)s [%(module)s] %(message)s'
@@ -61,23 +64,32 @@ LOGGING: Dict[str, Any] = {
             'encoding': 'utf8',
             'formatter': 'standard',
         },
+        'console': {
+            'level': 'DEBUG',
+            'class': 'logging.StreamHandler',
+            'formatter': 'console'
+        },
     },
     'loggers': {
         'viewer.webcrawler': {
             'handlers': ['viewer'],
-            'level': 'INFO'
+            'level': 'DEBUG' if DEBUG else 'INFO'
+        },
+        'viewer.debugger': {
+            'handlers': ['viewer', 'console'] if DEBUG else ['console'],
+            'level': 'DEBUG' if DEBUG else 'INFO'
         },
         'viewer.foldercrawler': {
             'handlers': ['viewer'],
-            'level': 'INFO'
+            'level': 'DEBUG' if DEBUG else 'INFO'
         },
         'viewer.frontend': {
             'handlers': ['viewer'],
-            'level': 'INFO'
+            'level': 'DEBUG' if DEBUG else 'INFO'
         },
         'viewer.threads': {
             'handlers': ['viewer'],
-            'level': 'ERROR'
+            'level': 'DEBUG' if DEBUG else 'ERROR'
         },
         'django': {
             'handlers': ['viewer'],

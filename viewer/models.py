@@ -348,6 +348,12 @@ class ArchiveManager(models.Manager):
     def filter_by_missing_file_info(self) -> ArchiveQuerySet:
         return self.filter(crc32='')
 
+    def filter_by_authenticated_status(self, authenticated: bool, **kwargs: typing.Any) -> ArchiveQuerySet:
+        if authenticated:
+            return self.filter(**kwargs)
+        else:
+            return self.filter(public=True, **kwargs)
+
     def filter_matching_gallery_filesize(self, gid: str) -> ArchiveQuerySet:
         return self.filter(Q(gallery__gid=gid),
                            Q(filesize=F('gallery__filesize'))).first()
@@ -558,12 +564,21 @@ class Gallery(models.Model):
     def save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
         super(Gallery, self).save(*args, **kwargs)
         if self.thumbnail_url and not self.thumbnail:
+            request_dict = {
+                'stream': True,
+                'headers': settings.CRAWLER_SETTINGS.requests_headers,
+                'timeout': settings.CRAWLER_SETTINGS.timeout_timer,
+            }
+            if self.provider in settings.CRAWLER_SETTINGS.providers:
+                if settings.CRAWLER_SETTINGS.providers[self.provider].cookies:
+                    request_dict['cookies'] = settings.CRAWLER_SETTINGS.providers[self.provider].cookies
+                if settings.CRAWLER_SETTINGS.providers[self.provider].proxies:
+                    request_dict['proxies'] = settings.CRAWLER_SETTINGS.providers[self.provider].proxies
+                if settings.CRAWLER_SETTINGS.providers[self.provider].timeout_timer:
+                    request_dict['timeout'] = settings.CRAWLER_SETTINGS.providers[self.provider].timeout_timer
             response = request_with_retries(
                 self.thumbnail_url,
-                {
-                    'timeout': 25,
-                    'stream': True
-                },
+                request_dict,
                 post=False,
             )
             if response:
@@ -581,13 +596,30 @@ class Gallery(models.Model):
 
     def delete(self, *args: typing.Any, **kwargs: typing.Any) -> None:
         self.thumbnail.delete(save=False)
+        self.remove_wanted_relations()
         super(Gallery, self).delete(*args, **kwargs)
 
+    def remove_wanted_relations(self) -> None:
+        for wanted_gallery in self.found_galleries.all():
+            fg = FoundGallery.objects.filter(wanted_gallery=wanted_gallery, gallery=self)
+            if fg:
+                fg.delete()
+            wanted_gallery.save()
+        for wanted_gallery in self.gallery_matches.all():
+            gm = GalleryMatch.objects.filter(wanted_gallery=wanted_gallery, gallery=self)
+            if gm:
+                gm.delete()
+            wanted_gallery.save()
+        self.found_galleries.clear()
+        self.possible_matches.clear()
+
     def mark_as_deleted(self) -> None:
+        self.remove_wanted_relations()
         self.status = self.DELETED
         self.save()
 
     def mark_as_denied(self) -> None:
+        self.remove_wanted_relations()
         self.status = self.DENIED
         self.save()
 
@@ -1579,14 +1611,27 @@ class Mention(models.Model):
 
     def save_img(self, img_link: str) -> None:
         tf2 = NamedTemporaryFile()
-        request_file = requests.get(img_link, stream='True', timeout=25)
 
-        for chunk in request_file.iter_content(4096):
-            tf2.write(chunk)
-        self.image.save(os.path.splitext(img_link)[1], File(tf2), save=False)
-        tf2.close()
+        request_dict = {
+            'stream': True,
+            'headers': settings.CRAWLER_SETTINGS.requests_headers,
+            'timeout': settings.CRAWLER_SETTINGS.timeout_timer,
+        }
 
-        self.regen_tn()
+        response = request_with_retries(
+            img_link,
+            request_dict,
+            post=False,
+        )
+
+        if response:
+            if response.status_code == requests.codes.ok:
+                for chunk in response.iter_content(chunk_size=4096):
+                    if chunk:  # filter out keep-alive new chunks
+                        tf2.write(chunk)
+                self.image.save(os.path.splitext(img_link)[1], File(tf2), save=False)
+                tf2.close()
+                self.regen_tn()
 
     def copy_img(self, img_path: str) -> None:
         tf2 = NamedTemporaryFile()
@@ -1794,6 +1839,9 @@ class WantedGallery(models.Model):
                     if not found_gallery.gallery.hidden:
                         found_gallery.gallery.hidden = True
                         found_gallery.gallery.save()
+            super(WantedGallery, self).save(*args, **kwargs)
+        elif not found_galleries and self.found:
+            self.found = False
             super(WantedGallery, self).save(*args, **kwargs)
 
 

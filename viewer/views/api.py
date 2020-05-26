@@ -111,7 +111,13 @@ def json_search(request: HttpRequest) -> HttpResponse:
                     'rating': float(str_to_int(gallery.rating)),
                     'fjord': gallery.fjord,
                     'tags': gallery.tag_list(),
-                    'archives': [{'id': archive.id, 'download': reverse('viewer:archive-download', args=(archive.pk,))} for archive in gallery.archive_set.all()],
+                    'archives': [
+                        {
+                            'id': archive.id, 'download': reverse('viewer:archive-download', args=(archive.pk,))
+                        } for archive in gallery.archive_set.filter_by_authenticated_status(
+                            authenticated=request.user.is_authenticated
+                        )
+                    ],
                 },
                 # indent=2,
                 sort_keys=True,
@@ -196,6 +202,50 @@ def json_search(request: HttpRequest) -> HttpResponse:
                  ]
             )
             return HttpResponse(response, content_type="application/json; charset=utf-8")
+        # Get galleries associated with archive by crc32, used with matcher.
+        elif 'crc32' in data:
+            galleries = Gallery.objects.filter(
+                Q(archive__crc32=data['crc32'])
+            )
+            if not galleries:
+                return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
+            if not request.user.is_authenticated:
+                galleries = galleries.filter(public=True)
+            if not galleries:
+                return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
+            response = json.dumps(
+                [{
+                    'id': gallery.pk,
+                    'gid': gallery.gid,
+                    'token': gallery.token,
+                    'title': gallery.title,
+                    'title_jpn': gallery.title_jpn,
+                    'category': gallery.category,
+                    'uploader': gallery.uploader,
+                    'comment': gallery.comment,
+                    'posted': int(timestamp_or_zero(gallery.posted)),
+                    'filecount': gallery.filecount,
+                    'filesize': gallery.filesize,
+                    'expunged': gallery.expunged,
+                    'provider': gallery.provider,
+                    'rating': gallery.rating,
+                    'reason': gallery.reason,
+                    'fjord': gallery.fjord,
+                    'tags': gallery.tag_list(),
+                    'link': gallery.get_link(),
+                    'thumbnail': request.build_absolute_uri(
+                        reverse('viewer:gallery-thumb', args=(gallery.pk,))) if gallery.thumbnail else '',
+                    'thumbnail_url': gallery.thumbnail_url,
+                    'thumbnail_height': gallery.thumbnail_height,
+                    'thumbnail_width': gallery.thumbnail_width,
+                    'gallery_container': gallery.gallery_container.gid if gallery.gallery_container else ''
+                } for gallery in galleries
+                ],
+                # indent=2,
+                sort_keys=True,
+                ensure_ascii=False,
+            )
+            return HttpResponse(response, content_type="application/json; charset=utf-8")
         # Get fields from several galleries by doing a simple filtering.
         elif 'g' in data:
 
@@ -240,7 +290,7 @@ def json_search(request: HttpRequest) -> HttpResponse:
                 ensure_ascii=False,
             )
             return HttpResponse(response, content_type="application/json; charset=utf-8")
-        # this part should be used in conjunction with json crawler provider, to transfer easily already fetch links.
+        # this part should be used in conjunction with json crawler provider, to transfer easily already fetched links.
         # Get more fields from several galleries by doing a simple filtering.
         elif 'gc' in data:
 
@@ -288,7 +338,7 @@ def json_search(request: HttpRequest) -> HttpResponse:
                 ensure_ascii=False,
             )
             return HttpResponse(response, content_type="application/json; charset=utf-8")
-        # this part should be used in conjunction with json crawler provider, to transfer easily already fetch links.
+        # this part should be used in conjunction with json crawler provider, to transfer easily already fetched links.
         # Get more fields from several galleries by doing a simple filtering.
         # More complete version of the last one, since you also get the archives (DL link only, use the gallery data
         # to create the final archive).
@@ -406,7 +456,9 @@ def json_search(request: HttpRequest) -> HttpResponse:
                     'archives': [
                         request.build_absolute_uri(
                             reverse('viewer:archive-download', args=(archive.pk,))
-                        ) for archive in gallery.archive_set.all()
+                        ) for archive in gallery.archive_set.filter_by_authenticated_status(
+                            authenticated=request.user.is_authenticated
+                        )
                     ],
                 },
                 # indent=2,
@@ -449,7 +501,7 @@ def gallery_search_results_to_json(request: HttpRequest, galleries: GalleryQuery
                 ),
                 'source': archive.source_type,
                 'reason': archive.reason
-            } for archive in gallery.archive_set.all()
+            } for archive in gallery.archive_set.filter_by_authenticated_status(authenticated=request.user.is_authenticated)
         ],
     } for gallery in galleries
     ]
@@ -841,9 +893,9 @@ def filter_galleries_no_request(filter_args: Dict[str, Any]) -> GalleryQuerySet:
     if filter_args["rating_to"]:
         results = results.filter(rating__lte=float(filter_args["rating_to"]))
     if filter_args["filecount_from"]:
-        results = results.filter(filecount__gte=int(filter_args["filecount_from"]))
+        results = results.filter(filecount__gte=int(float(filter_args["filecount_from"])))
     if filter_args["filecount_to"]:
-        results = results.filter(filecount__lte=int(filter_args["filecount_to"]))
+        results = results.filter(filecount__lte=int(float(filter_args["filecount_to"])))
     if filter_args["filesize_from"]:
         results = results.filter(filesize__gte=float(filter_args["filesize_from"]))
     if filter_args["filesize_to"]:

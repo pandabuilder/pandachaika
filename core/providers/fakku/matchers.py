@@ -11,7 +11,7 @@ from core.base.types import DataDict
 from core.base.utilities import (
     filecount_in_zip,
     get_zip_filesize,
-    request_with_retries)
+    request_with_retries, construct_request_dict)
 from . import constants
 from .utilities import clean_title
 
@@ -59,8 +59,17 @@ class TitleMatcher(Matcher):
 
     def compare_by_title(self, title: str) -> bool:
 
-        r = requests.get(urljoin(constants.main_url, 'search/') + quote(title),
-                         headers=self.settings.requests_headers, timeout=self.settings.timeout_timer)
+        request_dict = construct_request_dict(self.settings, self.own_settings)
+
+        r = request_with_retries(
+            urljoin(constants.main_url, 'search/') + quote(title),
+            request_dict,
+            logger=self.logger
+        )
+
+        if not r:
+            self.logger.info("Got no response from server")
+            return False
 
         r.encoding = 'utf-8'
         soup_1 = BeautifulSoup(r.text, 'html.parser')
@@ -91,12 +100,12 @@ class TitleMatcher(Matcher):
 
         self.logger.info("Querying URL: {}".format(urljoin(constants.main_url, 'suggest/') + quote(title.lower())))
 
+        request_dict = construct_request_dict(self.settings, self.own_settings)
+        request_dict['headers'] = {**headers, **self.settings.requests_headers}
+
         response = request_with_retries(
             urljoin(constants.main_url, 'suggest/') + quote(title.lower()),
-            {
-                'headers': {**headers, **self.settings.requests_headers},
-                'timeout': self.settings.timeout_timer
-            },
+            request_dict,
             post=False, retries=3, logger=self.logger
         )
 

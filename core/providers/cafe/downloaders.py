@@ -11,7 +11,7 @@ from bs4 import BeautifulSoup
 
 from core.base.types import DataDict
 from core.base.utilities import calc_crc32, get_base_filename_string_from_gallery_data, \
-    get_zip_fileinfo
+    get_zip_fileinfo, construct_request_dict
 from core.downloaders.handlers import BaseDownloader, BaseInfoDownloader
 from .utilities import guess_gallery_read_url
 from viewer.models import Archive
@@ -42,10 +42,10 @@ class ArchiveDownloader(BaseDownloader):
         if self.gallery.content:
             soup_1 = BeautifulSoup(self.gallery.content, 'html.parser')
         else:
+            request_dict = construct_request_dict(self.settings, self.own_settings)
             gallery_page = requests.get(
                 self.gallery.link,
-                headers=self.settings.requests_headers,
-                timeout=self.settings.timeout_timer
+                **request_dict
             )
             soup_1 = BeautifulSoup(gallery_page.content, 'html.parser')
 
@@ -77,10 +77,10 @@ class ArchiveDownloader(BaseDownloader):
         while True:
 
             try:
+                request_dict = construct_request_dict(self.settings, self.own_settings)
                 gallery_read_page = requests.get(
                     gallery_read,
-                    headers=self.settings.requests_headers,
-                    timeout=self.settings.timeout_timer
+                    **request_dict
                 )
             except requests.exceptions.MissingSchema:
                 self.logger.error("Malformed URL: {}, skipping".format(gallery_read))
@@ -117,11 +117,10 @@ class ArchiveDownloader(BaseDownloader):
                 break
             last_image = img
             img_name = os.path.basename(img)
-
+            request_dict = construct_request_dict(self.settings, self.own_settings)
             request_file = requests.get(
                 img,
-                headers=self.settings.requests_headers,
-                timeout=self.settings.timeout_timer
+                **request_dict
             )
             if request_file.status_code == 404:
                 # yield("Got to last image, stopping")
@@ -211,10 +210,10 @@ class ArchiveJSDownloader(BaseDownloader):
         if self.gallery.content:
             soup_1 = BeautifulSoup(self.gallery.content, 'html.parser')
         else:
+            request_dict = construct_request_dict(self.settings, self.own_settings)
             gallery_page = requests.get(
                 self.gallery.link,
-                headers=self.settings.requests_headers,
-                timeout=self.settings.timeout_timer
+                **request_dict
             )
             soup_1 = BeautifulSoup(gallery_page.content, 'html.parser')
 
@@ -237,10 +236,10 @@ class ArchiveJSDownloader(BaseDownloader):
         self.logger.info('Downloading gallery: {}'.format(self.gallery.title))
 
         try:
+            request_dict = construct_request_dict(self.settings, self.own_settings)
             gallery_read_page = requests.get(
                 gallery_read,
-                headers=self.settings.requests_headers,
-                timeout=self.settings.timeout_timer
+                **request_dict
             )
         except requests.exceptions.MissingSchema:
             self.logger.error("Malformed URL: {}, skipping".format(gallery_read))
@@ -250,10 +249,10 @@ class ArchiveJSDownloader(BaseDownloader):
         if gallery_read_page.status_code != 200:
             gallery_read = guess_gallery_read_url(self.gallery.link, self.gallery, False)
             try:
+                request_dict = construct_request_dict(self.settings, self.own_settings)
                 gallery_read_page = requests.get(
                     gallery_read,
-                    headers=self.settings.requests_headers,
-                    timeout=self.settings.timeout_timer
+                    **request_dict
                 )
             except requests.exceptions.MissingSchema:
                 self.logger.error("Malformed URL: {}, skipping".format(gallery_read))
@@ -274,10 +273,10 @@ class ArchiveJSDownloader(BaseDownloader):
             for image_url in image_urls:
                 img_name = os.path.basename(image_url)
 
+                request_dict = construct_request_dict(self.settings, self.own_settings)
                 request_file = requests.get(
                     image_url,
-                    headers=self.settings.requests_headers,
-                    timeout=self.settings.timeout_timer
+                    **request_dict
                 )
                 if request_file.status_code == 404:
                     self.logger.warning("Image link reported 404 error, stopping")

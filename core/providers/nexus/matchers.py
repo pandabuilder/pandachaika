@@ -4,7 +4,7 @@ from typing import Optional
 
 from core.base.matchers import Matcher
 from core.base.types import DataDict
-from core.base.utilities import filecount_in_zip, get_zip_filesize, request_with_retries
+from core.base.utilities import filecount_in_zip, get_zip_filesize, request_with_retries, construct_request_dict
 from . import constants
 from .utilities import clean_title
 
@@ -53,15 +53,12 @@ class TitleMatcher(Matcher):
 
     def compare_by_title(self, title: str) -> bool:
 
-        payload = {'q': title}
+        request_dict = construct_request_dict(self.settings, self.own_settings)
+        request_dict['params'] = {'q': title}
 
         response = request_with_retries(
             constants.main_page,
-            {
-                'headers': {**self.settings.requests_headers},
-                'timeout': self.settings.timeout_timer,
-                'params': payload
-            },
+            request_dict,
             post=False,
             logger=self.logger
         )

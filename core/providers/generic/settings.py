@@ -8,17 +8,15 @@ if typing.TYPE_CHECKING:
 
 
 class OwnSettings(ProviderSettings):
-    def __init__(self) -> None:
-        self.cookies = {}
+    def __init__(self, global_settings: 'Settings', config: typing.Dict[str, typing.Any]) -> None:
+        super().__init__(global_settings, config)
         self.torrent_dl_folder = ''
 
 
 def parse_config(global_settings: 'Settings', config: typing.Dict[str, typing.Any]) -> 'OwnSettings':
 
-    settings = OwnSettings()
+    settings = OwnSettings(global_settings, config)
 
-    if 'cookies' in config:
-        settings.cookies.update(config['cookies'])
     if 'locations' in config:
         if 'torrent_dl_folder' in config['locations']:
             settings.torrent_dl_folder = config['locations']['torrent_dl_folder']

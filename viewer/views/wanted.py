@@ -117,11 +117,31 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
                 matched_gallery.hidden = True
                 matched_gallery.save()
 
-            frontend_logger.info("Wanted gallery {} ({}) was matched with gallery {} ({}).".format(
+            frontend_logger.info("WantedGallery {} ({}) was matched with gallery {} ({}).".format(
                 wanted_gallery_instance,
                 reverse('viewer:wanted-gallery', args=(wanted_gallery_instance.pk,)),
                 matched_gallery,
                 reverse('viewer:gallery', args=(matched_gallery.pk,)),
+            ))
+            return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        elif tool == 'remove-match':
+            try:
+                matched_gallery = Gallery.objects.get(pk=tool_use_id)
+            except Gallery.DoesNotExist:
+                raise Http404("Gallery does not exist")
+            fg = FoundGallery.objects.filter(wanted_gallery=wanted_gallery_instance, gallery=matched_gallery)
+            if fg:
+                fg.delete()
+            gm = GalleryMatch.objects.filter(wanted_gallery=wanted_gallery_instance, gallery=matched_gallery)
+            if gm:
+                gm.delete()
+            wanted_gallery_instance.save()
+
+            frontend_logger.info("Gallery {} ({}) was removed as a match for WantedGallery {} ({}).".format(
+                matched_gallery,
+                reverse('viewer:gallery', args=(matched_gallery.pk,)),
+                wanted_gallery_instance,
+                reverse('viewer:wanted-gallery', args=(wanted_gallery_instance.pk,))
             ))
             return HttpResponseRedirect(request.META["HTTP_REFERER"])
         elif tool == 'stop-searching':

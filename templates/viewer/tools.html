@@ -70,13 +70,17 @@
         <div class="list-group-item active">Workers</div>
         {% if not threads_status.post_downloader %}<a class="list-group-item off-text" href="{% url 'viewer:tools-id' 'start_timed_dl' %}">Start Post downloader</a>{% else %}<a class="list-group-item on-text" href="{% url 'viewer:tools-id' 'stop_timed_dl' %}">Stop Post downloader</a>{% endif %}
         <a class="list-group-item off-text" href="{% url 'viewer:tools-id' 'force_run_timed_dl' %}">Force run Post downloader</a>
-        {% if not threads_status.auto_search %}<a class="list-group-item off-text" href="{% url 'viewer:tools-id' 'start_timed_crawler' %}">Start Auto search</a>{% else %}<a class="list-group-item on-text" href="{% url 'viewer:tools-id' 'stop_timed_crawler' %}">Stop Auto search</a>{% endif %}
-        <a class="list-group-item off-text" href="{% url 'viewer:tools-id' 'force_run_timed_crawler' %}">Force run Auto search</a>
         {% if not threads_status.auto_updater %}<a class="list-group-item off-text" href="{% url 'viewer:tools-id' 'start_timed_updater' %}">Start Auto updater</a>{% else %}<a class="list-group-item on-text" href="{% url 'viewer:tools-id' 'stop_timed_updater' %}">Stop Auto updater</a>{% endif %}
         <a class="list-group-item off-text" href="{% url 'viewer:tools-id' 'force_run_timed_updater' %}">Force run Auto updater</a>
         {% if not threads_status.auto_wanted %}<a class="list-group-item off-text" href="{% url 'viewer:tools-id' 'start_timed_auto_wanted' %}">Start Auto wanted</a>{% else %}<a class="list-group-item on-text" href="{% url 'viewer:tools-id' 'stop_timed_auto_wanted' %}">Stop Auto Wanted</a>{% endif %}
         <a class="list-group-item off-text" href="{% url 'viewer:tools-id' 'force_run_timed_auto_wanted' %}">Force run Auto wanted</a>
         {% if not threads_status.web_queue %}<a class="list-group-item off-text" href="{% url 'viewer:tools-id' 'start_web_queue' %}">Start Web queue</a>{% else %}<a class=" list-group-item on-text" href="#">Stop Web queue</a>{% endif %}
+        {% if not threads_status.auto_search %}<a class="list-group-item off-text" href="{% url 'viewer:tools-id' 'start_timed_crawler' %}">Start Auto search (all)</a>{% else %}<a class="list-group-item on-text" href="{% url 'viewer:tools-id' 'stop_timed_crawler' %}">Stop Auto search (all)</a>{% endif %}
+        <a class="list-group-item off-text" href="{% url 'viewer:tools-id' 'force_run_timed_crawler' %}">Force run Auto search (all)</a>
+        {% for provider_name, provider_thread_status in autochecker_providers %}
+          {% if not provider_thread_status %}<a class="list-group-item off-text" href="{% url 'viewer:tools-id-arg' 'start_timed_crawler' provider_name %}">Start Auto search ({{ provider_name }})</a>{% else %}<a class="list-group-item on-text" href="{% url 'viewer:tools-id-arg' 'stop_timed_crawler' provider_name %}">Stop Auto search ({{ provider_name }})</a>{% endif %}
+          <a class="list-group-item off-text" href="{% url 'viewer:tools-id-arg' 'force_run_timed_crawler' provider_name %}">Force run Auto search ({{ provider_name }})</a>
+        {% endfor %}
       </div>
       <div class="list-group col-lg-3 col-md-4 col-sm-6 col-xs-12">
         <div class="list-group-item active">Misc</div>

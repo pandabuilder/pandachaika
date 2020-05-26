@@ -74,6 +74,7 @@ urlpatterns += [
 # Admin URLs
 urlpatterns += [
     url(r"^tools/([\w-]+)/$", admin.tools, name='tools-id'),
+    url(r"^tools/([\w-]+)/([\w-]+)/$", admin.tools, name='tools-id-arg'),
     url(r"^tools/$", admin.tools, name='tools'),
     url(r"^logs/$", admin.logs, name='logs'),
     url(r"^stats/collection$", admin.stats_collection, name='stats-collection'),

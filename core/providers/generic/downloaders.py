@@ -5,7 +5,7 @@ import requests
 
 from core.base.types import DataDict
 from core.base.utilities import replace_illegal_name, available_filename, get_filename_from_cd, get_zip_fileinfo, \
-    calc_crc32
+    calc_crc32, construct_request_dict
 from core.downloaders.torrent import get_torrent_client
 
 from core.downloaders.handlers import BaseDownloader
@@ -129,12 +129,12 @@ class GenericArchiveDownloader(BaseDownloader):
             self.gallery.link
         ))
 
+        request_dict = construct_request_dict(self.settings, self.own_settings)
+
         request_file = requests.get(
             self.gallery.link,
             stream='True',
-            headers=self.settings.requests_headers,
-            timeout=self.settings.timeout_timer,
-            cookies=self.own_settings.cookies
+            **request_dict
         )
 
         filename = get_filename_from_cd(request_file.headers.get('content-disposition'))

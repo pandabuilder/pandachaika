@@ -4,7 +4,7 @@ import time
 import typing
 from collections import defaultdict
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Union, Type
 from urllib.request import ProxyHandler
 
 import feedparser
@@ -13,7 +13,7 @@ from django.db.models import QuerySet
 
 from core.base.parsers import BaseParser
 from core.base.utilities import (
-    translate_tag_list, unescape, request_with_retries)
+    translate_tag_list, unescape, request_with_retries, construct_request_dict)
 from core.base.types import GalleryData
 from . import constants
 
@@ -27,12 +27,11 @@ class Parser(BaseParser):
 
     def get_values_from_gallery_link(self, link: str) -> Optional[GalleryData]:
 
+        request_dict = construct_request_dict(self.settings, self.own_settings)
+
         response = request_with_retries(
             link,
-            {
-                'headers': self.settings.requests_headers,
-                'timeout': self.settings.timeout_timer,
-            },
+            request_dict,
             post=False,
             logger=self.logger
         )
@@ -103,15 +102,13 @@ class Parser(BaseParser):
             return None
 
         api_link = constants.posts_api_url
-        payload = {'slug': gallery_slug}
+
+        request_dict = construct_request_dict(self.settings, self.own_settings)
+        request_dict['params'] = {'slug': gallery_slug}
 
         response = request_with_retries(
             api_link,
-            {
-                'headers': self.settings.requests_headers,
-                'timeout': self.settings.timeout_timer,
-                'params': payload
-            },
+            request_dict,
             post=False,
             logger=self.logger
         )
@@ -176,7 +173,7 @@ class Parser(BaseParser):
         response = []
         for i, element in enumerate(links):
             if i > 0:
-                time.sleep(self.settings.wait_timer)
+                time.sleep(self.own_settings.wait_timer)
 
             self.logger.info(
                 "Calling API ({}). "
@@ -203,10 +200,24 @@ class Parser(BaseParser):
 
         if not feed_url:
             feed_url = constants.rss_url
-        feed = feedparser.parse(
+
+        request_dict = construct_request_dict(self.settings, self.own_settings)
+
+        response = request_with_retries(
             feed_url,
-            handlers=ProxyHandler,
-            request_headers=self.settings.requests_headers
+            request_dict,
+            post=False,
+            logger=self.logger
+        )
+
+        if not response:
+            self.logger.error("Got no response from feed URL: {}".format(feed_url))
+            return []
+
+        response.encoding = 'utf-8'
+
+        feed = feedparser.parse(
+            response.text
         )
 
         galleries = []

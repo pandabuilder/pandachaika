@@ -37,7 +37,7 @@ class MegaArchiveDownloader(BaseDownloader):
 
         directory_path = mkdtemp()
 
-        arguments = ["--no-progress", "--print-names", "--path", "{}".format(
+        arguments = ["dl", "--no-progress", "--print-names", "--path", "{}".format(
             directory_path
         )]
 
@@ -50,7 +50,7 @@ class MegaArchiveDownloader(BaseDownloader):
 
         arguments.append("{}".format(self.gallery.link))
 
-        self.logger.info("Calling megadl: {}.".format(" ".join([exe_path_to_use, *arguments])))
+        self.logger.info("Calling megatools: {}.".format(" ".join([exe_path_to_use, *arguments])))
 
         process_result = subprocess.run(
             [exe_path_to_use, *arguments],

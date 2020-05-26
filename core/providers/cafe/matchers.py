@@ -3,7 +3,7 @@ from typing import Optional
 
 from core.base.matchers import Matcher
 from core.base.types import DataDict
-from core.base.utilities import filecount_in_zip, get_zip_filesize, request_with_retries
+from core.base.utilities import filecount_in_zip, get_zip_filesize, request_with_retries, construct_request_dict
 from . import constants
 from .utilities import clean_title
 
@@ -57,13 +57,13 @@ class TitleMatcher(Matcher):
         api_link = constants.posts_api_url
         payload = {'search': title}
 
+        request_dict = construct_request_dict(self.settings, self.own_settings)
+        request_dict['headers'] = {**headers, **self.settings.requests_headers}
+        request_dict['params'] = payload
+
         response = request_with_retries(
             api_link,
-            {
-                'headers': {**headers, **self.settings.requests_headers},
-                'timeout': self.settings.timeout_timer,
-                'params': payload
-            },
+            request_dict,
             post=False,
             logger=self.logger
         )

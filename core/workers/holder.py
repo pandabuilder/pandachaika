@@ -8,7 +8,7 @@ from core.base.utilities import check_for_running_threads
 
 if typing.TYPE_CHECKING:
     from core.downloaders.postdownload import TimedPostDownloader
-    from core.workers.autosearch import TimedAutoCrawler
+    from core.workers.autosearch import ProviderTimedAutoCrawler
     from core.workers.autoupdate import TimedAutoUpdater
     from core.workers.auto_wanted import TimedAutoWanted
     from core.workers.webqueue import WebQueue
@@ -19,15 +19,15 @@ crawler_logger = logging.getLogger('viewer.webcrawler')
 
 class WorkerContext:
     web_queue: Optional['WebQueue'] = None
-    timed_crawler: Optional['TimedAutoCrawler'] = None
     timed_auto_wanted: Optional['TimedAutoWanted'] = None
     timed_updater: Optional['TimedAutoUpdater'] = None
     timed_downloader: Optional['TimedPostDownloader'] = None
+    timed_auto_crawlers: typing.List['ProviderTimedAutoCrawler'] = []
 
     def start_workers(self, crawler_settings: 'setup.Settings') -> None:
 
         from core.downloaders.postdownload import TimedPostDownloader
-        from core.workers.autosearch import TimedAutoCrawler
+        from core.workers.autosearch import ProviderTimedAutoCrawler
         from core.workers.autoupdate import TimedAutoUpdater
         from core.workers.auto_wanted import TimedAutoWanted
         from core.workers.webqueue import WebQueue
@@ -41,12 +41,24 @@ class WorkerContext:
             timer=5,
             parallel_post_downloaders=crawler_settings.parallel_post_downloaders,
         )
-        self.timed_crawler = TimedAutoCrawler(
-            crawler_settings,
-            web_queue=self.web_queue,
-            crawler_logger=crawler_logger,
-            timer=crawler_settings.autochecker.cycle_timer
-        )
+
+        for provider_name in crawler_settings.autochecker.providers:
+            setup.GlobalInfo.worker_threads.append(
+                (
+                    'auto_search_' + provider_name,
+                    'Searches for new galleries that matches wanted galleries (provider: {})'.format(provider_name),
+                    'scheduler'
+                ),
+            )
+            provider_auto_crawler = ProviderTimedAutoCrawler(
+                crawler_settings,
+                provider_name,
+                web_queue=self.web_queue,
+                crawler_logger=crawler_logger,
+                timer=crawler_settings.providers[provider_name].autochecker_timer
+            )
+            self.timed_auto_crawlers.append(provider_auto_crawler)
+
         self.timed_auto_wanted = TimedAutoWanted(
             crawler_settings,
             crawler_logger=crawler_logger,
@@ -67,13 +79,14 @@ class WorkerContext:
         if crawler_settings.timed_downloader_startup:
             self.timed_downloader.start_running(timer=crawler_settings.timed_downloader_cycle_timer)
 
-        obj = Scheduler.objects.get_or_create(
-            name=self.timed_crawler.thread_name,
-        )
-        self.timed_crawler.last_run = obj[0].last_run
-        self.timed_crawler.pk = obj[0].pk
-        if crawler_settings.autochecker.startup:
-            self.timed_crawler.start_running(timer=crawler_settings.autochecker.cycle_timer)
+        for provider_auto_crawler in self.timed_auto_crawlers:
+            obj = Scheduler.objects.get_or_create(
+                name=provider_auto_crawler.thread_name,
+            )
+            provider_auto_crawler.last_run = obj[0].last_run
+            provider_auto_crawler.pk = obj[0].pk
+            if crawler_settings.autochecker.startup:
+                provider_auto_crawler.start_running(timer=provider_auto_crawler.original_timer)
 
         obj = Scheduler.objects.get_or_create(
             name=self.timed_auto_wanted.thread_name,
@@ -95,12 +108,12 @@ class WorkerContext:
 
         if self.timed_downloader:
             self.timed_downloader.stop_running()
-        if self.timed_crawler:
-            self.timed_crawler.stop_running()
         if self.timed_auto_wanted:
             self.timed_auto_wanted.stop_running()
         if self.timed_updater:
             self.timed_updater.stop_running()
+        for provider_auto_crawler in self.timed_auto_crawlers:
+            provider_auto_crawler.stop_running()
 
     # TODO: improve this logic
     def stop_workers_and_wait(self) -> None:

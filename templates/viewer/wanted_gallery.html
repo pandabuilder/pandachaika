@@ -185,6 +185,7 @@
             <th scope="col">Images</th>
             <th scope="col">Size</th>
             <th scope="col">Download gallery</th>
+            <th scope="col">Clear gallery</th>
             <th scope="col">Archives</th>
           </tr>
           </thead>
@@ -199,6 +200,7 @@
               <td>{{ found_entry.gallery.filecount }}</td>
               <td>{{ found_entry.gallery.filesize|filesizeformat }}</td>
               <td><a href="{% url 'viewer:gallery-tool' found_entry.gallery.pk 'download' %}"><i class="fas fa-download"></i></a></td>
+              <td><a href="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}?tool=remove-match&tool-id={{ found_entry.gallery.pk }}"><i class="fas fa-minus"></i></a></td>
               <td>
                 <table class="table table-sm table-bordered">
                   <thead>
@@ -257,9 +259,7 @@
             <tr>
               <td><a title="{{ match.gallery.title_jpn }}"
                      href="{% url 'viewer:gallery' match.gallery.pk %}">{{ match.gallery.title }}</a></td>
-              <td><a href="{{ match.gallery.get_link }}" data-image-url="
-                  {% if match.gallery.thumbnail.name %}{{ match.gallery.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}"
-                     class="img-preview" rel="popover">{{ match.gallery.get_link }}</a></td>
+              <td><a href="{{ match.gallery.get_link }}" data-image-url="{% if match.gallery.thumbnail.name %}{{ match.gallery.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover">{{ match.gallery.get_link }}</a></td>
               <td>{{ match.match_accuracy|floatformat:3 }}</td>
               <td>{{ match.gallery.posted }}</td>
               <td>{{ match.gallery.filecount }}</td>
@@ -286,9 +286,7 @@
                                          href="{% url 'viewer:archive' archive.pk %}">{{ archive.title }}</a></th>
                       <td>{{ archive.filecount }}</td>
                       <td>{{ archive.filesize|filesizeformat }}</td>
-                      <td><a href="#" data-image-url="
-                          {% if archive.thumbnail.name %}{{ archive.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}"
-                             class="img-preview" rel="popover">Archive thumbnail</a></td>
+                      <td><a href="#" data-image-url="{% if archive.thumbnail.name %}{{ archive.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover">Archive thumbnail</a></td>
                     </tr>
                   {% endfor %}
                   </tbody>

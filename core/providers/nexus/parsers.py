@@ -11,7 +11,7 @@ from django.db.models import QuerySet
 
 from core.base.parsers import BaseParser
 from core.base.utilities import (
-    translate_tag_list, request_with_retries)
+    translate_tag_list, request_with_retries, construct_request_dict)
 from core.base.types import GalleryData
 from . import constants
 from viewer.models import Gallery
@@ -26,12 +26,11 @@ class Parser(BaseParser):
 
     def get_values_from_gallery_link(self, link: str) -> Optional[GalleryData]:
 
+        request_dict = construct_request_dict(self.settings, self.own_settings)
+
         response = request_with_retries(
             link,
-            {
-                'headers': self.settings.requests_headers,
-                'timeout': self.settings.timeout_timer,
-            },
+            request_dict,
             post=False,
             logger=self.logger
         )
@@ -156,7 +155,7 @@ class Parser(BaseParser):
         response = []
         for i, element in enumerate(links):
             if i > 0:
-                time.sleep(self.settings.wait_timer)
+                time.sleep(self.own_settings.wait_timer)
 
             self.logger.info(
                 "Calling API ({}). "
@@ -198,14 +197,13 @@ class Parser(BaseParser):
             paged_feed_url = "{}/page/{}".format(feed_url, current_page)
 
             if current_page > 1:
-                time.sleep(self.settings.wait_timer)
+                time.sleep(self.own_settings.wait_timer)
+
+            request_dict = construct_request_dict(self.settings, self.own_settings)
 
             response = request_with_retries(
                 paged_feed_url,
-                {
-                    'headers': self.settings.requests_headers,
-                    'timeout': self.settings.timeout_timer,
-                },
+                request_dict,
                 post=False,
                 logger=self.logger
             )

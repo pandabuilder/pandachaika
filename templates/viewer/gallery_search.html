@@ -38,6 +38,7 @@
         {% if user.is_staff %}
           <input id="checkbox2" class="custom-cb" type="checkbox" name="hidden" value="1" {% if display_prms.hidden == '1' %}checked{% endif %}><label for="checkbox2"><span><span></span></span>Hidden</label>
           <input id="checkbox4" class="custom-cb" type="checkbox" name="not_used" value="1" {% if display_prms.not_used == '1' %}checked{% endif %}><label for="checkbox4"><span><span></span></span>Not used</label>
+          <input id="checkbox7" class="custom-cb" type="checkbox" name="deleted" value="1" {% if display_prms.deleted == '1' %}checked{% endif %}><label for="checkbox7"><span><span></span></span>Show deleted</label>
         {% endif %}
         <input id="checkbox3" class="custom-cb" type="checkbox" name="fjord" value="1" {% if display_prms.fjord == '1' %}checked{% endif %}><label for="checkbox3"><span><span></span></span>Fjord</label>
         <input id="checkbox5" class="custom-cb" type="checkbox" name="contained" value="1" {% if display_prms.contained == '1' %}checked{% endif %}><label for="checkbox5"><span><span></span></span>Contained</label>
@@ -65,6 +66,7 @@
         <button type="submit" name="clear" class="btn btn-light mr-sm-1">Clear</button>
         {#        <button type="submit" name="random" class="btn btn-light">I'm feeling lucky</button>#}
         <button type="button" class="btn btn-info" data-toggle="collapse" data-target="#extra_filters">More filters</button>
+      <input id="checkbox8" class="custom-cb" type="checkbox" name="show_source" value="1" {% if prm.show_source == '1' %}checked{% endif %}><label for="checkbox8"><span><span></span></span>Show source</label>
       </div>
     </div>
   </form>
@@ -129,10 +131,13 @@
             <th class="w-5" scope="col"><a href="?{% url_replace 'sort' 'posted' %}">Posted</a></th>
           {% endif %}
           <th scope="col"><a href="?{% url_replace 'sort' 'title' %}">Title</a></th>
-          <th scope="col"><a href="?{% url_replace 'sort' 'title' %}">Provider</a></th>
-          <th scope="col"><a href="?{% url_replace 'sort' 'category' %}">Category</a></th>
-          <th class="w-5" scope="col"><a href="?{% url_replace 'sort' 'filecount' %}">Images</a></th>
-          <th class="w-5" scope="col"><a href="?{% url_replace 'sort' 'filesize' %}">Size</a></th>
+          {% if prm.show_source %}
+            <th class="w-20" scope="col">Source</th>
+          {% endif %}
+          <th class="w-5" scope="col"><a href="?{% url_replace 'sort' 'provider' %}">Provider</a></th>
+          <th class="w-5" scope="col"><a href="?{% url_replace 'sort' 'category' %}">Category</a></th>
+          <th class="w-3" scope="col"><a href="?{% url_replace 'sort' 'filecount' %}">Images</a></th>
+          <th class="w-3" scope="col"><a href="?{% url_replace 'sort' 'filesize' %}">Size</a></th>
         </tr>
         </thead>
         <tbody>
@@ -144,6 +149,9 @@
               <td>{{ gallery.posted|date:"SHORT_DATE_FORMAT" }}</td>
             {% endif %}
             <td><a href="{% url 'viewer:gallery' gallery.pk %}" {% if gallery.thumbnail.name %} data-image-url="{{ gallery.thumbnail.url }}" class="img-preview" rel="popover"{% else %} title ="{{ gallery.title_jpn }}"{% endif %}>{% if gallery.title %}{{ gallery.title }}{% else %}{{ gallery.title_jpn }}{% endif %}</a></td>
+          {% if prm.show_source %}
+            <td>{{ gallery.get_link|urlize }}, <a href="{{ gallery.get_link|derefer }}">derefered</a></td>
+          {% endif %}
             <td>{{ gallery.provider }}</td>
             <td>{{ gallery.category }}</td>
             <td>{{ gallery.filecount }}</td>

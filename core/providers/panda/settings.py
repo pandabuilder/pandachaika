@@ -8,8 +8,8 @@ if typing.TYPE_CHECKING:
 
 
 class OwnSettings(ProviderSettings):
-    def __init__(self) -> None:
-        self.cookies: DataDict = {}
+    def __init__(self, global_settings: 'Settings', config: typing.Dict[str, typing.Any]) -> None:
+        super().__init__(global_settings, config)
         self.hath_dl_folder = ''
         self.local_hath_folder = ''
         self.stop_page_number = 0
@@ -33,15 +33,13 @@ class OwnSettings(ProviderSettings):
 
 def parse_config(global_settings: 'Settings', config: typing.Dict[str, typing.Any]) -> 'OwnSettings':
 
-    settings = OwnSettings()
+    settings = OwnSettings(global_settings, config)
 
     if 'general' in config:
         if 'stop_page_number' in config['general']:
             settings.stop_page_number = int(config['general']['stop_page_number'])
         if 'accepted_rss_categories' in config['general']:
             settings.accepted_rss_categories = config['general']['accepted_rss_categories'].split(",")
-    if 'cookies' in config:
-        settings.cookies.update(config['cookies'])
     if 'locations' in config:
         if 'archive_dl_folder' in config['locations']:
             settings.archive_dl_folder = config['locations']['archive_dl_folder']

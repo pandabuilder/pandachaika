@@ -31,6 +31,9 @@
           </div>
         </span>
       {% endif %}
+      {% if perms.viewer.upload_with_metadata_archive %}
+        <a href="{% url 'viewer:upload-archive' %}?gallery={{ gallery.id }}">upload archive</a>
+      {% endif %}
       </li>
     {% endif %}
 
@@ -144,14 +147,14 @@
     <li class="line-top"><label class="label-extended">Related archives:</label>
       <ul>
         {% for archive in gallery.archive_set.all %}
-          <li><a href="{% url 'viewer:archive' archive.id %}">{{ archive }}</a>, images: {{ archive.filecount }}, size: {{ archive.filesize|filesizeformat }}</li>
+          <li><a href="{% url 'viewer:archive' archive.id %}"{% if not archive.crc32 %} class="archive-incomplete"{% endif %}>{{ archive }}</a>, images: {{ archive.filecount }}, size: {{ archive.filesize|filesizeformat }}</li>
         {% endfor %}
       </ul>
     </li>
     <li><label class="label-extended">Alternative archives:</label>
       <ul>
         {% for archive in gallery.alternative_sources.all %}
-          <li><a href="{% url 'viewer:archive' archive.id %}">{{ archive }}</a>, images: {{ archive.filecount }}, size: {{ archive.filesize|filesizeformat }}</li>
+          <li><a href="{% url 'viewer:archive' archive.id %}"{% if not archive.crc32 %} class="archive-incomplete"{% endif %}>{{ archive }}</a>, images: {{ archive.filecount }}, size: {{ archive.filesize|filesizeformat }}</li>
         {% endfor %}
       </ul>
     </li>
