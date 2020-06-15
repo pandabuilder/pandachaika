@@ -1,3 +1,4 @@
+import logging
 import os
 import time
 from datetime import datetime, timezone
@@ -12,6 +13,8 @@ from core.base.utilities import (
     request_with_retries, construct_request_dict, calc_crc32)
 from . import constants
 from core.base.comparison import get_gallery_closer_title_from_gallery_values
+
+logger = logging.getLogger(__name__)
 
 
 class HashMatcher(Matcher):
@@ -102,7 +105,7 @@ class HashMatcher(Matcher):
         crc32 = calc_crc32(zip_path)
 
         api_url = urljoin(self.own_settings.url, constants.api_path)
-        self.logger.info("Querying URL: {}".format(api_url))
+        logger.info("Querying URL: {}".format(api_url))
 
         request_dict = construct_request_dict(self.settings, self.own_settings)
         request_dict['params'] = {'crc32': crc32}
@@ -110,11 +113,11 @@ class HashMatcher(Matcher):
         response = request_with_retries(
             api_url,
             request_dict,
-            post=False, retries=3, logger=self.logger
+            post=False, retries=3
         )
 
         if not response:
-            self.logger.info("Got no response from server")
+            logger.info("Got no response from server")
             return False
 
         response_data = response.json()
@@ -122,7 +125,7 @@ class HashMatcher(Matcher):
         matches_links = set()
 
         if 'error' in response_data:
-            self.logger.info("Got error from server: {}".format(response_data['error']))
+            logger.info("Got error from server: {}".format(response_data['error']))
             return False
 
         for gallery in response_data:

@@ -1038,7 +1038,7 @@ class Archive(models.Model):
                 thumb_img_name = upload_thumbpath_handler(image, image_name)
 
                 with open(full_img_name, "wb") as current_new_img, my_zip.open(filename) as current_img:
-                    shutil.copyfileobj(current_img, current_new_img)
+                    shutil.copyfileobj(current_img, current_new_img)  # type: ignore
                 image.image.name = upload_imgpath(self, image_name)
 
                 # Thumbnail

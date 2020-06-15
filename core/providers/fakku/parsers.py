@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import logging
 import re
 import time
 import typing
@@ -18,6 +19,8 @@ from . import constants
 if typing.TYPE_CHECKING:
     from viewer.models import WantedGallery
 
+logger = logging.getLogger(__name__)
+
 
 class Parser(BaseParser):
     name = constants.provider_name
@@ -31,7 +34,6 @@ class Parser(BaseParser):
             link,
             request_dict,
             post=False,
-            logger=self.logger
         )
 
         if not response:
@@ -131,7 +133,7 @@ class Parser(BaseParser):
             if i > 0:
                 time.sleep(self.own_settings.wait_timer)
 
-            self.logger.info(
+            logger.info(
                 "Calling API ({}). "
                 "Gallery: {}, total galleries: {}".format(
                     self.name,
@@ -144,7 +146,7 @@ class Parser(BaseParser):
             if values:
                 response.append(values)
             else:
-                self.logger.error("Failed fetching: {}, gallery might not exist".format(element))
+                logger.error("Failed fetching: {}, gallery might not exist".format(element))
                 continue
         return response
 
@@ -171,13 +173,13 @@ class Parser(BaseParser):
         gallery_wanted_lists: Dict[str, List['WantedGallery']] = defaultdict(list)
 
         if not self.downloaders:
-            self.logger.warning('No downloaders enabled, returning.')
+            logger.warning('No downloaders enabled, returning.')
             return
 
         for url in urls:
 
             if constants.no_scheme_url not in url:
-                self.logger.warning("Invalid URL, skipping: {}".format(url))
+                logger.warning("Invalid URL, skipping: {}".format(url))
                 continue
             url = url.replace('/manga/', '/hentai/')
             unique_urls.add(url)
@@ -194,13 +196,13 @@ class Parser(BaseParser):
 
             if discard_approved:
                 if not self.settings.silent_processing:
-                    self.logger.info(discard_message)
+                    logger.info(discard_message)
                 continue
 
             fetch_format_galleries.append(gallery)
 
         if len(fetch_format_galleries) == 0:
-            self.logger.info("No galleries need downloading, returning.")
+            logger.info("No galleries need downloading, returning.")
             return
 
         galleries_data = self.fetch_multiple_gallery_data(fetch_format_galleries)
@@ -215,7 +217,7 @@ class Parser(BaseParser):
 
             if self.general_utils.discard_by_tag_list(internal_gallery_data.tags):
                 if not self.settings.silent_processing:
-                    self.logger.info(
+                    logger.info(
                         "Skipping gallery link {} because it's tagged with global discarded tags".format(
                             internal_gallery_data.link
                         )

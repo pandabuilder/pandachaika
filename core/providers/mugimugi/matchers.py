@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import List, Optional
 
@@ -9,6 +10,8 @@ from core.base.utilities import (
     clean_title, request_with_retries, construct_request_dict)
 from core.providers.mugimugi.utilities import convert_api_response_text_to_gallery_dicts
 from . import constants
+
+logger = logging.getLogger(__name__)
 
 
 class TitleMatcher(Matcher):
@@ -59,7 +62,7 @@ class TitleMatcher(Matcher):
     def search_using_xml_api(self, title: str) -> bool:
 
         if not self.own_settings.api_key:
-            self.logger.error("Can't use {} API without an api key. Check {}/API_MANUAL.txt".format(
+            logger.error("Can't use {} API without an api key. Check {}/API_MANUAL.txt".format(
                 self.name,
                 constants.main_page
             ))
@@ -82,7 +85,6 @@ class TitleMatcher(Matcher):
                 link,
                 request_dict,
                 post=False,
-                logger=self.logger
             )
 
             if not response:

@@ -36,7 +36,7 @@ if crawler_settings.urls.behind_proxy:
 
 LOGGING: Dict[str, Any] = {
     'version': 1,
-    'disable_existing_loggers': True,
+    'disable_existing_loggers': False,
     'formatters': {
         'verbose': {
             'format': '%(levelname)s %(asctime)-.19s %(module)s '
@@ -46,13 +46,18 @@ LOGGING: Dict[str, Any] = {
             'format': '%(levelname)s %(message)s[0m'
         },
         'console': {
-            'format': '%(asctime)-.19s [%(module)s] %(levelname)s %(message)s'
+            'format': '%(asctime)-.19s %(levelname)s [%(name)s] %(message)s'
         },
         'standard': {
             '()': 'core.base.utilities.StandardFormatter',
-            'format': '%(asctime)-.19s %(levelname)s [%(module)s] %(message)s'
+            'format': '%(asctime)-.19s %(levelname)s [%(name)s] %(message)s'
         },
 
+    },
+    'filters': {
+        'require_debug_true': {
+            '()': 'django.utils.log.RequireDebugTrue',
+        },
     },
     'handlers': {
         'viewer': {
@@ -66,33 +71,26 @@ LOGGING: Dict[str, Any] = {
         },
         'console': {
             'level': 'DEBUG',
+            'filters': ['require_debug_true'],
             'class': 'logging.StreamHandler',
             'formatter': 'console'
         },
+        'mail_admins': {
+            'level': 'ERROR',
+            'class': 'django.utils.log.AdminEmailHandler'
+        }
     },
     'loggers': {
-        'viewer.webcrawler': {
-            'handlers': ['viewer'],
+        'viewer': {
+            'handlers': ['viewer', 'mail_admins', 'console'],
             'level': 'DEBUG' if DEBUG else 'INFO'
         },
-        'viewer.debugger': {
-            'handlers': ['viewer', 'console'] if DEBUG else ['console'],
+        'core': {
+            'handlers': ['viewer', 'mail_admins', 'console'],
             'level': 'DEBUG' if DEBUG else 'INFO'
-        },
-        'viewer.foldercrawler': {
-            'handlers': ['viewer'],
-            'level': 'DEBUG' if DEBUG else 'INFO'
-        },
-        'viewer.frontend': {
-            'handlers': ['viewer'],
-            'level': 'DEBUG' if DEBUG else 'INFO'
-        },
-        'viewer.threads': {
-            'handlers': ['viewer'],
-            'level': 'DEBUG' if DEBUG else 'ERROR'
         },
         'django': {
-            'handlers': ['viewer'],
+            'handlers': ['viewer', 'mail_admins', 'console'],
             'propagate': True,
             'level': 'ERROR',
         },

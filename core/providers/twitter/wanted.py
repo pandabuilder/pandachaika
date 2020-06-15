@@ -1,3 +1,4 @@
+import logging
 import re
 import typing
 from datetime import datetime, timedelta
@@ -6,7 +7,6 @@ from typing import Any, Dict, List
 from django.db.models import Max, QuerySet
 from twitter import Twitter, OAuth
 
-from core.base.types import OptionalLogger
 from core.base.utilities import format_title_to_wanted_search
 from viewer.models import WantedGallery, Artist, TweetPost
 from . import constants
@@ -14,15 +14,20 @@ from . import constants
 if typing.TYPE_CHECKING:
     from core.base.setup import Settings
 
+logger = logging.getLogger(__name__)
+
+
 CREDENTIALS = ('token', 'token_secret', 'consumer_key', 'consumer_secret')
 
 
-def wanted_generator(settings: 'Settings', ext_logger: OptionalLogger, attrs: QuerySet):
+def wanted_generator(settings: 'Settings', attrs: QuerySet):
     own_settings = settings.providers[constants.provider_name]
 
-    def process_wani_tweets(current_tweets: List[Dict[str, Any]], local_logger=None):
+    def process_wani_tweets(current_tweets: List[Dict[str, Any]]):
         publisher = 'wanimagazine'
         source = 'twitter'
+
+        logger.info('Parsing of {} tweets starting...'.format(len(current_tweets)))
 
         for tweet in current_tweets:
 
@@ -42,11 +47,11 @@ def wanted_generator(settings: 'Settings', ext_logger: OptionalLogger, attrs: Qu
             if not tweet_created:
                 continue
 
-            local_logger.info("Created tweet id: {}, processing...".format(tweet_obj.tweet_id))
+            logger.info("Created tweet id: {}, processing...".format(tweet_obj.tweet_id))
 
             match_tweet_type = re.search('【(.+)】(.*)', tweet['text'], re.DOTALL)
             if match_tweet_type:
-                local_logger.info("Matched pattern (date_type: {}, title, artist: {}),".format(
+                logger.info("Matched pattern (date_type: {}, title, artist: {}),".format(
                     match_tweet_type.group(1).replace('\n', ''),
                     match_tweet_type.group(2).replace('\n', ''))
                 )
@@ -73,7 +78,7 @@ def wanted_generator(settings: 'Settings', ext_logger: OptionalLogger, attrs: Qu
                 match_title_artists = re.search('^『(.+?)』は＜(.+)＞', match_tweet_type.group(2), re.DOTALL)
                 if match_title_artists and release_type:
 
-                    local_logger.info("Matched pattern (title: {}, artists: {}), release_type: {}.".format(
+                    logger.info("Matched pattern (title: {}, artists: {}), release_type: {}.".format(
                         match_title_artists.group(1).replace('\n', ''),
                         match_title_artists.group(2).replace('\n', ''),
                         release_type)
@@ -104,7 +109,7 @@ def wanted_generator(settings: 'Settings', ext_logger: OptionalLogger, attrs: Qu
                         wanted_gallery.should_search = True
                         wanted_gallery.keep_searching = True
                         wanted_gallery.save()
-                        local_logger.info(
+                        logger.info(
                             "Created wanted gallery (magazine): {}, search title: {}".format(
                                 wanted_gallery.get_absolute_url(),
                                 title
@@ -118,7 +123,7 @@ def wanted_generator(settings: 'Settings', ext_logger: OptionalLogger, attrs: Qu
                     )
 
                     if mention_created:
-                        yield (
+                        logger.info(
                             "Created mention for wanted gallery: {}, mention date: {}".format(
                                 wanted_gallery.get_absolute_url(),
                                 mention_date
@@ -148,7 +153,7 @@ def wanted_generator(settings: 'Settings', ext_logger: OptionalLogger, attrs: Qu
                 match_artist_title = re.search('^(.+?)『(.+?)』.*', match_tweet_type.group(2), re.DOTALL)
                 if match_artist_title and release_type:
 
-                    local_logger.info("Matched pattern (artist: {}, title: {}), release type: {}.".format(
+                    logger.info("Matched pattern (artist: {}, title: {}), release type: {}.".format(
                         match_artist_title.group(1).replace('\n', ''),
                         match_artist_title.group(2).replace('\n', ''),
                         release_type)
@@ -206,7 +211,7 @@ def wanted_generator(settings: 'Settings', ext_logger: OptionalLogger, attrs: Qu
                             wanted_gallery.should_search = True
                             wanted_gallery.keep_searching = True
                             wanted_gallery.save()
-                            local_logger.info(
+                            logger.info(
                                 "Created wanted gallery (anthology): {}, search title: {}".format(
                                     wanted_gallery.get_absolute_url(),
                                     title
@@ -220,7 +225,7 @@ def wanted_generator(settings: 'Settings', ext_logger: OptionalLogger, attrs: Qu
                         )
 
                         if mention_created:
-                            yield (
+                            logger.info(
                                 "Created mention for wanted gallery: {}, mention date: {}".format(
                                     wanted_gallery.get_absolute_url(),
                                     mention_date
@@ -240,10 +245,10 @@ def wanted_generator(settings: 'Settings', ext_logger: OptionalLogger, attrs: Qu
                             )
                         wanted_gallery.artists.add(artist_obj)
             else:
-                local_logger.info("Created tweet id: {} did not match the pattern".format(tweet_obj.tweet_id))
+                logger.info("Created tweet id: {} did not match the pattern".format(tweet_obj.tweet_id))
 
     if not all([getattr(own_settings, x) for x in CREDENTIALS]):
-        ext_logger.error('Cannot work with Twitter unless all credentials are set.')
+        logger.error('Cannot work with Twitter unless all credentials are set.')
         return
 
     t = Twitter(
@@ -258,16 +263,16 @@ def wanted_generator(settings: 'Settings', ext_logger: OptionalLogger, attrs: Qu
     if tweet_posts:
         max_id = tweet_posts.aggregate(Max('tweet_id'))['tweet_id__max']
         while True:
-            ext_logger.info("Fetching since tweet id: {}".format(max_id))
+            logger.info("Fetching since tweet id: {}".format(max_id))
             tweets = t.statuses.user_timeline(screen_name='wanimagazine', include_rts=False,
                                               exclude_replies=True, trim_user=True, count=200, since_id=max_id)
             if not tweets:
-                ext_logger.info("No more tweets to fetch, ending")
+                logger.info("No more tweets to fetch, ending")
                 break
             new_max_id = max(tweets, key=lambda x: x['id'])['id']
-            process_wani_tweets(tweets, local_logger=ext_logger)
+            process_wani_tweets(tweets)
             if new_max_id == max_id:
-                ext_logger.info("No more new tweets fetched, stopping at: {}".format(max_id))
+                logger.info("No more new tweets fetched, stopping at: {}".format(max_id))
                 break
             else:
                 max_id = new_max_id
@@ -275,20 +280,20 @@ def wanted_generator(settings: 'Settings', ext_logger: OptionalLogger, attrs: Qu
         min_id = None
         while True:
             if min_id:
-                ext_logger.info("Fetching backwards with max id: {}".format(min_id))
+                logger.info("Fetching backwards with max id: {}".format(min_id))
                 tweets = t.statuses.user_timeline(screen_name='wanimagazine', include_rts=False,
                                                   exclude_replies=True, trim_user=True, count=200, max_id=min_id)
             else:
-                ext_logger.info("Starting from newer tweet.")
+                logger.info("Starting from newer tweet.")
                 tweets = t.statuses.user_timeline(screen_name='wanimagazine', include_rts=False,
                                                   exclude_replies=True, trim_user=True, count=200)
             if not tweets:
-                ext_logger.info("No more tweets to fetch, ending")
+                logger.info("No more tweets to fetch, ending")
                 break
             new_min_id = min(tweets, key=lambda x: x['id'])['id']
-            process_wani_tweets(tweets, local_logger=ext_logger)
+            process_wani_tweets(tweets)
             if new_min_id == min_id:
-                ext_logger.info("No more new tweets fetched, stopping at: {}".format(min_id))
+                logger.info("No more new tweets fetched, stopping at: {}".format(min_id))
                 break
             else:
                 min_id = new_min_id

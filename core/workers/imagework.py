@@ -5,23 +5,19 @@ import logging
 import traceback
 import typing
 
-from core.base.types import OptionalLogger, RealLogger, FakeLogger
-
 if typing.TYPE_CHECKING:
     from viewer.models import Archive
+
+logger = logging.getLogger(__name__)
 
 
 class ImageWorker(object):
 
     """description of class"""
 
-    def __init__(self, crawler_logger: OptionalLogger, worker_number: int) -> None:
+    def __init__(self, worker_number: int) -> None:
 
         self.worker_number = worker_number + 1
-        if not crawler_logger:
-            self.crawler_logger: RealLogger = FakeLogger()
-        else:
-            self.crawler_logger = crawler_logger
         self.web_queue: queue.Queue = queue.Queue()
 
     def thumbnails_worker(self) -> None:
@@ -35,8 +31,7 @@ class ImageWorker(object):
                 item.generate_thumbnails()
                 self.web_queue.task_done()
             except BaseException:
-                thread_logger = logging.getLogger('viewer.threads')
-                thread_logger.error(traceback.format_exc())
+                logger.error(traceback.format_exc())
 
     def file_info_worker(self) -> None:
 
@@ -49,8 +44,7 @@ class ImageWorker(object):
                 item.recalc_fileinfo()
                 self.web_queue.task_done()
             except BaseException:
-                thread_logger = logging.getLogger('viewer.threads')
-                thread_logger.error(traceback.format_exc())
+                logger.error(traceback.format_exc())
 
     def start_info_thread(self) -> None:
 
@@ -66,7 +60,7 @@ class ImageWorker(object):
         for thread in thread_array:
             thread.join()
 
-        self.crawler_logger.info("All file info threads finished")
+        logger.info("All file info threads finished")
 
     def start_thumbs_thread(self) -> None:
 
@@ -82,7 +76,7 @@ class ImageWorker(object):
         for thread in thread_array:
             thread.join()
 
-        self.crawler_logger.info("All thumbnail threads finished")
+        logger.info("All thumbnail threads finished")
 
     def enqueue_archive(self, archive: 'Archive') -> None:
 

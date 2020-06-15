@@ -1,4 +1,5 @@
 import datetime
+import logging
 import typing
 import urllib.parse
 
@@ -14,12 +15,14 @@ from . import constants
 if typing.TYPE_CHECKING:
     from core.base.setup import Settings
 
+logger = logging.getLogger(__name__)
 
-def wanted_generator(settings: 'Settings', ext_logger: RealLogger, attrs: QuerySet):
+
+def wanted_generator(settings: 'Settings', attrs: QuerySet):
     own_settings = settings.providers[constants.provider_name]
 
     if not own_settings.api_key:
-        ext_logger.error("Can't use {} API without an api key. Check {}/API_MANUAL.txt".format(
+        logger.error("Can't use {} API without an api key. Check {}/API_MANUAL.txt".format(
             constants.provider_name,
             constants.main_page
         ))
@@ -120,7 +123,7 @@ def wanted_generator(settings: 'Settings', ext_logger: RealLogger, attrs: QueryS
 
             new_query = urllib.parse.urlencode(query_values, doseq=True)
 
-            ext_logger.info('Querying {} for auto wanted galleries, page: {}, query name: {}, query: {}'.format(
+            logger.info('Querying {} for auto wanted galleries, page: {}, query name: {}, query: {}'.format(
                 constants.provider_name, query_values['page'], query_name, new_query)
             )
 
@@ -160,7 +163,7 @@ def wanted_generator(settings: 'Settings', ext_logger: RealLogger, attrs: QueryS
                     remaining_queries.save()
 
             if remaining_queries.value <= 0:
-                ext_logger.warning("Daily queries quota {} reached for {}. It resets at 00:00 GMT+1".format(
+                logger.warning("Daily queries quota {} reached for {}. It resets at 00:00 GMT+1".format(
                     constants.daily_requests,
                     constants.provider_name
                 ))
@@ -172,7 +175,6 @@ def wanted_generator(settings: 'Settings', ext_logger: RealLogger, attrs: QueryS
                 link,
                 request_dict,
                 post=False,
-                logger=ext_logger
             )
 
             remaining_queries.value -= 1
@@ -181,7 +183,12 @@ def wanted_generator(settings: 'Settings', ext_logger: RealLogger, attrs: QueryS
             last_query_date.save()
 
             if not response:
-                ext_logger.error('Got to page {}, but did not get a response, stopping'.format(query_values['page']))
+                logger.error(
+                    'For provider {}: Got to page {}, but did not get a response, stopping'.format(
+                        constants.provider_name,
+                        query_values['page']
+                    )
+                )
                 break
 
             response.encoding = 'utf-8'
@@ -190,8 +197,13 @@ def wanted_generator(settings: 'Settings', ext_logger: RealLogger, attrs: QueryS
             api_galleries = convert_api_response_text_to_gallery_dicts(response.text)
 
             if not api_galleries:
-                ext_logger.error('Server response: {}'.format(response.text))
-                ext_logger.error('Got to page {}, but could not parse the response into galleries, stopping'.format(query_values['page']))
+                logger.error('Server response: {}'.format(response.text))
+                logger.error(
+                    'For provider {}: Got to page {}, but could not parse the response into galleries, stopping'.format(
+                        constants.provider_name,
+                        query_values['page']
+                    )
+                )
                 break
 
             # Listen to what the server says
@@ -211,15 +223,21 @@ def wanted_generator(settings: 'Settings', ext_logger: RealLogger, attrs: QueryS
                 }
             )
 
-            ext_logger.info(
-                'Page has {} galleries, from which {} are already present in the database.'.format(
+            logger.info(
+                'For provider {}: Page has {} galleries, from which {} are already present in the database.'.format(
+                    constants.provider_name,
                     len(api_galleries),
                     used.count()
                 )
             )
 
             if not force_process.value and used.count() == len(api_galleries):
-                ext_logger.info('Got to page {}, it has already been processed entirely, stopping'.format(query_values['page']))
+                logger.info(
+                    'For provider {}: Got to page {}, it has already been processed entirely, stopping'.format(
+                        constants.provider_name,
+                        query_values['page']
+                    )
+                )
                 break
 
             used_gids = used.values_list('gid', flat=True)
@@ -277,7 +295,7 @@ def wanted_generator(settings: 'Settings', ext_logger: RealLogger, attrs: QueryS
                             if not artist_obj:
                                 artist_obj = Artist.objects.create(name=artist.name, name_jpn=artist.name)
                             wanted_gallery.artists.add(artist_obj)
-                        ext_logger.info(
+                        logger.info(
                             "Created wanted gallery ({}): {}, search title: {}".format(
                                 wanted_gallery.book_type,
                                 wanted_gallery.get_absolute_url(),
@@ -304,7 +322,7 @@ def wanted_generator(settings: 'Settings', ext_logger: RealLogger, attrs: QueryS
             # API returns 25 max results per query, so if we get 24 or less, means there's no more pages.
             # API Manual says 25, but we get 50 results normally!
             if len(api_galleries) < 50:
-                ext_logger.info(
+                logger.info(
                     'Got to page {}, and we got less than 50 galleries, '
                     'meaning there is no more pages, stopping'.format(query_values['page'])
                 )
@@ -312,6 +330,6 @@ def wanted_generator(settings: 'Settings', ext_logger: RealLogger, attrs: QueryS
 
             query_values['page'] += 1
 
-    ext_logger.info("{} Auto wanted ended.".format(
+    logger.info("{} Auto wanted ended.".format(
         constants.provider_name
     ))

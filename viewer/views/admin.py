@@ -37,12 +37,9 @@ from viewer.utils.matching import (
 from django.conf import settings
 from viewer.views.head import render_error
 
-crawler_logger = logging.getLogger('viewer.webcrawler')
-folder_logger = logging.getLogger('viewer.foldercrawler')
-frontend_logger = logging.getLogger('viewer.frontend')
-
 MAIN_LOGGER = settings.MAIN_LOGGER
 crawler_settings = settings.CRAWLER_SETTINGS
+logger = logging.getLogger(__name__)
 
 
 @login_required
@@ -163,14 +160,11 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
     if not request.user.is_staff:
         return render_error(request, "You need to be an admin to use the tools.")
     if tool == "transfer_missing_downloads":
-        crawler_thread = CrawlerThread(crawler_logger,
-                                       crawler_settings,
-                                       '-tmd'.split())
+        crawler_thread = CrawlerThread(crawler_settings, '-tmd'.split())
         crawler_thread.start()
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
     elif tool == "retry_failed":
-        crawler_thread = CrawlerThread(
-            crawler_logger, crawler_settings, '--retry-failed'.split())
+        crawler_thread = CrawlerThread(crawler_settings, '--retry-failed'.split())
         crawler_thread.start()
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
     elif tool == "update_newer_than":
@@ -228,14 +222,14 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
     elif tool == "generate_missing_thumbs":
         archives = Archive.objects.filter(thumbnail='')
         for archive in archives:
-            frontend_logger.info(
+            logger.info(
                 'Generating thumbs for file: {}'.format(archive.zipped.name))
             archive.generate_thumbnails()
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
     elif tool == "calculate_missing_info":
         archives = Archive.objects.filter_by_missing_file_info()
         for archive in archives:
-            frontend_logger.info(
+            logger.info(
                 'Calculating file info for file: {}'.format(archive.zipped.name))
             archive.recalc_fileinfo()
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
@@ -244,11 +238,11 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
             return render_error(request, "File info worker is already running.")
 
         archives = Archive.objects.all()
-        frontend_logger.info(
+        logger.info(
             'Recalculating file info for all archives, count: {}'.format(archives.count())
         )
 
-        image_worker_thread = ImageWorker(crawler_logger, 4)
+        image_worker_thread = ImageWorker(4)
         for archive in archives:
             if os.path.exists(archive.zipped.path):
                 image_worker_thread.enqueue_archive(archive)
@@ -273,10 +267,10 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
             return render_error(request, "Thumbnails worker is already running.")
 
         archives = Archive.objects.all()
-        frontend_logger.info(
+        logger.info(
             'Generating thumbs for all archives, count {}'.format(archives.count()))
 
-        image_worker_thread = ImageWorker(crawler_logger, 4)
+        image_worker_thread = ImageWorker(4)
         for archive in archives:
             if os.path.exists(archive.zipped.path):
                 image_worker_thread.enqueue_archive(archive)
@@ -298,7 +292,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
             max_matches = int(request.GET.get('max-matches', '10'))
         except ValueError:
             max_matches = 10
-        frontend_logger.info(
+        logger.info(
             'Looking for possible matches in gallery database '
             'for non-matched archives (cutoff: {}, max matches: {}) '
             'using provider filter "{}"'.format(cutoff, max_matches, provider)
@@ -308,7 +302,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
             target=generate_possible_matches_for_archives,
             args=(None,),
             kwargs={
-                'logger': frontend_logger, 'cutoff': cutoff, 'max_matches': max_matches, 'filters': (provider,),
+                'cutoff': cutoff, 'max_matches': max_matches, 'filters': (provider,),
                 'match_local': True, 'match_web': False
             })
         matching_thread.daemon = True
@@ -319,7 +313,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
     elif tool == "clear_all_archive_possible_matches":
         ArchiveMatches.objects.all().delete()
-        frontend_logger.info('Clearing all possible matches for archives.')
+        logger.info('Clearing all possible matches for archives.')
         messages.success(
             request,
             'Clearing all possible matches for archives.')
@@ -335,13 +329,13 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
         results = WantedGallery.objects.eligible_to_search()
 
         if not results:
-            frontend_logger.info('No wanted galleries eligible to search.')
+            logger.info('No wanted galleries eligible to search.')
             messages.success(request, 'No wanted galleries eligible to search.')
             return HttpResponseRedirect(request.META["HTTP_REFERER"])
 
         provider = request.GET.get('provider', '')
 
-        frontend_logger.info(
+        logger.info(
             'Searching for gallery matches in panda for wanted galleries, starting thread.')
         messages.success(
             request,
@@ -351,7 +345,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
             name='web_search_worker',
             target=create_matches_wanted_galleries_from_providers,
             args=(results, provider),
-            kwargs={'logger': frontend_logger})
+        )
         panda_search_thread.daemon = True
         panda_search_thread.start()
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
@@ -362,11 +356,11 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
         non_match_wanted = WantedGallery.objects.eligible_to_search()
 
         if not non_match_wanted:
-            frontend_logger.info('No wanted galleries eligible to search.')
+            logger.info('No wanted galleries eligible to search.')
             messages.success(request, 'No wanted galleries eligible to search.')
             return HttpResponseRedirect(request.META["HTTP_REFERER"])
 
-        frontend_logger.info(
+        logger.info(
             'Looking for possible matches in gallery database '
             'for wanted galleries (fixed 0.4 cutoff)'
         )
@@ -386,14 +380,14 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
             name='wanted_local_search_worker',
             target=create_matches_wanted_galleries_from_providers_internal,
             args=(non_match_wanted, ),
-            kwargs={'logger': frontend_logger, 'provider_filter': provider, 'cutoff': cutoff, 'max_matches': max_matches})
+            kwargs={'provider_filter': provider, 'cutoff': cutoff, 'max_matches': max_matches})
         matching_thread.daemon = True
         matching_thread.start()
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
     elif tool == "restart_viewer":
         crawler_settings.workers.stop_workers_and_wait()
         if hasattr(signal, 'SIGUSR2'):
-            os.kill(os.getpid(), signal.SIGUSR2)
+            os.kill(os.getpid(), signal.SIGUSR2)  # type: ignore
         else:
             return render_error(request, "This OS does not support signal SIGUSR2.")
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
@@ -410,7 +404,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
                           encoding="utf-8"
                           ) as f:
                     f.write(settings_text)
-                    frontend_logger.info(
+                    logger.info(
                         'Modified settings file for Panda Backup')
                     messages.success(
                         request,
@@ -430,7 +424,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
         if not request.user.is_staff:
             return render_error(request, "You need to be an admin to reload the config.")
         crawler_settings.load_config_from_file()
-        frontend_logger.info(
+        logger.info(
             'Reloaded settings file for Panda Backup')
         messages.success(
             request,
@@ -629,7 +623,7 @@ def crawler(request: HttpRequest) -> HttpResponse:
             current_settings.write()
             current_settings.load_config_from_file()
         if 'run_separate' in p:
-            crawler_thread = CrawlerThread(crawler_logger, current_settings, urls)
+            crawler_thread = CrawlerThread(current_settings, urls)
             crawler_thread.start()
         else:
             current_settings.workers.web_queue.enqueue_args_list(urls, override_options=current_settings)
@@ -690,7 +684,7 @@ def foldercrawler(request: HttpRequest) -> HttpResponse:
         if 'keep_this_settings' in p:
             current_settings.write()
             current_settings.load_config_from_file()
-        folder_crawler = FolderCrawlerThread(folder_logger, current_settings, list(commands))
+        folder_crawler = FolderCrawlerThread(current_settings, list(commands))
         folder_crawler.start()
         messages.success(request, 'Starting Folder Crawler, check the logs for a report.')
         # Not really optimal when there's many commands being queued

@@ -1,9 +1,7 @@
 # Panda Backup
-__WARNING__: **This is alpha/development software. Expect rough edges**.
-
 Backend+Frontend for viewing, matching and downloading hentai-manga galleries in .zip format.
 
-Runs the [panda.chaika.moe](https://panda.chaika.moe) website, behind Nginx.
+Runs the [panda.chaika.moe](https://panda.chaika.moe) website, behind NGINX.
 
 Overview
 ---------------------

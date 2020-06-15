@@ -65,7 +65,6 @@ class TitleMatcher(Matcher):
             api_link,
             request_dict,
             post=False,
-            logger=self.logger
         )
 
         if not response:

@@ -17,16 +17,16 @@ django.setup()
 from core.web.crawler import WebCrawler
 
 crawler_settings = settings.CRAWLER_SETTINGS
-logger = logging.getLogger('viewer.webcrawler')
-
-h = logging.StreamHandler(stream=sys.stdout)
-h.setLevel(logging.DEBUG)
-logger.addHandler(h)
+# logger = logging.getLogger("viewer")
+#
+# h = logging.StreamHandler(stream=sys.stdout)
+# h.setLevel(logging.DEBUG)
+# logger.addHandler(h)
 
 
 if __name__ == "__main__":
     argv = sys.argv[1:]
 
-    web_crawler = WebCrawler(crawler_settings, logger)
+    web_crawler = WebCrawler(crawler_settings)
 
     web_crawler.start_crawling(argv)

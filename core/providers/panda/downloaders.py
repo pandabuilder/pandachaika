@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 from datetime import datetime, timezone, timedelta
@@ -17,6 +18,8 @@ from viewer.models import Archive
 from core.base.utilities import (available_filename,
                                  replace_illegal_name)
 from . import constants
+
+logger = logging.getLogger(__name__)
 
 
 # We define a skip_if_hidden parameter in here,
@@ -41,7 +44,6 @@ class ArchiveDownloader(BaseDownloader):
             url,
             request_dict,
             post=True,
-            logger=self.logger
         )
 
         return response
@@ -62,7 +64,7 @@ class ArchiveDownloader(BaseDownloader):
                 to_use_filename + '.zip'))
 
         if not (self.gallery.root and self.gallery.gid and self.gallery.token and self.gallery.archiver_key):
-            self.logger.error('Missing required data -> root: {}, gid: {}, token: {}, archiver_key: {}.'.format(
+            logger.error('Missing required data -> root: {}, gid: {}, token: {}, archiver_key: {}.'.format(
                 self.gallery.root,
                 self.gallery.gid,
                 self.gallery.token,
@@ -79,28 +81,28 @@ class ArchiveDownloader(BaseDownloader):
         )
 
         if not r:
-            self.logger.error('ERROR: could not get download link.')
+            logger.error('ERROR: could not get download link.')
             self.return_code = 0
             return
 
         r.encoding = 'utf-8'
 
         if 'Invalid archiver key' in r.text:
-            self.logger.error("Invalid archiver key received.")
+            logger.error("Invalid archiver key received.")
             self.return_code = 0
         else:
 
             archive_link = get_archive_link_from_html_page(r.text)
 
             if archive_link == '':
-                self.logger.error('Could not find archive link, page text: {}'.format(r.text))
+                logger.error('Could not find archive link, page text: {}'.format(r.text))
                 self.return_code = 0
             else:
                 m = re.match(r"(.*?)(\?.*?)", archive_link)
                 if m:
                     archive_link = m.group(1)
 
-                self.logger.info('Got link: {}, from url: {}'.format(archive_link, r.url))
+                logger.info('Got link: {}, from url: {}'.format(archive_link, r.url))
 
                 request_dict = construct_request_dict(self.settings, self.own_settings)
 
@@ -111,7 +113,7 @@ class ArchiveDownloader(BaseDownloader):
                 )
 
                 if r and r.status_code == 200:
-                    self.logger.info('Downloading gallery: {}.zip'.format(to_use_filename))
+                    logger.info('Downloading gallery: {}.zip'.format(to_use_filename))
                     filepath = os.path.join(self.settings.MEDIA_ROOT,
                                             self.gallery.filename)
                     with open(filepath, 'wb') as fo:
@@ -126,7 +128,7 @@ class ArchiveDownloader(BaseDownloader):
                         self.return_code = 1
 
                 else:
-                    self.logger.error("Could not download archive")
+                    logger.error("Could not download archive")
                     self.return_code = 0
 
     def update_archive_db(self, default_values: DataDict) -> Optional['Archive']:
@@ -172,7 +174,6 @@ class TorrentDownloader(BaseTorrentDownloader):
             url,
             request_dict,
             post=True,
-            logger=self.logger
         )
 
         return response
@@ -206,11 +207,11 @@ class TorrentDownloader(BaseTorrentDownloader):
         client = get_torrent_client(self.settings.torrent)
         if not client:
             self.return_code = 0
-            self.logger.error("No torrent client was found")
+            logger.error("No torrent client was found")
             return
 
         if not (self.gallery.root and self.gallery.gid and self.gallery.token):
-            self.logger.error('Missing required data -> root: {}, gid: {}, token: {}.'.format(
+            logger.error('Missing required data -> root: {}, gid: {}, token: {}.'.format(
                 self.gallery.root,
                 self.gallery.gid,
                 self.gallery.token,
@@ -222,7 +223,7 @@ class TorrentDownloader(BaseTorrentDownloader):
             self.gallery.root, self.gallery.gid, self.gallery.token)
 
         if not r:
-            self.logger.error('ERROR: could not get download link.')
+            logger.error('ERROR: could not get download link.')
             self.return_code = 0
             return
 
@@ -232,7 +233,7 @@ class TorrentDownloader(BaseTorrentDownloader):
         torrent_link = torrent_page_parser.torrent
 
         if not torrent_link:
-            self.logger.error('ERROR: could not get torrent link.')
+            logger.error('ERROR: could not get torrent link.')
             self.return_code = 0
             return
 
@@ -244,7 +245,7 @@ class TorrentDownloader(BaseTorrentDownloader):
         )
 
         if not validated:
-            self.logger.error(
+            logger.error(
                 "Torrent for gallery: {} for did not pass validation, reasons: {}"
                 ", skipping.".format(self.gallery.link, " ".join(reasons))
             )
@@ -255,7 +256,7 @@ class TorrentDownloader(BaseTorrentDownloader):
         if m and m.group(1):
             torrent_link = m.group(1)
 
-        self.logger.info("Adding torrent to client, seeds: {}".format(torrent_page_parser.seeds))
+        logger.info("Adding torrent to client, seeds: {}".format(torrent_page_parser.seeds))
         self.connect_and_download(client, torrent_link)
 
     def update_archive_db(self, default_values: DataDict) -> Optional['Archive']:
@@ -337,26 +338,26 @@ class TorrentAPIDownloader(BaseTorrentDownloader):
             return
 
         if 'torrentcount' not in self.gallery.extra_data or 'torrents' not in self.gallery.extra_data:
-            self.logger.error('Missing required extra data -> torrentcount, torrents.')
+            logger.error('Missing required extra data -> torrentcount, torrents.')
             self.return_code = 0
             return
 
         if int(self.gallery.extra_data['torrentcount']) <= 0:
-            self.logger.error('No torrents reported in API response.')
+            logger.error('No torrents reported in API response.')
             self.return_code = 0
             return
 
         client = get_torrent_client(self.settings.torrent)
         if not client:
             self.return_code = 0
-            self.logger.error("No torrent client was found")
+            logger.error("No torrent client was found")
             return
 
         chosen_torrent = self.choose_torrent(self.gallery.extra_data['torrents'])
 
         if not chosen_torrent:
             self.return_code = 0
-            self.logger.error("Could not find a suitable torrent.")
+            logger.error("Could not find a suitable torrent.")
             return
 
         client.send_url = True
@@ -365,7 +366,7 @@ class TorrentAPIDownloader(BaseTorrentDownloader):
         torrent_magnet_url = self.format_torrent_magnet_url(chosen_torrent['hash'])
         client.expected_torrent_name = html.unescape(chosen_torrent['name'])
 
-        self.logger.info(
+        logger.info(
             "Adding torrent to client, magnet link: {}, filesize: {}, date: {}, expected name: {}".format(
                 torrent_magnet_url,
                 chosen_torrent['fsize'],
@@ -408,7 +409,7 @@ class HathDownloader(BaseDownloader):
             return
 
         if not (self.gallery.root and self.gallery.gid and self.gallery.token and self.gallery.archiver_key):
-            self.logger.error('Missing required data -> root: {}, gid: {}, token: {}, archiver_key: {}.'.format(
+            logger.error('Missing required data -> root: {}, gid: {}, token: {}, archiver_key: {}.'.format(
                 self.gallery.root,
                 self.gallery.gid,
                 self.gallery.token,
@@ -434,12 +435,12 @@ class HathDownloader(BaseDownloader):
             )
 
             if not container:
-                self.logger.error("Could not find expected text in response.")
+                logger.error("Could not find expected text in response.")
                 self.return_code = 0
                 return
             client_id = container.parent.find('strong')
             if client_id:
-                self.logger.info("Queued download to client: {}".format(client_id.get_text()))
+                logger.info("Queued download to client: {}".format(client_id.get_text()))
 
             to_use_filename = get_base_filename_string_from_gallery_data(self.gallery)
 
@@ -456,9 +457,9 @@ class HathDownloader(BaseDownloader):
             self.return_code = 1
         else:
             if r:
-                self.logger.error('Did not get a 200 response, text: {}'.format(r.text))
+                logger.error('Did not get a 200 response, text: {}'.format(r.text))
             else:
-                self.logger.error('Did not get a response')
+                logger.error('Did not get a response')
             self.return_code = 0
 
     def request_hath_download(self, root: str, gid: str, token: str, key: str) -> Optional[requests.models.Response]:
@@ -467,7 +468,7 @@ class HathDownloader(BaseDownloader):
 
         params = {'gid': gid, 'token': token, 'or': key}
 
-        # self.logger.info("Requesting hath download to URL: {}".format(url))
+        # logger.info("Requesting hath download to URL: {}".format(url))
 
         request_dict = construct_request_dict(self.settings, self.own_settings)
         request_dict['params'] = params
@@ -482,7 +483,7 @@ class HathDownloader(BaseDownloader):
                 return r
             except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
                 if retry_count < 2:
-                    self.logger.warning("Request failed, retrying {} of {}: {}".format(retry_count, 3, str(e)))
+                    logger.warning("Request failed, retrying {} of {}: {}".format(retry_count, 3, str(e)))
                     continue
                 else:
                     return None
@@ -530,7 +531,7 @@ class UrlSubmitDownloader(BaseDownloader):
         if not self.original_gallery:
             return
 
-        self.logger.info("Adding gallery submission info to database")
+        logger.info("Adding gallery submission info to database")
 
         self.return_code = 1
 

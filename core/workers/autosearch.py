@@ -1,19 +1,22 @@
+import logging
+
 import django.utils.timezone as django_tz
 from django.db import connection
 
 from core.base.setup import Settings
-from core.base.types import OptionalLogger
 from core.workers.schedulers import BaseScheduler
+
+logger = logging.getLogger(__name__)
 
 
 class ProviderTimedAutoCrawler(BaseScheduler):
 
     thread_name = 'auto_search'
 
-    def __init__(self, settings: Settings, provider_name: str, web_queue=None, crawler_logger: OptionalLogger = None, timer=1, pk=None):
+    def __init__(self, settings: Settings, provider_name: str, web_queue=None, timer=1, pk=None):
         self.provider_name = provider_name
         self.thread_name = 'auto_search_' + provider_name
-        super().__init__(settings, web_queue, crawler_logger, timer, pk)
+        super().__init__(settings, web_queue, timer, pk)
 
     @staticmethod
     def timer_to_seconds(timer: float) -> float:
@@ -26,7 +29,7 @@ class ProviderTimedAutoCrawler(BaseScheduler):
                 return
             if self.settings.providers[self.provider_name].autochecker_enable:
                 connection.close()
-                self.crawler_logger.info("Starting timed auto search for provider: {}".format(self.provider_name))
+                logger.info("Starting timed auto search for provider: {}".format(self.provider_name))
                 current_settings = Settings(load_from_config=self.settings.config)
                 current_settings.silent_processing = True
                 current_settings.replace_metadata = True

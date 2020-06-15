@@ -13,14 +13,15 @@ from core.web.crawlerthread import WebCrawler
 if typing.TYPE_CHECKING:
     from viewer.models import Gallery, Archive
 
+logger = logging.getLogger(__name__)
+
 
 class WebQueue(object):
 
     """Queue handler for downloads."""
 
-    def __init__(self, settings: Settings, crawler_logger=None) -> None:
+    def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self.crawler_logger = crawler_logger
         self.queue: deque = deque()
         self.web_queue_thread: Optional[threading.Thread] = None
         self.current_processing_items: List[QueueItem] = []
@@ -34,7 +35,7 @@ class WebQueue(object):
                 return
             try:
                 self.current_processing_items = item
-                web_crawler = WebCrawler(self.settings, self.crawler_logger)
+                web_crawler = WebCrawler(self.settings)
                 web_crawler.start_crawling(
                     item['args'],
                     override_options=item['override_options'],
@@ -44,8 +45,7 @@ class WebQueue(object):
                 )
                 self.current_processing_items = []
             except BaseException:
-                thread_logger = logging.getLogger('viewer.threads')
-                thread_logger.error(traceback.format_exc())
+                logger.error(traceback.format_exc())
 
     def start_running(self) -> None:
 

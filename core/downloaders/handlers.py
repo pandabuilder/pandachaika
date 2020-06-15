@@ -1,14 +1,17 @@
 import copy
+import logging
 import os
 import typing
 from typing import Optional
 
 from core.base.utilities import GeneralUtils, replace_illegal_name, get_base_filename_string_from_gallery_data
-from core.base.types import GalleryData, RealLogger, TorrentClient, DataDict
+from core.base.types import GalleryData, TorrentClient, DataDict
 
 if typing.TYPE_CHECKING:
     from core.base.setup import Settings
     from viewer.models import Gallery, Archive
+
+logger = logging.getLogger(__name__)
 
 
 class Meta(type):
@@ -26,9 +29,8 @@ class BaseDownloader(metaclass=Meta):
     archive_only = False
     skip_if_hidden = False
 
-    def __init__(self, settings: 'Settings', logger: RealLogger, general_utils: GeneralUtils) -> None:
+    def __init__(self, settings: 'Settings', general_utils: GeneralUtils) -> None:
         self.settings = settings
-        self.logger = logger
         self.general_utils = general_utils
         self.own_settings = settings.providers[self.provider]
         self.fileDownloaded = 0
@@ -107,7 +109,7 @@ class BaseInfoDownloader(BaseDownloader):
 
     def start_download(self) -> None:
 
-        self.logger.info("Adding {} gallery, without downloading an archive".format(self.provider))
+        logger.info("Adding {} gallery, without downloading an archive".format(self.provider))
 
         self.return_code = 1
 
@@ -123,7 +125,7 @@ class BaseFakeDownloader(BaseDownloader):
 
         self.original_gallery.hidden = True
 
-        self.logger.info("Adding {} gallery info to database, and faking the archive file".format(self.provider))
+        logger.info("Adding {} gallery info to database, and faking the archive file".format(self.provider))
 
         self.fileDownloaded = 1
         self.return_code = 1
@@ -198,7 +200,7 @@ class BaseTorrentDownloader(BaseDownloader):
                 self.own_settings.torrent_dl_folder,
                 replace_illegal_name(self.expected_torrent_name) + '.zip'
             )
-            self.logger.info(
+            logger.info(
                 "Torrent added, expecting downloaded name: {}, local name: {}".format(
                     self.expected_torrent_name,
                     self.gallery.filename
@@ -206,4 +208,4 @@ class BaseTorrentDownloader(BaseDownloader):
             )
         else:
             self.return_code = 0
-            self.logger.error("There was an error adding the torrent to the client")
+            logger.error("There was an error adding the torrent to the client")

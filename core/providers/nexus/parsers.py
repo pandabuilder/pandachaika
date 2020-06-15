@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import logging
 import re
 import time
 import typing
@@ -19,6 +20,8 @@ from viewer.models import Gallery
 if typing.TYPE_CHECKING:
     from viewer.models import WantedGallery
 
+logger = logging.getLogger(__name__)
+
 
 class Parser(BaseParser):
     name = constants.provider_name
@@ -32,11 +35,10 @@ class Parser(BaseParser):
             link,
             request_dict,
             post=False,
-            logger=self.logger
         )
 
         if not response:
-            self.logger.error("Got no response from: {}".format(link))
+            logger.error("Got no response from: {}".format(link))
             return None
 
         response.encoding = 'utf-8'
@@ -50,7 +52,7 @@ class Parser(BaseParser):
         content_container = soup.find_all("div", class_="container")[0]
 
         if not content_container:
-            self.logger.error("Could not find content container")
+            logger.error("Could not find content container")
             return None
 
         is_doujinshi = False
@@ -93,7 +95,7 @@ class Parser(BaseParser):
 
         match_result = match_string.match(soup.find("meta", property="og:url").get('content'))
         if not match_result:
-            self.logger.error("Could not find gallery info container")
+            logger.error("Could not find gallery info container")
             return None
 
         gallery_id = match_result.group(1)
@@ -157,7 +159,7 @@ class Parser(BaseParser):
             if i > 0:
                 time.sleep(self.own_settings.wait_timer)
 
-            self.logger.info(
+            logger.info(
                 "Calling API ({}). "
                 "Gallery: {}, total galleries: {}".format(
                     self.name,
@@ -170,7 +172,7 @@ class Parser(BaseParser):
             if values:
                 response.append(values)
             else:
-                self.logger.error("Failed fetching: {}, gallery might not exist".format(element))
+                logger.error("Failed fetching: {}, gallery might not exist".format(element))
                 continue
         return response
 
@@ -205,11 +207,10 @@ class Parser(BaseParser):
                 paged_feed_url,
                 request_dict,
                 post=False,
-                logger=self.logger
             )
 
             if not response:
-                self.logger.error("No response from URL: {}, returning".format(paged_feed_url))
+                logger.error("No response from URL: {}, returning".format(paged_feed_url))
                 return urls
 
             response.encoding = 'utf-8'
@@ -221,7 +222,7 @@ class Parser(BaseParser):
             content_container = soup.find("div", class_="columns")
 
             if not content_container:
-                self.logger.error("Content container not found, returning")
+                logger.error("Content container not found, returning")
                 return urls
 
             url_containers = content_container.find_all("a", href=match_string)
@@ -240,7 +241,7 @@ class Parser(BaseParser):
                     current_gids.append(gid)
 
             if len(current_gids) < 1:
-                self.logger.info(
+                logger.info(
                     'Got to page {}, and we got less than 1 gallery, '
                     'meaning there is no more pages, stopping'.format(current_page)
                 )
@@ -249,7 +250,7 @@ class Parser(BaseParser):
             used = Gallery.objects.filter(gid__in=current_gids, provider=constants.provider_name)
 
             if used.count() == len(current_gids):
-                self.logger.info(
+                logger.info(
                     'Got to page {}, it has already been processed entirely, stopping'.format(current_page)
                 )
                 break
@@ -288,25 +289,25 @@ class Parser(BaseParser):
         gallery_wanted_lists: typing.Dict[str, List['WantedGallery']] = defaultdict(list)
 
         if not self.downloaders:
-            self.logger.warning('No downloaders enabled, returning.')
+            logger.warning('No downloaders enabled, returning.')
             return
 
         for url in urls:
 
             if constants.main_page not in url:
-                self.logger.warning("Invalid URL, skipping: {}".format(url))
+                logger.warning("Invalid URL, skipping: {}".format(url))
                 continue
 
             if '/view/' in url or '/read/' in url or '/zip/' in url:
                 if not self.settings.silent_processing:
-                    self.logger.info("Provided URL {} is a gallery link, adding".format(url))
+                    logger.info("Provided URL {} is a gallery link, adding".format(url))
                 unique_urls.add(url)
                 continue
 
             if constants.rss_url in url:
                 feed_links = self.crawl_feed(url)
                 unique_urls.update(feed_links)
-                self.logger.info("Provided RSS URL for provider ({}), adding {} found links".format(
+                logger.info("Provided RSS URL for provider ({}), adding {} found links".format(
                     self.name,
                     len(feed_links))
                 )
@@ -322,7 +323,7 @@ class Parser(BaseParser):
 
             if discard_approved:
                 if not self.settings.silent_processing:
-                    self.logger.info(discard_message)
+                    logger.info(discard_message)
                 continue
 
             fetch_format_galleries.append(gallery)
@@ -336,7 +337,7 @@ class Parser(BaseParser):
 
             if self.general_utils.discard_by_tag_list(internal_gallery_data.tags):
                 if not self.settings.silent_processing:
-                    self.logger.info(
+                    logger.info(
                         "Skipping gallery link {} because it's tagged with global discarded tags".format(
                             internal_gallery_data.link
                         )

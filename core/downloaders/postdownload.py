@@ -27,13 +27,14 @@ from core.base.utilities import (
 from core.workers.schedulers import BaseScheduler
 from viewer.models import Archive
 
+logger = logging.getLogger(__name__)
+
 
 class PostDownloader(object):
 
-    def __init__(self, settings: 'Settings', logger, web_queue=None) -> None:
+    def __init__(self, settings: 'Settings', web_queue=None) -> None:
         self.settings = settings
         self.web_queue = web_queue
-        self.logger = logger
         self.ftps: Optional[FTP_TLS] = None
         self.current_ftp_dir: Optional[str] = None
         self.current_download: DataDict = {
@@ -57,7 +58,7 @@ class PostDownloader(object):
                 except_at_open = True
             if except_at_open or return_error:
                 if 'panda' in archive.source_type:
-                    self.logger.error(
+                    logger.error(
                         "For archive: {}, file check on downloaded zipfile failed on file: {}, "
                         "forcing download as panda_archive to fix it.".format(archive, archive.zipped.path)
                     )
@@ -70,7 +71,7 @@ class PostDownloader(object):
                         self.web_queue.enqueue_args_list((archive.gallery.get_link(),), override_options=temp_settings)
                         return
                 else:
-                    self.logger.warning(
+                    logger.warning(
                         "For archive: {}, File check on downloaded zipfile: {}. "
                         "Check the file manually.".format(archive, archive.zipped.path)
                     )
@@ -88,13 +89,13 @@ class PostDownloader(object):
                 values, pk=archive.pk)
             if archive.gallery and updated_archive.filesize != updated_archive.gallery.filesize:
                 if Archive.objects.filter(gallery=updated_archive.gallery, filesize=updated_archive.gallery.filesize):
-                    self.logger.info(
+                    logger.info(
                         "For archive: {} size does not match gallery, "
                         "but there's already another archive that matches.".format(updated_archive)
                     )
                     return
                 if 'panda' in archive.source_type:
-                    self.logger.info(
+                    logger.info(
                         "For archive: {} size does not match gallery, "
                         "downloading again from panda_archive.".format(updated_archive)
                     )
@@ -106,7 +107,7 @@ class PostDownloader(object):
                             override_options=temp_settings
                         )
                 else:
-                    self.logger.warning(
+                    logger.warning(
                         "For archive: {} size does not match gallery. Check the file manually.".format(archive)
                     )
 
@@ -185,7 +186,7 @@ class PostDownloader(object):
         self.start_connection()
 
         if not self.ftps:
-            self.logger.error(
+            logger.error(
                 "Cannot download the archives, the FTP connection is not initialized."
             )
             return None
@@ -215,7 +216,7 @@ class PostDownloader(object):
                     total_remote_size += int(img_file_tuple[1]["size"])
                     remote_ftp_tuples.append((img_file_tuple[0], img_file_tuple[1]["size"]))
                 if total_remote_size != matched_file_hath[2]:
-                    self.logger.info(
+                    logger.info(
                         "For archive: {archive}, remote folder: {folder} "
                         "has not completed the download ({current}/{total}), skipping".format(
                             archive=matched_file_hath[3],
@@ -225,7 +226,7 @@ class PostDownloader(object):
                         )
                     )
                     continue
-                self.logger.info(
+                logger.info(
                     "For archive: {archive}, downloading and creating zip "
                     "for folder {filename}, {image_count} images".format(
                         archive=matched_file_hath[3],
@@ -245,7 +246,7 @@ class PostDownloader(object):
                                     int(remote_file[1])
                                 )
                         except (ConnectionResetError, socket.timeout, TimeoutError):
-                            self.logger.error("Hath download failed for file {} of {}, restarting connection...".format(
+                            logger.warning("Hath download failed for file {} of {}, restarting connection...".format(
                                 count,
                                 len(remote_ftp_tuples))
                             )
@@ -293,7 +294,7 @@ class PostDownloader(object):
                     dir_path = mkdtemp()
                     remote_ftp_files = list(self.ftps.mlsd(path=matched_file_torrent[0], facts=["type", "size"]))
                     self.current_download['total'] = len(remote_ftp_files)
-                    self.logger.info(
+                    logger.info(
                         "For archive: {archive}, downloading and creating zip "
                         "for folder {filename}, {image_count} images".format(
                             archive=matched_file_torrent[3],
@@ -313,7 +314,7 @@ class PostDownloader(object):
                                         int(img_file_tuple[1]["size"])
                                     )
                             except (ConnectionResetError, socket.timeout, TimeoutError):
-                                self.logger.error("Torrent download failed for folder, restarting connection...")
+                                logger.warning("Torrent download failed for folder, restarting connection...")
                                 self.ftps.close()
                                 self.start_connection()
                                 self.set_current_dir(self.settings.ftps['remote_torrent_dir'])
@@ -326,7 +327,7 @@ class PostDownloader(object):
                                     os.path.join(root_path, current_file), arcname=os.path.basename(current_file))
                     shutil.rmtree(dir_path, ignore_errors=True)
                 else:
-                    self.logger.info(
+                    logger.info(
                         "For archive: {archive} downloading remote file: {remote} to local file: {local}".format(
                             archive=matched_file_torrent[3],
                             remote=matched_file_torrent[0],
@@ -341,14 +342,14 @@ class PostDownloader(object):
                                 self.write_file_update_progress(
                                     'RETR %s' % matched_file_torrent[0], file.write, matched_file_torrent[2])
                         except (ConnectionResetError, socket.timeout, TimeoutError):
-                            self.logger.error("Torrent download failed for archive, restarting connection...")
+                            logger.warning("Torrent download failed for archive, restarting connection...")
                             self.ftps.close()
                             self.start_connection()
                             self.set_current_dir(self.settings.ftps['remote_torrent_dir'])
                         else:
                             break
                     if self.settings.convert_rar_to_zip and os.path.splitext(matched_file_torrent[0])[1].lower() == ".rar":
-                        self.logger.info(
+                        logger.info(
                             "For archive: {}, converting rar: {} to zip".format(
                                 matched_file_torrent[3],
                                 matched_file_torrent[3].zipped.path
@@ -407,7 +408,7 @@ class PostDownloader(object):
                     remote_files.append(
                         os.path.join(directory, img_file))
                 if total_remote_size != img_dir[2]:
-                    self.logger.info(
+                    logger.info(
                         "For archive: {archive}, folder: {folder} "
                         "has not completed the download ({current}/{total}), skipping".format(
                             archive=img_dir[3],
@@ -417,7 +418,7 @@ class PostDownloader(object):
                         )
                     )
                     continue
-                self.logger.info(
+                logger.info(
                     "For archive: {archive}, creating zip "
                     "for folder {filename}, {image_count} images".format(
                         archive=img_dir[3],
@@ -459,7 +460,7 @@ class PostDownloader(object):
             for matched_file in files_matched_torrent:
                 target = os.path.join(self.settings.torrent['download_dir'], matched_file[0])
                 if matched_file[1]:
-                    self.logger.info(
+                    logger.info(
                         "For archive: {archive}, creating zip for folder: {filename}".format(
                             archive=matched_file[2],
                             filename=matched_file[0],
@@ -480,7 +481,7 @@ class PostDownloader(object):
                                     os.path.join(root_path, current_file), arcname=os.path.basename(current_file))
                     shutil.rmtree(dir_path, ignore_errors=True)
                 else:
-                    self.logger.info(
+                    logger.info(
                         "For archive: {archive}, downloading file: {filename}".format(
                             archive=matched_file[2],
                             filename=matched_file[0],
@@ -490,7 +491,7 @@ class PostDownloader(object):
                     else:
                         shutil.copy(target, matched_file[2].zipped.path)
                     if self.settings.convert_rar_to_zip and os.path.splitext(matched_file[0])[1].lower() == ".rar":
-                        self.logger.info(
+                        logger.info(
                             "For archive: {}, converting rar: {} to zip".format(
                                 matched_file[2],
                                 matched_file[2].zipped.path
@@ -509,12 +510,12 @@ class PostDownloader(object):
                 try:
                     self.download_all_missing(archives)
                 except (ConnectionResetError, socket.timeout, TimeoutError) as e:
-                    self.logger.error(
+                    logger.warning(
                         "Download failed, restarting connection. Retry: {} of 3. Error: {}".format(retry_count + 1, e)
                     )
                 else:
                     return
-            self.logger.error("Download failed, restart limit reached (3), ending")
+            logger.error("Download failed, restart limit reached (3), ending")
 
 
 class TimedPostDownloader(BaseScheduler):
@@ -541,19 +542,18 @@ class TimedPostDownloader(BaseScheduler):
             found_archives = Archive.objects.filter_by_dl_remote()
             if found_archives:
 
-                if self.crawler_logger:
-                    self.crawler_logger.info(
-                        "Looking for missing files downloaded by hath ({:d}) and torrent ({:d}).".format(
-                            len([x for x in found_archives if 'hath' in x.match_type]),
-                            len([x for x in found_archives if 'torrent' in x.match_type]),
-                        )
+                logger.info(
+                    "Looking for missing files downloaded by hath ({:d}) and torrent ({:d}).".format(
+                        len([x for x in found_archives if 'hath' in x.match_type]),
+                        len([x for x in found_archives if 'torrent' in x.match_type]),
                     )
+                )
                 for archive in found_archives:
                     self.post_queue.put(archive)
                 thread_array = []
 
                 for x in range(1, self.parallel_post_downloaders + 1):
-                    post_downloader = PostDownloader(self.settings, self.crawler_logger, web_queue=self.web_queue)
+                    post_downloader = PostDownloader(self.settings, web_queue=self.web_queue)
                     self.post_downloader[x] = post_downloader
                     post_download_thread = threading.Thread(
                         name="{}-{}".format(self.thread_name, x),
@@ -568,10 +568,9 @@ class TimedPostDownloader(BaseScheduler):
                     thread.join()
 
                 self.post_downloader = {}
-                if self.crawler_logger:
-                    self.crawler_logger.info(
-                        "All downloader threads finished."
-                    )
+                logger.info(
+                    "All downloader threads finished."
+                )
 
             self.update_last_run(django_tz.now())
 
@@ -585,8 +584,7 @@ class TimedPostDownloader(BaseScheduler):
                 post_downloader.transfer_all_missing((item, ))
                 self.post_queue.task_done()
             except BaseException:
-                thread_logger = logging.getLogger('viewer.threads')
-                thread_logger.error(traceback.format_exc())
+                logger.error(traceback.format_exc())
 
     def current_download(self) -> List[Dict[str, Any]]:
         return [x.current_download for x in self.post_downloader.values()]

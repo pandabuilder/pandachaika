@@ -1,4 +1,3 @@
-import logging
 import typing
 from time import sleep
 from typing import Optional
@@ -13,8 +12,6 @@ if typing.TYPE_CHECKING:
     from core.workers.auto_wanted import TimedAutoWanted
     from core.workers.webqueue import WebQueue
     from viewer.models import Scheduler
-
-crawler_logger = logging.getLogger('viewer.webcrawler')
 
 
 class WorkerContext:
@@ -33,11 +30,10 @@ class WorkerContext:
         from core.workers.webqueue import WebQueue
         from viewer.models import Scheduler
 
-        self.web_queue = WebQueue(crawler_settings, crawler_logger=crawler_logger)
+        self.web_queue = WebQueue(crawler_settings)
         self.timed_downloader = TimedPostDownloader(
             crawler_settings,
             web_queue=self.web_queue,
-            crawler_logger=crawler_logger,
             timer=5,
             parallel_post_downloaders=crawler_settings.parallel_post_downloaders,
         )
@@ -54,20 +50,17 @@ class WorkerContext:
                 crawler_settings,
                 provider_name,
                 web_queue=self.web_queue,
-                crawler_logger=crawler_logger,
                 timer=crawler_settings.providers[provider_name].autochecker_timer
             )
             self.timed_auto_crawlers.append(provider_auto_crawler)
 
         self.timed_auto_wanted = TimedAutoWanted(
             crawler_settings,
-            crawler_logger=crawler_logger,
             timer=crawler_settings.auto_wanted.cycle_timer
         )
         self.timed_updater = TimedAutoUpdater(
             crawler_settings,
             web_queue=self.web_queue,
-            crawler_logger=crawler_logger,
             timer=crawler_settings.autoupdater.cycle_timer
         )
 

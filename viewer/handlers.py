@@ -13,7 +13,7 @@ from viewer.models import Gallery, users_with_perm, WantedGallery
 from viewer.signals import wanted_gallery_found
 from viewer.utils.functions import send_mass_html_mail
 
-frontend_logger = logging.getLogger('viewer.frontend')
+logger = logging.getLogger(__name__)
 crawler_settings = settings.CRAWLER_SETTINGS
 
 
@@ -55,7 +55,7 @@ def wanted_gallery_found_handler(sender: typing.Any, **kwargs: typing.Any) -> No
     mails = users_to_mail.values_list('email', flat=True)
 
     try:
-        frontend_logger.info('Wanted Gallery found: sending emails to enabled users.')
+        logger.info('Wanted Gallery found: sending emails to enabled users.')
         # (subject, message, from_email, recipient_list)
         datatuples = tuple([(
             "Wanted Gallery match found",
@@ -66,4 +66,4 @@ def wanted_gallery_found_handler(sender: typing.Any, **kwargs: typing.Any) -> No
         ) for mail in mails])
         send_mass_html_mail(datatuples, fail_silently=True)
     except BadHeaderError:
-        frontend_logger.error('Failed sending emails: Invalid header found.')
+        logger.error('Failed sending emails: Invalid header found.')

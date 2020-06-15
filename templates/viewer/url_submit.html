@@ -9,9 +9,9 @@
   {% endif %}
   <!-- Tools  -->
   <div class="page-header">
-    <h2>URLs submission</h2>
-    <p class="lead">Paste URLs that you want to back up, and specify the reason.</p>
-    <h4>One per line, an admin will review them later.</h4>
+    <h2>URLs submit form</h2>
+    <p class="lead">Paste URLs that you want to back up (from sites that allow downloading), and specify the reason.</p>
+    <h5>One per line, an admin will review them later.</h5>
   </div>
   <form action="{% url 'viewer:url-submit' %}" method="POST">{% csrf_token %}
     <div class="form-group">

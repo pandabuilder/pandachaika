@@ -1,5 +1,6 @@
 import argparse
 import threading
+import logging
 
 import os
 from typing import List, Union, Callable, Optional
@@ -8,10 +9,11 @@ import requests
 from django.db.models import QuerySet, Q
 
 from core.base.setup import Settings
-from core.base.types import OptionalLogger, FakeLogger, RealLogger
 from core.downloaders.postdownload import PostDownloader
 from core.base.parsers import InternalParser
 from viewer.models import Gallery, WantedGallery, Archive
+
+logger = logging.getLogger(__name__)
 
 
 class ArgumentParserError(Exception):
@@ -26,12 +28,8 @@ class YieldingArgumentParser(argparse.ArgumentParser):
 
 class WebCrawler(object):
 
-    def __init__(self, settings: Settings, logger: OptionalLogger) -> None:
+    def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        if not logger:
-            self.logger: RealLogger = FakeLogger()
-        else:
-            self.logger = logger
         self.parse_error = False
 
     def get_args(self, arg_line: List[str]) -> Union[argparse.Namespace, ArgumentParserError]:
@@ -146,11 +144,6 @@ class WebCrawler(object):
                             action='store',
                             help='Override the wait timer.')
 
-        parser.add_argument('-nv', '--non-verbose',
-                            required=False,
-                            action='store_true',
-                            help='don\'t log each parser output')
-
         try:
             args = parser.parse_args(arg_line)
             self.parse_error = False
@@ -185,19 +178,19 @@ class WebCrawler(object):
                 archive_callback=archive_callback, gallery_callback=gallery_callback
             )
 
-    def crawl_json_source(self, args, current_settings, parser_logger, wanted_filters):
+    def crawl_json_source(self, args, current_settings, wanted_filters):
         if os.path.isfile(args.json_source):
             with open(args.json_source, 'r', encoding="utf8") as f:
                 json_string = f.read()
-                self.logger.info('Crawling a Panda Backup JSON string from a file.')
+                logger.info('Crawling a Panda Backup JSON string from a file.')
         else:
             response = requests.get(
                 args.json_source,
                 timeout=current_settings.timeout_timer
             )
             json_string = response.text
-            self.logger.info('Crawling a Panda Backup JSON string from a URL.')
-        crawler = InternalParser(current_settings, parser_logger)
+            logger.info('Crawling a Panda Backup JSON string from a URL.')
+        crawler = InternalParser(current_settings)
         crawler.crawl_json(json_string, wanted_filters=wanted_filters, wanted_only=args.wanted_only)
 
     def start_crawling_parse_args(
@@ -211,18 +204,13 @@ class WebCrawler(object):
         args = self.get_args(arg_line)
 
         if isinstance(args, ArgumentParserError):
-            self.logger.info(str(args))
+            logger.info(str(args))
             return
 
         if override_options:
             current_settings = override_options
         else:
             current_settings = self.settings
-
-        if args.non_verbose:
-            parser_logger: OptionalLogger = FakeLogger()
-        else:
-            parser_logger = self.logger
 
         if args.wait_timer:
             current_settings.wait_timer = args.wait_timer
@@ -253,14 +241,14 @@ class WebCrawler(object):
 
         if args.update_newer_than:
 
-            self.update_galleries_newer_than(args, current_settings, parser_logger)
+            self.update_galleries_newer_than(args, current_settings)
 
         if args.update_missing_thumbnails is not None:
 
-            self.update_galleries_missing_thumbnails(args, current_settings, parser_logger)
+            self.update_galleries_missing_thumbnails(args, current_settings)
 
         if args.transfer_missing_downloads:
-            post_downloader = PostDownloader(current_settings, self.logger)
+            post_downloader = PostDownloader(current_settings)
             post_downloader.transfer_all_missing()
 
         if args.set_reason:
@@ -274,7 +262,7 @@ class WebCrawler(object):
         if args.include_providers:
             provider_filter_list.extend(args.include_providers)
 
-        parsers = current_settings.provider_context.get_parsers(current_settings, parser_logger, filter_names=provider_filter_list)
+        parsers = current_settings.provider_context.get_parsers(current_settings, filter_names=provider_filter_list)
 
         if archive_callback or gallery_callback:
             for parser in parsers:
@@ -290,7 +278,7 @@ class WebCrawler(object):
                         args.url.extend(parser.get_feed_urls())
 
         if len(args.url) == 0 and not args.json_source:
-            self.logger.info('No urls to crawl, Web Crawler done.')
+            logger.info('No urls to crawl, Web Crawler done.')
             return
 
         to_use_urls = set(args.url)
@@ -303,7 +291,7 @@ class WebCrawler(object):
         else:
             wanted_filters = WantedGallery.objects.eligible_to_search()
         if args.wanted_only and not wanted_filters:
-            self.logger.info('Started wanted galleries only mode, but no eligible filter was found.')
+            logger.info('Started wanted galleries only mode, but no eligible filter was found.')
             return
 
         if args.force_replace_metadata:
@@ -314,7 +302,7 @@ class WebCrawler(object):
 
         # This parser get imported directly since it's for JSON data, not for crawling URLs yet.
         if args.json_source:
-            self.crawl_json_source(args, current_settings, parser_logger, wanted_filters)
+            self.crawl_json_source(args, current_settings, wanted_filters)
 
         # This threading implementation waits for all providers to end to return.
         # A better solution would be that we listen to the queue here and send a new URL to crawl
@@ -326,7 +314,7 @@ class WebCrawler(object):
                 urls = parser.filter_accepted_urls(list(to_use_urls))
                 if urls:
                     to_use_urls = to_use_urls.difference(set(urls))
-                    self.logger.info(
+                    logger.info(
                         'Crawling {} links from provider {}. Wanted galleries to check: {}'.format(
                             len(urls),
                             parser.name,
@@ -351,7 +339,7 @@ class WebCrawler(object):
                 urls = parser.filter_accepted_urls(to_use_urls)
                 if urls:
                     to_use_urls = to_use_urls.difference(set(urls))
-                    self.logger.info(
+                    logger.info(
                         'Crawling {} links from provider {}. Wanted galleries to check: {}'.format(
                             len(urls),
                             parser.name,
@@ -364,7 +352,7 @@ class WebCrawler(object):
                         wanted_only=args.wanted_only,
                     )
 
-        self.logger.info('Web Crawler links crawling done.')
+        logger.info('Web Crawler links crawling done.')
         return
 
     def start_crawling_no_argparser(
@@ -380,9 +368,7 @@ class WebCrawler(object):
         else:
             current_settings = self.settings
 
-        parser_logger = self.logger
-
-        parsers = current_settings.provider_context.get_parsers(current_settings, parser_logger)
+        parsers = current_settings.provider_context.get_parsers(current_settings)
 
         if archive_callback or gallery_callback:
             for parser in parsers:
@@ -392,7 +378,7 @@ class WebCrawler(object):
                     parser.gallery_callback = gallery_callback
 
         if len(arg_line) == 0:
-            self.logger.info('No urls to crawl, Web Crawler done.')
+            logger.info('No urls to crawl, Web Crawler done.')
             return
 
         to_use_urls = set(arg_line)
@@ -413,7 +399,7 @@ class WebCrawler(object):
                 urls = parser.filter_accepted_urls(list(to_use_urls))
                 if urls:
                     to_use_urls = to_use_urls.difference(set(urls))
-                    self.logger.info('Crawling {} links from provider {}.'.format(len(urls), parser.name))
+                    logger.info('Crawling {} links from provider {}.'.format(len(urls), parser.name))
                     provider_thread = threading.Thread(
                         name='provider_{}_thread'.format(parser.name),
                         target=parser.crawl_urls_caller,
@@ -432,17 +418,17 @@ class WebCrawler(object):
                 urls = parser.filter_accepted_urls(to_use_urls)
                 if urls:
                     to_use_urls = to_use_urls.difference(set(urls))
-                    self.logger.info('Crawling {} links from provider {}.'.format(len(urls), parser.name))
+                    logger.info('Crawling {} links from provider {}.'.format(len(urls), parser.name))
                     parser.crawl_urls(
                         urls,
                         wanted_filters=wanted_filters,
                         wanted_only=False,
                     )
 
-        self.logger.info('Web Crawler links crawling done.')
+        logger.info('Web Crawler links crawling done.')
         return
 
-    def update_galleries_newer_than(self, args, current_settings, parser_logger):
+    def update_galleries_newer_than(self, args, current_settings):
         galleries = Gallery.objects.filter(
             posted__gte=args.update_newer_than
         )
@@ -451,13 +437,13 @@ class WebCrawler(object):
         if args.exclude_providers:
             galleries = galleries.exclude(provider__in=args.exclude_providers)
         if galleries:
-            self.logger.info("Updating metadata for {} galleries posted after {}".format(
+            logger.info("Updating metadata for {} galleries posted after {}".format(
                 galleries.count(), args.update_newer_than)
             )
 
             gallery_links = [gallery.get_link() for gallery in galleries]
 
-            parsers = current_settings.provider_context.get_parsers(current_settings, parser_logger)
+            parsers = current_settings.provider_context.get_parsers(current_settings)
 
             for parser in parsers:
                 urls = parser.filter_accepted_urls(gallery_links)
@@ -472,7 +458,7 @@ class WebCrawler(object):
                             archive.simple_save()
                             archive.tags.set(archive.gallery.tags.all())
 
-    def update_galleries_missing_thumbnails(self, args, current_settings, parser_logger):
+    def update_galleries_missing_thumbnails(self, args, current_settings):
         galleries = Gallery.objects.filter(
             Q(thumbnail_url='') | Q(thumbnail='')
         ).order_by('id')
@@ -486,13 +472,13 @@ class WebCrawler(object):
             galleries = galleries[:args.update_missing_thumbnails]
 
         if galleries:
-            self.logger.info("Updating metadata for {} galleries with missing thumbnail".format(
+            logger.info("Updating metadata for {} galleries with missing thumbnail".format(
                 galleries.count())
             )
 
             gallery_links = [gallery.get_link() for gallery in galleries]
 
-            parsers = current_settings.provider_context.get_parsers(current_settings, parser_logger)
+            parsers = current_settings.provider_context.get_parsers(current_settings)
 
             for parser in parsers:
                 urls = parser.filter_accepted_urls(gallery_links)
@@ -508,4 +494,4 @@ class WebCrawler(object):
                             archive.simple_save()
                             archive.tags.set(archive.gallery.tags.all())
         else:
-            self.logger.info("No galleries with missing thumbnail after applying filters")
+            logger.info("No galleries with missing thumbnail after applying filters")

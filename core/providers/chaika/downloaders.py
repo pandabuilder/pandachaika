@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import Optional
 
@@ -9,6 +10,8 @@ from . import constants
 
 from core.downloaders.handlers import BaseDownloader
 from viewer.models import Archive
+
+logger = logging.getLogger(__name__)
 
 
 class PandaBackupHttpFileDownloader(BaseDownloader):
@@ -22,7 +25,7 @@ class PandaBackupHttpFileDownloader(BaseDownloader):
         if not self.gallery:
             return
 
-        self.logger.info("Downloading an archive: {} from a Panda Backup-like source: {}".format(
+        logger.info("Downloading an archive: {} from a Panda Backup-like source: {}".format(
             self.gallery.title,
             self.gallery.archiver_key['link']
         ))
@@ -40,10 +43,9 @@ class PandaBackupHttpFileDownloader(BaseDownloader):
         request_file = request_with_retries(
             self.gallery.archiver_key['link'],
             request_dict,
-            logger=self.logger
         )
         if not request_file:
-            self.logger.error("Could not download archive")
+            logger.error("Could not download archive")
             self.return_code = 0
             return
         filepath = os.path.join(self.settings.MEDIA_ROOT,
@@ -60,7 +62,7 @@ class PandaBackupHttpFileDownloader(BaseDownloader):
             self.return_code = 1
 
         else:
-            self.logger.error("Could not download archive")
+            logger.error("Could not download archive")
             self.return_code = 0
 
     def update_archive_db(self, default_values: DataDict) -> Optional['Archive']:

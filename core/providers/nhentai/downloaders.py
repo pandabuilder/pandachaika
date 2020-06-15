@@ -1,3 +1,4 @@
+import logging
 from typing import Any, Optional
 from urllib.parse import urljoin
 
@@ -6,6 +7,8 @@ from core.downloaders.handlers import BaseInfoDownloader, BaseTorrentDownloader,
 from core.downloaders.torrent import get_torrent_client
 from viewer.models import Archive
 from . import constants
+
+logger = logging.getLogger(__name__)
 
 
 class TorrentDownloader(BaseTorrentDownloader):
@@ -28,17 +31,17 @@ class TorrentDownloader(BaseTorrentDownloader):
         client = get_torrent_client(self.settings.torrent)
         if not client:
             self.return_code = 0
-            self.logger.error("No torrent client was found")
+            logger.error("No torrent client was found")
             return
 
         if not self.gallery.link:
             self.return_code = 0
-            self.logger.error("No link on gallery")
+            logger.error("No link on gallery")
             return
 
         torrent_link = self.get_download_link(self.gallery.link)
 
-        self.logger.info("Adding torrent to client. Link: {}". format(torrent_link))
+        logger.info("Adding torrent to client. Link: {}". format(torrent_link))
         self.connect_and_download(client, torrent_link)
 
     def update_archive_db(self, default_values: DataDict) -> Optional['Archive']:
@@ -78,7 +81,7 @@ class UrlSubmitDownloader(BaseDownloader):
         if not self.original_gallery:
             return
 
-        self.logger.info("Adding gallery submission info to database")
+        logger.info("Adding gallery submission info to database")
 
         self.return_code = 1
 

@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import logging
 import re
 import time
 import typing
@@ -20,6 +21,8 @@ from . import constants
 if typing.TYPE_CHECKING:
     from viewer.models import WantedGallery
 
+logger = logging.getLogger(__name__)
+
 
 class Parser(BaseParser):
     name = constants.provider_name
@@ -33,7 +36,6 @@ class Parser(BaseParser):
             link,
             request_dict,
             post=False,
-            logger=self.logger
         )
 
         if not response:
@@ -110,7 +112,6 @@ class Parser(BaseParser):
             api_link,
             request_dict,
             post=False,
-            logger=self.logger
         )
 
         if not response:
@@ -120,7 +121,7 @@ class Parser(BaseParser):
         try:
             response_data = response.json()
         except(ValueError, KeyError):
-            self.logger.error("Error parsing response from: {}".format(api_link))
+            logger.error("Error parsing response from: {}".format(api_link))
             return None
 
         tags = []
@@ -175,7 +176,7 @@ class Parser(BaseParser):
             if i > 0:
                 time.sleep(self.own_settings.wait_timer)
 
-            self.logger.info(
+            logger.info(
                 "Calling API ({}). "
                 "Gallery: {}, total galleries: {}".format(
                     self.name,
@@ -188,7 +189,7 @@ class Parser(BaseParser):
             if values:
                 response.append(values)
             else:
-                self.logger.error("Failed fetching: {}, gallery might not exist".format(element))
+                logger.error("Failed fetching: {}, gallery might not exist".format(element))
                 continue
         return response
 
@@ -207,11 +208,10 @@ class Parser(BaseParser):
             feed_url,
             request_dict,
             post=False,
-            logger=self.logger
         )
 
         if not response:
-            self.logger.error("Got no response from feed URL: {}".format(feed_url))
+            logger.error("Got no response from feed URL: {}".format(feed_url))
             return []
 
         response.encoding = 'utf-8'
@@ -225,7 +225,7 @@ class Parser(BaseParser):
         match_string = re.compile(constants.main_page + '/(.+)/$')
         skip_tags = ['Uncategorized']
 
-        self.logger.info("Provided RSS URL for provider ({}), adding {} found links".format(
+        logger.info("Provided RSS URL for provider ({}), adding {} found links".format(
             self.name, len(feed['items']))
         )
 
@@ -280,7 +280,7 @@ class Parser(BaseParser):
             )
             if discard_approved:
                 if not self.settings.silent_processing:
-                    self.logger.info(discard_message)
+                    logger.info(discard_message)
                 continue
 
             galleries.append(gallery)
@@ -290,7 +290,7 @@ class Parser(BaseParser):
     def fetch_gallery_data(self, url: str) -> Optional[GalleryData]:
         response = self.get_values_from_gallery_link_json(url)
         if not response:
-            self.logger.warning(
+            logger.warning(
                 "Could not fetch from API for gallery: {}, retrying from gallery page.".format(url)
             )
             response = self.get_values_from_gallery_link(url)
@@ -315,7 +315,7 @@ class Parser(BaseParser):
         gallery_wanted_lists: typing.Dict[str, List['WantedGallery']] = defaultdict(list)
 
         if not self.downloaders:
-            self.logger.warning('No downloaders enabled, returning.')
+            logger.warning('No downloaders enabled, returning.')
             return
 
         for url in urls:
@@ -324,7 +324,7 @@ class Parser(BaseParser):
                 continue
 
             if constants.main_page not in url:
-                self.logger.warning("Invalid URL, skipping: {}".format(url))
+                logger.warning("Invalid URL, skipping: {}".format(url))
                 continue
             unique_urls.add(url)
 
@@ -338,7 +338,7 @@ class Parser(BaseParser):
 
             if discard_approved:
                 if not self.settings.silent_processing:
-                    self.logger.info(discard_message)
+                    logger.info(discard_message)
                 continue
 
             fetch_format_galleries.append(gallery)
@@ -352,7 +352,7 @@ class Parser(BaseParser):
 
             if self.general_utils.discard_by_tag_list(internal_gallery_data.tags):
                 if not self.settings.silent_processing:
-                    self.logger.info(
+                    logger.info(
                         "Skipping gallery link {} because it's tagged with global discarded tags".format(
                             internal_gallery_data.link
                         )
@@ -376,7 +376,7 @@ class Parser(BaseParser):
             found_feed_data = self.crawl_feed(constants.rss_url)
 
             if found_feed_data:
-                self.logger.info("Processing {} galleries from RSS.".format(len(found_feed_data)))
+                logger.info("Processing {} galleries from RSS.".format(len(found_feed_data)))
 
             for feed_gallery in found_feed_data:
 

@@ -181,6 +181,7 @@
           <a class="btn btn-light" href="{% url 'viewer:archive-extract-toggle' archive.pk %}">Expand archive</a>
           <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}">Download archive</a>
           <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}?original=1">Download with original name</a>
+          <a class="btn btn-light" href="{% url 'viewer:api' %}?archive={{ archive.pk }}">JSON info</a>
           {% if archive.thumbnail.name %}
             <a class="btn btn-light img-preview" data-image-url="{{ archive.thumbnail.url }}" rel="popover">Hover for cover</a>
           {% endif %}
@@ -190,6 +191,7 @@
     {% elif archive.crc32 %}
         <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}">Download archive</a>
         <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}?original=1">Download with original name</a>
+        <a class="btn btn-light" href="{% url 'viewer:api' %}?archive={{ archive.pk }}">JSON info</a>
         {% if archive.thumbnail.name %}
           <a class="btn btn-light img-preview" data-image-url="{{ archive.thumbnail.url }}" rel="popover">Hover for cover</a>
         {% endif %}

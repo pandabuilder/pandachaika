@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import shutil
 import re
@@ -18,6 +19,8 @@ from viewer.models import Archive
 from core.base.utilities import (available_filename,
                                  replace_illegal_name)
 from . import constants
+
+logger = logging.getLogger(__name__)
 
 
 class ArchiveDownloader(BaseDownloader):
@@ -59,7 +62,7 @@ class ArchiveDownloader(BaseDownloader):
         )
 
         if not gallery_read or gallery_read in constants.bad_urls or not gallery_read.startswith(constants.main_page):
-            self.logger.warning("Reading gallery page not available, trying to guess the name.")
+            logger.warning("Reading gallery page not available, trying to guess the name.")
             gallery_read = guess_gallery_read_url(self.gallery.link, self.gallery)
 
         if not gallery_read.endswith('page/1'):
@@ -71,7 +74,7 @@ class ArchiveDownloader(BaseDownloader):
 
         directory_path = mkdtemp()
 
-        self.logger.info('Downloading gallery: {}'.format(self.gallery.title))
+        logger.info('Downloading gallery: {}'.format(self.gallery.title))
 
         second_pass = False
         while True:
@@ -83,7 +86,7 @@ class ArchiveDownloader(BaseDownloader):
                     **request_dict
                 )
             except requests.exceptions.MissingSchema:
-                self.logger.error("Malformed URL: {}, skipping".format(gallery_read))
+                logger.error("Malformed URL: {}, skipping".format(gallery_read))
                 self.return_code = 0
                 shutil.rmtree(directory_path, ignore_errors=True)
                 return
@@ -94,7 +97,7 @@ class ArchiveDownloader(BaseDownloader):
                         gallery_read = guess_gallery_read_url(self.gallery.link, self.gallery, False)
                         second_pass = True
                         continue
-                    self.logger.error("Last page was the first one: {}, stopping".format(gallery_read))
+                    logger.error("Last page was the first one: {}, stopping".format(gallery_read))
                     self.return_code = 0
                     shutil.rmtree(directory_path, ignore_errors=True)
                     return
@@ -105,7 +108,7 @@ class ArchiveDownloader(BaseDownloader):
             img_find = soup_2.find("img", {"class": "open"})
 
             if not img_find:
-                self.logger.error("Gallery not available, skipping")
+                logger.error("Gallery not available, skipping")
                 self.return_code = 0
                 shutil.rmtree(directory_path, ignore_errors=True)
                 return
@@ -227,13 +230,13 @@ class ArchiveJSDownloader(BaseDownloader):
         )
 
         if not gallery_read or gallery_read in constants.bad_urls or not gallery_read.startswith(constants.main_page):
-            self.logger.warning("Reading gallery page not available, trying to guess the name.")
+            logger.warning("Reading gallery page not available, trying to guess the name.")
             gallery_read = guess_gallery_read_url(self.gallery.link, self.gallery)
 
         if not gallery_read.endswith('page/1'):
             gallery_read += 'page/1'
 
-        self.logger.info('Downloading gallery: {}'.format(self.gallery.title))
+        logger.info('Downloading gallery: {}'.format(self.gallery.title))
 
         try:
             request_dict = construct_request_dict(self.settings, self.own_settings)
@@ -242,7 +245,7 @@ class ArchiveJSDownloader(BaseDownloader):
                 **request_dict
             )
         except requests.exceptions.MissingSchema:
-            self.logger.error("Malformed URL: {}, skipping".format(gallery_read))
+            logger.error("Malformed URL: {}, skipping".format(gallery_read))
             self.return_code = 0
             return
 
@@ -255,7 +258,7 @@ class ArchiveJSDownloader(BaseDownloader):
                     **request_dict
                 )
             except requests.exceptions.MissingSchema:
-                self.logger.error("Malformed URL: {}, skipping".format(gallery_read))
+                logger.error("Malformed URL: {}, skipping".format(gallery_read))
                 self.return_code = 0
                 return
 
@@ -264,7 +267,7 @@ class ArchiveJSDownloader(BaseDownloader):
             image_urls = self.get_img_urls_from_gallery_read_page(gallery_read_page.text)
 
             if not image_urls:
-                self.logger.error("Could not find image links, archive not downloaded")
+                logger.error("Could not find image links, archive not downloaded")
                 self.return_code = 0
                 return
 
@@ -279,7 +282,7 @@ class ArchiveJSDownloader(BaseDownloader):
                     **request_dict
                 )
                 if request_file.status_code == 404:
-                    self.logger.warning("Image link reported 404 error, stopping")
+                    logger.warning("Image link reported 404 error, stopping")
                     break
                 with open(os.path.join(directory_path, img_name), "wb") as fo:
                     for chunk in request_file.iter_content(4096):
@@ -303,7 +306,7 @@ class ArchiveJSDownloader(BaseDownloader):
                 self.fileDownloaded = 1
                 self.return_code = 1
         else:
-            self.logger.error("Wrong HTML code returned, could not download, link: {}".format(gallery_read))
+            logger.error("Wrong HTML code returned, could not download, link: {}".format(gallery_read))
             self.return_code = 0
 
     def update_archive_db(self, default_values: DataDict) -> Optional['Archive']:

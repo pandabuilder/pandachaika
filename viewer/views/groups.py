@@ -1,3 +1,5 @@
+import logging
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
@@ -11,7 +13,9 @@ from viewer.forms import ArchiveGroupSearchForm, ArchiveGroupCreateOrEditForm, A
     ArchiveGroupEntryFormSet
 from viewer.models import ArchiveGroup, ArchiveGroupEntry, Archive
 
-from viewer.views.head import frontend_logger, archive_filter_keys, filter_archives_simple
+from viewer.views.head import archive_filter_keys, filter_archives_simple
+
+logger = logging.getLogger(__name__)
 
 
 @login_required
@@ -43,7 +47,7 @@ def archive_groups_explorer(request: HttpRequest) -> HttpResponse:
                 new_archive_group = edit_form.save()
                 message = 'New archive group successfully created'
                 messages.success(request, message)
-                frontend_logger.info("User {}: {}".format(request.user.username, message))
+                logger.info("User {}: {}".format(request.user.username, message))
                 event_log(
                     request.user,
                     'ADD_ARCHIVE_GROUP',
@@ -157,7 +161,7 @@ def archive_group_edit(request: HttpRequest, pk: int = None, slug: str = None) -
 
             message = 'Archive group successfully modified'
             messages.success(request, message)
-            frontend_logger.info("User {}: {}".format(request.user.username, message))
+            logger.info("User {}: {}".format(request.user.username, message))
             event_log(
                 request.user,
                 'CHANGE_ARCHIVE_GROUP',
@@ -204,7 +208,7 @@ def archive_group_edit(request: HttpRequest, pk: int = None, slug: str = None) -
                 )
                 if 'reason' in p and p['reason'] != '':
                     message += ', reason: {}'.format(p['reason'])
-                frontend_logger.info("User {}: {}".format(request.user.username, message))
+                logger.info("User {}: {}".format(request.user.username, message))
                 messages.success(request, message)
                 event_log(
                     request.user,

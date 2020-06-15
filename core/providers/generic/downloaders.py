@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import Any, Optional
 
@@ -10,6 +11,8 @@ from core.downloaders.torrent import get_torrent_client
 
 from core.downloaders.handlers import BaseDownloader
 from viewer.models import Archive
+
+logger = logging.getLogger(__name__)
 
 
 class GenericTorrentDownloader(BaseDownloader):
@@ -34,12 +37,12 @@ class GenericTorrentDownloader(BaseDownloader):
         client = get_torrent_client(self.settings.torrent)
         if not client:
             self.return_code = 0
-            self.logger.error("No torrent client was found")
+            logger.error("No torrent client was found")
             return
 
         torrent_link = self.get_download_link(self.gallery.link)
 
-        self.logger.info("Adding torrent to client.")
+        logger.info("Adding torrent to client.")
         client.connect()
         if client.send_url or torrent_link.startswith('magnet:'):
             result = client.add_url(
@@ -84,7 +87,7 @@ class GenericTorrentDownloader(BaseDownloader):
             )
         else:
             self.return_code = 0
-            self.logger.error("There was an error adding the torrent to the client")
+            logger.error("There was an error adding the torrent to the client")
 
     def update_archive_db(self, default_values: DataDict) -> Optional['Archive']:
 
@@ -125,7 +128,7 @@ class GenericArchiveDownloader(BaseDownloader):
         if not self.gallery or not self.gallery.link:
             return
 
-        self.logger.info("Downloading an archive from a generic HTTP server: {}".format(
+        logger.info("Downloading an archive from a generic HTTP server: {}".format(
             self.gallery.link
         ))
 
@@ -144,7 +147,7 @@ class GenericArchiveDownloader(BaseDownloader):
                 filename = self.gallery.link.rsplit('/', 1)[1]
 
         if not filename:
-            self.logger.error("Could not find a filename for link: {}".format(
+            logger.error("Could not find a filename for link: {}".format(
                 self.gallery.link
             ))
             self.return_code = 0
@@ -170,7 +173,7 @@ class GenericArchiveDownloader(BaseDownloader):
             self.return_code = 1
 
         else:
-            self.logger.error("Could not download archive")
+            logger.error("Could not download archive")
             self.return_code = 0
 
     def update_archive_db(self, default_values: DataDict) -> Optional['Archive']:

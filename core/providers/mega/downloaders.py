@@ -1,3 +1,4 @@
+import logging
 import os
 import shutil
 import subprocess
@@ -9,6 +10,8 @@ from core.base.utilities import replace_illegal_name, available_filename, calc_c
 
 from core.downloaders.handlers import BaseDownloader
 from viewer.models import Archive
+
+logger = logging.getLogger(__name__)
 
 
 class MegaArchiveDownloader(BaseDownloader):
@@ -32,7 +35,7 @@ class MegaArchiveDownloader(BaseDownloader):
 
         if not exe_path_to_use:
             self.return_code = 0
-            self.logger.error("The megadl tools was not found")
+            logger.error("The megadl tools was not found")
             return
 
         directory_path = mkdtemp()
@@ -50,7 +53,7 @@ class MegaArchiveDownloader(BaseDownloader):
 
         arguments.append("{}".format(self.gallery.link))
 
-        self.logger.info("Calling megatools: {}.".format(" ".join([exe_path_to_use, *arguments])))
+        logger.info("Calling megatools: {}.".format(" ".join([exe_path_to_use, *arguments])))
 
         process_result = subprocess.run(
             [exe_path_to_use, *arguments],
@@ -63,17 +66,17 @@ class MegaArchiveDownloader(BaseDownloader):
 
         if not message_text:
             self.return_code = 0
-            self.logger.error("The link could not be downloaded, no output was generated after running megadl")
+            logger.error("The link could not be downloaded, no output was generated after running megadl")
             return
 
         if process_result.stderr:
             self.return_code = 0
-            self.logger.error("An error was captured when running megadl: {}".format(process_result.stderr))
+            logger.error("An error was captured when running megadl: {}".format(process_result.stderr))
             return
 
         if "WARNING: Skipping invalid" in message_text:
             self.return_code = 0
-            self.logger.error("The link could not be downloaded: {}".format(message_text))
+            logger.error("The link could not be downloaded: {}".format(message_text))
             return
 
         # If we downloaded a folder, just take the first result
@@ -84,7 +87,7 @@ class MegaArchiveDownloader(BaseDownloader):
 
         if not os.path.isfile(output_path):
             self.return_code = 0
-            self.logger.error("The resulting download file was not found: {}".format(file_name))
+            logger.error("The resulting download file was not found: {}".format(file_name))
             return
 
         self.gallery.filename = available_filename(
@@ -111,7 +114,7 @@ class MegaArchiveDownloader(BaseDownloader):
             self.return_code = 1
 
         else:
-            self.logger.error("Could not download archive")
+            logger.error("Could not download archive")
             self.return_code = 0
 
     def update_archive_db(self, default_values: DataDict) -> Optional['Archive']:

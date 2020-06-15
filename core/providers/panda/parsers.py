@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 import json
+import logging
 import re
 import time
 import typing
 import urllib.parse
 from collections import defaultdict
 from typing import Optional, Iterable, List, Dict, Set
-from urllib.request import ProxyHandler
 
 import feedparser
 import requests
@@ -24,6 +24,8 @@ from . import utilities
 
 if typing.TYPE_CHECKING:
     from viewer.models import WantedGallery
+
+logger = logging.getLogger(__name__)
 
 
 class Parser(BaseParser):
@@ -64,7 +66,6 @@ class Parser(BaseParser):
                 constants.ge_api_url,
                 request_dict,
                 post=True,
-                logger=self.logger
             )
 
             if not response:
@@ -72,7 +73,7 @@ class Parser(BaseParser):
             try:
                 response_data = response.json()
             except(ValueError, KeyError):
-                self.logger.error("Error parsing response to JSON: {}".format(response.text))
+                logger.error("Error parsing response to JSON: {}".format(response.text))
                 continue
 
             for gid_token_pair in response_data['tokenlist']:
@@ -84,7 +85,7 @@ class Parser(BaseParser):
 
                 if discard_approved:
                     if not self.settings.silent_processing:
-                        self.logger.info(discard_message)
+                        logger.info(discard_message)
                     continue
 
                 page_links_results.append(
@@ -122,34 +123,33 @@ class Parser(BaseParser):
                 url,
                 request_dict,
                 post=False,
-                logger=self.logger
             )
 
             if not response:
-                self.logger.info("Got no response, stopping")
+                logger.info("Got no response, stopping")
                 break
 
             response.encoding = 'utf-8'
 
             if 'No hits found' in response.text:
-                self.logger.info("Empty page found, ending")
+                logger.info("Empty page found, ending")
                 break
             else:
-                self.logger.info(
+                logger.info(
                     "Got content on search page {}, looking for galleries and jumping "
                     "to the next page. Link: {}".format(current_page, url)
                 )
                 main_page_parser = SearchHTMLParser()
                 main_page_parser.feed(main_page_text)
-                self.logger.info("Number of galleries found: {}".format(len(main_page_parser.galleries)))
+                logger.info("Number of galleries found: {}".format(len(main_page_parser.galleries)))
                 if len(main_page_parser.galleries) >= 1:
                     for gallery_url in main_page_parser.galleries:
                         unique_urls.add(gallery_url)
                 else:
-                    self.logger.info("Empty page found, ending")
+                    logger.info("Empty page found, ending")
                     break
                 if 0 < self.own_settings.stop_page_number <= current_page:
-                    self.logger.info(
+                    logger.info(
                         "Got to stop page number: {}, "
                         "ending (setting: provider.stop_page_number).".format(self.own_settings.stop_page_number)
                     )
@@ -175,7 +175,7 @@ class Parser(BaseParser):
             if i % 3 == 2:
                 time.sleep(self.own_settings.wait_timer)
             if not self.settings.silent_processing:
-                self.logger.info(
+                logger.info(
                     "Calling fjord API ({}). "
                     "Gallery group: {}, galleries in group: {}, total groups: {}".format(
                         self.name,
@@ -197,7 +197,6 @@ class Parser(BaseParser):
                 constants.ge_api_url,
                 request_dict,
                 post=True,
-                logger=self.logger
             )
 
             if not response:
@@ -206,12 +205,12 @@ class Parser(BaseParser):
             try:
                 response_data = response.json()
             except(ValueError, KeyError):
-                self.logger.error("Error parsing response to JSON: {}".format(response.text))
+                logger.error("Error parsing response to JSON: {}".format(response.text))
                 continue
 
             for gallery_data in response_data['gmetadata']:
                 if 'error' in gallery_data:
-                    self.logger.error(
+                    logger.error(
                         "Fetching gallery {}: "
                         "failed with error: {}".format(gallery_data['gid'], gallery_data['error'])
                     )
@@ -245,7 +244,6 @@ class Parser(BaseParser):
             constants.ge_api_url,
             request_dict,
             post=True,
-            logger=self.logger
         )
 
         if not response:
@@ -253,11 +251,11 @@ class Parser(BaseParser):
         try:
             response_data = response.json()
         except(ValueError, KeyError):
-            self.logger.error("Error parsing response to JSON: {}".format(response.text))
+            logger.error("Error parsing response to JSON: {}".format(response.text))
             return None
         for gallery_data in response_data['gmetadata']:
             if 'error' in gallery_data:
-                self.logger.error(
+                logger.error(
                     "Adding gallery {}: "
                     "failed with error: {}".format(gallery_data['gid'], gallery_data['error'])
                 )
@@ -283,11 +281,10 @@ class Parser(BaseParser):
             feed_url,
             request_dict,
             post=False,
-            logger=self.logger
         )
 
         if not response:
-            self.logger.error("Got no response from feed URL: {}".format(feed_url))
+            logger.error("Got no response from feed URL: {}".format(feed_url))
             return urls
 
         response.encoding = 'utf-8'
@@ -324,7 +321,7 @@ class Parser(BaseParser):
         gallery_wanted_lists: Dict[str, List['WantedGallery']] = defaultdict(list)
 
         if not self.downloaders:
-            self.logger.warning('No downloaders enabled, returning.')
+            logger.warning('No downloaders enabled, returning.')
             return
 
         for url in urls:
@@ -332,7 +329,7 @@ class Parser(BaseParser):
             if constants.rss_url in url:
                 feed_links = self.crawl_feed(url)
                 unique_urls.update(feed_links)
-                self.logger.info("Provided RSS URL for provider ({}), adding {} found links".format(
+                logger.info("Provided RSS URL for provider ({}), adding {} found links".format(
                     self.name,
                     len(feed_links))
                 )
@@ -340,18 +337,18 @@ class Parser(BaseParser):
 
             if(constants.ex_page_short not in url
                     and constants.ge_page_short not in url):
-                self.logger.warning("Invalid URL, skipping: {}".format(url))
+                logger.warning("Invalid URL, skipping: {}".format(url))
                 continue
 
             if '/g/' in url:
                 if not self.settings.silent_processing:
-                    self.logger.info("Provided URL {} is a gallery link, adding".format(url))
+                    logger.info("Provided URL {} is a gallery link, adding".format(url))
                 unique_urls.add(url)
                 continue
 
             if '/s/' in url:
                 if not self.settings.silent_processing:
-                    self.logger.info("Provided URL {} is a page link, adding".format(url))
+                    logger.info("Provided URL {} is a page link, adding".format(url))
                 unique_page_urls.add(url)
                 continue
 
@@ -381,7 +378,7 @@ class Parser(BaseParser):
 
                 if discard_approved:
                     if not self.settings.silent_processing:
-                        self.logger.info(discard_message)
+                        logger.info(discard_message)
                     found_galleries.add(found_gallery.gid)
 
         for gallery_tuple in total_galleries_filtered:
@@ -395,19 +392,19 @@ class Parser(BaseParser):
                     }
                 )
                 if not self.settings.silent_processing:
-                    self.logger.info(
+                    logger.info(
                         "Gallery {} will be processed. "
                         "Total galleries: {}".format(gallery_tuple[0], len(fetch_format_galleries))
                     )
 
         if len(unique_page_urls) > 0:
-            self.logger.info("Getting gallery links from page links...")
+            logger.info("Getting gallery links from page links...")
             page_links_results: List[DataDict] = []
             self.get_galleries_from_page_links(unique_page_urls, page_links_results)
             fetch_format_galleries += page_links_results
 
         if len(fetch_format_galleries) == 0:
-            self.logger.info("No galleries need downloading, returning.")
+            logger.info("No galleries need downloading, returning.")
             return
 
         fetch_format_galleries_chunks = list(chunks(fetch_format_galleries, 25))
@@ -416,7 +413,7 @@ class Parser(BaseParser):
             if i % 3 == 2:
                 time.sleep(self.own_settings.wait_timer)
             if not self.settings.silent_processing:
-                self.logger.info(
+                logger.info(
                     "Calling non-fjord API ({}). "
                     "Gallery group: {}, galleries in group: {}, total groups: {}".format(
                         self.name,
@@ -438,7 +435,6 @@ class Parser(BaseParser):
                 constants.ge_api_url,
                 request_dict,
                 post=True,
-                logger=self.logger
             )
 
             if not response:
@@ -447,12 +443,12 @@ class Parser(BaseParser):
             try:
                 response_data = response.json()
             except(ValueError, KeyError):
-                self.logger.error("Error parsing response to JSON: {}".format(response.text))
+                logger.error("Error parsing response to JSON: {}".format(response.text))
                 continue
 
             for gallery_data in response_data['gmetadata']:
                 if 'error' in gallery_data:
-                    self.logger.error(
+                    logger.error(
                         "Adding gallery {}: "
                         "failed with error: {}".format(gallery_data['gid'], gallery_data['error'])
                     )
@@ -463,7 +459,7 @@ class Parser(BaseParser):
 
                 if self.general_utils.discard_by_tag_list(internal_gallery_data.tags):
                     if not self.settings.silent_processing:
-                        self.logger.info(
+                        logger.info(
                             "Skipping gallery {}, because it's tagged with global discarded tags".format(link)
                         )
                     continue

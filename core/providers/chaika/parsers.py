@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import logging
 import typing
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -15,6 +16,8 @@ from . import constants
 
 if typing.TYPE_CHECKING:
     from viewer.models import WantedGallery
+
+logger = logging.getLogger(__name__)
 
 
 class Parser(BaseParser):
@@ -41,7 +44,6 @@ class Parser(BaseParser):
                 url,
                 request_dict,
                 post=False,
-                logger=self.logger
             )
 
             dict_list = []
@@ -49,7 +51,7 @@ class Parser(BaseParser):
             try:
                 json_decoded = response.json()
             except(ValueError, KeyError):
-                self.logger.error("Error parsing response to JSON: {}".format(response.text))
+                logger.error("Error parsing response to JSON: {}".format(response.text))
                 continue
 
             if type(json_decoded) == dict:
@@ -81,7 +83,7 @@ class Parser(BaseParser):
                     )
 
                     if discard_approved:
-                        self.logger.info("{} Real GID: {}".format(discard_message, found_gallery.gid))
+                        logger.info("{} Real GID: {}".format(discard_message, found_gallery.gid))
                         found_galleries.add(found_gallery.gid)
 
             for count, gallery in enumerate(total_galleries_filtered):
@@ -90,7 +92,7 @@ class Parser(BaseParser):
                     continue
 
                 if self.general_utils.discard_by_tag_list(gallery.tags):
-                    self.logger.info(
+                    logger.info(
                         "Skipping gallery {}, because it's tagged with global discarded tags".format(gallery.title)
                     )
                     continue
@@ -105,7 +107,7 @@ class Parser(BaseParser):
                     if wanted_only and not gallery_wanted_lists[gallery.gid]:
                         continue
 
-                self.logger.info(
+                logger.info(
                     "Gallery {} of {}: Gallery {} (GID: {}) will be processed.".format(
                         count,
                         len(total_galleries_filtered),

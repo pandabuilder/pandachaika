@@ -1,27 +1,23 @@
 import threading
+import logging
 
 import datetime
 import traceback
 from typing import Optional
 
 import django.utils.timezone as django_tz
-import logging
 
 from core.base.setup import Settings
-from core.base.types import OptionalLogger, RealLogger, FakeLogger
 from viewer.models import Scheduler
+
+logger = logging.getLogger(__name__)
 
 
 class BaseScheduler(object):
 
     thread_name = 'task'
 
-    def __init__(self, settings: Settings, web_queue=None, crawler_logger: OptionalLogger = None, timer=1, pk=None) -> None:
-
-        if not crawler_logger:
-            self.crawler_logger: RealLogger = FakeLogger()
-        else:
-            self.crawler_logger = crawler_logger
+    def __init__(self, settings: Settings, web_queue=None, timer=1, pk=None) -> None:
         self.settings = settings
         self.stop = threading.Event()
         self.web_queue = web_queue
@@ -61,8 +57,7 @@ class BaseScheduler(object):
         try:
             self.job()
         except BaseException:
-            thread_logger = logging.getLogger('viewer.threads')
-            thread_logger.error(traceback.format_exc())
+            logger.error(traceback.format_exc())
 
     def job(self) -> None:
         raise NotImplementedError

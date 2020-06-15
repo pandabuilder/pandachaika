@@ -4,7 +4,6 @@
 import json
 import re
 
-import logging
 from typing import Dict, Any, List
 
 from django.core.paginator import Paginator, EmptyPage
@@ -21,7 +20,6 @@ from viewer.models import Archive, Gallery, ArchiveQuerySet, GalleryQuerySet
 from viewer.utils.matching import generate_possible_matches_for_archives
 from viewer.views.head import gallery_filter_keys, gallery_order_fields, filter_archives_simple, archive_filter_keys
 
-crawler_logger = logging.getLogger('viewer.webcrawler')
 crawler_settings = settings.CRAWLER_SETTINGS
 
 
@@ -541,7 +539,7 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                         else:
                             current_settings.allow_downloaders_only([args['downloader']], True, True, True)
                             archive = None
-                            parsers = current_settings.provider_context.get_parsers(current_settings, crawler_logger)
+                            parsers = current_settings.provider_context.get_parsers(current_settings)
                             for parser in parsers:
                                 if parser.id_from_url_implemented():
                                     urls_filtered = parser.filter_accepted_urls((args['link'], ))
@@ -559,7 +557,7 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                     else:
                         if 'parentLink' in args:
                             parent_archive = None
-                            parsers = crawler_settings.provider_context.get_parsers(crawler_settings, crawler_logger)
+                            parsers = crawler_settings.provider_context.get_parsers(crawler_settings)
                             for parser in parsers:
                                 if parser.id_from_url_implemented():
                                     urls_filtered = parser.filter_accepted_urls((args['parentLink'],))
@@ -587,7 +585,7 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                                     response['action'] = 'confirmDeletion'
                             else:
                                 archive = None
-                                parsers = crawler_settings.provider_context.get_parsers(crawler_settings, crawler_logger)
+                                parsers = crawler_settings.provider_context.get_parsers(crawler_settings)
                                 for parser in parsers:
                                     if parser.id_from_url_implemented():
                                         urls_filtered = parser.filter_accepted_urls((args['link'],))
@@ -604,7 +602,7 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                                 crawler_settings.workers.web_queue.enqueue_args(args['link'])
                         else:
                             archive = None
-                            parsers = crawler_settings.provider_context.get_parsers(crawler_settings, crawler_logger)
+                            parsers = crawler_settings.provider_context.get_parsers(crawler_settings)
                             for parser in parsers:
                                 if parser.id_from_url_implemented():
                                     urls_filtered = parser.filter_accepted_urls((args['link'],))
@@ -637,7 +635,7 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                     new_urls_set = set()
                     gids_set = set()
 
-                    parsers = crawler_settings.provider_context.get_parsers(crawler_settings, crawler_logger)
+                    parsers = crawler_settings.provider_context.get_parsers(crawler_settings)
                     for parser in parsers:
                         if parser.id_from_url_implemented():
                             urls_filtered = parser.filter_accepted_urls(urls)
@@ -696,7 +694,6 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                         generate_possible_matches_for_archives(
                             archive,
                             filters=(args['match_filter'],),
-                            logger=crawler_logger,
                             match_local=False,
                             match_web=True,
                         )

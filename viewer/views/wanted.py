@@ -12,8 +12,8 @@ from viewer.models import (
 from viewer.utils.tags import sort_tags
 
 
-frontend_logger = logging.getLogger('viewer.frontend')
 crawler_settings = settings.CRAWLER_SETTINGS
+logger = logging.getLogger(__name__)
 
 
 @login_required
@@ -50,7 +50,7 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
             except ValueError:
                 max_matches = 10
             matchers = crawler_settings.provider_context.get_matchers(
-                crawler_settings, frontend_logger, filter_name=provider, force=True, matcher_type='title'
+                crawler_settings, filter_name=provider, force=True, matcher_type='title'
             )
             for matcher_element in matchers:
                 matcher = matcher_element[0]
@@ -59,7 +59,7 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
                     cutoff=cutoff,
                     max_matches=max_matches
                 )
-                frontend_logger.info(
+                logger.info(
                     "Matcher: {} found {} results.".format(
                         str(matcher),
                         len(results)
@@ -89,7 +89,7 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
                 max_matches=max_matches,
                 cutoff=cutoff
             )
-            frontend_logger.info("Wanted gallery {} ({}) internal gallery match resulted in {} possible matches.".format(
+            logger.info("Wanted gallery {} ({}) internal gallery match resulted in {} possible matches.".format(
                 wanted_gallery_instance,
                 reverse('viewer:wanted-gallery', args=(wanted_gallery_instance.pk,)),
                 wanted_gallery_instance.possible_matches.count()
@@ -117,7 +117,7 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
                 matched_gallery.hidden = True
                 matched_gallery.save()
 
-            frontend_logger.info("WantedGallery {} ({}) was matched with gallery {} ({}).".format(
+            logger.info("WantedGallery {} ({}) was matched with gallery {} ({}).".format(
                 wanted_gallery_instance,
                 reverse('viewer:wanted-gallery', args=(wanted_gallery_instance.pk,)),
                 matched_gallery,
@@ -137,7 +137,7 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
                 gm.delete()
             wanted_gallery_instance.save()
 
-            frontend_logger.info("Gallery {} ({}) was removed as a match for WantedGallery {} ({}).".format(
+            logger.info("Gallery {} ({}) was removed as a match for WantedGallery {} ({}).".format(
                 matched_gallery,
                 reverse('viewer:gallery', args=(matched_gallery.pk,)),
                 wanted_gallery_instance,

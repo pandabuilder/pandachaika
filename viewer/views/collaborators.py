@@ -1,3 +1,4 @@
+import logging
 import threading
 from typing import List, Optional
 
@@ -19,11 +20,12 @@ from viewer.forms import GallerySearchForm, ArchiveSearchForm, WantedGallerySear
 from viewer.models import Archive, Gallery, EventLog, ArchiveMatches, Tag, WantedGallery, ArchiveGroup, \
     ArchiveGroupEntry
 from viewer.utils.tags import sort_tags
-from viewer.views.head import frontend_logger, gallery_filter_keys, filter_galleries_simple, \
+from viewer.views.head import gallery_filter_keys, filter_galleries_simple, \
     archive_filter_keys, filter_archives_simple, render_error, wanted_gallery_filter_keys, \
     filter_wanted_galleries_simple
 
 crawler_settings = settings.CRAWLER_SETTINGS
+logger = logging.getLogger(__name__)
 
 
 @permission_required('viewer.approve_gallery')
@@ -68,7 +70,7 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
                 )
                 if 'reason' in p and p['reason'] != '':
                     message += ', reason: {}'.format(p['reason'])
-                frontend_logger.info("User {}: {}".format(request.user.username, message))
+                logger.info("User {}: {}".format(request.user.username, message))
                 messages.success(request, message)
                 gallery.mark_as_denied()
                 event_log(
@@ -85,7 +87,7 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
                 )
                 if 'reason' in p and p['reason'] != '':
                     message += ', reason: {}'.format(p['reason'])
-                frontend_logger.info("User {}: {}".format(request.user.username, message))
+                logger.info("User {}: {}".format(request.user.username, message))
                 messages.success(request, message)
 
                 event_log(
@@ -207,7 +209,7 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                 )
                 if 'reason' in p and p['reason'] != '':
                     message += ', reason: {}'.format(p['reason'])
-                frontend_logger.info("User {}: {}".format(request.user.username, message))
+                logger.info("User {}: {}".format(request.user.username, message))
                 messages.success(request, message)
                 archive.set_public(reason=user_reason)
                 event_log(
@@ -224,7 +226,7 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                 )
                 if 'reason' in p and p['reason'] != '':
                     message += ', reason: {}'.format(p['reason'])
-                frontend_logger.info("User {}: {}".format(request.user.username, message))
+                logger.info("User {}: {}".format(request.user.username, message))
                 messages.success(request, message)
                 archive.set_private(reason=user_reason)
                 event_log(
@@ -242,7 +244,7 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                 )
                 if 'reason' in p and p['reason'] != '':
                     message += ', reason: {}'.format(p['reason'])
-                frontend_logger.info("User {}: {}".format(request.user.username, message))
+                logger.info("User {}: {}".format(request.user.username, message))
                 messages.success(request, message)
                 gallery = archive.gallery
                 archive.gallery.mark_as_deleted()
@@ -269,7 +271,7 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                 )
                 if 'reason' in p and p['reason'] != '':
                     message += ', reason: {}'.format(p['reason'])
-                frontend_logger.info("User {}: {}".format(request.user.username, message))
+                logger.info("User {}: {}".format(request.user.username, message))
                 messages.success(request, message)
 
                 current_settings = Settings(load_from_config=crawler_settings.config)
@@ -293,7 +295,7 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                         gallery_callback=gallery_callback
                     )
 
-                    frontend_logger.info(
+                    logger.info(
                         'Updating gallery API data for gallery: {} and related archives'.format(
                             gallery.get_absolute_url()
                         )
@@ -320,7 +322,7 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                             )
                             if 'reason' in p and p['reason'] != '':
                                 message += ', reason: {}'.format(p['reason'])
-                            frontend_logger.info("User {}: {}".format(request.user.username, message))
+                            logger.info("User {}: {}".format(request.user.username, message))
                             messages.success(request, message)
                             event_log(
                                 request.user,
@@ -333,7 +335,6 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
     params = {
         'sort': 'create_date',
         'asc_desc': 'desc',
-        'filename': title,
     }
 
     for k, v in get.items():
@@ -499,7 +500,7 @@ def user_crawler(request: HttpRequest) -> HttpResponse:
             'Starting Crawler, if the links were correctly added, they should appear on the archive or gallery list.'
         )
         for url in urls:
-            frontend_logger.info("User {}: queued link: {}".format(request.user.username, url))
+            logger.info("User {}: queued link: {}".format(request.user.username, url))
             # event_log(
             #     request.user,
             #     'CRAWL_URL',
@@ -645,7 +646,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
             except ValueError:
                 max_matches = 10
 
-            frontend_logger.info(
+            logger.info(
                 'User {}: Looking for possible matches in gallery database '
                 'for non-matched archives (cutoff: {}, max matches: {}) '
                 'using provider filter "{}"'.format(request.user.username, cutoff, max_matches, provider)
@@ -655,7 +656,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                 target=generate_possible_matches_for_archives,
                 args=(archives,),
                 kwargs={
-                    'logger': frontend_logger, 'cutoff': cutoff, 'max_matches': max_matches, 'filters': (provider,),
+                    'cutoff': cutoff, 'max_matches': max_matches, 'filters': (provider,),
                     'match_local': True, 'match_web': False
                 })
             matching_thread.daemon = True
@@ -666,7 +667,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
             for archive in archives:
                 archive.possible_matches.clear()
 
-            frontend_logger.info(
+            logger.info(
                 'User {}: Clearing possible matches for archives'.format(request.user.username)
             )
             messages.success(request, 'Clearing possible matches.')
@@ -674,7 +675,6 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
     params = {
         'sort': 'create_date',
         'asc_desc': 'desc',
-        'filename': title,
     }
 
     for k, v in get.items():
@@ -731,7 +731,7 @@ def archive_update(request: HttpRequest, pk: int, tool: str = None, tool_use_id:
     if tool == 'select-as-match' and request.user.has_perm('viewer.match_archive'):
         archive.select_as_match(tool_use_id)
         if archive.gallery:
-            frontend_logger.info("User: {}: Archive {} ({}) was matched with gallery {} ({}).".format(
+            logger.info("User: {}: Archive {} ({}) was matched with gallery {} ({}).".format(
                 request.user.username,
                 archive,
                 reverse('viewer:archive', args=(archive.pk,)),
@@ -749,7 +749,7 @@ def archive_update(request: HttpRequest, pk: int, tool: str = None, tool_use_id:
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
     elif tool == 'clear-possible-matches' and request.user.has_perm('viewer.match_archive'):
         archive.possible_matches.clear()
-        frontend_logger.info("User: {}: Archive {} ({}) was cleared from its possible matches.".format(
+        logger.info("User: {}: Archive {} ({}) was cleared from its possible matches.".format(
             request.user.username,
             archive,
             reverse('viewer:archive', args=(archive.pk,)),
@@ -785,7 +785,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
             new_wanted_gallery = edit_form.save()
             message = 'New wanted gallery successfully created'
             messages.success(request, message)
-            frontend_logger.info("User {}: {}".format(request.user.username, message))
+            logger.info("User {}: {}".format(request.user.username, message))
             event_log(
                 request.user,
                 'ADD_WANTED_GALLERY',
@@ -853,7 +853,7 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
             new_wanted_gallery = edit_form.save()
             message = 'Wanted gallery successfully modified'
             messages.success(request, message)
-            frontend_logger.info("User {}: {}".format(request.user.username, message))
+            logger.info("User {}: {}".format(request.user.username, message))
             event_log(
                 request.user,
                 'CHANGE_WANTED_GALLERY',
@@ -892,7 +892,7 @@ def upload_archive(request: HttpRequest) -> HttpResponse:
             new_archive = edit_form.save()
             message = 'Archive successfully uploaded'
             messages.success(request, message)
-            frontend_logger.info("User {}: {}".format(request.user.username, message))
+            logger.info("User {}: {}".format(request.user.username, message))
             event_log(
                 request.user,
                 'ADD_ARCHIVE',

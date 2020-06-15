@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import logging
 from collections import defaultdict
 from typing import List
 
@@ -8,6 +9,8 @@ from . import constants
 
 # Generic parser, meaning that only downloads archives, no metadata.
 from core.base.types import GalleryData
+
+logger = logging.getLogger(__name__)
 
 
 class Parser(BaseParser):
@@ -21,13 +24,13 @@ class Parser(BaseParser):
         gallery_wanted_lists = defaultdict(list)
 
         if not self.downloaders:
-            self.logger.warning('No downloaders enabled, returning.')
+            logger.warning('No downloaders enabled, returning.')
             return
 
         for url in urls:
 
             if not any(word in url for word in self.accepted_urls):
-                self.logger.warning("Invalid URL, skipping: {}".format(url))
+                logger.warning("Invalid URL, skipping: {}".format(url))
                 continue
 
             if '/file/' in url:

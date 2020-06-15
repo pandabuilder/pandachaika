@@ -36,9 +36,7 @@ from viewer.models import (
 from viewer.utils.functions import send_mass_html_mail
 from viewer.utils.tags import sort_tags
 
-crawler_logger = logging.getLogger('viewer.webcrawler')
-folder_logger = logging.getLogger('viewer.foldercrawler')
-frontend_logger = logging.getLogger('viewer.frontend')
+logger = logging.getLogger(__name__)
 crawler_settings = settings.CRAWLER_SETTINGS
 
 gallery_filter_keys = (
@@ -280,7 +278,7 @@ def gallery_details(request: HttpRequest, pk: int, tool: str = None) -> HttpResp
 
             current_settings.workers.web_queue.enqueue_args_list((gallery.get_link(),), override_options=current_settings)
 
-            frontend_logger.info(
+            logger.info(
                 'Updating gallery API data for gallery: {} and related archives'.format(
                     gallery.get_absolute_url()
                 )
@@ -1081,7 +1079,7 @@ def url_submit(request: HttpRequest) -> HttpResponse:
         mails = users_to_mail.values_list('email', flat=True)
 
         try:
-            frontend_logger.info('New submission: sending emails to enabled users.')
+            logger.info('New submission: sending emails to enabled users.')
             # (subject, message, from_email, recipient_list)
             datatuples = tuple([(
                 admin_subject,
@@ -1092,9 +1090,9 @@ def url_submit(request: HttpRequest) -> HttpResponse:
             ) for mail in mails])
             send_mass_html_mail(datatuples, fail_silently=True)
         except BadHeaderError:
-            frontend_logger.error('Failed sending emails: Invalid header found.')
+            logger.error('Failed sending emails: Invalid header found.')
 
-        frontend_logger.info("{}\n{}".format(admin_subject, "\n".join(admin_messages)))
+        logger.info("{}\n{}".format(admin_subject, "\n".join(admin_messages)))
 
         return HttpResponseRedirect(reverse('viewer:url-submit'))
 
@@ -1267,7 +1265,7 @@ def filter_archives_simple(params: Dict[str, Any]) -> ArchiveQuerySet:
     if "public" in params and params["public"]:
         results = results.filter(public=True)
 
-    if 'view'in params:
+    if 'view' in params:
         if params["view"] == "list":
             results = results.distinct().select_related('gallery')
         elif params["view"] == "cover":

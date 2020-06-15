@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import fnmatch
+import logging
 import os
 import re
 import time
@@ -19,6 +20,8 @@ from core.base.utilities import (
 
 from viewer.models import Archive, Gallery
 
+logger = logging.getLogger(__name__)
+
 
 class ArgumentParserError(Exception):
     pass
@@ -32,9 +35,8 @@ class YieldingArgumentParser(argparse.ArgumentParser):
 
 class FolderCrawler(object):
 
-    def __init__(self, settings: Settings, logger) -> None:
+    def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self.logger = logger
         self.parse_error = False
 
     def get_args(self, arg_line: List[str]) -> Union[argparse.Namespace, ArgumentParserError]:
@@ -161,7 +163,7 @@ class FolderCrawler(object):
         args = self.get_args(arg_line)
 
         if isinstance(args, ArgumentParserError):
-            self.logger.info(str(args))
+            logger.info(str(args))
             return
 
         files = []
@@ -172,7 +174,7 @@ class FolderCrawler(object):
             found_archives = Archive.objects.all()
 
             if found_archives:
-                self.logger.info("Checking {} archives for existence in filesystem".format(found_archives.count()))
+                logger.info("Checking {} archives for existence in filesystem".format(found_archives.count()))
                 for archive in found_archives:
                     if not os.path.isfile(archive.zipped.path):
                         Archive.objects.delete_by_filter(
@@ -184,10 +186,10 @@ class FolderCrawler(object):
             found_archives = Archive.objects.all()
 
             if found_archives:
-                self.logger.info("Checking {} archives for existence in filesystem".format(found_archives.count()))
+                logger.info("Checking {} archives for existence in filesystem".format(found_archives.count()))
                 for archive in found_archives:
                     if not os.path.isfile(archive.zipped.path):
-                        self.logger.info("Filename: {} doesn't exist".format(archive.zipped.path))
+                        logger.info("Filename: {} doesn't exist".format(archive.zipped.path))
             return
         elif args.rematch_non_matches:
             self.settings.rematch_file_list = ['non-match']
@@ -195,7 +197,7 @@ class FolderCrawler(object):
             found_archives = Archive.objects.filter(
                 match_type='non-match')
             if found_archives:
-                self.logger.info("Scanning {} archives with non-matches".format(found_archives.count()))
+                logger.info("Scanning {} archives with non-matches".format(found_archives.count()))
                 for archive in found_archives:
                     if os.path.isfile(archive.zipped.path):
                         files.append(archive.zipped.path)
@@ -207,7 +209,7 @@ class FolderCrawler(object):
             found_archives = Archive.objects.filter(
                 match_type=args.rematch_by_match_type)
             if found_archives:
-                self.logger.info("Scanning {} archives matched by {}".format(
+                logger.info("Scanning {} archives matched by {}".format(
                     found_archives.count(), args.rematch_by_match_type
                 ))
                 for archive in found_archives:
@@ -226,23 +228,23 @@ class FolderCrawler(object):
                     if archive.filesize == archive.gallery.filesize:
                         continue
                     files.append(archive.zipped.path)
-                self.logger.info("Scanning {} archives matched with wrong filesize".format(len(files)))
+                logger.info("Scanning {} archives matched with wrong filesize".format(len(files)))
         elif args.recalc_missing_crc32:
 
             found_archives = Archive.objects.filter(crc32='')
 
             if found_archives:
-                self.logger.info("Calculating {} archives with missing CRC32".format(found_archives.count()))
+                logger.info("Calculating {} archives with missing CRC32".format(found_archives.count()))
                 for cnt, archive in enumerate(found_archives):
                     if os.path.isfile(archive.zipped.path):
                         crc32 = calc_crc32(
                             archive.zipped.path)
-                        self.logger.info("Working on archive {} of {}, CRC32: {}".format((cnt + 1), found_archives.count(), crc32))
+                        logger.info("Working on archive {} of {}, CRC32: {}".format((cnt + 1), found_archives.count(), crc32))
                         values = {'crc32': crc32}
                         Archive.objects.add_or_update_from_values(
                             values, pk=archive.pk)
                     else:
-                        self.logger.info("Archive {} of {}, path: {} does not exist".format(
+                        logger.info("Archive {} of {}, path: {} does not exist".format(
                             (cnt + 1),
                             found_archives.count(),
                             archive.zipped.path
@@ -254,13 +256,13 @@ class FolderCrawler(object):
                 title='')
 
             if archives_title_gid:
-                self.logger.info("Checking {} galleries".format(archives_title_gid.count()))
+                logger.info("Checking {} galleries".format(archives_title_gid.count()))
                 for cnt, archive in enumerate(archives_title_gid):
                     current_path = os.path.join(os.path.dirname(
                         archive.zipped.path), replace_illegal_name(archive.title) + '.zip')
 
                     if archive.zipped.path != current_path and not os.path.isfile(os.path.join(self.settings.MEDIA_ROOT, current_path)):
-                        self.logger.info("Filename should be {} but it's {}".format(current_path, archive.zipped.path))
+                        logger.info("Filename should be {} but it's {}".format(current_path, archive.zipped.path))
                         if args.filename_to_title == 'rename':
                             os.rename(archive.zipped.path, os.path.join(
                                 self.settings.MEDIA_ROOT, current_path))
@@ -279,7 +281,7 @@ class FolderCrawler(object):
 
                 archives_title_gid, galleries_title_gid = self.get_archive_and_gallery_titles()
 
-                self.logger.info("Matching against archive and gallery database, {} archives with no match".format(non_matched_archives.count()))
+                logger.info("Matching against archive and gallery database, {} archives with no match".format(non_matched_archives.count()))
                 for archive in non_matched_archives:
                     adjusted_title = replace_illegal_name(
                         os.path.basename(archive.zipped.path)).replace(".zip", "")
@@ -287,7 +289,7 @@ class FolderCrawler(object):
                     galleries_id_token = get_closer_gallery_title_from_list(
                         adjusted_title, galleries_title_gid, args.rematch_from_internal_gallery_titles)
                     if galleries_id_token is not None:
-                        self.logger.info("Path: {}\nGal title: {}".format(adjusted_title, galleries_id_token[0]))
+                        logger.info("Path: {}\nGal title: {}".format(adjusted_title, galleries_id_token[0]))
                         values = {
                             'title': Gallery.objects.filter(id=galleries_id_token[1])[0].title,
                             'title_jpn': Gallery.objects.filter(id=galleries_id_token[1])[0].title_jpn,
@@ -306,7 +308,7 @@ class FolderCrawler(object):
                         galleries_id_token = get_closer_gallery_title_from_list(
                             adjusted_title, archives_title_gid, args.rematch_from_internal_gallery_titles)
                         if galleries_id_token is not None:
-                            self.logger.info("Path: {}\nMatch title: {}".format(adjusted_title, galleries_id_token[0]))
+                            logger.info("Path: {}\nMatch title: {}".format(adjusted_title, galleries_id_token[0]))
                             values = {
                                 'title': Gallery.objects.filter(id=galleries_id_token[1])[0].title,
                                 'title_jpn': Gallery.objects.filter(id=galleries_id_token[1])[0].title_jpn,
@@ -331,19 +333,19 @@ class FolderCrawler(object):
 
                 archives_title_gid, galleries_title_gid = self.get_archive_and_gallery_titles()
 
-                self.logger.info("Matching against archive and gallery database, {} archives with no match".format(non_matched_archives.count()))
+                logger.info("Matching against archive and gallery database, {} archives with no match".format(non_matched_archives.count()))
                 for archive in non_matched_archives:
                     adjusted_title = replace_illegal_name(
                         os.path.basename(archive.zipped.path)).replace(".zip", "")
                     galleries_id_token = get_closer_gallery_title_from_list(
                         adjusted_title, galleries_title_gid, args.display_match_from_internal_gallery_titles)
                     if galleries_id_token is not None:
-                        self.logger.info("Path: {}\nGal title: {}".format(adjusted_title, galleries_id_token[0]))
+                        logger.info("Path: {}\nGal title: {}".format(adjusted_title, galleries_id_token[0]))
                     else:
                         galleries_id_token = get_closer_gallery_title_from_list(
                             adjusted_title, archives_title_gid, args.display_match_from_internal_gallery_titles)
                         if galleries_id_token is not None:
-                            self.logger.info("Path: {}\nMatch title: {}".format(adjusted_title, galleries_id_token[0]))
+                            logger.info("Path: {}\nMatch title: {}".format(adjusted_title, galleries_id_token[0]))
 
             return
         else:
@@ -361,7 +363,7 @@ class FolderCrawler(object):
                     files.append(folder)
 
         if args.rename_to_title:
-            self.logger.info("Checking {} galleries".format(len(files)))
+            logger.info("Checking {} galleries".format(len(files)))
             for cnt, filepath in enumerate(files):
 
                 archive = Archive.objects.filter(zipped=filepath).first()
@@ -371,7 +373,7 @@ class FolderCrawler(object):
                         os.path.dirname(filepath), replace_illegal_name(archive.title) + '.zip')
 
                     if filepath != current_path and not os.path.isfile(os.path.join(self.settings.MEDIA_ROOT, current_path)):
-                        self.logger.info("Filename should be {} but it's {}".format(current_path, filepath))
+                        logger.info("Filename should be {} but it's {}".format(current_path, filepath))
                         if args.rename_to_title == 'rename':
                             os.rename(os.path.join(self.settings.MEDIA_ROOT, filepath), os.path.join(
                                 self.settings.MEDIA_ROOT, current_path))
@@ -390,17 +392,17 @@ class FolderCrawler(object):
         # The creation of the files list ends here. From here onwards, it's processing them.
 
         if len(files) == 0:
-            self.logger.info("No file matching needed, skipping matchers")
+            logger.info("No file matching needed, skipping matchers")
         else:
-            self.logger.info("Starting checks for {} archives".format(len(files)))
+            logger.info("Starting checks for {} archives".format(len(files)))
 
-            matchers_list = self.settings.provider_context.get_matchers(self.settings, logger=self.logger)
+            matchers_list = self.settings.provider_context.get_matchers(self.settings)
             for matcher in matchers_list:
-                self.logger.info("Using matcher {} with a priority of {}".format(matcher[0].name, matcher[1]))
+                logger.info("Using matcher {} with a priority of {}".format(matcher[0].name, matcher[1]))
 
             for cnt, filepath in enumerate(files):
 
-                self.logger.info("Checking file: {} of {}, path: {}".format((cnt + 1), len(files), filepath))
+                logger.info("Checking file: {} of {}, path: {}".format((cnt + 1), len(files), filepath))
 
                 title = re.sub(
                     '[_]', ' ', os.path.splitext(os.path.basename(filepath))[0])
@@ -413,15 +415,15 @@ class FolderCrawler(object):
 
                 if archive:
                     if args.force_rematch:
-                        self.logger.info("Doing a forced rematch")
+                        logger.info("Doing a forced rematch")
                     elif archive.match_type in self.settings.rematch_file_list or args.rematch_wrong_filesize:
                         if self.settings.rematch_file:
-                            self.logger.info("File was already matched before, but rematch is ordered")
+                            logger.info("File was already matched before, but rematch is ordered")
                         else:
-                            self.logger.info("File was already matched before, not rematching")
+                            logger.info("File was already matched before, not rematching")
                             continue
                     else:
-                        self.logger.info("Match already saved, skipping")
+                        logger.info("Match already saved, skipping")
                         continue
                 else:
                     # Test for corrupt files
@@ -435,7 +437,7 @@ class FolderCrawler(object):
                     except (BadZipFile, NotImplementedError):
                         except_at_open = True
                     if except_at_open or return_error:
-                        self.logger.warning("File check on zipfile failed on file: {}, marking as corrupt.".format(filepath))
+                        logger.warning("File check on zipfile failed on file: {}, marking as corrupt.".format(filepath))
                         values = {
                             'title': title,
                             'title_jpn': '',
@@ -460,7 +462,7 @@ class FolderCrawler(object):
                     archive = Archive.objects.filter(crc32=crc32).first()
                     if archive:
                         if self.settings.copy_match_file:
-                            self.logger.info("Found previous match by CRC32, copying its values")
+                            logger.info("Found previous match by CRC32, copying its values")
                             values = {
                                 'title': archive.title,
                                 'title_jpn': archive.title_jpn,
@@ -482,7 +484,7 @@ class FolderCrawler(object):
                                 values, zipped=filepath)
                             continue
                         else:
-                            self.logger.info("Matching independently and ignoring previous match")
+                            logger.info("Matching independently and ignoring previous match")
 
                 match_result = False
 
@@ -501,7 +503,7 @@ class FolderCrawler(object):
                             time.sleep(self.settings.providers[current_provider].wait_timer)
                         else:
                             time.sleep(self.settings.wait_timer)
-                    self.logger.info("Matching with: {}".format(matcher[0]))
+                    logger.info("Matching with: {}".format(matcher[0]))
                     if matcher[0].start_match(filepath, crc32):
                         match_type = matcher[0].found_by
                         match_title = matcher[0].match_title or ''
@@ -512,10 +514,10 @@ class FolderCrawler(object):
 
                 end_time = time.perf_counter()
 
-                self.logger.info("Time taken to match file {}: {:.2f} seconds.".format(filepath, (end_time - start_time)))
+                logger.info("Time taken to match file {}: {:.2f} seconds.".format(filepath, (end_time - start_time)))
 
                 if not match_result and not do_not_replace:
-                    self.logger.info('Could not match with any matcher, adding as non-match.')
+                    logger.info('Could not match with any matcher, adding as non-match.')
 
                     values = {
                         'title': title,
@@ -537,10 +539,10 @@ class FolderCrawler(object):
                         values, None, zipped=filepath)
 
                     if self.settings.internal_matches_for_non_matches:
-                        self.logger.info('Generating possible internal matches.')
+                        logger.info('Generating possible internal matches.')
 
                         archive.generate_possible_matches(cutoff=0.4, clear_title=True)
-                        self.logger.info('Generated matches for {}, found {}'.format(
+                        logger.info('Generated matches for {}, found {}'.format(
                             archive.zipped.path,
                             archive.possible_matches.count()
                         ))
@@ -551,9 +553,9 @@ class FolderCrawler(object):
                         "Matched type: {}\n"
                         "Match count: {}\n".format(match_title, match_link, match_type, match_count)
                     )
-                    self.logger.info(result_message)
+                    logger.info(result_message)
 
-        self.logger.info('Folder crawler done.')
+        logger.info('Folder crawler done.')
 
     @staticmethod
     def get_archive_and_gallery_titles() -> Tuple[List[Tuple[str, str]], List[Tuple[str, str]]]:

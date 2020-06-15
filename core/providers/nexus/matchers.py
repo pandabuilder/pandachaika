@@ -60,7 +60,6 @@ class TitleMatcher(Matcher):
             constants.main_page,
             request_dict,
             post=False,
-            logger=self.logger
         )
 
         if not response:

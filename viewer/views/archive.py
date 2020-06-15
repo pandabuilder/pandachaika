@@ -27,9 +27,7 @@ from viewer.models import (
 )
 from viewer.views.head import render_error
 
-crawler_logger = logging.getLogger('viewer.webcrawler')
-folder_logger = logging.getLogger('viewer.foldercrawler')
-frontend_logger = logging.getLogger('viewer.frontend')
+logger = logging.getLogger(__name__)
 crawler_settings = settings.CRAWLER_SETTINGS
 
 
@@ -118,7 +116,7 @@ def archive_details(request: HttpRequest, pk: int, view: str = "cover") -> HttpR
 
                 message = 'Archive successfully modified'
                 messages.success(request, message)
-                frontend_logger.info("User {}: {}".format(request.user.username, message))
+                logger.info("User {}: {}".format(request.user.username, message))
                 event_log(
                     request.user,
                     'CHANGE_ARCHIVE',
@@ -150,7 +148,7 @@ def archive_update(request: HttpRequest, pk: int, tool: str = None, tool_use_id:
     if tool == 'select-as-match':
         archive.select_as_match(tool_use_id)
         if archive.gallery:
-            frontend_logger.info("Archive {} ({}) was matched with gallery {} ({}).".format(
+            logger.info("Archive {} ({}) was matched with gallery {} ({}).".format(
                 archive,
                 reverse('viewer:archive', args=(archive.pk,)),
                 archive.gallery,
@@ -318,7 +316,7 @@ def extract_toggle(request: HttpRequest, pk: int) -> HttpResponse:
     try:
         with transaction.atomic():
             archive = Archive.objects.select_for_update().get(pk=pk)
-            frontend_logger.info('Toggling images for ' + archive.zipped.name)
+            logger.info('Toggling images for ' + archive.zipped.name)
             archive.extract_toggle()
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
@@ -340,7 +338,7 @@ def public_toggle(request: HttpRequest, pk: int) -> HttpResponse:
 
     if archive.public:
         archive.set_private()
-        frontend_logger.info('Setting public status to: private for ' + archive.zipped.name)
+        logger.info('Setting public status to: private for ' + archive.zipped.name)
         event_log(
             request.user,
             'UNPUBLISH_ARCHIVE',
@@ -349,7 +347,7 @@ def public_toggle(request: HttpRequest, pk: int) -> HttpResponse:
         )
     else:
         archive.set_public()
-        frontend_logger.info('Setting public status to: public for ' + archive.zipped.name)
+        logger.info('Setting public status to: public for ' + archive.zipped.name)
         event_log(
             request.user,
             'PUBLISH_ARCHIVE',
@@ -372,7 +370,7 @@ def recalc_info(request: HttpRequest, pk: int) -> HttpResponse:
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
 
-    frontend_logger.info('Recalculating file info for ' + archive.zipped.name)
+    logger.info('Recalculating file info for ' + archive.zipped.name)
     archive.recalc_fileinfo()
     archive.generate_image_set(force=False)
     archive.generate_thumbnails()
@@ -405,7 +403,7 @@ def recall_api(request: HttpRequest, pk: int) -> HttpResponse:
 
         current_settings.workers.web_queue.enqueue_args_list((gallery.get_link(),), override_options=current_settings)
 
-        frontend_logger.info(
+        logger.info(
             'Updating gallery API data for gallery: {} and related archives'.format(
                 gallery.get_absolute_url()
             )
@@ -447,7 +445,7 @@ def generate_matches(request: HttpRequest, pk: int) -> HttpResponse:
     )
     archive.save()
 
-    frontend_logger.info('Generated matches for {}, found {}'.format(
+    logger.info('Generated matches for {}, found {}'.format(
         archive.zipped.path,
         archive.possible_matches.count()
     ))
@@ -471,10 +469,10 @@ def rematch_archive(request: HttpRequest, pk: int) -> HttpResponse:
         archive.gallery.archive_set.remove(archive)
 
     folder_crawler_thread = FolderCrawlerThread(
-        crawler_logger, crawler_settings, ['-frm', archive.zipped.path])
+        crawler_settings, ['-frm', archive.zipped.path])
     folder_crawler_thread.start()
 
-    frontend_logger.info('Rematching archive: {}'.format(archive.title))
+    logger.info('Rematching archive: {}'.format(archive.title))
 
     return HttpResponseRedirect(request.META["HTTP_REFERER"])
 
@@ -507,7 +505,7 @@ def delete_archive(request: HttpRequest, pk: int) -> HttpResponse:
 
             message = 'For archive: {}, deleting: {}'.format(archive.title, ', '.join(message_list))
 
-            frontend_logger.info("User {}: {}".format(request.user.username, message))
+            logger.info("User {}: {}".format(request.user.username, message))
             messages.success(request, message)
 
             gallery = archive.gallery

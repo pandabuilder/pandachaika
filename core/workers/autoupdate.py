@@ -1,3 +1,4 @@
+import logging
 from datetime import timedelta
 
 import django.utils.timezone as django_tz
@@ -6,6 +7,8 @@ from django.db import connection
 from core.base.setup import Settings
 from core.workers.schedulers import BaseScheduler
 from viewer.models import Gallery
+
+logger = logging.getLogger(__name__)
 
 
 # We could call fetch_multiple_gallery_data directly, but we want to go through the queue so we don't go over limits
@@ -44,7 +47,7 @@ class TimedAutoUpdater(BaseScheduler):
                 )
 
                 if not galleries:
-                    self.crawler_logger.info(
+                    logger.info(
                         "No galleries posted from {} to {} need updating. Providers: {}".format(
                             start_date,
                             end_date,
@@ -60,7 +63,7 @@ class TimedAutoUpdater(BaseScheduler):
 
                     url_list = [x.get_link() for x in galleries]
 
-                    self.crawler_logger.info(
+                    logger.info(
                         "Starting timed auto updater, updating {} galleries "
                         "posted from {} to {}. Providers: {}".format(
                             len(url_list),

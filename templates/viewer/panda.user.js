@@ -6,7 +6,7 @@
 // @include     http://exhentai.org/*
 // @include     https://e-hentai.org/*
 // @include     https://exhentai.org/*
-// @version     0.1.6
+// @version     0.1.8
 // @grant       GM_xmlhttpRequest
 // ==/UserScript==
 
@@ -122,7 +122,7 @@ function modifyDivThumbnail(currentDiv) {
 
 function insertCrawler() {
 	//Gallery page
-    var container =document.getElementById('gright');
+    var container =document.getElementById('gd5');
     if ( container !==null ) {
 
         //get info nodes, check if parent info exists.
@@ -207,8 +207,7 @@ color: black;\
         (function () {
             var galleryLink =document.URL;
             var div2 =document.createElement('div');
-            div2.setAttribute('class','it3');
-            div2.innerHTML ='<img class="n" src="https://ehgt.org/g/t.png" alt="T" title="' +galleryLink +'"/></img>';
+            div2.innerHTML ='<img style="height: auto; width: auto" src="https://ehgt.org/g/t.png" alt="T" title="' + galleryLink + '"/></img>';
             div2.addEventListener('click',function () { sendWebCrawlerAction(galleryLink, parentLink); });
             container.appendChild(div2);
         }());

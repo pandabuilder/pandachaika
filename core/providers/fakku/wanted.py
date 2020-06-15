@@ -1,3 +1,4 @@
+import logging
 import re
 import time
 import typing
@@ -6,7 +7,7 @@ import urllib.parse
 from bs4 import BeautifulSoup
 from django.db.models import QuerySet
 
-from core.base.types import RealLogger, DataDict
+from core.base.types import DataDict
 from core.base.utilities import request_with_retries, format_title_to_wanted_search, construct_request_dict
 from viewer.models import Gallery, WantedGallery, Provider, Artist
 from . import constants
@@ -14,8 +15,10 @@ from . import constants
 if typing.TYPE_CHECKING:
     from core.base.setup import Settings
 
+logger = logging.getLogger(__name__)
 
-def wanted_generator(settings: 'Settings', ext_logger: RealLogger, attrs: QuerySet):
+
+def wanted_generator(settings: 'Settings', attrs: QuerySet):
     own_settings = settings.providers[constants.provider_name]
 
     queries: DataDict = {}
@@ -36,7 +39,7 @@ def wanted_generator(settings: 'Settings', ext_logger: RealLogger, attrs: QueryS
         slug=constants.provider_name, defaults={'name': constants.provider_name}
     )
 
-    parser = settings.provider_context.get_parsers(settings, ext_logger, filter_name=constants.provider_name)[0]
+    parser = settings.provider_context.get_parsers(settings, filter_name=constants.provider_name)[0]
 
     rounds = 0
 
@@ -59,17 +62,17 @@ def wanted_generator(settings: 'Settings', ext_logger: RealLogger, attrs: QueryS
             if rounds > 1:
                 time.sleep(own_settings.wait_timer)
 
-            ext_logger.info('Querying {} for auto wanted galleries, query name: {}, options: {}'.format(
+            logger.info('Querying {} for auto wanted galleries, query name: {}, options: {}'.format(
                 constants.provider_name, query_name, str(query_values))
             )
 
             if 'subpath' not in query_values:
-                ext_logger.error('Cannot query without setting a subpath for {}'.format(query_name))
+                logger.error('Cannot query without setting a subpath for {}'.format(query_name))
                 break
             subpath = query_values['subpath']
 
             if not {'container_tag', 'container_attribute_name', 'container_attribute_value'}.issubset(query_values.keys()):
-                ext_logger.error('Cannot query without html container definition for {}'.format(query_name))
+                logger.error('Cannot query without html container definition for {}'.format(query_name))
                 break
             container_tag = query_values['container_tag']
             container_attribute_name = query_values['container_attribute_name']
@@ -86,7 +89,7 @@ def wanted_generator(settings: 'Settings', ext_logger: RealLogger, attrs: QueryS
             else:
                 if not {'link_tag', 'link_attribute_name', 'link_attribute_value', 'url_attribute_name'}.issubset(
                         query_values.keys()):
-                    ext_logger.error('Cannot query without link container definition for {}'.format(query_name))
+                    logger.error('Cannot query without link container definition for {}'.format(query_name))
                     break
                 link_tag = query_values['link_tag']
                 link_attribute_name = query_values['link_attribute_name']
@@ -105,11 +108,15 @@ def wanted_generator(settings: 'Settings', ext_logger: RealLogger, attrs: QueryS
                 link,
                 request_dict,
                 post=False,
-                logger=ext_logger
             )
 
             if not response:
-                ext_logger.error('Got to page {}, but did not get a response, stopping'.format(query_values['page']))
+                logger.error(
+                    'For provider {}: Got to page {}, but did not get a response, stopping'.format(
+                        constants.provider_name,
+                        query_values['page']
+                    )
+                )
                 break
 
             response.encoding = 'utf-8'
@@ -140,9 +147,12 @@ def wanted_generator(settings: 'Settings', ext_logger: RealLogger, attrs: QueryS
                 gallery_gids.append(gallery_link[1:])
 
             if not gallery_gids:
-                # ext_logger.error('Server response: {}'.format(response.text))
-                ext_logger.error('Got to page {}, but could not parse the response into galleries, stopping'.format(
-                    query_values['page']))
+                logger.error(
+                    'For provider {}: Got to url: {}, but could not parse the response into galleries, stopping'.format(
+                        constants.provider_name,
+                        full_url
+                    )
+                )
                 break
 
             # Listen to what the server says
@@ -160,7 +170,7 @@ def wanted_generator(settings: 'Settings', ext_logger: RealLogger, attrs: QueryS
                 }
             )
 
-            ext_logger.info(
+            logger.info(
                 'Page has {} galleries, from which {} are already present in the database.'.format(
                     len(gallery_gids),
                     used.count()
@@ -168,7 +178,7 @@ def wanted_generator(settings: 'Settings', ext_logger: RealLogger, attrs: QueryS
             )
 
             if not force_process.value and used.count() == len(gallery_gids):
-                ext_logger.info(
+                logger.info(
                     'Got to page {}, it has already been processed entirely, stopping'.format(query_values['page']))
                 break
 
@@ -183,8 +193,7 @@ def wanted_generator(settings: 'Settings', ext_logger: RealLogger, attrs: QueryS
             api_galleries = parser.fetch_multiple_gallery_data(gallery_links)
 
             if not api_galleries:
-                # ext_logger.error('Server response: {}'.format(response.text))
-                ext_logger.error(
+                logger.error(
                     'Got to page {}, but could not parse the gallery link into GalleryData instances'.format(
                         query_values['page'])
                 )
@@ -242,7 +251,7 @@ def wanted_generator(settings: 'Settings', ext_logger: RealLogger, attrs: QueryS
                             if not artist_obj:
                                 artist_obj = Artist.objects.create(name=artist.name)
                             wanted_gallery.artists.add(artist_obj)
-                        ext_logger.info(
+                        logger.info(
                             "Created wanted gallery ({}): {}, search title: {}".format(
                                 wanted_gallery.book_type,
                                 wanted_gallery.get_absolute_url(),
@@ -269,7 +278,7 @@ def wanted_generator(settings: 'Settings', ext_logger: RealLogger, attrs: QueryS
             # API returns 25 max results per query, so if we get 24 or less, means there's no more pages.
             # API Manual says 25, but we get 50 results normally!
             if len(api_galleries) < 1:
-                ext_logger.info(
+                logger.info(
                     'Got to page {}, and we got less than 1 gallery, '
                     'meaning there is no more pages, stopping'.format(query_values['page'])
                 )
@@ -277,6 +286,6 @@ def wanted_generator(settings: 'Settings', ext_logger: RealLogger, attrs: QueryS
 
             query_values['page'] += 1
 
-    ext_logger.info("{} Auto wanted ended.".format(
+    logger.info("{} Auto wanted ended.".format(
         constants.provider_name
     ))

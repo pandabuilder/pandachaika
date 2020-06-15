@@ -1,9 +1,9 @@
+import logging
 import os
 import re
 from typing import Optional
 from urllib.parse import urljoin, quote
 
-import requests
 from bs4 import BeautifulSoup
 
 from core.base.matchers import Matcher
@@ -14,6 +14,8 @@ from core.base.utilities import (
     request_with_retries, construct_request_dict)
 from . import constants
 from .utilities import clean_title
+
+logger = logging.getLogger(__name__)
 
 
 class TitleMatcher(Matcher):
@@ -64,11 +66,10 @@ class TitleMatcher(Matcher):
         r = request_with_retries(
             urljoin(constants.main_url, 'search/') + quote(title),
             request_dict,
-            logger=self.logger
         )
 
         if not r:
-            self.logger.info("Got no response from server")
+            logger.info("Got no response from server")
             return False
 
         r.encoding = 'utf-8'
@@ -98,7 +99,7 @@ class TitleMatcher(Matcher):
             'X-Requested-With': 'XMLHttpRequest',
         }
 
-        self.logger.info("Querying URL: {}".format(urljoin(constants.main_url, 'suggest/') + quote(title.lower())))
+        logger.info("Querying URL: {}".format(urljoin(constants.main_url, 'suggest/') + quote(title.lower())))
 
         request_dict = construct_request_dict(self.settings, self.own_settings)
         request_dict['headers'] = {**headers, **self.settings.requests_headers}
@@ -106,11 +107,11 @@ class TitleMatcher(Matcher):
         response = request_with_retries(
             urljoin(constants.main_url, 'suggest/') + quote(title.lower()),
             request_dict,
-            post=False, retries=3, logger=self.logger
+            post=False, retries=3
         )
 
         if not response:
-            self.logger.info("Got no response from server")
+            logger.info("Got no response from server")
             return False
 
         response_data = response.json()
@@ -118,7 +119,7 @@ class TitleMatcher(Matcher):
         matches_links = set()
 
         if 'error' in response_data:
-            self.logger.info("Got error from server: {}".format(response_data['error']))
+            logger.info("Got error from server: {}".format(response_data['error']))
             return False
 
         for gallery in response_data:

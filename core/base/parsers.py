@@ -17,7 +17,7 @@ from django.db.models.functions import Concat, Replace
 
 from core.base import utilities
 from core.base.utilities import send_pushover_notification, chunks
-from core.base.types import GalleryData, OptionalLogger, FakeLogger, RealLogger
+from core.base.types import GalleryData
 from viewer.signals import wanted_gallery_found
 
 if typing.TYPE_CHECKING:
@@ -25,24 +25,22 @@ if typing.TYPE_CHECKING:
     from core.base.setup import Settings
     from viewer.models import Gallery, WantedGallery, Archive
 
+logger = logging.getLogger(__name__)
+
 
 class BaseParser:
     name = ''
     ignore = False
     accepted_urls: List[str] = []
 
-    def __init__(self, settings: 'Settings', logger: OptionalLogger = None) -> None:
+    def __init__(self, settings: 'Settings') -> None:
         self.settings = settings
-        if not logger:
-            self.logger: RealLogger = FakeLogger()
-        else:
-            self.logger = logger
         if self.name in settings.providers:
             self.own_settings = settings.providers[self.name]
         else:
             self.own_settings = None
         self.general_utils = utilities.GeneralUtils(self.settings)
-        self.downloaders: List[Tuple['BaseDownloader', int]] = self.settings.provider_context.get_downloaders(self.settings, self.logger, self.general_utils, filter_name=self.name)
+        self.downloaders: List[Tuple['BaseDownloader', int]] = self.settings.provider_context.get_downloaders(self.settings, self.general_utils, filter_name=self.name)
         self.last_used_downloader: str = 'none'
         self.archive_callback: Optional[Callable[[Optional['Archive'], Optional[str], str], None]] = None
         self.gallery_callback: Optional[Callable[[Optional['Gallery'], Optional[str], str], None]] = None
@@ -142,7 +140,7 @@ class BaseParser:
     def compare_gallery_with_wanted_filters(self, gallery: GalleryData, link: str, wanted_filters: QuerySet, gallery_wanted_lists: Dict[str, List['WantedGallery']]) -> None:
 
         if not self.settings.found_gallery_model:
-            self.logger.error("FoundGallery model has not been initiated.")
+            logger.error("FoundGallery model has not been initiated.")
             return
 
         if gallery.title or gallery.title_jpn:
@@ -221,7 +219,7 @@ class BaseParser:
                 wanted_filter.date_found = django_tz.now()
                 wanted_filter.save()
         if len(gallery_wanted_lists[gallery.gid]) > 0:
-            self.logger.info("Gallery link: {}, title: {}, matched filters: {}.".format(
+            logger.info("Gallery link: {}, title: {}, matched filters: {}.".format(
                 link,
                 gallery.title,
                 ", ".join([x.get_absolute_url() for x in gallery_wanted_lists[gallery.gid]])
@@ -282,8 +280,7 @@ class BaseParser:
                 wanted_filters=wanted_filters, wanted_only=wanted_only
             )
         except BaseException:
-            thread_logger = logging.getLogger('viewer.threads')
-            thread_logger.error(traceback.format_exc())
+            logger.error(traceback.format_exc())
 
     def crawl_urls(
             self, urls: List[str],
@@ -295,17 +292,17 @@ class BaseParser:
         gallery_count = len(gallery_data_list)
 
         if gallery_count == 0:
-            self.logger.info("No galleries need downloading, returning.")
+            logger.info("No galleries need downloading, returning.")
             return
         else:
-            self.logger.info("{} galleries for downloaders to work with.".format(gallery_count))
+            logger.info("{} galleries for downloaders to work with.".format(gallery_count))
 
         if not self.settings.update_metadata_mode:
             downloaders_msg = 'Downloaders: (name, priority)'
 
             for downloader in self.downloaders:
                 downloaders_msg += " ({}, {})".format(downloader[0], downloader[1])
-            self.logger.info(downloaders_msg)
+            logger.info(downloaders_msg)
 
         for i, gallery in enumerate(gallery_data_list, start=1):
             if not self.last_used_downloader.endswith('info') and not self.last_used_downloader.endswith('none'):
@@ -313,7 +310,7 @@ class BaseParser:
                     time.sleep(self.own_settings.wait_timer)
                 else:
                     time.sleep(self.settings.wait_timer)
-            self.logger.info("Working with gallery {} of {}".format(i, gallery_count))
+            logger.info("Working with gallery {} of {}".format(i, gallery_count))
             if self.settings.add_as_public:
                 gallery.public = True
             self.work_gallery_data(gallery, gallery_wanted_lists)
@@ -321,13 +318,13 @@ class BaseParser:
     def work_gallery_data(self, gallery: GalleryData, gallery_wanted_lists) -> None:
 
         if not self.settings.found_gallery_model:
-            self.logger.error("FoundGallery model has not been initiated.")
+            logger.error("FoundGallery model has not been initiated.")
             return
 
         if gallery.title is not None:
-            self.logger.info("Title: {}. Link: {}".format(gallery.title, gallery.link))
+            logger.info("Title: {}. Link: {}".format(gallery.title, gallery.link))
         else:
-            self.logger.info("Link: {}".format(gallery.link))
+            logger.info("Link: {}".format(gallery.link))
 
         for cnt, downloader in enumerate(self.downloaders):
             downloader[0].init_download(copy.deepcopy(gallery))
@@ -354,7 +351,7 @@ class BaseParser:
                         )
                 if downloader[0].archive_db_entry:
                     if not downloader[0].archive_only and downloader[0].gallery_db_entry:
-                        self.logger.info(
+                        logger.info(
                             "Download complete, using downloader:  {}. Archive link: {}. Gallery link: {}".format(
                                 downloader[0],
                                 downloader[0].archive_db_entry.get_absolute_url(),
@@ -366,7 +363,7 @@ class BaseParser:
                         if self.archive_callback:
                             self.archive_callback(downloader[0].archive_db_entry, gallery.link, 'success')
                     else:
-                        self.logger.info(
+                        logger.info(
                             "Download complete, using downloader: {}. Archive link: {}. No gallery associated".format(
                                 downloader[0],
                                 downloader[0].archive_db_entry.get_absolute_url(),
@@ -375,7 +372,7 @@ class BaseParser:
                         if self.archive_callback:
                             self.archive_callback(downloader[0].archive_db_entry, gallery.link, 'success')
                 elif downloader[0].gallery_db_entry:
-                    self.logger.info(
+                    logger.info(
                         "Download completed successfully (gallery only), using downloader: {}. Gallery link: {}".format(
                             downloader[0],
                             downloader[0].gallery_db_entry.get_absolute_url()
@@ -391,7 +388,7 @@ class BaseParser:
                     downloader[0].original_gallery.dl_type = 'failed'
                     downloader[0].update_gallery_db()
                     if downloader[0].gallery_db_entry:
-                        self.logger.warning(
+                        logger.warning(
                             "Download completed unsuccessfully using downloader: {},"
                             " set as failed as it\'s the last one. Gallery link: {}".format(
                                 downloader[0],
@@ -406,21 +403,21 @@ class BaseParser:
                                 gallery=downloader[0].gallery_db_entry
                             )
                     else:
-                        self.logger.warning(
+                        logger.warning(
                             "Download completed unsuccessfully using downloader: {},"
                             " could not set as failed, no entry was updated on the database".format(
                                 downloader[0]
                             )
                         )
                 else:
-                    self.logger.warning(
+                    logger.warning(
                         "Download completed unsuccessfully using downloader: {},"
                         " no entry was updated on the database".format(downloader[0])
                     )
                     if self.gallery_callback:
                         self.gallery_callback(None, gallery.link, 'failed')
             else:
-                self.logger.info(
+                logger.info(
                     "Download was unsuccessful, using downloader {}. Trying with the next downloader.".format(
                         downloader[0],
                     )
@@ -464,7 +461,7 @@ class InternalParser(BaseParser):
                 )
 
                 if discard_approved:
-                    self.logger.info(discard_message)
+                    logger.info(discard_message)
                     found_galleries.add(found_gallery.gid)
 
         for count, gallery in enumerate(total_galleries_filtered):
@@ -473,7 +470,7 @@ class InternalParser(BaseParser):
                 continue
 
             if self.general_utils.discard_by_tag_list(gallery.tags):
-                self.logger.info(
+                logger.info(
                     "Gallery {} of {}: Skipping gallery {}, because it's tagged with global discarded tags".format(
                         count,
                         len(total_galleries_filtered),
@@ -492,7 +489,7 @@ class InternalParser(BaseParser):
                 if wanted_only and not gallery_wanted_lists[gallery.gid]:
                     continue
 
-            self.logger.info(
+            logger.info(
                 "Gallery {} of {}:  Gallery {} will be processed.".format(
                     count,
                     len(total_galleries_filtered),

@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import Optional
 
@@ -11,6 +12,8 @@ from viewer.models import Archive
 from core.base.utilities import (available_filename,
                                  replace_illegal_name)
 from . import constants
+
+logger = logging.getLogger(__name__)
 
 
 class ArchiveDownloader(BaseDownloader):
@@ -55,7 +58,7 @@ class ArchiveDownloader(BaseDownloader):
             self.return_code = 1
 
         else:
-            self.logger.error("Could not download archive")
+            logger.error("Could not download archive")
             os.remove(filepath)
             self.return_code = 0
 

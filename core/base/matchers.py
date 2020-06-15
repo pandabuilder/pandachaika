@@ -1,5 +1,6 @@
 import os
 import re
+import logging
 
 import time
 from typing import List, Tuple, Optional
@@ -7,11 +8,13 @@ import typing
 
 from core.base.comparison import get_gallery_closer_title_from_gallery_values, get_list_closer_gallery_titles_from_dict
 from core.base.utilities import GeneralUtils
-from core.base.types import GalleryData, OptionalLogger, FakeLogger, RealLogger, DataDict
+from core.base.types import GalleryData, DataDict
 
 
 if typing.TYPE_CHECKING:
     from core.base.setup import Settings
+
+logger = logging.getLogger(__name__)
 
 
 class Meta(type):
@@ -30,15 +33,11 @@ class Matcher(metaclass=Meta):
     time_to_wait_after_compare = 0
     default_cutoff = 0.5
 
-    def __init__(self, settings: 'Settings', logger: OptionalLogger) -> None:
+    def __init__(self, settings: 'Settings') -> None:
         self.settings = settings
         self.own_settings = settings.providers[self.provider]
-        if not logger:
-            self.logger: RealLogger = FakeLogger()
-        else:
-            self.logger = logger
         self.general_utils = GeneralUtils(global_settings=settings)
-        self.parser = self.settings.provider_context.get_parsers(self.settings, self.logger, filter_name=self.provider)[0]
+        self.parser = self.settings.provider_context.get_parsers(self.settings, filter_name=self.provider)[0]
         self.found_by = ''
         self.match_gid: Optional[str] = None
         self.match_link: Optional[str] = None
@@ -97,7 +96,7 @@ class Matcher(metaclass=Meta):
             if not galleries_data:
                 return results
             galleries_data = [x for x in galleries_data if not self.general_utils.discard_by_tag_list(x.tags)]
-            self.logger.info(
+            logger.info(
                 "For matcher: {}, found {} results before filtering.".format(str(self), len(galleries_data))
             )
             if galleries_data:
@@ -124,7 +123,7 @@ class Matcher(metaclass=Meta):
     def update_archive(self) -> None:
 
         if not self.settings.archive_model:
-            self.logger.error("Archive model has not been initiated.")
+            logger.error("Archive model has not been initiated.")
             return
 
         values = self.format_match_values()
@@ -142,7 +141,7 @@ class Matcher(metaclass=Meta):
     def update_gallery_db(self, gallery_data: GalleryData) -> None:
 
         if not self.settings.gallery_model:
-            self.logger.error("Gallery model has not been initiated.")
+            logger.error("Gallery model has not been initiated.")
             return
 
         check_exists = self.settings.gallery_model.objects.exists_by_gid(

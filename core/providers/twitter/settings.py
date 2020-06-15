@@ -7,7 +7,8 @@ if typing.TYPE_CHECKING:
 
 
 class OwnSettings(ProviderSettings):
-    def __init__(self) -> None:
+    def __init__(self, global_settings: 'Settings', config: typing.Dict[str, typing.Any]) -> None:
+        super().__init__(global_settings, config)
         self.token = ''
         self.token_secret = ''
         self.consumer_key = ''
@@ -19,7 +20,7 @@ class OwnSettings(ProviderSettings):
 
 def parse_config(global_settings: 'Settings', config: typing.Dict[str, typing.Any]) -> 'OwnSettings':
 
-    settings = OwnSettings()
+    settings = OwnSettings(global_settings, config)
     if 'general' in config:
         if 'token' in config['general']:
             settings.token = config['general']['token']

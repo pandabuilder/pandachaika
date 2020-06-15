@@ -1,3 +1,4 @@
+import logging
 import threading
 from itertools import groupby
 from typing import List
@@ -17,10 +18,11 @@ from viewer.models import Archive, Gallery, ArchiveMatches, Tag, WantedGallery, 
 from viewer.utils.actions import event_log
 from viewer.utils.matching import generate_possible_matches_for_archives, \
     create_matches_wanted_galleries_from_providers, create_matches_wanted_galleries_from_providers_internal
-from viewer.views.head import render_error, frontend_logger, gallery_filter_keys, filter_galleries_simple, \
+from viewer.views.head import render_error, gallery_filter_keys, filter_galleries_simple, \
     archive_filter_keys, filter_archives_simple, wanted_gallery_filter_keys, filter_wanted_galleries_simple
 
 crawler_settings = settings.CRAWLER_SETTINGS
+logger = logging.getLogger(__name__)
 
 
 @staff_member_required(login_url='viewer:login')
@@ -53,12 +55,12 @@ def repeated_archives_for_galleries(request: HttpRequest) -> HttpResponse:
         for archive in results:
             if 'delete_archives_and_files' in p:
                 message = 'Removing archive and deleting file: {}'.format(archive.zipped.name)
-                frontend_logger.info(message)
+                logger.info(message)
                 messages.success(request, message)
                 archive.delete_all_files()
             else:
                 message = 'Removing archive: {}'.format(archive.zipped.name)
-                frontend_logger.info(message)
+                logger.info(message)
                 messages.success(request, message)
             archive.delete()
 
@@ -117,7 +119,7 @@ def repeated_archives_by_field(request: HttpRequest) -> HttpResponse:
                 message = 'Removing archive: {} and deleting file: {}'.format(
                     archive.title, archive.zipped.path
                 )
-                frontend_logger.info(message)
+                logger.info(message)
                 messages.success(request, message)
 
                 gallery = archive.gallery
@@ -139,7 +141,7 @@ def repeated_archives_by_field(request: HttpRequest) -> HttpResponse:
                 message = 'Removing archive: {}, keeping file: {}'.format(
                     archive.title, archive.zipped.path
                 )
-                frontend_logger.info(message)
+                logger.info(message)
                 messages.success(request, message)
 
                 gallery = archive.gallery
@@ -158,7 +160,6 @@ def repeated_archives_by_field(request: HttpRequest) -> HttpResponse:
     params = {
         'sort': 'create_date',
         'asc_desc': 'desc',
-        'filename': title,
     }
 
     for k, v in get.items():
@@ -228,7 +229,7 @@ def repeated_galleries_by_field(request: HttpRequest) -> HttpResponse:
 
             for gallery in results:
                 message = 'Removing gallery: {}, link: {}'.format(gallery.title, gallery.get_link())
-                frontend_logger.info(message)
+                logger.info(message)
                 messages.success(request, message)
                 gallery.mark_as_deleted()
 
@@ -318,7 +319,7 @@ def archive_filesize_different_from_gallery(request: HttpRequest) -> HttpRespons
                     archive.title,
                     archive.zipped.name
                 )
-                frontend_logger.info(message)
+                logger.info(message)
                 messages.success(request, message)
                 archive.delete()
             if 'delete_archives_and_files' in p:
@@ -326,7 +327,7 @@ def archive_filesize_different_from_gallery(request: HttpRequest) -> HttpRespons
                     archive.title,
                     archive.zipped.name
                 )
-                frontend_logger.info(message)
+                logger.info(message)
                 messages.success(request, message)
                 archive.delete_all_files()
                 archive.delete()
@@ -387,13 +388,13 @@ def missing_archives_for_galleries(request: HttpRequest) -> HttpResponse:
         if 'delete_galleries' in p:
             for gallery in results:
                 message = 'Removing gallery: {}, link: {}'.format(gallery.title, gallery.get_link())
-                frontend_logger.info(message)
+                logger.info(message)
                 messages.success(request, message)
                 gallery.mark_as_deleted()
         elif 'download_galleries' in p:
             for gallery in results:
                 message = 'Queueing gallery: {}, link: {}'.format(gallery.title, gallery.get_link())
-                frontend_logger.info(message)
+                logger.info(message)
                 messages.success(request, message)
 
                 # Force replace_metadata when queueing from this list, since it's mostly used to download non used.
@@ -419,7 +420,7 @@ def missing_archives_for_galleries(request: HttpRequest) -> HttpResponse:
                     )
         elif 'recall_api' in p:
             message = 'Recalling API for {} galleries'.format(results.count())
-            frontend_logger.info(message)
+            logger.info(message)
             messages.success(request, message)
 
             gallery_links = [x.get_link() for x in results]
@@ -512,14 +513,13 @@ def archives_not_present_in_filesystem(request: HttpRequest) -> HttpResponse:
             message = 'Removing archive missing in filesystem: {}, path: {}'.format(
                 archive.title, archive.zipped.path
             )
-            frontend_logger.info(message)
+            logger.info(message)
             messages.success(request, message)
             archive.delete()
 
     params = {
         'sort': 'create_date',
         'asc_desc': 'desc',
-        'filename': title,
     }
 
     for k, v in get.items():
@@ -579,7 +579,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                 message = 'Removing archive not matched: {} and deleting file: {}'.format(
                     archive.title, archive.zipped.path
                 )
-                frontend_logger.info(message)
+                logger.info(message)
                 messages.success(request, message)
                 archive.delete_all_files()
                 archive.delete()
@@ -588,7 +588,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                 message = 'Removing archive not matched: {}, keeping file: {}'.format(
                     archive.title, archive.zipped.path
                 )
-                frontend_logger.info(message)
+                logger.info(message)
                 messages.success(request, message)
                 archive.delete_files_but_archive()
                 archive.delete()
@@ -611,7 +611,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                 target=generate_possible_matches_for_archives,
                 args=(archives,),
                 kwargs={
-                    'logger': frontend_logger, 'cutoff': cutoff, 'max_matches': max_matches,
+                    'cutoff': cutoff, 'max_matches': max_matches,
                     'filters': (matcher_filter,),
                     'match_local': False, 'match_web': True
                 })
@@ -631,7 +631,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
             except ValueError:
                 max_matches = 10
 
-            frontend_logger.info(
+            logger.info(
                 'Looking for possible matches in gallery database '
                 'for non-matched archives (cutoff: {}, max matches: {}) '
                 'using provider filter "{}"'.format(cutoff, max_matches, provider)
@@ -641,7 +641,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                 target=generate_possible_matches_for_archives,
                 args=(archives,),
                 kwargs={
-                    'logger': frontend_logger, 'cutoff': cutoff, 'max_matches': max_matches, 'filters': (provider,),
+                    'cutoff': cutoff, 'max_matches': max_matches, 'filters': (provider,),
                     'match_local': True, 'match_web': False
                 })
             matching_thread.daemon = True
@@ -651,7 +651,6 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
     params = {
         'sort': 'create_date',
         'asc_desc': 'desc',
-        'filename': title,
     }
 
     for k, v in get.items():
@@ -743,7 +742,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
                 message = 'Removing wanted gallery: {}'.format(
                     wanted_gallery.title
                 )
-                frontend_logger.info(message)
+                logger.info(message)
                 messages.success(request, message)
                 wanted_gallery.delete()
         elif 'search_for_galleries' in p:
@@ -760,7 +759,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
                 message = 'Marking gallery as to search for: {}'.format(
                     wanted_gallery.title
                 )
-                frontend_logger.info(message)
+                logger.info(message)
                 messages.success(request, message)
         elif 'toggle-public' in p:
             pks = []
@@ -776,7 +775,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
                 message = 'Marking gallery as public: {}'.format(
                     wanted_gallery.title
                 )
-                frontend_logger.info(message)
+                logger.info(message)
                 messages.success(request, message)
         elif 'search_provider_galleries' in p:
             if thread_exists('web_search_worker'):
@@ -806,7 +805,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
                 max_matches = 10
 
             message = 'Searching for gallery matches in providers for wanted galleries.'
-            frontend_logger.info(message)
+            logger.info(message)
             messages.success(request, message)
 
             panda_search_thread = threading.Thread(
@@ -814,7 +813,6 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
                 target=create_matches_wanted_galleries_from_providers,
                 args=(results, provider),
                 kwargs={
-                    'logger': frontend_logger,
                     'cutoff': cutoff, 'max_matches': max_matches,
                 })
             panda_search_thread.daemon = True
@@ -852,7 +850,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
                 must_be_used = False
 
             message = 'Searching for gallery matches locally in providers for wanted galleries.'
-            frontend_logger.info(message)
+            logger.info(message)
             messages.success(request, message)
 
             matching_thread = threading.Thread(
@@ -860,7 +858,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
                 target=create_matches_wanted_galleries_from_providers_internal,
                 args=(results,),
                 kwargs={
-                    'logger': frontend_logger, 'provider_filter': provider,
+                    'provider_filter': provider,
                     'cutoff': cutoff, 'max_matches': max_matches,
                     'must_be_used': must_be_used
                 }
@@ -870,7 +868,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
         elif 'clear_all_matches' in p:
             GalleryMatch.objects.all().delete()
             message = 'Clearing matches from every wanted gallery.'
-            frontend_logger.info(message)
+            logger.info(message)
             messages.success(request, message)
 
     params = {

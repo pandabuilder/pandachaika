@@ -16,7 +16,7 @@ from itertools import tee, islice, chain
 from tempfile import mkdtemp
 from typing import Union, Optional, Tuple, List, Dict, Any
 
-from core.base.types import GalleryData, OptionalLogger
+from core.base.types import GalleryData
 
 try:
     import rarfile
@@ -31,6 +31,7 @@ if typing.TYPE_CHECKING:
     from core.workers.schedulers import BaseScheduler
     from core.base.types import ProviderSettings
 
+logger = logging.getLogger(__name__)
 
 PUSHOVER_API_URL = 'https://api.pushover.net/1/messages.json'
 
@@ -159,10 +160,10 @@ def sha1_from_file_object(file_object: typing.IO[bytes]):
 T = typing.TypeVar('T')
 
 
-def chunks(l: typing.Sequence[T], n: int):
+def chunks(sequence: typing.Sequence[T], n: int):
     """ Yield successive n-sized chunks from l."""
-    for i in range(0, len(l), n):
-        yield l[i:i + n]
+    for i in range(0, len(sequence), n):
+        yield sequence[i:i + n]
 
 
 def zfillrepl(matchobj: typing.Match):
@@ -562,8 +563,7 @@ def send_pushover_notification(user_key: str, token: str, message: str, title: s
 
 def request_with_retries(
         url: str, request_dict: Dict[str, Any],
-        post: bool = False, retries: int = 3,
-        logger: OptionalLogger = None) -> Optional[requests.models.Response]:
+        post: bool = False, retries: int = 3) -> Optional[requests.models.Response]:
     for retry_count in range(retries):
         try:
             if post:
@@ -574,12 +574,10 @@ def request_with_retries(
 
         except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
             if retry_count < retries - 1:
-                if logger:
-                    logger.warning("Request failed, retry: {} of {}: {}".format(retry_count, retries, str(e)))
+                logger.warning("Request failed, retry: {} of {}: {}".format(retry_count, retries, str(e)))
                 continue
             else:
-                if logger:
-                    logger.error("Failed to reach URL: {}".format(url))
+                logger.error("Failed to reach URL: {}".format(url))
                 return None
     return None
 
