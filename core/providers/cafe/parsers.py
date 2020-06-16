@@ -121,7 +121,7 @@ class Parser(BaseParser):
         try:
             response_data = response.json()
         except(ValueError, KeyError):
-            logger.error("Error parsing response from: {}".format(api_link))
+            logger.error("Could not parse response to JSON: {}".format(api_link))
             return None
 
         tags = []

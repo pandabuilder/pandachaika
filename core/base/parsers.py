@@ -280,7 +280,7 @@ class BaseParser:
                 wanted_filters=wanted_filters, wanted_only=wanted_only
             )
         except BaseException:
-            logger.error(traceback.format_exc())
+            logger.critical(traceback.format_exc())
 
     def crawl_urls(
             self, urls: List[str],

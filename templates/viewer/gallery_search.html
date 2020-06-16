@@ -38,7 +38,7 @@
         {% if user.is_staff %}
           <input id="checkbox2" class="custom-cb" type="checkbox" name="hidden" value="1" {% if display_prms.hidden == '1' %}checked{% endif %}><label for="checkbox2"><span><span></span></span>Hidden</label>
           <input id="checkbox4" class="custom-cb" type="checkbox" name="not_used" value="1" {% if display_prms.not_used == '1' %}checked{% endif %}><label for="checkbox4"><span><span></span></span>Not used</label>
-          <input id="checkbox7" class="custom-cb" type="checkbox" name="deleted" value="1" {% if display_prms.deleted == '1' %}checked{% endif %}><label for="checkbox7"><span><span></span></span>Show deleted</label>
+          <input id="checkbox7" class="custom-cb" type="checkbox" name="not_normal" value="1" {% if display_prms.not_normal == '1' %}checked{% endif %}><label for="checkbox7"><span><span></span></span>Show not normal</label>
         {% endif %}
         <input id="checkbox3" class="custom-cb" type="checkbox" name="fjord" value="1" {% if display_prms.fjord == '1' %}checked{% endif %}><label for="checkbox3"><span><span></span></span>Fjord</label>
         <input id="checkbox5" class="custom-cb" type="checkbox" name="contained" value="1" {% if display_prms.contained == '1' %}checked{% endif %}><label for="checkbox5"><span><span></span></span>Contained</label>

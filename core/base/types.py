@@ -1,4 +1,3 @@
-import logging
 from datetime import datetime
 import typing
 from typing import Optional, List, Union, Dict, Any, Tuple
@@ -70,33 +69,6 @@ class GalleryData:
             return False
         return self.__dict__ == other.__dict__
 
-
-class FakeLogger:
-    def debug(self, msg: str, *args, **kwargs) -> None:
-        pass
-
-    def info(self, msg: str, *args, **kwargs) -> None:
-        pass
-
-    def warning(self, msg: str, *args, **kwargs) -> None:
-        pass
-
-    def critical(self, msg: str, *args, **kwargs) -> None:
-        pass
-
-    def log(self, msg: str, *args, **kwargs) -> None:
-        pass
-
-    def error(self, msg: str, *args, **kwargs) -> None:
-        pass
-
-    def exception(self, msg: str, *args, **kwargs) -> None:
-        pass
-
-
-OptionalLogger = Optional[Union[logging.Logger, FakeLogger]]
-
-RealLogger = Union[logging.Logger, FakeLogger]
 
 DataDict = Dict[str, Any]
 

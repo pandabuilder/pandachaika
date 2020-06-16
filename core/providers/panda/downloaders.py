@@ -81,7 +81,7 @@ class ArchiveDownloader(BaseDownloader):
         )
 
         if not r:
-            logger.error('ERROR: could not get download link.')
+            logger.error('Could not get download link.')
             self.return_code = 0
             return
 
@@ -223,7 +223,7 @@ class TorrentDownloader(BaseTorrentDownloader):
             self.gallery.root, self.gallery.gid, self.gallery.token)
 
         if not r:
-            logger.error('ERROR: could not get download link.')
+            logger.error('Could not get download link.')
             self.return_code = 0
             return
 
@@ -233,7 +233,7 @@ class TorrentDownloader(BaseTorrentDownloader):
         torrent_link = torrent_page_parser.torrent
 
         if not torrent_link:
-            logger.error('ERROR: could not get torrent link.')
+            logger.error('Could not get torrent link.')
             self.return_code = 0
             return
 

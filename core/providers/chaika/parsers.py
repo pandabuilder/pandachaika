@@ -51,7 +51,7 @@ class Parser(BaseParser):
             try:
                 json_decoded = response.json()
             except(ValueError, KeyError):
-                logger.error("Error parsing response to JSON: {}".format(response.text))
+                logger.error("Could not parse response to JSON: {}".format(response.text))
                 continue
 
             if type(json_decoded) == dict:

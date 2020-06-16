@@ -6,7 +6,7 @@ import urllib.parse
 import django.utils.timezone as django_tz
 from django.db.models import QuerySet
 
-from core.base.types import RealLogger, DataDict
+from core.base.types import DataDict
 from core.base.utilities import request_with_retries, format_title_to_wanted_search, construct_request_dict
 from core.providers.mugimugi.utilities import convert_api_response_text_to_gallery_dicts
 from viewer.models import Gallery, WantedGallery, Provider, Artist

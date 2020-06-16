@@ -51,7 +51,7 @@ def create_matches_wanted_galleries_from_providers(
                 time.sleep(crawler_settings.wait_timer)
         logger.info('Search ended.')
     except BaseException:
-        logger.error(traceback.format_exc())
+        logger.critical(traceback.format_exc())
 
 
 # WantedGallery
@@ -109,7 +109,7 @@ def create_matches_wanted_galleries_from_providers_internal(
         logger.info("Matching ended")
         return
     except BaseException:
-        logger.error(traceback.format_exc())
+        logger.critical(traceback.format_exc())
 
 
 # Archive
@@ -172,7 +172,7 @@ def search_for_archives_matches_web(archives: ArchiveQuerySet, matcher_filter: s
                 time.sleep(crawler_settings.wait_timer)
         logger.info('Search ended.')
     except BaseException:
-        logger.error(traceback.format_exc())
+        logger.critical(traceback.format_exc())
 
 
 # Archive
@@ -264,7 +264,7 @@ def match_archives_from_gallery_titles(archives: ArchiveQuerySet, cutoff: float 
         logger.info("Matching ended")
         return
     except BaseException:
-        logger.error(traceback.format_exc())
+        logger.critical(traceback.format_exc())
 
 
 # Archive
@@ -291,7 +291,7 @@ def generate_possible_matches_for_archives(archives: ArchiveQuerySet,
         logger.info("Matching ended, local: {}, web {}".format(match_local, match_web))
         return
     except BaseException:
-        logger.error(traceback.format_exc())
+        logger.critical(traceback.format_exc())
 
 
 def match_external(archives: ArchiveQuerySet, matcher_filters: Iterable[str], cutoff: float = 0.4, max_matches: int = 20) -> None:

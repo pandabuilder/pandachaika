@@ -45,7 +45,7 @@ gallery_filter_keys = (
     "create_from", "create_to",
     "category", "provider", "dl_type",
     "expunged", "hidden", "fjord", "uploader", "tags", "not_used", "reason",
-    "contains", "contained", "deleted"
+    "contains", "contained", "not_normal"
 )
 
 archive_filter_keys = (
@@ -361,8 +361,6 @@ def gallery_list(request: HttpRequest, mode: str = 'none', tag: str = None) -> H
             for k, v in get.items():
                 if k in parameters:
                     parameters[k] = v
-                    print(k)
-                    print(v)
                 elif k in display_prms:
                     display_prms[k] = v
     # Fill default parameters
@@ -473,10 +471,10 @@ def filter_galleries(request: HttpRequest, session_filters: Dict[str, str], requ
             results = results.non_used_galleries()
         if request_filters["hidden"]:
             results = results.filter(hidden=request_filters["hidden"])
-        if "deleted" not in request_filters or not request_filters["deleted"]:
-            results = results.filter(~Q(status=Gallery.DELETED))
+        if "not_normal" not in request_filters or not request_filters["not_normal"]:
+            results = results.eligible_for_use()
     else:
-        results = results.filter(~Q(status=Gallery.DELETED))
+        results = results.eligible_for_use()
 
     if request_filters["tags"]:
         needs_distinct = True
@@ -854,7 +852,7 @@ def quick_search(request: HttpRequest, parameters: DataDict, display_parameters:
 
     q_formatted = '%' + display_parameters["qsearch"].replace(' ', '%') + '%'
     results_title = results.filter(
-        Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted) | Q(original_filename__ss=q_formatted)
+        Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted)
     )
 
     tags = display_parameters["qsearch"].split(',')

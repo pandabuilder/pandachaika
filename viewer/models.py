@@ -149,7 +149,7 @@ class GalleryQuerySet(models.QuerySet):
 
     def eligible_for_use(self, **kwargs: typing.Any) -> QuerySet:
         return self.filter(
-            ~Q(status=Gallery.DELETED),
+            Q(status=Gallery.NORMAL),
             **kwargs
         )
 
@@ -1104,7 +1104,7 @@ class Archive(models.Model):
             try:
                 settings.ES_CLIENT.delete(
                     index=self._meta.es_index_name,
-                    doc_type=self._meta.es_type_name,
+                    # doc_type=self._meta.es_type_name,
                     id=prev_pk,
                     refresh=True,
                     request_timeout=30
@@ -1122,7 +1122,7 @@ class Archive(models.Model):
                 try:
                     settings.ES_CLIENT.update(
                         index=self._meta.es_index_name,
-                        doc_type=self._meta.es_type_name,
+                        # doc_type=self._meta.es_type_name,
                         id=self.pk,
                         refresh=True,
                         body={
@@ -1136,7 +1136,7 @@ class Archive(models.Model):
             else:
                 settings.ES_CLIENT.create(
                     index=self._meta.es_index_name,
-                    doc_type=self._meta.es_type_name,
+                    # doc_type=self._meta.es_type_name,
                     id=self.pk,
                     refresh=True,
                     body={

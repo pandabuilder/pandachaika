@@ -4,24 +4,24 @@ from datetime import timedelta
 
 from core.base.utilities import format_title_to_wanted_search
 from viewer.models import TweetPost, WantedGallery, Artist
-from . import constants
 
 if typing.TYPE_CHECKING:
     from core.base.setup import Settings
+    from .settings import OwnSettings
 
 
-def match_tweet_with_wanted_galleries(tweet_obj: TweetPost, settings: 'Settings'):
-    own_settings = settings.providers[constants.provider_name]
+def match_tweet_with_wanted_galleries(tweet_obj: TweetPost, settings: 'Settings', own_settings: 'OwnSettings'):
 
     publisher = 'wanimagazine'
     source = 'twitter'
 
-    yield "Tweet id: {}, processing...".format(tweet_obj.tweet_id)
+    yield("Tweet id: {}, processing...".format(tweet_obj.tweet_id))
 
     match_tweet_type = re.search('【(.+)】(.*)', tweet_obj.text, re.DOTALL)
     if match_tweet_type:
         yield("Matched pattern (date_type: {}, title, artist: {}),".format(
-            match_tweet_type.group(1).replace('\n', ''), match_tweet_type.group(2).replace('\n', ''))
+            match_tweet_type.group(1).replace('\n', ''),
+            match_tweet_type.group(2).replace('\n', ''))
         )
         release_type = None
         release_date = None
@@ -93,7 +93,7 @@ def match_tweet_with_wanted_galleries(tweet_obj: TweetPost, settings: 'Settings'
             )
 
             if mention_created:
-                yield (
+                yield(
                     "Created mention for wanted gallery: {}, mention date: {}".format(
                         wanted_gallery.get_absolute_url(),
                         mention_date
@@ -195,7 +195,7 @@ def match_tweet_with_wanted_galleries(tweet_obj: TweetPost, settings: 'Settings'
                 )
 
                 if mention_created:
-                    yield (
+                    yield(
                         "Created mention for wanted gallery: {}, mention date: {}".format(
                             wanted_gallery.get_absolute_url(),
                             mention_date
@@ -208,9 +208,11 @@ def match_tweet_with_wanted_galleries(tweet_obj: TweetPost, settings: 'Settings'
                     wanted_gallery.release_date = release_date
                     wanted_gallery.save()
 
-                artist_obj = Artist.objects.filter(name_jpn=artist).first()
+                artist_obj = Artist.objects.filter(name_jpn=artist_name).first()
                 if not artist_obj:
                     artist_obj = Artist.objects.create(
                         name=artist_name, name_jpn=artist_name, twitter_handle=twitter_handle
                     )
                 wanted_gallery.artists.add(artist_obj)
+    else:
+        yield("Created tweet id: {} did not match the pattern".format(tweet_obj.tweet_id))

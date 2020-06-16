@@ -26,4 +26,4 @@ class CrawlerThread(threading.Thread):
             web_crawler = WebCrawler(self.settings)
             web_crawler.start_crawling(self.argv)
         except BaseException:
-            logger.error(traceback.format_exc())
+            logger.critical(traceback.format_exc())

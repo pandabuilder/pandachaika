@@ -76,8 +76,9 @@ LOGGING: Dict[str, Any] = {
             'formatter': 'console'
         },
         'mail_admins': {
-            'level': 'ERROR',
-            'class': 'django.utils.log.AdminEmailHandler'
+            'level': 'CRITICAL',
+            'class': 'django.utils.log.AdminEmailHandler',
+            'formatter': 'standard',
         }
     },
     'loggers': {

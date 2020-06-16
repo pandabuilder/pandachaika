@@ -31,7 +31,7 @@ class ImageWorker(object):
                 item.generate_thumbnails()
                 self.web_queue.task_done()
             except BaseException:
-                logger.error(traceback.format_exc())
+                logger.critical(traceback.format_exc())
 
     def file_info_worker(self) -> None:
 
@@ -44,7 +44,7 @@ class ImageWorker(object):
                 item.recalc_fileinfo()
                 self.web_queue.task_done()
             except BaseException:
-                logger.error(traceback.format_exc())
+                logger.critical(traceback.format_exc())
 
     def start_info_thread(self) -> None:
 

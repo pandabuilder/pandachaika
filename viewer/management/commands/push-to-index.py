@@ -60,9 +60,9 @@ class Command(BaseCommand):
             }
         )
         indices_client.put_mapping(
-            doc_type=Archive._meta.es_type_name,
             body=Archive._meta.es_mapping,
-            index=index_name
+            index=index_name,
+            # doc_type=Archive._meta.es_type_name
         )
         indices_client.open(index=index_name)
 
@@ -80,7 +80,7 @@ class Command(BaseCommand):
         metadata = {
             '_op_type': action,
             "_index": django_object._meta.es_index_name,
-            "_type": django_object._meta.es_type_name,
+            # "_type": django_object._meta.es_type_name,
         }
         data.update(**metadata)
         return data

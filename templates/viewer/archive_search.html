@@ -149,7 +149,7 @@
                     {% endwith %}
                   </a>
                   <div class="caption">
-                    {{ archive.filecount }} | {{ archive.filesize|filesizeformat }} | {% if archive.crc32 %}<a href="{% url 'viewer:archive-download' archive.pk %}">DL</a>{% else %}DL{% endif %} | <a class="tag-preview" tabindex="0" role="button" data-toggle="popover" data-trigger="focus" data-pk="{{ archive.pk }}">Tags</a>
+                    {{ archive.filecount }} | {{ archive.filesize|filesizeformat }} | {% if archive.crc32 %}<a href="{% url 'viewer:archive-download' archive.pk %}">DL</a>{% else %}DL{% endif %} | <a class="tag-preview" tabindex="0" role="button" data-toggle="popover" data-trigger="focus" data-pk="{{ archive.pk }}">Tags</a> | <a href="{% url 'viewer:api' %}?archive={{ archive.pk }}">JSON</a>
                     {% if user.is_authenticated and archive.extracted %}| <a href="{% url 'viewer:new-image-viewer' archive.pk '1' %}?{% url_replace 'extracted' '1' %}">View</a>{% endif %}
                   </div>
 
@@ -221,11 +221,13 @@
                       {% endif %}
                         <a class="btn btn-sm btn-light" href="{% url 'viewer:archive-download' archive.pk %}">Download archive</a>
                         <a class="btn btn-sm btn-light" href="{% url 'viewer:archive-download' archive.pk %}?original=1">Download with original name</a>
+                        <a class="btn btn-sm btn-light" href="{% url 'viewer:api' %}?archive={{ archive.pk }}">JSON info</a>
                       </div>
                     {% else %}
                       <div>
                         <a class="btn btn-sm btn-light" href="{% url 'viewer:archive-download' archive.pk %}">Download archive</a>
                         <a class="btn btn-sm btn-light" href="{% url 'viewer:archive-download' archive.pk %}?original=1">Download with original name</a>
+                        <a class="btn btn-sm btn-light" href="{% url 'viewer:api' %}?archive={{ archive.pk }}">JSON info</a>
                       </div>
                     {% endif %}
                     <div>

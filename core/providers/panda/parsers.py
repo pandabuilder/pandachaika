@@ -73,7 +73,7 @@ class Parser(BaseParser):
             try:
                 response_data = response.json()
             except(ValueError, KeyError):
-                logger.error("Error parsing response to JSON: {}".format(response.text))
+                logger.error("Could not parse response to JSON: {}".format(response.text))
                 continue
 
             for gid_token_pair in response_data['tokenlist']:
@@ -205,7 +205,7 @@ class Parser(BaseParser):
             try:
                 response_data = response.json()
             except(ValueError, KeyError):
-                logger.error("Error parsing response to JSON: {}".format(response.text))
+                logger.error("Could not parse response to JSON: {}".format(response.text))
                 continue
 
             for gallery_data in response_data['gmetadata']:
@@ -251,7 +251,7 @@ class Parser(BaseParser):
         try:
             response_data = response.json()
         except(ValueError, KeyError):
-            logger.error("Error parsing response to JSON: {}".format(response.text))
+            logger.error("Could not parse response to JSON: {}".format(response.text))
             return None
         for gallery_data in response_data['gmetadata']:
             if 'error' in gallery_data:
@@ -443,7 +443,7 @@ class Parser(BaseParser):
             try:
                 response_data = response.json()
             except(ValueError, KeyError):
-                logger.error("Error parsing response to JSON: {}".format(response.text))
+                logger.error("Could not parse response to JSON: {}".format(response.text))
                 continue
 
             for gallery_data in response_data['gmetadata']:

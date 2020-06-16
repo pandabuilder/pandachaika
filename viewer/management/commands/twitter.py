@@ -4,6 +4,7 @@ from django.core.management.base import BaseCommand
 from django.conf import settings
 
 from core.providers.twitter.utilities import match_tweet_with_wanted_galleries
+from core.providers.twitter import constants
 from viewer.models import TweetPost
 
 crawler_settings = settings.CRAWLER_SETTINGS
@@ -40,8 +41,9 @@ class Command(BaseCommand):
             tweets = tweets.filter(tweet_id__lte=options['to_id'])
 
         if options['wanted']:
+            own_settings = settings.providers[constants.provider_name]
             for tweet_obj in tweets:
-                for message in match_tweet_with_wanted_galleries(tweet_obj, crawler_settings):
+                for message in match_tweet_with_wanted_galleries(tweet_obj, crawler_settings, own_settings):
                     self.stdout.write(message)
 
         end = time.perf_counter()

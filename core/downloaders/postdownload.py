@@ -584,7 +584,7 @@ class TimedPostDownloader(BaseScheduler):
                 post_downloader.transfer_all_missing((item, ))
                 self.post_queue.task_done()
             except BaseException:
-                logger.error(traceback.format_exc())
+                logger.critical(traceback.format_exc())
 
     def current_download(self) -> List[Dict[str, Any]]:
         return [x.current_download for x in self.post_downloader.values()]

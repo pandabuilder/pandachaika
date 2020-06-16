@@ -45,7 +45,7 @@ class WebQueue(object):
                 )
                 self.current_processing_items = []
             except BaseException:
-                logger.error(traceback.format_exc())
+                logger.critical(traceback.format_exc())
 
     def start_running(self) -> None:
 

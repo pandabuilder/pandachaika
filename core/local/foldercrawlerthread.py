@@ -25,4 +25,4 @@ class FolderCrawlerThread(threading.Thread):
             folder_crawler = FolderCrawler(self.settings)
             folder_crawler.start_crawling(self.argv)
         except BaseException:
-            logger.error(traceback.format_exc())
+            logger.critical(traceback.format_exc())

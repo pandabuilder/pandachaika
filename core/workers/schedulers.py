@@ -57,7 +57,7 @@ class BaseScheduler(object):
         try:
             self.job()
         except BaseException:
-            logger.error(traceback.format_exc())
+            logger.critical(traceback.format_exc())
 
     def job(self) -> None:
         raise NotImplementedError
