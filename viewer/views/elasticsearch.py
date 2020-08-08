@@ -31,7 +31,7 @@ class ESHomePageView(TemplateView):
 
     def get_context_data(self, **kwargs: Any) -> Dict[str, Any]:
 
-        if not es_client:
+        if not settings.ES_ENABLED or not es_client:
             return {'message': 'Elasticsearch is disabled for this instance.'}
 
         s = Search(using=es_client, index=es_index_name)

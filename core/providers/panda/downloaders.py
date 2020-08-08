@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 # We define a skip_if_hidden parameter in here,
-# since there's no pint in trying to use those downloaders in hidden galleries.
+# since there's no point in trying to use those downloaders in hidden galleries.
 class ArchiveDownloader(BaseDownloader):
 
     type = 'archive'
@@ -147,7 +147,7 @@ class ArchiveDownloader(BaseDownloader):
         default_values.update(values)
         return Archive.objects.update_or_create_by_values_and_gid(
             default_values,
-            self.gallery.gid,
+            (self.gallery.gid, self.gallery.provider),
             zipped=self.gallery.filename
         )
 
@@ -275,7 +275,7 @@ class TorrentDownloader(BaseTorrentDownloader):
         default_values.update(values)
         return Archive.objects.update_or_create_by_values_and_gid(
             default_values,
-            self.gallery.gid,
+            (self.gallery.gid, self.gallery.provider),
             zipped=self.gallery.filename
         )
 
@@ -392,7 +392,7 @@ class TorrentAPIDownloader(BaseTorrentDownloader):
         default_values.update(values)
         return Archive.objects.update_or_create_by_values_and_gid(
             default_values,
-            self.gallery.gid,
+            (self.gallery.gid, self.gallery.provider),
             zipped=self.gallery.filename
         )
 
@@ -505,7 +505,7 @@ class HathDownloader(BaseDownloader):
         default_values.update(values)
         return Archive.objects.update_or_create_by_values_and_gid(
             default_values,
-            self.gallery.gid,
+            (self.gallery.gid, self.gallery.provider),
             zipped=self.gallery.filename
         )
 

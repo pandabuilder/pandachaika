@@ -18,7 +18,7 @@ from django.conf import settings
 from dal import autocomplete
 from dal_jal.widgets import JalWidgetMixin
 from viewer.models import Archive, ArchiveMatches, Image, Gallery, Profile, WantedGallery, ArchiveGroup, \
-    ArchiveGroupEntry
+    ArchiveGroupEntry, Tag
 
 from dal.widgets import (
     WidgetMixin
@@ -72,7 +72,7 @@ class JalTextWidget(JalWidgetMixin, WidgetMixin, forms.TextInput):
 
         return mark_safe(html)
 
-    def build_attrs(self, *args: Any, **kwargs: Any) -> Dict[str, str]:
+    def build_attrs(self, *args: Any, **kwargs: Any):
 
         attrs = {
             'data-autocomplete-choice-selector': '[data-value]',
@@ -91,11 +91,11 @@ class JalTextWidget(JalWidgetMixin, WidgetMixin, forms.TextInput):
 
 
 class MatchesModelChoiceField(ModelChoiceField):
-    def label_from_instance(self, obj: Gallery) -> str:
-        first_artist_tag = obj.tags.first_artist_tag()
+    def label_from_instance(self, obj: Gallery) -> str:  # type: ignore[override]
+        first_artist_tag = Tag.objects.filter(gallery=obj.id).first_artist_tag()  # type: ignore
         tag_name = ''
         if first_artist_tag:
-            tag_name = obj.tags.first_artist_tag().name
+            tag_name = first_artist_tag.name
         return "{} >> {} >> {} >> {} >> {} >> {}".format(tag_name, obj.pk, obj.title, obj.provider, obj.filecount, obj.filesize)
 
 
@@ -381,7 +381,9 @@ class WantedGalleryCreateOrEditForm(ModelForm):
     class Meta:
         model = WantedGallery
         fields = [
-            'title', 'title_jpn', 'search_title', 'unwanted_title', 'wanted_tags', 'unwanted_tags',
+            'title', 'title_jpn', 'search_title', 'regexp_search_title',
+            'unwanted_title', 'regexp_unwanted_title',
+            'wanted_tags', 'unwanted_tags',
             'wanted_tags_exclusive_scope', 'category', 'wanted_page_count_lower', 'wanted_page_count_upper',
             'provider', 'release_date', 'should_search', 'keep_searching', 'reason', 'book_type', 'publisher',
             'page_count'
@@ -390,7 +392,9 @@ class WantedGalleryCreateOrEditForm(ModelForm):
             'title': 'Informative only',
             'title_jpn': 'Informative only',
             'search_title': 'Text in Gallery title to match',
+            'regexp_search_title': 'Use Search Title as a regexp match',
             'unwanted_title': 'Text in Gallery title to exclude',
+            'regexp_unwanted_title': 'Use Unwanted Title as a regexp match',
             'wanted_tags': 'Tags in Gallery that must exist',
             'unwanted_tags': 'Tags in Gallery that must not exist',
             'wanted_tags_exclusive_scope': 'Do not accept Galleries that have '
@@ -411,7 +415,9 @@ class WantedGalleryCreateOrEditForm(ModelForm):
             'title': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'title_jpn': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'search_title': forms.widgets.TextInput(attrs={'class': 'form-control'}),
+            'regexp_search_title': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
             'unwanted_title': forms.widgets.TextInput(attrs={'class': 'form-control'}),
+            'regexp_unwanted_title': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
             'wanted_tags': autocomplete.ModelSelect2Multiple(
                 url='tag-pk-autocomplete',
                 attrs={'data-placeholder': 'Tag name', 'class': 'form-control'}

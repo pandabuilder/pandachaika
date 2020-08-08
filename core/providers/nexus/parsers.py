@@ -102,10 +102,10 @@ class Parser(BaseParser):
 
         gallery = GalleryData(
             gallery_id,
+            self.name,
             link=link,
             title=content_container.find("h1", class_="title").get_text(),
             thumbnail_url=thumbnail_url,
-            provider=self.name,
             posted=None,
             filesize=0,
             expunged=False,

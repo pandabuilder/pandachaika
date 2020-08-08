@@ -104,14 +104,21 @@ class MailSettings:
 
 
 class ElasticSearchSettings:
-    __slots__ = ['enable', 'url', 'max_result_window', 'auto_refresh', 'index_name']
+    __slots__ = [
+        'enable', 'url', 'max_result_window', 'auto_refresh',
+        'index_name', 'auto_refresh_gallery', 'gallery_index_name',
+        'only_index_public'
+    ]
 
     def __init__(self) -> None:
         self.enable: bool = False
         self.url: str = 'http://127.0.0.1:9200/'
         self.max_result_window: int = 10000
         self.auto_refresh: bool = False
+        self.auto_refresh_gallery: bool = False
         self.index_name: str = 'viewer'
+        self.gallery_index_name: str = 'viewer_gallery'
+        self.only_index_public: bool = False
 
 
 class WebServerSettings:
@@ -153,10 +160,10 @@ class Settings:
     # We are storing the context here, but it should be somewhere else, available globally.
     provider_context = ProviderContext()
     workers = WorkerContext()
-    gallery_model: Optional['Gallery'] = None
-    archive_model: Optional['Archive'] = None
-    found_gallery_model: Optional['FoundGallery'] = None
-    wanted_gallery_model: Optional['WantedGallery'] = None
+    gallery_model: Optional['typing.Type[Gallery]'] = None
+    archive_model: Optional['typing.Type[Archive]'] = None
+    found_gallery_model: Optional['typing.Type[FoundGallery]'] = None
+    wanted_gallery_model: Optional['typing.Type[WantedGallery]'] = None
 
     def __init__(self, load_from_disk: bool = False,
                  default_dir: str = None,
@@ -334,9 +341,9 @@ class Settings:
         self.silent_processing = True
 
     @classmethod
-    def set_models(cls, gallery_model: ModelBase,
-                   archive_model: ModelBase, found_gallery_model: ModelBase,
-                   wanted_gallery_model: ModelBase):
+    def set_models(cls, gallery_model: 'typing.Type[Gallery]',
+                   archive_model: 'typing.Type[Archive]', found_gallery_model: 'typing.Type[FoundGallery]',
+                   wanted_gallery_model: 'typing.Type[WantedGallery]'):
         cls.gallery_model = gallery_model
         cls.archive_model = archive_model
         cls.found_gallery_model = found_gallery_model
@@ -441,8 +448,14 @@ class Settings:
                 self.elasticsearch.max_result_window = int(config['elasticsearch']['max_result_window'])
             if 'auto_refresh' in config['elasticsearch']:
                 self.elasticsearch.auto_refresh = config['elasticsearch'].getboolean('auto_refresh')
+            if 'auto_refresh_gallery' in config['elasticsearch']:
+                self.elasticsearch.auto_refresh_gallery = config['elasticsearch'].getboolean('auto_refresh_gallery')
             if 'index_name' in config['elasticsearch']:
                 self.elasticsearch.index_name = config['elasticsearch']['index_name']
+            if 'gallery_index_name' in config['elasticsearch']:
+                self.elasticsearch.gallery_index_name = config['elasticsearch']['gallery_index_name']
+            if 'only_index_public' in config['elasticsearch']:
+                self.elasticsearch.only_index_public = config['elasticsearch'].getboolean('only_index_public')
         if 'autochecker' in config:
             if 'enable' in config['autochecker']:
                 self.autochecker.enable = config['autochecker'].getboolean('enable')

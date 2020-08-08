@@ -353,11 +353,11 @@ def artist_from_title(title: str) -> str:
     return artist
 
 
-def str_to_int(number: str) -> Union[str, int]:
+def str_to_int(number: Optional[str]) -> Union[str, int]:
     return number or 0
 
 
-def timestamp_or_zero(posted: datetime) -> float:
+def timestamp_or_zero(posted: Optional[datetime]) -> float:
     if posted:
         return posted.timestamp()
     else:
@@ -432,27 +432,29 @@ def previous_and_next(some_iterable: typing.Sequence[Optional[T]]) -> typing.Ite
     return zip(prevs, items, nexts)
 
 
-def unescape(text: str) -> str:
-    def fixup(m: typing.Match):
-        in_text = m.group(0)
-        if in_text[:2] == "&#":
-            # character reference
-            try:
-                if in_text[:3] == "&#x":
-                    return chr(int(in_text[3:-1], 16))
-                else:
-                    return chr(int(in_text[2:-1]))
-            except ValueError:
-                pass
-        else:
-            # named entity
-            try:
-                in_text = chr(html.entities.name2codepoint[in_text[1:-1]])
-            except KeyError:
-                pass
-        return in_text  # leave as is
-
-    return re.sub(r"&#?\w+;", fixup, text)
+def unescape(text: Optional[str]) -> Optional[str]:
+    if text is None:
+        return None
+    else:
+        def fixup(m: typing.Match):
+            in_text = m.group(0)
+            if in_text[:2] == "&#":
+                # character reference
+                try:
+                    if in_text[:3] == "&#x":
+                        return chr(int(in_text[3:-1], 16))
+                    else:
+                        return chr(int(in_text[2:-1]))
+                except ValueError:
+                    pass
+            else:
+                # named entity
+                try:
+                    in_text = chr(html.entities.name2codepoint[in_text[1:-1]])
+                except KeyError:
+                    pass
+            return in_text  # leave as is
+        return re.sub(r"&#?\w+;", fixup, text)
 
 
 def get_thread_status() -> List[Tuple[Tuple[str, str, str], bool]]:
@@ -465,25 +467,25 @@ def get_thread_status() -> List[Tuple[Tuple[str, str, str], bool]]:
     return info_list
 
 
-def get_schedulers_status(schedulers: List['BaseScheduler']) -> List[Tuple[str, bool, Optional[datetime], str, Optional[datetime]]]:
+def get_schedulers_status(schedulers: typing.Sequence[Optional['BaseScheduler']]) -> List[Tuple[str, bool, Optional[datetime], str, Optional[datetime]]]:
     info_list = []
 
     for scheduler in schedulers:
+        if scheduler:
+            if scheduler.last_run:
+                next_run: Optional[datetime] = scheduler.last_run + timedelta(seconds=scheduler.timer)
+            else:
+                next_run = None
 
-        if scheduler.last_run:
-            next_run: Optional[datetime] = scheduler.last_run + timedelta(seconds=scheduler.timer)
-        else:
-            next_run = None
-
-        info_list.append(
-            (
-                scheduler.thread_name,
-                scheduler.is_running(),
-                scheduler.last_run,
-                str(scheduler.timer) + ", " + str(scheduler.timer / 60),
-                next_run
+            info_list.append(
+                (
+                    scheduler.thread_name,
+                    scheduler.is_running(),
+                    scheduler.last_run,
+                    str(scheduler.timer) + ", " + str(scheduler.timer / 60),
+                    next_run
+                )
             )
-        )
 
     return info_list
 

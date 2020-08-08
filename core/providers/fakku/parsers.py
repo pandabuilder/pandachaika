@@ -45,10 +45,9 @@ class Parser(BaseParser):
         gallery_container = soup.find("div", class_=re.compile("content-wrap"))
 
         if gallery_container:
-            gallery = GalleryData(link.replace(constants.main_url + '/', '').replace('manga/', 'hentai/'))
+            gallery = GalleryData(link.replace(constants.main_url + '/', '').replace('manga/', 'hentai/'), self.name)
             gallery.link = link
             gallery.tags = []
-            gallery.provider = self.name
             gallery.title = gallery_container.find("div", class_="content-name").h1.get_text()
 
             if gallery.gid.startswith('manga') or gallery.gid.startswith('hentai'):

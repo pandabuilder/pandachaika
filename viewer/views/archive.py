@@ -4,10 +4,11 @@
 import logging
 from os.path import basename
 from urllib.parse import quote
+import typing
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core.paginator import Paginator, InvalidPage, EmptyPage
+from django.core.paginator import Paginator, InvalidPage, EmptyPage, Page
 from django.urls import reverse
 from django.db import transaction
 from django.http import Http404, HttpRequest
@@ -60,11 +61,14 @@ def archive_details(request: HttpRequest, pk: int, view: str = "cover") -> HttpR
             page = 1
 
         try:
-            images = paginator.page(page)
+            images_page: typing.Optional[Page] = paginator.page(page)
         except (InvalidPage, EmptyPage):
-            images = paginator.page(paginator.num_pages)
+            images_page = paginator.page(paginator.num_pages)
 
-    d = {'archive': archive, 'images': images, 'view': view}
+    else:
+        images_page = None
+
+    d: typing.Dict[str, typing.Any] = {'archive': archive, 'images': images_page, 'view': view}
 
     if view == "edit" and request.user.is_staff:
 
@@ -92,13 +96,7 @@ def archive_details(request: HttpRequest, pk: int, view: str = "cover") -> HttpR
         })
 
     if request.user.is_authenticated:
-        user_archive_preferences = UserArchivePrefs.objects.filter(
-            user=request.user.pk, archive=pk)
-        if not user_archive_preferences.exists():
-            user_archive_preferences.favorite_group = 0
-        else:
-            user_archive_preferences = UserArchivePrefs.objects.get(
-                user=request.user.pk, archive=pk)
+        user_archive_preferences = UserArchivePrefs.objects.get_or_create(user=request.user.pk, archive=pk, defaults={'favorite_group': 0})
         d.update({'user_archive_preferences': user_archive_preferences})
 
     # In-place collaborator edit form
@@ -145,27 +143,25 @@ def archive_update(request: HttpRequest, pk: int, tool: str = None, tool_use_id:
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
 
-    if tool == 'select-as-match':
-        archive.select_as_match(tool_use_id)
-        if archive.gallery:
-            logger.info("Archive {} ({}) was matched with gallery {} ({}).".format(
-                archive,
-                reverse('viewer:archive', args=(archive.pk,)),
-                archive.gallery,
-                reverse('viewer:gallery', args=(archive.gallery.pk,)),
-            ))
+    if tool == 'select-as-match' and tool_use_id:
+        try:
+            gallery_id = int(tool_use_id)
+            archive.select_as_match(gallery_id)
+            if archive.gallery:
+                logger.info("Archive {} ({}) was matched with gallery {} ({}).".format(
+                    archive,
+                    reverse('viewer:archive', args=(archive.pk,)),
+                    archive.gallery,
+                    reverse('viewer:gallery', args=(archive.gallery.pk,)),
+                ))
+        except ValueError:
+            return HttpResponseRedirect(request.META["HTTP_REFERER"])
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
     elif tool == 'clear-possible-matches':
         archive.possible_matches.clear()
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
 
-    user_archive_preferences = UserArchivePrefs.objects.filter(
-        user=request.user.pk, archive=pk)
-    if not user_archive_preferences.exists():
-        user_archive_preferences.favorite_group = 0
-    else:
-        user_archive_preferences = UserArchivePrefs.objects.get(
-            user=request.user.pk, archive=pk)
+    user_archive_preferences = UserArchivePrefs.objects.get_or_create(user=request.user.pk, archive=pk, defaults={'favorite_group': 0})
 
     d = {'archive': archive, 'view': "edit", 'user_archive_preferences': user_archive_preferences}
 
@@ -283,7 +279,7 @@ def archive_ext_download(request: HttpRequest, pk: int) -> HttpResponse:
         crawler_settings.urls.external_media_server,
         quote(archive.zipped.name),
         filename
-    ).encode('utf-8')
+    )
 
     return HttpResponseRedirect(redirect_url)
 
@@ -397,7 +393,7 @@ def recall_api(request: HttpRequest, pk: int) -> HttpResponse:
 
     current_settings = Settings(load_from_config=crawler_settings.config)
 
-    if current_settings.workers.web_queue:
+    if current_settings.workers.web_queue and gallery.provider:
 
         current_settings.set_update_metadata_options(providers=(gallery.provider,))
 
@@ -510,7 +506,7 @@ def delete_archive(request: HttpRequest, pk: int) -> HttpResponse:
 
             gallery = archive.gallery
 
-            if "mark-gallery-deleted" in p:
+            if "mark-gallery-deleted" in p and archive.gallery:
                 archive.gallery.mark_as_deleted()
                 archive.gallery = None
             if "delete-file" in p:

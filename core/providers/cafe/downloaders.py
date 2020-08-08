@@ -174,7 +174,7 @@ class ArchiveDownloader(BaseDownloader):
         default_values.update(values)
         return Archive.objects.update_or_create_by_values_and_gid(
             default_values,
-            self.gallery.gid,
+            (self.gallery.gid, self.gallery.provider),
             zipped=self.gallery.filename
         )
 
@@ -325,7 +325,7 @@ class ArchiveJSDownloader(BaseDownloader):
         default_values.update(values)
         return Archive.objects.update_or_create_by_values_and_gid(
             default_values,
-            self.gallery.gid,
+            (self.gallery.gid, self.gallery.provider),
             zipped=self.gallery.filename
         )
 

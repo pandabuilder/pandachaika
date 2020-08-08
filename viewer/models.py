@@ -13,20 +13,22 @@ import elasticsearch
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.core.files.storage import FileSystemStorage
+from django.db.backends.sqlite3.base import DatabaseWrapper
 from django.templatetags.static import static
 from os.path import join as pjoin, basename
 from tempfile import NamedTemporaryFile
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict
 from urllib.parse import quote, urlparse
 
 import requests
 from django.core.exceptions import ValidationError
-from django.db.backends.base.base import BaseDatabaseWrapper
 from django.db.models.signals import post_delete, post_save
 from django.db.models.sql.compiler import SQLCompiler
 from django.dispatch import receiver
 from django.http import HttpRequest
 from django.utils.text import slugify
+from django.db.models import Value, CharField
+from django.db.models.functions import Concat, Replace
 
 try:
     from PIL import Image as PImage
@@ -61,7 +63,7 @@ from viewer.utils.tags import sort_tags, sort_tags_str
 
 T = typing.TypeVar('T')
 
-options.DEFAULT_NAMES += 'es_index_name', 'es_type_name', 'es_mapping'
+options.DEFAULT_NAMES += 'es_index_name', 'es_mapping'
 
 
 class OriginalFilenameFileSystemStorage(FileSystemStorage):
@@ -78,22 +80,20 @@ fs = OriginalFilenameFileSystemStorage()
 
 
 class SpacedSearch(Lookup):
-    def __init__(self, lhs: str, rhs: str) -> None:
-        Lookup.__init__(self, lhs, rhs)
 
     lookup_name = 'ss'
 
-    def as_sql(self, qn: SQLCompiler, connection: BaseDatabaseWrapper) -> Tuple[str, typing.Any]:
+    def as_sql(self, qn: SQLCompiler, connection: DatabaseWrapper) -> Tuple[str, typing.Any]:
         lhs, lhs_params = self.process_lhs(qn, connection)
         rhs, rhs_params = self.process_rhs(qn, connection)
         return '%s LIKE %s' % (lhs, rhs), lhs_params + rhs_params
 
-    def as_mysql(self, qn: SQLCompiler, connection: BaseDatabaseWrapper) -> Tuple[str, typing.Any]:
+    def as_mysql(self, qn: SQLCompiler, connection: DatabaseWrapper) -> Tuple[str, typing.Any]:
         lhs, lhs_params = self.process_lhs(qn, connection)
         rhs, rhs_params = self.process_rhs(qn, connection)
         return '%s LIKE %s' % (lhs, rhs), lhs_params + rhs_params
 
-    def as_postgresql(self, qn: SQLCompiler, connection: BaseDatabaseWrapper) -> Tuple[str, typing.Any]:
+    def as_postgresql(self, qn: SQLCompiler, connection: DatabaseWrapper) -> Tuple[str, typing.Any]:
         lhs, lhs_params = self.process_lhs(qn, connection)
         rhs, rhs_params = self.process_rhs(qn, connection)
         return '%s ILIKE %s' % (lhs, rhs), lhs_params + rhs_params
@@ -103,14 +103,14 @@ models.CharField.register_lookup(SpacedSearch)
 models.FileField.register_lookup(SpacedSearch)
 
 
-class TagManager(models.Manager):
+class TagQuerySet(models.QuerySet):
     def are_custom(self) -> QuerySet:
         return self.filter(source='user')
 
     def not_custom(self) -> QuerySet:
         return self.exclude(source='user')
 
-    def first_artist_tag(self) -> QuerySet:
+    def first_artist_tag(self) -> Optional['Tag']:
         return self.filter(scope__exact='artist').first()
 
 
@@ -158,8 +158,8 @@ class GalleryManager(models.Manager):
     def get_queryset(self) -> GalleryQuerySet:
         return GalleryQuerySet(self.model, using=self._db)
 
-    def exists_by_gid(self, gid: str) -> bool:
-        return bool(self.filter(gid=gid))
+    def exists_by_gid_provider(self, gid: str, provider: str) -> bool:
+        return bool(self.filter(gid=gid, provider=provider))
 
     def filter_order_created(self, **kwargs: typing.Any) -> QuerySet:
         return self.filter(**kwargs).order_by('-create_date')
@@ -210,11 +210,11 @@ class GalleryManager(models.Manager):
                            posted__lte=end_date,
                            dl_type__icontains=dl_type_filter)
 
-    def filter_first(self, **kwargs: typing.Any) -> 'Gallery':
+    def filter_first(self, **kwargs: typing.Any) -> Optional['Gallery']:
         return self.filter(**kwargs).first()
 
-    def update_by_gid(self, gallery_data: GalleryData) -> bool:
-        gallery = self.filter(gid=gallery_data.gid).first()
+    def update_by_gid_provider(self, gallery_data: GalleryData) -> bool:
+        gallery = self.filter(gid=gallery_data.gid, provider=gallery_data.provider).first()
         if gallery:
             if gallery_data.tags is not None:
                 for tag in gallery_data.tags:
@@ -232,7 +232,9 @@ class GalleryManager(models.Manager):
                     gallery.tags.add(tag_object)
             values = get_dict_allowed_fields(gallery_data)
             if 'gallery_container_gid' in values:
-                gallery_container = Gallery.objects.filter(gid=values['gallery_container_gid']).first()
+                gallery_container = Gallery.objects.filter(
+                    gid=values['gallery_container_gid'], provider=gallery_data.provider
+                ).first()
                 if gallery_container:
                     values['gallery_container'] = gallery_container
                 del values['gallery_container_gid']
@@ -249,7 +251,9 @@ class GalleryManager(models.Manager):
 
         values = get_dict_allowed_fields(gallery_data)
         if 'gallery_container_gid' in values:
-            gallery_container = Gallery.objects.filter(gid=values['gallery_container_gid']).first()
+            gallery_container = Gallery.objects.filter(
+                gid=values['gallery_container_gid'], provider=values['provider']
+            ).first()
             if gallery_container:
                 values['gallery_container'] = gallery_container
             del values['gallery_container_gid']
@@ -279,12 +283,14 @@ class GalleryManager(models.Manager):
 
         values = get_dict_allowed_fields(gallery_data)
         if 'gallery_container_gid' in values:
-            gallery_container = Gallery.objects.filter(gid=values['gallery_container_gid']).first()
+            gallery_container = Gallery.objects.filter(
+                gid=values['gallery_container_gid'], provider=values['provider']
+            ).first()
             if gallery_container:
                 values['gallery_container'] = gallery_container
             del values['gallery_container_gid']
 
-        gallery, _ = self.update_or_create(defaults=values, gid=values['gid'])
+        gallery, _ = self.update_or_create(defaults=values, gid=values['gid'], provider=values['provider'])
         if tags:
             gallery.tags.clear()
             for tag in tags:
@@ -303,12 +309,14 @@ class GalleryManager(models.Manager):
 
         return gallery
 
-    def update_by_dl_type(self, values: DataDict, gid: str, dl_type: str) -> typing.Optional['Gallery']:
+    def update_by_dl_type(self, values: DataDict, gallery_id: str, dl_type: str) -> typing.Optional['Gallery']:
 
-        instance = self.filter(gid=gid, dl_type__contains=dl_type).first()
+        instance = self.filter(id=gallery_id, dl_type__contains=dl_type).first()
         if instance:
             if 'gallery_container_gid' in values:
-                gallery_container = Gallery.objects.filter(gid=values['gallery_container_gid']).first()
+                gallery_container = Gallery.objects.filter(
+                    gid=values['gallery_container_gid'], provider=values['provider']
+                ).first()
                 if gallery_container:
                     values['gallery_container'] = gallery_container
                 del values['gallery_container_gid']
@@ -332,13 +340,13 @@ class ArchiveManager(models.Manager):
         return ArchiveQuerySet(self.model, using=self._db)
 
     def filter_and_order_by_posted(self, **kwargs: typing.Any) -> ArchiveQuerySet:
-        return self.filter(**kwargs).order_by('gallery__posted')
+        return self.get_queryset().filter(**kwargs).order_by('gallery__posted')
 
     def filter_non_existent(self, root: str, **kwargs: typing.Any) -> List['Archive']:
         return self.get_queryset().filter_non_existent(root, **kwargs)
 
     def filter_by_dl_remote(self) -> ArchiveQuerySet:
-        return self.filter(
+        return self.get_queryset().filter(
             Q(crc32='')
             & (
                 Q(match_type__startswith='torrent') | Q(match_type__startswith='hath')
@@ -346,22 +354,22 @@ class ArchiveManager(models.Manager):
         )
 
     def filter_by_missing_file_info(self) -> ArchiveQuerySet:
-        return self.filter(crc32='')
+        return self.get_queryset().filter(crc32='')
 
     def filter_by_authenticated_status(self, authenticated: bool, **kwargs: typing.Any) -> ArchiveQuerySet:
         if authenticated:
-            return self.filter(**kwargs)
+            return self.get_queryset().filter(**kwargs)
         else:
-            return self.filter(public=True, **kwargs)
+            return self.get_queryset().filter(public=True, **kwargs)
 
-    def filter_matching_gallery_filesize(self, gid: str) -> ArchiveQuerySet:
-        return self.filter(Q(gallery__gid=gid),
+    def filter_matching_gallery_filesize(self, gid: str, provider: str) -> Optional['Archive']:
+        return self.filter(Q(gallery__gid=gid), Q(gallery__provider=provider),
                            Q(filesize=F('gallery__filesize'))).first()
 
-    def update_or_create_by_values_and_gid(self, values: DataDict, gid: Optional[str], **kwargs: typing.Any) -> 'Archive':
+    def update_or_create_by_values_and_gid(self, values: DataDict, gid_provider: Optional[Tuple[str, str]], **kwargs: typing.Any) -> 'Archive':
         archive, _ = self.update_or_create(defaults=values, **kwargs)
-        if gid:
-            gallery, _ = Gallery.objects.get_or_create(gid=gid)
+        if gid_provider:
+            gallery, _ = Gallery.objects.get_or_create(gid=gid_provider[0], provider=gid_provider[1])
             archive.gallery = gallery
             archive.save()
             archive.tags.set(gallery.tags.all())
@@ -369,17 +377,24 @@ class ArchiveManager(models.Manager):
         return archive
 
     @staticmethod
-    def create_by_values_and_gid(values: DataDict, gid: str) -> 'Archive':
+    def create_by_values_and_gid(values: DataDict, gid_provider: Optional[Tuple[str, str]]) -> 'Archive':
         archive = Archive(**values)
         archive.simple_save()
-        if gid:
-            gallery, _ = Gallery.objects.get_or_create(gid=gid)
+        if gid_provider:
+            gallery, _ = Gallery.objects.get_or_create(gid=gid_provider[0], provider=gid_provider[1])
             archive.gallery = gallery
             archive.tags.set(gallery.tags.all())
+
+        if archive.title:
+            base_file_name = replace_illegal_name(archive.title)
+        elif archive.title_jpn:
+            base_file_name = replace_illegal_name(archive.title_jpn)
+        else:
+            base_file_name = str(archive.id)
         archive.zipped = os.path.join(
             "galleries/archives/{id}/{file}".format(
                 id=archive.id,
-                file=replace_illegal_name(archive.title) + '.zip'
+                file=base_file_name + '.zip'
             ),
         )
         os.makedirs(
@@ -412,7 +427,7 @@ class Tag(models.Model):
         'Source', max_length=50, blank=True, null=True, default='web')
     create_date = models.DateTimeField(auto_now_add=True)
 
-    objects = TagManager()
+    objects = TagQuerySet.as_manager()
 
     class Meta:
         ordering = ['-id']
@@ -480,8 +495,7 @@ class Gallery(models.Model):
     hidden = models.BooleanField(default=False)
     fjord = models.BooleanField(default=False)
     public = models.BooleanField(default=False)
-    provider = models.CharField(
-        'Provider', max_length=50, blank=True, null=True, default='')
+    provider = models.CharField('Provider', max_length=50, default='generic')
     dl_type = models.CharField(max_length=100, default='')
     reason = models.CharField(max_length=200, blank=True, null=True, default='backup')
     create_date = models.DateTimeField(auto_now_add=True)
@@ -505,6 +519,42 @@ class Gallery(models.Model):
     objects = GalleryManager()
 
     class Meta:
+        es_index_name = settings.ES_GALLERY_INDEX_NAME
+        es_mapping = {
+            'properties': {
+                'title': {'type': 'text'},
+                'title_jpn': {'type': 'text'},
+                'title_complete': {
+                    'type': 'completion',
+                    'analyzer': 'simple',
+                    'preserve_separators': True,
+                    'preserve_position_increments': True,
+                    'max_input_length': 50,
+                },
+                'title_suggest': {
+                    'type': 'text',
+                    'analyzer': 'edge_ngram_analyzer',
+                    'search_analyzer': 'standard',
+                },
+                'tags': {
+                    'type': 'object',
+                    'properties': {
+                        'scope': {'type': 'keyword', 'store': True},
+                        'name': {'type': 'keyword', 'store': True},
+                        'full': {'type': 'keyword'},
+                    }
+                },
+                'size': {'type': 'long'},
+                'image_count': {'type': 'integer'},
+                'create_date': {'type': 'date'},
+                'posted_date': {'type': 'date'},
+                'provider': {'type': 'keyword'},
+                'reason': {'type': 'keyword'},
+                'public': {'type': 'boolean'},
+                'category': {'type': 'keyword'},
+                'thumbnail': {'type': 'text', 'index': False}
+            }
+        }
         verbose_name_plural = "galleries"
         permissions = (
             ("publish_gallery", "Can publish available galleries"),
@@ -516,8 +566,92 @@ class Gallery(models.Model):
             models.UniqueConstraint(fields=['gid', 'provider'], name='unique_gallery')
         ]
 
+    def es_repr(self) -> DataDict:
+        data = {}
+        mapping = self._meta.es_mapping  # type: ignore
+        data['_id'] = self.pk
+        for field_name in mapping['properties'].keys():
+            data[field_name] = self.field_es_repr(field_name)
+        return data
+
+    def field_es_repr(self, field_name: str) -> T:
+        config = self._meta.es_mapping['properties'][field_name]  # type: ignore
+        if hasattr(self, 'get_es_%s' % field_name):
+            field_es_value = getattr(self, 'get_es_%s' % field_name)()
+        else:
+            if config['type'] == 'object':
+                related_object = getattr(self, field_name)
+                if related_object:
+                    field_es_value = {'_id': related_object.pk}
+                    for prop in config['properties'].keys():
+                        field_es_value[prop] = getattr(related_object, prop)
+                else:
+                    field_es_value = None
+            else:
+                field_es_value = getattr(self, field_name)
+        return field_es_value
+
+    def get_es_title_complete(self) -> DataDict:
+        if self.title_jpn:
+            title_input = [self.title, self.title_jpn]
+        else:
+            title_input = [self.title]
+        return {
+            "input": title_input,
+        }
+
+    def get_es_title_suggest(self) -> List[str]:
+        title_input = []
+        if self.title:
+            title_input.append(self.title)
+        if self.title_jpn:
+            title_input.append(self.title_jpn)
+        return title_input
+
+    def get_es_size(self) -> Optional[int]:
+        return self.filesize
+
+    def get_es_image_count(self) -> Optional[int]:
+        return self.filecount
+
+    def get_es_posted_date(self) -> typing.Optional[str]:
+        data = None
+        if self.posted:
+            data = self.posted.replace(tzinfo=timezone.utc).strftime('%Y-%m-%dT%H:%M:%S%z')
+        return data
+
+    def get_es_create_date(self) -> typing.Optional[str]:
+        if self.create_date:
+            return self.create_date.replace(tzinfo=timezone.utc).strftime('%Y-%m-%dT%H:%M:%S%z')
+        else:
+            return None
+
+    def get_es_tags(self) -> List[DataDict]:
+        data: List[DataDict] = []
+        if self.tags.exists():
+            data += [{'scope': c.scope, 'name': c.name, 'full': str(c)} for c in self.tags.all()]
+        return data
+
+    def get_es_tag_names(self) -> List[str]:
+        data: List[str] = []
+        if self.tags.exists():
+            data += [c.name for c in self.tags.all()]
+        return data
+
+    def get_es_tag_scopes(self) -> List[str]:
+        data: List[str] = []
+        if self.tags.exists():
+            data += [c.scope for c in self.tags.all()]
+        return data
+
+    def get_es_thumbnail(self) -> typing.Optional[str]:
+        if self.thumbnail:
+            return self.thumbnail.url
+        else:
+            return None
+
     def __str__(self) -> str:
-        return self.title
+        return self.title or self.title_jpn or ''
 
     def tags_str(self) -> str:
         lst = [str(x) for x in self.tags.all()]
@@ -562,7 +696,44 @@ class Gallery(models.Model):
         return reverse('viewer:gallery', args=[str(self.id)])
 
     def save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
+        is_new = self.pk
         super(Gallery, self).save(*args, **kwargs)
+        if settings.ES_ENABLED and settings.ES_AUTOREFRESH_GALLERY:
+            if (settings.ES_ONLY_INDEX_PUBLIC and self.public) or not settings.ES_ONLY_INDEX_PUBLIC:
+                payload = self.es_repr()
+                if is_new is not None:
+                    del payload['_id']
+                    try:
+                        settings.ES_CLIENT.update(
+                            index=self._meta.es_index_name,  # type: ignore
+                            id=self.pk,
+                            refresh=True,
+                            body={
+                                'doc': payload
+                            },
+                            request_timeout=30
+                        )
+                    except elasticsearch.exceptions.NotFoundError:
+                        settings.ES_CLIENT.create(
+                            index=self._meta.es_index_name,  # type: ignore
+                            id=self.pk,
+                            refresh=True,
+                            body={
+                                'doc': payload
+                            },
+                            request_timeout=30
+                        )
+
+                else:
+                    settings.ES_CLIENT.create(
+                        index=self._meta.es_index_name,  # type: ignore
+                        id=self.pk,
+                        refresh=True,
+                        body={
+                            'doc': payload
+                        },
+                        request_timeout=30
+                    )
         if self.thumbnail_url and not self.thumbnail:
             request_dict = {
                 'stream': True,
@@ -594,10 +765,22 @@ class Gallery(models.Model):
 
             super(Gallery, self).save(force_update=True)
 
-    def delete(self, *args: typing.Any, **kwargs: typing.Any) -> None:
+    def delete(self, *args: typing.Any, **kwargs: typing.Any) -> Tuple[int, Dict[str, int]]:
         self.thumbnail.delete(save=False)
         self.remove_wanted_relations()
-        super(Gallery, self).delete(*args, **kwargs)
+        prev_pk = self.pk
+        deleted = super(Gallery, self).delete(*args, **kwargs)
+        if settings.ES_ENABLED and settings.ES_AUTOREFRESH_GALLERY:
+            try:
+                settings.ES_CLIENT.delete(
+                    index=self._meta.es_index_name,  # type: ignore
+                    id=prev_pk,
+                    refresh=True,
+                    request_timeout=30
+                )
+            except elasticsearch.exceptions.NotFoundError:
+                pass
+        return deleted
 
     def remove_wanted_relations(self) -> None:
         for wanted_gallery in self.found_galleries.all():
@@ -623,6 +806,102 @@ class Gallery(models.Model):
         self.status = self.DENIED
         self.save()
 
+    def match_against_wanted_galleries(self, wanted_filters: Optional['QuerySet[WantedGallery]'] = None, skip_already_found: bool = True) -> 'List[WantedGallery]':
+
+        found_wanted_galleries = []
+
+        if not wanted_filters:
+            wanted_filters = WantedGallery.objects.all()
+
+        if skip_already_found:
+            wanted_filters = wanted_filters.filter(~Q(foundgallery__gallery=self))
+
+        if self.title or self.title_jpn:
+            q_objects = Q()
+            q_objects_unwanted = Q()
+            q_objects_regexp = Q()
+            q_objects_unwanted_regexp = Q()
+            if self.title:
+                wanted_filters = wanted_filters.annotate(g_title=Value(self.title, output_field=CharField()))
+
+                q_objects.add(Q(g_title__ss=Concat(Value('%'), Replace(F('search_title'), Value(' '), Value('%')), Value('%'))), Q.OR)
+                q_objects_unwanted.add(~Q(g_title__ss=Concat(Value('%'), Replace(F('unwanted_title'), Value(' '), Value('%')), Value('%'))), Q.AND)
+
+                q_objects_regexp.add(Q(g_title__regex=F('search_title')), Q.OR)
+                q_objects_unwanted_regexp.add(~Q(g_title__regex=F('unwanted_title')), Q.AND)
+
+            if self.title_jpn:
+                wanted_filters = wanted_filters.annotate(g_title_jpn=Value(self.title_jpn, output_field=CharField()))
+                q_objects.add(Q(g_title_jpn__ss=Concat(Value('%'), Replace(F('search_title'), Value(' '), Value('%')), Value('%'))), Q.OR)
+                q_objects_unwanted.add(~Q(g_title_jpn__ss=Concat(Value('%'), Replace(F('unwanted_title'), Value(' '), Value('%')), Value('%'))), Q.AND)
+
+                q_objects_regexp.add(Q(g_title_jpn__regex=F('search_title')), Q.OR)
+                q_objects_unwanted_regexp.add(~Q(g_title_jpn__regex=F('unwanted_title')), Q.AND)
+
+            filtered_wanted = wanted_filters.filter(
+                Q(search_title__isnull=True)
+                | Q(search_title='')
+                | Q(Q(regexp_search_title=False), q_objects)
+                | Q(Q(regexp_search_title=True), q_objects_regexp)
+            ).filter(
+                Q(unwanted_title__isnull=True)
+                | Q(unwanted_title='')
+                | Q(Q(regexp_unwanted_title=False), q_objects_unwanted)
+                | Q(Q(regexp_unwanted_title=True), q_objects_unwanted_regexp)
+            )
+
+        else:
+            filtered_wanted = wanted_filters.filter(
+                Q(search_title__isnull=True) | Q(search_title='')
+            ).filter(
+                Q(unwanted_title__isnull=True) | Q(unwanted_title='')
+            )
+
+        if self.category:
+            filtered_wanted = filtered_wanted.filter(Q(category='') | Q(category__iexact=self.category))
+
+        if self.filecount:
+            filtered_wanted = filtered_wanted.filter(
+                Q(wanted_page_count_upper=0) | Q(wanted_page_count_upper__gt=self.filecount))
+            filtered_wanted = filtered_wanted.filter(
+                Q(wanted_page_count_lower=0) | Q(wanted_page_count_lower__lt=self.filecount))
+
+        if self.provider:
+            filtered_wanted = filtered_wanted.filter(Q(provider='') | Q(provider__iexact=self.provider))
+            filtered_wanted = filtered_wanted.filter(Q(wanted_providers=None) | Q(wanted_providers__slug=self.provider))
+
+        for wanted_filter in filtered_wanted:
+            # if wanted_filter.wanted_providers.count():
+            #     if not wanted_filter.wanted_providers.filter(slug=self.provider).first():
+            #         continue
+            accepted = True
+            if bool(wanted_filter.wanted_tags.all()):
+                if not set(wanted_filter.wanted_tags_list()).issubset(set(self.tag_list())):
+                    accepted = False
+                # Do not accept galleries that have more than 1 tag in the same wanted tag scope.
+                if accepted & wanted_filter.wanted_tags_exclusive_scope:
+                    accepted_tags = set(wanted_filter.wanted_tags_list()).intersection(set(self.tag_list()))
+                    gallery_tags_scopes = [x.split(":", maxsplit=1)[0] for x in self.tag_list() if len(x) > 1]
+                    wanted_gallery_tags_scopes = [x.split(":", maxsplit=1)[0] for x in accepted_tags if len(x) > 1]
+                    scope_count: Dict[str, int] = {}
+                    for scope_name in gallery_tags_scopes:
+                        if scope_name in wanted_gallery_tags_scopes:
+                            if scope_name not in scope_count:
+                                scope_count[scope_name] = 1
+                            else:
+                                scope_count[scope_name] += 1
+                    for scope, count in scope_count.items():
+                        if count > 1:
+                            accepted = False
+            if accepted & bool(wanted_filter.unwanted_tags.all()):
+                if set(wanted_filter.unwanted_tags_list()).issubset(set(self.tag_list())):
+                    accepted = False
+
+            if accepted:
+                found_wanted_galleries.append(wanted_filter)
+
+        return found_wanted_galleries
+
 
 @receiver(post_delete, sender=Gallery)
 def thumbnail_post_delete_handler(sender: typing.Any, **kwargs: typing.Any) -> None:
@@ -643,8 +922,7 @@ class Archive(models.Model):
     gallery = models.ForeignKey(Gallery, blank=True, null=True, on_delete=models.SET_NULL)
     title = models.CharField(max_length=500, blank=True, null=True)
     title_jpn = models.CharField(max_length=500, blank=True, null=True, default='')
-    zipped = models.FileField(
-        'File', upload_to=archive_path_handler, max_length=500, storage=fs)
+    zipped = models.FileField(verbose_name='File', upload_to=archive_path_handler, max_length=500, storage=fs)
     original_filename = models.CharField('Original Filename', max_length=500, blank=True, null=True)
     custom_tags = models.ManyToManyField(Tag, blank=True, default='')
     crc32 = models.CharField('CRC32', max_length=10, blank=True)
@@ -684,7 +962,6 @@ class Archive(models.Model):
 
     class Meta:
         es_index_name = settings.ES_INDEX_NAME
-        es_type_name = 'archive'
         es_mapping = {
             'properties': {
                 'title': {'type': 'text'},
@@ -718,6 +995,7 @@ class Archive(models.Model):
                 'reason': {'type': 'keyword'},
                 'public': {'type': 'boolean'},
                 'category': {'type': 'keyword'},
+                'thumbnail': {'type': 'text', 'index': False},
             }
         }
         permissions = (
@@ -730,14 +1008,14 @@ class Archive(models.Model):
 
     def es_repr(self) -> DataDict:
         data = {}
-        mapping = self._meta.es_mapping
+        mapping = self._meta.es_mapping  # type: ignore
         data['_id'] = self.pk
         for field_name in mapping['properties'].keys():
             data[field_name] = self.field_es_repr(field_name)
         return data
 
     def field_es_repr(self, field_name: str) -> T:
-        config = self._meta.es_mapping['properties'][field_name]
+        config = self._meta.es_mapping['properties'][field_name]  # type: ignore
         if hasattr(self, 'get_es_%s' % field_name):
             field_es_value = getattr(self, 'get_es_%s' % field_name)()
         else:
@@ -763,22 +1041,23 @@ class Archive(models.Model):
         }
 
     def get_es_title_suggest(self) -> List[str]:
+        title_input = []
+        if self.title:
+            title_input.append(self.title)
         if self.title_jpn:
-            title_input = [self.title, self.title_jpn]
-        else:
-            title_input = [self.title]
+            title_input.append(self.title_jpn)
         return title_input
 
-    def get_es_size(self) -> int:
+    def get_es_size(self) -> Optional[int]:
         return self.filesize
 
-    def get_es_category(self) -> typing.Optional[str]:
+    def get_es_category(self) -> Optional[str]:
         data = None
         if self.gallery:
             data = self.gallery.category
         return data
 
-    def get_es_image_count(self) -> int:
+    def get_es_image_count(self) -> Optional[int]:
         return self.filecount
 
     def get_es_original_date(self) -> typing.Optional[str]:
@@ -823,8 +1102,14 @@ class Archive(models.Model):
             data += [c.scope for c in self.custom_tags.all()]
         return data
 
+    def get_es_thumbnail(self) -> typing.Optional[str]:
+        if self.thumbnail:
+            return self.thumbnail.url
+        else:
+            return None
+
     def __str__(self) -> str:
-        return self.title
+        return self.title or self.title_jpn or ''
 
     def get_absolute_url(self) -> str:
         return reverse('viewer:archive', args=[str(self.id)])
@@ -832,7 +1117,7 @@ class Archive(models.Model):
     @property
     def pretty_name(self) -> str:
         return "{0}{1}".format(
-            quote(replace_illegal_name(self.title)),
+            quote(replace_illegal_name(self.title or self.title_jpn or self.zipped.name)),
             os.path.splitext(self.zipped.name)[1]
         )
 
@@ -939,10 +1224,10 @@ class Archive(models.Model):
         else:
             return ""
 
-    def get_available_thumbnail_plus_size(self) -> Tuple[str, int, int]:
-        if self.thumbnail.name:
+    def get_available_thumbnail_plus_size(self) -> Tuple[str, Optional[int], Optional[int]]:
+        if self.thumbnail.name and self.thumbnail.url:
             return self.thumbnail.url, self.thumbnail_height, self.thumbnail_width
-        elif self.gallery and self.gallery.thumbnail.name:
+        elif self.gallery and self.gallery.thumbnail.name and self.gallery.thumbnail.url:
             return self.gallery.thumbnail.url, self.gallery.thumbnail_height, self.gallery.thumbnail_width
         else:
             return static("imgs/no_cover.png"), 290, 196
@@ -1097,32 +1382,53 @@ class Archive(models.Model):
                 image.archive_position = count
                 image.save()
 
-    def delete(self, *args: typing.Any, **kwargs: typing.Any) -> None:
+    def delete(self, *args: typing.Any, **kwargs: typing.Any) -> Tuple[int, Dict[str, int]]:
         prev_pk = self.pk
-        super(Archive, self).delete(*args, **kwargs)
-        if settings.ES_AUTOREFRESH:
+        deleted = super(Archive, self).delete(*args, **kwargs)
+        if settings.ES_ENABLED and settings.ES_AUTOREFRESH:
             try:
                 settings.ES_CLIENT.delete(
-                    index=self._meta.es_index_name,
-                    # doc_type=self._meta.es_type_name,
+                    index=self._meta.es_index_name,  # type: ignore
                     id=prev_pk,
                     refresh=True,
                     request_timeout=30
                 )
             except elasticsearch.exceptions.NotFoundError:
                 pass
+        return deleted
 
     def simple_save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
         is_new = self.pk
         super(Archive, self).save(*args, **kwargs)
-        if settings.ES_AUTOREFRESH:
-            payload = self.es_repr()
-            if is_new is not None:
-                del payload['_id']
-                try:
-                    settings.ES_CLIENT.update(
-                        index=self._meta.es_index_name,
-                        # doc_type=self._meta.es_type_name,
+        if settings.ES_ENABLED and settings.ES_AUTOREFRESH:
+            if (settings.ES_ONLY_INDEX_PUBLIC and self.public) or not settings.ES_ONLY_INDEX_PUBLIC:
+                payload = self.es_repr()
+                if is_new is not None:
+                    del payload['_id']
+                    try:
+                        settings.ES_CLIENT.update(
+                            index=self._meta.es_index_name,  # type: ignore
+                            id=self.pk,
+                            refresh=True,
+                            body={
+                                'doc': payload
+                            },
+                            request_timeout=30
+                        )
+                    except elasticsearch.exceptions.NotFoundError:
+                        settings.ES_CLIENT.create(
+                            index=self._meta.es_index_name,  # type: ignore
+                            id=self.pk,
+                            refresh=True,
+                            body={
+                                'doc': payload
+                            },
+                            request_timeout=30
+                        )
+
+                else:
+                    settings.ES_CLIENT.create(
+                        index=self._meta.es_index_name,  # type: ignore
                         id=self.pk,
                         refresh=True,
                         body={
@@ -1130,20 +1436,6 @@ class Archive(models.Model):
                         },
                         request_timeout=30
                     )
-                except elasticsearch.exceptions.NotFoundError:
-                    pass
-
-            else:
-                settings.ES_CLIENT.create(
-                    index=self._meta.es_index_name,
-                    # doc_type=self._meta.es_type_name,
-                    id=self.pk,
-                    refresh=True,
-                    body={
-                        'doc': payload
-                    },
-                    request_timeout=30
-                )
 
     def save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
 
@@ -1287,10 +1579,9 @@ class Archive(models.Model):
                                               match_type='title',
                                               match_accuracy=similar[2])
 
-        if self.filesize <= 0:
+        if self.filesize is None or self.filesize <= 0:
             return
-        galleries_same_size: ArchiveQuerySet = Gallery.objects.filter(
-            filesize=self.filesize)
+        galleries_same_size = Gallery.objects.filter(filesize=self.filesize)
         if galleries_same_size.exists():
 
             for similar_gallery in galleries_same_size:
@@ -1377,7 +1668,7 @@ class Archive(models.Model):
             matched_gallery.public = True
             matched_gallery.save()
 
-    def similar_archives(self, num_common_tags: int = 0, **kwargs: typing.Any) -> ArchiveQuerySet:
+    def similar_archives(self, num_common_tags: int = 0, **kwargs: typing.Any) -> 'QuerySet[Archive]':
         return Archive.objects.filter(tags__in=self.tags.all(), **kwargs).exclude(pk=self.pk).\
             annotate(num_common_tags=Count('pk')).filter(num_common_tags__gt=num_common_tags).distinct().\
             order_by('-num_common_tags')
@@ -1412,11 +1703,11 @@ class ArchiveGroup(models.Model):
     def save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
         if not self.title_slug:
 
-            slug_candidate = slug_original = slugify(self.title, allow_unicode=True)
+            slug_candidate = slugify(self.title, allow_unicode=True)
             for i in itertools.count(1):
                 if not ArchiveGroup.objects.filter(title_slug=slug_candidate).exists():
                     break
-                slug_candidate = '{}-{}'.format(slug_original, i)
+                slug_candidate = slugify('{}-{}'.format(self.title, i), allow_unicode=True)
 
             self.title_slug = slug_candidate
         super().save(*args, **kwargs)
@@ -1445,7 +1736,7 @@ class ArchiveGroupEntry(models.Model):
 
             self.position = position_candidate
 
-        self.title = self.title or self.archive.title
+        self.title = self.title or self.archive.title or self.archive.title or ''
 
         super().save(*args, **kwargs)
 
@@ -1516,10 +1807,10 @@ class Image(models.Model):
             return str(self.archive.title) + ", position: " + str(self.position)
 
     def dump_image(self, request: HttpRequest) -> DataDict:
-        image_dict = {
+        image_dict: Dict[str, typing.Any] = {
             'position': self.position,
             'url': request.build_absolute_uri(self.image.url),
-            'is_horizontal': self.image_width / self.image_height > 1,
+            'is_horizontal': self.image_width / self.image_height > 1 if self.image_width and self.image_height else False,
             'width': self.image_width,
             'height': self.image_height
         }
@@ -1545,6 +1836,7 @@ class UserArchivePrefs(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     archive = models.ForeignKey(Archive, on_delete=models.CASCADE)
     favorite_group = models.IntegerField('Favorite Group', default=1)
+    # TODO: Add unique_together for user, archive
 
 
 class Profile(models.Model):
@@ -1566,17 +1858,17 @@ def users_with_perm(app: str, perm_name: str, *args: typing.Any, **kwargs: typin
         Q(is_superuser=True)
         | Q(user_permissions__codename=perm_name, user_permissions__content_type__app_label=app)
         | Q(groups__permissions__codename=perm_name, groups__permissions__content_type__app_label=app)
-    ).filter(*args, **kwargs).distinct()
+    ).filter(is_active=True).filter(*args, **kwargs).distinct()
 
 
-def upload_mention_handler(instance: models.Model, filename: str) -> str:
+def upload_mention_handler(instance: 'Mention', filename: str) -> str:
     return "mentions/{id}/fn_{file}{ext}".format(
         id=instance.id,
         file=uuid.uuid4(),
         ext=filename)
 
 
-def upload_mention_thumb_handler(instance: models.Model, filename: str) -> str:
+def upload_mention_thumb_handler(instance: 'Mention', filename: str) -> str:
     return "mentions/{id}/tn_{file}{ext}".format(
         id=instance.id,
         file=uuid.uuid4(),
@@ -1670,7 +1962,7 @@ class Artist(models.Model):
         max_length=50, blank=True, null=True, default='')
 
     def __str__(self) -> str:
-        return self.name
+        return self.name or self.name_jpn or self.twitter_handle or ''
 
 
 class WantedGalleryManager(models.Manager):
@@ -1679,7 +1971,7 @@ class WantedGalleryManager(models.Manager):
 
     def eligible_to_search(self) -> QuerySet:
         return self.filter(
-            Q(release_date__lte=django_tz.now(), should_search=True)
+            Q(Q(Q(release_date__lte=django_tz.now()) | Q(release_date__isnull=True)), should_search=True)
             & (
                 Q(found=False)
                 | Q(found=True, keep_searching=True)
@@ -1711,7 +2003,9 @@ class WantedGallery(models.Model):
     reason = models.CharField(
         'Reason', max_length=200, blank=True, null=True, default='backup')
     search_title = models.CharField(max_length=500, blank=True, default='')
+    regexp_search_title = models.BooleanField('Regexp search title', blank=True, default=False)
     unwanted_title = models.CharField(max_length=500, blank=True, default='')
+    regexp_unwanted_title = models.BooleanField('Regexp unwanted title', blank=True, default=False)
     wanted_page_count_lower = models.IntegerField(blank=True, default=0)
     wanted_page_count_upper = models.IntegerField(blank=True, default=0)
     wanted_tags = models.ManyToManyField(Tag, blank=True)
@@ -1750,7 +2044,7 @@ class WantedGallery(models.Model):
         )
 
     def __str__(self) -> str:
-        return self.title
+        return self.title or self.title_jpn or ''
 
     def mentions_str(self) -> str:
         lst = [str(x) for x in self.mentions.all()]
@@ -1771,10 +2065,10 @@ class WantedGallery(models.Model):
     def calculate_nearest_release_date(self) -> None:
         if not self.mentions:
             return
-        mention_dates = self.mentions.exclude(release_date=None).values_list('release_date', flat=True)
-        if not mention_dates:
+        mention_dates_objs = self.mentions.exclude(release_date=None).values_list('release_date', flat=True)
+        if not mention_dates_objs:
             return
-        mention_dates = [x.date() for x in mention_dates]
+        mention_dates = [x.date() for x in mention_dates_objs if x is not None]
         date_count: typing.Counter[date] = Counter(mention_dates)
         most_occurring_date = date_count.most_common(1)[0][0]
         self.release_date = datetime.combine(most_occurring_date, datetime.min.time())
@@ -1806,6 +2100,133 @@ class WantedGallery(models.Model):
                     wanted_gallery=self,
                     gallery_id=similar[1],
                     defaults={'match_accuracy': similar[2]})
+
+    def match_against_galleries(self) -> None:
+
+        matched_galleries = self.get_matching_galleries()
+
+        for matched_gallery in matched_galleries:
+            self.found = True
+            self.date_found = django_tz.now()
+            self.save()
+            FoundGallery.objects.get_or_create(
+                wanted_gallery=self,
+                gallery=matched_gallery
+            )
+
+    def get_matching_galleries(self) -> typing.List['Gallery']:
+
+        matching_galleries: List['Gallery'] = []
+
+        galleries = Gallery.objects.eligible_for_use().filter(~Q(foundgallery__wanted_gallery=self))
+
+        has_wanted_tags = bool(self.wanted_tags.all())
+        has_unwanted_tags = bool(self.unwanted_tags.all())
+        wanted_providers_count = self.wanted_providers.count()
+
+        if self.search_title or self.unwanted_title:
+            q_objects_search_title = Q()
+            q_objects_unwanted_title = Q()
+            if self.search_title:
+                galleries = galleries.annotate(g_search_title=Value(self.search_title, output_field=CharField()))
+                if self.regexp_search_title:
+                    q_objects_search_title.add(
+                        Q(title__regex=self.search_title),
+                        Q.OR
+                    )
+                    q_objects_search_title.add(
+                        Q(title_jpn__regex=self.search_title),
+                        Q.OR
+                    )
+                else:
+                    q_objects_search_title.add(
+                        Q(g_search_title__ss=Concat(Value('%'), Replace(F('title'), Value(' '), Value('%')), Value('%'))),
+                        Q.OR
+                    )
+                    q_objects_search_title.add(
+                        Q(g_search_title__ss=Concat(Value('%'), Replace(F('title_jpn'), Value(' '), Value('%')),
+                                                    Value('%'))),
+                        Q.OR
+                    )
+
+            if self.unwanted_title:
+                galleries = galleries.annotate(g_unwanted_title=Value(self.unwanted_title, output_field=CharField()))
+                if self.regexp_unwanted_title:
+                    q_objects_unwanted_title.add(
+                        ~Q(title__regex=self.unwanted_title),
+                        Q.AND
+                    )
+                    q_objects_unwanted_title.add(
+                        ~Q(title_jpn__regex=self.unwanted_title),
+                        Q.AND
+                    )
+                else:
+                    q_objects_unwanted_title.add(
+                        ~Q(g_unwanted_title__ss=Concat(Value('%'), Replace(F('title'), Value(' '), Value('%')),
+                                                       Value('%'))),
+                        Q.AND
+                    )
+                    q_objects_unwanted_title.add(
+                        ~Q(g_unwanted_title__ss=Concat(Value('%'), Replace(F('title_jpn'), Value(' '), Value('%')),
+                                                       Value('%'))),
+                        Q.AND
+                    )
+
+            galleries = galleries.filter(
+                q_objects_search_title
+            ).filter(
+                q_objects_unwanted_title
+            )
+
+        # if has_wanted_tags:
+        #     galleries = galleries.filter(tags__in=self.wanted_tags.all())
+        #
+        # if has_unwanted_tags:
+        #     galleries = galleries.filter(~Q(tags__in=self.unwanted_tags.all()))
+        #
+        # if self.category:
+        #     galleries = galleries.filter(category__iexact=self.category)
+        #
+        # if self.wanted_page_count_upper:
+        #     galleries = galleries.filter(filecount__le=self.wanted_page_count_upper)
+        #
+        # if self.wanted_page_count_lower:
+        #     galleries = galleries.filter(filecount__ge=self.wanted_page_count_lower)
+        #
+        # if self.provider:
+        #     galleries = galleries.filter(provider__iexact=self.provider)
+
+        for gallery in galleries:
+            if wanted_providers_count:
+                if not self.wanted_providers.filter(slug=gallery.provider).first():
+                    continue
+            accepted = True
+            if has_wanted_tags:
+                if not set(self.wanted_tags_list()).issubset(set(gallery.tag_list())):
+                    accepted = False
+                # Do not accept galleries that have more than 1 tag in the same wanted tag scope.
+                if accepted & self.wanted_tags_exclusive_scope:
+                    accepted_tags = set(self.wanted_tags_list()).intersection(set(gallery.tag_list()))
+                    gallery_tags_scopes = [x.split(":", maxsplit=1)[0] for x in gallery.tag_list() if len(x) > 1]
+                    wanted_gallery_tags_scopes = [x.split(":", maxsplit=1)[0] for x in accepted_tags if len(x) > 1]
+                    scope_count: Dict[str, int] = {}
+                    for scope_name in gallery_tags_scopes:
+                        if scope_name in wanted_gallery_tags_scopes:
+                            if scope_name not in scope_count:
+                                scope_count[scope_name] = 1
+                            else:
+                                scope_count[scope_name] += 1
+                    for scope, count in scope_count.items():
+                        if count > 1:
+                            accepted = False
+            if accepted & has_unwanted_tags:
+                if set(self.unwanted_tags_list()).issubset(set(gallery.tag_list())):
+                    accepted = False
+
+            if accepted:
+                matching_galleries.append(gallery)
+
+        return matching_galleries
 
     def public_toggle(self) -> None:
 
@@ -1928,7 +2349,7 @@ class AttributeManager(models.Manager):
     def get_queryset(self) -> AttributeQuerySet:
         return AttributeQuerySet(self.model, using=self._db)
 
-    def fetch_value(self, name: str) -> Optional[T]:
+    def fetch_value(self, name: str) -> Optional[typing.Union[str, float, int, datetime, timedelta, bool]]:
         return self.get_queryset().fetch_value(name)
 
 

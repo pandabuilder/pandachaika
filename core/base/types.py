@@ -5,11 +5,12 @@ if typing.TYPE_CHECKING:
     from core.base.setup import Settings
 
 
+# gid and provider are mandatory, since they are a unique constrain on the database.
 class GalleryData:
     def __init__(
-            self, gid: str, token: Optional[str] = None,
-            link: Optional[str] = None, tags: List[str] = None,
-            provider: Optional[str] = None, title: Optional[str] = None,
+            self, gid: str, provider: str,
+            token: Optional[str] = None, link: Optional[str] = None,
+            tags: List[str] = None, title: Optional[str] = None,
             title_jpn: Optional[str] = None, comment: Optional[str] = None, gallery_container_gid: Optional[str] = None,
             category: Optional[str] = None, posted: Optional[datetime] = None,
             filesize: Optional[int] = None, filecount: Optional[int] = None,

@@ -14,11 +14,12 @@ from . import constants
 
 if typing.TYPE_CHECKING:
     from core.base.setup import Settings
+    from viewer.models import AttributeManager
 
 logger = logging.getLogger(__name__)
 
 
-def wanted_generator(settings: 'Settings', attrs: QuerySet):
+def wanted_generator(settings: 'Settings', attrs: 'AttributeManager'):
     own_settings = settings.providers[constants.provider_name]
 
     if not own_settings.api_key:
@@ -157,8 +158,8 @@ def wanted_generator(settings: 'Settings', attrs: QuerySet):
             )
 
             if not date_created:
-                limit_time = datetime.time(tzinfo=datetime.timezone(datetime.timedelta(hours=1)))
-                if last_query_date.value.timetz() < limit_time < django_tz.now():
+                limit_time = datetime.time(tzinfo=datetime.timezone(datetime.timedelta(hours=1)))  # GMT+1 is when server resets
+                if last_query_date.value.timetz() < limit_time < django_tz.now().timetz():
                     remaining_queries.value = constants.daily_requests
                     remaining_queries.save()
 
@@ -246,7 +247,9 @@ def wanted_generator(settings: 'Settings', attrs: QuerySet):
                 if gallery_data.gid not in used_gids:
                     if not gallery_data.dl_type:
                         gallery_data.dl_type = 'auto_wanted'
-                    gallery_data.reason = attrs.fetch_value('wanted_reason_{}'.format(query_name)) or 'backup'
+                    wanted_reason = attrs.fetch_value('wanted_reason_{}'.format(query_name))
+                    if isinstance(wanted_reason, str):
+                        gallery_data.reason = wanted_reason or 'backup'
                     gallery = Gallery.objects.add_from_values(gallery_data)
                     # We match anyways in case there's a previous WantedGallery.
                     # Actually, we don't match since we only get metadata here, so it should not count as found.
@@ -255,9 +258,12 @@ def wanted_generator(settings: 'Settings', attrs: QuerySet):
                     if publisher:
                         publisher_name = publisher.name
 
+                    if not gallery.title_jpn:
+                        continue
+
                     search_title = format_title_to_wanted_search(gallery.title_jpn)
 
-                    wanted_galleries = WantedGallery.objects.filter(
+                    wanted_galleries: typing.Iterable[WantedGallery] = WantedGallery.objects.filter(
                         title_jpn=gallery.title_jpn, search_title=search_title
                     )
 
@@ -278,12 +284,12 @@ def wanted_generator(settings: 'Settings', attrs: QuerySet):
                             unwanted_title=own_settings.unwanted_title or settings.auto_wanted.unwanted_title
                         )
                         wanted_provider_string = attrs.fetch_value('wanted_provider_{}'.format(query_name))
-                        if wanted_provider_string:
+                        if wanted_provider_string and isinstance(wanted_provider_string, str):
                             wanted_provider_instance = Provider.objects.filter(slug=wanted_provider_string).first()
                             if wanted_provider_instance:
                                 wanted_gallery.wanted_providers.add(wanted_provider_instance)
                         wanted_providers_string = attrs.fetch_value('wanted_providers_{}'.format(query_name))
-                        if wanted_providers_string:
+                        if wanted_providers_string and isinstance(wanted_providers_string, str):
                             for wanted_provider in wanted_providers_string.split():
                                 wanted_provider = wanted_provider.strip()
                                 wanted_provider_instance = Provider.objects.filter(slug=wanted_provider).first()

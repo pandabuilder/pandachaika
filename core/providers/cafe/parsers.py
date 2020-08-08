@@ -75,6 +75,7 @@ class Parser(BaseParser):
 
         gallery = GalleryData(
             match_result.group(1),
+            self.name,
             link=link,
             title=soup.find("meta", property="og:title"),
             comment='',
@@ -150,11 +151,11 @@ class Parser(BaseParser):
 
         gallery = GalleryData(
             gallery_slug,
+            self.name,
             link=link,
             title=unescape(api_gallery['title']['rendered']),
             comment='',
             thumbnail_url=thumbnail_url,
-            provider=self.name,
             category='Manga',
             uploader='',
             posted=datetime.strptime(api_gallery['date_gmt'] + '+0000', "%Y-%m-%dT%H:%M:%S%z"),
@@ -252,10 +253,10 @@ class Parser(BaseParser):
 
             gallery = GalleryData(
                 match_result.group(1),
+                self.name,
                 title=item['title'],
                 comment=item['description'],
                 thumbnail_url=thumbnail_url,
-                provider=self.name,
                 category='Manga',
                 uploader=item['author'],
                 posted=datetime.strptime(item['published'], "%a, %d %b %Y %H:%M:%S %z"),

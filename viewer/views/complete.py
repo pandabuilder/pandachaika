@@ -1,7 +1,8 @@
 import json
 import re
-from typing import Iterable, Any
+from typing import Iterable, Any, Optional
 
+import typing
 from dal import autocomplete
 from dal.views import BaseQuerySetView
 from dal_select2.views import Select2ViewMixin
@@ -12,6 +13,10 @@ from django.template import Context
 from django.utils.html import format_html
 
 from viewer.models import Archive, Tag, Gallery, WantedGallery, ArchiveGroup
+
+
+if typing.TYPE_CHECKING:
+    from django.db.models.query import ValuesQuerySet
 
 
 class ArchiveAutocomplete(autocomplete.JalQuerySetView):
@@ -46,11 +51,11 @@ class ArchiveAutocomplete(autocomplete.JalQuerySetView):
         q_formatted = '%' + q.replace(' ', '%') + '%'
         if self.request.user.is_authenticated:
             qs = qs.filter(
-                Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted) | Q(original_filename__ss=q_formatted)
+                Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted)
             )
         else:
             qs = qs.filter(public=True).order_by('-public_date').filter(
-                Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted) | Q(original_filename__ss=q_formatted)
+                Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted)
             )
 
         return qs[0:self.limit_choices]
@@ -141,7 +146,7 @@ class WantedGalleryAutocomplete(autocomplete.JalQuerySetView):
                 q_object
             )
         else:
-            qs = []
+            return []
 
         return qs[0:self.limit_choices]
 
@@ -209,25 +214,31 @@ class ArchiveFieldAutocomplete(autocomplete.JalQuerySetView):
 
         return HttpResponse(self.autocomplete_html_format % html)
 
-    def choice_html(self, choice: Archive) -> str:
+    def choice_html(self, choice: Optional[str]) -> str:
         return self.choice_html_format % (self.get_result_value(choice),
                                           self.get_result_label(choice))
 
     @staticmethod
-    def get_result_value(result: Archive) -> str:
-        return str(result)
+    def get_result_value(result: Optional[str]) -> str:
+        if result:
+            return result
+        else:
+            return ''
 
     @staticmethod
-    def get_result_label(result: Archive) -> str:
-        return str(result)
+    def get_result_label(result: Optional[str]) -> str:
+        if result:
+            return result
+        else:
+            return ''
 
-    def choices_for_request(self) -> Iterable[Archive]:
+    def choices_for_request(self) -> 'ValuesQuerySet[Archive, Optional[str]]':
         raise NotImplementedError
 
 
 class SourceAutocomplete(ArchiveFieldAutocomplete):
 
-    def choices_for_request(self) -> Iterable[Archive]:
+    def choices_for_request(self) -> 'ValuesQuerySet[Archive, Optional[str]]':
 
         q = self.request.GET.get('q', '')
 
@@ -241,7 +252,7 @@ class SourceAutocomplete(ArchiveFieldAutocomplete):
 
 class ProviderAutocomplete(ArchiveFieldAutocomplete):
 
-    def choices_for_request(self) -> Iterable[Archive]:
+    def choices_for_request(self) -> 'ValuesQuerySet[Archive, Optional[str]]':
 
         q = self.request.GET.get('q', '')
 
@@ -255,7 +266,7 @@ class ProviderAutocomplete(ArchiveFieldAutocomplete):
 
 class ReasonAutocomplete(ArchiveFieldAutocomplete):
 
-    def choices_for_request(self) -> Iterable[Archive]:
+    def choices_for_request(self) -> 'ValuesQuerySet[Archive, Optional[str]]':
 
         q = self.request.GET.get('q', '')
 
@@ -269,7 +280,7 @@ class ReasonAutocomplete(ArchiveFieldAutocomplete):
 
 class UploaderAutocomplete(ArchiveFieldAutocomplete):
 
-    def choices_for_request(self) -> Iterable[Archive]:
+    def choices_for_request(self) -> 'ValuesQuerySet[Archive, Optional[str]]':
 
         q = self.request.GET.get('q', '')
 
@@ -283,7 +294,7 @@ class UploaderAutocomplete(ArchiveFieldAutocomplete):
 
 class CategoryAutocomplete(ArchiveFieldAutocomplete):
 
-    def choices_for_request(self) -> Iterable[Archive]:
+    def choices_for_request(self) -> 'ValuesQuerySet[Archive, Optional[str]]':
 
         q = self.request.GET.get('q', '')
 
@@ -419,10 +430,12 @@ class CustomTagAutocomplete(autocomplete.Select2QuerySetView):
         if not self.has_add_permission(request):
             return http.HttpResponseForbidden()
 
-        t = request.POST.get('text', None).replace(" ", "_")
+        t = request.POST.get('text', None)
 
         if t is None:
             return http.HttpResponseBadRequest()
+
+        t = t.replace(" ", "_")
 
         scope_name = t.split(":", maxsplit=1)
         if len(scope_name) > 1:
@@ -487,7 +500,7 @@ class ArchiveSelectSimpleAutocomplete(autocomplete.Select2QuerySetView):
         q = self.q
         q_formatted = '%' + q.replace(' ', '%') + '%'
 
-        q_object = Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted) | Q(original_filename__ss=q_formatted)
+        q_object = Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted)
 
         if self.request.user.is_authenticated:
             qs = qs.filter(
@@ -514,7 +527,7 @@ class ArchiveSelectAutocomplete(autocomplete.Select2QuerySetView):
         q = self.q
         q_formatted = '%' + q.replace(' ', '%') + '%'
 
-        q_object = Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted) | Q(original_filename__ss=q_formatted)
+        q_object = Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted)
 
         if self.request.user.is_authenticated:
             qs = qs.filter(

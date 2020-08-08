@@ -74,24 +74,19 @@ LOGGING: Dict[str, Any] = {
             'filters': ['require_debug_true'],
             'class': 'logging.StreamHandler',
             'formatter': 'console'
-        },
-        'mail_admins': {
-            'level': 'CRITICAL',
-            'class': 'django.utils.log.AdminEmailHandler',
-            'formatter': 'standard',
         }
     },
     'loggers': {
         'viewer': {
-            'handlers': ['viewer', 'mail_admins', 'console'],
+            'handlers': ['viewer', 'console'],
             'level': 'DEBUG' if DEBUG else 'INFO'
         },
         'core': {
-            'handlers': ['viewer', 'mail_admins', 'console'],
+            'handlers': ['viewer', 'console'],
             'level': 'DEBUG' if DEBUG else 'INFO'
         },
         'django': {
-            'handlers': ['viewer', 'mail_admins', 'console'],
+            'handlers': ['viewer', 'console'],
             'propagate': True,
             'level': 'ERROR',
         },
@@ -285,7 +280,17 @@ if crawler_settings.mail_logging.enable:
     LOGGING['handlers']['mail_admins'] = {
         'level': 'ERROR',
         'class': 'django.utils.log.AdminEmailHandler',
+        'formatter': 'standard',
     }
+
+    LOGGING['handlers']['mail_admins_urgent'] = {
+        'level': 'CRITICAL',
+        'class': 'django.utils.log.AdminEmailHandler',
+        'formatter': 'standard',
+    }
+
+    LOGGING['loggers']['viewer']['handlers'].append('mail_admins_urgent')
+    LOGGING['loggers']['core']['handlers'].append('mail_admins_urgent')
     LOGGING['loggers']['django']['handlers'].append('mail_admins')
 
 if crawler_settings.elasticsearch.enable:
@@ -294,14 +299,17 @@ if crawler_settings.elasticsearch.enable:
         [crawler_settings.elasticsearch.url],
         connection_class=RequestsHttpConnection
     )
-    MAX_RESULT_WINDOW = crawler_settings.elasticsearch.max_result_window
-    ES_AUTOREFRESH = crawler_settings.elasticsearch.auto_refresh
-    ES_INDEX_NAME = crawler_settings.elasticsearch.index_name
+    ES_ENABLED = True
 else:
-    MAX_RESULT_WINDOW = 10000
-    ES_AUTOREFRESH = False
     ES_CLIENT = None
-    ES_INDEX_NAME = 'viewer'
+    ES_ENABLED = False
+
+MAX_RESULT_WINDOW = crawler_settings.elasticsearch.max_result_window
+ES_AUTOREFRESH = crawler_settings.elasticsearch.auto_refresh
+ES_AUTOREFRESH_GALLERY = crawler_settings.elasticsearch.auto_refresh_gallery
+ES_INDEX_NAME = crawler_settings.elasticsearch.index_name
+ES_GALLERY_INDEX_NAME = crawler_settings.elasticsearch.gallery_index_name
+ES_ONLY_INDEX_PUBLIC = crawler_settings.elasticsearch.only_index_public
 
 # These are the default providers, you could register more after the program starts, but that's not supported
 # If for each new provider, you need to call this method to register it.
@@ -318,6 +326,7 @@ PROVIDERS = [
     'core.providers.chaika',
     'core.providers.mega',
     'core.providers.nexus',
+    'core.providers.twodmarket',
 ]
 
 PROVIDER_CONTEXT = crawler_settings.provider_context

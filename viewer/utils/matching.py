@@ -176,11 +176,11 @@ def search_for_archives_matches_web(archives: ArchiveQuerySet, matcher_filter: s
 
 
 # Archive
-def match_archives_from_gallery_titles(archives: ArchiveQuerySet, cutoff: float = 0.4, max_matches: int = 20, provider: str = '') -> None:
+def match_archives_from_gallery_titles(archives: 'QuerySet[Archive]', cutoff: float = 0.4, max_matches: int = 20, provider: str = '') -> None:
 
     try:
         if not archives:
-            non_match_archives = Archive.objects.filter(match_type='non-match')
+            non_match_archives: 'QuerySet[Archive]' = Archive.objects.filter(match_type='non-match')
         else:
             non_match_archives = archives
 
@@ -241,7 +241,7 @@ def match_archives_from_gallery_titles(archives: ArchiveQuerySet, cutoff: float 
                                                       match_type='title',
                                                       match_accuracy=similar[2])
 
-                if archive.filesize <= 0:
+                if archive.filesize is None or archive.filesize <= 0:
                     continue
                 galleries_same_size = Gallery.objects.filter(
                     filesize=archive.filesize)
@@ -268,7 +268,7 @@ def match_archives_from_gallery_titles(archives: ArchiveQuerySet, cutoff: float 
 
 
 # Archive
-def generate_possible_matches_for_archives(archives: ArchiveQuerySet,
+def generate_possible_matches_for_archives(archives: 'QuerySet[Archive]',
                                            cutoff: float = 0.4, max_matches: int = 20,
                                            filters: Iterable[str] = (),
                                            match_local: bool = True,
@@ -277,7 +277,7 @@ def generate_possible_matches_for_archives(archives: ArchiveQuerySet,
     # TODO: Not implemented: update_if_local, expose match_by_filesize.
     try:
         if not archives:
-            non_match_archives = Archive.objects.filter(match_type='non-match')
+            non_match_archives: 'QuerySet[Archive]' = Archive.objects.filter(match_type='non-match')
         else:
             non_match_archives = archives
 
@@ -294,7 +294,7 @@ def generate_possible_matches_for_archives(archives: ArchiveQuerySet,
         logger.critical(traceback.format_exc())
 
 
-def match_external(archives: ArchiveQuerySet, matcher_filters: Iterable[str], cutoff: float = 0.4, max_matches: int = 20) -> None:
+def match_external(archives: 'QuerySet[Archive]', matcher_filters: Iterable[str], cutoff: float = 0.4, max_matches: int = 20) -> None:
     matchers_per_matcher_filter = {}
     if matcher_filters:
         for matcher_filter in matcher_filters:
@@ -318,7 +318,10 @@ def match_external(archives: ArchiveQuerySet, matcher_filters: Iterable[str], cu
             for matcher in matchers:
 
                 if matcher[0].type == 'title':
-                    results = matcher[0].create_closer_matches_values(archive.title, cutoff=cutoff, max_matches=max_matches)
+                    if archive.title:
+                        results = matcher[0].create_closer_matches_values(archive.title, cutoff=cutoff, max_matches=max_matches)
+                    else:
+                        results = []
                 elif matcher[0].type == 'image':
                     results = matcher[0].create_closer_matches_values(archive.zipped.name)
                 else:
@@ -359,11 +362,11 @@ def match_external(archives: ArchiveQuerySet, matcher_filters: Iterable[str], cu
                     )
 
 
-def match_internal(archives: ArchiveQuerySet, providers: Iterable[str],
+def match_internal(archives: 'QuerySet[Archive]', providers: Iterable[str],
                    cutoff: float = 0.4,
                    max_matches: int = 20, match_by_filesize: bool = True) -> None:
 
-    galleries_per_provider: Dict[str, GalleryQuerySet] = {}
+    galleries_per_provider: Dict[str, QuerySet[Gallery]] = {}
     galleries_title_id_per_provider: Dict[str, List[Tuple[str, str]]] = {}
 
     if providers:
@@ -422,10 +425,9 @@ def match_internal(archives: ArchiveQuerySet, providers: Iterable[str],
                     )
                 )
 
-        if not match_by_filesize or archive.filesize <= 0:
+        if not match_by_filesize or archive.filesize is None or archive.filesize <= 0:
             continue
-        galleries_same_size = Gallery.objects.filter(
-            filesize=archive.filesize)
+        galleries_same_size = Gallery.objects.filter(filesize=archive.filesize)
         if galleries_same_size.exists():
 
             logger.info("{} of {}: Found {} matches (internal search) from filesize for archive: {}".format(

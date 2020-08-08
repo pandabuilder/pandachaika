@@ -49,7 +49,8 @@
           <li class="nav-item"><a class="nav-link" href="{% url 'viewer:archive-search' %}">Archives</a></li>
           <li class="nav-item"><a class="nav-link" href="{% url 'viewer:gallery-list' %}">Galleries</a></li>
           {% if not user.is_staff %}
-            <li class="nav-item"><a class="nav-link" href="/ripper/">Rips dir listing</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ripper/">Rips folder</a></li>
+            <li class="nav-item"><a class="nav-link" href="/explorer/">Explorer</a></li>
             <li class="nav-item dropdown">
               <a href="#" class="nav-link dropdown-toggle" id="navbarDropdown" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Help needed<span class="caret"></span></a>
               <div class="dropdown-menu" aria-labelledby="navbarDropdown">
@@ -128,6 +129,7 @@
             <li class="nav-item dropdown">
               <a href="#" class="nav-link dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Other tools<span class="caret"></span></a>
               <div class="dropdown-menu">
+                <a class="dropdown-item" href="/explorer/">Explorer</a>
                 <a class="dropdown-item" href="{% url 'viewer:es-index-view' %}">Advanced search</a>
                 <a class="dropdown-item" href="{% url 'viewer:public-stats' %}">Collection stats</a>
                 <a class="dropdown-item" href="{% url 'viewer:tag-frequency' %}">Tag frequency</a>

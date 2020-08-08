@@ -46,10 +46,9 @@ def convert_api_response_text_to_gallery_dicts(text: str) -> List[GalleryData]:
             continue
 
         integer_id = int(book_id.replace('B', ''))
-        gallery = GalleryData('mugi-' + book_id)
+        gallery = GalleryData('mugi-' + book_id, constants.provider_name)
         gallery.link = constants.main_page + '/book/' + str(integer_id)
         gallery.tags = []
-        gallery.provider = constants.provider_name
         found_en_title = book.find('NAME_EN')
         if found_en_title is not None:
             gallery.title = found_en_title.text or ''

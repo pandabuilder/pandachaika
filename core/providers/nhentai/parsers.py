@@ -50,7 +50,7 @@ class Parser(BaseParser):
                 return None
             gallery_id = 'nh-' + gallery_id_match.group(1)
 
-            gallery = GalleryData(gallery_id)
+            gallery = GalleryData(gallery_id, self.name)
             gallery.title = soup.h1.get_text()
             gallery.title_jpn = title_jpn_match.get_text() if title_jpn_match else ''
             gallery_filecount_match = re.search(r'<div>(\d+) page(s*)</div>', response.text)
@@ -59,7 +59,6 @@ class Parser(BaseParser):
             else:
                 gallery.filecount = 0
             gallery.tags = []
-            gallery.provider = self.name
             gallery.link = link
             gallery.posted = dateutil.parser.parse(soup.find("time")['datetime'])
 

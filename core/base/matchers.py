@@ -134,7 +134,7 @@ class Matcher(metaclass=Meta):
                 values['details'] = self.settings.archive_details
             self.settings.archive_model.objects.update_or_create_by_values_and_gid(
                 values,
-                self.match_gid,
+                (self.match_gid, self.provider) if self.match_gid else None,
                 zipped=self.file_path
             )
 
@@ -144,10 +144,10 @@ class Matcher(metaclass=Meta):
             logger.error("Gallery model has not been initiated.")
             return
 
-        check_exists = self.settings.gallery_model.objects.exists_by_gid(
-            gallery_data.gid)
+        check_exists = self.settings.gallery_model.objects.exists_by_gid_provider(
+            gallery_data.gid, gallery_data.provider)
         if check_exists and self.settings.replace_metadata:
-            self.settings.gallery_model.objects.update_by_gid(gallery_data)
+            self.settings.gallery_model.objects.update_by_gid_provider(gallery_data)
         elif not check_exists:
             self.settings.gallery_model.objects.add_from_values(gallery_data)
 

@@ -12,7 +12,7 @@ import traceback
 
 from collections import defaultdict
 
-from django.db.models import QuerySet, Q, Value, CharField
+from django.db.models import QuerySet, Q, Value, CharField, F
 from django.db.models.functions import Concat, Replace
 
 from core.base import utilities
@@ -72,7 +72,7 @@ class BaseParser:
                 ext_link=link,
             )
         if not gallery and (gallery_id and self.settings.gallery_model):
-            gallery = self.settings.gallery_model.objects.filter_first(gid=gallery_id)
+            gallery = self.settings.gallery_model.objects.filter_first(gid=gallery_id, provider=self.name)
         if not gallery:
             return False, 'Gallery link {ext_link} has not been added, processing.'.format(
                 ext_link=link,
@@ -146,19 +146,35 @@ class BaseParser:
         if gallery.title or gallery.title_jpn:
             q_objects = Q()
             q_objects_unwanted = Q()
+            q_objects_regexp = Q()
+            q_objects_unwanted_regexp = Q()
             if gallery.title:
                 wanted_filters = wanted_filters.annotate(g_title=Value(gallery.title, output_field=CharField()))
-                q_objects.add(Q(g_title__ss=Concat(Value('%'), Replace('search_title', Value(' '), Value('%')), Value('%'))), Q.OR)
-                q_objects_unwanted.add(~Q(g_title__ss=Concat(Value('%'), Replace('unwanted_title', Value(' '), Value('%')), Value('%'))), Q.AND)
+
+                q_objects.add(Q(g_title__ss=Concat(Value('%'), Replace(F('search_title'), Value(' '), Value('%')), Value('%'))), Q.OR)
+                q_objects_unwanted.add(~Q(g_title__ss=Concat(Value('%'), Replace(F('unwanted_title'), Value(' '), Value('%')), Value('%'))), Q.AND)
+
+                q_objects_regexp.add(Q(g_title__regex=F('search_title')), Q.OR)
+                q_objects_unwanted_regexp.add(~Q(g_title__regex=F('unwanted_title')), Q.AND)
+
             if gallery.title_jpn:
                 wanted_filters = wanted_filters.annotate(g_title_jpn=Value(gallery.title_jpn, output_field=CharField()))
-                q_objects.add(Q(g_title_jpn__ss=Concat(Value('%'), Replace('search_title', Value(' '), Value('%')), Value('%'))), Q.OR)
-                q_objects_unwanted.add(~Q(g_title_jpn__ss=Concat(Value('%'), Replace('unwanted_title', Value(' '), Value('%')), Value('%'))), Q.AND)
+                q_objects.add(Q(g_title_jpn__ss=Concat(Value('%'), Replace(F('search_title'), Value(' '), Value('%')), Value('%'))), Q.OR)
+                q_objects_unwanted.add(~Q(g_title_jpn__ss=Concat(Value('%'), Replace(F('unwanted_title'), Value(' '), Value('%')), Value('%'))), Q.AND)
+
+                q_objects_regexp.add(Q(g_title_jpn__regex=F('search_title')), Q.OR)
+                q_objects_unwanted_regexp.add(~Q(g_title_jpn__regex=F('unwanted_title')), Q.AND)
 
             filtered_wanted = wanted_filters.filter(
-                Q(search_title__isnull=True) | Q(search_title='') | q_objects
+                Q(search_title__isnull=True)
+                | Q(search_title='')
+                | Q(Q(regexp_search_title=False), q_objects)
+                | Q(Q(regexp_search_title=True), q_objects_regexp)
             ).filter(
-                Q(unwanted_title__isnull=True) | Q(unwanted_title='') | q_objects_unwanted
+                Q(unwanted_title__isnull=True)
+                | Q(unwanted_title='')
+                | Q(Q(regexp_unwanted_title=False), q_objects_unwanted)
+                | Q(Q(regexp_unwanted_title=True), q_objects_unwanted_regexp)
             )
 
         else:

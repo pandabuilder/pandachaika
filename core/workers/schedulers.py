@@ -41,7 +41,7 @@ class BaseScheduler(object):
                 self.last_run + datetime.timedelta(seconds=int(self.timer)) - django_tz.now()
             ).total_seconds()
         else:
-            seconds_until = (datetime.timedelta(seconds=int(self.timer)) - django_tz.now()).total_seconds()
+            seconds_until = 0
         if seconds_until < 0:
             seconds_until = 0
         return seconds_until

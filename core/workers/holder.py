@@ -21,6 +21,17 @@ class WorkerContext:
     timed_downloader: Optional['TimedPostDownloader'] = None
     timed_auto_crawlers: typing.List['ProviderTimedAutoCrawler'] = []
 
+    def get_active_initialized_workers(self):
+        workers = []
+        if self.timed_auto_wanted:
+            workers.append(self.timed_auto_wanted)
+        if self.timed_updater:
+            workers.append(self.timed_updater)
+        if self.timed_downloader:
+            workers.append(self.timed_downloader)
+        workers.extend(self.timed_auto_crawlers)
+        return workers
+
     def start_workers(self, crawler_settings: 'setup.Settings') -> None:
 
         from core.downloaders.postdownload import TimedPostDownloader

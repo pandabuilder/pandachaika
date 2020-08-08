@@ -1,4 +1,5 @@
 import logging
+from typing import Dict, Any
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
@@ -34,7 +35,7 @@ def archive_groups_explorer(request: HttpRequest) -> HttpResponse:
     else:
         form = ArchiveGroupSearchForm(initial={'title': title})
 
-    d = {
+    d: Dict[str, Any] = {
         'form': form,
     }
 
@@ -88,11 +89,11 @@ def archive_groups_explorer(request: HttpRequest) -> HttpResponse:
 
     paginator = Paginator(results, 50)
     try:
-        results = paginator.page(page)
+        results_page = paginator.page(page)
     except (InvalidPage, EmptyPage):
-        results = paginator.page(paginator.num_pages)
+        results_page = paginator.page(paginator.num_pages)
 
-    d.update(results=results)
+    d.update(results=results_page)
 
     return render(request, "viewer/archive_groups.html", d)
 
@@ -139,7 +140,7 @@ def archive_group_edit(request: HttpRequest, pk: int = None, slug: str = None) -
 
     user_reason = p.get('reason', '')
 
-    d = {
+    d: Dict[str, Any] = {
         'archive_group': archive_group_instance,
     }
 
@@ -265,13 +266,13 @@ def archive_group_edit(request: HttpRequest, pk: int = None, slug: str = None) -
 
         paginator = Paginator(search_results, 100)
         try:
-            search_results = paginator.page(page)
+            search_results_page = paginator.page(page)
         except (InvalidPage, EmptyPage):
-            search_results = paginator.page(paginator.num_pages)
+            search_results_page = paginator.page(paginator.num_pages)
 
         d.update(
             search_form=search_form,
-            search_results=search_results,
+            search_results=search_results_page,
         )
 
     d.update(

@@ -15,11 +15,11 @@ crawler_settings = settings.CRAWLER_SETTINGS
 
 def get_gid_path_association(site_page, api_key):
 
-    archives_gid = list(Archive.objects.filter(gallery__hidden=True).values_list('gallery__gid', flat=True))
+    archives_gid_provider = list(Archive.objects.filter(gallery__hidden=True).values_list('gallery__gid', 'gallery__provider'))
     data = {
         'operation': 'archive_request',
         'api_key': api_key,
-        'args': archives_gid
+        'args': json.dumps(archives_gid_provider)
     }
 
     headers = {'Content-Type': 'application/json; charset=utf-8'}
@@ -215,7 +215,7 @@ class FTPHandler(object):
             yield("Checking remote file {} of {}".format(cnt, len(remote_info['result'])))
 
             local_archives = Archive.objects.filter(
-                gallery__gid=remote_archive['gid'],
+                gallery__gid=remote_archive['gid'], gallery__provider=remote_archive['provider'],
             )
 
             if local_archives and local_archives.count() == 1:
@@ -301,8 +301,7 @@ class Command(BaseCommand):
             for message in send_urls_fakku(crawler_settings.remote_site['api_url'], crawler_settings.remote_site['api_key']):
                 self.stdout.write(message)
         if options['upload']:
-            all_archives = Archive.objects.filter_and_order_by_posted(
-                gallery__hidden=True)
+            all_archives = Archive.objects.filter_and_order_by_posted(gallery__hidden=True)
 
             ftp_handler = FTPHandler(crawler_settings, print_method=self.stdout.write)
             for message in ftp_handler.check_remote(

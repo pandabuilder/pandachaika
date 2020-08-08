@@ -117,13 +117,16 @@ class TagAdmin(admin.ModelAdmin):
 class GalleryAdmin(admin.ModelAdmin):
     search_fields = ["title", "title_jpn", "gid"]
     raw_id_fields = ("tags", "gallery_container")
-    list_display = ["__str__", "id", "gid", "token",
-                    "category", "filesize", "posted", "filecount", "hidden", "dl_type", "provider"]
+    list_display = [
+        "__str__", "id", "gid", "token",
+        "category", "filesize", "posted", "create_date", "last_modified",
+        "filecount", "hidden", "dl_type", "provider"
+    ]
     list_filter = [
         "category", "expunged", "fjord", "public", "hidden", "dl_type",
         "provider", "status", "origin", "reason"
     ]
-    actions = ['make_hidden', 'make_public', 'set_provider', 'set_reason']
+    actions = ['make_hidden', 'make_public', 'set_provider', 'set_reason', 'make_normal']
     action_form = UpdateActionForm
 
     def make_hidden(self, request: HttpRequest, queryset: GalleryQuerySet) -> None:
@@ -143,6 +146,15 @@ class GalleryAdmin(admin.ModelAdmin):
             message_bit = "%s galleries were" % rows_updated
         self.message_user(request, "%s successfully marked as public." % message_bit)
     make_public.short_description = "Mark selected galleries as public"  # type: ignore
+
+    def make_normal(self, request: HttpRequest, queryset: GalleryQuerySet) -> None:
+        rows_updated = queryset.update(status=Gallery.NORMAL)
+        if rows_updated == 1:
+            message_bit = "1 gallery was"
+        else:
+            message_bit = "%s galleries were" % rows_updated
+        self.message_user(request, "%s successfully marked status as normal." % message_bit)
+    make_normal.short_description = "Mark selected galleries status as normal"  # type: ignore
 
     def set_provider(self, request: HttpRequest, queryset: GalleryQuerySet) -> None:
         provider = request.POST['extra_field']

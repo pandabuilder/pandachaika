@@ -98,6 +98,9 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
         elif tool == 'clear-possible-matches':
             wanted_gallery_instance.possible_matches.clear()
             return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        elif tool == 'match-against-galleries':
+            wanted_gallery_instance.match_against_galleries()
+            return HttpResponseRedirect(request.META["HTTP_REFERER"])
         elif tool == 'select-as-match':
             try:
                 matched_gallery = Gallery.objects.get(pk=tool_use_id)

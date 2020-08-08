@@ -225,7 +225,7 @@ class FolderCrawler(object):
                 for archive in found_archives:
                     if not os.path.isfile(archive.zipped.path):
                         continue
-                    if archive.filesize == archive.gallery.filesize:
+                    if not archive.gallery or archive.filesize == archive.gallery.filesize:
                         continue
                     files.append(archive.zipped.path)
                 logger.info("Scanning {} archives matched with wrong filesize".format(len(files)))
@@ -252,12 +252,13 @@ class FolderCrawler(object):
             return
         elif args.all_filenames_to_title:
 
-            archives_title_gid = Archive.objects.exclude(
-                title='')
+            archives_filename_to_title = Archive.objects.exclude(title='')
 
-            if archives_title_gid:
-                logger.info("Checking {} galleries".format(archives_title_gid.count()))
-                for cnt, archive in enumerate(archives_title_gid):
+            if archives_filename_to_title:
+                logger.info("Checking {} archives".format(archives_filename_to_title.count()))
+                for cnt, archive in enumerate(archives_filename_to_title):
+                    if not archive.title:
+                        continue
                     current_path = os.path.join(os.path.dirname(
                         archive.zipped.path), replace_illegal_name(archive.title) + '.zip')
 
@@ -363,14 +364,14 @@ class FolderCrawler(object):
                     files.append(folder)
 
         if args.rename_to_title:
-            logger.info("Checking {} galleries".format(len(files)))
+            logger.info("Checking {} archives".format(len(files)))
             for cnt, filepath in enumerate(files):
 
-                archive = Archive.objects.filter(zipped=filepath).first()
+                archive_to_rename = Archive.objects.filter(zipped=filepath).first()
 
-                if archive:
+                if archive_to_rename and archive_to_rename.title:
                     current_path = os.path.join(
-                        os.path.dirname(filepath), replace_illegal_name(archive.title) + '.zip')
+                        os.path.dirname(filepath), replace_illegal_name(archive_to_rename.title) + '.zip')
 
                     if filepath != current_path and not os.path.isfile(os.path.join(self.settings.MEDIA_ROOT, current_path)):
                         logger.info("Filename should be {} but it's {}".format(current_path, filepath))
@@ -406,17 +407,17 @@ class FolderCrawler(object):
 
                 title = re.sub(
                     '[_]', ' ', os.path.splitext(os.path.basename(filepath))[0])
-                archive = Archive.objects.filter(zipped=filepath).first()
-                if not self.settings.rehash_files and archive:
-                    crc32 = archive.crc32
+                archive_to_process = Archive.objects.filter(zipped=filepath).first()
+                if not self.settings.rehash_files and archive_to_process:
+                    crc32 = archive_to_process.crc32
                 else:
                     crc32 = calc_crc32(
                         os.path.join(self.settings.MEDIA_ROOT, filepath))
 
-                if archive:
+                if archive_to_process:
                     if args.force_rematch:
                         logger.info("Doing a forced rematch")
-                    elif archive.match_type in self.settings.rematch_file_list or args.rematch_wrong_filesize:
+                    elif archive_to_process.match_type in self.settings.rematch_file_list or args.rematch_wrong_filesize:
                         if self.settings.rematch_file:
                             logger.info("File was already matched before, but rematch is ordered")
                         else:
@@ -459,20 +460,20 @@ class FolderCrawler(object):
                         continue
 
                     # Look for previous matches
-                    archive = Archive.objects.filter(crc32=crc32).first()
-                    if archive:
+                    archive_to_process = Archive.objects.filter(crc32=crc32).first()
+                    if archive_to_process:
                         if self.settings.copy_match_file:
                             logger.info("Found previous match by CRC32, copying its values")
                             values = {
-                                'title': archive.title,
-                                'title_jpn': archive.title_jpn,
+                                'title': archive_to_process.title,
+                                'title_jpn': archive_to_process.title_jpn,
                                 'zipped': filepath,
                                 'crc32': crc32,
-                                'match_type': archive.match_type,
+                                'match_type': archive_to_process.match_type,
                                 'filesize': get_zip_filesize(os.path.join(self.settings.MEDIA_ROOT, filepath)),
                                 'filecount': filecount_in_zip(os.path.join(self.settings.MEDIA_ROOT, filepath)),
-                                'gallery_id': archive.gallery_id,
-                                'source_type': archive.source_type
+                                'gallery_id': archive_to_process.gallery_id,
+                                'source_type': archive_to_process.source_type
                             }
                             if self.settings.archive_reason:
                                 values.update({'reason': self.settings.archive_reason})
@@ -559,17 +560,21 @@ class FolderCrawler(object):
 
     @staticmethod
     def get_archive_and_gallery_titles() -> Tuple[List[Tuple[str, str]], List[Tuple[str, str]]]:
-        found_galleries = Gallery.objects.eligible_for_use()
+        found_galleries = Gallery.objects.eligible_for_use().exclude(title='')
         found_archives = Archive.objects.exclude(
-            match_type__in=('', 'non-match'))
+            match_type__in=('', 'non-match')).exclude(title='').exclude(gallery__isnull=True)
         archives_title_gid = []
         galleries_title_gid = []
         for archive in found_archives:
+            if not archive.title or not archive.gallery:
+                continue
             archives_title_gid.append(
-                (replace_illegal_name(archive.title), archive.gallery_id))
+                (replace_illegal_name(archive.title), str(archive.gallery.id)))
         for gallery in found_galleries:
+            if not gallery.title:
+                continue
             if 'replaced' in gallery.tag_list():
                 continue
             galleries_title_gid.append(
-                (replace_illegal_name(gallery.title), gallery.id))
+                (replace_illegal_name(gallery.title), str(gallery.id)))
         return archives_title_gid, galleries_title_gid

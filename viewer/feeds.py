@@ -1,9 +1,10 @@
-from typing import Iterable, Any
+from typing import Iterable, Any, Optional
 
 from datetime import datetime
 from django.contrib.syndication.views import Feed
 from django.core.paginator import EmptyPage, Paginator
 from django.http import HttpRequest
+from django.utils.safestring import SafeText
 
 from viewer.models import Archive
 from viewer.views.head import filter_archives_simple, archive_filter_keys
@@ -14,7 +15,7 @@ class LatestArchivesFeed(Feed):
     link = "/"
     description = "Latest added archives to the Backup."
 
-    def get_object(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpRequest:
+    def get_object(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpRequest:  # type: ignore[override]
         return request
 
     def items(self, request: HttpRequest) -> Iterable[Archive]:
@@ -51,11 +52,11 @@ class LatestArchivesFeed(Feed):
 
         return archives
 
-    def item_title(self, item: Archive) -> str:
-        return item.title
+    def item_title(self, item: Archive) -> str:  # type: ignore
+        return item.title or item.title_jpn or ''
 
-    def item_description(self, item: Archive) -> str:
+    def item_description(self, item: Archive) -> str:  # type: ignore
         return item.tags_str()
 
-    def item_pubdate(self, item: Archive) -> datetime:
+    def item_pubdate(self, item: Archive) -> Optional[datetime]:
         return item.public_date

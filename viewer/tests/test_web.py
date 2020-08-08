@@ -21,11 +21,11 @@ class TestPageParsers(TestCase):
 
         expected_data = GalleryData(
             'nh-198482',
+            'nhentai',
             title='(C90) [MeltdoWN COmet (Yukiu Con)] C90 Omakebon! (Pokémon GO) [English] [ATF]',
             title_jpn='(C90) [MeltdoWN COmet (雪雨こん)] C90 おまけ本! (ポケモンGO) [英訳]',
             filecount=9,
             link='https://nhentai.net/g/198482/',
-            provider='nhentai',
             posted=dateutil.parser.parse('2017-06-19T10:33:19.022360+00:00'),
             category='Doujinshi',
             tags=[
@@ -53,8 +53,8 @@ class TestPageParsers(TestCase):
 
         expected_data = GalleryData(
             'hentai/im-a-piece-of-junk-sexaroid-english',
+            'fakku',
             link=gallery_link,
-            provider='fakku',
             title='I\'m a Piece of Junk Sexaroid',
             thumbnail_url='https://t.fakku.net/images/manga/i/im-a-piece-of-junk-sexaroid-english/thumbs/002.thumb.jpg',
             filecount=16,
@@ -86,8 +86,8 @@ class TestPageParsers(TestCase):
 
         expected_data = GalleryData(
             'hentai/tsf-story-append-20-english_1497401155',
+            'fakku',
             link=gallery_link,
-            provider='fakku',
             title='TSF Story Append 2.0',
             filecount=82,
             category='Doujinshi',
@@ -140,9 +140,9 @@ class TestPageParsers(TestCase):
 
         expected_data = GalleryData(
             '5665',
+            'nexus',
             link=gallery_link,
             archiver_key='https://hentainexus.com/zip/5665',
-            provider='nexus',
             title='Sase-san is Very Popular',
             thumbnail_url='https://static.hentainexus.com/content/5665/cover.jpg',
             filecount=16,

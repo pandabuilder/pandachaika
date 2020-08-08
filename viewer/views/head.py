@@ -1,11 +1,12 @@
-﻿import json
+﻿from __future__ import annotations
+import json
 import logging
 import re
 from functools import reduce
 from random import randint
 
 import operator
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional, Iterable, Union
 
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
@@ -32,7 +33,7 @@ from viewer.forms import (
 from viewer.models import (
     Archive, Image, Tag, Gallery,
     UserArchivePrefs, WantedGallery,
-    ArchiveQuerySet, GalleryQuerySet, users_with_perm, Profile)
+    users_with_perm, Profile, GalleryQuerySet)
 from viewer.utils.functions import send_mass_html_mail
 from viewer.utils.tags import sort_tags
 
@@ -85,7 +86,7 @@ def viewer_login(request: HttpRequest) -> HttpResponse:
         password = request.POST['password']
         user = authenticate(username=username, password=password)
         if user is not None:
-            if user.is_active:
+            if user.is_active:  # type: ignore
                 login(request, user)
                 next_url = request.POST.get('next', 'viewer:main-page')
                 return redirect(next_url)
@@ -111,7 +112,7 @@ def change_password(request: HttpRequest) -> HttpResponse:
         form = BootstrapPasswordChangeForm(request.user, request.POST, error_class=SpanErrorList)
         if form.is_valid():
             user = form.save()
-            update_session_auth_hash(request, user)  # Important!
+            update_session_auth_hash(request, user)   # type: ignore
             messages.success(request, 'Your password was successfully updated!')
             return redirect('viewer:change-password')
         else:
@@ -272,7 +273,7 @@ def gallery_details(request: HttpRequest, pk: int, tool: str = None) -> HttpResp
 
         current_settings = Settings(load_from_config=crawler_settings.config)
 
-        if current_settings.workers.web_queue:
+        if current_settings.workers.web_queue and gallery.provider:
 
             current_settings.set_update_metadata_options(providers=(gallery.provider,))
 
@@ -386,15 +387,15 @@ def gallery_list(request: HttpRequest, mode: str = 'none', tag: str = None) -> H
 
     paginator = Paginator(results, galleries_per_page)
     try:
-        results = paginator.page(page)
+        results_page = paginator.page(page)
 
     except (InvalidPage, EmptyPage):
-        results = paginator.page(1)
+        results_page = paginator.page(1)
 
     display_prms['page_range'] = list(
         range(
-            max(1, results.number - 3 - max(0, results.number - (paginator.num_pages - 3))),
-            min(paginator.num_pages + 1, results.number + 3 + 1 - min(0, results.number - 3 - 1))
+            max(1, results_page.number - 3 - max(0, results_page.number - (paginator.num_pages - 3))),
+            min(paginator.num_pages + 1, results_page.number + 3 + 1 - min(0, results_page.number - 3 - 1))
         )
     )
 
@@ -402,7 +403,7 @@ def gallery_list(request: HttpRequest, mode: str = 'none', tag: str = None) -> H
                                       'tags': display_prms['tags']})
 
     d = {
-        'results': results, 'prm': parameters,
+        'results': results_page, 'prm': parameters,
         'display_prms': display_prms, 'form': form
     }
 
@@ -416,7 +417,7 @@ filter_galleries_defer = (
 )
 
 
-def filter_galleries(request: HttpRequest, session_filters: Dict[str, str], request_filters: Dict[str, str]) -> GalleryQuerySet:
+def filter_galleries(request: HttpRequest, session_filters: Dict[str, str], request_filters: Dict[str, str]) -> Union[GalleryQuerySet, QuerySet[Gallery]]:
     """Filter gallery results through parameters and return results list."""
 
     # sort and filter results by parameters
@@ -425,7 +426,7 @@ def filter_galleries(request: HttpRequest, session_filters: Dict[str, str], requ
     if session_filters["sort"]:
         order = session_filters["sort"]
     if session_filters["asc_desc"] == "desc":
-        results = Gallery.objects.order_by(F(order).desc(nulls_last=True))
+        results: Union[GalleryQuerySet, QuerySet[Gallery]] = Gallery.objects.order_by(F(order).desc(nulls_last=True))
     else:
         results = Gallery.objects.order_by(F(order).asc(nulls_last=True))
 
@@ -468,13 +469,13 @@ def filter_galleries(request: HttpRequest, session_filters: Dict[str, str], requ
         results = results.filter(reason__contains=request_filters["reason"])
     if request.user.is_staff:
         if request_filters["not_used"]:
-            results = results.non_used_galleries()
+            results = results.non_used_galleries()  # type: ignore
         if request_filters["hidden"]:
             results = results.filter(hidden=request_filters["hidden"])
         if "not_normal" not in request_filters or not request_filters["not_normal"]:
-            results = results.eligible_for_use()
+            results = results.eligible_for_use()  # type: ignore
     else:
-        results = results.eligible_for_use()
+        results = results.eligible_for_use()  # type: ignore
 
     if request_filters["tags"]:
         needs_distinct = True
@@ -634,26 +635,26 @@ def search(request: HttpRequest, mode: str = 'none', tag: str = None) -> HttpRes
 
     paginator = Paginator(results, archives_per_page)
     try:
-        results = paginator.page(page)
+        results_page = paginator.page(page)
     except (InvalidPage, EmptyPage):
-        results = paginator.page(1)
+        results_page = paginator.page(1)
 
     display_prms['page_range'] = list(
         range(
-            max(1, results.number - 3 - max(0, results.number - (paginator.num_pages - 3))),
-            min(paginator.num_pages + 1, results.number + 3 + 1 - min(0, results.number - 3 - 1))
+            max(1, results_page.number - 3 - max(0, results_page.number - (paginator.num_pages - 3))),
+            min(paginator.num_pages + 1, results_page.number + 3 + 1 - min(0, results_page.number - 3 - 1))
         )
     )
 
     d = {
-        'results': results, 'extra_options': view_options,
+        'results': results_page, 'extra_options': view_options,
         'prm': parameters, 'display_prms': display_prms,
         'form': form, 'form_simple': form_simple
     }
     return render(request, "viewer/archive_search.html", d)
 
 
-def filter_archives(request: HttpRequest, session_filters: Dict[str, str], request_filters: Dict[str, str], force_private: bool = False) -> ArchiveQuerySet:
+def filter_archives(request: HttpRequest, session_filters: Dict[str, str], request_filters: Dict[str, str], force_private: bool = False) -> QuerySet[Archive]:
     """Filter results through parameters
     and return results list.
     """
@@ -670,7 +671,7 @@ def filter_archives(request: HttpRequest, session_filters: Dict[str, str], reque
         order = 'gallery__' + order
 
     if session_filters["asc_desc"] == "desc":
-        results = Archive.objects.order_by(F(order).desc(nulls_last=True))
+        results: QuerySet[Archive] = Archive.objects.order_by(F(order).desc(nulls_last=True))
     else:
         results = Archive.objects.order_by(F(order).asc(nulls_last=True))
 
@@ -680,7 +681,7 @@ def filter_archives(request: HttpRequest, session_filters: Dict[str, str], reque
     if request_filters["title"]:
         q_formatted = '%' + request_filters["title"].replace(' ', '%') + '%'
         results = results.filter(
-            Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted) | Q(original_filename__ss=q_formatted)
+            Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted)
         )
     if request_filters["filename"]:
         results = results.filter(zipped__icontains=request_filters["filename"])
@@ -810,7 +811,7 @@ def filter_archives(request: HttpRequest, session_filters: Dict[str, str], reque
     return results
 
 
-def quick_search(request: HttpRequest, parameters: DataDict, display_parameters: DataDict) -> ArchiveQuerySet:
+def quick_search(request: HttpRequest, parameters: DataDict, display_parameters: DataDict) -> QuerySet[Archive]:
     """Quick search of archives."""
     # sort and filter results by parameters
     order = "posted"
@@ -823,7 +824,7 @@ def quick_search(request: HttpRequest, parameters: DataDict, display_parameters:
 
     if parameters["asc_desc"] == "desc":
         # order = '-' + order
-        results = Archive.objects.order_by(F(order).desc(nulls_last=True))
+        results: QuerySet[Archive] = Archive.objects.order_by(F(order).desc(nulls_last=True))
     else:
         results = Archive.objects.order_by(F(order).asc(nulls_last=True))
 
@@ -846,7 +847,7 @@ def quick_search(request: HttpRequest, parameters: DataDict, display_parameters:
             (Q(gallery__gid=gid, gallery__provider=provider) for gid, provider in gallery_ids_providers)
         )
 
-        results_url = results.filter(query)
+        results_url: Optional[QuerySet[Archive]] = results.filter(query)
     else:
         results_url = None
 
@@ -1000,7 +1001,7 @@ def url_submit(request: HttpRequest) -> HttpResponse:
                 found_valid_urls.extend(urls_filtered)
                 for url_filtered in urls_filtered:
                     gid = parser.id_from_url(url_filtered)
-                    gallery = Gallery.objects.filter(gid=gid).first()
+                    gallery = Gallery.objects.filter(gid=gid, provider=parser.name).first()
                     if not gallery:
                         url_messages.append('{}: New URL, will be added to the submit queue'.format(
                             url_filtered
@@ -1153,7 +1154,7 @@ def user_archive_preferences(request: HttpRequest, archive_pk: int, setting: str
                                 {'user_archive_preferences': current_user_archive_preferences})
 
 
-def filter_archives_simple(params: Dict[str, Any]) -> ArchiveQuerySet:
+def filter_archives_simple(params: Dict[str, Any]) -> QuerySet[Archive]:
     """Filter results through parameters
     and return results list.
     """
@@ -1168,7 +1169,7 @@ def filter_archives_simple(params: Dict[str, Any]) -> ArchiveQuerySet:
 
     if params["asc_desc"] == "desc":
         # order = '-' + order
-        results = Archive.objects.order_by(F(order).desc(nulls_last=True))
+        results: QuerySet[Archive] = Archive.objects.order_by(F(order).desc(nulls_last=True))
     else:
         results = Archive.objects.order_by(F(order).asc(nulls_last=True))
 
@@ -1279,7 +1280,7 @@ def filter_archives_simple(params: Dict[str, Any]) -> ArchiveQuerySet:
     return results
 
 
-def filter_galleries_simple(params: Dict[str, str]) -> GalleryQuerySet:
+def filter_galleries_simple(params: Dict[str, str]) -> QuerySet[Gallery]:
     """Filter results through parameters
     and return results list.
     """
@@ -1288,7 +1289,7 @@ def filter_galleries_simple(params: Dict[str, str]) -> GalleryQuerySet:
     if 'sort' in params and params["sort"]:
         order = params["sort"]
     if 'asc_desc' in params and params["asc_desc"] == "desc":
-        results = Gallery.objects.order_by(F(order).desc(nulls_last=True))
+        results: QuerySet[Gallery] = Gallery.objects.order_by(F(order).desc(nulls_last=True))
     else:
         results = Gallery.objects.order_by(F(order).asc(nulls_last=True))
 
@@ -1387,7 +1388,7 @@ def filter_galleries_simple(params: Dict[str, str]) -> GalleryQuerySet:
     return results
 
 
-def filter_wanted_galleries_simple(params: Dict[str, Any]) -> QuerySet:
+def filter_wanted_galleries_simple(params: Dict[str, Any]) -> QuerySet[WantedGallery]:
     """Filter results through parameters
     and return results list.
     """
@@ -1398,7 +1399,7 @@ def filter_wanted_galleries_simple(params: Dict[str, Any]) -> QuerySet:
     if 'asc_desc' in params and params["asc_desc"] == "desc":
         order = '-' + order
 
-    results = WantedGallery.objects.order_by(order)
+    results: QuerySet[WantedGallery] = WantedGallery.objects.order_by(order)
 
     if params["title"]:
         q_formatted = '%' + params["title"].replace(' ', '%') + '%'

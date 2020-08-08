@@ -14,11 +14,12 @@ from . import constants
 
 if typing.TYPE_CHECKING:
     from core.base.setup import Settings
+    from viewer.models import AttributeManager
 
 logger = logging.getLogger(__name__)
 
 
-def wanted_generator(settings: 'Settings', attrs: QuerySet):
+def wanted_generator(settings: 'Settings', attrs: 'AttributeManager'):
     own_settings = settings.providers[constants.provider_name]
 
     queries: DataDict = {}
@@ -203,7 +204,10 @@ def wanted_generator(settings: 'Settings', attrs: QuerySet):
                 if gallery_data.gid not in used_gids:
                     if not gallery_data.dl_type:
                         gallery_data.dl_type = 'auto_wanted'
-                    gallery_data.reason = attrs.fetch_value('wanted_reason_{}'.format(query_name)) or 'backup'
+                    gallery_data.reason = 'backup'
+                    wanted_reason = attrs.fetch_value('wanted_reason_{}'.format(query_name))
+                    if isinstance(wanted_reason, str):
+                        gallery_data.reason = wanted_reason or 'backup'
                     gallery = Gallery.objects.add_from_values(gallery_data)
                     # We match anyways in case there's a previous WantedGallery.
                     # Actually, we don't match since we only get metadata here, so it should not count as found.
@@ -212,9 +216,12 @@ def wanted_generator(settings: 'Settings', attrs: QuerySet):
                     if publisher:
                         publisher_name = publisher.name
 
+                    if not gallery.title:
+                        continue
+
                     search_title = format_title_to_wanted_search(gallery.title)
 
-                    wanted_galleries = WantedGallery.objects.filter(
+                    wanted_galleries: typing.Iterable[WantedGallery] = WantedGallery.objects.filter(
                         title=gallery.title, search_title=search_title
                     )
 
@@ -234,12 +241,12 @@ def wanted_generator(settings: 'Settings', attrs: QuerySet):
                             notify_when_found=attrs.fetch_value('wanted_notify_when_found_{}'.format(query_name)) or False,
                         )
                         wanted_provider_string = attrs.fetch_value('wanted_provider_{}'.format(query_name))
-                        if wanted_provider_string:
+                        if wanted_provider_string and isinstance(wanted_provider_string, str):
                             wanted_provider_instance = Provider.objects.filter(slug=wanted_provider_string).first()
                             if wanted_provider_instance:
                                 wanted_gallery.wanted_providers.add(wanted_provider_instance)
                         wanted_providers_string = attrs.fetch_value('wanted_providers_{}'.format(query_name))
-                        if wanted_providers_string:
+                        if wanted_providers_string and isinstance(wanted_providers_string, str):
                             for wanted_provider in wanted_providers_string.split():
                                 wanted_provider = wanted_provider.strip()
                                 wanted_provider_instance = Provider.objects.filter(slug=wanted_provider).first()

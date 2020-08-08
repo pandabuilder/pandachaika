@@ -4,12 +4,14 @@
 import json
 import re
 from itertools import chain
+import typing
 
 from django.contrib.auth.decorators import login_required
 from django.core import serializers
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, QuerySet
 from django.http import HttpResponse, HttpRequest
+from django.http.request import QueryDict
 from django.shortcuts import render
 from django.core.paginator import Paginator, EmptyPage
 from django.urls import reverse
@@ -48,7 +50,7 @@ def gallery_frequency(request: HttpRequest) -> HttpResponse:
     return render(request, "viewer/graph_gallery_posted.html", d)
 
 
-def get_gallery_data(data: DataDict) -> GalleryQuerySet:
+def get_gallery_data(data: QueryDict) -> GalleryQuerySet:
     """Quick search of galleries.
     """
 
@@ -111,10 +113,7 @@ def get_gallery_data(data: DataDict) -> GalleryQuerySet:
 
     results = results.distinct()
 
-    if 'count' in data:
-        results = results[:int(data['count'])]
-
-    return results
+    return results  # type: ignore
 
 
 def seeder(request: HttpRequest) -> HttpResponse:
@@ -147,7 +146,7 @@ def release_date_seeder(request: HttpRequest) -> HttpResponse:
     return HttpResponse(response, content_type="application/json")
 
 
-def get_archive_data(data: DataDict) -> ArchiveQuerySet:
+def get_archive_data(data: QueryDict) -> ArchiveQuerySet:
     """Quick search of archives.
     """
 
@@ -257,7 +256,7 @@ def get_archive_data(data: DataDict) -> ArchiveQuerySet:
 
     results = results.distinct().prefetch_related('tags')
 
-    return results
+    return results  # type: ignore
 
 
 # TODO: move modifying actions to POST requests. If something changes here, must update panda-react too.
@@ -298,11 +297,11 @@ def api(request: HttpRequest, model: str = None, obj_id: str = None, action: str
                         images = Image.objects.filter(archive=archive_id, position__in=positions, extracted=True).filter(archive__public=True)
                 except Archive.DoesNotExist:
                     return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
-                image_urls = [
+                image_urls: typing.List[typing.Dict[str, typing.Any]] = [
                     {
                         'position': image.position,
                         'url': request.build_absolute_uri(image.image.url),
-                        'is_horizontal': image.image_width / image.image_height > 1,
+                        'is_horizontal': image.image_width / image.image_height > 1 if image.image_width and image.image_height else False,
                         'width': image.image_width,
                         'height': image.image_height
                     } for image in sorted(images, key=lambda img: positions.index(str(img.position)))
@@ -396,11 +395,11 @@ def api(request: HttpRequest, model: str = None, obj_id: str = None, action: str
             else:
                 force_private = False
 
-            archives_list = filter_archives(request, parameters, display_prms, force_private=force_private)
+            archives_list_filtered: 'QuerySet[Archive]' = filter_archives(request, parameters, display_prms, force_private=force_private)
             if 'extracted' in data:
-                archives_list = archives_list.filter(extracted=True)
+                archives_list_filtered = archives_list_filtered.filter(extracted=True)
 
-            response = archives_to_json_response(archives_list, request)
+            response = archives_to_json_response(archives_list_filtered, request)
         elif model == 'me':
             response = json.dumps(
                 {
@@ -420,7 +419,7 @@ def api(request: HttpRequest, model: str = None, obj_id: str = None, action: str
     return http_response
 
 
-def archives_to_json_response(archives_list: ArchiveQuerySet, request: HttpRequest) -> str:
+def archives_to_json_response(archives_list: 'QuerySet[Archive]', request: HttpRequest) -> str:
     paginator = Paginator(archives_list, 48)
     try:
         page = int(request.GET.get("page", '1'))

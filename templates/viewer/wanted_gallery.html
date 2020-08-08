@@ -37,6 +37,10 @@
                       matches
                     </button>
                   </li>
+                  <li class="list-group-item">
+                    <button class="btn btn-light" name="tool" value="match-against-galleries">Match against galleries
+                    </button>
+                  </li>
                 </ul>
               </form>
             </div>
@@ -98,7 +102,9 @@
     </div>
     <ul class="list-group list-group-flush">
       <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Search title:</label>{{ wanted_gallery.search_title }}</li>
+      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Search title Regexp:</label>{{ wanted_gallery.regexp_search_title|yesno }}</li>
       <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Unwanted title:</label>{{ wanted_gallery.unwanted_title }}</li>
+      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Unwanted title Regexp:</label>{{ wanted_gallery.regexp_unwanted_title|yesno }}</li>
       <li class="list-group-item d-flex justify-content-between py-1">
       <div class="card w-100 text-white bg-secondary">
         <div class="card-header py-1">

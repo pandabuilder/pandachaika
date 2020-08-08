@@ -3,12 +3,14 @@
 
 import json
 import re
+from collections import defaultdict
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Union, Iterable
 
 from django.core.paginator import Paginator, EmptyPage
-from django.db.models import Q
+from django.db.models import Q, QuerySet
 from django.http import HttpResponse, HttpRequest
+from django.http.request import QueryDict
 from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
@@ -186,11 +188,11 @@ def json_search(request: HttpRequest) -> HttpResponse:
             return HttpResponse(response, content_type="application/json; charset=utf-8")
         # Get reduced number of fields from several archives by doing a simple filtering.
         elif 'q' in data:
-            args = data['q']
+            q_args = data['q']
             if not request.user.is_authenticated:
-                results = simple_archive_filter(args, public=True)
+                results = simple_archive_filter(q_args, public=True)
             else:
-                results = simple_archive_filter(args, public=False)
+                results = simple_archive_filter(q_args, public=False)
             response = json.dumps(
                 [{
                     'id': o.pk,
@@ -261,11 +263,11 @@ def json_search(request: HttpRequest) -> HttpResponse:
 
             # args = data
             if not request.user.is_authenticated:
-                args['public'] = True
+                args['public'] = True  # type: ignore
             else:
-                args['public'] = False
-            results = filter_galleries_no_request(args)
-            if not results:
+                args['public'] = False  # type: ignore
+            results_gallery = filter_galleries_no_request(args)
+            if not results_gallery:
                 return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
             response = json.dumps(
                 [{
@@ -281,7 +283,7 @@ def json_search(request: HttpRequest) -> HttpResponse:
                     'rating': float(str_to_int(gallery.rating)),
                     'fjord': gallery.fjord,
                     'tags': gallery.tag_list(),
-                } for gallery in results
+                } for gallery in results_gallery
                 ],
                 # indent=2,
                 sort_keys=True,
@@ -306,11 +308,11 @@ def json_search(request: HttpRequest) -> HttpResponse:
 
             # args = data
             if not request.user.is_authenticated:
-                args['public'] = True
+                args['public'] = True  # type: ignore
             else:
-                args['public'] = False
-            results = filter_galleries_no_request(args)
-            if not results:
+                args['public'] = False  # type: ignore
+            results_gallery = filter_galleries_no_request(args)
+            if not results_gallery:
                 return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
             response = json.dumps(
                 [{
@@ -329,7 +331,7 @@ def json_search(request: HttpRequest) -> HttpResponse:
                     'fjord': gallery.fjord,
                     'tags': gallery.tag_list(),
                     'link': gallery.get_link()
-                } for gallery in results
+                } for gallery in results_gallery
                 ],
                 # indent=2,
                 sort_keys=True,
@@ -357,14 +359,14 @@ def json_search(request: HttpRequest) -> HttpResponse:
 
             # args = data
             if not request.user.is_authenticated:
-                args['public'] = True
+                args['public'] = True  # type: ignore
             else:
-                args['public'] = False
-            results = filter_galleries_no_request(args)
-            if not results:
+                args['public'] = False  # type: ignore
+            results_gallery = filter_galleries_no_request(args)
+            if not results_gallery:
                 return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
             response = json.dumps(
-                gallery_search_results_to_json(request, results),
+                gallery_search_results_to_json(request, results_gallery),
                 # indent=2,
                 sort_keys=True,
                 ensure_ascii=False,
@@ -387,30 +389,30 @@ def json_search(request: HttpRequest) -> HttpResponse:
 
             # args = data
             if not request.user.is_authenticated:
-                args['public'] = True
+                args['public'] = True  # type: ignore
             else:
-                args['public'] = False
-            results = filter_galleries_no_request(args)
+                args['public'] = False  # type: ignore
+            results_gallery = filter_galleries_no_request(args)
 
-            paginator = Paginator(results, 48)
+            paginator = Paginator(results_gallery, 48)
             try:
                 page = int(args.get("page", '1'))
             except ValueError:
                 page = 1
             try:
-                results = paginator.page(page)
+                results_page = paginator.page(page)
             except EmptyPage:
                 # If page is out of range (e.g. 9999), deliver last page of results.
-                results = paginator.page(paginator.num_pages)
+                results_page = paginator.page(paginator.num_pages)
 
             response = json.dumps(
                 {
-                    'galleries': gallery_search_results_to_json(request, results),
-                    'has_previous': results.has_previous(),
-                    'has_next': results.has_next(),
+                    'galleries': gallery_search_results_to_json(request, results_page),
+                    'has_previous': results_page.has_previous(),
+                    'has_next': results_page.has_next(),
                     'num_pages': paginator.num_pages,
                     'count': paginator.count,
-                    'number': results.number,
+                    'number': results_page.number,
                 },
                 # indent=2,
                 sort_keys=True,
@@ -452,11 +454,14 @@ def json_search(request: HttpRequest) -> HttpResponse:
                         reverse('viewer:gallery-thumb', args=(gallery.pk,))) if gallery.thumbnail else '',
                     'thumbnail_url': gallery.thumbnail_url,
                     'archives': [
-                        request.build_absolute_uri(
-                            reverse('viewer:archive-download', args=(archive.pk,))
-                        ) for archive in gallery.archive_set.filter_by_authenticated_status(
-                            authenticated=request.user.is_authenticated
-                        )
+                        {
+                            'link': request.build_absolute_uri(
+                                reverse('viewer:archive-download', args=(archive.pk,))
+                            ),
+                            'source': archive.source_type,
+                            'reason': archive.reason
+                        } for archive in
+                        gallery.archive_set.filter_by_authenticated_status(authenticated=request.user.is_authenticated)
                     ],
                 },
                 # indent=2,
@@ -470,7 +475,7 @@ def json_search(request: HttpRequest) -> HttpResponse:
         return HttpResponse(json.dumps({'result': "Request must be GET"}), content_type="application/json; charset=utf-8")
 
 
-def gallery_search_results_to_json(request: HttpRequest, galleries: GalleryQuerySet) -> List[Dict[str, Any]]:
+def gallery_search_results_to_json(request: HttpRequest, galleries: Iterable[Gallery]) -> List[Dict[str, Any]]:
     return [{
         'id': gallery.pk,
         'gid': gallery.gid,
@@ -546,7 +551,9 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                                     for url_filtered in urls_filtered:
                                         gallery_gid = parser.id_from_url(url_filtered)
                                         if gallery_gid:
-                                            archive = Archive.objects.filter(gallery__gid=gallery_gid).first()
+                                            archive = Archive.objects.filter(
+                                                gallery__gid=gallery_gid, gallery__provider=parser.name
+                                            ).first()
                                     if urls_filtered:
                                         break
                             current_settings.workers.web_queue.enqueue_args_list((args['link'],), override_options=current_settings)
@@ -564,10 +571,12 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                                     for url_filtered in urls_filtered:
                                         gallery_gid = parser.id_from_url(url_filtered)
                                         if gallery_gid:
-                                            parent_archive = Archive.objects.filter(gallery__gid=gallery_gid).first()
+                                            parent_archive = Archive.objects.filter(
+                                                gallery__gid=gallery_gid, gallery__provider=parser.name
+                                            ).first()
                                     if urls_filtered:
                                         break
-                            if parent_archive:
+                            if parent_archive and parent_archive.gallery:
                                 link = parent_archive.gallery.get_link()
                                 if 'action' in args and args['action'] == 'replaceFound':
                                     parent_archive.gallery.mark_as_deleted()
@@ -592,7 +601,9 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                                         for url_filtered in urls_filtered:
                                             gallery_gid = parser.id_from_url(url_filtered)
                                             if gallery_gid:
-                                                archive = Archive.objects.filter(gallery__gid=gallery_gid).first()
+                                                archive = Archive.objects.filter(
+                                                    gallery__gid=gallery_gid, gallery__provider=parser.name
+                                                ).first()
                                         if urls_filtered:
                                             break
                                 if archive:
@@ -609,7 +620,9 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                                     for url_filtered in urls_filtered:
                                         gallery_gid = parser.id_from_url(url_filtered)
                                         if gallery_gid:
-                                            archive = Archive.objects.filter(gallery__gid=gallery_gid).first()
+                                            archive = Archive.objects.filter(
+                                                gallery__gid=gallery_gid, gallery__provider=parser.name
+                                            ).first()
                                     if urls_filtered:
                                         break
                             if archive:
@@ -622,11 +635,18 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                     return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
                 # Used by remotesite command
                 elif data['operation'] == 'archive_request':
-                    archives_query = Archive.objects.filter_non_existent(crawler_settings.MEDIA_ROOT, gallery__gid__in=args)
+                    provider_dict: Dict[str, List[str]] = defaultdict(list)
+                    for gid_provider in args:
+                        provider_dict[gid_provider[1]].append(gid_provider[0])
+                    gallery_ids = []
+                    for provider, gid_list in provider_dict.items():
+                        gallery_ids.append(Gallery.objects.filter(provider=provider, gid__in=gid_list).values_list('pk', flat=True))
+                    archives_query = Archive.objects.filter_non_existent(crawler_settings.MEDIA_ROOT, gallery__pk__in=gallery_ids)
                     archives = [{'gid': archive.gallery.gid,
+                                 'provider': archive.gallery.provider,
                                  'id': archive.id,
                                  'zipped': archive.zipped.name,
-                                 'filesize': archive.filesize} for archive in archives_query]
+                                 'filesize': archive.filesize} for archive in archives_query if archive.gallery]
                     response_text = json.dumps({'result': archives})
                     return HttpResponse(response_text, content_type="application/json; charset=utf-8")
                 # Used by remotesite command
@@ -684,15 +704,15 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                 # Used by remotesite command
                 elif data['operation'] == 'links':
                     links = args
-                    if len(links) > 0:
+                    if len(links) > 0 and crawler_settings.workers.web_queue:
                         crawler_settings.workers.web_queue.enqueue_args_list(links)
                     return HttpResponse(json.dumps({'result': str(len(links))}), content_type="application/json; charset=utf-8")
                 # Used by archive page
                 elif data['operation'] == 'match_archive':
-                    archive = Archive.objects.filter(pk=args['archive'])
-                    if archive:
+                    archive_obj = Archive.objects.filter(pk=args['archive'])
+                    if archive_obj:
                         generate_possible_matches_for_archives(
-                            archive,
+                            archive_obj,
                             filters=(args['match_filter'],),
                             match_local=False,
                             match_web=True,
@@ -789,7 +809,7 @@ def json_parser(request: HttpRequest) -> HttpResponse:
     return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
 
 
-def simple_archive_filter(args: str, public: bool = True) -> ArchiveQuerySet:
+def simple_archive_filter(args: str, public: bool = True) -> 'QuerySet[Archive]':
     """Simple filtering of archives.
     """
 
@@ -803,7 +823,7 @@ def simple_archive_filter(args: str, public: bool = True) -> ArchiveQuerySet:
 
     q_formatted = '%' + args.replace(' ', '%') + '%'
     results_title = results.filter(
-        Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted) | Q(original_filename__ss=q_formatted)
+        Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted)
     )
 
     tags = args.split(',')
@@ -866,7 +886,7 @@ def simple_archive_filter(args: str, public: bool = True) -> ArchiveQuerySet:
     return results
 
 
-def filter_galleries_no_request(filter_args: Dict[str, Any]) -> GalleryQuerySet:
+def filter_galleries_no_request(filter_args: Union[Dict[str, Any], QueryDict]) -> 'QuerySet[Gallery]':
 
     # sort and filter results by parameters
     order = "posted"
@@ -883,7 +903,7 @@ def filter_galleries_no_request(filter_args: Dict[str, Any]) -> GalleryQuerySet:
     if filter_args["title"]:
         q_formatted = '%' + filter_args["title"].replace(' ', '%') + '%'
         results = results.filter(
-            Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted) | Q(archive__original_filename__ss=q_formatted)
+            Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted)
         )
     if filter_args["rating_from"]:
         results = results.filter(rating__gte=float(filter_args["rating_from"]))

@@ -1,0 +1,142 @@
+{% extends "viewer/base.html" %}
+{% block title %}Tools | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+{% load static %}
+{% block extrahead %}
+  <style type="text/css" media="screen">
+    #js-editor-container {
+      max-height: 100%;
+      height: 600px;
+    }
+    #js-editor-area {
+      margin-top: 0;
+      margin-bottom: 0;
+      border-radius: 3px;
+      height: calc(100% - 56px);
+    }
+  .bg-spaced {
+    margin-bottom: .25rem;
+    margin-top: .25rem;
+  }
+  </style>
+{% endblock %}
+{% block content %}
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+  <!-- Tools  -->
+  <div class="page-line">
+  <h2>Settings</h2>
+  <div id="js-editor-container">
+    <div id="js-editor-area" class="editor"></div>
+      <button type="button" class="btn btn-light bg-spaced" data-action="save">Save</button>
+      <button type="button" class="btn btn-light bg-spaced" data-action="reread">Reread</button>
+      <button type="button" class="btn btn-light bg-spaced" data-action="reload">Reload</button>
+  </div>
+  </div>
+{% endblock %}
+
+{% block afterJQ %}
+  <script src="{% static 'js/vendor/ace/ace.js' %}" type="text/javascript" charset="utf-8"></script>
+<script>
+  const editorElement = document.querySelector("#js-editor-container #js-editor-area");
+  const editor = ace.edit(editorElement);
+  editor.setOptions({
+    highlightActiveLine: true,
+    showPrintMargin: true,
+    useSoftTabs: true,
+    tabSize: 2,
+    useWorker: false,
+    printMargin: false,
+    theme: 'ace/theme/dracula',
+    mode: 'ace/mode/ini'
+  });
+
+  editor.commands.addCommand({
+  name: 'saveCommand',
+  bindKey: { win: 'Ctrl-S', mac: 'Command-S' },
+  exec: function () {
+    saveSettings();
+  },
+  readOnly: false
+});
+
+  function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            // Does this cookie string begin with the name we want?
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+  }
+  const csrftoken = getCookie('csrftoken');
+
+const saveSettings = () => {
+  fetch('../../tools-api/settings/', {
+    credentials: "same-origin",
+    method: "POST",
+    headers: {
+      'X-CSRFToken': csrftoken,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({data: editor.getValue()})
+  })
+    .then((response) => {
+      response.json();
+    })
+    .then(() => {
+        saveButton.classList.remove("disabled");
+    })
+    .catch((error) => {
+        saveButton.classList.remove("disabled");
+    })
+}
+
+const rereadSettings = () => {
+  editor.setOption('readOnly', true);
+  fetch('../../tools-api/settings/', { credentials: "same-origin" })
+    .then(res => res.json()).then(response => {
+      editor.setValue(response.data, -1);
+      editor.setOption('readOnly', false);
+    });
+  editor.focus();
+}
+
+const reloadSettings = () => {
+  editor.setOption('readOnly', true);
+  fetch('../../tools-api/reload_settings/', { credentials: "same-origin" })
+    .then(res => res.json()).then(response => {
+    });
+}
+
+const saveButton = document.querySelector("#js-editor-container [data-action='save']");
+const rereadButton = document.querySelector("#js-editor-container [data-action='reread']");
+const reloadButton = document.querySelector("#js-editor-container [data-action='reload']");
+
+saveButton.addEventListener("click", (e) => {
+  saveButton.classList.add("disabled");
+  saveSettings();
+
+});
+
+rereadButton.addEventListener("click", (e) => {
+  rereadSettings();
+});
+
+reloadButton.addEventListener("click", (e) => {
+  reloadSettings();
+});
+
+rereadSettings();
+
+</script>
+{% endblock afterJQ %}

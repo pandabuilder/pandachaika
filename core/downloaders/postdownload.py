@@ -57,7 +57,7 @@ class PostDownloader(object):
             except (BadZipFile, NotImplementedError):
                 except_at_open = True
             if except_at_open or return_error:
-                if 'panda' in archive.source_type:
+                if archive.source_type and 'panda' in archive.source_type:
                     logger.error(
                         "For archive: {}, file check on downloaded zipfile failed on file: {}, "
                         "forcing download as panda_archive to fix it.".format(archive, archive.zipped.path)
@@ -87,14 +87,14 @@ class PostDownloader(object):
                       }
             updated_archive = Archive.objects.add_or_update_from_values(
                 values, pk=archive.pk)
-            if archive.gallery and updated_archive.filesize != updated_archive.gallery.filesize:
+            if updated_archive.gallery and updated_archive.filesize != updated_archive.gallery.filesize:
                 if Archive.objects.filter(gallery=updated_archive.gallery, filesize=updated_archive.gallery.filesize):
                     logger.info(
                         "For archive: {} size does not match gallery, "
                         "but there's already another archive that matches.".format(updated_archive)
                     )
                     return
-                if 'panda' in archive.source_type:
+                if archive.source_type and 'panda' in archive.source_type:
                     logger.info(
                         "For archive: {} size does not match gallery, "
                         "downloading again from panda_archive.".format(updated_archive)
@@ -175,10 +175,11 @@ class PostDownloader(object):
             return
 
         for archive in found_archives:
-            if 'torrent' in archive.match_type:
-                files_torrent.append(archive)
-            elif 'hath' in archive.match_type:
-                files_hath.append(archive)
+            if archive.match_type:
+                if 'torrent' in archive.match_type:
+                    files_torrent.append(archive)
+                elif 'hath' in archive.match_type:
+                    files_hath.append(archive)
 
         if len(files_torrent) + len(files_hath) == 0:
             return
@@ -203,7 +204,7 @@ class PostDownloader(object):
                 m = re.search(r'.*?\[(\d+)\]$', line[0])
                 if m:
                     for archive in files_hath:
-                        if m.group(1) == archive.gallery.gid:
+                        if archive.gallery and archive.filesize and m.group(1) == archive.gallery.gid:
                             files_matched_hath.append(
                                 (line[0], archive.zipped.path, int(archive.filesize), archive))
 
@@ -374,7 +375,7 @@ class PostDownloader(object):
             return
 
         for archive in found_archives:
-            if not os.path.isfile(archive.zipped.path):
+            if not os.path.isfile(archive.zipped.path) and archive.match_type:
                 if 'torrent' in archive.match_type:
                     files_torrent.append(archive)
                 elif 'hath' in archive.match_type:
@@ -392,7 +393,7 @@ class PostDownloader(object):
                 m = re.search(r'.*?\[(\d+)\]$', matched_file)
                 if m:
                     for archive in files_hath:
-                        if m.group(1) == archive.gallery.gid:
+                        if archive.gallery and archive.filesize and m.group(1) == archive.gallery.gid:
                             files_matched_hath.append(
                                 [matched_file, archive.zipped.path, int(archive.filesize), archive])
 

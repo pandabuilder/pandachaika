@@ -2,7 +2,7 @@ import copy
 import logging
 import os
 import typing
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from core.base.utilities import GeneralUtils, replace_illegal_name, get_base_filename_string_from_gallery_data
 from core.base.types import GalleryData, TorrentClient, DataDict
@@ -65,10 +65,11 @@ class BaseDownloader(metaclass=Meta):
         self.gallery_db_entry = self.settings.gallery_model.objects.update_or_create_from_values(self.original_gallery)
         if self.gallery_db_entry:
             for archive in self.gallery_db_entry.archive_set.all():
-                archive.title = archive.gallery.title
-                archive.title_jpn = archive.gallery.title_jpn
-                archive.simple_save()
-                archive.tags.set(archive.gallery.tags.all())
+                if archive.gallery:
+                    archive.title = archive.gallery.title
+                    archive.title_jpn = archive.gallery.title_jpn
+                    archive.simple_save()
+                    archive.tags.set(archive.gallery.tags.all())
 
     def init_download(self, gallery: GalleryData) -> None:
 
@@ -86,7 +87,7 @@ class BaseDownloader(metaclass=Meta):
 
         if self.fileDownloaded == 1:
 
-            default_values = {
+            default_values: Dict[str, Any] = {
                 'match_type': self.type,
                 'source_type': self.provider
             }
@@ -150,7 +151,7 @@ class BaseFakeDownloader(BaseDownloader):
         default_values.update(values)
         return self.settings.archive_model.objects.create_by_values_and_gid(
             default_values,
-            self.gallery.gid,
+            (self.gallery.gid, self.gallery.provider),
         )
 
 

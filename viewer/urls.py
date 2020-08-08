@@ -1,7 +1,7 @@
 from django.conf.urls import url
 from django.urls import path
 
-from viewer.views import head, browser, wanted, exp, api, archive, admin, manager, collaborators, groups
+from viewer.views import head, browser, wanted, exp, api, archive, admin, manager, collaborators, groups, admin_api
 from viewer.feeds import LatestArchivesFeed
 from viewer.views.elasticsearch import ESHomePageView, autocomplete_view, title_suggest_view
 
@@ -84,6 +84,8 @@ urlpatterns += [
     url(r"^web-queue/([\w-]+)/([\w-]+)$", admin.queue_operations, name='queue-operations'),
     url(r"^web-crawler/$", admin.crawler, name='crawler'),
     url(r"^folder-crawler/$", admin.foldercrawler, name='folder-crawler'),
+    url(r"^tools-api/([\w-]+)/$", admin_api.tools, name='tools-api'),
+    url(r"^tools-api/([\w-]+)/([\w-]+)/$", admin_api.tools, name='tools-api-id-arg'),
 ]
 
 # Collaborators.

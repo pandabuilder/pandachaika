@@ -157,17 +157,17 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
     results = filter_galleries_simple(params)
 
     if 'denied' in get:
-        results = results.submitted_galleries().prefetch_related('foundgallery_set')
+        results = results.submitted_galleries().prefetch_related('foundgallery_set')  # type: ignore
     else:
-        results = results.submitted_galleries(~Q(status=Gallery.DENIED)).prefetch_related('foundgallery_set')
+        results = results.submitted_galleries(~Q(status=Gallery.DENIED)).prefetch_related('foundgallery_set')  # type: ignore
 
     paginator = Paginator(results, 50)
     try:
-        results = paginator.page(page)
+        results_page = paginator.page(page)
     except (InvalidPage, EmptyPage):
-        results = paginator.page(paginator.num_pages)
+        results_page = paginator.page(paginator.num_pages)
 
-    d = {'results': results, 'providers': providers, 'form': form}
+    d = {'results': results_page, 'providers': providers, 'form': form}
     return render(request, "viewer/collaborators/submit_queue.html", d)
 
 
@@ -247,8 +247,9 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                 logger.info("User {}: {}".format(request.user.username, message))
                 messages.success(request, message)
                 gallery = archive.gallery
-                archive.gallery.mark_as_deleted()
-                archive.gallery = None
+                if archive.gallery:
+                    archive.gallery.mark_as_deleted()
+                    archive.gallery = None
                 archive.delete_all_files()
                 archive.delete()
                 event_log(
@@ -261,7 +262,7 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
         elif 'update_metadata' in p and request.user.has_perm('viewer.update_metadata'):
             for archive in archives:
 
-                if not archive.gallery_id:
+                if not archive.gallery:
                     continue
 
                 gallery = archive.gallery
@@ -350,12 +351,12 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
 
     paginator = Paginator(results, 100)
     try:
-        results = paginator.page(page)
+        results_page = paginator.page(page)
     except (InvalidPage, EmptyPage):
-        results = paginator.page(paginator.num_pages)
+        results_page = paginator.page(paginator.num_pages)
 
     d = {
-        'results': results,
+        'results': results_page,
         'form': form
     }
 
@@ -379,12 +380,12 @@ def my_event_log(request: HttpRequest) -> HttpResponse:
 
     paginator = Paginator(results, 100)
     try:
-        results = paginator.page(page)
+        results_page = paginator.page(page)
     except (InvalidPage, EmptyPage):
-        results = paginator.page(paginator.num_pages)
+        results_page = paginator.page(paginator.num_pages)
 
     d = {
-        'results': results,
+        'results': results_page,
     }
     return render(request, "viewer/collaborators/event_log.html", d)
 
@@ -402,12 +403,12 @@ def users_event_log(request: HttpRequest) -> HttpResponse:
 
     paginator = Paginator(results, 100)
     try:
-        results = paginator.page(page)
+        results_page = paginator.page(page)
     except (InvalidPage, EmptyPage):
-        results = paginator.page(paginator.num_pages)
+        results_page = paginator.page(paginator.num_pages)
 
     d = {
-        'results': results,
+        'results': results_page,
     }
     return render(request, "viewer/collaborators/user_event_log.html", d)
 
@@ -517,7 +518,7 @@ def user_crawler(request: HttpRequest) -> HttpResponse:
                 found_valid_urls.extend(urls_filtered)
                 for url_filtered in urls_filtered:
                     gid = parser.id_from_url(url_filtered)
-                    gallery = Gallery.objects.filter(gid=gid).first()
+                    gallery = Gallery.objects.filter(gid=gid, provider=parser.name).first()
                     if not gallery:
                         messages.success(
                             request,
@@ -709,12 +710,12 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
 
     paginator = Paginator(results, 50)
     try:
-        results = paginator.page(page)
+        results_page = paginator.page(page)
     except (InvalidPage, EmptyPage):
-        results = paginator.page(paginator.num_pages)
+        results_page = paginator.page(paginator.num_pages)
 
     d = {
-        'results': results,
+        'results': results_page,
         'providers': Gallery.objects.all().values_list('provider', flat=True).distinct(),
         'form': form
     }
@@ -728,24 +729,28 @@ def archive_update(request: HttpRequest, pk: int, tool: str = None, tool_use_id:
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
 
-    if tool == 'select-as-match' and request.user.has_perm('viewer.match_archive'):
-        archive.select_as_match(tool_use_id)
-        if archive.gallery:
-            logger.info("User: {}: Archive {} ({}) was matched with gallery {} ({}).".format(
-                request.user.username,
-                archive,
-                reverse('viewer:archive', args=(archive.pk,)),
-                archive.gallery,
-                reverse('viewer:gallery', args=(archive.gallery.pk,)),
-            ))
-            event_log(
-                request.user,
-                'MATCH_ARCHIVE',
-                # reason=user_reason,
-                data=reverse('viewer:gallery', args=(archive.gallery.pk,)),
-                content_object=archive,
-                result='matched'
-            )
+    if tool == 'select-as-match' and tool_use_id and request.user.has_perm('viewer.match_archive'):
+        try:
+            gallery_id = int(tool_use_id)
+            archive.select_as_match(gallery_id)
+            if archive.gallery:
+                logger.info("User: {}: Archive {} ({}) was matched with gallery {} ({}).".format(
+                    request.user.username,
+                    archive,
+                    reverse('viewer:archive', args=(archive.pk,)),
+                    archive.gallery,
+                    reverse('viewer:gallery', args=(archive.gallery.pk,)),
+                ))
+                event_log(
+                    request.user,
+                    'MATCH_ARCHIVE',
+                    # reason=user_reason,
+                    data=reverse('viewer:gallery', args=(archive.gallery.pk,)),
+                    content_object=archive,
+                    result='matched'
+                )
+        except ValueError:
+            return HttpResponseRedirect(request.META["HTTP_REFERER"])
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
     elif tool == 'clear-possible-matches' and request.user.has_perm('viewer.match_archive'):
         archive.possible_matches.clear()
@@ -829,11 +834,11 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
 
     paginator = Paginator(results, 100)
     try:
-        results = paginator.page(page)
+        results_page = paginator.page(page)
     except (InvalidPage, EmptyPage):
-        results = paginator.page(paginator.num_pages)
+        results_page = paginator.page(paginator.num_pages)
 
-    d = {'results': results, 'form': form, 'edit_form': edit_form}
+    d = {'results': results_page, 'form': form, 'edit_form': edit_form}
     return render(request, "viewer/collaborators/wanted_galleries.html", d)
 
 
@@ -909,7 +914,7 @@ def upload_archive(request: HttpRequest) -> HttpResponse:
             try:
                 gallery_id = int(request.GET['gallery'])
                 try:
-                    gallery = Gallery.objects.get(pk=gallery_id)
+                    gallery: Optional[Gallery] = Gallery.objects.get(pk=gallery_id)
                 except Gallery.DoesNotExist:
                     gallery = None
             except ValueError:
@@ -917,7 +922,12 @@ def upload_archive(request: HttpRequest) -> HttpResponse:
         else:
             gallery = None
 
-        edit_form = ArchiveCreateForm(initial={'gallery': gallery})
+        if gallery:
+            edit_form = ArchiveCreateForm(
+                initial={'gallery': gallery, 'reason': gallery.reason, 'source_type': gallery.provider}
+            )
+        else:
+            edit_form = ArchiveCreateForm()
 
     d = {
         'edit_form': edit_form

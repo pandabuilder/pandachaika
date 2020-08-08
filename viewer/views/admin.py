@@ -70,11 +70,7 @@ def stats_workers(request: HttpRequest) -> HttpResponse:
         "thread_status": get_thread_status(),
         "web_queue": crawler_settings.workers.web_queue,
         "post_downloader": crawler_settings.workers.timed_downloader,
-        "schedulers": get_schedulers_status([
-            crawler_settings.workers.timed_downloader,
-            crawler_settings.workers.timed_auto_wanted,
-            crawler_settings.workers.timed_updater
-        ] + crawler_settings.workers.timed_auto_crawlers)
+        "schedulers": get_schedulers_status(crawler_settings.workers.get_active_initialized_workers())
     }
 
     d = {'stats': stats_dict}
@@ -105,7 +101,7 @@ def stats_collection(request: HttpRequest) -> HttpResponse:
         "expunged_galleries": Gallery.objects.filter(expunged=True).count(),
         "n_tags": Tag.objects.count(),
         "n_tag_scopes": Tag.objects.values('scope').distinct().count(),
-        "n_custom_tags": Tag.objects.are_custom().count(),
+        "n_custom_tags": Tag.objects.are_custom().count(),  # type: ignore
         "top_10_tags": Tag.objects.annotate(num_archive=Count('gallery_tags')).order_by('-num_archive')[:10],
         "top_10_parody_tags": Tag.objects.filter(scope='parody').annotate(
             num_archive=Count('gallery_tags')).order_by('-num_archive')[:10],
@@ -138,12 +134,12 @@ def stats_collection(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
-def queue_operations(request: HttpRequest, operation: str, arguments: str = ''):
+def queue_operations(request: HttpRequest, operation: str, arguments: str = '') -> HttpResponseRedirect:
 
     if not request.user.is_staff:
         return render_error(request, "You need to be an admin to operate the queue.")
     if operation == "remove_by_index":
-        if arguments:
+        if arguments and crawler_settings.workers.web_queue:
             crawler_settings.workers.web_queue.remove_by_index(int(arguments))
         else:
             return render_error(request, "Unknown argument.")
@@ -172,7 +168,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
         if p and 'newer_than' in p:
             newer_than_date = p['newer_than']
             try:
-                if parse_date(newer_than_date) is not None:
+                if parse_date(newer_than_date) is not None and crawler_settings.workers.web_queue:
                     crawler_settings.workers.web_queue.enqueue_args_list(('-unt', newer_than_date))
                     messages.success(
                         request,
@@ -193,7 +189,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
             return HttpResponseRedirect(request.META["HTTP_REFERER"])
     elif tool == "update_missing_thumbnails":
         p = request.GET
-        if p and 'limit_number' in p:
+        if p and 'limit_number' in p and crawler_settings.workers.web_queue:
 
             try:
                 limit_number = int(p['limit_number'])
@@ -220,15 +216,15 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
                 )
             return HttpResponseRedirect(request.META["HTTP_REFERER"])
     elif tool == "generate_missing_thumbs":
-        archives = Archive.objects.filter(thumbnail='')
-        for archive in archives:
+        archives_no_thumbnail = Archive.objects.filter(thumbnail='')
+        for archive in archives_no_thumbnail:
             logger.info(
                 'Generating thumbs for file: {}'.format(archive.zipped.name))
             archive.generate_thumbnails()
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
     elif tool == "calculate_missing_info":
-        archives = Archive.objects.filter_by_missing_file_info()
-        for archive in archives:
+        archives_missing_info = Archive.objects.filter_by_missing_file_info()
+        for archive in archives_missing_info:
             logger.info(
                 'Calculating file info for file: {}'.format(archive.zipped.name))
             archive.recalc_fileinfo()
@@ -258,8 +254,9 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
             if os.path.isfile(archive.zipped.path):
                 archive.public = True
                 archive.save()
-                archive.gallery.public = True
-                archive.gallery.save()
+                if archive.gallery:
+                    archive.gallery.public = True
+                    archive.gallery.save()
 
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
     elif tool == "regenerate_all_thumbs":
@@ -420,6 +417,8 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
                         # not a BOM, rewind
                         f.seek(0)
                     settings_text = f.read()
+    elif tool == "modify_settings_editor":
+        return render(request, "viewer/settings.html")
     elif tool == "reload_settings":
         if not request.user.is_staff:
             return render_error(request, "You need to be an admin to reload the config.")
@@ -431,15 +430,18 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
             'Reloaded settings file for Panda Backup')
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
     elif tool == "start_timed_dl":
-        crawler_settings.workers.timed_downloader.start_running(timer=crawler_settings.timed_downloader_cycle_timer)
+        if crawler_settings.workers.timed_downloader:
+            crawler_settings.workers.timed_downloader.start_running(timer=crawler_settings.timed_downloader_cycle_timer)
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
     elif tool == "stop_timed_dl":
-        crawler_settings.workers.timed_downloader.stop_running()
+        if crawler_settings.workers.timed_downloader:
+            crawler_settings.workers.timed_downloader.stop_running()
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
     elif tool == "force_run_timed_dl":
-        crawler_settings.workers.timed_downloader.stop_running()
-        crawler_settings.workers.timed_downloader.force_run_once = True
-        crawler_settings.workers.timed_downloader.start_running(timer=crawler_settings.timed_downloader_cycle_timer)
+        if crawler_settings.workers.timed_downloader:
+            crawler_settings.workers.timed_downloader.stop_running()
+            crawler_settings.workers.timed_downloader.force_run_once = True
+            crawler_settings.workers.timed_downloader.start_running(timer=crawler_settings.timed_downloader_cycle_timer)
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
     elif tool == "start_timed_crawler":
         if tool_arg:
@@ -484,29 +486,36 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
                 )
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
     elif tool == "start_timed_updater":
-        crawler_settings.workers.timed_updater.start_running(timer=crawler_settings.autoupdater.cycle_timer)
+        if crawler_settings.workers.timed_updater:
+            crawler_settings.workers.timed_updater.start_running(timer=crawler_settings.autoupdater.cycle_timer)
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
     elif tool == "stop_timed_updater":
-        crawler_settings.workers.timed_updater.stop_running()
+        if crawler_settings.workers.timed_updater:
+            crawler_settings.workers.timed_updater.stop_running()
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
     elif tool == "force_run_timed_updater":
-        crawler_settings.workers.timed_updater.stop_running()
-        crawler_settings.workers.timed_updater.force_run_once = True
-        crawler_settings.workers.timed_updater.start_running(timer=crawler_settings.autoupdater.cycle_timer)
+        if crawler_settings.workers.timed_updater:
+            crawler_settings.workers.timed_updater.stop_running()
+            crawler_settings.workers.timed_updater.force_run_once = True
+            crawler_settings.workers.timed_updater.start_running(timer=crawler_settings.autoupdater.cycle_timer)
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
     elif tool == "start_timed_auto_wanted":
-        crawler_settings.workers.timed_auto_wanted.start_running(timer=crawler_settings.auto_wanted.cycle_timer)
+        if crawler_settings.workers.timed_auto_wanted:
+            crawler_settings.workers.timed_auto_wanted.start_running(timer=crawler_settings.auto_wanted.cycle_timer)
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
     elif tool == "stop_timed_auto_wanted":
-        crawler_settings.workers.timed_auto_wanted.stop_running()
+        if crawler_settings.workers.timed_auto_wanted:
+            crawler_settings.workers.timed_auto_wanted.stop_running()
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
     elif tool == "force_run_timed_auto_wanted":
-        crawler_settings.workers.timed_auto_wanted.stop_running()
-        crawler_settings.workers.timed_auto_wanted.force_run_once = True
-        crawler_settings.workers.timed_auto_wanted.start_running(timer=crawler_settings.auto_wanted.cycle_timer)
+        if crawler_settings.workers.timed_auto_wanted:
+            crawler_settings.workers.timed_auto_wanted.stop_running()
+            crawler_settings.workers.timed_auto_wanted.force_run_once = True
+            crawler_settings.workers.timed_auto_wanted.start_running(timer=crawler_settings.auto_wanted.cycle_timer)
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
     elif tool == "start_web_queue":
-        crawler_settings.workers.web_queue.start_running()
+        if crawler_settings.workers.web_queue:
+            crawler_settings.workers.web_queue.start_running()
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
 
     threads_status = get_thread_status_bool()
@@ -571,11 +580,11 @@ def logs(request: HttpRequest, tool: str = "all") -> HttpResponse:
         page = 1
 
     try:
-        log_lines = paginator.page(page)
+        log_lines_paginated = paginator.page(page)
     except (InvalidPage, EmptyPage):
-        log_lines = paginator.page(paginator.num_pages)
+        log_lines_paginated = paginator.page(paginator.num_pages)
 
-    d = {'log_lines': log_lines}
+    d = {'log_lines': log_lines_paginated}
     return render(request, "viewer/logs.html", d)
 
 
@@ -626,7 +635,8 @@ def crawler(request: HttpRequest) -> HttpResponse:
             crawler_thread = CrawlerThread(current_settings, urls)
             crawler_thread.start()
         else:
-            current_settings.workers.web_queue.enqueue_args_list(urls, override_options=current_settings)
+            if current_settings.workers.web_queue:
+                current_settings.workers.web_queue.enqueue_args_list(urls, override_options=current_settings)
         messages.success(request, 'Starting Crawler, check the logs for a report.')
         # Not really optimal when there's many commands being queued
         # for command in url_list:
@@ -647,7 +657,7 @@ def foldercrawler(request: HttpRequest) -> HttpResponse:
     if not request.user.is_staff:
         return render_error(request, "You need to be an admin to use the tools.")
 
-    d = {'media_root': os.path.realpath(crawler_settings.MEDIA_ROOT)}
+    d: typing.Dict[str, typing.Any] = {'media_root': os.path.realpath(crawler_settings.MEDIA_ROOT)}
 
     p = request.POST
 

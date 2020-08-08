@@ -137,7 +137,7 @@ class HashMatcher(Matcher):
                             gid=gallery['gallery_container'], provider=gallery['provider']
                         )
                         if gallery_container:
-                            gallery['gallery_container_id'] = gallery_container.first().gid
+                            gallery['gallery_container_gid'] = gallery_container.first().gid
                 if 'posted' in gallery:
                     if gallery['posted'] != 0:
                         gallery['posted'] = datetime.fromtimestamp(int(gallery['posted']), timezone.utc)

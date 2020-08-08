@@ -86,31 +86,31 @@ class ProviderContext:
         provider_name = module_name.split(".")[-1]
         for member in _get_provider_submodule_api(module_name, "parsers"):
             if member not in self.parsers and issubclass(member, BaseParser):
-                logger.debug("For provider: {}, registering parser: {}".format(provider_name, member))
+                # logger.debug("For provider: {}, registering parser: {}".format(provider_name, member))
                 self.register_parser(member)
         for member in _get_provider_submodule_api(module_name, "matchers"):
             if member not in self.matchers and issubclass(member, Matcher):
-                logger.debug("For provider: {}, registering matcher: {}".format(provider_name, member))
+                # logger.debug("For provider: {}, registering matcher: {}".format(provider_name, member))
                 self.register_matcher(member)
         for member in _get_provider_submodule_api(module_name, "downloaders"):
             if member not in self.downloaders and issubclass(member, BaseDownloader):
-                logger.debug("For provider: {}, registering downloader: {}".format(provider_name, member))
+                # logger.debug("For provider: {}, registering downloader: {}".format(provider_name, member))
                 self.register_downloader(member)
         resolver = _get_provider_submodule_method(module_name, "utilities", "resolve_url")
         if resolver and (provider_name, resolver) not in self.resolvers:
-            logger.debug("For provider: {}, registering resolver".format(provider_name))
+            # logger.debug("For provider: {}, registering resolver".format(provider_name))
             self.register_resolver(provider_name, resolver)
         settings_parser = _get_provider_submodule_method(module_name, "settings", "parse_config")
         if settings_parser and (provider_name, settings_parser) not in self.settings_parsers:
-            logger.debug("For provider: {}, registering settings parser".format(provider_name))
+            # logger.debug("For provider: {}, registering settings parser".format(provider_name))
             self.register_settings_parser(provider_name, settings_parser)
         wanted_generator = _get_provider_submodule_method(module_name, "wanted", "wanted_generator")
         if wanted_generator and (provider_name, wanted_generator) not in self.wanted_generators:
-            logger.debug("For provider: {}, registering wanted generator".format(provider_name))
+            # logger.debug("For provider: {}, registering wanted generator".format(provider_name))
             self.register_wanted_generator(provider_name, wanted_generator)
         constants_module = _get_provider_submodule(module_name, "constants")
         if constants_module and (provider_name, constants_module) not in self.constants:
-            logger.debug("For provider: {}, registering constants".format(provider_name))
+            # logger.debug("For provider: {}, registering constants".format(provider_name))
             self.register_constants(provider_name, constants_module)
 
     def register_parser(self, obj: Type['BaseParser']) -> None:
@@ -343,7 +343,7 @@ class ProviderContext:
         for module_tuple in self.constants:
             module_name = module_tuple[0]
             if filter_name:
-                if module_name is filter_name:
+                if module_name == filter_name:
                     constants_list.append(module_tuple[1])
             else:
                 constants_list.append(module_tuple[1])
