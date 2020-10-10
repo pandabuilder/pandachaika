@@ -164,6 +164,20 @@
         </ul>
       </div>
       </li>
+      <li class="list-group-item d-flex justify-content-between py-1">
+      <div class="card w-100 text-white bg-secondary">
+        <div class="card-header py-1">
+          Unwanted providers
+        </div>
+        <ul class="list-group">
+          {% for unwanted_provider in wanted_gallery.unwanted_providers.all %}
+            <li class="list-group-item py-1">
+              {{ unwanted_provider.slug }}
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+      </li>
       <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Release date:</label>{{ wanted_gallery.release_date|date }}</li>
       <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Should search:</label>{{ wanted_gallery.should_search|yesno }}</li>
       <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Keep searching:</label>{{ wanted_gallery.keep_searching|yesno }}</li>

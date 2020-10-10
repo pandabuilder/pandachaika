@@ -3,7 +3,7 @@ import threading
 import logging
 
 import os
-from typing import List, Union, Callable, Optional
+from typing import List, Union, Callable, Optional, NoReturn
 
 import requests
 from django.db.models import QuerySet, Q
@@ -22,7 +22,7 @@ class ArgumentParserError(Exception):
 
 class YieldingArgumentParser(argparse.ArgumentParser):
 
-    def error(self, message: str) -> None:  # type: ignore
+    def error(self, message: str) -> NoReturn:
         raise ArgumentParserError(message)
 
 
@@ -284,10 +284,10 @@ class WebCrawler(object):
         to_use_urls = set(args.url)
 
         if args.update_mode or current_settings.update_metadata_mode:
-            wanted_filters: QuerySet = QuerySet()
+            wanted_filters: Optional[QuerySet] = None
             current_settings.update_metadata_mode = True
         elif args.no_wanted_check:
-            wanted_filters = QuerySet()
+            wanted_filters = None
         else:
             wanted_filters = WantedGallery.objects.eligible_to_search()
         if args.wanted_only and not wanted_filters:
@@ -384,7 +384,7 @@ class WebCrawler(object):
         to_use_urls = set(arg_line)
 
         if current_settings.update_metadata_mode:
-            wanted_filters: QuerySet = QuerySet()
+            wanted_filters: Optional[QuerySet] = None
             current_settings.update_metadata_mode = True
         else:
             wanted_filters = WantedGallery.objects.eligible_to_search()

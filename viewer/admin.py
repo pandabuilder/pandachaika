@@ -25,6 +25,8 @@ from django.contrib import admin
 from django.contrib.admin.helpers import ActionForm
 from django import forms
 
+from viewer.utils.types import AuthenticatedHttpRequest
+
 
 class UpdateActionForm(ActionForm):
     extra_field = forms.CharField(required=False)
@@ -77,7 +79,7 @@ class ArchiveAdmin(admin.ModelAdmin):
         else:
             return None
 
-    def save_model(self, request: HttpRequest, obj: Archive, form: ModelForm, change: bool) -> None:
+    def save_model(self, request: AuthenticatedHttpRequest, obj: Archive, form: ModelForm, change: bool) -> None:
         if not obj.user:
             obj.user = request.user
         obj.save()
@@ -206,12 +208,12 @@ class WantedGalleryAdmin(admin.ModelAdmin):
     search_fields = ["title", "title_jpn"]
     list_display = ["id", "title", "title_jpn", "search_title", "release_date", "book_type",
                     "publisher", "should_search", "keep_searching", "found", "date_found"]
-    raw_id_fields = ("mentions", "wanted_tags", "unwanted_tags",)
+    raw_id_fields = ("mentions", "wanted_tags", "unwanted_tags", "artists", "cover_artist")
     list_filter = ["book_type", "publisher", "should_search", "keep_searching", "found", "reason", "public"]
     actions = ['make_public', 'mark_should_search', 'mark_not_should_search',
                'mark_keep_search', 'mark_not_keep_search',
                'mark_found', 'mark_not_found',
-               'search_title_from_title', 'set_reason']
+               'search_title_from_title', 'set_reason', 'add_unwanted_provider']
 
     action_form = UpdateActionForm
 
@@ -298,6 +300,23 @@ class WantedGalleryAdmin(admin.ModelAdmin):
             message_bit = "%s wanted galleries were" % rows_updated
         self.message_user(request, "%s successfully set as reason: %s." % (message_bit, source_type))
     set_reason.short_description = "Set reason of selected wanted galleries"  # type: ignore
+
+    def add_unwanted_provider(self, request: HttpRequest, queryset: QuerySet) -> None:
+        unwanted_provider_slug = request.POST['extra_field']
+        provider = Provider.objects.filter(slug=unwanted_provider_slug).first()
+        rows_updated = 0
+        if provider:
+            missing_provider = queryset.exclude(unwanted_providers=provider)
+            for wanted_gallery in missing_provider:
+                wanted_gallery.unwanted_providers.add(provider)
+            rows_updated = missing_provider.count()
+
+        if rows_updated == 1:
+            message_bit = "1 wanted gallery was"
+        else:
+            message_bit = "%s wanted galleries were" % rows_updated
+        self.message_user(request, "%s successfully added unwanted provider: %s." % (message_bit, unwanted_provider_slug))
+    add_unwanted_provider.short_description = "Add unwanted provider by slug name"  # type: ignore
 
 
 class GalleryMatchAdmin(admin.ModelAdmin):

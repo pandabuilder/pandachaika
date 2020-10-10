@@ -35,6 +35,9 @@ def parse_config(global_settings: 'Settings', config: typing.Dict[str, typing.An
 
     settings = OwnSettings(global_settings, config)
 
+    settings.torrent_dl_folder = global_settings.torrent_dl_folder
+    settings.archive_dl_folder = global_settings.archive_dl_folder
+
     if 'general' in config:
         if 'stop_page_number' in config['general']:
             settings.stop_page_number = int(config['general']['stop_page_number'])
@@ -45,14 +48,10 @@ def parse_config(global_settings: 'Settings', config: typing.Dict[str, typing.An
             settings.archive_dl_folder = config['locations']['archive_dl_folder']
             if not os.path.exists(os.path.join(global_settings.MEDIA_ROOT, settings.archive_dl_folder)):
                 os.makedirs(os.path.join(global_settings.MEDIA_ROOT, settings.archive_dl_folder))
-        else:
-            settings.archive_dl_folder = global_settings.archive_dl_folder
         if 'torrent_dl_folder' in config['locations']:
             settings.torrent_dl_folder = config['locations']['torrent_dl_folder']
             if not os.path.exists(os.path.join(global_settings.MEDIA_ROOT, settings.torrent_dl_folder)):
                 os.makedirs(os.path.join(global_settings.MEDIA_ROOT, settings.torrent_dl_folder))
-        else:
-            settings.torrent_dl_folder = global_settings.torrent_dl_folder
         if 'hath_dl_folder' in config['locations']:
             settings.hath_dl_folder = config['locations']['hath_dl_folder']
             if not os.path.exists(os.path.join(global_settings.MEDIA_ROOT, settings.hath_dl_folder)):

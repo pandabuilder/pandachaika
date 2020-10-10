@@ -26,7 +26,7 @@
               <li>
                 <select title="image-number" class="step-links-inner form-control">
                   {% for p in images_range %}
-                    <option{% ifequal p image.number %} selected="selected"{% endifequal %}>{{p}}</option>
+                    <option{% if p == image.number %} selected="selected"{% endif %}>{{p}}</option>
                   {% endfor %}
                 </select>
                 <span>of {{ image.paginator.num_pages }}</span>
@@ -61,7 +61,7 @@
           <li>
             <select title="image-number" class="step-links-inner form-control">
               {% for p in images_range %}
-                <option{% ifequal p image.number %} selected="selected"{% endifequal %}>{{p}}</option>
+                <option{% if p == image.number %} selected="selected"{% endif %}>{{p}}</option>
               {% endfor %}
             </select>
             <span>of {{ image.paginator.num_pages }}</span>

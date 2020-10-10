@@ -84,7 +84,7 @@
                       </a>
                     </li>
                     {% for p in display_prms.page_range %}
-                      <li class="page-item{% ifequal p results.number %} active{% endifequal %}">
+                      <li class="page-item{% if p == results.number %} active{% endif %}">
                         <a class="page-link" href="?{% url_replace 'page' p %}">{{ p }}</a>
                       </li>
                     {% empty %}
@@ -125,7 +125,7 @@
                 <nav>
                   <ul class="pagination justify-content-end">
                   {% for option in extra_options %}
-                    <li class="page-item{% ifequal option prm.view %} active{% endifequal %}">
+                    <li class="page-item{% if option == prm.view %} active{% endif %}">
                       <a class="page-link" href="?{% url_replace 'view' option %}">{{ option }}</a>
                     </li>
                   {% endfor %}
@@ -305,7 +305,7 @@
                         </a>
                       </li>
                       {% for p in display_prms.page_range %}
-                        <li class="page-item{% ifequal p results.number %} active{% endifequal %}">
+                        <li class="page-item{% if p == results.number %} active{% endif %}">
                           <a class="page-link" href="?{% url_replace 'page' p %}">{{ p }}</a>
                         </li>
                       {% empty %}

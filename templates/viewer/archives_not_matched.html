@@ -93,7 +93,7 @@
               <table class="table table-bordered table-sm generic-table">
                 <thead>
                 <tr>
-                  <th>Select</th><th>First Artist</th><th>Title</th><th>URL</th><th>Type</th><th>Accuracy</th><th>Posted</th><th>Count</th><th>Size</th>
+                  <th>Select</th><th>First Artist</th><th>Title</th><th>URL</th><th>Type</th><th>Accuracy</th><th>Posted</th><th>Count</th><th>Size</th><th>Linked?</th>
                 </tr>
                 </thead>
                 <tbody>
@@ -114,7 +114,7 @@
                     {% endif %}
                     </td>
                     <td>
-                      {{ match.gallery.get_link|urlize }}
+                      {{ match.gallery.get_link|urlize }}, <a href="{{ match.gallery.get_link|derefer }}">derefered</a>
                     </td>
                     <td>
                       {{ match.match_type }}
@@ -130,6 +130,9 @@
                     </td>
                     <td class="{{ match.gallery.filesize|color_percent:archive.filesize }}">
                       {{ match.gallery.filesize }}
+                    </td>
+                    <td>
+                      {{ match.gallery.archive_set.all|yesno }}
                     </td>
                   </tr>
                 {% endfor %}

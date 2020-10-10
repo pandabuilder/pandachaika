@@ -1,3 +1,4 @@
+import base64
 import logging
 import os
 from typing import Any, Optional
@@ -62,7 +63,10 @@ class GenericTorrentDownloader(BaseDownloader):
             )
             if client.expected_torrent_name == '':
                 from core.libs.bencoding import Decoder
-                torrent_metadata = Decoder(torrent_data).decode()
+                if client.convert_to_base64:
+                    torrent_metadata = Decoder(base64.decodebytes(torrent_data.encode('utf-8'))).decode()
+                else:
+                    torrent_metadata = Decoder(torrent_data).decode()
                 client.expected_torrent_name = os.path.splitext(torrent_metadata[b'info'][b'name'])[0]
 
         if result:

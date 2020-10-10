@@ -13,13 +13,13 @@ from viewer.models import Archive, Gallery
 crawler_settings = settings.CRAWLER_SETTINGS
 
 
-def get_gid_path_association(site_page, api_key):
+def get_gid_path_association(archives_to_check, site_page, api_key):
 
-    archives_gid_provider = list(Archive.objects.filter(gallery__hidden=True).values_list('gallery__gid', 'gallery__provider'))
+    archives_gid_provider = list(archives_to_check.values_list('gallery__gid', 'gallery__provider'))
     data = {
         'operation': 'archive_request',
         'api_key': api_key,
-        'args': json.dumps(archives_gid_provider)
+        'args': archives_gid_provider
     }
 
     headers = {'Content-Type': 'application/json; charset=utf-8'}
@@ -204,11 +204,11 @@ class FTPHandler(object):
         progress = self.upload_current / self.upload_total * 100
         print_method("Upload progress: {:05.2f}%".format(progress), ending='\r')
 
-    def check_remote(self, all_archives, remote_site_api, api_key, remote_folder):
+    def check_remote(self, archives_to_check, remote_site_api, api_key, remote_folder):
 
-        remote_info = get_gid_path_association(remote_site_api, api_key)
+        remote_info = get_gid_path_association(archives_to_check, remote_site_api, api_key)
 
-        yield ("Checking {} archives versus {} remote files".format(all_archives.count(), len(remote_info['result'])))
+        yield "Checking {} archives versus {} remote files".format(archives_to_check.count(), len(remote_info['result']))
 
         for cnt, remote_archive in enumerate(remote_info['result'], start=1):
 
@@ -279,6 +279,12 @@ class Command(BaseCommand):
                             action='store_true',
                             default=False,
                             help='Upload the archive files marked as missing hidden to the remote site.')
+        parser.add_argument('-us', '--upload_specify',
+                            required=False,
+                            action='store',
+                            nargs='+',
+                            type=int,
+                            help='Specify list of archive ids to check and upload.')
 
     def handle(self, *args, **options):
         start = time.perf_counter()
@@ -306,6 +312,17 @@ class Command(BaseCommand):
             ftp_handler = FTPHandler(crawler_settings, print_method=self.stdout.write)
             for message in ftp_handler.check_remote(
                     all_archives,
+                    crawler_settings.remote_site['api_url'],
+                    crawler_settings.remote_site['api_key'],
+                    crawler_settings.remote_site['remote_folder']
+            ):
+                self.stdout.write(message)
+        if options['upload_specify']:
+            specified_archives = Archive.objects.filter(id__in=options['upload_specify'])
+
+            ftp_handler = FTPHandler(crawler_settings, print_method=self.stdout.write)
+            for message in ftp_handler.check_remote(
+                    specified_archives,
                     crawler_settings.remote_site['api_url'],
                     crawler_settings.remote_site['api_key'],
                     crawler_settings.remote_site['remote_folder']

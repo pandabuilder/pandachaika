@@ -50,10 +50,10 @@ from django.conf import settings
 from core.base.comparison import get_list_closer_gallery_titles_from_list
 from core.base.utilities import (
     calc_crc32, get_zip_filesize,
-    get_zip_fileinfo, zfill_to_three,
-    sha1_from_file_object, discard_zipfile_contents,
+    get_zip_fileinfo,
+    sha1_from_file_object,
     clean_title,
-    request_with_retries)
+    request_with_retries, get_images_from_zip)
 from core.base.types import GalleryData, DataDict
 from core.base.utilities import (
     get_dict_allowed_fields, replace_illegal_name
@@ -456,6 +456,9 @@ class Gallery(models.Model):
     # The deleted status hides the gallery from some user facing interfaces, as match galleries, gallery list, etc.
     # And makes that trying to parse it again results in it being skipped.
     DELETED = 5
+    # This status is meant for galleries that are only kept as a way to mark already seen galleries, that don't live
+    # With metadata
+    NO_METADATA = 6
 
     ORIGIN_NORMAL = 1
     ORIGIN_SUBMITTED = 2
@@ -464,6 +467,7 @@ class Gallery(models.Model):
         (NORMAL, 'Normal'),
         (DENIED, 'Denied'),
         (DELETED, 'Deleted'),
+        (NO_METADATA, 'No metadata'),
     )
 
     ORIGIN_CHOICES = (
@@ -869,6 +873,7 @@ class Gallery(models.Model):
         if self.provider:
             filtered_wanted = filtered_wanted.filter(Q(provider='') | Q(provider__iexact=self.provider))
             filtered_wanted = filtered_wanted.filter(Q(wanted_providers=None) | Q(wanted_providers__slug=self.provider))
+            filtered_wanted = filtered_wanted.filter(Q(unwanted_providers=None) | ~Q(unwanted_providers__slug=self.provider))
 
         for wanted_filter in filtered_wanted:
             # if wanted_filter.wanted_providers.count():
@@ -1171,6 +1176,7 @@ class Archive(models.Model):
         if reason:
             self.reason = reason
         self.simple_save()
+        self.simple_save()  # TODO: Check why the first simple_save isn't adding to the index.
         if self.gallery:
             if reason:
                 self.gallery.reason = reason
@@ -1235,7 +1241,6 @@ class Archive(models.Model):
     def calculate_sha1_for_images(self) -> bool:
 
         image_set = self.image_set.all()
-        # sha1_from_file_object(my_zip.open(first_file)
 
         try:
             my_zip = zipfile.ZipFile(
@@ -1245,15 +1250,23 @@ class Archive(models.Model):
 
         if my_zip.testzip():
             return False
-        filtered_files = filter(discard_zipfile_contents, sorted(my_zip.namelist(), key=zfill_to_three))
-        for count, filename in enumerate(filtered_files, start=1):
+
+        filtered_files = get_images_from_zip(my_zip)
+
+        for count, filename_tuple in enumerate(filtered_files, start=1):
             image = image_set.get(archive_position=count)
             if image.extracted:
                 with open(image.image.path, 'rb') as current_img:
                     image.sha1 = sha1_from_file_object(current_img)
             else:
-                with my_zip.open(filename) as current_zip_img:
-                    image.sha1 = sha1_from_file_object(current_zip_img)
+                if filename_tuple[1] is None:
+                    with my_zip.open(filename_tuple[0]) as current_zip_img:
+                        image.sha1 = sha1_from_file_object(current_zip_img)
+                else:
+                    with my_zip.open(filename_tuple[1]) as current_zip:
+                        with zipfile.ZipFile(current_zip) as my_nested_zip:
+                            with my_nested_zip.open(filename_tuple[0]) as current_zip_img:
+                                image.sha1 = sha1_from_file_object(current_zip_img)
             image.save()
 
         my_zip.close()
@@ -1307,8 +1320,9 @@ class Archive(models.Model):
                 non_extracted_images = self.image_set.filter(extracted=False)
             non_extracted_positions = non_extracted_images.values_list('archive_position', flat=True)
 
-            filtered_files = filter(discard_zipfile_contents, sorted(my_zip.namelist(), key=zfill_to_three))
-            for count, filename in enumerate(filtered_files, start=1):
+            filtered_files = get_images_from_zip(my_zip)
+
+            for count, filename_tuple in enumerate(filtered_files, start=1):
                 if count not in non_extracted_positions:
                     continue
                 try:
@@ -1316,14 +1330,19 @@ class Archive(models.Model):
                 except Image.DoesNotExist:
                     self.generate_image_set()
                     image = non_extracted_images.get(archive_position=count)
-                image_name = os.path.split(filename.replace('\\', os.sep))[1]
+                image_name = os.path.split(filename_tuple[2].replace('\\', os.sep))[1]
 
                 # Image
                 full_img_name = pjoin(settings.MEDIA_ROOT, upload_imgpath(self, image_name))
                 thumb_img_name = upload_thumbpath_handler(image, image_name)
 
-                with open(full_img_name, "wb") as current_new_img, my_zip.open(filename) as current_img:
-                    shutil.copyfileobj(current_img, current_new_img)  # type: ignore
+                with open(full_img_name, "wb") as current_new_img, my_zip.open(filename_tuple[1] or filename_tuple[0]) as current_file:
+                    if filename_tuple[1]:
+                        with zipfile.ZipFile(current_file) as my_nested_zip:
+                            with my_nested_zip.open(filename_tuple[0]) as current_img:
+                                shutil.copyfileobj(current_img, current_new_img)  # type: ignore
+                    else:
+                        shutil.copyfileobj(current_file, current_new_img)  # type: ignore
                 image.image.name = upload_imgpath(self, image_name)
 
                 # Thumbnail
@@ -1359,7 +1378,8 @@ class Archive(models.Model):
             if my_zip.testzip():
                 my_zip.close()
                 return
-            filtered_files = list(filter(discard_zipfile_contents, sorted(my_zip.namelist(), key=zfill_to_three)))
+
+            filtered_files = get_images_from_zip(my_zip)
 
             for img in self.image_set.all():
                 if img.extracted:
@@ -1454,10 +1474,10 @@ class Archive(models.Model):
             if my_zip.testzip():
                 my_zip.close()
                 return
-            filtered_files = list(filter(discard_zipfile_contents, sorted(my_zip.namelist(), key=zfill_to_three)))
+            filtered_files = get_images_from_zip(my_zip)
 
             if not image_set_present:
-                for count, filename in enumerate(filtered_files, start=1):
+                for count, filename_tuple in enumerate(filtered_files, start=1):
                     # image_name = os.path.split(filename.replace('\\', os.sep))[1]
                     image = Image(archive=self, archive_position=count, position=count)
                     # image.image.name = upload_imgpath(self, image_name)
@@ -1471,17 +1491,14 @@ class Archive(models.Model):
                 else:
                     first_file = filtered_files[0]
 
-                with my_zip.open(first_file) as current_img:
-
-                    im = PImage.open(current_img)
-                    if im.mode != 'RGB':
-                        im = im.convert('RGB')
-
-                    im.thumbnail((200, 290), PImage.ANTIALIAS)
-                    thumb_name = thumb_path_handler(self, "thumb2.jpg")
-                    os.makedirs(os.path.dirname(pjoin(settings.MEDIA_ROOT, thumb_name)), exist_ok=True)
-                    im.save(pjoin(settings.MEDIA_ROOT, thumb_name), "JPEG")
-                    self.thumbnail.name = thumb_name
+                if first_file[1] is None:
+                    with my_zip.open(first_file[0]) as current_img:
+                        self.create_thumbnail_from_io_image(current_img)
+                else:
+                    with my_zip.open(first_file[1]) as current_zip:
+                        with zipfile.ZipFile(current_zip) as my_nested_zip:
+                            with my_nested_zip.open(first_file[0]) as current_img:
+                                self.create_thumbnail_from_io_image(current_img)
 
             my_zip.close()
 
@@ -1517,6 +1534,16 @@ class Archive(models.Model):
             self.original_filename = os.path.basename(self.zipped.name)
 
         self.simple_save(force_update=True)
+
+    def create_thumbnail_from_io_image(self, current_img):
+        im = PImage.open(current_img)
+        if im.mode != 'RGB':
+            im = im.convert('RGB')
+        im.thumbnail((200, 290), PImage.ANTIALIAS)
+        thumb_name = thumb_path_handler(self, "thumb2.jpg")
+        os.makedirs(os.path.dirname(pjoin(settings.MEDIA_ROOT, thumb_name)), exist_ok=True)
+        im.save(pjoin(settings.MEDIA_ROOT, thumb_name), "JPEG")
+        self.thumbnail.name = thumb_name
 
     def rename_zipped_tail(self, new_file_name: str) -> bool:
         initial_path = self.zipped.path
@@ -1625,7 +1652,7 @@ class Archive(models.Model):
 
         self.thumbnail.delete(save=False)
 
-        filtered_files = list(filter(discard_zipfile_contents, sorted(my_zip.namelist(), key=zfill_to_three)))
+        filtered_files = get_images_from_zip(my_zip)
 
         if not filtered_files:
             my_zip.close()
@@ -1636,17 +1663,14 @@ class Archive(models.Model):
         else:
             first_file = filtered_files[0]
 
-        with my_zip.open(first_file) as current_img:
-
-            im = PImage.open(current_img)
-            if im.mode != 'RGB':
-                im = im.convert('RGB')
-
-            im.thumbnail((200, 290), PImage.ANTIALIAS)
-            thumb_name = thumb_path_handler(self, "thumb2.jpg")
-            os.makedirs(os.path.dirname(pjoin(settings.MEDIA_ROOT, thumb_name)), exist_ok=True)
-            im.save(pjoin(settings.MEDIA_ROOT, thumb_name), "JPEG")
-            self.thumbnail.name = thumb_name
+        if first_file[1] is None:
+            with my_zip.open(first_file[0]) as current_img:
+                self.create_thumbnail_from_io_image(current_img)
+        else:
+            with my_zip.open(first_file[1]) as current_zip:
+                with zipfile.ZipFile(current_zip) as my_nested_zip:
+                    with my_nested_zip.open(first_file[0]) as current_img:
+                        self.create_thumbnail_from_io_image(current_img)
 
         my_zip.close()
         super(Archive, self).save()
@@ -2017,6 +2041,7 @@ class WantedGallery(models.Model):
     provider = models.CharField(
         'Provider', max_length=50, blank=True, null=True, default='')
     wanted_providers = models.ManyToManyField('Provider', blank=True)
+    unwanted_providers = models.ManyToManyField('Provider', blank=True, related_name="unwanted_providers")
     found_galleries = models.ManyToManyField(
         Gallery, related_name="found_galleries",
         blank=True,
@@ -2123,6 +2148,7 @@ class WantedGallery(models.Model):
         has_wanted_tags = bool(self.wanted_tags.all())
         has_unwanted_tags = bool(self.unwanted_tags.all())
         wanted_providers_count = self.wanted_providers.count()
+        unwanted_providers_count = self.unwanted_providers.count()
 
         if self.search_title or self.unwanted_title:
             q_objects_search_title = Q()
@@ -2199,6 +2225,9 @@ class WantedGallery(models.Model):
         for gallery in galleries:
             if wanted_providers_count:
                 if not self.wanted_providers.filter(slug=gallery.provider).first():
+                    continue
+            if unwanted_providers_count:
+                if self.unwanted_providers.filter(slug=gallery.provider).first():
                     continue
             accepted = True
             if has_wanted_tags:
@@ -2392,7 +2421,7 @@ class Attribute(models.Model):
     value_int = models.IntegerField(blank=True, null=True)
     value_date = models.DateTimeField(blank=True, null=True)
     value_duration = models.DurationField(blank=True, null=True)
-    value_bool = models.NullBooleanField(blank=True, null=True)
+    value_bool = models.BooleanField(blank=True, null=True)
 
     provider = models.ForeignKey(Provider, on_delete=models.CASCADE)
 

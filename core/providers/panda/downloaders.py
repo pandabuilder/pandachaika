@@ -357,7 +357,9 @@ class TorrentAPIDownloader(BaseTorrentDownloader):
 
         if not chosen_torrent:
             self.return_code = 0
-            logger.error("Could not find a suitable torrent.")
+            logger.error("Could not find a suitable torrent from {}.".format(
+                str(len(self.gallery.extra_data['torrents'])))
+            )
             return
 
         client.send_url = True

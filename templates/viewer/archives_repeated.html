@@ -52,7 +52,7 @@
             <label for="del-{{ gallery.id }}">{{ gallery.filesize }} >> {{ gallery.filecount }} >> <a href="{{ gallery.get_absolute_url }}">{{ gallery.title }}</a> >> {{ gallery.get_link|urlize }}</label>
             <select id="del-{{ gallery.id }}" name="del-{{ gallery.id }}" class="form-control" multiple size="{{ archives.count }}">
               {% for archive in archives.all %}
-                <option value="{{ archive.pk }}" {% if archive.selected == True %}selected="selected"{% endif %}  {% if archive.filesize == gallery.filesize %}class="highlight-option"{% endif %}>{{ archive.filesize }} >> {{ archive.filecount }} >> {{ archive.match_type }} >> {{ archive.source_type }} >> {{ archive.zipped }}</option>
+                <option value="{{ archive.pk }}" {% if archive.selected == True %}selected="selected"{% endif %}  {% if archive.filesize == gallery.filesize %}class="highlight-option"{% endif %}>{{ archive.filesize }} >> {{ archive.filecount }} >> {{ archive.match_type }} >> {{ archive.source_type }} >> {{ archive.zipped }} >> {{ archive.create_date|date:"DATETIME_FORMAT" }} >> {{ archive.public|yesno }}</option>
               {% endfor %}
             </select>
           {% endwith %}

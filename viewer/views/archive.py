@@ -96,8 +96,12 @@ def archive_details(request: HttpRequest, pk: int, view: str = "cover") -> HttpR
         })
 
     if request.user.is_authenticated:
-        user_archive_preferences = UserArchivePrefs.objects.get_or_create(user=request.user.pk, archive=pk, defaults={'favorite_group': 0})
-        d.update({'user_archive_preferences': user_archive_preferences})
+        current_user_archive_preferences, created = UserArchivePrefs.objects.get_or_create(
+            user__id=request.user.pk,
+            archive=archive,
+            defaults={'user_id': request.user.pk, 'archive': archive, 'favorite_group': 0}
+        )
+        d.update({'user_archive_preferences': current_user_archive_preferences})
 
     # In-place collaborator edit form
     if request.user.has_perm('viewer.change_archive'):
@@ -161,9 +165,13 @@ def archive_update(request: HttpRequest, pk: int, tool: str = None, tool_use_id:
         archive.possible_matches.clear()
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
 
-    user_archive_preferences = UserArchivePrefs.objects.get_or_create(user=request.user.pk, archive=pk, defaults={'favorite_group': 0})
+    current_user_archive_preferences, created = UserArchivePrefs.objects.get_or_create(
+        user__id=request.user.pk,
+        archive=archive,
+        defaults={'user_id': request.user.pk, 'archive': archive, 'favorite_group': 0}
+    )
 
-    d = {'archive': archive, 'view': "edit", 'user_archive_preferences': user_archive_preferences}
+    d = {'archive': archive, 'view': "edit", 'user_archive_preferences': current_user_archive_preferences}
 
     if request.method == 'POST':
         p = request.POST

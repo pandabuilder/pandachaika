@@ -631,6 +631,10 @@ def crawler(request: HttpRequest) -> HttpResponse:
         if 'keep_this_settings' in p:
             current_settings.write()
             current_settings.load_config_from_file()
+
+        if 'gallery_only' in p:
+            current_settings.allow_type_downloaders_only('info')
+
         if 'run_separate' in p:
             crawler_thread = CrawlerThread(current_settings, urls)
             crawler_thread.start()

@@ -4,14 +4,14 @@ psycopg2
 # Main
 python-dateutil
 twitter==1.18.0
-beautifulsoup4>=4.9.1
+beautifulsoup4>=4.9.2
 CherryPy>=18.6.0
-Django==3.0.7
+Django==3.1.2
 django-compressor>=2.4
 Pillow>=7.2.0
-rarfile>=3.1
+rarfile>=4.0
 requests>=2.24.0
-feedparser>=5.2.1
+feedparser>=6.0.1
 transmissionrpc>=0.11
 -e git+https://github.com/pandabuilder/django-autocomplete-light.git#egg=django-autocomplete-light
 django-webpack-loader

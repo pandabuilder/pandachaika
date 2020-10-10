@@ -5,7 +5,7 @@ import os
 import re
 import time
 import argparse
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, NoReturn
 from zipfile import BadZipFile
 from zipfile import ZipFile
 
@@ -29,7 +29,7 @@ class ArgumentParserError(Exception):
 
 class YieldingArgumentParser(argparse.ArgumentParser):
 
-    def error(self, message: str) -> None:  # type: ignore
+    def error(self, message: str) -> NoReturn:
         raise ArgumentParserError(message)
 
 

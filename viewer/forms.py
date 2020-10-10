@@ -383,9 +383,9 @@ class WantedGalleryCreateOrEditForm(ModelForm):
         fields = [
             'title', 'title_jpn', 'search_title', 'regexp_search_title',
             'unwanted_title', 'regexp_unwanted_title',
-            'wanted_tags', 'unwanted_tags',
+            'wanted_tags', 'unwanted_tags', 'wanted_providers', 'unwanted_providers',
             'wanted_tags_exclusive_scope', 'category', 'wanted_page_count_lower', 'wanted_page_count_upper',
-            'provider', 'release_date', 'should_search', 'keep_searching', 'reason', 'book_type', 'publisher',
+            'release_date', 'should_search', 'keep_searching', 'reason', 'book_type', 'publisher',
             'page_count'
         ]
         help_texts = {
@@ -402,7 +402,8 @@ class WantedGalleryCreateOrEditForm(ModelForm):
             'category': 'Category in Gallery to match',
             'wanted_page_count_lower': 'Gallery must have more or equal than this value (0 is ignored)',
             'wanted_page_count_upper': 'Gallery must have less or equal than this value (0 is ignored)',
-            'provider': 'Limit the provider to match (panda, fakku, etc). Default is search in all providers',
+            'wanted_providers': 'Limit the provider to match (panda, fakku, etc). Default is search in all providers',
+            'unwanted_providers': 'Exclude galleries from these providers (panda, fakku, etc)',
             'release_date': 'This Gallery will only be searched when the current date is higher than this value',
             'should_search': 'Enable searching for this Gallery',
             'keep_searching': 'Keep searching for this Gallery after one successful match',
@@ -430,16 +431,13 @@ class WantedGalleryCreateOrEditForm(ModelForm):
             'category': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'wanted_page_count_lower': forms.widgets.NumberInput(attrs={'min': 0, 'class': 'form-control'}),
             'wanted_page_count_upper': forms.widgets.NumberInput(attrs={'min': 0, 'class': 'form-control'}),
-            'provider': JalTextWidget(
-                url='provider-autocomplete',
-                attrs={
-                    'class': 'form-control',
-                    'placeholder': '',
-                    'data-autocomplete-minimum-characters': 3,
-                    'data-autocomplete-xhr-wait': 50,
-                    'data-autocomplete-auto-hilight-first': 0,
-                    'data-autocomplete-bind-mouse-down': 0,
-                },
+            'wanted_providers': autocomplete.ModelSelect2Multiple(
+                url='provider-pk-autocomplete',
+                attrs={'data-placeholder': 'Provider name', 'class': 'form-control'}
+            ),
+            'unwanted_providers': autocomplete.ModelSelect2Multiple(
+                url='provider-pk-autocomplete',
+                attrs={'data-placeholder': 'Provider name', 'class': 'form-control'}
             ),
             'release_date': Html5DateInput(attrs={'class': 'form-control'}),
             'should_search': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),

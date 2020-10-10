@@ -20,6 +20,7 @@ from viewer.forms import GallerySearchForm, ArchiveSearchForm, WantedGallerySear
 from viewer.models import Archive, Gallery, EventLog, ArchiveMatches, Tag, WantedGallery, ArchiveGroup, \
     ArchiveGroupEntry
 from viewer.utils.tags import sort_tags
+from viewer.utils.types import AuthenticatedHttpRequest
 from viewer.views.head import gallery_filter_keys, filter_galleries_simple, \
     archive_filter_keys, filter_archives_simple, render_error, wanted_gallery_filter_keys, \
     filter_wanted_galleries_simple
@@ -368,7 +369,7 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
-def my_event_log(request: HttpRequest) -> HttpResponse:
+def my_event_log(request: AuthenticatedHttpRequest) -> HttpResponse:
     get = request.GET
 
     try:
@@ -414,7 +415,7 @@ def users_event_log(request: HttpRequest) -> HttpResponse:
 
 
 @permission_required('viewer.crawler_adder')
-def user_crawler(request: HttpRequest) -> HttpResponse:
+def user_crawler(request: AuthenticatedHttpRequest) -> HttpResponse:
     """Crawl given URLs."""
 
     d = {}

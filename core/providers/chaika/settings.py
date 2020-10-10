@@ -14,6 +14,7 @@ class OwnSettings(ProviderSettings):
         super().__init__(global_settings, config)
         self.archive_dl_folder = ''
         self.url = constants.base_url
+        self.metadata_url = constants.base_url
         self.feed_url = constants.feed_url
 
 
@@ -24,6 +25,8 @@ def parse_config(global_settings: 'Settings', config: typing.Dict[str, typing.An
     if 'general' in config:
         if 'url' in config['general']:
             settings.url = config['general']['url']
+        if 'metadata_url' in config['general']:
+            settings.metadata_url = config['general']['metadata_url']
         if 'feed_url' in config['general']:
             settings.feed_url = config['general']['feed_url']
     if 'locations' in config:

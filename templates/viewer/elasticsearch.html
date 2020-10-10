@@ -69,7 +69,7 @@
                     </a>
                   </li>
                   {% for p in paginator.page_range %}
-                    <li class="page-item{% ifequal p paginator.number %} active{% endifequal %}">
+                    <li class="page-item{% if p == paginator.number %} active{% endif %}">
                       <a class="page-link" href="?{% url_replace 'page' p %}">{{ p }}</a>
                     </li>
                   {% empty %}

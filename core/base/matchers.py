@@ -40,6 +40,7 @@ class Matcher(metaclass=Meta):
         self.parser = self.settings.provider_context.get_parsers(self.settings, filter_name=self.provider)[0]
         self.found_by = ''
         self.match_gid: Optional[str] = None
+        self.match_provider: Optional[str] = None
         self.match_link: Optional[str] = None
         self.values_array: List[GalleryData] = []
         self.match_count = 0
@@ -128,13 +129,16 @@ class Matcher(metaclass=Meta):
 
         values = self.format_match_values()
         if values:
+            # Force provider to matcher provider, if it wasn't set by the matcher itself.
+            if not self.match_provider:
+                self.match_provider = self.provider
             if self.settings.archive_reason:
                 values['reason'] = self.settings.archive_reason
             if self.settings.archive_details:
                 values['details'] = self.settings.archive_details
             self.settings.archive_model.objects.update_or_create_by_values_and_gid(
                 values,
-                (self.match_gid, self.provider) if self.match_gid else None,
+                (self.match_gid, self.match_provider) if self.match_gid and self.match_provider else None,
                 zipped=self.file_path
             )
 

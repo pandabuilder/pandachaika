@@ -89,6 +89,11 @@ if __name__ == '__main__':
                         action='store',
                         help='Override port.')
 
+    parser.add_argument('-s', '--socket-file',
+                        required=False,
+                        action='store',
+                        help='Use the specified UNIX socket.')
+
     parser.add_argument('-d', '--daemonize',
                         required=False,
                         action='store_true',
@@ -114,9 +119,15 @@ if __name__ == '__main__':
     else:
         cherrypy_port = crawler_settings.webserver.bind_port
 
+    if args.socket_file:
+        cherrypy_socket_file = args.socket_file
+    else:
+        cherrypy_socket_file = crawler_settings.webserver.socket_file
+
     cherrypy_settings = {
         'server.socket_host': crawler_settings.webserver.bind_address,
         'server.socket_port': cherrypy_port,
+        'server.socket_file': cherrypy_socket_file,
         'checker.on': False,
         'engine.autoreload.on': crawler_settings.cherrypy_auto_restart,
         'log.screen': crawler_settings.webserver.log_to_screen,
@@ -160,10 +171,17 @@ if __name__ == '__main__':
                     settings_module='pandabackup.settings',
                     local_settings=crawler_settings).subscribe()
 
+    if cherrypy_socket_file:
+        listening_on_message = "socket file {}".format(cherrypy_socket_file)
+    else:
+        listening_on_message = "{}:{}".format(crawler_settings.webserver.bind_address, str(cherrypy_port))
+
     cherrypy.log(
-        "Loading and serving Panda Backup. Listening on "
-        + crawler_settings.webserver.bind_address + ":"
-        + str(cherrypy_port)
+        "Loading and serving Panda Backup. Listening on {}".format(listening_on_message)
     )
 
-    cherrypy.quickstart()
+    cherrypy.engine.signals.subscribe()
+    cherrypy.engine.start()
+    if cherrypy_socket_file:
+        os.chmod(cherrypy_socket_file, 0o777)  # The fchmod in cherrypy is not working properly.
+    cherrypy.engine.block()

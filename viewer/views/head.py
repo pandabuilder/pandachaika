@@ -36,6 +36,7 @@ from viewer.models import (
     users_with_perm, Profile, GalleryQuerySet)
 from viewer.utils.functions import send_mass_html_mail
 from viewer.utils.tags import sort_tags
+from viewer.utils.types import AuthenticatedHttpRequest
 
 logger = logging.getLogger(__name__)
 crawler_settings = settings.CRAWLER_SETTINGS
@@ -46,7 +47,7 @@ gallery_filter_keys = (
     "create_from", "create_to",
     "category", "provider", "dl_type",
     "expunged", "hidden", "fjord", "uploader", "tags", "not_used", "reason",
-    "contains", "contained", "not_normal"
+    "contains", "contained", "not_normal", "crc32"
 )
 
 archive_filter_keys = (
@@ -125,7 +126,7 @@ def change_password(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
-def change_profile(request: HttpRequest) -> HttpResponse:
+def change_profile(request: AuthenticatedHttpRequest) -> HttpResponse:
     if not hasattr(request.user, 'profile'):
         Profile.objects.create(user=request.user)
     if request.method == 'POST':
@@ -772,7 +773,7 @@ def filter_archives(request: HttpRequest, session_filters: Dict[str, str], reque
                 results = results.filter(
                     tag_query
                 )
-    if "only_favorites" in request_filters and request_filters["only_favorites"]:
+    if "only_favorites" in request_filters and request_filters["only_favorites"] and request.user.is_authenticated:
         user_arch_ids = UserArchivePrefs.objects.filter(
             user=request.user.id, favorite_group__gt=0).values_list('archive')
         results = results.filter(id__in=user_arch_ids)
@@ -852,67 +853,14 @@ def quick_search(request: HttpRequest, parameters: DataDict, display_parameters:
         results_url = None
 
     q_formatted = '%' + display_parameters["qsearch"].replace(' ', '%') + '%'
-    results_title = results.filter(
+    results = results.filter(
         Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted)
     )
 
-    tags = display_parameters["qsearch"].split(',')
-    for tag in tags:
-        tag = tag.strip().replace(" ", "_")
-        tag_clean = re.sub("^[-|^]", "", tag)
-        scope_name = tag_clean.split(":", maxsplit=1)
-        if len(scope_name) > 1:
-            tag_scope = scope_name[0]
-            tag_name = scope_name[1]
-        else:
-            tag_scope = ''
-            tag_name = scope_name[0]
-        if tag.startswith("-"):
-            if tag_name != '' and tag_scope != '':
-                tag_query = (
-                    (Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope))
-                    | (Q(custom_tags__name__contains=tag_name) & Q(custom_tags__scope__contains=tag_scope))
-                )
-            elif tag_name != '':
-                tag_query = (Q(tags__name__contains=tag_name) | Q(custom_tags__name__contains=tag_name))
-            else:
-                tag_query = (Q(tags__scope__contains=tag_scope) | Q(custom_tags__scope__contains=tag_scope))
-
-            results = results.exclude(
-                tag_query
-            )
-        elif tag.startswith("^"):
-            if tag_name != '' and tag_scope != '':
-                tag_query = (
-                    (Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope))
-                    | (Q(custom_tags__name__exact=tag_name) & Q(custom_tags__scope__exact=tag_scope))
-                )
-            elif tag_name != '':
-                tag_query = (Q(tags__name__exact=tag_name) | Q(custom_tags__name__exact=tag_name))
-            else:
-                tag_query = (Q(tags__scope__exact=tag_scope) | Q(custom_tags__scope__exact=tag_scope))
-
-            results = results.filter(
-                tag_query
-            )
-        else:
-            if tag_name != '' and tag_scope != '':
-                tag_query = (
-                    (Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope))
-                    # | (Q(custom_tags__name__contains=tag_name) & Q(custom_tags__scope__contains=tag_scope))
-                )
-            elif tag_name != '':
-                tag_query = (Q(tags__name__contains=tag_name) | Q(custom_tags__name__contains=tag_name))
-            else:
-                tag_query = (Q(tags__scope__contains=tag_scope) | Q(custom_tags__scope__contains=tag_scope))
-
-            results = results.filter(
-                tag_query
-            )
     if results_url:
-        results = results | results_title | results_url
+        results = results | results_url
     else:
-        results = results | results_title
+        results = results
 
     if "non_public" in display_parameters and display_parameters["non_public"]:
         results = results.filter(public=False)
@@ -1123,7 +1071,7 @@ def public_stats(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
-def user_archive_preferences(request: HttpRequest, archive_pk: int, setting: str) -> HttpResponse:
+def user_archive_preferences(request: AuthenticatedHttpRequest, archive_pk: int, setting: str) -> HttpResponse:
     """Archive user favorite toggle."""
     try:
         Archive.objects.get(pk=archive_pk)

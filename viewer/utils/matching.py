@@ -311,7 +311,7 @@ def match_external(archives: 'QuerySet[Archive]', matcher_filters: Iterable[str]
         for matcher in matchers:
             logger.info("For filter {}, using matcher: {}".format(matcher_filter, str(matcher[0])))
 
-    for i, archive in enumerate(archives, start=1):  # type: ignore
+    for i, archive in enumerate(archives, start=1):
 
         for matcher_filter, matchers in matchers_per_matcher_filter.items():
 
@@ -385,7 +385,7 @@ def match_internal(archives: 'QuerySet[Archive]', providers: Iterable[str],
                 galleries_title_id_per_provider[provider].append(
                     (replace_illegal_name(gallery.title_jpn), gallery.pk))
 
-    for i, archive in enumerate(archives, start=1):  # type: ignore
+    for i, archive in enumerate(archives, start=1):
 
         for provider, galleries_title_id in galleries_title_id_per_provider.items():
 

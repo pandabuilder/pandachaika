@@ -327,6 +327,7 @@ PROVIDERS = [
     'core.providers.mega',
     'core.providers.nexus',
     'core.providers.twodmarket',
+    'core.providers.nyaa',
 ]
 
 PROVIDER_CONTEXT = crawler_settings.provider_context

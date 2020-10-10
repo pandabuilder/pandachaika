@@ -92,19 +92,22 @@ def get_gallery_closer_title_from_gallery_values(original: str, gallery_datas: L
 
     result = ResultContainer()
     compare_titles = []
+    original_index = {}
 
-    for gallery_dict in gallery_datas:
-        compare_titles.append(gallery_dict.title)
+    for i, gallery_dict in enumerate(gallery_datas):
+        if gallery_dict.title:
+            compare_titles.append(gallery_dict.title)
+            original_index[len(compare_titles) - 1] = i
 
-    matches = difflib.get_close_matches(original, compare_titles, 1, cutoff)  # type: ignore
+    matches = difflib.get_close_matches(original, compare_titles, 1, cutoff)
     if len(matches) == 0:
         return result
     result.match_title = str(matches[0])
 
     for i, compare_title in enumerate(compare_titles):
         if compare_title == result.match_title:
-            result.match_values = gallery_datas[i]
-            result.match_link = gallery_datas[i].link
-            gallery_datas[i].link = None
+            result.match_values = gallery_datas[original_index[i]]
+            result.match_link = gallery_datas[original_index[i]].link
+            gallery_datas[original_index[i]].link = None
 
     return result

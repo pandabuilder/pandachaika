@@ -35,6 +35,9 @@ logger = logging.getLogger(__name__)
 
 PUSHOVER_API_URL = 'https://api.pushover.net/1/messages.json'
 
+ZIP_CONTAINER_REGEX = re.compile(r'(\.zip|\.cbz)$', re.IGNORECASE)
+IMAGES_REGEX = re.compile(r'(\.jpeg|\.jpg|\.png|\.gif)$', re.IGNORECASE)
+
 
 # The idea of this class is to contain certain methods, to not have to pass arguments that are global.
 class GeneralUtils:
@@ -141,8 +144,9 @@ def to_full_width(title: str) -> str:
 
 def calc_crc32(filename: str) -> str:
     prev = 0
-    for eachLine in open(filename, "rb"):
-        prev = zlib.crc32(eachLine, prev)
+    with open(filename, "rb") as file_to_check:
+        for eachLine in file_to_check:
+            prev = zlib.crc32(eachLine, prev)
     return "%X" % (prev & 0xFFFFFFFF)
 
 
@@ -178,12 +182,59 @@ def zfill_to_three(namefile: str) -> str:
     return filename.lower()
 
 
-def discard_zipfile_contents(name: str) -> Optional[str]:
+def accept_images_only(name: str) -> Optional[str]:
     r = re.compile(r'(\.jpeg|\.jpg|\.png|\.gif)$', re.IGNORECASE)
     if r.search(name) and '__MACOSX' not in name:
         return name
     else:
         return None
+
+
+def discard_zipfile_extra_files(name: str) -> Optional[str]:
+    if '__MACOSX' not in name:
+        return name
+    else:
+        return None
+
+
+def accept_images_only_info(fileinfo: zipfile.ZipInfo) -> Optional[zipfile.ZipInfo]:
+    r = re.compile(r'(\.jpeg|\.jpg|\.png|\.gif)$', re.IGNORECASE)
+    if r.search(fileinfo.filename) and '__MACOSX' not in fileinfo.filename:
+        return fileinfo
+    else:
+        return None
+
+
+def discard_zipfile_extra_files_info(fileinfo: zipfile.ZipInfo) -> Optional[zipfile.ZipInfo]:
+    if '__MACOSX' not in fileinfo.filename:
+        return fileinfo
+    else:
+        return None
+
+
+# Allows 1 nested zip level, returns tuple: filename, containing zip(nested), extracted_name (adds nested zipfile)
+def get_images_from_zip(current_zip: zipfile.ZipFile) -> List[Tuple[str, Optional[str], str]]:
+    filtered_files = list(filter(discard_zipfile_extra_files, sorted(current_zip.namelist(), key=zfill_to_three)))
+
+    nested_files: List[Tuple[str, Optional[str], str]] = []
+
+    for current_file in filtered_files:
+        if IMAGES_REGEX.search(current_file):
+            nested_files.append((current_file, None, current_file))
+        elif ZIP_CONTAINER_REGEX.search(current_file):
+            with current_zip.open(current_file) as current_nested_zip_file:
+                try:
+                    nested_zip = zipfile.ZipFile(current_nested_zip_file, 'r')
+                except zipfile.BadZipFile:
+                    continue
+                nested_filtered_files = list(filter(accept_images_only, sorted(nested_zip.namelist(), key=zfill_to_three)))
+                found_files = [
+                    (x, current_file, "{}_{}".format(os.path.splitext(current_file)[0], x)) for x in nested_filtered_files
+                ]
+                nested_files.extend(found_files)
+                nested_zip.close()
+
+    return nested_files
 
 
 def filecount_in_zip(filepath: str) -> int:
@@ -192,11 +243,26 @@ def filecount_in_zip(filepath: str) -> int:
     except zipfile.BadZipFile:
         return 0
 
-    filtered_files = list(filter(discard_zipfile_contents, sorted(my_zip.namelist(), key=zfill_to_three)))
+    total_count = 0
+
+    filtered_files = list(filter(discard_zipfile_extra_files, my_zip.namelist()))
+
+    for current_file in filtered_files:
+        if IMAGES_REGEX.search(current_file):
+            total_count += 1
+        elif ZIP_CONTAINER_REGEX.search(current_file):
+            with my_zip.open(current_file) as current_nested_zip_file:
+                try:
+                    nested_zip = zipfile.ZipFile(current_nested_zip_file, 'r')
+                except zipfile.BadZipFile:
+                    continue
+                nested_files = list(filter(accept_images_only, nested_zip.namelist()))
+                total_count += len(nested_files)
+                nested_zip.close()
 
     my_zip.close()
 
-    return len(filtered_files)
+    return total_count
 
 
 def get_zip_filesize(filepath: str) -> int:
@@ -205,17 +271,22 @@ def get_zip_filesize(filepath: str) -> int:
     except zipfile.BadZipFile:
         return -1
 
-    info_list = my_zip.infolist()
     total_size = 0
 
-    for info in info_list:
-        if not info.filename.lower().endswith(
-            ('.jpeg', '.jpg', '.png', '.gif')
-        ):
-            continue
-        if '__macosx' in info.filename.lower():
-            continue
-        total_size += int(info.file_size)
+    filtered_files = list(filter(discard_zipfile_extra_files_info, sorted(my_zip.infolist(), key=lambda x: x.filename)))
+
+    for current_file_info in filtered_files:
+        if IMAGES_REGEX.search(current_file_info.filename):
+            total_size += int(current_file_info.file_size)
+        elif ZIP_CONTAINER_REGEX.search(current_file_info.filename):
+            with my_zip.open(current_file_info.filename) as current_nested_zip_file:
+                try:
+                    nested_zip = zipfile.ZipFile(current_nested_zip_file, 'r')
+                except zipfile.BadZipFile:
+                    continue
+                nested_files = list(filter(accept_images_only_info, sorted(nested_zip.infolist(), key=lambda x: x.filename)))
+                total_size += sum([x.file_size for x in nested_files])
+                nested_zip.close()
 
     my_zip.close()
 
@@ -237,7 +308,7 @@ def convert_rar_to_zip(filepath: str) -> int:
     new_zipfile = zipfile.ZipFile(filepath, 'w')
     dirpath = mkdtemp()
 
-    filtered_files = list(filter(discard_zipfile_contents, sorted(my_rar.namelist())))
+    filtered_files = list(filter(discard_zipfile_extra_files, sorted(my_rar.namelist())))
     for filename in filtered_files:
         my_rar.extract(filename, path=dirpath)
         new_zipfile.write(
@@ -262,15 +333,22 @@ def get_zip_fileinfo(filepath: str) -> Tuple[int, int]:
     total_size = 0
     total_count = 0
 
-    for info in my_zip.infolist():
-        if not info.filename.lower().endswith(
-                ('.jpeg', '.jpg', '.png', '.gif')
-        ):
-            continue
-        if '__macosx' in info.filename.lower():
-            continue
-        total_size += int(info.file_size)
-        total_count += 1
+    filtered_files = list(filter(discard_zipfile_extra_files_info, sorted(my_zip.infolist(), key=lambda x: x.filename)))
+
+    for current_file_info in filtered_files:
+        if IMAGES_REGEX.search(current_file_info.filename):
+            total_size += int(current_file_info.file_size)
+            total_count += 1
+        elif ZIP_CONTAINER_REGEX.search(current_file_info.filename):
+            with my_zip.open(current_file_info.filename) as current_nested_zip_file:
+                try:
+                    nested_zip = zipfile.ZipFile(current_nested_zip_file, 'r')
+                except zipfile.BadZipFile:
+                    continue
+                nested_files = list(filter(accept_images_only_info, sorted(nested_zip.infolist(), key=lambda x: x.filename)))
+                total_count += len(nested_files)
+                total_size += sum([x.file_size for x in nested_files])
+                nested_zip.close()
 
     my_zip.close()
 
@@ -332,7 +410,7 @@ def translate_tag_list(tags: List[str]) -> List[str]:
 
 def clean_title(title: str) -> str:
     # Remove parenthesis
-    adjusted_title = re.sub(r'\s+\(.+?\)$', r'', re.sub(r'\[.+?\]\s*', r'', title))
+    adjusted_title = re.sub(r'\s+\(.+?\)$', r'', re.sub(r'\[.+?\]\s*', r'', title)).replace("_", "")
     # Remove non words, non whitespace
     # adjusted_title = re.sub(r'[^\w\s]', r' ', adjusted_title)
     return adjusted_title

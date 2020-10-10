@@ -200,6 +200,9 @@ class BaseParser:
             if wanted_filter.wanted_providers.count():
                 if not wanted_filter.wanted_providers.filter(slug=self.name).first():
                     continue
+            if wanted_filter.unwanted_providers.count():
+                if wanted_filter.unwanted_providers.filter(slug=self.name).first():
+                    continue
             accepted = True
             if bool(wanted_filter.wanted_tags.all()):
                 if not set(wanted_filter.wanted_tags_list()).issubset(set(gallery.tags)):

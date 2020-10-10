@@ -11,8 +11,7 @@ from core.base.types import MatchesValues, DataDict
 from core.base.utilities import (
     filecount_in_zip,
     get_zip_filesize,
-    discard_zipfile_contents, zfill_to_three,
-    sha1_from_file_object, clean_title, construct_request_dict)
+    sha1_from_file_object, clean_title, construct_request_dict, get_images_from_zip)
 from core.providers.panda.utilities import link_from_gid_token_fjord, get_gid_token_from_link, SearchHTMLParser, \
     GalleryHTMLParser
 from . import constants
@@ -83,7 +82,7 @@ class ImageMatcher(Matcher):
             self.gallery_links = []
             return False
 
-        filtered_files = list(filter(discard_zipfile_contents, sorted(my_zip.namelist(), key=zfill_to_three)))
+        filtered_files = get_images_from_zip(my_zip)
 
         if not filtered_files:
             self.gallery_links = []
@@ -91,8 +90,17 @@ class ImageMatcher(Matcher):
 
         first_file = filtered_files[0]
 
-        payload = {'f_shash': sha1_from_file_object(my_zip.open(first_file)),
-                   'fs_from': os.path.basename(first_file),
+        if first_file[1] is None:
+            with my_zip.open(first_file[0]) as current_img:
+                first_file_sha1 = sha1_from_file_object(current_img)
+        else:
+            with my_zip.open(first_file[1]) as current_zip:
+                with zipfile.ZipFile(current_zip) as my_nested_zip:
+                    with my_nested_zip.open(first_file[0]) as current_img:
+                        first_file_sha1 = sha1_from_file_object(current_img)
+
+        payload = {'f_shash': first_file_sha1,
+                   'fs_from': os.path.basename(first_file[0]),
                    'fs_covers': 1 if only_cover else 0,
                    'fs_similar': 0}
 

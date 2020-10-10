@@ -5,7 +5,7 @@ import json
 import re
 from collections import defaultdict
 
-from typing import Dict, Any, List, Union, Iterable
+from typing import Dict, Any, List, Union, Iterable, Optional
 
 from django.core.paginator import Paginator, EmptyPage
 from django.db.models import Q, QuerySet
@@ -18,7 +18,7 @@ from django.conf import settings
 from core.base.setup import Settings
 from core.base.utilities import str_to_int
 from core.base.utilities import timestamp_or_zero
-from viewer.models import Archive, Gallery, ArchiveQuerySet, GalleryQuerySet
+from viewer.models import Archive, Gallery
 from viewer.utils.matching import generate_possible_matches_for_archives
 from viewer.views.head import gallery_filter_keys, gallery_order_fields, filter_archives_simple, archive_filter_keys
 
@@ -203,15 +203,28 @@ def json_search(request: HttpRequest) -> HttpResponse:
             )
             return HttpResponse(response, content_type="application/json; charset=utf-8")
         # Get galleries associated with archive by crc32, used with matcher.
-        elif 'crc32' in data:
-            galleries = Gallery.objects.filter(
-                Q(archive__crc32=data['crc32'])
-            )
-            if not galleries:
-                return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
+        elif 'match' in data:
+
+            args = data.copy()
+
+            for k in gallery_filter_keys:
+                if k not in args:
+                    args[k] = ''
+
+            keys = ("sort", "asc_desc")
+
+            for k in keys:
+                if k not in args:
+                    args[k] = ''
+
+            # args = data
             if not request.user.is_authenticated:
-                galleries = galleries.filter(public=True)
-            if not galleries:
+                args['public'] = '1'
+            else:
+                args['public'] = ''
+            galleries_matcher = filter_galleries_no_request(args)
+
+            if not galleries_matcher:
                 return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
             response = json.dumps(
                 [{
@@ -236,10 +249,8 @@ def json_search(request: HttpRequest) -> HttpResponse:
                     'thumbnail': request.build_absolute_uri(
                         reverse('viewer:gallery-thumb', args=(gallery.pk,))) if gallery.thumbnail else '',
                     'thumbnail_url': gallery.thumbnail_url,
-                    'thumbnail_height': gallery.thumbnail_height,
-                    'thumbnail_width': gallery.thumbnail_width,
                     'gallery_container': gallery.gallery_container.gid if gallery.gallery_container else ''
-                } for gallery in galleries
+                } for gallery in galleries_matcher
                 ],
                 # indent=2,
                 sort_keys=True,
@@ -263,9 +274,9 @@ def json_search(request: HttpRequest) -> HttpResponse:
 
             # args = data
             if not request.user.is_authenticated:
-                args['public'] = True  # type: ignore
+                args['public'] = '1'
             else:
-                args['public'] = False  # type: ignore
+                args['public'] = ''
             results_gallery = filter_galleries_no_request(args)
             if not results_gallery:
                 return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
@@ -308,9 +319,9 @@ def json_search(request: HttpRequest) -> HttpResponse:
 
             # args = data
             if not request.user.is_authenticated:
-                args['public'] = True  # type: ignore
+                args['public'] = '1'
             else:
-                args['public'] = False  # type: ignore
+                args['public'] = ''
             results_gallery = filter_galleries_no_request(args)
             if not results_gallery:
                 return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
@@ -359,9 +370,9 @@ def json_search(request: HttpRequest) -> HttpResponse:
 
             # args = data
             if not request.user.is_authenticated:
-                args['public'] = True  # type: ignore
+                args['public'] = '1'
             else:
-                args['public'] = False  # type: ignore
+                args['public'] = ''
             results_gallery = filter_galleries_no_request(args)
             if not results_gallery:
                 return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
@@ -389,9 +400,9 @@ def json_search(request: HttpRequest) -> HttpResponse:
 
             # args = data
             if not request.user.is_authenticated:
-                args['public'] = True  # type: ignore
+                args['public'] = '1'
             else:
-                args['public'] = False  # type: ignore
+                args['public'] = ''
             results_gallery = filter_galleries_no_request(args)
 
             paginator = Paginator(results_gallery, 48)
@@ -941,6 +952,8 @@ def filter_galleries_no_request(filter_args: Union[Dict[str, Any], QueryDict]) -
         results = results.filter(dl_type=filter_args["dl_type"])
     if filter_args["reason"]:
         results = results.filter(reason__icontains=filter_args["reason"])
+    if filter_args["crc32"]:
+        results = results.filter(archive__crc32=filter_args['crc32'])
 
     if filter_args["tags"]:
         tags = filter_args["tags"].split(',')

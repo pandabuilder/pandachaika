@@ -124,12 +124,14 @@ class ElasticSearchSettings:
 class WebServerSettings:
     __slots__ = [
         'bind_address', 'bind_port', 'enable_ssl', 'ssl_certificate',
-        'ssl_private_key', 'write_access_log', 'log_to_screen'
+        'ssl_private_key', 'write_access_log', 'log_to_screen',
+        'socket_file'
     ]
 
     def __init__(self) -> None:
         self.bind_address: str = '127.0.0.1'
         self.bind_port: int = 8090
+        self.socket_file: Optional[str] = None
         self.enable_ssl: bool = False
         self.ssl_certificate: str = ''
         self.ssl_private_key: str = ''
@@ -556,6 +558,8 @@ class Settings:
                 self.webserver.bind_address = config['webserver']['bind_address']
             if 'bind_port' in config['webserver']:
                 self.webserver.bind_port = int(config['webserver']['bind_port'])
+            if 'socket_file' in config['webserver']:
+                self.webserver.socket_file = config['webserver']['socket_file']
             if 'enable_ssl' in config['webserver']:
                 self.webserver.enable_ssl = config['webserver'].getboolean('enable_ssl')
             else:

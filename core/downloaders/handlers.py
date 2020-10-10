@@ -27,6 +27,7 @@ class BaseDownloader(metaclass=Meta):
     type = ''
     provider = ''
     archive_only = False
+    no_metadata = False
     skip_if_hidden = False
 
     def __init__(self, settings: 'Settings', general_utils: GeneralUtils) -> None:
@@ -60,6 +61,8 @@ class BaseDownloader(metaclass=Meta):
             self.original_gallery.dl_type = None
         if self.type == 'submit':
             self.original_gallery.origin = self.settings.gallery_model.ORIGIN_SUBMITTED
+        if self.no_metadata:
+            self.original_gallery.status = self.settings.gallery_model.NO_METADATA
         if self.settings.gallery_reason:
             self.original_gallery.reason = self.settings.gallery_reason
         self.gallery_db_entry = self.settings.gallery_model.objects.update_or_create_from_values(self.original_gallery)

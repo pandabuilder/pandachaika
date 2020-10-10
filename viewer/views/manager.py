@@ -480,7 +480,7 @@ def missing_archives_for_galleries(request: HttpRequest) -> HttpResponse:
         results = filter_galleries_simple(params)
 
         results = results.non_used_galleries(public=True, provider__in=['panda', 'fakku'])  # type: ignore
-        d = {'results': results}
+        d = {'results': results, 'force_public': True}
     return render(request, "viewer/archives_missing_for_galleries.html", d)
 
 
@@ -674,7 +674,8 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                     'gallery__tags',
                     queryset=Tag.objects.filter(scope__exact='artist'),
                     to_attr='artist_tags'
-                )
+                ),
+                'gallery__archive_set'
             ),
             to_attr='possible_galleries'
         ),

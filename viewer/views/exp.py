@@ -50,7 +50,7 @@ def gallery_frequency(request: HttpRequest) -> HttpResponse:
     return render(request, "viewer/graph_gallery_posted.html", d)
 
 
-def get_gallery_data(data: QueryDict) -> GalleryQuerySet:
+def get_gallery_data(data: QueryDict) -> 'QuerySet[Gallery]':
     """Quick search of galleries.
     """
 
@@ -113,7 +113,7 @@ def get_gallery_data(data: QueryDict) -> GalleryQuerySet:
 
     results = results.distinct()
 
-    return results  # type: ignore
+    return results
 
 
 def seeder(request: HttpRequest) -> HttpResponse:
@@ -146,7 +146,7 @@ def release_date_seeder(request: HttpRequest) -> HttpResponse:
     return HttpResponse(response, content_type="application/json")
 
 
-def get_archive_data(data: QueryDict) -> ArchiveQuerySet:
+def get_archive_data(data: QueryDict) -> 'QuerySet[Archive]':
     """Quick search of archives.
     """
 
@@ -256,7 +256,7 @@ def get_archive_data(data: QueryDict) -> ArchiveQuerySet:
 
     results = results.distinct().prefetch_related('tags')
 
-    return results  # type: ignore
+    return results
 
 
 # TODO: move modifying actions to POST requests. If something changes here, must update panda-react too.

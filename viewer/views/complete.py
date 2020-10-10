@@ -12,7 +12,7 @@ from django.http import HttpResponse, HttpRequest
 from django.template import Context
 from django.utils.html import format_html
 
-from viewer.models import Archive, Tag, Gallery, WantedGallery, ArchiveGroup
+from viewer.models import Archive, Tag, Gallery, WantedGallery, ArchiveGroup, Provider
 
 
 if typing.TYPE_CHECKING:
@@ -384,6 +384,10 @@ class Select2QuerySetViewNoCreate(Select2ViewMixinNoCreate, BaseQuerySetView):
 
 class TagPkAutocomplete(Select2QuerySetViewNoCreate):
     model = Tag
+
+
+class ProviderPkAutocomplete(Select2QuerySetViewNoCreate):
+    model = Provider
 
 
 class NonCustomTagAutocomplete(autocomplete.Select2QuerySetView):
