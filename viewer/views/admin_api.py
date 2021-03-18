@@ -1,7 +1,6 @@
 import os.path
 import json
 import logging
-import os.path
 import signal
 import threading
 

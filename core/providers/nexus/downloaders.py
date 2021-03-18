@@ -7,7 +7,7 @@ import requests
 from core.base.types import DataDict
 from core.base.utilities import calc_crc32, get_base_filename_string_from_gallery_data, \
     get_zip_fileinfo, construct_request_dict
-from core.downloaders.handlers import BaseDownloader, BaseInfoDownloader
+from core.downloaders.handlers import BaseDownloader, BaseInfoDownloader, BaseGalleryDLDownloader
 from viewer.models import Archive
 from core.base.utilities import (available_filename,
                                  replace_illegal_name)
@@ -88,7 +88,13 @@ class InfoDownloader(BaseInfoDownloader):
     provider = constants.provider_name
 
 
+class GalleryDLDownloader(BaseGalleryDLDownloader):
+
+    provider = constants.provider_name
+
+
 API = (
     ArchiveDownloader,
     InfoDownloader,
+    GalleryDLDownloader,
 )

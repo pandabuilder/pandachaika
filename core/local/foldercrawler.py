@@ -5,7 +5,7 @@ import os
 import re
 import time
 import argparse
-from typing import List, Tuple, Union, NoReturn
+from typing import Union, NoReturn
 from zipfile import BadZipFile
 from zipfile import ZipFile
 
@@ -39,7 +39,7 @@ class FolderCrawler(object):
         self.settings = settings
         self.parse_error = False
 
-    def get_args(self, arg_line: List[str]) -> Union[argparse.Namespace, ArgumentParserError]:
+    def get_args(self, arg_line: list[str]) -> Union[argparse.Namespace, ArgumentParserError]:
 
         parser = YieldingArgumentParser(prog='PandaBackupFolder')
 
@@ -158,7 +158,7 @@ class FolderCrawler(object):
 
         return args
 
-    def start_crawling(self, arg_line: List[str]) -> None:
+    def start_crawling(self, arg_line: list[str]) -> None:
 
         args = self.get_args(arg_line)
 
@@ -357,9 +357,10 @@ class FolderCrawler(object):
                 folder = os.path.relpath(p, self.settings.MEDIA_ROOT).replace("\\", "/")
                 if os.path.isdir(os.path.join(self.settings.MEDIA_ROOT, folder)):
                     for root, _, filenames in os.walk(os.path.join(self.settings.MEDIA_ROOT, str(folder))):
-                        for filename in fnmatch.filter(filenames, self.settings.filename_filter):
-                            files.append(
-                                os.path.relpath(os.path.join(root, filename), self.settings.MEDIA_ROOT))
+                        for filename_filter in self.settings.filename_filter:
+                            for filename in fnmatch.filter(filenames, filename_filter):
+                                files.append(
+                                    os.path.relpath(os.path.join(root, filename), self.settings.MEDIA_ROOT))
                 elif os.path.isfile(os.path.join(self.settings.MEDIA_ROOT, folder)):
                     files.append(folder)
 
@@ -559,7 +560,7 @@ class FolderCrawler(object):
         logger.info('Folder crawler done.')
 
     @staticmethod
-    def get_archive_and_gallery_titles() -> Tuple[List[Tuple[str, str]], List[Tuple[str, str]]]:
+    def get_archive_and_gallery_titles() -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
         found_galleries = Gallery.objects.eligible_for_use().exclude(title='')
         found_archives = Archive.objects.exclude(
             match_type__in=('', 'non-match')).exclude(title='').exclude(gallery__isnull=True)

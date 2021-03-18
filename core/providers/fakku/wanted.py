@@ -5,7 +5,6 @@ import typing
 import urllib.parse
 
 from bs4 import BeautifulSoup
-from django.db.models import QuerySet
 
 from core.base.types import DataDict
 from core.base.utilities import request_with_retries, format_title_to_wanted_search, construct_request_dict
@@ -129,8 +128,8 @@ def wanted_generator(settings: 'Settings', attrs: 'AttributeManager'):
                 **{container_attribute_name: re.compile(container_attribute_value)}
             )
 
-            gallery_links: typing.List[str] = []
-            gallery_gids: typing.List[str] = []
+            gallery_links: list[str] = []
+            gallery_gids: list[str] = []
 
             for gallery_container in gallery_containers:
                 if get_text_from_container:

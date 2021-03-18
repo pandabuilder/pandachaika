@@ -1,5 +1,5 @@
 import os
-from typing import Dict, Any, List
+from typing import Any
 
 from django import forms
 from django.contrib.auth.forms import PasswordChangeForm
@@ -62,7 +62,7 @@ class JalTextWidget(JalWidgetMixin, WidgetMixin, forms.TextInput):
     def render(self, name, value, attrs=None, renderer=None):
         """ Proxy Django's TextInput.render() """
         html = '''
-            <input id="{id}" {attrs} type="text" name="{name}" value="{value}" />
+            <input id="{id}" {attrs} type="search" name="{name}" value="{value}" />
         '''.format(
             id=attrs['id'],
             name=name,
@@ -341,6 +341,98 @@ class GallerySearchForm(forms.Form):
     )
 
 
+class GallerySearchSimpleForm(forms.Form):
+
+    filecount_from = forms.IntegerField(
+        required=False,
+        label='Images',
+        widget=forms.NumberInput(attrs={'class': 'form-control number-input mr-sm-1', 'placeholder': 'from'})
+    )
+    filecount_to = forms.IntegerField(
+        required=False,
+        label='',
+        widget=forms.NumberInput(attrs={'class': 'form-control number-input mr-sm-1', 'placeholder': 'to'})
+    )
+    posted_from = forms.DateTimeField(
+        required=False,
+        label='Posted',
+        widget=forms.DateInput(attrs={'class': 'form-control mr-sm-1', 'placeholder': 'from', 'type': 'date', 'size': 9}),
+        input_formats=['%Y-%m-%d']
+    )
+    posted_to = forms.DateTimeField(
+        required=False,
+        label='',
+        widget=forms.DateInput(attrs={'class': 'form-control mr-sm-1', 'placeholder': 'to', 'type': 'date', 'size': 9}),
+        input_formats=['%Y-%m-%d']
+    )
+    provider = forms.CharField(
+        required=False,
+        label='Source',
+        widget=JalTextWidget(
+            url='gallery-provider-autocomplete',
+            attrs={
+                'class': 'form-control mr-sm-1',
+                'placeholder': 'panda, etc.',
+                'data-autocomplete-minimum-characters': 3,
+                'size': 10,
+            },
+        ),
+    )
+
+    reason = forms.CharField(
+        required=False,
+        label='Reason',
+        widget=JalTextWidget(
+            url='gallery-reason-autocomplete',
+            attrs={
+                'class': 'form-control mr-sm-1',
+                'placeholder': 'wani, etc.',
+                'data-autocomplete-minimum-characters': 3,
+                'size': 10,
+            },
+        ),
+    )
+
+    uploader = forms.CharField(
+        required=False,
+        label='Uploader',
+        widget=JalTextWidget(
+            url='gallery-uploader-autocomplete',
+            attrs={
+                'class': 'form-control mr-sm-1',
+                'placeholder': '',
+                'data-autocomplete-minimum-characters': 3,
+                'size': 10,
+            },
+        ),
+    )
+
+    category = forms.CharField(
+        required=False,
+        label='Category',
+        widget=JalTextWidget(
+            url='gallery-category-autocomplete',
+            attrs={
+                'class': 'form-control',
+                'placeholder': '',
+                'data-autocomplete-minimum-characters': 3,
+                'size': 10,
+            },
+        ),
+    )
+
+    filesize_from = forms.IntegerField(
+        required=False,
+        label='Size',
+        widget=forms.NumberInput(attrs={'class': 'form-control mr-sm-1', 'placeholder': 'from'})
+    )
+    filesize_to = forms.IntegerField(
+        required=False,
+        label='',
+        widget=forms.NumberInput(attrs={'class': 'form-control mr-sm-1', 'placeholder': 'to'})
+    )
+
+
 class WantedGallerySearchForm(forms.Form):
 
     title = forms.CharField(
@@ -493,7 +585,7 @@ class BaseArchiveGroupEntryFormSet(BaseInlineFormSet):
         super().clean()
         if any(self.errors):
             return
-        positions: List[int] = []
+        positions: list[int] = []
         for form in self.forms:
             if 'position' in form.cleaned_data:
                 position = form.cleaned_data['position']
@@ -577,7 +669,7 @@ class BaseImageFormSet(BaseModelFormSet):
     def clean(self) -> None:
         if any(self.errors):
             return
-        positions: List[int] = []
+        positions: list[int] = []
         for form in self.forms:
             position = form.cleaned_data['position']
             if position in positions:

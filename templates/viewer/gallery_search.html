@@ -150,7 +150,7 @@
             {% endif %}
             <td><a href="{% url 'viewer:gallery' gallery.pk %}" {% if gallery.thumbnail.name %} data-image-url="{{ gallery.thumbnail.url }}" class="img-preview" rel="popover"{% else %} title ="{{ gallery.title_jpn }}"{% endif %}>{% if gallery.title %}{{ gallery.title }}{% else %}{{ gallery.title_jpn }}{% endif %}</a></td>
           {% if prm.show_source %}
-            <td>{{ gallery.get_link|urlize }}, <a href="{{ gallery.get_link|derefer }}">derefered</a></td>
+            <td>{{ gallery.get_link|urlize_all_rel }}</td>
           {% endif %}
             <td>{{ gallery.provider }}</td>
             <td>{{ gallery.category }}</td>

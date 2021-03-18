@@ -1,5 +1,4 @@
 import os
-from typing import List, Tuple
 
 
 class DirBrowser(object):
@@ -25,7 +24,7 @@ class DirBrowser(object):
             p = self.path
         return os.path.isdir(p)
 
-    def files(self, path: str = '') -> List[Tuple[str, bool]]:
+    def files(self, path: str = '') -> list[tuple[str, bool]]:
         p = os.path.normpath(os.path.join(self.path, path))
         if not p.startswith(self.path):
             p = self.path

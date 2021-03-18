@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import List, Optional
+from typing import Optional
 
 from core.base.matchers import Matcher
 from core.base.types import GalleryData, DataDict
@@ -22,7 +22,7 @@ class TitleMatcher(Matcher):
     time_to_wait_after_compare = 0
     default_cutoff = 0.6
 
-    def get_metadata_after_matching(self) -> List[GalleryData]:
+    def get_metadata_after_matching(self) -> list[GalleryData]:
         return self.values_array
 
     def format_to_search_title(self, file_name: str) -> str:

@@ -4,6 +4,7 @@ import re
 import signal
 import threading
 import typing
+from collections import defaultdict
 from functools import reduce
 
 from django.contrib import messages
@@ -90,10 +91,11 @@ def stats_collection(request: HttpRequest) -> HttpResponse:
         "n_archives": Archive.objects.count(),
         "n_expanded_archives": Archive.objects.filter(extracted=True).count(),
         "n_to_download_archives": Archive.objects.filter_by_dl_remote().count(),
-        "n_galleries": Gallery.objects.count(), "archive": Archive.objects.filter(filesize__gt=0).aggregate(
-            Avg('filesize'), Max('filesize'), Min('filesize'), Sum('filesize')),
+        "n_galleries": Gallery.objects.count(),
+        "archive": Archive.objects.filter(filesize__gt=0).aggregate(
+            Avg('filesize'), Max('filesize'), Min('filesize'), Sum('filesize'), Avg('filecount'), Sum('filecount')),
         "gallery": Gallery.objects.filter(filesize__gt=0).aggregate(
-            Avg('filesize'), Max('filesize'), Min('filesize'), Sum('filesize')),
+            Avg('filesize'), Max('filesize'), Min('filesize'), Sum('filesize'), Avg('filecount'), Sum('filecount')),
         "hidden_galleries": Gallery.objects.filter(hidden=True).count(),
         "hidden_galleries_size": Gallery.objects.filter(
             filesize__gt=0, hidden=True).aggregate(Sum('filesize')),
@@ -128,7 +130,53 @@ def stats_collection(request: HttpRequest) -> HttpResponse:
 
         }
 
-    d = {'stats': stats_dict, 'providers': providers_dict}
+    # Per category
+    categories = Gallery.objects.all().values_list('category', flat=True).distinct()
+
+    categories_dict = {}
+
+    for category in categories:
+        categories_dict[category] = {
+            'n_galleries': Gallery.objects.filter(category=category).count(),
+            'gallery': Gallery.objects.filter(
+                filesize__gt=0, category=category
+            ).aggregate(
+                Avg('filesize'), Max('filesize'), Min('filesize'), Sum('filesize'), Avg('filecount'), Sum('filecount')
+            )
+        }
+
+    # Per language tag
+    languages = Tag.objects.filter(
+        scope='language'
+    ).exclude(
+        scope='language', name='translated'
+    ).annotate(num_gallery=Count('gallery')).order_by('-num_gallery').values_list('name', flat=True).distinct()
+
+    languages_dict = {}
+
+    languages_dict['untranslated'] = {
+        'n_galleries': Gallery.objects.exclude(tags__scope='language').distinct().count(),
+        'gallery': Gallery.objects.filter(
+            filesize__gt=0, tags__scope='language'
+        ).distinct().aggregate(
+            Avg('filesize'), Max('filesize'), Min('filesize'), Sum('filesize'), Avg('filecount'), Sum('filecount')
+        )
+    }
+
+    for language in languages:
+        languages_dict[language] = {
+            'n_galleries': Gallery.objects.filter(tags__scope='language', tags__name=language).distinct().count(),
+            'gallery': Gallery.objects.filter(
+                filesize__gt=0, tags__scope='language', tags__name=language
+            ).distinct().aggregate(
+                Avg('filesize'), Max('filesize'), Min('filesize'), Sum('filesize'), Avg('filecount'), Sum('filecount')
+            )
+        }
+
+    d = {
+        'stats': stats_dict, 'providers': providers_dict,
+        'gallery_categories': categories_dict, 'gallery_languages': languages_dict
+    }
 
     return render(request, "viewer/stats_collection.html", d)
 
@@ -539,19 +587,29 @@ def logs(request: HttpRequest, tool: str = "all") -> HttpResponse:
     if not request.user.is_staff:
         return render_error(request, "You need to be an admin to see logs.")
 
-    log_lines: typing.List[str] = []
+    lines_info: dict[int, dict] = defaultdict(dict)
 
-    if tool == "all" or tool == "webcrawler":
-
-        f = open(MAIN_LOGGER, 'rt', encoding='utf8')
-        log_lines = f.read().split('[0m\n')
-        f.close()
-        log_lines.pop()
-        log_lines.reverse()
+    f = open(MAIN_LOGGER, 'rt', encoding='utf8')
+    log_lines: list[str] = f.read().split('[0m\n')
+    f.close()
+    log_lines.pop()
+    log_lines.reverse()
 
     log_filter = request.GET.get('filter', '')
+
     if log_filter:
-        log_lines = [x for x in log_lines if log_filter.lower() in x.lower()]
+        # log_lines = [x for x in log_lines if log_filter.lower() in x.lower()]
+        max_len = len(log_lines)
+        found_indices = set()
+
+        for i, log_line in enumerate(log_lines):
+            if log_filter.lower() in log_line.lower():
+                found_indices.update(list(range(max(i - 10, 0), min(i + 10, max_len))))
+                lines_info[i]['highlighted'] = True
+
+        log_lines_extended: list[tuple[str, dict]] = [(x, lines_info[i]) for i, x in enumerate(log_lines) if i in found_indices]
+    else:
+        log_lines_extended = [(x, lines_info[i]) for i, x in enumerate(log_lines)]
 
     current_base_uri = re.escape('{scheme}://{host}'.format(scheme=request.scheme, host=request.get_host()))
     # Build complete URL for relative internal URLs (some)
@@ -571,9 +629,9 @@ def logs(request: HttpRequest, tool: str = "all") -> HttpResponse:
     def build_request(match_obj: typing.Match) -> str:
         return request.build_absolute_uri(match_obj.group(0))
 
-    log_lines = [reduce(lambda v, pattern: re.sub(pattern, build_request, v), patterns, line) for line in log_lines]
+    log_lines_extended = [(reduce(lambda v, pattern: re.sub(pattern, build_request, v), patterns, line[0]), line[1]) for line in log_lines_extended]
 
-    paginator = Paginator(log_lines, 100)
+    paginator = Paginator(log_lines_extended, 100)
     try:
         page = int(request.GET.get("page", '1'))
     except ValueError:
@@ -661,7 +719,7 @@ def foldercrawler(request: HttpRequest) -> HttpResponse:
     if not request.user.is_staff:
         return render_error(request, "You need to be an admin to use the tools.")
 
-    d: typing.Dict[str, typing.Any] = {'media_root': os.path.realpath(crawler_settings.MEDIA_ROOT)}
+    d: dict[str, typing.Any] = {'media_root': os.path.realpath(crawler_settings.MEDIA_ROOT)}
 
     p = request.POST
 

@@ -6,7 +6,7 @@ from functools import reduce
 from random import randint
 
 import operator
-from typing import Dict, Any, List, Optional, Iterable, Union
+from typing import Any, Optional, Union
 
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
@@ -33,8 +33,8 @@ from viewer.forms import (
 from viewer.models import (
     Archive, Image, Tag, Gallery,
     UserArchivePrefs, WantedGallery,
-    users_with_perm, Profile, GalleryQuerySet)
-from viewer.utils.functions import send_mass_html_mail
+    users_with_perm, Profile, GalleryQuerySet, GallerySubmitEntry)
+from viewer.utils.functions import send_mass_html_mail, gallery_search_results_to_json
 from viewer.utils.tags import sort_tags
 from viewer.utils.types import AuthenticatedHttpRequest
 
@@ -47,7 +47,7 @@ gallery_filter_keys = (
     "create_from", "create_to",
     "category", "provider", "dl_type",
     "expunged", "hidden", "fjord", "uploader", "tags", "not_used", "reason",
-    "contains", "contained", "not_normal", "crc32"
+    "contains", "contained", "not_normal", "crc32", "used"
 )
 
 archive_filter_keys = (
@@ -56,7 +56,7 @@ archive_filter_keys = (
     "rating_from", "rating_to", "match_type", "posted_from",
     "posted_to", "source_type", "tags", "only_favorites",
     "non_public", "public", "reason",
-    "uploader", "category",
+    "uploader", "category", "hidden",
     "qsearch"
 )
 
@@ -329,7 +329,7 @@ def gallery_list(request: HttpRequest, mode: str = 'none', tag: str = None) -> H
     get = request.GET
     request.GET = cleared_queries
 
-    display_prms: Dict[str, Any] = {}
+    display_prms: dict[str, Any] = {}
 
     # init parameters
     if "gallery_parameters" in request.session:
@@ -393,6 +393,22 @@ def gallery_list(request: HttpRequest, mode: str = 'none', tag: str = None) -> H
     except (InvalidPage, EmptyPage):
         results_page = paginator.page(1)
 
+    if 'json' in get:
+        response = json.dumps(
+            {
+                'galleries': gallery_search_results_to_json(request, results_page),
+                'has_previous': results_page.has_previous(),
+                'has_next': results_page.has_next(),
+                'num_pages': paginator.num_pages,
+                'count': paginator.count,
+                'number': results_page.number,
+            },
+            # indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        return HttpResponse(response, content_type="application/json; charset=utf-8")
+
     display_prms['page_range'] = list(
         range(
             max(1, results_page.number - 3 - max(0, results_page.number - (paginator.num_pages - 3))),
@@ -413,12 +429,12 @@ def gallery_list(request: HttpRequest, mode: str = 'none', tag: str = None) -> H
 
 filter_galleries_defer = (
     "origin", "status", "thumbnail_url", "dl_type", "public", "fjord",
-    "hidden", "rating", "expunged", "comment", "gallery_container_id", "uploader",
+    "hidden", "rating", "expunged", "comment", "gallery_container_id", "magazine_id", "uploader",
     "reason", "last_modified"
 )
 
 
-def filter_galleries(request: HttpRequest, session_filters: Dict[str, str], request_filters: Dict[str, str]) -> Union[GalleryQuerySet, QuerySet[Gallery]]:
+def filter_galleries(request: HttpRequest, session_filters: dict[str, str], request_filters: dict[str, str]) -> Union[GalleryQuerySet, QuerySet[Gallery]]:
     """Filter gallery results through parameters and return results list."""
 
     # sort and filter results by parameters
@@ -463,9 +479,11 @@ def filter_galleries(request: HttpRequest, session_filters: Dict[str, str], requ
         results = results.filter(provider=request_filters["provider"])
 
     if request_filters["contained"]:
-        results = results.filter(gallery_container__isnull=False)
+        results = results.filter(Q(gallery_container__isnull=False) | Q(magazine__isnull=False))
     if request_filters["contains"]:
-        results = results.annotate(num_contains=Count('gallery_contains')).filter(num_contains__gt=0)
+        results = results.annotate(
+            num_contains=Count('gallery_contains'), num_chapters=Count('magazine_chapters')
+        ).filter(Q(num_contains__gt=0) | Q(num_chapters__gt=0))
     if request_filters["reason"]:
         results = results.filter(reason__contains=request_filters["reason"])
     if request.user.is_staff:
@@ -557,7 +575,7 @@ def search(request: HttpRequest, mode: str = 'none', tag: str = None) -> HttpRes
 
     request.GET = cleared_queries
 
-    display_prms: Dict[str, Any] = {}
+    display_prms: dict[str, Any] = {}
 
     if "parameters" in request.session:
         parameters = request.session["parameters"]
@@ -655,7 +673,7 @@ def search(request: HttpRequest, mode: str = 'none', tag: str = None) -> HttpRes
     return render(request, "viewer/archive_search.html", d)
 
 
-def filter_archives(request: HttpRequest, session_filters: Dict[str, str], request_filters: Dict[str, str], force_private: bool = False) -> QuerySet[Archive]:
+def filter_archives(request: HttpRequest, session_filters: dict[str, str], request_filters: dict[str, str], force_private: bool = False) -> QuerySet[Archive]:
     """Filter results through parameters
     and return results list.
     """
@@ -835,7 +853,7 @@ def quick_search(request: HttpRequest, parameters: DataDict, display_parameters:
     # URL search
     url = display_parameters["qsearch"]
 
-    parsers = crawler_settings.provider_context.get_parsers_classes()
+    parsers = crawler_settings.provider_context.get_parsers(crawler_settings)
     gallery_ids_providers = list()
     for parser in parsers:
         if parser.id_from_url_implemented():
@@ -884,6 +902,56 @@ def quick_search(request: HttpRequest, parameters: DataDict, display_parameters:
     return results
 
 
+# TODO: Expose this search somewhere.
+def quick_gallery_search(request: HttpRequest) -> QuerySet[Gallery]:
+    """Quick search of galleries."""
+    # sort and filter results by parameters
+    order = "posted"
+
+    results: QuerySet[Gallery] = Gallery.objects.order_by(F(order).desc(nulls_last=True))
+
+    if not request.user.is_authenticated:
+        results = results.filter(public=True)
+
+    qsearch = request.GET.get("qsearch", '')
+
+    # URL search
+    url = qsearch
+
+    parsers = crawler_settings.provider_context.get_parsers(crawler_settings)
+    gallery_ids_providers = list()
+    for parser in parsers:
+        if parser.id_from_url_implemented():
+            accepted_urls = parser.filter_accepted_urls((url,))
+            gallery_ids_providers.extend([(parser.id_from_url(x), parser.name) for x in accepted_urls])
+
+    if gallery_ids_providers:
+        query = reduce(
+            operator.or_,
+            (Q(gid=gid, provider=provider) for gid, provider in gallery_ids_providers)
+        )
+
+        results_url: Optional[QuerySet[Gallery]] = results.filter(query)
+    else:
+        results_url = None
+
+    q_formatted = '%' + qsearch.replace(' ', '%') + '%'
+    results = results.filter(
+        Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted)
+    )
+
+    if results_url:
+        results = results | results_url
+    else:
+        results = results
+
+    results = results.distinct()
+
+    results = results.defer(*filter_galleries_defer)
+
+    return results
+
+
 def url_submit(request: HttpRequest) -> HttpResponse:
     """Submit given URLs."""
 
@@ -927,21 +995,17 @@ def url_submit(request: HttpRequest) -> HttpResponse:
         if 'reason' in p and p['reason'] != '':
             reason = p['reason']
             # Force limit string length (dl_type field max_length)
-            current_settings.gallery_reason = reason[:200]
+            # current_settings.gallery_reason = reason[:200]
 
         # As a security check, only finally set urls that pass the accepted_urls
-        parsers = crawler_settings.provider_context.get_parsers_classes()
-        no_commands_in_args_list: List[str] = list()
-        for parser in parsers:
-            if parser.id_from_url_implemented():
-                no_commands_in_args_list.extend(parser.filter_accepted_urls(urls))
-        current_settings.workers.web_queue.enqueue_args_list(no_commands_in_args_list, override_options=current_settings)
+        parsers = crawler_settings.provider_context.get_parsers(crawler_settings)
 
         url_messages = []
         admin_messages = []
 
         # Sometimes people submit messages here.
-        found_valid_urls: List[str] = []
+        found_valid_urls: list[str] = []
+        url_provider_gallery_tuple = []
 
         for parser in parsers:
             if parser.id_from_url_implemented():
@@ -950,6 +1014,7 @@ def url_submit(request: HttpRequest) -> HttpResponse:
                 for url_filtered in urls_filtered:
                     gid = parser.id_from_url(url_filtered)
                     gallery = Gallery.objects.filter(gid=gid, provider=parser.name).first()
+                    url_provider_gallery_tuple.append((url_filtered, gallery))
                     if not gallery:
                         url_messages.append('{}: New URL, will be added to the submit queue'.format(
                             url_filtered
@@ -960,13 +1025,25 @@ def url_submit(request: HttpRequest) -> HttpResponse:
                         )
                         continue
                     if gallery.is_submitted():
-                        messages.info(
-                            request,
-                            'URL {} already exists in the backup and it\'s being reviewed.'.format(url_filtered)
-                        )
-                        url_messages.append('{}: Already in submit queue, link: {}, reason: {}'.format(
-                            url_filtered, request.build_absolute_uri(gallery.get_absolute_url()), gallery.reason)
-                        )
+                        if gallery.public:
+                            messages.info(
+                                request,
+                                'URL {} already exists but a source file isn\'t available: {}.'.format(
+                                    url_filtered,
+                                    request.build_absolute_uri(gallery.get_absolute_url())
+                                )
+                            )
+                            url_messages.append('{}: Already in submit queue but no Archive found, link: {}, reason: {}'.format(
+                                url_filtered, request.build_absolute_uri(gallery.get_absolute_url()), gallery.reason)
+                            )
+                        else:
+                            messages.info(
+                                request,
+                                'URL {} already exists in the backup and it\'s being reviewed.'.format(url_filtered)
+                            )
+                            url_messages.append('{}: Already in submit queue, link: {}, reason: {}'.format(
+                                url_filtered, request.build_absolute_uri(gallery.get_absolute_url()), gallery.reason)
+                            )
                     elif gallery.public:
                         messages.info(
                             request,
@@ -994,6 +1071,46 @@ def url_submit(request: HttpRequest) -> HttpResponse:
                         )
 
         extra_text = [x for x in urls if x not in found_valid_urls]
+
+        gallery_submit_entries: dict[str, GallerySubmitEntry] = {}
+
+        for url_filtered, gallery in url_provider_gallery_tuple:
+            if not gallery:
+                submit_entry = GallerySubmitEntry(
+                    submit_url=url_filtered,
+                    submit_reason=reason,
+                    submit_extra="\n".join(extra_text)
+                )
+                submit_entry.save()
+            else:
+                submit_entry = GallerySubmitEntry(
+                    gallery=gallery,
+                    resolved_status=GallerySubmitEntry.RESOLVED_ALREADY_PRESENT,
+                    submit_url=url_filtered,
+                    submit_reason=reason,
+                    submit_extra="\n".join(extra_text),
+                )
+                submit_entry.save()
+
+            gallery_submit_entries[url_filtered] = submit_entry
+
+        no_commands_in_args_list: list[str] = list()
+        for parser in parsers:
+            if parser.id_from_url_implemented():
+                no_commands_in_args_list.extend(parser.filter_accepted_urls(urls))
+
+        def gallery_callback(x: Optional['Gallery'], crawled_url: Optional[str], result: str) -> None:
+            if crawled_url in gallery_submit_entries:
+                if x:
+                    gallery_submit_entries[crawled_url].gallery = x
+                gallery_submit_entries[crawled_url].submit_result = result
+                gallery_submit_entries[crawled_url].save()
+
+        current_settings.workers.web_queue.enqueue_args_list(
+            no_commands_in_args_list,
+            override_options=current_settings,
+            gallery_callback=gallery_callback
+        )
 
         if reason:
             admin_subject = 'New submission, reason: {}'.format(reason)
@@ -1056,8 +1173,11 @@ def public_stats(request: HttpRequest) -> HttpResponse:
 
     stats_dict = {
         "n_archives": Archive.objects.filter(public=True).count(),
+        "n_galleries": Gallery.objects.filter(public=True).count(),
         "archive": Archive.objects.filter(public=True).filter(filesize__gt=0).aggregate(
-            Avg('filesize'), Max('filesize'), Min('filesize'), Sum('filesize')),
+            Avg('filesize'), Max('filesize'), Min('filesize'), Sum('filesize'), Avg('filecount'), Sum('filecount')),
+        "gallery": Gallery.objects.filter(public=True).filter(filesize__gt=0).aggregate(
+            Avg('filesize'), Max('filesize'), Min('filesize'), Sum('filesize'), Avg('filecount'), Sum('filecount')),
         "n_tags": Tag.objects.filter(gallery_tags__public=True).distinct().count(),
         "top_10_tags": Tag.objects.filter(gallery_tags__public=True).distinct().annotate(
             num_archive=Count('gallery_tags')).order_by('-num_archive')[:10],
@@ -1065,7 +1185,50 @@ def public_stats(request: HttpRequest) -> HttpResponse:
             num_archive=Count('gallery_tags')).order_by('-num_archive')[:10]
     }
 
-    d = {'stats': stats_dict}
+    # Per category
+    categories = Gallery.objects.filter(public=True).values_list('category', flat=True).distinct()
+
+    categories_dict = {}
+
+    for category in categories:
+        categories_dict[category] = {
+            'n_galleries': Gallery.objects.filter(public=True, category=category).count(),
+            'gallery': Gallery.objects.filter(public=True).filter(
+                filesize__gt=0, category=category
+            ).aggregate(
+                Avg('filesize'), Max('filesize'), Min('filesize'), Sum('filesize'), Avg('filecount'), Sum('filecount')
+            )
+        }
+
+    # Per language tag
+    languages = Tag.objects.filter(
+        scope='language'
+    ).exclude(
+        scope='language', name='translated'
+    ).annotate(num_gallery=Count('gallery')).order_by('-num_gallery').values_list('name', flat=True).distinct()
+
+    languages_dict = {}
+
+    languages_dict['untranslated'] = {
+        'n_galleries': Gallery.objects.filter(public=True).exclude(tags__scope='language').distinct().count(),
+        'gallery': Gallery.objects.filter(public=True).filter(
+            filesize__gt=0, tags__scope='language'
+        ).distinct().aggregate(
+            Avg('filesize'), Max('filesize'), Min('filesize'), Sum('filesize'), Avg('filecount'), Sum('filecount')
+        )
+    }
+
+    for language in languages:
+        languages_dict[language] = {
+            'n_galleries': Gallery.objects.filter(public=True).filter(tags__scope='language', tags__name=language).distinct().count(),
+            'gallery': Gallery.objects.filter(public=True).filter(
+                filesize__gt=0, tags__scope='language', tags__name=language
+            ).distinct().aggregate(
+                Avg('filesize'), Max('filesize'), Min('filesize'), Sum('filesize'), Avg('filecount'), Sum('filecount')
+            )
+        }
+
+    d = {'stats': stats_dict, 'gallery_categories': categories_dict, 'gallery_languages': languages_dict}
 
     return render(request, "viewer/public_stats.html", d)
 
@@ -1102,7 +1265,7 @@ def user_archive_preferences(request: AuthenticatedHttpRequest, archive_pk: int,
                                 {'user_archive_preferences': current_user_archive_preferences})
 
 
-def filter_archives_simple(params: Dict[str, Any]) -> QuerySet[Archive]:
+def filter_archives_simple(params: dict[str, Any]) -> QuerySet[Archive]:
     """Filter results through parameters
     and return results list.
     """
@@ -1212,6 +1375,9 @@ def filter_archives_simple(params: Dict[str, Any]) -> QuerySet[Archive]:
     if "public" in params and params["public"]:
         results = results.filter(public=True)
 
+    if "hidden" in params and params["hidden"]:
+        results = results.filter(gallery__hidden=True)
+
     if 'view' in params:
         if params["view"] == "list":
             results = results.distinct().select_related('gallery')
@@ -1228,7 +1394,7 @@ def filter_archives_simple(params: Dict[str, Any]) -> QuerySet[Archive]:
     return results
 
 
-def filter_galleries_simple(params: Dict[str, str]) -> QuerySet[Gallery]:
+def filter_galleries_simple(params: dict[str, str]) -> QuerySet[Gallery]:
     """Filter results through parameters
     and return results list.
     """
@@ -1336,7 +1502,7 @@ def filter_galleries_simple(params: Dict[str, str]) -> QuerySet[Gallery]:
     return results
 
 
-def filter_wanted_galleries_simple(params: Dict[str, Any]) -> QuerySet[WantedGallery]:
+def filter_wanted_galleries_simple(params: dict[str, Any]) -> QuerySet[WantedGallery]:
     """Filter results through parameters
     and return results list.
     """

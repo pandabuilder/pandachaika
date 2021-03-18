@@ -3,7 +3,7 @@ import json
 import typing
 from datetime import datetime, timezone
 import time
-from typing import List, Optional, Dict, Iterable, Tuple, Callable
+from typing import Optional
 
 import django.utils.timezone as django_tz
 import logging
@@ -11,6 +11,7 @@ import logging
 import traceback
 
 from collections import defaultdict
+from collections.abc import Callable, Iterable
 
 from django.db.models import QuerySet, Q, Value, CharField, F
 from django.db.models.functions import Concat, Replace
@@ -31,7 +32,7 @@ logger = logging.getLogger(__name__)
 class BaseParser:
     name = ''
     ignore = False
-    accepted_urls: List[str] = []
+    accepted_urls: list[str] = []
 
     def __init__(self, settings: 'Settings') -> None:
         self.settings = settings
@@ -40,7 +41,7 @@ class BaseParser:
         else:
             self.own_settings = None
         self.general_utils = utilities.GeneralUtils(self.settings)
-        self.downloaders: List[Tuple['BaseDownloader', int]] = self.settings.provider_context.get_downloaders(self.settings, self.general_utils, filter_name=self.name)
+        self.downloaders: list[tuple['BaseDownloader', int]] = self.settings.provider_context.get_downloaders(self.settings, self.general_utils, filter_name=self.name)
         self.last_used_downloader: str = 'none'
         self.archive_callback: Optional[Callable[[Optional['Archive'], Optional[str], str], None]] = None
         self.gallery_callback: Optional[Callable[[Optional['Gallery'], Optional[str], str], None]] = None
@@ -53,19 +54,18 @@ class BaseParser:
     def fetch_gallery_data(self, url: str) -> Optional[GalleryData]:
         return None
 
-    def fetch_multiple_gallery_data(self, url_list: List[str]) -> Optional[List[GalleryData]]:
+    def fetch_multiple_gallery_data(self, url_list: list[str]) -> Optional[list[GalleryData]]:
         return None
 
-    @classmethod
-    def filter_accepted_urls(cls, urls: Iterable[str]) -> List[str]:
-        return [x for x in urls if any(word in x for word in cls.accepted_urls)]
+    def filter_accepted_urls(self, urls: Iterable[str]) -> list[str]:
+        return [x for x in urls if any(word in x for word in self.accepted_urls)]
 
     # The idea here is: if it failed and 'retry_failed is not set, don't process
     # If it has at least 1 archive, to force redownload, 'redownload' must be set
     # If it has no archives, to force processing, 'replace_metadata' must be set
     # Skipped galleries are not processed again.
     # We don't log directly here because some methods would spam otherwise (feed crawling)
-    def discard_gallery_by_internal_checks(self, gallery_id: str = None, link: str = '', gallery: 'Gallery' = None) -> Tuple[bool, str]:
+    def discard_gallery_by_internal_checks(self, gallery_id: str = None, link: str = '', gallery: 'Gallery' = None) -> tuple[bool, str]:
 
         if self.settings.update_metadata_mode:
             return False, 'Gallery link {ext_link} running in update metadata mode, processing.'.format(
@@ -137,7 +137,7 @@ class BaseParser:
         return False, message
 
     # Priorities are: title, tags then file count.
-    def compare_gallery_with_wanted_filters(self, gallery: GalleryData, link: str, wanted_filters: QuerySet, gallery_wanted_lists: Dict[str, List['WantedGallery']]) -> None:
+    def compare_gallery_with_wanted_filters(self, gallery: GalleryData, link: str, wanted_filters: QuerySet, gallery_wanted_lists: dict[str, list['WantedGallery']]) -> None:
 
         if not self.settings.found_gallery_model:
             logger.error("FoundGallery model has not been initiated.")
@@ -212,7 +212,7 @@ class BaseParser:
                     accepted_tags = set(wanted_filter.wanted_tags_list()).intersection(set(gallery.tags))
                     gallery_tags_scopes = [x.split(":", maxsplit=1)[0] for x in gallery.tags if len(x) > 1]
                     wanted_gallery_tags_scopes = [x.split(":", maxsplit=1)[0] for x in accepted_tags if len(x) > 1]
-                    scope_count: Dict[str, int] = {}
+                    scope_count: dict[str, int] = {}
                     for scope_name in gallery_tags_scopes:
                         if scope_name in wanted_gallery_tags_scopes:
                             if scope_name not in scope_count:
@@ -277,11 +277,10 @@ class BaseParser:
             return True
         return False
 
-    @staticmethod
-    def get_feed_urls() -> List[str]:
+    def get_feed_urls(self) -> list[str]:
         pass
 
-    def crawl_feed(self, feed_url: str = '') -> typing.Union[List[str], List[GalleryData]]:
+    def crawl_feed(self, feed_url: str = '') -> typing.Union[list[typing.Any]]:
         pass
 
     def feed_urls_implemented(self) -> bool:
@@ -290,7 +289,7 @@ class BaseParser:
         return False
 
     def crawl_urls_caller(
-            self, urls: List[str],
+            self, urls: list[str],
             wanted_filters: QuerySet = None, wanted_only: bool = False
     ):
         try:
@@ -302,12 +301,12 @@ class BaseParser:
             logger.critical(traceback.format_exc())
 
     def crawl_urls(
-            self, urls: List[str],
+            self, urls: list[str],
             wanted_filters: QuerySet = None, wanted_only: bool = False
     ) -> None:
         pass
 
-    def pass_gallery_data_to_downloaders(self, gallery_data_list: List[GalleryData], gallery_wanted_lists):
+    def pass_gallery_data_to_downloaders(self, gallery_data_list: list[GalleryData], gallery_wanted_lists: dict[str, list['WantedGallery']]):
         gallery_count = len(gallery_data_list)
 
         if gallery_count == 0:
@@ -334,7 +333,7 @@ class BaseParser:
                 gallery.public = True
             self.work_gallery_data(gallery, gallery_wanted_lists)
 
-    def work_gallery_data(self, gallery: GalleryData, gallery_wanted_lists) -> None:
+    def work_gallery_data(self, gallery: GalleryData, gallery_wanted_lists: dict[str, list['WantedGallery']]) -> None:
 
         if not self.settings.found_gallery_model:
             logger.error("FoundGallery model has not been initiated.")
@@ -347,7 +346,14 @@ class BaseParser:
 
         for cnt, downloader in enumerate(self.downloaders):
             downloader[0].init_download(copy.deepcopy(gallery))
+
             if downloader[0].return_code == 1:
+
+                if (cnt + 1) == len(self.downloaders) and downloader[0].mark_hidden_if_last:
+                    if downloader[0].gallery_db_entry:
+                        downloader[0].gallery_db_entry.hidden = True
+                        downloader[0].gallery_db_entry.simple_save()
+
                 self.last_used_downloader = str(downloader[0])
                 if not downloader[0].archive_only:
                     for wanted_gallery in gallery_wanted_lists[gallery.gid]:
@@ -357,7 +363,7 @@ class BaseParser:
                         )
                         if wanted_gallery.add_as_hidden and downloader[0].gallery_db_entry:
                             downloader[0].gallery_db_entry.hidden = True
-                            downloader[0].gallery_db_entry.save()
+                            downloader[0].gallery_db_entry.simple_save()
                         if downloader[0].archive_db_entry and wanted_gallery.reason:
                             downloader[0].archive_db_entry.reason = wanted_gallery.reason
                             downloader[0].archive_db_entry.simple_save()
@@ -399,12 +405,57 @@ class BaseParser:
                     )
                     if self.gallery_callback:
                         self.gallery_callback(downloader[0].gallery_db_entry, gallery.link, 'success')
+
+                    # Process possible nested galleries (contained, magazine)
+                    # To avoid downloading extra Archives, it will only be possible to autoadd Gallery only downloads
+                    # Second, to avoid keeping check of already processed galleries, considering they could be
+                    # downloaded from different queues, it will only work with 1 level deep, so that no infinite
+                    # nesting happens
+                    # Note that we have a filter here to not add galleries that already exist.
+                    # If the gallery already exists, the relationship will be set backwards, without
+                    # needing to process the Gallery directly
+                    if not self.settings.stop_nested and self.settings.auto_download_nested and self.settings.workers.web_queue and self.settings.gallery_model:
+                        if gallery.gallery_contains_gids:
+                            existing_gids = self.settings.gallery_model.objects.filter(
+                                gid__in=gallery.gallery_contains_gids,
+                                provider=gallery.provider
+                            ).values_list('gid', flat=True)
+
+                            gallery_urls = [
+                                self.settings.gallery_model(gid=x, provider=gallery.provider).get_link() for x in gallery.gallery_contains_gids if x not in existing_gids
+                            ]
+                            gallery_urls.append("--stop-nested")
+
+                            self.settings.workers.web_queue.enqueue_args_list(gallery_urls)
+
+                        if gallery.magazine_chapters_gids:
+                            existing_gids = self.settings.gallery_model.objects.filter(
+                                gid__in=gallery.magazine_chapters_gids,
+                                provider=gallery.provider
+                            ).values_list('gid', flat=True)
+
+                            gallery_urls = [
+                                self.settings.gallery_model(gid=x, provider=gallery.provider).get_link() for x in gallery.magazine_chapters_gids if x not in existing_gids
+                            ]
+                            gallery_urls.append("--stop-nested")
+
+                            self.settings.workers.web_queue.enqueue_args_list(gallery_urls)
+
+                        if gallery.magazine_gid and not self.settings.gallery_model.objects.filter(gid=gallery.magazine_gid, provider=gallery.provider):
+                            gallery_url = self.settings.gallery_model(gid=gallery.magazine_gid, provider=gallery.provider).get_link()
+                            self.settings.workers.web_queue.enqueue_args_list([gallery_url, "--stop-nested"])
+
+                        if gallery.gallery_container_gid and not self.settings.gallery_model.objects.filter(gid=gallery.gallery_container_gid, provider=gallery.provider):
+                            gallery_url = self.settings.gallery_model(gid=gallery.gallery_container_gid, provider=gallery.provider).get_link()
+                            self.settings.workers.web_queue.enqueue_args_list([gallery_url, "--stop-nested"])
+
                 return
             elif downloader[0].return_code == 0 and (cnt + 1) == len(self.downloaders):
                 self.last_used_downloader = 'none'
                 if not downloader[0].archive_only:
                     downloader[0].original_gallery = gallery
                     downloader[0].original_gallery.dl_type = 'failed'
+                    downloader[0].original_gallery.hidden = True
                     downloader[0].update_gallery_db()
                     if downloader[0].gallery_db_entry:
                         logger.warning(
@@ -463,8 +514,8 @@ class InternalParser(BaseParser):
 
         galleries_gids = []
         found_galleries = set()
-        total_galleries_filtered: List[GalleryData] = []
-        gallery_wanted_lists: Dict[str, List['WantedGallery']] = defaultdict(list)
+        total_galleries_filtered: list[GalleryData] = []
+        gallery_wanted_lists: dict[str, list['WantedGallery']] = defaultdict(list)
 
         for gallery in dict_list:
             galleries_gids.append(gallery['gid'])

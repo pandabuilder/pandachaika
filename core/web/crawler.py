@@ -3,7 +3,8 @@ import threading
 import logging
 
 import os
-from typing import List, Union, Callable, Optional, NoReturn
+from collections.abc import Callable
+from typing import Union, Optional, NoReturn
 
 import requests
 from django.db.models import QuerySet, Q
@@ -32,7 +33,7 @@ class WebCrawler(object):
         self.settings = settings
         self.parse_error = False
 
-    def get_args(self, arg_line: List[str]) -> Union[argparse.Namespace, ArgumentParserError]:
+    def get_args(self, arg_line: list[str]) -> Union[argparse.Namespace, ArgumentParserError]:
         parser = YieldingArgumentParser(prog='PandaBackupLinks')
 
         parser.add_argument('url',
@@ -144,6 +145,11 @@ class WebCrawler(object):
                             action='store',
                             help='Override the wait timer.')
 
+        parser.add_argument('-sn', '--stop-nested',
+                            required=False,
+                            action='store_true',
+                            help='Flag to indicate the parsers that in case of nested links, don\'t process them.')
+
         try:
             args = parser.parse_args(arg_line)
             self.parse_error = False
@@ -160,7 +166,7 @@ class WebCrawler(object):
 
     def start_crawling(
             self,
-            arg_line: List[str],
+            arg_line: list[str],
             override_options: Settings = None,
             archive_callback: Callable[[Optional['Archive'], Optional[str], str], None] = None,
             gallery_callback: Callable[[Optional['Gallery'], Optional[str], str], None] = None,
@@ -195,7 +201,7 @@ class WebCrawler(object):
 
     def start_crawling_parse_args(
             self,
-            arg_line: List[str],
+            arg_line: list[str],
             override_options: Settings = None,
             archive_callback: Callable[[Optional['Archive'], Optional[str], str], None] = None,
             gallery_callback: Callable[[Optional['Gallery'], Optional[str], str], None] = None,
@@ -258,7 +264,10 @@ class WebCrawler(object):
         if args.set_details:
             current_settings.archive_details = args.set_details
 
-        provider_filter_list: List[str] = []
+        if args.stop_nested:
+            current_settings.stop_nested = args.stop_nested
+
+        provider_filter_list: list[str] = []
         if args.include_providers:
             provider_filter_list.extend(args.include_providers)
 
@@ -357,7 +366,7 @@ class WebCrawler(object):
 
     def start_crawling_no_argparser(
             self,
-            arg_line: List[str],
+            arg_line: list[str],
             override_options: Settings = None,
             archive_callback: Callable[[Optional['Archive'], Optional[str], str], None] = None,
             gallery_callback: Callable[[Optional['Gallery'], Optional[str], str], None] = None,

@@ -1,5 +1,5 @@
 from django.urls import path
-from django.urls import include, re_path
+from django.urls import re_path
 
 from viewer.views import head, browser, wanted, exp, api, archive, admin, manager, collaborators, groups, admin_api
 from viewer.feeds import LatestArchivesFeed
@@ -10,6 +10,7 @@ app_name = 'viewer'
 urlpatterns = [
 
     re_path(r"^dir-browser/$", browser.directory_parser, name='directory-parser'),
+    re_path(r"^api-login/*$", api.api_login, name='api-login'),
     re_path(r"^jsearch/*$", api.json_search, name='json-search'),
     re_path(r"^api/*$", api.json_search, name='api'),
     re_path(r"^jsonapi$", api.json_parser, name='json-parser'),

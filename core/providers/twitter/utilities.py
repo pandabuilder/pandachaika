@@ -17,6 +17,10 @@ def match_tweet_with_wanted_galleries(tweet_obj: TweetPost, settings: 'Settings'
 
     yield("Tweet id: {}, processing...".format(tweet_obj.tweet_id))
 
+    if not tweet_obj.text:
+        yield ("Created tweet id: {} did not contain text to analyze".format(tweet_obj.tweet_id))
+        return
+
     match_tweet_type = re.search('【(.+)】(.*)', tweet_obj.text, re.DOTALL)
     if match_tweet_type:
         yield("Matched pattern (date_type: {}, title, artist: {}),".format(
@@ -29,9 +33,12 @@ def match_tweet_with_wanted_galleries(tweet_obj: TweetPost, settings: 'Settings'
         mention_date = tweet_obj.posted_date
         if date_type:
             release_type = 'release_date'
-            release_date = mention_date.replace(
-                month=int(date_type.group(1)), day=int(date_type.group(2)), hour=0, minute=0, second=0
-            )
+            if mention_date:
+                release_date = mention_date.replace(
+                    month=int(date_type.group(1)), day=int(date_type.group(2)), hour=0, minute=0, second=0
+                )
+            else:
+                mention_date = mention_date
         new_book_type = re.search('新刊情報', match_tweet_type.group(1), re.DOTALL)
         if new_book_type:
             release_type = 'new_publication'
@@ -43,7 +50,10 @@ def match_tweet_with_wanted_galleries(tweet_obj: TweetPost, settings: 'Settings'
         out_tomorrow_type = re.search('明日発売', match_tweet_type.group(1), re.DOTALL)
         if out_tomorrow_type:
             release_type = 'out_tomorrow'
-            release_date = tweet_obj.posted_date + timedelta(days=1)
+            if tweet_obj.posted_date:
+                release_date = tweet_obj.posted_date + timedelta(days=1)
+            else:
+                release_date = tweet_obj.posted_date
 
         match_title_artists = re.search('^『(.+?)』は＜(.+)＞', match_tweet_type.group(2), re.DOTALL)
         if match_title_artists and release_type:
@@ -139,7 +149,7 @@ def match_tweet_with_wanted_galleries(tweet_obj: TweetPost, settings: 'Settings'
             title = match_artist_title.group(2)
             title = title.replace("X-EROS#", "X-EROS #")
             cover_artist = None
-            book_type = None
+            book_type = ''
             if '最新刊' in artist:
                 artist_name = artist_name.replace('最新刊', '')
                 book_type = 'new_publication'

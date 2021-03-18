@@ -100,7 +100,7 @@
                       <a href="{% url 'viewer:gallery' match.gallery.pk %}">{{ match.gallery.title }}</a>
                     </td>
                     <td>
-                      <a href="{{ match.gallery.get_link }}" data-image-url="{% if match.gallery.thumbnail.name %}{{ match.gallery.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover">{{ match.gallery.get_link }}</a>
+                      <a href="{{ match.gallery.get_link }}" data-image-url="{% if match.gallery.thumbnail.name %}{{ match.gallery.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover noopener noreferrer nofollow">{{ match.gallery.get_link }}</a>
                     </td>
                     <td class="{{ match.match_accuracy|color_percent:1 }}">
                       {{ match.match_accuracy|floatformat:3 }}

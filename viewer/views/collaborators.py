@@ -1,6 +1,6 @@
 import logging
 import threading
-from typing import List, Optional
+from typing import Optional
 
 from django.conf import settings
 from django.contrib import messages
@@ -18,7 +18,7 @@ from viewer.utils.actions import event_log
 from viewer.forms import GallerySearchForm, ArchiveSearchForm, WantedGallerySearchForm, WantedGalleryCreateOrEditForm, \
     ArchiveCreateForm, ArchiveGroupSelectForm
 from viewer.models import Archive, Gallery, EventLog, ArchiveMatches, Tag, WantedGallery, ArchiveGroup, \
-    ArchiveGroupEntry
+    ArchiveGroupEntry, GallerySubmitEntry
 from viewer.utils.tags import sort_tags
 from viewer.utils.types import AuthenticatedHttpRequest
 from viewer.views.head import gallery_filter_keys, filter_galleries_simple, \
@@ -38,6 +38,8 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
     tags = get.get("tags", '')
 
     user_reason = p.get('reason', '')
+    entry_reason = p.get('entry_reason', '')
+    entry_comment = p.get('entry_comment', '')
 
     try:
         page = int(get.get("page", '1'))
@@ -59,110 +61,248 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
 
         preserved = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(pks)])
 
-        if 'denied' in get:
-            results = Gallery.objects.submitted_galleries(id__in=pks).order_by(preserved)
-        else:
-            results = Gallery.objects.submitted_galleries(~Q(status=Gallery.DENIED), id__in=pks).order_by(preserved)
+        gallery_entries = GallerySubmitEntry.objects.filter(id__in=pks).order_by(preserved)
 
         if 'deny_galleries' in p:
-            for gallery in results:
-                message = 'Denying gallery: {}, link: {}, source link: {}'.format(
-                    gallery.title, gallery.get_absolute_url(), gallery.get_link()
-                )
-                if 'reason' in p and p['reason'] != '':
-                    message += ', reason: {}'.format(p['reason'])
-                logger.info("User {}: {}".format(request.user.username, message))
-                messages.success(request, message)
-                gallery.mark_as_denied()
-                event_log(
-                    request.user,
-                    'DENY_GALLERY',
-                    reason=user_reason,
-                    content_object=gallery,
-                    result='denied'
-                )
-        elif 'download_galleries' in p:
-            for gallery in results:
-                message = 'Queueing gallery: {}, link: {}, source link: {}'.format(
-                    gallery.title, gallery.get_absolute_url(), gallery.get_link()
-                )
-                if 'reason' in p and p['reason'] != '':
-                    message += ', reason: {}'.format(p['reason'])
-                logger.info("User {}: {}".format(request.user.username, message))
-                messages.success(request, message)
-
-                event_log(
-                    request.user,
-                    'ACCEPT_GALLERY',
-                    reason=user_reason,
-                    content_object=gallery,
-                    result='accepted'
-                )
-
-                # Force replace_metadata when queueing from this list, since it's mostly used to download non used.
-                current_settings = Settings(load_from_config=crawler_settings.config)
-
-                if current_settings.workers.web_queue:
-
-                    current_settings.replace_metadata = True
-                    current_settings.retry_failed = True
-
-                    if 'reason' in p and p['reason'] != '':
-                        reason = p['reason']
-                        # Force limit string length (reason field max_length)
-                        current_settings.archive_reason = reason[:200]
-                        current_settings.archive_details = gallery.reason
-                        current_settings.gallery_reason = reason[:200]
-                    elif gallery.reason:
-                        current_settings.archive_reason = gallery.reason
-
-                    def archive_callback(x: Optional['Archive'], crawled_url: Optional[str], result: str) -> None:
-                        event_log(
-                            request.user,
-                            'ADD_ARCHIVE',
-                            reason=user_reason,
-                            content_object=x,
-                            result=result,
-                            data=crawled_url
-                        )
-
-                    def gallery_callback(x: Optional['Gallery'], crawled_url: Optional[str], result: str) -> None:
-                        event_log(
-                            request.user,
-                            'ADD_GALLERY',
-                            reason=user_reason,
-                            content_object=x,
-                            result=result,
-                            data=crawled_url
-                        )
-
-                    current_settings.workers.web_queue.enqueue_args_list(
-                        (gallery.get_link(),),
-                        override_options=current_settings,
-                        archive_callback=archive_callback,
-                        gallery_callback=gallery_callback,
+            for gallery_entry in gallery_entries:
+                gallery = gallery_entry.gallery
+                if gallery:
+                    message = 'Denying gallery: {}, link: {}, source link: {}'.format(
+                        gallery.title, gallery.get_absolute_url(), gallery.get_link()
                     )
+                    if 'reason' in p and p['reason'] != '':
+                        message += ', reason: {}'.format(p['reason'])
+                    logger.info("User {}: {}".format(request.user.username, message))
+                    messages.success(request, message)
+                    gallery.mark_as_denied()
+                    gallery_entry.mark_as_denied(reason=entry_reason, comment=entry_comment)
+                    event_log(
+                        request.user,
+                        'DENY_GALLERY',
+                        reason=user_reason,
+                        content_object=gallery,
+                        result='denied'
+                    )
+                else:
+                    message = 'Denying URL: {}, '.format(
+                        gallery_entry.submit_url
+                    )
+                    if 'reason' in p and p['reason'] != '':
+                        message += ', reason: {}'.format(p['reason'])
+                    logger.info("User {}: {}".format(request.user.username, message))
+                    messages.success(request, message)
+
+                    gallery_entry.mark_as_denied(reason=entry_reason, comment=entry_comment)
+
+                    event_log(
+                        request.user,
+                        'DENY_URL',
+                        reason=user_reason,
+                        content_object=gallery_entry,
+                        result='denied'
+                    )
+
+        elif 'approve_galleries' in p:
+            for gallery_entry in gallery_entries:
+                gallery = gallery_entry.gallery
+                if gallery:
+                    message = 'Approving gallery: {}, link: {}, source link: {}'.format(
+                        gallery.title, gallery.get_absolute_url(), gallery.get_link()
+                    )
+                    if 'reason' in p and p['reason'] != '':
+                        message += ', reason: {}'.format(p['reason'])
+                    logger.info("User {}: {}".format(request.user.username, message))
+                    messages.success(request, message)
+
+                    gallery.reason = user_reason
+                    gallery.save()
+                    gallery_entry.mark_as_approved(reason=entry_reason, comment=entry_comment)
+
+                    event_log(
+                        request.user,
+                        'APPROVE_GALLERY',
+                        reason=user_reason,
+                        content_object=gallery,
+                        result='accepted'
+                    )
+                else:
+                    message = 'Approving URL: {}, '.format(
+                        gallery_entry.submit_url
+                    )
+                    if 'reason' in p and p['reason'] != '':
+                        message += ', reason: {}'.format(p['reason'])
+                    logger.info("User {}: {}".format(request.user.username, message))
+                    messages.success(request, message)
+
+                    gallery_entry.mark_as_approved(reason=entry_reason, comment=entry_comment)
+
+                    event_log(
+                        request.user,
+                        'APPROVE_URL',
+                        reason=user_reason,
+                        content_object=gallery_entry,
+                        result='accepted'
+                    )
+
+        elif 'download_galleries' in p:
+            for gallery_entry in gallery_entries:
+                gallery = gallery_entry.gallery
+                if gallery:
+                    message = 'Queueing gallery: {}, link: {}, source link: {}'.format(
+                        gallery.title, gallery.get_absolute_url(), gallery.get_link()
+                    )
+                    if 'reason' in p and p['reason'] != '':
+                        message += ', reason: {}'.format(p['reason'])
+                    logger.info("User {}: {}".format(request.user.username, message))
+                    messages.success(request, message)
+
+                    gallery_entry.mark_as_approved(reason=entry_reason, comment=entry_comment)
+
+                    # Force replace_metadata when queueing from this list, since it's mostly used to download non used.
+                    current_settings = Settings(load_from_config=crawler_settings.config)
+
+                    if current_settings.workers.web_queue:
+
+                        current_settings.replace_metadata = True
+                        current_settings.retry_failed = True
+
+                        if 'reason' in p and p['reason'] != '':
+                            reason = p['reason']
+                            # Force limit string length (reason field max_length)
+                            current_settings.archive_reason = reason[:200]
+                            current_settings.archive_details = gallery.reason or ''
+                            current_settings.gallery_reason = reason[:200]
+                        elif gallery.reason:
+                            current_settings.archive_reason = gallery.reason
+
+                        def archive_callback(x: Optional['Archive'], crawled_url: Optional[str], result: str) -> None:
+                            event_log(
+                                request.user,
+                                'ADD_ARCHIVE',
+                                reason=user_reason,
+                                content_object=x,
+                                result=result,
+                                data=crawled_url
+                            )
+
+                        def gallery_callback(x: Optional['Gallery'], crawled_url: Optional[str], result: str) -> None:
+                            event_log(
+                                request.user,
+                                'ADD_GALLERY',
+                                reason=user_reason,
+                                content_object=x,
+                                result=result,
+                                data=crawled_url
+                            )
+
+                        current_settings.workers.web_queue.enqueue_args_list(
+                            (gallery.get_link(),),
+                            override_options=current_settings,
+                            archive_callback=archive_callback,
+                            gallery_callback=gallery_callback,
+                        )
+
+                    event_log(
+                        request.user,
+                        'ACCEPT_GALLERY',
+                        reason=user_reason,
+                        content_object=gallery,
+                        result='accepted'
+                    )
+
+                elif gallery_entry.submit_url:
+                    message = 'Queueing URL: {}, '.format(
+                        gallery_entry.submit_url
+                    )
+                    if 'reason' in p and p['reason'] != '':
+                        message += ', reason: {}'.format(p['reason'])
+                    logger.info("User {}: {}".format(request.user.username, message))
+                    messages.success(request, message)
+
+                    gallery_entry.mark_as_approved(reason=entry_reason, comment=entry_comment)
+
+                    current_settings = Settings(load_from_config=crawler_settings.config)
+
+                    if current_settings.workers.web_queue:
+
+                        current_settings.replace_metadata = True
+                        current_settings.retry_failed = True
+
+                        if 'reason' in p and p['reason'] != '':
+                            reason = p['reason']
+                            # Force limit string length (reason field max_length)
+                            current_settings.archive_reason = reason[:200]
+                            current_settings.gallery_reason = reason[:200]
+
+                        def archive_callback(x: Optional['Archive'], crawled_url: Optional[str], result: str) -> None:
+                            event_log(
+                                request.user,
+                                'ADD_ARCHIVE',
+                                reason=user_reason,
+                                content_object=x,
+                                result=result,
+                                data=crawled_url
+                            )
+
+                        def gallery_callback(x: Optional['Gallery'], crawled_url: Optional[str], result: str) -> None:
+                            event_log(
+                                request.user,
+                                'ADD_GALLERY',
+                                reason=user_reason,
+                                content_object=x,
+                                result=result,
+                                data=crawled_url
+                            )
+
+                        current_settings.workers.web_queue.enqueue_args_list(
+                            (gallery_entry.submit_url,),
+                            override_options=current_settings,
+                            archive_callback=archive_callback,
+                            gallery_callback=gallery_callback,
+                        )
+
+                        event_log(
+                            request.user,
+                            'ACCEPT_URL',
+                            reason=user_reason,
+                            content_object=gallery_entry,
+                            result='accepted'
+                        )
 
     providers = Gallery.objects.all().values_list('provider', flat=True).distinct()
 
-    params = {
-    }
+    submit_entries = GallerySubmitEntry.objects.all().prefetch_related('gallery').order_by('-submit_date')
 
-    for k, v in get.items():
-        params[k] = v
+    if 'filter_galleries' in get:
+        params = {
+        }
 
-    for k in gallery_filter_keys:
-        if k not in params:
-            params[k] = ''
+        for k, v in get.items():
+            params[k] = v
 
-    results = filter_galleries_simple(params)
+        for k in gallery_filter_keys:
+            if k not in params:
+                params[k] = ''
+
+        gallery_results = filter_galleries_simple(params)
+
+        submit_entries = submit_entries.filter(gallery__in=gallery_results)
+
+    allowed_resolved_status = [GallerySubmitEntry.RESOLVED_SUBMITTED]
 
     if 'denied' in get:
-        results = results.submitted_galleries().prefetch_related('foundgallery_set')  # type: ignore
-    else:
-        results = results.submitted_galleries(~Q(status=Gallery.DENIED)).prefetch_related('foundgallery_set')  # type: ignore
+        allowed_resolved_status.append(GallerySubmitEntry.RESOLVED_DENIED)
+    if 'approved' in get:
+        allowed_resolved_status.append(GallerySubmitEntry.RESOLVED_APPROVED)
+    if 'already_present' in get:
+        allowed_resolved_status.append(GallerySubmitEntry.RESOLVED_ALREADY_PRESENT)
 
-    paginator = Paginator(results, 50)
+    submit_entries = submit_entries.filter(resolved_status__in=allowed_resolved_status)
+
+    if 'submit_reason' in get:
+        submit_entries = submit_entries.filter(submit_reason__icontains=get['submit_reason'])
+
+    paginator = Paginator(submit_entries, 50)
     try:
         results_page = paginator.page(page)
     except (InvalidPage, EmptyPage):
@@ -468,7 +608,7 @@ def user_crawler(request: AuthenticatedHttpRequest) -> HttpResponse:
 
         current_settings.archive_user = request.user
 
-        parsers = crawler_settings.provider_context.get_parsers_classes()
+        parsers = crawler_settings.provider_context.get_parsers(crawler_settings)
 
         def archive_callback(x: Optional['Archive'], crawled_url: Optional[str], result: str) -> None:
             event_log(
@@ -511,7 +651,7 @@ def user_crawler(request: AuthenticatedHttpRequest) -> HttpResponse:
             #     result='queue'
             # )
 
-        found_valid_urls: List[str] = []
+        found_valid_urls: list[str] = []
 
         for parser in parsers:
             if parser.id_from_url_implemented():

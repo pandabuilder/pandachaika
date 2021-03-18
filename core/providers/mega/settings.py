@@ -8,15 +8,15 @@ if typing.TYPE_CHECKING:
 
 
 class OwnSettings(ProviderSettings):
-    def __init__(self, global_settings: 'Settings', config: typing.Dict[str, typing.Any]) -> None:
+    def __init__(self, global_settings: 'Settings', config: dict[str, typing.Any]) -> None:
         super().__init__(global_settings, config)
         self.archive_dl_folder = ''
-        self.megadl_executable_path = ''
-        self.megadl_executable_name = 'megatools'
-        self.extra_megadl_arguments = []
+        self.megadl_executable_path: str = ''
+        self.megadl_executable_name: str = 'megatools'
+        self.extra_megadl_arguments: list[str] = []
 
 
-def parse_config(global_settings: 'Settings', config: typing.Dict[str, typing.Any]) -> 'OwnSettings':
+def parse_config(global_settings: 'Settings', config: dict[str, typing.Any]) -> 'OwnSettings':
 
     settings = OwnSettings(global_settings, config)
 

@@ -1,10 +1,14 @@
 import copy
 import logging
 import os
+import shutil
+import subprocess
 import typing
-from typing import Optional, Dict, Any
+from tempfile import mkdtemp
+from typing import Optional, Any
 
-from core.base.utilities import GeneralUtils, replace_illegal_name, get_base_filename_string_from_gallery_data
+from core.base.utilities import GeneralUtils, replace_illegal_name, get_base_filename_string_from_gallery_data, \
+    available_filename, get_zip_fileinfo, calc_crc32
 from core.base.types import GalleryData, TorrentClient, DataDict
 
 if typing.TYPE_CHECKING:
@@ -29,6 +33,7 @@ class BaseDownloader(metaclass=Meta):
     archive_only = False
     no_metadata = False
     skip_if_hidden = False
+    mark_hidden_if_last = False
 
     def __init__(self, settings: 'Settings', general_utils: GeneralUtils) -> None:
         self.settings = settings
@@ -90,7 +95,7 @@ class BaseDownloader(metaclass=Meta):
 
         if self.fileDownloaded == 1:
 
-            default_values: Dict[str, Any] = {
+            default_values: dict[str, Any] = {
                 'match_type': self.type,
                 'source_type': self.provider
             }
@@ -165,6 +170,7 @@ class BaseTorrentDownloader(BaseDownloader):
     def __init__(self, *args: typing.Any, **kwargs: typing.Any) -> None:
         super().__init__(*args, **kwargs)
         self.expected_torrent_name = ''
+        self.expected_torrent_extension = ''
 
     def connect_and_download(self, client: TorrentClient, torrent_link: str) -> None:
         if not self.gallery:
@@ -196,13 +202,18 @@ class BaseTorrentDownloader(BaseDownloader):
                 self.expected_torrent_name = "{} [{}]".format(
                     replace_illegal_name(to_use_filename), self.gallery.gid
                 )
+            if client.expected_torrent_extension:
+                self.expected_torrent_extension = client.expected_torrent_extension
+            else:
+                self.expected_torrent_extension = ".zip"
+
             self.fileDownloaded = 1
             self.return_code = 1
             if client.total_size > 0:
                 self.gallery.filesize = client.total_size
             self.gallery.filename = os.path.join(
                 self.own_settings.torrent_dl_folder,
-                replace_illegal_name(self.expected_torrent_name) + '.zip'
+                replace_illegal_name(self.expected_torrent_name) + self.expected_torrent_extension
             )
             logger.info(
                 "Torrent added, expecting downloaded name: {}, local name: {}".format(
@@ -213,3 +224,128 @@ class BaseTorrentDownloader(BaseDownloader):
         else:
             self.return_code = 0
             logger.error("There was an error adding the torrent to the client")
+
+
+class BaseGalleryDLDownloader(BaseDownloader):
+
+    type = 'gallerydl'
+
+    def __init__(self, *args: typing.Any, **kwargs: typing.Any) -> None:
+        super().__init__(*args, **kwargs)
+
+    def start_download(self) -> None:
+
+        if not self.gallery or not self.gallery.link:
+            return
+
+        if self.settings.gallery_dl.executable_path:
+            exe_path_to_use = shutil.which(self.settings.gallery_dl.executable_path)
+        else:
+            exe_path_to_use = shutil.which(self.settings.gallery_dl.executable_name)
+
+        if not exe_path_to_use:
+            self.return_code = 0
+            logger.error("The gallery-dl executable was not found")
+            return
+
+        directory_path = mkdtemp()
+
+        arguments = ["--zip", "--dest", "{}".format(
+            directory_path
+        )]
+
+        if self.own_settings.proxy:
+            arguments.append("--proxy")
+            arguments.append("{}".format(self.own_settings.proxy))
+
+        if self.settings.gallery_dl.config_file:
+            arguments.append("--config")
+            arguments.append("{}".format(self.settings.gallery_dl.config_file))
+
+        if self.settings.gallery_dl.extra_arguments:
+            arguments.append("{}".format(self.settings.gallery_dl.extra_arguments))
+
+        arguments.append("{}".format(self.gallery.link))
+
+        logger.info("Calling gallery-dl: {}.".format(" ".join([exe_path_to_use, *arguments])))
+
+        process_result = subprocess.run(
+            [exe_path_to_use, *arguments],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True
+        )
+
+        if process_result.stderr:
+            self.return_code = 0
+            logger.error("An error was captured when running gallery-dl: {}".format(process_result.stderr))
+            return
+
+        if process_result.returncode != 0:
+            self.return_code = 0
+            logger.error("Return code was not 0: {}".format(process_result.returncode))
+            return
+
+        # If we downloaded more than one file, get the latest one
+        output_path = ''
+        file_name = ''
+        for (dir_path, dir_names, filenames) in os.walk(directory_path):
+            for current_file in filenames:
+                file_name = current_file
+                output_path = os.path.join(dir_path, current_file)
+
+        if not output_path:
+            self.return_code = 0
+            logger.error("The resulting download file was not found")
+            return
+
+        if not output_path or not os.path.isfile(output_path):
+            self.return_code = 0
+            logger.error("The resulting download file was not found: {}".format(file_name))
+            return
+
+        self.gallery.filename = available_filename(
+            self.settings.MEDIA_ROOT,
+            os.path.join(
+                self.own_settings.archive_dl_folder,
+                replace_illegal_name(file_name)
+            )
+        )
+
+        self.gallery.title = os.path.splitext(file_name)[0]
+
+        filepath = os.path.join(self.settings.MEDIA_ROOT, self.gallery.filename)
+
+        shutil.move(output_path, filepath)
+        shutil.rmtree(directory_path, ignore_errors=True)
+
+        self.gallery.filesize, self.gallery.filecount = get_zip_fileinfo(filepath)
+        if self.gallery.filesize > 0:
+            self.crc32 = calc_crc32(filepath)
+
+            self.fileDownloaded = 1
+            self.return_code = 1
+
+        else:
+            logger.error("Could not download archive")
+            self.return_code = 0
+
+    def update_archive_db(self, default_values: DataDict) -> Optional['Archive']:
+
+        if not self.gallery or not self.settings.archive_model:
+            return None
+
+        values = {
+            'title': self.gallery.title,
+            'title_jpn': self.gallery.title_jpn,
+            'zipped': self.gallery.filename,
+            'crc32': self.crc32,
+            'filesize': self.gallery.filesize,
+            'filecount': self.gallery.filecount,
+        }
+        default_values.update(values)
+        return self.settings.archive_model.objects.update_or_create_by_values_and_gid(
+            default_values,
+            (self.gallery.gid, self.gallery.provider),
+            zipped=self.gallery.filename
+        )

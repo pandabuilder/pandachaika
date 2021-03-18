@@ -1,7 +1,7 @@
 import base64
 import logging
 import os
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 import requests
 
@@ -10,7 +10,7 @@ from core.base.utilities import replace_illegal_name, available_filename, get_fi
     calc_crc32, construct_request_dict
 from core.downloaders.torrent import get_torrent_client
 
-from core.downloaders.handlers import BaseDownloader
+from core.downloaders.handlers import BaseDownloader, BaseGalleryDLDownloader
 from viewer.models import Archive
 
 logger = logging.getLogger(__name__)
@@ -25,6 +25,7 @@ class GenericTorrentDownloader(BaseDownloader):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.expected_torrent_name = ''
+        self.expected_torrent_extension = ''
 
     @staticmethod
     def get_download_link(url: str) -> str:
@@ -63,19 +64,26 @@ class GenericTorrentDownloader(BaseDownloader):
             )
             if client.expected_torrent_name == '':
                 from core.libs.bencoding import Decoder
-                if client.convert_to_base64:
+                if client.convert_to_base64 and type(torrent_data) is str:
+                    torrent_data = cast(str, torrent_data)
                     torrent_metadata = Decoder(base64.decodebytes(torrent_data.encode('utf-8'))).decode()
                 else:
+                    torrent_data = cast(bytes, torrent_data)
                     torrent_metadata = Decoder(torrent_data).decode()
                 client.expected_torrent_name = os.path.splitext(torrent_metadata[b'info'][b'name'])[0]
+                client.expected_torrent_extension = os.path.splitext(torrent_metadata[b'info'][b'name'])[1]
 
         if result:
             if client.expected_torrent_name:
-                self.expected_torrent_name = "{}".format(client.expected_torrent_name)
+                self.expected_torrent_name = client.expected_torrent_name
             else:
                 self.expected_torrent_name = "{}".format(
                     replace_illegal_name(self.gallery.link)
                 )
+            if client.expected_torrent_extension:
+                self.expected_torrent_extension = client.expected_torrent_extension
+            else:
+                self.expected_torrent_extension = ".zip"
             self.fileDownloaded = 1
             self.return_code = 1
             if client.total_size > 0:
@@ -86,7 +94,7 @@ class GenericTorrentDownloader(BaseDownloader):
                 self.settings.MEDIA_ROOT,
                 os.path.join(
                     self.own_settings.torrent_dl_folder,
-                    replace_illegal_name(self.expected_torrent_name) + '.zip'
+                    replace_illegal_name(self.expected_torrent_name) + self.expected_torrent_extension
                 )
             )
         else:
@@ -199,6 +207,11 @@ class GenericArchiveDownloader(BaseDownloader):
             (self.gallery.gid, self.gallery.provider),
             zipped=self.gallery.filename
         )
+
+
+class GenericGalleryDLDownloader(BaseGalleryDLDownloader):
+    provider = 'generic'
+    archive_only = True
 
 
 API = (

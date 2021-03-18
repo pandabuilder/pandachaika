@@ -2,7 +2,7 @@ import logging
 import os
 import time
 from datetime import datetime, timezone
-from typing import Optional, List
+from typing import Optional
 from urllib.parse import urljoin
 
 from core.base.matchers import Matcher
@@ -51,10 +51,10 @@ class BaseExactMatcher(Matcher):
         else:
             return 0
 
-    def create_closer_matches_values(self, zip_path: str, cutoff: Optional[float] = None, max_matches: int = 20) -> List[MatchesValues]:
+    def create_closer_matches_values(self, zip_path: str, cutoff: Optional[float] = None, max_matches: int = 20) -> list[MatchesValues]:
 
         self.values_array = []
-        results: List[MatchesValues] = []
+        results: list[MatchesValues] = []
 
         if self.search_method(self.format_to_search_title(zip_path)):
             if self.time_to_wait_after_compare > 0:
@@ -140,8 +140,17 @@ class HashMatcher(BaseExactMatcher):
                         gallery_container = self.settings.gallery_model.objects.filter(
                             gid=gallery['gallery_container'], provider=gallery['provider']
                         )
-                        if gallery_container:
-                            gallery['gallery_container_gid'] = gallery_container.first().gid
+                        first_gallery = gallery_container.first()
+                        if first_gallery:
+                            gallery['gallery_container_gid'] = first_gallery.gid
+                if 'magazine' in gallery and gallery['magazine']:
+                    if self.settings.gallery_model:
+                        magazine = self.settings.gallery_model.objects.filter(
+                            gid=gallery['magazine'], provider=gallery['provider']
+                        )
+                        first_magazine = magazine.first()
+                        if first_magazine:
+                            gallery['magazine_gid'] = first_magazine.gid
                 if 'posted' in gallery:
                     if gallery['posted'] != 0:
                         gallery['posted'] = datetime.fromtimestamp(int(gallery['posted']), timezone.utc)
@@ -165,7 +174,7 @@ class TitleMatcher(Matcher):
     time_to_wait_after_compare = 0
     default_cutoff = 0.6
 
-    def get_metadata_after_matching(self) -> List[GalleryData]:
+    def get_metadata_after_matching(self) -> list[GalleryData]:
         return self.values_array
 
     def format_to_search_title(self, file_name: str) -> str:
@@ -236,8 +245,17 @@ class TitleMatcher(Matcher):
                         gallery_container = self.settings.gallery_model.objects.filter(
                             gid=gallery['gallery_container'], provider=gallery['provider']
                         )
-                        if gallery_container:
-                            gallery['gallery_container_gid'] = gallery_container.first().gid
+                        first_gallery_container = gallery_container.first()
+                        if first_gallery_container:
+                            gallery['gallery_container_gid'] = first_gallery_container.gid
+                if 'magazine' in gallery and gallery['magazine']:
+                    if self.settings.gallery_model:
+                        magazine = self.settings.gallery_model.objects.filter(
+                            gid=gallery['magazine'], provider=gallery['provider']
+                        )
+                        first_magazine = magazine.first()
+                        if first_magazine:
+                            gallery['magazine_gid'] = first_magazine.gid
                 if 'posted' in gallery:
                     if gallery['posted'] != 0:
                         gallery['posted'] = datetime.fromtimestamp(int(gallery['posted']), timezone.utc)
@@ -303,8 +321,17 @@ class FileSizeMatcher(BaseExactMatcher):
                         gallery_container = self.settings.gallery_model.objects.filter(
                             gid=gallery['gallery_container'], provider=gallery['provider']
                         )
-                        if gallery_container:
-                            gallery['gallery_container_gid'] = gallery_container.first().gid
+                        first_gallery_container = gallery_container.first()
+                        if first_gallery_container:
+                            gallery['gallery_container_gid'] = first_gallery_container.gid
+                if 'magazine' in gallery and gallery['magazine']:
+                    if self.settings.gallery_model:
+                        magazine = self.settings.gallery_model.objects.filter(
+                            gid=gallery['magazine'], provider=gallery['provider']
+                        )
+                        first_magazine = magazine.first()
+                        if first_magazine:
+                            gallery['magazine_gid'] = first_magazine.gid
                 if 'posted' in gallery:
                     if gallery['posted'] != 0:
                         gallery['posted'] = datetime.fromtimestamp(int(gallery['posted']), timezone.utc)

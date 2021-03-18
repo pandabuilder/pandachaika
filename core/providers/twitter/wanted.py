@@ -1,10 +1,11 @@
 import logging
 import typing
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any
 
 from django.db.models import Max, QuerySet
-from twitter import Twitter, OAuth
+from twitter.api import Twitter
+from twitter.oauth import OAuth
 
 from viewer.models import TweetPost
 from . import constants, utilities
@@ -21,7 +22,7 @@ CREDENTIALS = ('token', 'token_secret', 'consumer_key', 'consumer_secret')
 def wanted_generator(settings: 'Settings', attrs: QuerySet):
     own_settings = settings.providers[constants.provider_name]
 
-    def process_wani_tweets(current_tweets: List[Dict[str, Any]]):
+    def process_wani_tweets(current_tweets: list[dict[str, Any]]):
         publisher = 'wanimagazine'
 
         yield('Parsing of {} tweets starting...'.format(len(current_tweets)))

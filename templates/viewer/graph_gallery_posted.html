@@ -45,6 +45,10 @@
     </ul>
   {% endif %}
   <!-- Graphs  -->
+  <div class="page-header">
+    <h2>Gallery frequency</h2>
+    <p class="lead">Gallery Histogram by posted date.</p>
+  </div>
   <div class="row">
     <div class='col-md-12'>
       <form role="search" id="send-data">
@@ -54,12 +58,33 @@
             {{ field }}
           </div>
         {% endfor %}
+      <div class="form-inline page-line">
+        {% for field in form_simple %}
+          {{ field.label_tag }}{{ field }}
+        {% endfor %}
+      </div>
         <div class="page-line form-inline">
           <button id="search-button" class="btn btn-light" data-loading-text="Loading..." type="submit">Search</button>
           <button id="search-button" class="btn btn-light" type="reset">Reset</button>
         </div>
       </form>
     </div>
+
+  <div class="offset-md-5 col-md-5">
+    <div class="form-check form-check-inline">Bin size</div>
+    <div class="form-check form-check-inline">
+      <input class="form-check-input" type="radio" name="bin_type" id="bin-month" value="bin_month" checked>
+      <label class="form-check-label" for="bin-month">
+        Monthly
+      </label>
+    </div>
+    <div class="form-check form-check-inline">
+      <input class="form-check-input" type="radio" name="bin_type" id="bin-year" value="bin_year">
+      <label class="form-check-label" for="bin-year">
+        Yearly
+      </label>
+    </div>
+  </div>
     <div id="diagram-1" class='col-md-12'>
     </div>
   </div>

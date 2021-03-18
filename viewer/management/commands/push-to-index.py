@@ -1,4 +1,4 @@
-from typing import Union, Type
+from typing import Union
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
@@ -52,12 +52,12 @@ class Command(BaseCommand):
         if options['push_to_index_gallery']:
             self.push_db_to_index_model(Gallery)
 
-    def recreate_index_model(self, model: Union[Type[Gallery], Type[Archive]]):
+    def recreate_index_model(self, model: Union[type[Gallery], type[Archive]]):
 
-        from elasticsearch.client import IndicesClient
+        from elasticsearch.client.indices import IndicesClient
 
         indices_client = IndicesClient(client=self.es_client)
-        index_name = model._meta.es_index_name
+        index_name = model._meta.es_index_name  # type: ignore
         if indices_client.exists(index_name):
             indices_client.delete(index=index_name)
         indices_client.create(index=index_name)
@@ -88,12 +88,12 @@ class Command(BaseCommand):
             }
         )
         indices_client.put_mapping(
-            body=model._meta.es_mapping,
+            body=model._meta.es_mapping,  # type: ignore
             index=index_name,
         )
         indices_client.open(index=index_name)
 
-    def push_db_to_index_model(self, model: Union[Type[Gallery], Type[Archive]]):
+    def push_db_to_index_model(self, model: Union[type[Gallery], type[Archive]]):
 
         from elasticsearch.helpers import bulk
 

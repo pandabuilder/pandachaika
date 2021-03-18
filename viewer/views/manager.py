@@ -1,12 +1,11 @@
 import logging
 import threading
 from itertools import groupby
-from typing import List, Iterable, Dict
 
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
-from django.db.models import Prefetch, Count, Q, Case, When, QuerySet
+from django.db.models import Prefetch, Count, Q, Case, When
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.conf import settings
@@ -14,8 +13,7 @@ from django.conf import settings
 from core.base.setup import Settings
 from core.base.utilities import thread_exists
 from viewer.forms import GallerySearchForm, ArchiveSearchForm, WantedGallerySearchForm
-from viewer.models import Archive, Gallery, ArchiveMatches, Tag, WantedGallery, GalleryMatch, FoundGallery, \
-    GalleryQuerySet
+from viewer.models import Archive, Gallery, ArchiveMatches, Tag, WantedGallery, GalleryMatch, FoundGallery
 from viewer.utils.actions import event_log
 from viewer.utils.matching import generate_possible_matches_for_archives, \
     create_matches_wanted_galleries_from_providers, create_matches_wanted_galleries_from_providers_internal
@@ -45,7 +43,7 @@ def repeated_archives_for_galleries(request: HttpRequest) -> HttpResponse:
         form = GallerySearchForm(initial={'title': title, 'tags': tags})
 
     if p:
-        pks: List[str] = []
+        pks: list[str] = []
         for k, v in p.items():
             if k.startswith("del-"):
                 # k, pk = k.split('-')
@@ -264,7 +262,8 @@ def repeated_galleries_by_field(request: HttpRequest) -> HttpResponse:
             archives=Count('archive')
         ).filter(archives__gt=0)
 
-    by_title = dict()
+    by_title = {}
+    by_filesize = {}
 
     if 'same-uploader' in get:
         for k_tu, v_tu in groupby(results.order_by('title', 'uploader'), lambda x: (x.title, x.uploader)):
@@ -277,10 +276,17 @@ def repeated_galleries_by_field(request: HttpRequest) -> HttpResponse:
             if len(objects) > 1:
                 by_title[k_title] = objects
 
+    if 'by-filesize' in get:
+        for k_filesize, v_filesize in groupby(results.order_by('filesize'), lambda x: str(x.filesize or '')):
+            objects = list(v_filesize)
+            if len(objects) > 1:
+                by_filesize[k_filesize] = objects
+
     providers = Gallery.objects.all().values_list('provider', flat=True).distinct()
 
     d = {
         'by_title': by_title,
+        'by_filesize': by_filesize,
         'form': form,
         'providers': providers
     }
@@ -307,7 +313,7 @@ def archive_filesize_different_from_gallery(request: HttpRequest) -> HttpRespons
     else:
         form = GallerySearchForm(initial={'title': title, 'tags': tags})
     if p:
-        pks: List[str] = []
+        pks: list[str] = []
         for k, v in p.items():
             if k.startswith("del-"):
                 # k, pk = k.split('-')
@@ -393,6 +399,18 @@ def missing_archives_for_galleries(request: HttpRequest) -> HttpResponse:
                 logger.info(message)
                 messages.success(request, message)
                 gallery.mark_as_deleted()
+        elif 'publish_galleries' in p:
+            for gallery in results_gallery:
+                message = 'Publishing gallery: {}, link: {}'.format(gallery.title, gallery.get_link())
+                logger.info(message)
+                messages.success(request, message)
+                gallery.set_public()
+        elif 'private_galleries' in p:
+            for gallery in results_gallery:
+                message = 'Making private gallery: {}, link: {}'.format(gallery.title, gallery.get_link())
+                logger.info(message)
+                messages.success(request, message)
+                gallery.set_private()
         elif 'download_galleries' in p:
             for gallery in results_gallery:
                 message = 'Queueing gallery: {}, link: {}'.format(gallery.title, gallery.get_link())

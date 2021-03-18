@@ -34,7 +34,7 @@
           <div class="col-sm-12 text-center sub-header">
             <form>
               <div class="form-inline">
-                <input type="text" name="q" id="search" value="{{ q }}" class="form-control my-group" autocomplete="off" placeholder="Try your luck!">
+                <input type="search" name="q" id="search" value="{{ q }}" class="form-control my-group" autocomplete="off" placeholder="Try your luck!">
                 <select id="sort" name="sort" class="form-control" title="sort">
                   {% if user.is_staff %}
                     <option value="create_date" {% if sort == "create_date" %} selected{% endif %}>create_date</option>
@@ -51,10 +51,57 @@
                 <button type="submit" class="btn btn-light">Search</button>
                 <button type="submit" name="clear" class="btn btn-light">Clear</button>
               </div>
+              <div class="form-inline">
+              <div>
+                <input id="checkbox2" class="custom-cb" type="checkbox" name="metrics" value="1" {% if request.GET.metrics == '1' %}checked{% endif %}><label for="checkbox2"><span><span></span></span>Calculate metrics</label>
+              </div>
+              </div>
             </form>
           </div>
           {% if message %}
             <h5 class="col-sm-12 text-center sub-header">{{ message }}</h5>
+          {% endif %}
+          {% if request.GET.metrics == '1' %}
+            <div class="table-responsive col-md-4 offset-md-4">
+            <table class="table table-striped table-sm">
+              <tr>
+                <td class="label-extended">Count</td>
+                <td>{{ paginator.count }}</td>
+              </tr>
+              <tr>
+                <td class="label-extended">Total size</td>
+                <td>{{ aggregations.sum_size|default:"0" }} bytes ({{ aggregations.sum_size|filesizeformat }})</td>
+              </tr>
+              <tr>
+                <td class="label-extended">Average size</td>
+                <td>{{ aggregations.avg_size|floatformat:"0"|default:"0" }} bytes ({{ aggregations.avg_size|filesizeformat }})</td>
+              </tr>
+              <tr>
+                <td class="label-extended">Maximum size</td>
+                <td>{{ aggregations.max_size|default:"0" }} bytes ({{ aggregations.max_size|filesizeformat }})</td>
+              </tr>
+              <tr>
+                <td class="label-extended">Minimum size</td>
+                <td>{{ aggregations.min_size|default:"0" }} bytes ({{ aggregations.min_size|filesizeformat }})</td>
+              </tr>
+              <tr>
+                <td class="label-extended">Total pages</td>
+                <td>{{ aggregations.sum_count|floatformat:"0"|default:"0" }}</td>
+              </tr>
+              <tr>
+                <td class="label-extended">Average pages</td>
+                <td>{{ aggregations.avg_count|floatformat:"0"|default:"0" }}</td>
+              </tr>
+              <tr>
+                <td class="label-extended">Maximum pages</td>
+                <td>{{ aggregations.max_count|floatformat:"0"|default:"0" }}</td>
+              </tr>
+              <tr>
+                <td class="label-extended">Minimum pages</td>
+                <td>{{ aggregations.min_count|floatformat:"0"|default:"0" }}</td>
+              </tr>
+            </table>
+            </div>
           {% endif %}
           {% if not results %}
             <h5 class="col-sm-12 text-center">No results!</h5>
@@ -110,7 +157,7 @@
             {% for hit in hits %}
               <tr>
                 <td><a href="{% url 'viewer:archive' hit.pk %}">{{ hit.pk }}</a></td>
-                <td>{{ hit.title }}</td>
+                <td>{% firstof hit.title hit.title_jpn "No title" %}</td>
                 <td>{{ hit.image_count }}</td>
                 <td>{{ hit.size|filesizeformat }}</td>
                 {% if user.is_staff %}

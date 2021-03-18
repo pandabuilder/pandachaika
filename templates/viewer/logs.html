@@ -16,7 +16,7 @@
   <form action="{% url 'viewer:logs' %}" class="form-inline" method="GET">
     <div class="form-group">
       <label for="filter">Filter</label>
-      <input type="text" class="form-control" id="filter" name="filter"  value="{{ request.GET.filter }}">
+      <input type="search" class="form-control" id="filter" name="filter" value="{{ request.GET.filter }}" size="50">
     </div>
     <div class="form-group">
       <button type="submit" class="btn btn-light">Apply filter</button>
@@ -47,8 +47,8 @@
   {% endif %}
   <!-- Logs  -->
   <div class="table-responsive">
-    <table class="table table-sm result-table">
-      {% for log_line in log_lines %}<tr class="result-list"><td>{{ log_line|linebreaksbr|urlize }}</td></tr>{% endfor %}
+    <table class="table table-sm table-bordered table-striped">
+      {% for log_line, log_info in log_lines %}<tr class="result-list{% if log_info.highlighted %} highlight-row{% endif %}"><td>{{ log_line|linebreaksbr|urlize_all_rel }}</td></tr>{% endfor %}
     </table>
   </div>
   <!-- Next/Prev page links  -->

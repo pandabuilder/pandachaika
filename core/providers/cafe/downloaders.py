@@ -4,7 +4,7 @@ import os
 import shutil
 import re
 from tempfile import mkdtemp
-from typing import List, Optional
+from typing import Optional
 from zipfile import ZipFile
 
 import requests
@@ -185,7 +185,7 @@ class ArchiveJSDownloader(BaseDownloader):
     provider = constants.provider_name
 
     @staticmethod
-    def get_img_urls_from_gallery_read_page(content: str) -> List[str]:
+    def get_img_urls_from_gallery_read_page(content: str) -> list[str]:
         soup = BeautifulSoup(content, 'html.parser')
         script_content = soup.find("script", type="text/javascript")
 

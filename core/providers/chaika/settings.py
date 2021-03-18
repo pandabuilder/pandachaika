@@ -10,7 +10,7 @@ if typing.TYPE_CHECKING:
 
 
 class OwnSettings(ProviderSettings):
-    def __init__(self, global_settings: 'Settings', config: typing.Dict[str, typing.Any]) -> None:
+    def __init__(self, global_settings: 'Settings', config: dict[str, typing.Any]) -> None:
         super().__init__(global_settings, config)
         self.archive_dl_folder = ''
         self.url = constants.base_url
@@ -18,7 +18,7 @@ class OwnSettings(ProviderSettings):
         self.feed_url = constants.feed_url
 
 
-def parse_config(global_settings: 'Settings', config: typing.Dict[str, typing.Any]) -> 'OwnSettings':
+def parse_config(global_settings: 'Settings', config: dict[str, typing.Any]) -> 'OwnSettings':
 
     settings = OwnSettings(global_settings, config)
 

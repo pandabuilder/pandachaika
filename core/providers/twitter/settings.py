@@ -7,7 +7,7 @@ if typing.TYPE_CHECKING:
 
 
 class OwnSettings(ProviderSettings):
-    def __init__(self, global_settings: 'Settings', config: typing.Dict[str, typing.Any]) -> None:
+    def __init__(self, global_settings: 'Settings', config: dict[str, typing.Any]) -> None:
         super().__init__(global_settings, config)
         self.token = ''
         self.token_secret = ''
@@ -18,7 +18,7 @@ class OwnSettings(ProviderSettings):
         self.unwanted_title = ''
 
 
-def parse_config(global_settings: 'Settings', config: typing.Dict[str, typing.Any]) -> 'OwnSettings':
+def parse_config(global_settings: 'Settings', config: dict[str, typing.Any]) -> 'OwnSettings':
 
     settings = OwnSettings(global_settings, config)
     if 'general' in config:

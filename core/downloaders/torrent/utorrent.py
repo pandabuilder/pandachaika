@@ -28,6 +28,7 @@ class uTorrent(TorrentClient):
 
         self.total_size = 0
         self.expected_torrent_name = ''
+        self.expected_torrent_extension = ''
         lf = NamedTemporaryFile()
         if isinstance(torrent_data, bytes):
             lf.write(torrent_data)
@@ -56,6 +57,7 @@ class uTorrent(TorrentClient):
 
         self.total_size = 0
         self.expected_torrent_name = ''
+        self.expected_torrent_extension = ''
 
         params = {'action': 'add-url', 'token': self.token, 's': url}
         try:

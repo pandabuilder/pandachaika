@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
+import typing
 from collections import defaultdict
-from typing import List
 
 from core.base.parsers import BaseParser
 
@@ -10,6 +10,9 @@ from . import constants
 # Generic parser, meaning that only downloads archives, no metadata.
 from core.base.types import GalleryData
 
+if typing.TYPE_CHECKING:
+    from viewer.models import WantedGallery
+
 logger = logging.getLogger(__name__)
 
 
@@ -17,11 +20,11 @@ class Parser(BaseParser):
     name = constants.provider_name
     accepted_urls = [constants.base_url, constants.old_base_url]
 
-    def crawl_urls(self, urls: List[str], wanted_filters=None, wanted_only: bool = False) -> None:
+    def crawl_urls(self, urls: list[str], wanted_filters=None, wanted_only: bool = False) -> None:
 
         unique_urls = set()
         gallery_data_list = []
-        gallery_wanted_lists = defaultdict(list)
+        gallery_wanted_lists: dict[str, list['WantedGallery']] = defaultdict(list)
 
         if not self.downloaders:
             logger.warning('No downloaders enabled, returning.')

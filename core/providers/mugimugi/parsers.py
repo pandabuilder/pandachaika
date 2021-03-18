@@ -4,7 +4,8 @@ import re
 import time
 import typing
 from collections import defaultdict
-from typing import Iterable, List, Optional
+from collections.abc import Iterable
+from typing import Optional
 
 from django.db.models import QuerySet
 
@@ -26,7 +27,7 @@ class Parser(BaseParser):
     name = constants.provider_name
     accepted_urls = constants.gallery_container_urls
 
-    def get_galleries_from_xml(self, url_group: Iterable[str]) -> List[GalleryData]:
+    def get_galleries_from_xml(self, url_group: Iterable[str]) -> list[GalleryData]:
 
         possible_gallery_ids = [self.id_from_url(gallery_url) for gallery_url in url_group]
 
@@ -77,7 +78,7 @@ class Parser(BaseParser):
             return response[0]
         return None
 
-    def fetch_multiple_gallery_data(self, url_list: List[str]) -> List[GalleryData]:
+    def fetch_multiple_gallery_data(self, url_list: list[str]) -> list[GalleryData]:
         return self.get_galleries_from_xml(url_list)
 
     @staticmethod
@@ -88,12 +89,12 @@ class Parser(BaseParser):
         else:
             return None
 
-    def crawl_urls(self, urls: List[str], wanted_filters: QuerySet = None, wanted_only: bool = False) -> None:
+    def crawl_urls(self, urls: list[str], wanted_filters: QuerySet = None, wanted_only: bool = False) -> None:
 
         unique_urls = set()
         gallery_data_list = []
         fetch_format_galleries = []
-        gallery_wanted_lists: typing.Dict[str, List['WantedGallery']] = defaultdict(list)
+        gallery_wanted_lists: dict[str, list['WantedGallery']] = defaultdict(list)
 
         if not self.downloaders:
             logger.warning('No downloaders enabled, returning.')

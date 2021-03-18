@@ -1,4 +1,4 @@
-from typing import Dict, Any, Union, Optional
+from typing import Any, Union, Optional
 
 import transmissionrpc
 import os
@@ -32,7 +32,7 @@ class Transmission(TorrentClient):
 
     def add_url(self, enc_torrent: str, download_dir: str = None) -> bool:
         result = self.add_torrent(enc_torrent, download_dir=download_dir)
-        if self.expected_torrent_name:
+        if self.expected_torrent_name and not self.expected_torrent_extension:
             self.expected_torrent_name = os.path.splitext(self.expected_torrent_name)[0]
         return result
 
@@ -44,6 +44,7 @@ class Transmission(TorrentClient):
 
         if self.set_expected:
             self.expected_torrent_name = ''
+            self.expected_torrent_extension = ''
 
         try:
             torr = self.trans.add_torrent(
@@ -59,8 +60,9 @@ class Transmission(TorrentClient):
             for file_t in c[torr.id]:
                 self.total_size += int(c[torr.id][file_t]['size'])
                 if self.set_expected and torr.name == c[torr.id][file_t]['name']:
-                    self.expected_torrent_name = os.path.splitext(
-                        self.expected_torrent_name)[0]
+                    name_split = os.path.splitext(self.expected_torrent_name)
+                    self.expected_torrent_name = name_split[0]
+                    self.expected_torrent_extension = name_split[1]
 
             return True
 
@@ -113,7 +115,7 @@ class TransmissionHTTPSHandler(transmissionrpc.HTTPHandler):
         self.auth = {'Authorization': 'Basic %s' %
                      b64encode(str.encode(login + ":" + password)).decode('utf-8')}
 
-    def request(self, url: str, query: str, headers: Dict[Any, Any], timeout: int) -> str:
+    def request(self, url: str, query: str, headers: dict[Any, Any], timeout: int) -> str:
         headers = {**self.auth, **headers}
         request = Request(url, query.encode('utf-8'), headers)
         try:

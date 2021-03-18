@@ -2,14 +2,14 @@ import logging
 import traceback
 
 import time
-from typing import Iterable, Dict, List, Tuple
+from collections.abc import Iterable
 
 from django.conf import settings
 from django.db.models import QuerySet, Q
 
 from core.base.comparison import get_list_closer_gallery_titles_from_list
 from core.base.utilities import replace_illegal_name, get_title_from_path, clean_title
-from viewer.models import GalleryMatch, Archive, Gallery, ArchiveMatches, FoundGallery, ArchiveQuerySet, GalleryQuerySet
+from viewer.models import GalleryMatch, Archive, Gallery, ArchiveMatches, FoundGallery, ArchiveQuerySet
 
 crawler_settings = settings.CRAWLER_SETTINGS
 
@@ -73,6 +73,7 @@ def create_matches_wanted_galleries_from_providers_internal(
             galleries = galleries.filter(
                 Q(archive__isnull=False)
                 | (Q(gallery_container__isnull=False) & Q(gallery_container__archive__isnull=False))
+                | (Q(magazine__isnull=False) & Q(magazine__archive__isnull=False))
             )
 
         for gallery in galleries:
@@ -366,8 +367,8 @@ def match_internal(archives: 'QuerySet[Archive]', providers: Iterable[str],
                    cutoff: float = 0.4,
                    max_matches: int = 20, match_by_filesize: bool = True) -> None:
 
-    galleries_per_provider: Dict[str, QuerySet[Gallery]] = {}
-    galleries_title_id_per_provider: Dict[str, List[Tuple[str, str]]] = {}
+    galleries_per_provider: dict[str, QuerySet[Gallery]] = {}
+    galleries_title_id_per_provider: dict[str, list[tuple[str, str]]] = {}
 
     if providers:
         for provider in providers:

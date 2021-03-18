@@ -50,7 +50,7 @@ def link_from_gid_token_fjord(gid: str, token: str, fjord: bool = False) -> str:
     return '{}/g/{}/{}/'.format(constants.ge_page, gid, token)
 
 
-def get_gid_token_from_link(link: str) -> typing.Tuple[str, str]:
+def get_gid_token_from_link(link: str) -> tuple[str, str]:
     m = re.search(r".*?/g/(\w+)/(\w+)", link)
 
     if m:
@@ -59,7 +59,7 @@ def get_gid_token_from_link(link: str) -> typing.Tuple[str, str]:
         return '', ''
 
 
-def fjord_gid_token_from_link(link: str) -> typing.Tuple[typing.Optional[str], typing.Optional[str], typing.Optional[str]]:
+def fjord_gid_token_from_link(link: str) -> tuple[typing.Optional[str], typing.Optional[str], typing.Optional[str]]:
     m = re.search(r'(.+)/g/(\d+)/(\w+)', link)
     if m:
         return m.group(1), m.group(2), m.group(3)
@@ -71,7 +71,7 @@ def resolve_url(gallery: 'Gallery') -> str:
     return '{}/g/{}/{}/'.format(constants.ge_page, gallery.gid, gallery.token)
 
 
-def request_data_from_gid_token_iterable(api_token_iterable: typing.Iterable[typing.Tuple[str, str]]) -> typing.Dict[str, typing.Any]:
+def request_data_from_gid_token_iterable(api_token_iterable: typing.Iterable[tuple[str, str]]) -> dict[str, typing.Any]:
     return {
         'method': 'gdata',
         'namespace': '1',
@@ -79,7 +79,7 @@ def request_data_from_gid_token_iterable(api_token_iterable: typing.Iterable[typ
     }
 
 
-AttrList = typing.List[typing.Tuple[str, typing.Optional[str]]]
+AttrList = list[tuple[str, typing.Optional[str]]]
 
 
 # TODO: This parsers should be migrated to bs4, they were written before using bs4 in the project.

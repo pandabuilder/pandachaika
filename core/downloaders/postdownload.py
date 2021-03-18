@@ -5,9 +5,10 @@ import socket
 import ssl
 import time
 import traceback
+from collections.abc import Iterable, Callable
 from ftplib import FTP_TLS, _SSLSocket  # type: ignore
 from tempfile import mkdtemp
-from typing import Any, List, Dict, Callable, Iterable, Optional
+from typing import Any, Optional
 from zipfile import ZipFile, BadZipFile
 
 import django.utils.timezone as django_tz
@@ -22,8 +23,8 @@ from core.base.types import DataDict
 from core.base.utilities import (
     calc_crc32, get_zip_filesize,
     filecount_in_zip, convert_rar_to_zip,
-    replace_illegal_name
-)
+    replace_illegal_name,
+    convert_7z_to_zip)
 from core.workers.schedulers import BaseScheduler
 from viewer.models import Archive
 
@@ -349,14 +350,23 @@ class PostDownloader(object):
                             self.set_current_dir(self.settings.ftps['remote_torrent_dir'])
                         else:
                             break
-                    if self.settings.convert_rar_to_zip and os.path.splitext(matched_file_torrent[0])[1].lower() == ".rar":
-                        logger.info(
-                            "For archive: {}, converting rar: {} to zip".format(
-                                matched_file_torrent[3],
-                                matched_file_torrent[3].zipped.path
+                    if self.settings.convert_rar_to_zip:
+                        if os.path.splitext(matched_file_torrent[0])[1].lower() == ".rar":
+                            logger.info(
+                                "For archive: {}, converting rar: {} to zip".format(
+                                    matched_file_torrent[3],
+                                    matched_file_torrent[3].zipped.path
+                                )
                             )
-                        )
-                        convert_rar_to_zip(matched_file_torrent[3].zipped.path)
+                            convert_rar_to_zip(matched_file_torrent[3].zipped.path)
+                        elif os.path.splitext(matched_file_torrent[0])[1].lower() == ".7z":
+                            logger.info(
+                                "For archive: {}, converting 7z: {} to zip".format(
+                                    matched_file_torrent[3],
+                                    matched_file_torrent[3].zipped.path
+                                )
+                            )
+                            convert_7z_to_zip(matched_file_torrent[3].zipped.path)
 
                 self.process_downloaded_archive(matched_file_torrent[3])
 
@@ -491,14 +501,23 @@ class PostDownloader(object):
                         shutil.move(target, matched_file[2].zipped.path)
                     else:
                         shutil.copy(target, matched_file[2].zipped.path)
-                    if self.settings.convert_rar_to_zip and os.path.splitext(matched_file[0])[1].lower() == ".rar":
-                        logger.info(
-                            "For archive: {}, converting rar: {} to zip".format(
-                                matched_file[2],
-                                matched_file[2].zipped.path
+                    if self.settings.convert_rar_to_zip:
+                        if os.path.splitext(matched_file[0])[1].lower() == ".rar":
+                            logger.info(
+                                "For archive: {}, converting rar: {} to zip".format(
+                                    matched_file[2],
+                                    matched_file[2].zipped.path
+                                )
                             )
-                        )
-                        convert_rar_to_zip(matched_file[2].zipped.path)
+                            convert_rar_to_zip(matched_file[2].zipped.path)
+                        elif os.path.splitext(matched_file[0])[1].lower() == ".7z":
+                            logger.info(
+                                "For archive: {}, converting 7z: {} to zip".format(
+                                    matched_file[2],
+                                    matched_file[2].zipped.path
+                                )
+                            )
+                            convert_7z_to_zip(matched_file[2].zipped.path)
 
                 self.process_downloaded_archive(matched_file[2])
 
@@ -525,7 +544,7 @@ class TimedPostDownloader(BaseScheduler):
 
     def __init__(self, *args: Any, parallel_post_downloaders: int = 4, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self.post_downloader: Dict[int, PostDownloader] = {}
+        self.post_downloader: dict[int, PostDownloader] = {}
         self.post_queue: queue.Queue = queue.Queue()
         self.parallel_post_downloaders = parallel_post_downloaders
 
@@ -587,5 +606,5 @@ class TimedPostDownloader(BaseScheduler):
             except BaseException:
                 logger.critical(traceback.format_exc())
 
-    def current_download(self) -> List[Dict[str, Any]]:
+    def current_download(self) -> list[dict[str, Any]]:
         return [x.current_download for x in self.post_downloader.values()]

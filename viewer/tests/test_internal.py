@@ -8,7 +8,7 @@ from django.test import TestCase, Client
 from django.contrib.auth.models import User
 from django.urls import reverse
 
-from viewer.models import Tag, Archive, Gallery
+from viewer.models import Tag, Archive, Gallery, WantedGallery
 
 
 class TagTestCase(TestCase):
@@ -107,9 +107,9 @@ class GeneralPagesTest(TestCase):
         test_user1.save()
 
         # Galleries
-        self.test_gallery1 = Gallery.objects.create(title='sample non public gallery 1', gid='344', provider='panda')
-        self.test_gallery2 = Gallery.objects.create(title='sample non public gallery 2', gid='342', provider='test')
-        self.test_gallery3 = Gallery.objects.create(title='sample non public gallery 3', gid='897', provider='test', public=True)
+        self.test_gallery1 = Gallery.objects.create(title='sample non public gallery 1', gid='344', provider='panda', category='Manga')
+        self.test_gallery2 = Gallery.objects.create(title='sample non public gallery 2', gid='342', provider='test', category='Doujinshi')
+        self.test_gallery3 = Gallery.objects.create(title='sample non public gallery 3', gid='897', provider='test', category='Manga', public=True)
 
         # Archives
         self.test_book1 = Archive.objects.create(title='archive 1', user=test_admin1, gallery=self.test_gallery1)
@@ -118,6 +118,36 @@ class GeneralPagesTest(TestCase):
         self.test_book3 = Archive.objects.create(title='archive 3', user=test_admin1, public=True)
         self.test_book4 = Archive.objects.create(title='book 4', user=test_admin1, gallery=self.test_gallery2, public=True)
         self.test_book5 = Archive.objects.create(title='archive 5', user=test_admin1, gallery=self.test_gallery2, public=True)
+
+        # WantedGalleries
+        self.test_wanted_gallery1 = WantedGallery.objects.create(
+            title='test wanted gallery',
+            title_jpn='テスト募集ギャラリー',
+            search_title='sample non',
+            book_type='Manga',
+            page_count=23,
+            publisher='wanimagazine',
+            add_as_hidden=True,
+            reason='wanimagazine',
+            public=False,
+            should_search=True,
+            keep_searching=False,
+            notify_when_found=False,
+        )
+        self.test_wanted_gallery2 = WantedGallery.objects.create(
+            title='test wanted gallery 2',
+            title_jpn='テスト募集ギャラリー',
+            search_title='public gallery',
+            book_type='Doujinshi',
+            page_count=50,
+            publisher='wanimagazine',
+            add_as_hidden=True,
+            reason='wanimagazine',
+            public=True,
+            should_search=True,
+            keep_searching=False,
+            notify_when_found=False,
+        )
 
     def test_repeated_archives(self):
         c = Client()
@@ -174,7 +204,22 @@ class GeneralPagesTest(TestCase):
     def test_element_pages_anonymous(self):
         c = Client()
         # c.login(username='admin1', password='12345')
+        c_normal = Client()
+        c_normal.login(username='testuser1', password='12345')
+        c_staff = Client()
+        c_staff.login(username='admin1', password='12345')
         response = c.get(reverse('viewer:archive', args=[self.test_book2.pk]))
         self.assertEqual(response.status_code, 200)
         response = c.get(reverse('viewer:gallery', args=[self.test_gallery3.pk]))
+        self.assertEqual(response.status_code, 200)
+
+        response = c.get(reverse('viewer:wanted-gallery', args=[self.test_wanted_gallery1.pk]))
+        self.assertEqual(response.status_code, 302)
+        response = c_normal.get(reverse('viewer:wanted-gallery', args=[self.test_wanted_gallery1.pk]))
+        self.assertEqual(response.status_code, 404)
+        response = c_staff.get(reverse('viewer:wanted-gallery', args=[self.test_wanted_gallery1.pk]))
+        self.assertEqual(response.status_code, 200)
+        response = c_staff.get(reverse('viewer:wanted-gallery', args=[99999]))
+        self.assertEqual(response.status_code, 404)
+        response = c_normal.get(reverse('viewer:wanted-gallery', args=[self.test_wanted_gallery2.pk]))
         self.assertEqual(response.status_code, 200)

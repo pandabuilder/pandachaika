@@ -143,8 +143,8 @@ ul.result-container {
   margin-left: 20px;
 }
 
-.highlight-option {
-  color: LightCoral;
+.highlight-row > td {
+  background-color: #13666e !important;
 }
 
 .on-text {
@@ -157,6 +157,10 @@ ul.result-container {
 
 .result-table {
   border: 1px solid lightgrey;
+}
+
+.special-tr > td {
+  background-color: #29527a;
 }
 
 .list-group-item:not(.list-revert) {
@@ -418,9 +422,8 @@ img {
   padding-left: 4px;
 }
 
-.right {
+.right-options {
   font-size: 1em;
-  margin-top: -20px;
   text-align: right;
   float: right;
 }

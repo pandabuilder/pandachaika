@@ -20,7 +20,7 @@ crawler_settings = settings.CRAWLER_SETTINGS
 @receiver(wanted_gallery_found, sender=Gallery)
 def wanted_gallery_found_handler(sender: typing.Any, **kwargs: typing.Any) -> None:
     gallery: Gallery = kwargs['gallery']
-    wanted_gallery_list: typing.List[WantedGallery] = kwargs['wanted_gallery_list']
+    wanted_gallery_list: list[WantedGallery] = kwargs['wanted_gallery_list']
 
     notify_wanted_filters = [
         "({}, {})".format((x.title or 'not set'), (x.reason or 'not set')) for x in
@@ -28,6 +28,17 @@ def wanted_gallery_found_handler(sender: typing.Any, **kwargs: typing.Any) -> No
     ]
 
     if not notify_wanted_filters:
+        return
+
+    # Mail users
+    users_to_mail = users_with_perm(
+        'viewer',
+        'wanted_gallery_found',
+        Q(email__isnull=False) | ~Q(email__exact=''),
+        profile__notify_wanted_gallery_found=True
+    )
+
+    if not users_to_mail.count():
         return
 
     main_url = crawler_settings.urls.main_webserver_url
@@ -42,14 +53,6 @@ def wanted_gallery_found_handler(sender: typing.Any, **kwargs: typing.Any) -> No
 
     message += '\nYou can manage the archives in: {}'.format(
         urljoin(main_url, reverse('viewer:manage-archives'))
-    )
-
-    # Mail users
-    users_to_mail = users_with_perm(
-        'viewer',
-        'wanted_gallery_found',
-        Q(email__isnull=False) | ~Q(email__exact=''),
-        profile__notify_wanted_gallery_found=True
     )
 
     mails = users_to_mail.values_list('email', flat=True)

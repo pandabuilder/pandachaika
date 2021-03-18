@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any
+from typing import Any
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
@@ -35,7 +35,7 @@ def archive_groups_explorer(request: HttpRequest) -> HttpResponse:
     else:
         form = ArchiveGroupSearchForm(initial={'title': title})
 
-    d: Dict[str, Any] = {
+    d: dict[str, Any] = {
         'form': form,
     }
 
@@ -140,7 +140,7 @@ def archive_group_edit(request: HttpRequest, pk: int = None, slug: str = None) -
 
     user_reason = p.get('reason', '')
 
-    d: Dict[str, Any] = {
+    d: dict[str, Any] = {
         'archive_group': archive_group_instance,
     }
 

@@ -1,6 +1,7 @@
 import json
 import re
-from typing import Iterable, Any, Optional
+from collections.abc import Iterable
+from typing import Any, Optional
 
 import typing
 from dal import autocomplete
@@ -236,6 +237,49 @@ class ArchiveFieldAutocomplete(autocomplete.JalQuerySetView):
         raise NotImplementedError
 
 
+class GalleryFieldAutocomplete(autocomplete.JalQuerySetView):
+
+    model = Gallery
+
+    choice_html_format = u'''
+        <a class="block choice" data-value="%s">%s</a>
+    '''
+    empty_html_format = '<span class="block"><em>%s</em></span>'
+    autocomplete_html_format = '%s'
+    limit_choices = 10
+
+    def render_to_response(self, context: Context) -> HttpResponse:
+
+        html = ''.join(
+            [self.choice_html(c) for c in self.choices_for_request()])
+
+        if not html:
+            html = self.empty_html_format % 'No matches found'
+
+        return HttpResponse(self.autocomplete_html_format % html)
+
+    def choice_html(self, choice: Optional[str]) -> str:
+        return self.choice_html_format % (self.get_result_value(choice),
+                                          self.get_result_label(choice))
+
+    @staticmethod
+    def get_result_value(result: Optional[str]) -> str:
+        if result:
+            return result
+        else:
+            return ''
+
+    @staticmethod
+    def get_result_label(result: Optional[str]) -> str:
+        if result:
+            return result
+        else:
+            return ''
+
+    def choices_for_request(self) -> 'ValuesQuerySet[Gallery, Optional[str]]':
+        raise NotImplementedError
+
+
 class SourceAutocomplete(ArchiveFieldAutocomplete):
 
     def choices_for_request(self) -> 'ValuesQuerySet[Archive, Optional[str]]':
@@ -304,6 +348,63 @@ class CategoryAutocomplete(ArchiveFieldAutocomplete):
             sources = Archive.objects.filter(gallery__category__icontains=q, public=True).order_by('gallery__category').values_list('gallery__category', flat=True).distinct()
 
         return sources[0:self.limit_choices]
+
+
+# Gallery-based autocompletes
+class GalleryProviderAutocomplete(GalleryFieldAutocomplete):
+
+    def choices_for_request(self) -> 'ValuesQuerySet[Gallery, Optional[str]]':
+
+        q = self.request.GET.get('q', '')
+
+        if self.request.user.is_authenticated:
+            providers = Gallery.objects.filter(provider__icontains=q).order_by('provider').distinct().values_list('provider', flat=True)
+        else:
+            providers = Gallery.objects.filter(provider__icontains=q, public=True).order_by('provider').distinct().values_list('provider', flat=True)
+
+        return providers[0:self.limit_choices]
+
+
+class GalleryCategoryAutocomplete(GalleryFieldAutocomplete):
+
+    def choices_for_request(self) -> 'ValuesQuerySet[Gallery, Optional[str]]':
+
+        q = self.request.GET.get('q', '')
+
+        if self.request.user.is_authenticated:
+            categories = Gallery.objects.filter(category__icontains=q).order_by('category').distinct().values_list('category', flat=True)
+        else:
+            categories = Gallery.objects.filter(category__icontains=q, public=True).order_by('category').distinct().values_list('category', flat=True)
+
+        return categories[0:self.limit_choices]
+
+
+class GalleryUploaderAutocomplete(GalleryFieldAutocomplete):
+
+    def choices_for_request(self) -> 'ValuesQuerySet[Gallery, Optional[str]]':
+
+        q = self.request.GET.get('q', '')
+
+        if self.request.user.is_authenticated:
+            uploaders = Gallery.objects.filter(uploader__icontains=q).order_by('uploader').distinct().values_list('uploader', flat=True)
+        else:
+            uploaders = Gallery.objects.filter(uploader__icontains=q, public=True).order_by('uploader').distinct().values_list('uploader', flat=True)
+
+        return uploaders[0:self.limit_choices]
+
+
+class GalleryReasonAutocomplete(GalleryFieldAutocomplete):
+
+    def choices_for_request(self) -> 'ValuesQuerySet[Gallery, Optional[str]]':
+
+        q = self.request.GET.get('q', '')
+
+        if self.request.user.is_authenticated:
+            reasons = Gallery.objects.filter(reason__icontains=q).order_by('reason').distinct().values_list('reason', flat=True)
+        else:
+            reasons = Gallery.objects.filter(reason__icontains=q, public=True).order_by('reason').distinct().values_list('reason', flat=True)
+
+        return reasons[0:self.limit_choices]
 
 
 class TagAutocomplete(autocomplete.JalQuerySetView):

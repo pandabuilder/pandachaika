@@ -19,5 +19,5 @@ def event_log(user, action, reason=None, data=None, result=None, content_object=
         content_object=content_object,
         create_date=create_date
     )
-    django.dispatch.Signal(providing_args=["event"]).send(sender=EventLog, event=event)
+    django.dispatch.Signal().send(sender=EventLog, event=event)
     return event

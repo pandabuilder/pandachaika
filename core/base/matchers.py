@@ -3,7 +3,7 @@ import re
 import logging
 
 import time
-from typing import List, Tuple, Optional
+from typing import Optional
 import typing
 
 from core.base.comparison import get_gallery_closer_title_from_gallery_values, get_list_closer_gallery_titles_from_dict
@@ -42,15 +42,15 @@ class Matcher(metaclass=Meta):
         self.match_gid: Optional[str] = None
         self.match_provider: Optional[str] = None
         self.match_link: Optional[str] = None
-        self.values_array: List[GalleryData] = []
+        self.values_array: list[GalleryData] = []
         self.match_count = 0
         self.match_title: Optional[str] = None
-        self.api_galleries: List[GalleryData] = []
+        self.api_galleries: list[GalleryData] = []
         self.crc32: Optional[str] = None
         self.file_path: str = ''
         # self.file_title = None
         self.return_code: int = 0
-        self.gallery_links: List[str] = []
+        self.gallery_links: list[str] = []
         self.match_values: Optional[GalleryData] = None
 
     def __str__(self) -> str:
@@ -81,13 +81,13 @@ class Matcher(metaclass=Meta):
         else:
             return 0
 
-    def create_closer_matches_values(self, title: str, cutoff: Optional[float] = None, max_matches: int = 20) -> List[Tuple[str, GalleryData, float]]:
+    def create_closer_matches_values(self, title: str, cutoff: Optional[float] = None, max_matches: int = 20) -> list[tuple[str, GalleryData, float]]:
 
         if cutoff is None:
             cutoff = self.default_cutoff
 
         self.values_array = []
-        results: List[Tuple[str, GalleryData, float]] = []
+        results: list[tuple[str, GalleryData, float]] = []
         title_to_search = self.format_to_search_title(title)
 
         if self.search_method(title_to_search):
@@ -106,7 +106,7 @@ class Matcher(metaclass=Meta):
                     self.format_to_compare_title(title), self.values_array, cutoff, max_matches)
         return results
 
-    def get_metadata_after_matching(self) -> Optional[List[GalleryData]]:
+    def get_metadata_after_matching(self) -> Optional[list[GalleryData]]:
         return self.parser.fetch_multiple_gallery_data(self.gallery_links)
 
     def format_match_values(self) -> Optional[DataDict]:

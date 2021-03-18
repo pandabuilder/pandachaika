@@ -19,7 +19,7 @@ class WorkerContext:
     timed_auto_wanted: Optional['TimedAutoWanted'] = None
     timed_updater: Optional['TimedAutoUpdater'] = None
     timed_downloader: Optional['TimedPostDownloader'] = None
-    timed_auto_crawlers: typing.List['ProviderTimedAutoCrawler'] = []
+    timed_auto_crawlers: list['ProviderTimedAutoCrawler'] = []
 
     def get_active_initialized_workers(self):
         workers = []

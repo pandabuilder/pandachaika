@@ -214,7 +214,7 @@
             <tr>
               <td><a title="{{ found_entry.gallery.title_jpn }}"
                      href="{% url 'viewer:gallery' found_entry.gallery.pk %}">{{ found_entry.gallery.title }}</a></td>
-              <td><a href="{{ found_entry.gallery.get_link }}" data-image-url="{% if found_entry.gallery.thumbnail.name %}{{ found_entry.gallery.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover">{{ found_entry.gallery.get_link }}</a></td>
+              <td><a href="{{ found_entry.gallery.get_link }}" data-image-url="{% if found_entry.gallery.thumbnail.name %}{{ found_entry.gallery.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover noopener noreferrer nofollow">{{ found_entry.gallery.get_link }}</a></td>
               <td>{{ found_entry.create_date|date:"SHORT_DATE_FORMAT" }}</td>
               <td>{{ found_entry.gallery.posted|date:"SHORT_DATE_FORMAT" }}</td>
               <td>{{ found_entry.gallery.filecount }}</td>
@@ -279,7 +279,7 @@
             <tr>
               <td><a title="{{ match.gallery.title_jpn }}"
                      href="{% url 'viewer:gallery' match.gallery.pk %}">{{ match.gallery.title }}</a></td>
-              <td><a href="{{ match.gallery.get_link }}" data-image-url="{% if match.gallery.thumbnail.name %}{{ match.gallery.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover">{{ match.gallery.get_link }}</a></td>
+              <td><a href="{{ match.gallery.get_link }}" data-image-url="{% if match.gallery.thumbnail.name %}{{ match.gallery.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover noopener noreferrer nofollow">{{ match.gallery.get_link }}</a></td>
               <td>{{ match.match_accuracy|floatformat:3 }}</td>
               <td>{{ match.gallery.posted }}</td>
               <td>{{ match.gallery.filecount }}</td>

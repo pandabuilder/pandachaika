@@ -5,8 +5,7 @@ import time
 import typing
 from collections import defaultdict
 from datetime import datetime
-from typing import Optional, List, Union, Type
-from urllib.request import ProxyHandler
+from typing import Optional
 
 import feedparser
 from bs4 import BeautifulSoup
@@ -171,7 +170,7 @@ class Parser(BaseParser):
 
     # Even if we just call the single method, it allows to upgrade this easily in case group calls are supported
     # afterwards. Also, we can add a wait_timer here.
-    def get_values_from_gallery_link_list(self, links: List[str]) -> List[GalleryData]:
+    def get_values_from_gallery_link_list(self, links: list[str]) -> list[GalleryData]:
         response = []
         for i, element in enumerate(links):
             if i > 0:
@@ -194,11 +193,10 @@ class Parser(BaseParser):
                 continue
         return response
 
-    @staticmethod
-    def get_feed_urls() -> List[str]:
+    def get_feed_urls(self) -> list[str]:
         return [constants.rss_url, ]
 
-    def crawl_feed(self, feed_url: str = '') -> List[GalleryData]:
+    def crawl_feed(self, feed_url: str = '') -> list[GalleryData]:
 
         if not feed_url:
             feed_url = constants.rss_url
@@ -297,7 +295,7 @@ class Parser(BaseParser):
             response = self.get_values_from_gallery_link(url)
         return response
 
-    def fetch_multiple_gallery_data(self, url_list: List[str]) -> List[GalleryData]:
+    def fetch_multiple_gallery_data(self, url_list: list[str]) -> list[GalleryData]:
         return self.get_values_from_gallery_link_list(url_list)
 
     @staticmethod
@@ -308,12 +306,12 @@ class Parser(BaseParser):
         else:
             return None
 
-    def crawl_urls(self, urls: List[str], wanted_filters: QuerySet = None, wanted_only: bool = False) -> None:
+    def crawl_urls(self, urls: list[str], wanted_filters: QuerySet = None, wanted_only: bool = False) -> None:
 
         unique_urls = set()
         gallery_data_list = []
         fetch_format_galleries = []
-        gallery_wanted_lists: typing.Dict[str, List['WantedGallery']] = defaultdict(list)
+        gallery_wanted_lists: dict[str, list['WantedGallery']] = defaultdict(list)
 
         if not self.downloaders:
             logger.warning('No downloaders enabled, returning.')

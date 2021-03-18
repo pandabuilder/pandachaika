@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 class CrawlerThread(threading.Thread):
 
-    def __init__(self, settings: 'Settings', argv: typing.List[str]) -> None:
+    def __init__(self, settings: 'Settings', argv: list[str]) -> None:
 
         threading.Thread.__init__(self, name='webcrawler')
         self.settings = settings

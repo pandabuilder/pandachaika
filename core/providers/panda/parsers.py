@@ -6,7 +6,8 @@ import time
 import typing
 import urllib.parse
 from collections import defaultdict
-from typing import Optional, Iterable, List, Dict, Set
+from collections.abc import Iterable
+from typing import Optional
 
 import feedparser
 import requests
@@ -33,7 +34,7 @@ class Parser(BaseParser):
     accepted_urls = [constants.ex_page_short, constants.ge_page_short, constants.rss_url]
 
     # Panda only methods
-    def get_galleries_from_page_links(self, page_links: Iterable[str], page_links_results: List[DataDict]) -> None:
+    def get_galleries_from_page_links(self, page_links: Iterable[str], page_links_results: list[DataDict]) -> None:
 
         api_page_links = []
 
@@ -92,7 +93,7 @@ class Parser(BaseParser):
                     {'data': (gid_token_pair['gid'], gid_token_pair['token']),
                      'link': link_from_gid_token_fjord(gid_token_pair['gid'], gid_token_pair['token'], False)})
 
-    def get_galleries_from_main_page_link(self, url: str) -> Set[str]:
+    def get_galleries_from_main_page_link(self, url: str) -> set[str]:
 
         unique_urls = set()
 
@@ -164,7 +165,7 @@ class Parser(BaseParser):
 
         return unique_urls
 
-    def get_values_from_gallery_link_list(self, url_list: Iterable[str]) -> List[GalleryData]:
+    def get_values_from_gallery_link_list(self, url_list: Iterable[str]) -> list[GalleryData]:
 
         gid_token_chunks = list(chunks([get_gid_token_from_link(link) for link in url_list], 25))
 
@@ -264,13 +265,12 @@ class Parser(BaseParser):
             return internal_gallery_data
         return None
 
-    @staticmethod
-    def get_feed_urls() -> List[str]:
+    def get_feed_urls(self) -> list[str]:
         return [constants.rss_url, ]
 
-    def crawl_feed(self, feed_url: str = None) -> List[str]:
+    def crawl_feed(self, feed_url: str = '') -> list[str]:
 
-        urls: List[str] = []
+        urls: list[str] = []
 
         if not feed_url:
             feed_url = constants.rss_url
@@ -301,7 +301,7 @@ class Parser(BaseParser):
     def fetch_gallery_data(self, url: str) -> Optional[GalleryData]:
         return self.get_values_from_gallery_link(url)
 
-    def fetch_multiple_gallery_data(self, url_list: List[str]) -> List[GalleryData]:
+    def fetch_multiple_gallery_data(self, url_list: list[str]) -> list[GalleryData]:
         return self.get_values_from_gallery_link_list(url_list)
 
     @staticmethod
@@ -312,13 +312,13 @@ class Parser(BaseParser):
         else:
             return None
 
-    def crawl_urls(self, urls: List[str], wanted_filters: QuerySet = None, wanted_only: bool = False) -> None:
+    def crawl_urls(self, urls: list[str], wanted_filters: QuerySet = None, wanted_only: bool = False) -> None:
 
         unique_urls = set()
         gallery_data_list = []
-        fetch_format_galleries: List[DataDict] = []
+        fetch_format_galleries: list[DataDict] = []
         unique_page_urls = set()
-        gallery_wanted_lists: Dict[str, List['WantedGallery']] = defaultdict(list)
+        gallery_wanted_lists: dict[str, list['WantedGallery']] = defaultdict(list)
 
         if not self.downloaders:
             logger.warning('No downloaders enabled, returning.')
@@ -399,7 +399,7 @@ class Parser(BaseParser):
 
         if len(unique_page_urls) > 0:
             logger.info("Getting gallery links from page links...")
-            page_links_results: List[DataDict] = []
+            page_links_results: list[DataDict] = []
             self.get_galleries_from_page_links(unique_page_urls, page_links_results)
             fetch_format_galleries += page_links_results
 

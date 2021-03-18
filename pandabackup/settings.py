@@ -4,7 +4,7 @@ Django settings for pandabackup project.
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 import os
-from typing import Any, Dict
+from typing import Any, Optional
 
 from core.base.setup import Settings
 from core.base.utilities import module_exists
@@ -34,7 +34,7 @@ if crawler_settings.urls.behind_proxy:
     USE_X_FORWARDED_HOST = True
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
-LOGGING: Dict[str, Any] = {
+LOGGING: dict[str, Any] = {
     'version': 1,
     'disable_existing_loggers': False,
     'formatters': {
@@ -295,7 +295,7 @@ if crawler_settings.mail_logging.enable:
 
 if crawler_settings.elasticsearch.enable:
     from elasticsearch import Elasticsearch, RequestsHttpConnection
-    ES_CLIENT = Elasticsearch(
+    ES_CLIENT: Optional[Elasticsearch] = Elasticsearch(
         [crawler_settings.elasticsearch.url],
         connection_class=RequestsHttpConnection
     )
@@ -328,6 +328,7 @@ PROVIDERS = [
     'core.providers.nexus',
     'core.providers.twodmarket',
     'core.providers.nyaa',
+    'core.providers.irodori',
 ]
 
 PROVIDER_CONTEXT = crawler_settings.provider_context

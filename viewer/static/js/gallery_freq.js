@@ -9,20 +9,17 @@ Gallery = function(pk, title, posted){
 
 Diagram1 = function(){
 
-    var gallerySeed;
-    var galleryNumber = 0;
+    this.gallerySeed = null;
 
     this.boot = function(response){
-        gallerySeed = new GallerySeedNew2().boot(response);
-        galleryNumber = gallerySeed.allGalleries().length;
-        drawBarChart();
-
+        this.gallerySeed = new GallerySeedNew2().boot(response);
+        this.drawBarChart(this.gallerySeed);
     };
 
-    var drawBarChart = function () {
+    this.drawBarChart = function (gallerySeed) {
 
-        var margin = {top: 20, right: 20, bottom: 30, left: 40},
-            width = 960 - margin.left - margin.right,
+        var margin = {top: 20, right: 20, bottom: 30, left: 50},
+            width = 1000 - margin.left - margin.right,
             height = 500 - margin.top - margin.bottom;
 
         var formatDate = d3.time.format("%m/%y");
@@ -34,23 +31,34 @@ Diagram1 = function(){
         // Determine the first and list dates in the data set
 		  var monthExtent = d3.extent(gallerySeed.allGalleries(), function(d) { return d.posted; });
 
+		  var binPeriod = getBinPeriod();
+
+		  var Bins;
+
+          if (binPeriod === 'month') {
 		  // Create one bin per month, use an offset to include the first and last months
-		  var monthBins = d3.time.months(d3.time.month.offset(monthExtent[0],-1),
-		                                 d3.time.month.offset(monthExtent[1],1));
+              Bins = d3.time.months(d3.time.month.offset(monthExtent[0],-1),
+                                             d3.time.month.offset(monthExtent[1],1));
+          }
+          else {
+              Bins = d3.time.years(d3.time.year.offset(monthExtent[0],-1),
+                                             d3.time.year.offset(monthExtent[1],1));
+          }
 
-        var binByMonth = d3.layout.histogram()
+
+        var binByChosenPeriod = d3.layout.histogram()
 		    .value(function(d) { return d.posted; })
-		    .bins(monthBins);
+		    .bins(Bins);
 
-        var histData = binByMonth(gallerySeed.allGalleries());
+        var histData = binByChosenPeriod(gallerySeed.allGalleries());
 
-        x.domain(d3.extent(monthBins));
+        x.domain(d3.extent(Bins));
         y.domain([0, d3.max(histData, function(d) { return d.y; })]);
 
 		var xAxis = d3.svg.axis().scale(x)
 		  .orient("bottom").tickFormat(formatDate);
 
-		var yAxis = d3.svg.axis().scale(y)
+		var yAxis = d3.svg.axis().scale(y).tickFormat(d3.format("s"))
 		  .orient("left").ticks(6);
 
 
@@ -91,6 +99,17 @@ Diagram1 = function(){
 
 };
 
+function getBinPeriod() {
+    if(document.getElementById("bin-month").checked) {
+        return 'month';
+    } else if (document.getElementById("bin-year").checked) {
+        return 'year';
+    }
+    return 'month';
+}
+
+var currentDiagram = null;
+
 function GalleryRetrieve() {
     clearGraph();
     var params = getQuery();
@@ -102,15 +121,8 @@ function GalleryRetrieve() {
     }
     var url = lo2.substr(0, indices[indices.length - 2] + 1) + 'posted-seed';
     var response = null;
-    var query = [];
-    if (params.title)
-        query.push("title=" + encodeURIComponent(params.title));
-    if (params.tags)
-        query.push("tags=" + encodeURIComponent(params.tags));
-    url = url + "?" + query.join("&");
-    if(query.length === 0) {
-        return
-    }
+    var queryString = new URLSearchParams(params).toString();
+    url = url + "?" + queryString;
     xmlhttp.onreadystatechange = function () {
         if (xmlhttp.readyState === 4 && xmlhttp.status === 200) {
             response = JSON.parse(xmlhttp.responseText);
@@ -118,10 +130,11 @@ function GalleryRetrieve() {
                 $('#search-button').button('reset');
                 return
             }
-            (new Diagram1).boot(response);
+            currentDiagram = new Diagram1();
+            currentDiagram.boot(response);
             $('#search-button').button('reset');
             history.replaceState({
-            }, document.title, window.location.pathname.split("/gallery-frequency/")[0] + "/gallery-frequency/?" + query.join("&"));
+            }, document.title, window.location.pathname.split("/gallery-frequency/")[0] + "/gallery-frequency/?" + queryString);
         }
     };
     xmlhttp.open("GET", url, true);
@@ -153,16 +166,74 @@ GallerySeedNew2 = function(){
 
 function getQuery() {
     var query = {
-        title: document.getElementById("id_title").value,
-        tags: document.getElementById("id_tags").value
     };
+    
+    var title = document.getElementById("id_title").value;
+    var tags = document.getElementById("id_tags").value;
+    var filecount_from = document.getElementById("id_filecount_from").value;
+    var filecount_to = document.getElementById("id_filecount_to").value;
+    var posted_from = document.getElementById("id_posted_from").value;
+    var posted_to = document.getElementById("id_posted_to").value;
+    var provider = document.getElementById("id_provider").value;
+    var reason = document.getElementById("id_reason").value;
+    var uploader = document.getElementById("id_uploader").value;
+    var category = document.getElementById("id_category").value;
+    var filesize_from = document.getElementById("id_filesize_from").value;
+    var filesize_to = document.getElementById("id_filesize_to").value;
+
+    if(title) {
+        query['title'] = title;
+    }
+    if(tags) {
+        query['tags'] = tags;
+    }
+    if(filecount_from) {
+        query['filecount_from'] = filecount_from;
+    }
+    if(filecount_to) {
+        query['filecount_to'] = filecount_to;
+    }
+    if(posted_from) {
+        query['posted_from'] = posted_from;
+    }
+    if(posted_to) {
+        query['posted_to'] = posted_to;
+    }
+    if(provider) {
+        query['provider'] = provider;
+    }
+    if(reason) {
+        query['reason'] = reason;
+    }
+    if(uploader) {
+        query['uploader'] = uploader;
+    }
+    if(category) {
+        query['category'] = category;
+    }
+    if(filesize_from) {
+        query['filesize_from'] = filesize_from;
+    }
+    if(filesize_to) {
+        query['filesize_to'] = filesize_to;
+    }
+    
     return (query);
 }
 
 function clearGraph() {
     var x = document.getElementById("diagram-1");
     x.innerHTML = "";
+    return true;
 }
+
+document.getElementById("bin-month").addEventListener("change", function(e){
+    currentDiagram != null ? clearGraph() && currentDiagram.drawBarChart(currentDiagram.gallerySeed) : null;
+});
+
+document.getElementById("bin-year").addEventListener("change", function(e){
+    currentDiagram != null ? clearGraph() && currentDiagram.drawBarChart(currentDiagram.gallerySeed) : null;
+});
 
 document.getElementById("send-data").addEventListener("submit", function(e){
     GalleryRetrieve();

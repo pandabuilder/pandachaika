@@ -14,7 +14,7 @@ from datetime import timedelta, datetime
 from difflib import SequenceMatcher
 from itertools import tee, islice, chain
 from tempfile import mkdtemp
-from typing import Union, Optional, Tuple, List, Dict, Any
+from typing import Union, Optional, Any
 
 from core.base.types import GalleryData
 
@@ -22,6 +22,11 @@ try:
     import rarfile
 except ImportError:
     rarfile = None
+
+try:
+    import py7zr
+except ImportError:
+    py7zr = None
 
 import requests
 
@@ -45,7 +50,7 @@ class GeneralUtils:
     def __init__(self, global_settings: 'setup.Settings') -> None:
         self.settings = global_settings
 
-    def discard_by_tag_list(self, tag_list: Optional[List[str]]):
+    def discard_by_tag_list(self, tag_list: Optional[list[str]]):
 
         if self.settings.update_metadata_mode:
             return False
@@ -55,7 +60,7 @@ class GeneralUtils:
             return True
         return False
 
-    def get_torrent(self, torrent_url: str, cookies: Dict[str, Any], convert_to_base64: bool = False) -> Union[str, bytes]:
+    def get_torrent(self, torrent_url: str, cookies: dict[str, Any], convert_to_base64: bool = False) -> Union[str, bytes]:
 
         r = requests.get(
             torrent_url,
@@ -80,7 +85,7 @@ def discard_string_by_cutoff(base: str, compare: str, cutoff: float) -> bool:
     return False
 
 
-def discard_by_tag_list(tag_list: List[str], discard_tags: List[str]):
+def discard_by_tag_list(tag_list: list[str], discard_tags: list[str]):
     if any(x in discard_tags for x in tag_list):
         return True
     return False
@@ -213,10 +218,10 @@ def discard_zipfile_extra_files_info(fileinfo: zipfile.ZipInfo) -> Optional[zipf
 
 
 # Allows 1 nested zip level, returns tuple: filename, containing zip(nested), extracted_name (adds nested zipfile)
-def get_images_from_zip(current_zip: zipfile.ZipFile) -> List[Tuple[str, Optional[str], str]]:
+def get_images_from_zip(current_zip: zipfile.ZipFile) -> list[tuple[str, Optional[str], str]]:
     filtered_files = list(filter(discard_zipfile_extra_files, sorted(current_zip.namelist(), key=zfill_to_three)))
 
-    nested_files: List[Tuple[str, Optional[str], str]] = []
+    nested_files: list[tuple[str, Optional[str], str]] = []
 
     for current_file in filtered_files:
         if IMAGES_REGEX.search(current_file):
@@ -324,7 +329,40 @@ def convert_rar_to_zip(filepath: str) -> int:
     return 0
 
 
-def get_zip_fileinfo(filepath: str) -> Tuple[int, int]:
+def convert_7z_to_zip(filepath: str) -> int:
+    if not py7zr:
+        return -1
+    try:
+        file_name = os.path.splitext(filepath)[0]
+        temp_7z_file = file_name + ".7z"
+        os.rename(filepath, temp_7z_file)
+        my_7z = py7zr.SevenZipFile(temp_7z_file, 'r')
+
+    except py7zr.Bad7zFile:
+        return -1
+
+    new_zipfile = zipfile.ZipFile(filepath, 'w')
+    dirpath = mkdtemp()
+
+    filtered_files = list(filter(discard_zipfile_extra_files, sorted(my_7z.getnames())))
+
+    my_7z.extract(targets=filtered_files, path=dirpath)
+
+    for filename in filtered_files:
+        new_zipfile.write(
+            os.path.join(dirpath, filename.replace('\\', '/')),
+            arcname=os.path.basename(filename)
+        )
+
+    my_7z.close()
+    new_zipfile.close()
+
+    os.remove(temp_7z_file)
+    shutil.rmtree(dirpath, ignore_errors=True)
+    return 0
+
+
+def get_zip_fileinfo(filepath: str) -> tuple[int, int]:
     try:
         my_zip = zipfile.ZipFile(filepath, 'r')
     except zipfile.BadZipFile:
@@ -395,7 +433,7 @@ def translate_tag(tag: str) -> str:
     return tag
 
 
-def translate_tag_list(tags: List[str]) -> List[str]:
+def translate_tag_list(tags: list[str]) -> list[str]:
     for i in range(len(tags)):
         tags[i] = tags[i].lower()
         tags[i] = tags[i].replace(" ", "_")
@@ -442,7 +480,7 @@ def timestamp_or_zero(posted: Optional[datetime]) -> float:
         return 0.0
 
 
-def compare_search_title_with_strings(original_title: str, titles: List[str]) -> bool:
+def compare_search_title_with_strings(original_title: str, titles: list[str]) -> bool:
     if not original_title:
         return False
     pattern = '.*?{}.*?'.format(re.sub(r'\\\s+', '.+', re.escape(original_title.lower())))
@@ -457,7 +495,7 @@ def compare_search_title_with_strings(original_title: str, titles: List[str]) ->
     return False
 
 
-def get_scored_matches(word: str, possibilities: List[str], n: int = 3, cutoff: float = 0.6) -> List[Tuple[float, str]]:
+def get_scored_matches(word: str, possibilities: list[str], n: int = 3, cutoff: float = 0.6) -> list[tuple[float, str]]:
     if not n > 0:
         raise ValueError("n must be > 0: %r" % (n,))
     if not (0.0 <= cutoff <= 1.0):
@@ -487,12 +525,12 @@ needed_keys = [
     'category', 'uploader', 'posted', 'filecount',
     'filesize', 'expunged', 'rating', 'fjord',
     'hidden', 'dl_type', 'comment', 'thumbnail_url',
-    'public', 'provider', 'gallery_container_gid',
+    'public', 'provider', 'gallery_container_gid', 'magazine_gid',
     'status', 'origin', 'reason'
 ]
 
 
-def get_dict_allowed_fields(gallery_data: GalleryData) -> Dict[str, Any]:
+def get_dict_allowed_fields(gallery_data: GalleryData) -> dict[str, Any]:
 
     gallery_dict = {}
 
@@ -503,7 +541,7 @@ def get_dict_allowed_fields(gallery_data: GalleryData) -> Dict[str, Any]:
     return gallery_dict
 
 
-def previous_and_next(some_iterable: typing.Sequence[Optional[T]]) -> typing.Iterator[Tuple[Optional[T], Optional[T], Optional[T]]]:
+def previous_and_next(some_iterable: typing.Sequence[Optional[T]]) -> typing.Iterator[tuple[Optional[T], Optional[T], Optional[T]]]:
     prevs, items, nexts = tee(some_iterable, 3)
     prevs = chain([None], prevs)
     nexts = chain(islice(nexts, 1, None), [None])
@@ -535,7 +573,7 @@ def unescape(text: Optional[str]) -> Optional[str]:
         return re.sub(r"&#?\w+;", fixup, text)
 
 
-def get_thread_status() -> List[Tuple[Tuple[str, str, str], bool]]:
+def get_thread_status() -> list[tuple[tuple[str, str, str], bool]]:
     info_list = []
 
     thread_list = threading.enumerate()
@@ -545,7 +583,7 @@ def get_thread_status() -> List[Tuple[Tuple[str, str, str], bool]]:
     return info_list
 
 
-def get_schedulers_status(schedulers: typing.Sequence[Optional['BaseScheduler']]) -> List[Tuple[str, bool, Optional[datetime], str, Optional[datetime]]]:
+def get_schedulers_status(schedulers: typing.Sequence[Optional['BaseScheduler']]) -> list[tuple[str, bool, Optional[datetime], str, Optional[datetime]]]:
     info_list = []
 
     for scheduler in schedulers:
@@ -568,7 +606,7 @@ def get_schedulers_status(schedulers: typing.Sequence[Optional['BaseScheduler']]
     return info_list
 
 
-def get_thread_status_bool() -> Dict[str, bool]:
+def get_thread_status_bool() -> dict[str, bool]:
     info_dict = {}
 
     thread_list = threading.enumerate()
@@ -642,7 +680,7 @@ def send_pushover_notification(user_key: str, token: str, message: str, title: s
 
 
 def request_with_retries(
-        url: str, request_dict: Dict[str, Any],
+        url: str, request_dict: dict[str, Any],
         post: bool = False, retries: int = 3) -> Optional[requests.models.Response]:
     for retry_count in range(retries):
         try:
@@ -662,7 +700,7 @@ def request_with_retries(
     return None
 
 
-def construct_request_dict(settings: 'setup.Settings', own_settings: 'ProviderSettings') -> Dict[str, Any]:
+def construct_request_dict(settings: 'setup.Settings', own_settings: 'ProviderSettings') -> dict[str, Any]:
     request_dict = {
         'headers': settings.requests_headers,
         'cookies': own_settings.cookies,
@@ -673,7 +711,7 @@ def construct_request_dict(settings: 'setup.Settings', own_settings: 'ProviderSe
     return request_dict
 
 
-def get_filename_from_cd(cd: str):
+def get_filename_from_cd(cd: typing.Optional[str] = None):
     """
     Get filename from content-disposition
     """

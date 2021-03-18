@@ -1,10 +1,10 @@
-from typing import Iterable, Any, Optional
+from collections.abc import Iterable
+from typing import Any, Optional
 
 from datetime import datetime
 from django.contrib.syndication.views import Feed
 from django.core.paginator import EmptyPage, Paginator
 from django.http import HttpRequest
-from django.utils.safestring import SafeText
 
 from viewer.models import Archive
 from viewer.views.head import filter_archives_simple, archive_filter_keys

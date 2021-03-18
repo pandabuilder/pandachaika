@@ -3,7 +3,6 @@ import threading
 import logging
 import traceback
 import typing
-from typing import List
 
 from core.local.foldercrawler import FolderCrawler
 
@@ -15,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 class FolderCrawlerThread(threading.Thread):
 
-    def __init__(self, settings: 'Settings', argv: List[str]) -> None:
+    def __init__(self, settings: 'Settings', argv: list[str]) -> None:
         threading.Thread.__init__(self, name='foldercrawler')
         self.settings = settings
         self.argv = argv

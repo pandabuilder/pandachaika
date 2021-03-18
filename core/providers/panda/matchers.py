@@ -1,7 +1,7 @@
 import os
 import re
 import zipfile
-from typing import Optional, List
+from typing import Optional
 
 import requests
 import time
@@ -34,10 +34,10 @@ class ImageMatcher(Matcher):
     def search_method(self, title_to_search: str) -> bool:
         return self.compare_by_image(title_to_search, False)
 
-    def create_closer_matches_values(self, zip_path: str, cutoff: Optional[float] = None, max_matches: int = 20) -> List[MatchesValues]:
+    def create_closer_matches_values(self, zip_path: str, cutoff: Optional[float] = None, max_matches: int = 20) -> list[MatchesValues]:
 
         self.values_array = []
-        results: List[MatchesValues] = []
+        results: list[MatchesValues] = []
 
         if self.search_method(self.format_to_search_title(zip_path)):
             if self.time_to_wait_after_compare > 0:

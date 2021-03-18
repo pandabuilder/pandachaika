@@ -170,15 +170,9 @@ function GalleryTagRetrieve() {
     }
     var url = lo2.substr(0, indices[indices.length - 2] + 1) + 'seed';
     var response = null;
-    var query = [];
-    if (params.title)
-        query.push("title=" + encodeURIComponent(params.title));
-    if (params.tags)
-        query.push("tags=" + encodeURIComponent(params.tags));
-    url = url + "?" + query.join("&");
-    if(query.length === 0) {
-        return
-    }
+    var queryString = new URLSearchParams(params).toString();
+    url = url + "?" + queryString;
+
     xmlhttp.onreadystatechange = function () {
         if (xmlhttp.readyState === 4 && xmlhttp.status === 200) {
             response = JSON.parse(xmlhttp.responseText);
@@ -189,7 +183,7 @@ function GalleryTagRetrieve() {
             (new Diagram1).boot(response);
             $('#search-button').button('reset');
             history.replaceState({
-            }, document.title, window.location.pathname.split("/tag-frequency/")[0] + "/tag-frequency/?" + query.join("&"));
+            }, document.title, window.location.pathname.split("/tag-frequency/")[0] + "/tag-frequency/?" + queryString);
         }
     };
     xmlhttp.open("GET", url, true);
@@ -239,9 +233,58 @@ GallerySeedNew2 = function(){
 
 function getQuery() {
     var query = {
-        title: document.getElementById("id_title").value,
-        tags: document.getElementById("id_tags").value
     };
+
+    var title = document.getElementById("id_title").value;
+    var tags = document.getElementById("id_tags").value;
+    var filecount_from = document.getElementById("id_filecount_from").value;
+    var filecount_to = document.getElementById("id_filecount_to").value;
+    var posted_from = document.getElementById("id_posted_from").value;
+    var posted_to = document.getElementById("id_posted_to").value;
+    var provider = document.getElementById("id_provider").value;
+    var reason = document.getElementById("id_reason").value;
+    var uploader = document.getElementById("id_uploader").value;
+    var category = document.getElementById("id_category").value;
+    var filesize_from = document.getElementById("id_filesize_from").value;
+    var filesize_to = document.getElementById("id_filesize_to").value;
+
+    if(title) {
+        query['title'] = title;
+    }
+    if(tags) {
+        query['tags'] = tags;
+    }
+    if(filecount_from) {
+        query['filecount_from'] = filecount_from;
+    }
+    if(filecount_to) {
+        query['filecount_to'] = filecount_to;
+    }
+    if(posted_from) {
+        query['posted_from'] = posted_from;
+    }
+    if(posted_to) {
+        query['posted_to'] = posted_to;
+    }
+    if(provider) {
+        query['provider'] = provider;
+    }
+    if(reason) {
+        query['reason'] = reason;
+    }
+    if(uploader) {
+        query['uploader'] = uploader;
+    }
+    if(category) {
+        query['category'] = category;
+    }
+    if(filesize_from) {
+        query['filesize_from'] = filesize_from;
+    }
+    if(filesize_to) {
+        query['filesize_to'] = filesize_to;
+    }
+
     return (query);
 }
 

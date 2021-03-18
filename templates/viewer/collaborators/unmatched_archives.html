@@ -53,7 +53,7 @@
       {% for archive in results %}
         <li class="list-group-item">
           <input id="sel-{{ archive.id }}" class="toggle-list custom-cb" type="checkbox" name="sel-{{ archive.id }}" value="{{ archive.pk }}"><label for="sel-{{ archive.id }}"><span><span></span></span></label><a href="{{ archive.get_absolute_url }}">{{ archive.pk }}</a> >>
-          {{ archive.title }} >>
+          {{ archive.best_title }} >>
           <a href="{% url 'viewer:col-archive-update-tool' archive.pk 'clear-possible-matches' %}">Clear possible matches</a>
           <p>{{ archive.filename }} >>
             {{ archive.filesize|filesizeformat }}, {{ archive.filesize }} >>
@@ -88,7 +88,7 @@
                     {% endif %}
                     </td>
                     <td>
-                      {{ match.gallery.get_link|urlize }}
+                      {{ match.gallery.get_link|urlize_all_rel }}
                     </td>
                     <td>
                       {{ match.match_type }}

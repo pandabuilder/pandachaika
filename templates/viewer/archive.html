@@ -1,5 +1,5 @@
 {% extends "viewer/base.html" %}
-<title>{% block title %}{{ archive.title }} | {{ block.super }}{% endblock %}</title>
+<title>{% block title %}{{ archive.best_title }} | {{ block.super }}{% endblock %}</title>
 {% load static %}
 {% block content %}
   {% load viewer_extras %}
@@ -11,39 +11,39 @@
   <!-- Archives  -->
   <ul class="info">
     {% if user.is_authenticated %}
-      <li><div class="d-flex justify-content-end">
-        <div>Archive:</div>{% if user.is_staff %}
-        <div class="pl-1"><a href="{% url 'viewer:archive-extract-toggle' archive.pk %}">{% if images %}reduce{% elif archive.crc32 %}
-          expand{% endif %}</a></div>
+      <li class="right-options"><div><span>
+        <span>Archive:</span>{% if user.is_staff %}
+        <span><a href="{% url 'viewer:archive-extract-toggle' archive.pk %}">{% if images %}reduce{% elif archive.crc32 %}
+          expand{% endif %}</a></span>
       {% endif %}
-        {% if user.is_staff %}<div class="pl-1"><a href="{% url 'viewer:archive-recalc-info' archive.pk %}">recalc</a></div>
+        {% if user.is_staff %}<span><a href="{% url 'viewer:archive-recalc-info' archive.pk %}">recalc</a></span>
       {% endif %}
-        {% if user.is_staff %}<div class="pl-1"><a href="{% url 'viewer:archive-recall-api' archive.pk %}">recall api</a></div>{% endif %}
-        {% if user.is_staff %}<div class="pl-1"><a href="{% url 'viewer:archive-rematch' archive.pk %}">rematch</a></div>{% endif %}
-        {% if user.is_staff %}<div class="pl-1"><a href="{% url 'viewer:archive-delete' archive.pk %}">delete</a></div>{% endif %}
+        {% if user.is_staff %}<span><a href="{% url 'viewer:archive-recall-api' archive.pk %}">recall api</a></span>{% endif %}
+        {% if user.is_staff %}<span><a href="{% url 'viewer:archive-rematch' archive.pk %}">rematch</a></span>{% endif %}
+        {% if user.is_staff %}<span><a href="{% url 'viewer:archive-delete' archive.pk %}">delete</a></span>{% endif %}
         {% if user.is_staff %}
-          {% if archive.gallery %}<div class="pl-1"><a href="{% url 'viewer:gallery-tool' archive.gallery.pk 'toggle-hidden' %}">{% if archive.gallery.hidden %}open{% else %}hidden{% endif %}</a></div>{% endif %}
-          <div class="pl-1"><a href="{% url 'viewer:archive-public-toggle' archive.pk %}">{% if archive.public %}private{% else %}public{% endif %}</a></div>
+          {% if archive.gallery %}<span><a href="{% url 'viewer:gallery-tool' archive.gallery.pk 'toggle-hidden' %}">{% if archive.gallery.hidden %}open{% else %}hidden{% endif %}</a></span>{% endif %}
+          <span><a href="{% url 'viewer:archive-public-toggle' archive.pk %}">{% if archive.public %}private{% else %}public{% endif %}</a></span>
         {% endif %}
-        {% if user.is_staff %}<div class="pl-1"><a href="{% url 'admin:viewer_archive_change' archive.pk %}">admin</a></div>{% endif %}
+        {% if user.is_staff %}<span><a href="{% url 'admin:viewer_archive_change' archive.pk %}">admin</a></span>{% endif %}
         {% if user_archive_preferences.favorite_group == 0 %}
-          <div class="pl-1"><a href="{% url 'viewer:user-archive-preferences' archive.pk 'favorite' %}">favorite</a></div>
-        {% else %} <div class="pl-1"><a href="{% url 'viewer:user-archive-preferences' archive.pk 'unfavorite' %}">unfavorite</a></div>
+          <span><a href="{% url 'viewer:user-archive-preferences' archive.pk 'favorite' %}">favorite</a></span>
+        {% else %} <span><a href="{% url 'viewer:user-archive-preferences' archive.pk 'unfavorite' %}">unfavorite</a></span>
         {% endif %}
-        {% if user.is_staff %}<div class="pl-1"><a href="{% url 'viewer:archive-details' archive.pk 'edit' %}">edit</a></div>
+        {% if user.is_staff %}<span><a href="{% url 'viewer:archive-details' archive.pk 'edit' %}">edit</a></span>
         {% endif %}
-        </div>
+        </span></div>
+        {% if archive.extracted %}
+        <div><span>
+            <span>View: <a href="{% url 'viewer:archive-details' archive.pk 'cover' %}">cover</a></span>
+            <span><a href="{% url 'viewer:archive-details' archive.pk 'thumbnails' %}">thumbnails</a></span>
+            <span><a href="{% url 'viewer:archive-details' archive.pk 'full' %}">full</a></span>
+            <span><a href="{% url 'viewer:archive-details' archive.pk 'single' %}">single</a></span>
+          </span>
+          </div>
+        {% endif %}
       </li>
-      {% if archive.extracted %}
-      <li><div class="d-flex justify-content-end">
 
-          <div class="pl-1">View: <a href="{% url 'viewer:archive-details' archive.pk 'cover' %}">cover</a></div>
-          <div class="pl-1"><a href="{% url 'viewer:archive-details' archive.pk 'thumbnails' %}">thumbnails</a></div>
-          <div class="pl-1"><a href="{% url 'viewer:archive-details' archive.pk 'full' %}">full</a></div>
-          <div class="pl-1"><a href="{% url 'viewer:archive-details' archive.pk 'single' %}">single</a></div>
-        </div>
-      </li>
-      {% endif %}
     {% endif %}
     <li class="title-main{% if not archive.crc32 %} archive-incomplete{% endif %}"><h5>{{ archive.title }}</h5></li>
     {% if archive.title_jpn %}<li class="subtitle">{{ archive.title_jpn }}</li>{% endif %}
@@ -94,7 +94,7 @@
         <table>
           <tr>
             <th>Source metadata</th>
-            <td>{{ archive.get_link|urlize }}, <a href="{{ archive.get_link|derefer }}">derefered</a></td>
+            <td>{{ archive.get_link|urlize_all_rel }}</td>
           </tr>
           <tr>
             <th>Description</th>
@@ -103,6 +103,10 @@
           <tr>
             <th>Posted</th>
             <td>{{ archive.gallery.posted|date:"DATETIME_FORMAT" }}</td>
+          </tr>
+          <tr>
+            <th>Category</th>
+            <td><a href="{% url 'viewer:archive-search' %}?category={{ archive.gallery.category }}">{{ archive.gallery.category }}</a></td>
           </tr>
           <tr>
             <th>Uploader</th>

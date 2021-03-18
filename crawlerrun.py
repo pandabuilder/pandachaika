@@ -1,10 +1,9 @@
-#!/usr/bin/env python3.7
+#!/usr/bin/env python3.9
 # -*- coding: utf-8 -*-
 import os
 import sys
 
 import django
-import logging
 
 from django.conf import settings
 
@@ -17,12 +16,6 @@ django.setup()
 from core.web.crawler import WebCrawler
 
 crawler_settings = settings.CRAWLER_SETTINGS
-logger = logging.getLogger()
-
-h = logging.StreamHandler(stream=sys.stdout)
-h.setLevel(logging.DEBUG)
-logger.addHandler(h)
-
 
 if __name__ == "__main__":
     argv = sys.argv[1:]
@@ -30,5 +23,3 @@ if __name__ == "__main__":
     web_crawler = WebCrawler(crawler_settings)
 
     web_crawler.start_crawling(argv)
-
-    logger.removeHandler(h)

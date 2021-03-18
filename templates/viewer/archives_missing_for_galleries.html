@@ -4,6 +4,7 @@
 {% load static %}
 
 {% block content %}
+    {% load viewer_extras %}
     {% if messages %}
         {% for message in messages %}
         <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
@@ -35,12 +36,14 @@
         <input size="2" type="text" class="form-control mr-sm-1" name="filecount_to" value="{{ request.GET.filecount_to }}" placeholder="to"/>
         <input title="Category" class="form-control" name="category" placeholder="Category" value="{{ request.GET.category }}">
         <input title="Download type" class="form-control" name="dl_type" placeholder="Download type" value="{{ request.GET.dl_type }}">
+        <input title="Reason" class="form-control" name="reason" placeholder="Reason" value="{{ request.GET.reason }}">
+        <input id="checkbox2" class="custom-cb" type="checkbox" name="non_public" value="1" {% if request.GET.non_public == '1' %}checked{% endif %}><label for="checkbox2"><span><span></span></span>Only private</label>
+        <input id="checkbox3" class="custom-cb" type="checkbox" name="public" value="1" {% if request.GET.public == '1' %}checked{% endif %}><label for="checkbox3"><span><span></span></span>Only public</label>
         <button type="submit" name="apply" class="btn btn-light">Search</button>
         <a class="btn btn-light" href="{% url 'viewer:missing-archives' %}">Clear</a>
       </div>
     </form>
     <form action="{{ request.get_full_path }}" method="POST">{% csrf_token %}
-    {% load viewer_extras %}
     <!-- Next/Prev page links  -->
     {% if results.object_list and results.paginator.num_pages > 1 %}
       <div>
@@ -85,9 +88,9 @@
             </td>
             <td>
               {% if gallery.thumbnail.name %}
-                <a href="{{ gallery.get_link }}" class="img-preview" data-image-url="{{ gallery.thumbnail.url }}" rel="popover">{{ gallery.get_link }}</a>
+                <a href="{{ gallery.get_link }}" class="img-preview" data-image-url="{{ gallery.thumbnail.url }}" rel="popover noopener noreferrer nofollow">{{ gallery.get_link }}</a>
               {% else %}
-                {{ gallery.get_link|urlize }}
+                {{ gallery.get_link|urlize_all_rel }}
               {% endif %}
             </td>
             <td>
@@ -128,6 +131,8 @@
       <input size="10" class="form-control" name="reason" value="" placeholder="Reason" maxlength="200"/>
     </div>
     <button name="download_galleries" class="btn btn-light">Force queue for download</button>
+    <button name="publish_galleries" class="btn btn-light">Publish</button>
+    <button name="private_galleries" class="btn btn-light">Make private</button>
     <button name="recall_api" class="btn btn-light">Recall API</button>
     <button name="delete_galleries" class="btn btn-light">Delete (WARNING!)</button>
     </form>
@@ -160,9 +165,9 @@
             </td>
             <td>
               {% if gallery.thumbnail.name %}
-                <a href="{{ gallery.get_link }}" class="img-preview" data-image-url="{{ gallery.thumbnail.url }}" rel="popover">{{ gallery.get_link }}</a>
+                <a href="{{ gallery.get_link }}" class="img-preview" data-image-url="{{ gallery.thumbnail.url }}" rel="popover noopener noreferrer nofollow">{{ gallery.get_link }}</a>
               {% else %}
-                {{ gallery.get_link|urlize }}
+                {{ gallery.get_link|urlize_all_rel }}
               {% endif %}
             </td>
             <td>

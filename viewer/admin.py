@@ -20,7 +20,7 @@ from viewer.models import (
     Scheduler,
     ArchiveMatches,
     EventLog,
-    Provider, Attribute, ArchiveQuerySet, GalleryQuerySet)
+    Provider, Attribute, ArchiveQuerySet, GalleryQuerySet, GallerySubmitEntry)
 from django.contrib import admin
 from django.contrib.admin.helpers import ActionForm
 from django import forms
@@ -118,7 +118,7 @@ class TagAdmin(admin.ModelAdmin):
 
 class GalleryAdmin(admin.ModelAdmin):
     search_fields = ["title", "title_jpn", "gid"]
-    raw_id_fields = ("tags", "gallery_container")
+    raw_id_fields = ("tags", "gallery_container", "magazine")
     list_display = [
         "__str__", "id", "gid", "token",
         "category", "filesize", "posted", "create_date", "last_modified",
@@ -128,7 +128,7 @@ class GalleryAdmin(admin.ModelAdmin):
         "category", "expunged", "fjord", "public", "hidden", "dl_type",
         "provider", "status", "origin", "reason"
     ]
-    actions = ['make_hidden', 'make_public', 'set_provider', 'set_reason', 'make_normal']
+    actions = ['make_hidden', 'make_public', 'make_private', 'set_provider', 'set_reason', 'make_normal']
     action_form = UpdateActionForm
 
     def make_hidden(self, request: HttpRequest, queryset: GalleryQuerySet) -> None:
@@ -148,6 +148,15 @@ class GalleryAdmin(admin.ModelAdmin):
             message_bit = "%s galleries were" % rows_updated
         self.message_user(request, "%s successfully marked as public." % message_bit)
     make_public.short_description = "Mark selected galleries as public"  # type: ignore
+
+    def make_private(self, request: HttpRequest, queryset: GalleryQuerySet) -> None:
+        rows_updated = queryset.update(public=False)
+        if rows_updated == 1:
+            message_bit = "1 gallery was"
+        else:
+            message_bit = "%s galleries were" % rows_updated
+        self.message_user(request, "%s successfully marked as private." % message_bit)
+    make_private.short_description = "Mark selected galleries as private"  # type: ignore
 
     def make_normal(self, request: HttpRequest, queryset: GalleryQuerySet) -> None:
         rows_updated = queryset.update(status=Gallery.NORMAL)
@@ -209,15 +218,20 @@ class WantedGalleryAdmin(admin.ModelAdmin):
     list_display = ["id", "title", "title_jpn", "search_title", "release_date", "book_type",
                     "publisher", "should_search", "keep_searching", "found", "date_found"]
     raw_id_fields = ("mentions", "wanted_tags", "unwanted_tags", "artists", "cover_artist")
-    list_filter = ["book_type", "publisher", "should_search", "keep_searching", "found", "reason", "public"]
+    list_filter = [
+        "book_type", "publisher", "should_search", "keep_searching",
+        "found", "reason", "public", "notify_when_found", "wanted_providers", "unwanted_providers"
+    ]
     actions = ['make_public', 'mark_should_search', 'mark_not_should_search',
                'mark_keep_search', 'mark_not_keep_search',
                'mark_found', 'mark_not_found',
-               'search_title_from_title', 'set_reason', 'add_unwanted_provider']
+               'search_title_from_title', 'set_reason', 'add_unwanted_provider',
+               'enable_notify_when_found', 'disable_notify_when_found'
+               ]
 
     action_form = UpdateActionForm
 
-    inlines = (FoundGalleryInline,)
+    # inlines = (FoundGalleryInline,)
 
     def make_public(self, request: HttpRequest, queryset: QuerySet) -> None:
         rows_updated = queryset.update(public=True)
@@ -227,6 +241,24 @@ class WantedGalleryAdmin(admin.ModelAdmin):
             message_bit = "%s galleries were" % rows_updated
         self.message_user(request, "%s successfully marked as public." % message_bit)
     make_public.short_description = "Mark selected galleries as public"  # type: ignore
+
+    def enable_notify_when_found(self, request: HttpRequest, queryset: QuerySet) -> None:
+        rows_updated = queryset.update(notify_when_found=True)
+        if rows_updated == 1:
+            message_bit = "1 gallery was"
+        else:
+            message_bit = "%s galleries were" % rows_updated
+        self.message_user(request, "%s successfully enabled for notify when found." % message_bit)
+    enable_notify_when_found.short_description = "Enable selected galleries for notify when found"  # type: ignore
+
+    def disable_notify_when_found(self, request: HttpRequest, queryset: QuerySet) -> None:
+        rows_updated = queryset.update(notify_when_found=False)
+        if rows_updated == 1:
+            message_bit = "1 gallery was"
+        else:
+            message_bit = "%s galleries were" % rows_updated
+        self.message_user(request, "%s successfully disabled for notify when found." % message_bit)
+    disable_notify_when_found.short_description = "Disable selected galleries for notify when found"  # type: ignore
 
     def mark_should_search(self, request: HttpRequest, queryset: QuerySet) -> None:
         rows_updated = queryset.update(should_search=True)
@@ -370,6 +402,14 @@ class EventLogAdmin(admin.ModelAdmin):
     search_fields = ["user__username", "user__email", "reason", "result"]
 
 
+class GallerySubmitEntryAdmin(admin.ModelAdmin):
+
+    raw_id_fields = ["gallery"]
+    list_filter = ["submit_result", "resolved_status"]
+    list_display = ["gallery", "submit_url", "submit_reason", "submit_date", "resolved_status", "resolved_reason", "resolved_date"]
+    search_fields = ["gallery__title", "submit_reason", "resolved_reason"]
+
+
 admin.site.register(Archive, ArchiveAdmin)
 admin.site.register(ArchiveGroup, ArchiveGroupAdmin)
 admin.site.register(ArchiveGroupEntry, ArchiveGroupEntryAdmin)
@@ -387,3 +427,4 @@ admin.site.register(Scheduler, SchedulerAdmin)
 admin.site.register(ArchiveMatches, ArchiveMatchesAdmin)
 admin.site.register(Provider, ProviderAdmin)
 admin.site.register(EventLog, EventLogAdmin)
+admin.site.register(GallerySubmitEntry, GallerySubmitEntryAdmin)

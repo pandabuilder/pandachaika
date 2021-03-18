@@ -38,6 +38,7 @@
       <a class="btn btn-light" href="{% url 'viewer:galleries-by-field' %}">Clear</a>
       <input id="checkbox-f1" class="custom-cb" type="checkbox" name="same-uploader" value="1" {% if "same-uploader" in request.GET %}checked{% endif %}><label for="checkbox-f1"><span><span></span></span>Same uploader</label>
       <input id="checkbox-f2" class="custom-cb" type="checkbox" name="has-archives" value="1" {% if "has-archives" in request.GET %}checked{% endif %}><label for="checkbox-f2"><span><span></span></span>Has Archives</label>
+      <input id="checkbox-f3" class="custom-cb" type="checkbox" name="by-filesize" value="1" {% if "by-filesize" in request.GET %}checked{% endif %}><label for="checkbox-f3"><span><span></span></span>By filesize</label>
     </div>
   </form>
   <form action="{% url 'viewer:galleries-by-field' %}" method="POST">{% csrf_token %}
@@ -70,9 +71,64 @@
               </td>
               <td>
                 {% if gallery.thumbnail.name %}
-                  <a href="{{ gallery.get_link }}" class="img-preview" data-image-url="{{ gallery.thumbnail.url }}" rel="popover">{{ gallery.get_link }}</a>
+                  <a href="{{ gallery.get_link }}" class="img-preview" data-image-url="{{ gallery.thumbnail.url }}" rel="popover noopener noreferrer nofollow">{{ gallery.get_link }}</a>
                 {% else %}
-                  {{ gallery.get_link|urlize }}
+                  {{ gallery.get_link|urlize_all_rel }}
+                {% endif %}
+              </td>
+              <td>
+                {{ gallery.uploader }}
+              </td>
+              <td>
+                {{ gallery.dl_type }}
+              </td>
+              <td>
+                {{ gallery.reason }}
+              </td>
+              <td>
+                {{ gallery.create_date|date:"DATETIME_FORMAT" }}
+              </td>
+              <td>
+                {{ gallery.archive_set.all|yesno:"yes,no" }}
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% endfor %}
+    </ul>
+    <ul class="list-group">
+      {% for gallery_group_key, gallery_group_value in by_filesize.items %}
+        <label for="del-{{ gallery_group_key }}">Filesize: {{ gallery_group_key }}</label>
+        <table class="table table-bordered table-sm generic-table">
+          <thead>
+          <tr>
+            <th>Select</th><th>URL</th><th>Title</th><th>Size</th><th>Images</th><th>Source URL | Image</th><th>Uploader</th><th>DL type</th><th>Reason</th><th>Added</th><th>Has archives</th>
+          </tr>
+          </thead>
+          <tbody>
+          {% for gallery in gallery_group_value %}
+            <tr>
+              <td>
+                <input id="del-{{ gallery.id }}" class="toggle-list custom-cb" type="checkbox" name="del-{{ gallery.id }}" value="{{ gallery.pk }}"><label for="del-{{ gallery.id }}"><span><span></span></span></label>
+              </td>
+              <td>
+                <a href="{% url 'viewer:gallery' gallery.pk %}">{{ gallery.pk }}</a>
+              </td>
+              <td>
+                {{ gallery.title }}
+              </td>
+              <td>
+                {{ gallery.filesize }} ({{ gallery.filesize|filesizeformat }})
+              </td>
+              <td>
+                {{ gallery.filecount }}
+              </td>
+              <td>
+                {% if gallery.thumbnail.name %}
+                  <a href="{{ gallery.get_link }}" class="img-preview" data-image-url="{{ gallery.thumbnail.url }}" rel="popover noopener noreferrer nofollow">{{ gallery.get_link }}</a>
+                {% else %}
+                  {{ gallery.get_link|urlize_all_rel }}
                 {% endif %}
               </td>
               <td>

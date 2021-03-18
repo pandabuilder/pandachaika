@@ -23,6 +23,8 @@
     {% endfor %}
     <div class="page-line form-inline">
       <button id="toggle-all" class="btn btn-info" type="button">Toggle All</button>
+      <input title="Source type" class="form-control" name="source_type" placeholder="Source type" value="{{ request.GET.source_type }}">
+      <input title="Reason" class="form-control" name="reason" placeholder="Reason" value="{{ request.GET.reason }}">
       <button type="submit" name="apply" class="btn btn-light">Search</button>
       <a class="btn btn-light" href="{% url 'viewer:archives-by-field' %}">Clear</a>
       <input id="checkbox-f1" class="custom-cb" type="checkbox" name="no-custom-tags" value="1" {% if "no-custom-tags" in request.GET %}checked{% endif %}><label for="checkbox-f1"><span><span></span></span>No custom tags</label>

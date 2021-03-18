@@ -68,7 +68,7 @@ def archive_details(request: HttpRequest, pk: int, view: str = "cover") -> HttpR
     else:
         images_page = None
 
-    d: typing.Dict[str, typing.Any] = {'archive': archive, 'images': images_page, 'view': view}
+    d: dict[str, typing.Any] = {'archive': archive, 'images': images_page, 'view': view}
 
     if view == "edit" and request.user.is_staff:
 
@@ -184,6 +184,12 @@ def archive_update(request: HttpRequest, pk: int, tool: str = None, tool_use_id:
                 image.save()
             for image in image_formset.deleted_objects:
                 image.delete_plus_files()
+
+            # Force relative positions
+            for count, image in enumerate(archive.image_set.all(), start=1):
+                image.position = count
+                # image.archive_position = count
+                image.save()
 
         archive.title = p["title"]
         archive.title_jpn = p["title_jpn"]
@@ -377,6 +383,7 @@ def recalc_info(request: HttpRequest, pk: int) -> HttpResponse:
     logger.info('Recalculating file info for ' + archive.zipped.name)
     archive.recalc_fileinfo()
     archive.generate_image_set(force=False)
+    archive.fix_image_positions()
     archive.generate_thumbnails()
 
     return HttpResponseRedirect(request.META["HTTP_REFERER"])

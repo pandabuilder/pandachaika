@@ -2,7 +2,7 @@ import logging
 import os
 import re
 from typing import Optional
-from urllib.parse import urljoin, quote
+from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 

@@ -5,7 +5,7 @@ import time
 import typing
 from collections import defaultdict
 from datetime import datetime
-from typing import Optional, List, Dict
+from typing import Optional
 
 from bs4 import BeautifulSoup
 from django.db.models import QuerySet
@@ -106,7 +106,7 @@ class Parser(BaseParser):
 
     # Even if we just call the single method, it allows to upgrade this easily in case group calls are supported
     # afterwards. Also, we can add a wait_timer here.
-    def get_values_from_gallery_link_list(self, links: List[str]) -> List[GalleryData]:
+    def get_values_from_gallery_link_list(self, links: list[str]) -> list[GalleryData]:
         response = []
         for i, element in enumerate(links):
             if i > 0:
@@ -132,7 +132,7 @@ class Parser(BaseParser):
     def fetch_gallery_data(self, url) -> Optional[GalleryData]:
         return self.get_values_from_gallery_link(url)
 
-    def fetch_multiple_gallery_data(self, url_list: List[str]) -> Optional[List[GalleryData]]:
+    def fetch_multiple_gallery_data(self, url_list: list[str]) -> Optional[list[GalleryData]]:
         return self.get_values_from_gallery_link_list(url_list)
 
     @staticmethod
@@ -143,12 +143,12 @@ class Parser(BaseParser):
         else:
             return None
 
-    def crawl_urls(self, urls: List[str], wanted_filters: QuerySet = None, wanted_only: bool = False) -> None:
+    def crawl_urls(self, urls: list[str], wanted_filters: QuerySet = None, wanted_only: bool = False) -> None:
 
         unique_urls = set()
         gallery_data_list = []
         fetch_format_galleries = []
-        gallery_wanted_lists: Dict[str, List['WantedGallery']] = defaultdict(list)
+        gallery_wanted_lists: dict[str, list['WantedGallery']] = defaultdict(list)
 
         if not self.downloaders:
             logger.warning('No downloaders enabled, returning.')

@@ -1,4 +1,13 @@
+from collections.abc import Iterable
+from typing import Any
+
 from django.core.mail import get_connection, EmailMultiAlternatives
+from django.http import HttpRequest
+from django.urls import reverse
+
+from core.base.utilities import timestamp_or_zero
+
+from viewer.models import Gallery
 
 
 def send_mass_html_mail(datatuple, fail_silently=False, user=None, password=None,
@@ -24,3 +33,38 @@ def send_mass_html_mail(datatuple, fail_silently=False, user=None, password=None
         message.attach_alternative(html, 'text/html')
         messages.append(message)
     return connection.send_messages(messages)
+
+
+def gallery_search_results_to_json(request: HttpRequest, galleries: Iterable[Gallery]) -> list[dict[str, Any]]:
+    return [{
+        'id': gallery.pk,
+        'gid': gallery.gid,
+        'token': gallery.token,
+        'title': gallery.title,
+        'title_jpn': gallery.title_jpn,
+        'category': gallery.category,
+        'uploader': gallery.uploader,
+        'comment': gallery.comment,
+        'posted': int(timestamp_or_zero(gallery.posted)),
+        'filecount': gallery.filecount,
+        'filesize': gallery.filesize,
+        'expunged': gallery.expunged,
+        'provider': gallery.provider,
+        'rating': gallery.rating,
+        'fjord': gallery.fjord,
+        'tags': gallery.tag_list(),
+        'link': gallery.get_link(),
+        'thumbnail': request.build_absolute_uri(
+            reverse('viewer:gallery-thumb', args=(gallery.pk,))) if gallery.thumbnail else '',
+        'thumbnail_url': gallery.thumbnail_url,
+        'archives': [
+            {
+                'link': request.build_absolute_uri(
+                    reverse('viewer:archive-download', args=(archive.pk,))
+                ),
+                'source': archive.source_type,
+                'reason': archive.reason
+            } for archive in gallery.archive_set.filter_by_authenticated_status(authenticated=request.user.is_authenticated)
+        ],
+    } for gallery in galleries
+    ]

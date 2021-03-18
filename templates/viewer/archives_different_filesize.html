@@ -52,20 +52,83 @@
           </span>
       </div>
     {% endif %}
-    <ul class="list-group">
-      {% for gallery in results %}
-        <li class="list-group-item">
+
+      <table class="table table-bordered table-sm generic-table">
+        <thead>
+        <tr>
+          <th>Select</th><th>Size</th><th>Images</th><th>Source / Match</th><th>Source</th><th>Path (URL)</th><th>Reason</th><th>Created on</th><th>Public</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for gallery in results %}
+          <tr class="special-tr">
+            <td>
+            </td>
+            <td>
+              {{ gallery.filesize }} ({{ gallery.filesize|filesizeformat }})
+            </td>
+            <td>
+              {{ gallery.filecount }}
+            </td>
+            <td colspan="2">
+              {% if gallery.thumbnail.name %}
+                <a href="{{ gallery.get_link }}" class="img-preview" data-image-url="{{ gallery.thumbnail.url }}" rel="popover noopener noreferrer nofollow">{{ gallery.get_link }}</a>
+              {% else %}
+                {{ gallery.get_link|urlize_all_rel }}
+              {% endif %}
+            </td>
+            <td>
+              <a href="{% url 'viewer:gallery' gallery.pk %}">{{ gallery.title }}</a>
+            </td>
+            <td>
+              {{ gallery.reason }}
+            </td>
+            <td>
+              {{ gallery.create_date|date:"DATETIME_FORMAT" }}
+            </td>
+            <td>
+              {{ gallery.public|yesno }}
+            </td>
+          </tr>
           {% with archives=gallery.archive_set %}
-            <label for="del-{{ gallery.id }}">{{ gallery.filesize }} >> {{ gallery.filecount }} >> {{ gallery.provider }} >> <a href="{{ gallery.get_absolute_url }}">{{ gallery.title }}</a> >> {{ gallery.get_link|urlize }}</label>
-            <select id="del-{{ gallery.id }}" name="del-{{ gallery.id }}" class="form-control" multiple size="{{ archives.count }}">
-              {% for archive in archives.all %}
-                <option value="{{ archive.pk }}" {% if archive.selected == True %}selected="selected"{% endif %}  {% if archive.filesize == gallery.filesize %}class="highlight-option"{% endif %}>{{ archive.filesize }} >> {{ archive.filecount }} >> {{ archive.match_type }} >> {{ archive.source_type }} >> {{ archive.zipped }}</option>
-              {% endfor %}
-            </select>
+            {% for archive in archives.all %}
+              <tr {% if archive.filesize == gallery.filesize %}class="highlight-row"{% endif %}>
+                <td>
+                  <input id="checkbox-{{ archive.id }}" class="toggle-list custom-cb" type="checkbox" name="del-{{ archive.id }}" value="{{ archive.id }}"><label for="checkbox-{{ archive.id }}"><span><span></span></span></label>
+                </td>
+                <td>
+                  {{ archive.filesize }} ({{ archive.filesize|filesizeformat }})
+                </td>
+                <td>
+                  {{ archive.filecount }}
+                </td>
+                <td>
+                  {{ archive.match_type }}
+                </td>
+                <td>
+                  {{ archive.source_type }}
+                </td>
+                <td>
+                  <a href="{% url 'viewer:archive' archive.pk %}">{{ archive.zipped }}</a>
+                </td>
+                <td>
+                  {{ archive.reason }}
+                </td>
+                <td>
+                  {{ archive.create_date|date:"DATETIME_FORMAT" }}
+                </td>
+                <td>
+                  {{ archive.public|yesno }}
+                </td>
+              </tr>
+            {% endfor %}
           {% endwith %}
-        </li>
-      {% endfor %}
-    </ul>
+              <tr>
+                <td colspan="12"><hr /></td>
+              </tr>
+        {% endfor %}
+        </tbody>
+      </table>
   <!-- Next/Prev page links  -->
     {% if results.object_list and results.paginator.num_pages > 1 %}
       <div>

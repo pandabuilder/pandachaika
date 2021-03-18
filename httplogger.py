@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
+from collections.abc import Callable
 from logging.handlers import RotatingFileHandler, SMTPHandler
-from typing import Callable, Dict
 
 import cherrypy
 from cherrypy import _cplogging, _cperror
@@ -27,6 +27,11 @@ class HTTPLogger(_cplogging.LogManager):
         h.setFormatter(_cplogging.logfmt)
         self.error_log.addHandler(h)
 
+        if crawler_settings.urls.behind_proxy:
+            self.remote_address_string = 'HTTP_X_REAL_IP'
+        else:
+            self.remote_address_string = 'REMOTE_ADDR'
+
         if crawler_settings.webserver.write_access_log:
             # Make a new RotatingFileHandler for the access log.
             file_name = getattr(self, "rot_access_file", "access.log")
@@ -46,7 +51,7 @@ class HTTPLogger(_cplogging.LogManager):
             s.setLevel(logging.CRITICAL)
             self.error_log.addHandler(s)
 
-    def __call__(self, environ: Dict[str, str], start_response: Callable) -> HttpResponse:
+    def __call__(self, environ: dict[str, str], start_response: Callable) -> HttpResponse:
         """
         Called as part of the WSGI stack to log the incoming request
         and its response using the common log format. If an error bubbles up
@@ -60,13 +65,13 @@ class HTTPLogger(_cplogging.LogManager):
             self.error(traceback=True, severity=logging.CRITICAL)
             return HttpResponseServerError(_cperror.format_exc())
 
-    def access(self, environ: Dict[str, str], response: HttpResponse) -> None:
+    def access(self, environ: dict[str, str], response: HttpResponse) -> None:
         """
         Special method that logs a request following the common
         log format. This is mostly taken from CherryPy and adapted
         to the WSGI's style of passing information.
         """
-        atoms = {'h': environ.get('REMOTE_ADDR', ''),
+        atoms = {'h': environ.get(self.remote_address_string, ''),
                  'l': '-',
                  'u': "-",
                  't': self.time(),

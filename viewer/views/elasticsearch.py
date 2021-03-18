@@ -1,5 +1,5 @@
 import json
-from typing import Any, Dict, List
+from typing import Any
 
 from urllib.parse import urlencode
 from copy import deepcopy
@@ -29,7 +29,7 @@ class ESHomePageView(TemplateView):
 
     template_name = "viewer/elasticsearch.html"
 
-    def get_context_data(self, **kwargs: Any) -> Dict[str, Any]:
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
 
         if not settings.ES_ENABLED or not es_client:
             return {'message': 'Elasticsearch is disabled for this instance.'}
@@ -47,6 +47,17 @@ class ESHomePageView(TemplateView):
         s.aggs.bucket('tags__full', 'terms', field='tags.full', size=100)
         s.aggs.bucket('source_type', 'terms', field='source_type', size=20)
         s.aggs.bucket('reason', 'terms', field='reason', size=20)
+
+        if 'metrics' in self.request.GET:
+            s.aggs.metric('avg_size', 'avg', field='size')
+            s.aggs.metric('sum_size', 'sum', field='size')
+            s.aggs.metric('max_size', 'max', field='size')
+            s.aggs.metric('min_size', 'min', field='size')
+            s.aggs.metric('avg_count', 'avg', field='image_count')
+            s.aggs.metric('sum_count', 'sum', field='image_count')
+            s.aggs.metric('max_count', 'max', field='image_count')
+            s.aggs.metric('min_count', 'min', field='image_count')
+
         try:
             count_result = s.count()
         except elasticsearch.exceptions.RequestError:
@@ -151,10 +162,13 @@ class ESHomePageView(TemplateView):
             url_args[field_name] = field_value
         return url_args, is_active
 
-    def prepare_facet_data(self, aggregations: AggResponse, get_args: QueryDict) -> Dict[str, List[Dict[str, str]]]:
+    def prepare_facet_data(self, aggregations: AggResponse, get_args: QueryDict) -> dict[str, list[dict[str, str]]]:
         resp: DataDict = {}
         for area, agg in aggregations.to_dict().items():
             resp[area] = []
+            if 'value' in agg:  # if the aggregation has the value key, it comes from the metrics.
+                resp[area] = agg['value']
+                continue
             for item in aggregations[area].buckets:
                 url_args, is_active = self.facet_url_args(
                     url_args=deepcopy(get_args.dict()),
@@ -182,7 +196,7 @@ class ESHomePageView(TemplateView):
         else:
             s = s.query('match_all')
         for field_name in req_dict.keys():
-            if field_name in ('page', 'q', 'order', 'sort'):
+            if field_name in ('page', 'q', 'order', 'sort', 'metrics'):
                 continue
             if '__' in field_name:
                 filter_field_name = field_name.replace('__', '.')
@@ -197,9 +211,9 @@ class ESHomePageView(TemplateView):
                     s = s.filter('term', **{filter_field_name: field_value})
         return s
 
-    def gen_pagination(self, request: HttpRequest, count: int, per_page: int) -> Dict[str, Any]:
+    def gen_pagination(self, request: HttpRequest, count: int, per_page: int) -> dict[str, Any]:
 
-        paginator: Dict[str, Any] = {}
+        paginator: dict[str, Any] = {}
 
         try:
             page = int(request.GET.get("page", '1'))
@@ -237,16 +251,18 @@ class ESHomePageView(TemplateView):
 
 # Not being used client-side
 def autocomplete_view(request: HttpRequest) -> HttpResponse:
+    if not settings.ES_ENABLED or not es_client:
+        return HttpResponse({})
+
     query = request.GET.get('q', '')
-    resp = es_client.suggest(
-        index=es_index_name,
-        body={
-            'title_complete': {
-                "text": query,
-                "completion": {
-                    "field": 'title_complete',
-                }
-            }
+
+    s = Search(using=es_client, index=es_index_name)
+
+    resp = s.suggest(
+        'title_complete',
+        query,
+        completion={
+            "field": 'title_complete',
         }
     )
     options = resp['title_complete'][0]['options']

@@ -1,6 +1,5 @@
 import typing
 from datetime import datetime
-from typing import List
 from xml.etree import ElementTree
 
 from core.base.utilities import translate_tag
@@ -31,8 +30,8 @@ def translate_language_code(code: str) -> str:
     return lang_table[int(code)]
 
 
-def convert_api_response_text_to_gallery_dicts(text: str) -> List[GalleryData]:
-    galleries: List[GalleryData] = []
+def convert_api_response_text_to_gallery_dicts(text: str) -> list[GalleryData]:
+    galleries: list[GalleryData] = []
     # Based on: https://www.doujinshi.org/API_MANUAL.txt
     xml_root = ElementTree.fromstring(text)
     error = xml_root.find('ERROR')

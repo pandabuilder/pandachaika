@@ -78,7 +78,7 @@ class Decoder:
             return None
         return self._data[self._index:self._index + 1]
 
-    def _consume(self) -> bytes:
+    def _consume(self) -> None:
         """
         Read (and therefore consume) the next character from the data
         """
@@ -180,7 +180,7 @@ class Encoder:
         res = str(len(value)) + ':' + value
         return str.encode(res)
 
-    def _encode_bytes(self, value: str):
+    def _encode_bytes(self, value):
         result = bytearray()
         result += str.encode(str(len(value)))
         result += b':'

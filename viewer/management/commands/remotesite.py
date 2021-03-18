@@ -1,4 +1,5 @@
 import socket
+from collections import defaultdict
 from ftplib import FTP_TLS
 import json
 import os
@@ -43,7 +44,7 @@ def send_urls_from_archive_list(site_page, api_key, reason, details, archive_ids
     url_list = [x.get_link() for x in Archive.objects.filter(pk__in=archive_ids)]
 
     data = {
-        'operation': 'queue_archives',
+        'operation': 'force_queue_archives',
         'api_key': api_key,
         'args': url_list
     }
@@ -92,6 +93,65 @@ def send_urls_from_archives(site_page, api_key, reason, details):
     try:
         response_data = r.json()
         yield("Number of new galleries queued: {}".format(response_data['result']))
+    except(ValueError, KeyError):
+        yield("Error parsing the response: {}".format(r.text))
+
+
+def send_urls_from_gallery_query(site_page, api_key, reason, details, web_page, sessionid):
+
+    galleries_request = requests.get(
+        web_page,
+        cookies={'sessionid': sessionid},
+        timeout=25
+    )
+
+    try:
+        response_data = galleries_request.json()
+    except(ValueError, KeyError):
+        yield("Error parsing the response: {}".format(galleries_request.text))
+        return
+
+    gid_provider_list = [(x['gid'], x['provider']) for x in response_data['galleries']]
+
+    gid_by_providers = defaultdict(list)
+    for v, k in gid_provider_list:
+        gid_by_providers[k].append(v)
+
+    url_list = []
+    used_archives = []
+
+    for provider, gid_list in gid_by_providers.items():
+        filtered_archives = Archive.objects.filter(gallery__gid__in=gid_list, gallery__provider=provider)
+        url_list.extend([x.get_link() for x in filtered_archives])
+        used_archives.extend([x.pk for x in filtered_archives])
+
+    yield("Matched archives IDs with remote galleries: {}".format(used_archives))
+
+    data = {
+        'operation': 'force_queue_archives',
+        'api_key': api_key,
+        'args': url_list
+    }
+
+    if reason:
+        data['archive_reason'] = reason
+    if details:
+        data['archive_details'] = details
+
+    headers = {'Content-Type': 'application/json; charset=utf-8'}
+    r = requests.post(
+        site_page,
+        data=json.dumps(data),
+        headers={**headers},
+        timeout=25
+    )
+    try:
+        response_data = r.json()
+        yield("Number of galleries queued: {}".format(response_data['result']))
+
+        with open('tmp_queue.json', 'w') as f:
+            json.dump(used_archives, f)
+
     except(ValueError, KeyError):
         yield("Error parsing the response: {}".format(r.text))
 
@@ -269,6 +329,11 @@ class Command(BaseCommand):
                             action='store_true',
                             default=False,
                             help='Send galleries marked as hidden to the remote site.')
+        parser.add_argument('-gfu', '--galleries_from_url',
+                            required=False,
+                            action='store',
+                            default='',
+                            help='Request galleries from a URL that returns JSON of gid, provider.')
         parser.add_argument('-f', '--fakku',
                             required=False,
                             action='store_true',
@@ -285,6 +350,11 @@ class Command(BaseCommand):
                             nargs='+',
                             type=int,
                             help='Specify list of archive ids to check and upload.')
+        parser.add_argument('-uq', '--upload_queue',
+                            required=False,
+                            action='store_true',
+                            default=False,
+                            help='Upload archive files from the temp queue.')
 
     def handle(self, *args, **options):
         start = time.perf_counter()
@@ -299,6 +369,9 @@ class Command(BaseCommand):
                 self.stdout.write(message)
         if options['archives']:
             for message in send_urls_from_archives(crawler_settings.remote_site['api_url'], crawler_settings.remote_site['api_key'], options['archive_reason'], options['archive_details']):
+                self.stdout.write(message)
+        if options['galleries_from_url']:
+            for message in send_urls_from_gallery_query(crawler_settings.remote_site['api_url'], crawler_settings.remote_site['api_key'], options['archive_reason'], options['archive_details'], options['galleries_from_url'], crawler_settings.remote_site['sessionid']):
                 self.stdout.write(message)
         if options['galleries']:
             for message in send_urls_from_galleries(crawler_settings.remote_site['api_url'], crawler_settings.remote_site['api_key']):
@@ -328,6 +401,30 @@ class Command(BaseCommand):
                     crawler_settings.remote_site['remote_folder']
             ):
                 self.stdout.write(message)
+
+        if options['upload_queue']:
+            if not os.path.isfile('tmp_queue.json'):
+                self.stdout.write(
+                    self.style.ERROR(
+                        "Queue file: {} does not exist.".format('tmp_queue.json')
+                    )
+                )
+                return
+            with open('tmp_queue.json') as json_file:
+                data = json.load(json_file)
+
+            specified_archives = Archive.objects.filter(id__in=data)
+
+            ftp_handler = FTPHandler(crawler_settings, print_method=self.stdout.write)
+            for message in ftp_handler.check_remote(
+                    specified_archives,
+                    crawler_settings.remote_site['api_url'],
+                    crawler_settings.remote_site['api_key'],
+                    crawler_settings.remote_site['remote_folder']
+            ):
+                self.stdout.write(message)
+
+            os.remove('tmp_queue.json')
 
         end = time.perf_counter()
 

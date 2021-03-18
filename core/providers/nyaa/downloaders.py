@@ -1,6 +1,7 @@
 import logging
 import base64
 import os
+from typing import cast
 
 from core.base.utilities import replace_illegal_name, available_filename
 from core.downloaders.torrent import get_torrent_client
@@ -57,11 +58,14 @@ class NyaaTorrentDownloader(GenericTorrentDownloader):
             )
             if client.expected_torrent_name == '':
                 from core.libs.bencoding import Decoder
-                if client.convert_to_base64:
+                if client.convert_to_base64 and type(torrent_data) is str:
+                    torrent_data = cast(str, torrent_data)
                     torrent_metadata = Decoder(base64.decodebytes(torrent_data.encode('utf-8'))).decode()
                 else:
+                    torrent_data = cast(bytes, torrent_data)
                     torrent_metadata = Decoder(torrent_data).decode()
                 client.expected_torrent_name = os.path.splitext(torrent_metadata[b'info'][b'name'])[0]
+                client.expected_torrent_extension = os.path.splitext(torrent_metadata[b'info'][b'name'])[1]
 
         if result:
             if client.expected_torrent_name:
@@ -70,6 +74,10 @@ class NyaaTorrentDownloader(GenericTorrentDownloader):
                 self.expected_torrent_name = "{}".format(
                     replace_illegal_name(self.gallery.link)
                 )
+            if client.expected_torrent_extension:
+                self.expected_torrent_extension = client.expected_torrent_extension
+            else:
+                self.expected_torrent_extension = ".zip"
             self.fileDownloaded = 1
             self.return_code = 1
             if client.total_size > 0:
@@ -80,12 +88,13 @@ class NyaaTorrentDownloader(GenericTorrentDownloader):
                 self.settings.MEDIA_ROOT,
                 os.path.join(
                     self.own_settings.torrent_dl_folder,
-                    replace_illegal_name(self.expected_torrent_name) + '.zip'
+                    replace_illegal_name(self.expected_torrent_name) + self.expected_torrent_extension
                 )
             )
             # This being a no_metadata downloader, we force the Gallery fields from the Archive
-            self.original_gallery.title = self.expected_torrent_name
-            self.original_gallery.filesize = self.gallery.filesize
+            if self.original_gallery:
+                self.original_gallery.title = self.expected_torrent_name
+                self.original_gallery.filesize = self.gallery.filesize
         else:
             self.return_code = 0
             logger.error("There was an error adding the torrent to the client")

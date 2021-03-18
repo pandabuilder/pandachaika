@@ -4,7 +4,7 @@ import re
 import time
 import typing
 from collections import defaultdict
-from typing import Optional, List
+from typing import Optional
 
 import bs4
 from bs4 import BeautifulSoup
@@ -49,7 +49,18 @@ class Parser(BaseParser):
 
         soup = BeautifulSoup(response.text, 'html.parser')
 
-        content_container = soup.find_all("div", class_="container")[0]
+        content_containers = soup.find_all("div", class_="container")
+
+        if not content_containers:
+            logger.error("Could not find content containers")
+            return None
+
+        content_container = None
+
+        for box_container in content_containers:
+            content_container = box_container.find("div", class_="box")
+            if content_container:
+                break
 
         if not content_container:
             logger.error("Could not find content container")
@@ -100,11 +111,18 @@ class Parser(BaseParser):
 
         gallery_id = match_result.group(1)
 
+        gallery_title_container = content_container.find("h1", class_="title")
+
+        if gallery_title_container:
+            gallery_title = gallery_title_container.get_text()
+        else:
+            gallery_title = ""
+
         gallery = GalleryData(
             gallery_id,
             self.name,
             link=link,
-            title=content_container.find("h1", class_="title").get_text(),
+            title=gallery_title,
             thumbnail_url=thumbnail_url,
             posted=None,
             filesize=0,
@@ -153,7 +171,7 @@ class Parser(BaseParser):
 
     # Even if we just call the single method, it allows to upgrade this easily in case group calls are supported
     # afterwards. Also, we can add a wait_timer here.
-    def get_values_from_gallery_link_list(self, links: List[str]) -> List[GalleryData]:
+    def get_values_from_gallery_link_list(self, links: list[str]) -> list[GalleryData]:
         response = []
         for i, element in enumerate(links):
             if i > 0:
@@ -176,13 +194,12 @@ class Parser(BaseParser):
                 continue
         return response
 
-    @staticmethod
-    def get_feed_urls() -> List[str]:
+    def get_feed_urls(self) -> list[str]:
         return [constants.rss_url, ]
 
-    def crawl_feed(self, feed_url: str = None) -> List[str]:
+    def crawl_feed(self, feed_url: str = '') -> list[str]:
 
-        urls: List[str] = []
+        urls: list[str] = []
 
         if not feed_url:
             feed_url = constants.rss_url
@@ -227,7 +244,7 @@ class Parser(BaseParser):
 
             url_containers = content_container.find_all("a", href=match_string)
 
-            current_gids: List[str] = []
+            current_gids: list[str] = []
 
             for url_container in url_containers:
 
@@ -257,7 +274,7 @@ class Parser(BaseParser):
 
             used_gids = used.values_list('gid', flat=True)
 
-            current_urls: List[str] = [
+            current_urls: list[str] = [
                 '{}/view/{}'.format(constants.main_page, x) for x in list(set(current_gids).difference(used_gids))
             ]
 
@@ -270,7 +287,7 @@ class Parser(BaseParser):
     def fetch_gallery_data(self, url: str) -> Optional[GalleryData]:
         return self.get_values_from_gallery_link(url)
 
-    def fetch_multiple_gallery_data(self, url_list: List[str]) -> List[GalleryData]:
+    def fetch_multiple_gallery_data(self, url_list: list[str]) -> list[GalleryData]:
         return self.get_values_from_gallery_link_list(url_list)
 
     @staticmethod
@@ -281,12 +298,12 @@ class Parser(BaseParser):
         else:
             return None
 
-    def crawl_urls(self, urls: List[str], wanted_filters: QuerySet = None, wanted_only: bool = False) -> None:
+    def crawl_urls(self, urls: list[str], wanted_filters: QuerySet = None, wanted_only: bool = False) -> None:
 
         unique_urls = set()
         gallery_data_list = []
         fetch_format_galleries = []
-        gallery_wanted_lists: typing.Dict[str, List['WantedGallery']] = defaultdict(list)
+        gallery_wanted_lists: dict[str, list['WantedGallery']] = defaultdict(list)
 
         if not self.downloaders:
             logger.warning('No downloaders enabled, returning.')

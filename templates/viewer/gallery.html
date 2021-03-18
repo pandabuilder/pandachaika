@@ -14,8 +14,8 @@
 
   <ul class="info">
     {% if user.is_authenticated %}
-      <li class="right">
-        <br>Gallery: {% if user.is_staff %}
+      <li class="right-options">
+        <div>Gallery: {% if user.is_staff %}
         <a href="{% url 'admin:viewer_gallery_change' gallery.pk %}">admin</a>
         <a href="{% url 'viewer:gallery-tool' gallery.pk 'toggle-hidden' %}">toggle hidden</a>
         <a href="{% url 'viewer:gallery-tool' gallery.pk 'toggle-public' %}">toggle public</a>
@@ -34,6 +34,7 @@
       {% if perms.viewer.upload_with_metadata_archive %}
         <a href="{% url 'viewer:upload-archive' %}?gallery={{ gallery.id }}">upload archive</a>
       {% endif %}
+        </div>
       </li>
     {% endif %}
 
@@ -73,12 +74,20 @@
         </tr>
         <tr>
           <th>Source URL</th>
-          <td>{{ gallery.get_link|urlize }}, <a href="{{ gallery.get_link|derefer }}">derefered</a></td>
+          <td>{{ gallery.get_link|urlize_all_rel }}</td>
         </tr>
         <tr>
           <th>Contained in</th>
           {% if gallery.gallery_container %}
           <td><a href="{% url 'viewer:gallery' gallery.gallery_container.id %}">{{ gallery.gallery_container }}</a></td>
+          {% else %}
+          <td>None</td>
+          {% endif %}
+        </tr>
+        <tr>
+          <th>Magazine</th>
+          {% if gallery.magazine %}
+          <td><a href="{% url 'viewer:gallery' gallery.magazine.id %}">{{ gallery.magazine }}</a></td>
           {% else %}
           <td>None</td>
           {% endif %}
@@ -148,21 +157,36 @@
     <li class="line-top"><label class="label-extended">Related archives:</label>
       <ul>
         {% for archive in gallery.archive_set.all %}
+          {% if archive.public or user.is_authenticated %}
           <li><a href="{% url 'viewer:archive' archive.id %}"{% if not archive.crc32 %} class="archive-incomplete"{% endif %}>{{ archive }}</a>, images: {{ archive.filecount }}, size: {{ archive.filesize|filesizeformat }}</li>
+          {% endif %}
         {% endfor %}
       </ul>
     </li>
     <li><label class="label-extended">Alternative archives:</label>
       <ul>
         {% for archive in gallery.alternative_sources.all %}
+          {% if archive.public or user.is_authenticated %}
           <li><a href="{% url 'viewer:archive' archive.id %}"{% if not archive.crc32 %} class="archive-incomplete"{% endif %}>{{ archive }}</a>, images: {{ archive.filecount }}, size: {{ archive.filesize|filesizeformat }}</li>
+          {% endif %}
         {% endfor %}
       </ul>
     </li>
     <li><label class="label-extended">Contained galleries:</label>
       <ul>
         {% for gallery in gallery.gallery_contains.all %}
+          {% if gallery.public or user.is_authenticated %}
           <li><a href="{% url 'viewer:gallery' gallery.id %}">{{ gallery }}</a></li>
+          {% endif %}
+        {% endfor %}
+      </ul>
+    </li>
+    <li><label class="label-extended">Magazine chapters:</label>
+      <ul>
+        {% for gallery in gallery.magazine_chapters.all %}
+          {% if gallery.public or user.is_authenticated %}
+          <li><a href="{% url 'viewer:gallery' gallery.id %}">{{ gallery }}</a></li>
+          {% endif %}
         {% endfor %}
       </ul>
     </li>

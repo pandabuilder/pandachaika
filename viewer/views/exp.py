@@ -6,11 +6,12 @@ import re
 from itertools import chain
 import typing
 
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core import serializers
 from django.db import transaction
 from django.db.models import Q, QuerySet
-from django.http import HttpResponse, HttpRequest
+from django.http import HttpResponse, HttpRequest, Http404
 from django.http.request import QueryDict
 from django.shortcuts import render
 from django.core.paginator import Paginator, EmptyPage
@@ -19,34 +20,55 @@ from django.conf import settings
 
 from core.base.types import DataDict
 from core.base.utilities import timestamp_or_zero, str_to_int
-from viewer.forms import ArchiveSearchForm
-from viewer.models import Gallery, Tag, Archive, Image, UserArchivePrefs, GalleryQuerySet, ArchiveQuerySet
-from viewer.views.head import archive_filter_keys, filter_archives
-
+from viewer.forms import GallerySearchForm, SpanErrorList, GallerySearchSimpleForm
+from viewer.models import Gallery, Tag, Archive, Image, UserArchivePrefs
+from viewer.views.head import archive_filter_keys, filter_archives, render_error
 
 crawler_settings = settings.CRAWLER_SETTINGS
 
 
 # @login_required
 def tag_frequency(request: HttpRequest) -> HttpResponse:
+    if not crawler_settings.urls.enable_tag_frequency:
+        if not request.user.is_staff:
+            raise Http404("Page not found")
+        else:
+            return render_error(request, "Page disabled by settings (urls: enable_tag_frequency).")
     title = request.GET.get("title", '')
     tags = request.GET.get("tags", '')
     if 'clear' in request.GET:
-        form = ArchiveSearchForm()
+        request.GET = QueryDict('')
+        form = GallerySearchForm()
+        form_simple = GallerySearchSimpleForm(request.GET, error_class=SpanErrorList)
     else:
-        form = ArchiveSearchForm(initial={'title': title, 'tags': tags})
-    d = {'form': form}
+        form = GallerySearchForm(initial={'title': title, 'tags': tags})
+        form_simple = GallerySearchSimpleForm(request.GET, error_class=SpanErrorList)
+        form_simple.is_valid()
+        for field_name, errors in form_simple.errors.items():
+            messages.error(request, field_name + ": " + ", ".join(errors), extra_tags='danger')
+    d = {'form': form, 'form_simple': form_simple}
     return render(request, "viewer/graph_tags.html", d)
 
 
 def gallery_frequency(request: HttpRequest) -> HttpResponse:
+    if not crawler_settings.urls.enable_gallery_frequency:
+        if not request.user.is_staff:
+            raise Http404("Page not found")
+        else:
+            return render_error(request, "Page disabled by settings (urls: enable_gallery_frequency).")
     title = request.GET.get("title", '')
     tags = request.GET.get("tags", '')
     if 'clear' in request.GET:
-        form = ArchiveSearchForm()
+        request.GET = QueryDict('')
+        form = GallerySearchForm()
+        form_simple = GallerySearchSimpleForm(request.GET, error_class=SpanErrorList)
     else:
-        form = ArchiveSearchForm(initial={'title': title, 'tags': tags})
-    d = {'form': form}
+        form = GallerySearchForm(initial={'title': title, 'tags': tags})
+        form_simple = GallerySearchSimpleForm(request.GET, error_class=SpanErrorList)
+        form_simple.is_valid()
+        for field_name, errors in form_simple.errors.items():
+            messages.error(request, field_name + ": " + ", ".join(errors), extra_tags='danger')
+    d = {'form': form, 'form_simple': form_simple}
     return render(request, "viewer/graph_gallery_posted.html", d)
 
 
@@ -111,36 +133,61 @@ def get_gallery_data(data: QueryDict) -> 'QuerySet[Gallery]':
                     tag_query
                 )
 
+    if 'filecount_from' in data:
+        results = results.filter(filecount__gte=int(float(data['filecount_from'])))
+    if 'filecount_to' in data:
+        results = results.filter(filecount__lte=int(float(data['filecount_to'])))
+    if 'filesize_from' in data:
+        results = results.filter(filesize__gte=int(float(data['filesize_from'])))
+    if 'filesize_to' in data:
+        results = results.filter(filesize__lte=int(float(data['filesize_to'])))
+    if 'posted_from' in data:
+        results = results.filter(posted__gte=data['posted_from'])
+    if 'posted_to' in data:
+        results = results.filter(posted__lte=data['posted_to'])
+    if 'provider' in data:
+        results = results.filter(provider__icontains=data['provider'])
+    if 'reason' in data:
+        results = results.filter(reason__icontains=data['reason'])
+    if 'provider' in data:
+        results = results.filter(provider__icontains=data['provider'])
+    if 'uploader' in data:
+        results = results.filter(uploader__icontains=data['uploader'])
+
     results = results.distinct()
 
     return results
 
 
 def seeder(request: HttpRequest) -> HttpResponse:
+    if not crawler_settings.urls.enable_tag_frequency:
+        if not request.user.is_staff:
+            response = json.dumps({'error': "Page not Found"})
+        else:
+            response = json.dumps({'error': "Page disabled by settings (urls: enable_tag_frequency)."})
+        return HttpResponse(response, content_type="application/json")
     if request.method == 'GET':
         data = request.GET
-        if 'title' not in data and 'tags' not in data:
-            response = json.dumps({'error': "wrong format"})
-        else:
-            galleries = get_gallery_data(data)
-            tags = Tag.objects.filter(gallery__in=galleries).distinct()
-            combined = list(chain(tags, galleries))
-            response = serializers.serialize("json", combined, fields=('title', 'name', 'scope', 'pk', 'tags'))
+        galleries = get_gallery_data(data).filter(posted__gt='1970-01-01 00:00:00+00:00')
+        tags = Tag.objects.filter(gallery__in=galleries).distinct()
+        combined = list(chain(tags, galleries))
+        response = serializers.serialize("json", combined, fields=('title', 'name', 'scope', 'pk', 'tags'))
     else:
         response = json.dumps({'error': "method must be GET"})
     return HttpResponse(response, content_type="application/json")
 
 
 def release_date_seeder(request: HttpRequest) -> HttpResponse:
+    if not crawler_settings.urls.enable_gallery_frequency:
+        if not request.user.is_staff:
+            response = json.dumps({'error': "Page not Found"})
+        else:
+            response = json.dumps({'error': "Page disabled by settings (urls: enable_gallery_frequency)."})
+        return HttpResponse(response, content_type="application/json")
     if request.method == 'GET':
         data = request.GET
-        if 'title' not in data and 'tags' not in data:
-            response = json.dumps({'error': "wrong format"})
-        else:
-            galleries = get_gallery_data(data).filter(posted__gt='1970-01-01 00:00:00')
-            # tags = Tag.objects.filter(gallery__in=galleries).distinct()
-            # combined = list(chain(tags, galleries))
-            response = serializers.serialize("json", list(galleries), fields=('pk', 'title', 'posted'))
+        galleries = get_gallery_data(data).filter(posted__gt='1970-01-01 00:00:00+00:00')
+        response = serializers.serialize("json", list(galleries), fields=('pk', 'title', 'posted'))
     else:
         response = json.dumps({'error': "method must be GET"})
     return HttpResponse(response, content_type="application/json")
@@ -297,7 +344,7 @@ def api(request: HttpRequest, model: str = None, obj_id: str = None, action: str
                         images = Image.objects.filter(archive=archive_id, position__in=positions, extracted=True).filter(archive__public=True)
                 except Archive.DoesNotExist:
                     return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
-                image_urls: typing.List[typing.Dict[str, typing.Any]] = [
+                image_urls: list[dict[str, typing.Any]] = [
                     {
                         'position': image.position,
                         'url': request.build_absolute_uri(image.image.url),

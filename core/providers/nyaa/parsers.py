@@ -4,7 +4,6 @@ import re
 import typing
 from urllib.parse import urljoin
 from collections import defaultdict
-from typing import List
 
 from core.base.parsers import BaseParser
 
@@ -32,11 +31,11 @@ class Parser(BaseParser):
         else:
             return None
 
-    def crawl_urls(self, urls: List[str], wanted_filters=None, wanted_only: bool = False) -> None:
+    def crawl_urls(self, urls: list[str], wanted_filters=None, wanted_only: bool = False) -> None:
 
         unique_urls = set()
         gallery_data_list = []
-        gallery_wanted_lists: typing.Dict[str, List['WantedGallery']] = defaultdict(list)
+        gallery_wanted_lists: dict[str, list['WantedGallery']] = defaultdict(list)
 
         if not self.downloaders:
             logger.warning('No downloaders enabled, returning.')

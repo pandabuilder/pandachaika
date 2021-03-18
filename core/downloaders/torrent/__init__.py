@@ -3,12 +3,12 @@ import sys
 import pkgutil
 import inspect
 import types
-from typing import Any, Dict, Optional, Union
+from typing import Any, Optional, Union
 
 from core.base.types import TorrentClient
 
 
-def get_torrent_client(torrent_settings: Dict[str, Any]) -> Optional[TorrentClient]:
+def get_torrent_client(torrent_settings: dict[str, Any]) -> Optional[TorrentClient]:
     client = None
     torrent_module: Union[Optional[types.ModuleType], str] = None
     for module_name in modules_name:

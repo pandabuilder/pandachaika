@@ -5,24 +5,44 @@ import json
 import re
 from collections import defaultdict
 
-from typing import Dict, Any, List, Union, Iterable, Optional
+from typing import Any, Union
 
+from django.contrib.auth import authenticate, login
 from django.core.paginator import Paginator, EmptyPage
 from django.db.models import Q, QuerySet
-from django.http import HttpResponse, HttpRequest
+from django.http import HttpResponse, HttpRequest, HttpResponseBadRequest
 from django.http.request import QueryDict
 from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
 
 from core.base.setup import Settings
-from core.base.utilities import str_to_int
-from core.base.utilities import timestamp_or_zero
+from core.base.utilities import str_to_int, timestamp_or_zero
 from viewer.models import Archive, Gallery
 from viewer.utils.matching import generate_possible_matches_for_archives
 from viewer.views.head import gallery_filter_keys, gallery_order_fields, filter_archives_simple, archive_filter_keys
+from viewer.utils.functions import gallery_search_results_to_json
 
 crawler_settings = settings.CRAWLER_SETTINGS
+
+
+def api_login(request: HttpRequest) -> HttpResponse:
+    if request.method == 'POST':
+        username = request.POST['username']
+        password = request.POST['password']
+        user = authenticate(username=username, password=password)
+        if user is not None:
+            if user.is_active:  # type: ignore
+                login(request, user)
+                data: dict[str, Any] = {'success': True}
+            else:
+                data = {'success': False, 'error': 'This account has been disabled.'}
+        else:
+            data = {'success': False, 'error': 'Invalid login credentials.'}
+
+        return HttpResponse(json.dumps(data), content_type='application/json')
+
+    return HttpResponseBadRequest()
 
 
 # NOTE: This is used by 3rd parties, do not modify, at most create a new function if something needs changing
@@ -249,7 +269,8 @@ def json_search(request: HttpRequest) -> HttpResponse:
                     'thumbnail': request.build_absolute_uri(
                         reverse('viewer:gallery-thumb', args=(gallery.pk,))) if gallery.thumbnail else '',
                     'thumbnail_url': gallery.thumbnail_url,
-                    'gallery_container': gallery.gallery_container.gid if gallery.gallery_container else ''
+                    'gallery_container': gallery.gallery_container.gid if gallery.gallery_container else '',
+                    'magazine': gallery.magazine.gid if gallery.magazine else ''
                 } for gallery in galleries_matcher
                 ],
                 # indent=2,
@@ -486,41 +507,6 @@ def json_search(request: HttpRequest) -> HttpResponse:
         return HttpResponse(json.dumps({'result': "Request must be GET"}), content_type="application/json; charset=utf-8")
 
 
-def gallery_search_results_to_json(request: HttpRequest, galleries: Iterable[Gallery]) -> List[Dict[str, Any]]:
-    return [{
-        'id': gallery.pk,
-        'gid': gallery.gid,
-        'token': gallery.token,
-        'title': gallery.title,
-        'title_jpn': gallery.title_jpn,
-        'category': gallery.category,
-        'uploader': gallery.uploader,
-        'comment': gallery.comment,
-        'posted': int(timestamp_or_zero(gallery.posted)),
-        'filecount': gallery.filecount,
-        'filesize': gallery.filesize,
-        'expunged': gallery.expunged,
-        'provider': gallery.provider,
-        'rating': gallery.rating,
-        'fjord': gallery.fjord,
-        'tags': gallery.tag_list(),
-        'link': gallery.get_link(),
-        'thumbnail': request.build_absolute_uri(
-            reverse('viewer:gallery-thumb', args=(gallery.pk,))) if gallery.thumbnail else '',
-        'thumbnail_url': gallery.thumbnail_url,
-        'archives': [
-            {
-                'link': request.build_absolute_uri(
-                    reverse('viewer:archive-download', args=(archive.pk,))
-                ),
-                'source': archive.source_type,
-                'reason': archive.reason
-            } for archive in gallery.archive_set.filter_by_authenticated_status(authenticated=request.user.is_authenticated)
-        ],
-    } for gallery in galleries
-    ]
-
-
 # Private API, checks for the API key.
 @csrf_exempt
 def json_parser(request: HttpRequest) -> HttpResponse:
@@ -646,12 +632,13 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                     return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
                 # Used by remotesite command
                 elif data['operation'] == 'archive_request':
-                    provider_dict: Dict[str, List[str]] = defaultdict(list)
+                    provider_dict: dict[str, list[str]] = defaultdict(list)
                     for gid_provider in args:
                         provider_dict[gid_provider[1]].append(gid_provider[0])
-                    gallery_ids = []
+                    gallery_ids: list[int] = []
                     for provider, gid_list in provider_dict.items():
-                        gallery_ids.append(Gallery.objects.filter(provider=provider, gid__in=gid_list).values_list('pk', flat=True))
+                        pks = Gallery.objects.filter(provider=provider, gid__in=gid_list).values_list('pk', flat=True)
+                        gallery_ids.extend(pks)
                     archives_query = Archive.objects.filter_non_existent(crawler_settings.MEDIA_ROOT, gallery__pk__in=gallery_ids)
                     archives = [{'gid': archive.gallery.gid,
                                  'provider': archive.gallery.provider,
@@ -660,6 +647,22 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                                  'filesize': archive.filesize} for archive in archives_query if archive.gallery]
                     response_text = json.dumps({'result': archives})
                     return HttpResponse(response_text, content_type="application/json; charset=utf-8")
+                elif data['operation'] == 'force_queue_archives':
+                    pages_links = args
+                    if len(pages_links) > 0:
+                        current_settings = Settings(load_from_config=crawler_settings.config)
+                        if 'archive_reason' in data:
+                            current_settings.archive_reason = data['archive_reason']
+                        if 'archive_details' in data:
+                            current_settings.archive_details = data['archive_details']
+                        current_settings.allow_type_downloaders_only('fake')
+                        current_settings.set_enable_download()
+                        if current_settings.workers.web_queue:
+                            current_settings.workers.web_queue.enqueue_args_list(pages_links, override_options=current_settings)
+                        else:
+                            pages_links = []
+                    return HttpResponse(json.dumps({'result': str(len(pages_links))}), content_type="application/json; charset=utf-8")
+
                 # Used by remotesite command
                 elif data['operation'] in ('queue_archives', 'queue_galleries'):
                     urls = args
@@ -897,7 +900,7 @@ def simple_archive_filter(args: str, public: bool = True) -> 'QuerySet[Archive]'
     return results
 
 
-def filter_galleries_no_request(filter_args: Union[Dict[str, Any], QueryDict]) -> 'QuerySet[Gallery]':
+def filter_galleries_no_request(filter_args: Union[dict[str, Any], QueryDict]) -> 'QuerySet[Gallery]':
 
     # sort and filter results by parameters
     order = "posted"
@@ -954,6 +957,12 @@ def filter_galleries_no_request(filter_args: Union[Dict[str, Any], QueryDict]) -
         results = results.filter(reason__icontains=filter_args["reason"])
     if filter_args["crc32"]:
         results = results.filter(archive__crc32=filter_args['crc32'])
+
+    # Only return galleries with associated archives.
+    if filter_args["used"]:
+        results = results.filter(
+            Q(alternative_sources__isnull=False) | Q(archive__isnull=False) | Q(gallery_container__archive__isnull=False)
+        )
 
     if filter_args["tags"]:
         tags = filter_args["tags"].split(',')

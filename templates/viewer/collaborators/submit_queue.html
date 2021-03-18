@@ -4,6 +4,7 @@
 {% load static %}
 
 {% block content %}
+  {% load viewer_extras %}
     {% if messages %}
         {% for message in messages %}
         <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
@@ -32,15 +33,18 @@
         <label>Filecount</label>
         <input size="2" type="text" class="form-control mr-sm-1" name="filecount_from" value="{{ request.GET.filecount_from }}" placeholder="from"/>
         <input size="2" type="text" class="form-control mr-sm-1" name="filecount_to" value="{{ request.GET.filecount_to }}" placeholder="to"/>
-        <input title="Category" class="form-control" name="category" placeholder="Category" value="{{ request.GET.category }}">
+        <input size="10" title="Category" class="form-control" name="category" placeholder="Category" value="{{ request.GET.category }}">
         <input title="Reason" class="form-control" name="reason" placeholder="Reason" value="{{ request.GET.reason }}">
+        <input title="Submit Reason" class="form-control" name="submit_reason" placeholder="Submit Reason" value="{{ request.GET.submit_reason }}">
         <input id="checkbox-f1" class="custom-cb" type="checkbox" name="denied" value="1" {% if "denied" in request.GET %}checked{% endif %}><label for="checkbox-f1"><span><span></span></span>Show denied</label>
+        <input id="checkbox-f2" class="custom-cb" type="checkbox" name="approved" value="1" {% if "approved" in request.GET %}checked{% endif %}><label for="checkbox-f2"><span><span></span></span>Show approved</label>
+        <input id="checkbox-f4" class="custom-cb" type="checkbox" name="already_present" value="1" {% if "already_present" in request.GET %}checked{% endif %}><label for="checkbox-f4"><span><span></span></span>Show present</label>
+        <input id="checkbox-f3" class="custom-cb" type="checkbox" name="filter_galleries" value="1" {% if "filter_galleries" in request.GET %}checked{% endif %}><label for="checkbox-f3"><span><span></span></span>Filter galleries</label>
         <button type="submit" name="apply" class="btn btn-light">Search</button>
         <a class="btn btn-light" href="{% url 'viewer:submit-queue' %}">Clear</a>
       </div>
     </form>
     <form action="{{ request.get_full_path }}" method="POST">{% csrf_token %}
-    {% load viewer_extras %}
     <!-- Next/Prev page links  -->
     {% if results.object_list and results.paginator.num_pages > 1 %}
       <div>
@@ -62,42 +66,58 @@
       <table class="table table-bordered table-sm generic-table">
         <thead>
         <tr>
-          <th>Select</th><th>URL</th><th>Title</th><th>Size</th><th>Images</th><th>Source URL | Image</th><th>Linked to Wanted Gallery?</th><th>Reason</th><th>Added</th>
+          <th>Select</th><th>URL</th><th>Gallery</th><th>Title</th><th>Size</th><th>Images</th><th>Source URL | Image</th><th title="Linked to Wanted Gallery?">Wanted</th><th title="Gallery has Archive?">Archive</th><th>Entry Reason</th><th>Submitted</th><th>Status</th><th>Public</th>
         </tr>
         </thead>
         <tbody>
-        {% for gallery in results %}
+        {% for entry in results %}
           <tr>
             <td>
-              <input id="checkbox-{{ gallery.id }}" class="toggle-list custom-cb" type="checkbox" name="sel-{{ gallery.id }}" value="{{ gallery.pk }}"><label for="checkbox-{{ gallery.id }}"><span><span></span></span></label>
+              <input id="checkbox-{{ entry.id }}" class="toggle-list custom-cb" type="checkbox" name="sel-{{ entry.id }}" value="{{ entry.pk }}"><label for="checkbox-{{ entry.id }}"><span><span></span></span></label>
             </td>
             <td>
-              <a href="{% url 'viewer:gallery' gallery.pk %}">{{ gallery.pk }}</a>
+              {{ entry.submit_url|urlize_all_rel }}
             </td>
             <td>
-              {{ gallery.title }}
-            </td>
-            <td>
-              {{ gallery.filesize }} ({{ gallery.filesize|filesizeformat }})
-            </td>
-            <td>
-              {{ gallery.filecount }}
-            </td>
-            <td>
-              {% if gallery.thumbnail.name %}
-                <a href="{{ gallery.get_link }}" class="img-preview" data-image-url="{{ gallery.thumbnail.url }}" rel="popover">{{ gallery.get_link }}</a>
+              {% if entry.gallery.thumbnail.name %}
+              <a href="{% url 'viewer:gallery' entry.gallery.pk %}">{{ entry.gallery.pk }}</a>
               {% else %}
-                {{ gallery.get_link|urlize }}
+                No gallery
               {% endif %}
             </td>
             <td>
-              {{ gallery.foundgallery_set.count|yesno:"yes,no" }}
+              {{ entry.gallery.title }}
             </td>
             <td>
-              {{ gallery.reason }}
+              {{ entry.gallery.filesize }} ({{ entry.gallery.filesize|filesizeformat }})
             </td>
             <td>
-              {{ gallery.create_date|date:"DATETIME_FORMAT" }}
+              {{ entry.gallery.filecount }}
+            </td>
+            <td>
+              {% if entry.gallery.thumbnail.name %}
+                <a href="{{ entry.gallery.get_link }}" class="img-preview" data-image-url="{{ entry.gallery.thumbnail.url }}" rel="popover noopener noreferrer nofollow">{{ entry.gallery.get_link }}</a>
+              {% else %}
+                {{ entry.gallery.get_link|urlize_all_rel }}
+              {% endif %}
+            </td>
+            <td>
+              {{ entry.gallery.foundgallery_set.count|yesno:"yes,no" }}
+            </td>
+            <td>
+              {{ entry.gallery.archive_set.count|yesno:"yes,no" }}
+            </td>
+            <td>
+              {{ entry.submit_reason }}
+            </td>
+            <td>
+              {{ entry.submit_date|date:"DATETIME_FORMAT" }}
+            </td>
+            <td>
+              {{ entry.get_resolved_status_display }}
+            </td>
+            <td>
+              {{ entry.gallery.public|yesno }}
             </td>
           </tr>
         {% endfor %}
@@ -122,9 +142,17 @@
         </div>
       {% endif %}
     <div class="form-group">
-      <input size="10" class="form-control" name="reason" value="" placeholder="Reason" maxlength="200"/>
+      <input size="10" class="form-control" name="reason" value="" placeholder="Gallery & Archive Reason" maxlength="200"/>
+    </div>
+    <div class="form-group">
+      <input size="10" class="form-control" name="entry_reason" value="" placeholder="Entry Reason" maxlength="200"/>
+    </div>
+    <div class="form-group">
+      <label for="entry_comment">Comment</label>
+      <textarea name="entry_comment" class="form-control" id="entry_comment" rows="5"></textarea>
     </div>
     <button name="download_galleries" class="btn btn-light">Start download</button>
+    <button name="approve_galleries" class="btn btn-light">Approve galleries (no download)</button>
     <button name="deny_galleries" class="btn btn-light">Deny galleries</button>
     </form>
 {% endblock %}

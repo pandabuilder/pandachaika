@@ -1,10 +1,11 @@
 import threading
 import traceback
 from collections import deque
+from collections.abc import Callable, Iterable
 
 import logging
 import typing
-from typing import Iterable, Optional, Callable, List
+from typing import Optional
 
 from core.base.setup import Settings
 from core.base.types import QueueItem
@@ -24,7 +25,7 @@ class WebQueue(object):
         self.settings = settings
         self.queue: deque = deque()
         self.web_queue_thread: Optional[threading.Thread] = None
-        self.current_processing_items: List[QueueItem] = []
+        self.current_processing_items: list[QueueItem] = []
         self.thread_name = 'web_queue'
 
     def web_worker(self) -> None:

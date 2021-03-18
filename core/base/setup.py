@@ -7,9 +7,7 @@ import typing
 # Main concern with this first approach is that a provider could read settings from another provider (cookies, etc).
 # Another option is to have each provider construct it's own settings object, inheriting from this,
 # is that it would need to copy the original settings object each time a provider specific setting is needed.
-from typing import Dict, Any, Optional, Tuple, List
-
-from django.db.models.base import ModelBase
+from typing import Any, Optional
 
 from core.base.providers import ProviderContext
 from core.base.types import DataDict
@@ -49,7 +47,7 @@ class AutoCheckerSettings:
         self.enable: bool = False
         self.startup: bool = False
         self.cycle_timer: float = 0
-        self.providers: List[str] = []
+        self.providers: list[str] = []
 
 
 class AutoWantedSettings:
@@ -61,7 +59,7 @@ class AutoWantedSettings:
         self.enable: bool = False
         self.startup: bool = False
         self.cycle_timer: float = 0
-        self.providers: List[str] = []
+        self.providers: list[str] = []
         self.unwanted_title: str = ''
 
 
@@ -75,7 +73,7 @@ class AutoUpdaterSettings:
         self.buffer_delta: int = 0
         self.buffer_back: int = 0
         self.buffer_after: int = 0
-        self.providers: List[str] = []
+        self.providers: list[str] = []
 
 
 class PushoverSettings:
@@ -89,6 +87,18 @@ class PushoverSettings:
         self.sound: str = ''
 
 
+class GalleryDLSettings:
+    __slots__ = [
+        'executable_name', 'executable_path', 'config_file', 'extra_arguments'
+    ]
+
+    def __init__(self) -> None:
+        self.executable_name: str = 'gallery-dl'
+        self.executable_path: str = ''
+        self.config_file: str = ''
+        self.extra_arguments: str = ''
+
+
 class MailSettings:
     __slots__ = ['enable', 'mailhost', 'from_', 'to', 'credentials', 'username', 'password', 'subject']
 
@@ -97,7 +107,7 @@ class MailSettings:
         self.mailhost: str = ''
         self.from_: str = ''
         self.to: str = ''
-        self.credentials: Optional[Tuple[str, str]] = None
+        self.credentials: Optional[tuple[str, str]] = None
         self.username: str = ''
         self.password: str = ''
         self.subject: str = 'CherryPy Error'
@@ -142,6 +152,7 @@ class WebServerSettings:
 class UrlSettings:
     __slots__ = [
         'behind_proxy', 'enable_public_submit', 'enable_public_stats',
+        'enable_gallery_frequency', 'enable_tag_frequency',
         'viewer_main_url', 'media_url', 'static_url', 'external_media_server',
         'main_webserver_url'
     ]
@@ -150,6 +161,8 @@ class UrlSettings:
         self.behind_proxy: bool = False
         self.enable_public_submit: bool = False
         self.enable_public_stats: bool = False
+        self.enable_gallery_frequency: bool = False
+        self.enable_tag_frequency: bool = False
         self.viewer_main_url: str = ''
         self.media_url: str = '/media/'
         self.static_url: str = '/static/'
@@ -172,6 +185,7 @@ class Settings:
                  load_from_config: typing.Union[DataDict, configparser.ConfigParser] = None) -> None:
         # INTERNAL USE
         self.gallery_reason: Optional[str] = None
+        self.stop_nested = False
         # Used by autoupdater to not overwrite original value, since it would be replaced by provider_info
         self.keep_dl_type = False
         self.archive_reason = ''
@@ -184,6 +198,7 @@ class Settings:
         # USER SETTINGS
         self.replace_metadata = False
         self.redownload = False
+        self.auto_download_nested = False
 
         self.MEDIA_ROOT = ''
         self.django_secret_key = ''
@@ -200,7 +215,9 @@ class Settings:
 
         self.elasticsearch = ElasticSearchSettings()
 
-        self.filename_filter = '*.zip'
+        self.gallery_dl = GalleryDLSettings()
+
+        self.filename_filter = ['*.zip']
 
         self.retry_failed = False
         self.internal_matches_for_non_matches = False
@@ -211,20 +228,20 @@ class Settings:
         self.add_as_public = False
 
         self.db_engine = 'sqlite'
-        self.database: Dict[str, Any] = {}
-        self.torrent: Dict[str, Any] = {}
+        self.database: dict[str, Any] = {}
+        self.torrent: dict[str, Any] = {}
         self.webserver = WebServerSettings()
         self.urls = UrlSettings()
 
-        self.ftps: Dict[str, Any] = {}
+        self.ftps: dict[str, Any] = {}
 
         self.rematch_file = False
         self.rematch_file_list = ['non-match']
         self.rehash_files = False
-        self.discard_tags: List[str] = []
+        self.discard_tags: list[str] = []
 
-        self.matchers: Dict[str, int] = {}
-        self.downloaders: Dict[str, int] = {}
+        self.matchers: dict[str, int] = {}
+        self.downloaders: dict[str, int] = {}
 
         self.copy_match_file = True
 
@@ -239,9 +256,9 @@ class Settings:
             Gecko/20100101 Firefox/38.0',
         }
 
-        self.providers: Dict[str, Any] = {}
+        self.providers: dict[str, Any] = {}
 
-        self.remote_site: Dict[str, Any] = {}
+        self.remote_site: dict[str, Any] = {}
 
         self.wait_timer = 6
         self.timeout_timer = 25
@@ -309,7 +326,7 @@ class Settings:
             else:
                 self.downloaders[downloader] = -1
 
-    def allow_downloaders_only(self, downloaders: List[str],
+    def allow_downloaders_only(self, downloaders: list[str],
                                replace_existing: bool = True, retry_failed: bool = True,
                                redownload: bool = False) -> None:
         for downloader in self.downloaders.keys():
@@ -342,6 +359,12 @@ class Settings:
         self.update_metadata_mode = True
         self.silent_processing = True
 
+    def set_enable_download(self) -> None:
+        self.keep_dl_type = True
+        self.replace_metadata = True
+        self.retry_failed = True
+        self.silent_processing = True
+
     @classmethod
     def set_models(cls, gallery_model: 'typing.Type[Gallery]',
                    archive_model: 'typing.Type[Archive]', found_gallery_model: 'typing.Type[FoundGallery]',
@@ -360,6 +383,8 @@ class Settings:
                 self.replace_metadata = config['allowed'].getboolean('replace_metadata')
             if 'redownload' in config['allowed']:
                 self.redownload = config['allowed'].getboolean('redownload')
+            if 'auto_download_nested' in config['allowed']:
+                self.auto_download_nested = config['allowed'].getboolean('auto_download_nested')
             if 'retry_failed' in config['allowed']:
                 self.retry_failed = config['allowed'].getboolean('retry_failed')
             if 'internal_matches_for_non_matches' in config['allowed']:
@@ -368,7 +393,7 @@ class Settings:
                 self.convert_rar_to_zip = config['allowed'].getboolean('convert_rar_to_zip')
         if 'general' in config:
             if 'filename_filter' in config['general']:
-                self.filename_filter = config['general']['filename_filter']
+                self.filename_filter = config['general']['filename_filter'].split(",")
             if 'db_engine' in config['general']:
                 self.db_engine = config['general']['db_engine']
             if 'django_secret_key' in config['general']:
@@ -458,6 +483,15 @@ class Settings:
                 self.elasticsearch.gallery_index_name = config['elasticsearch']['gallery_index_name']
             if 'only_index_public' in config['elasticsearch']:
                 self.elasticsearch.only_index_public = config['elasticsearch'].getboolean('only_index_public')
+        if 'gallery_dl' in config:
+            if 'executable_name' in config['gallery_dl']:
+                self.gallery_dl.executable_name = config['gallery_dl']['executable_name']
+            if 'executable_path' in config['gallery_dl']:
+                self.gallery_dl.executable_path = config['gallery_dl']['executable_path']
+            if 'config_file' in config['gallery_dl']:
+                self.gallery_dl.config_file = config['gallery_dl']['config_file']
+            if 'extra_arguments' in config['gallery_dl']:
+                self.gallery_dl.extra_arguments = config['gallery_dl']['extra_arguments']
         if 'autochecker' in config:
             if 'enable' in config['autochecker']:
                 self.autochecker.enable = config['autochecker'].getboolean('enable')
@@ -585,6 +619,10 @@ class Settings:
                 self.urls.enable_public_submit = config['urls'].getboolean('enable_public_submit')
             if 'enable_public_stats' in config['urls']:
                 self.urls.enable_public_stats = config['urls'].getboolean('enable_public_stats')
+            if 'enable_gallery_frequency' in config['urls']:
+                self.urls.enable_gallery_frequency = config['urls'].getboolean('enable_gallery_frequency')
+            if 'enable_tag_frequency' in config['urls']:
+                self.urls.enable_tag_frequency = config['urls'].getboolean('enable_tag_frequency')
             if 'external_media_server' in config['urls']:
                 self.urls.external_media_server = config['urls']['external_media_server']
             if 'main_webserver_url' in config['urls']:
@@ -594,6 +632,8 @@ class Settings:
                 self.remote_site['api_url'] = config['remote_site']['api_url']
             if 'api_key' in config['remote_site']:
                 self.remote_site['api_key'] = config['remote_site']['api_key']
+            if 'sessionid' in config['remote_site']:
+                self.remote_site['sessionid'] = config['remote_site']['sessionid']
             if 'remote_folder' in config['remote_site']:
                 self.remote_site['remote_folder'] = config['remote_site']['remote_folder']
 

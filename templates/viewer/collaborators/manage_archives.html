@@ -31,6 +31,7 @@
         <input title="Reason" class="form-control" name="reason" placeholder="Reason" value="{{ request.GET.reason }}">
         <input id="checkbox2" class="custom-cb" type="checkbox" name="non_public" value="1" {% if request.GET.non_public == '1' %}checked{% endif %}><label for="checkbox2"><span><span></span></span>Only private</label>
         <input id="checkbox3" class="custom-cb" type="checkbox" name="public" value="1" {% if request.GET.public == '1' %}checked{% endif %}><label for="checkbox3"><span><span></span></span>Only public</label>
+        <input id="checkbox4" class="custom-cb" type="checkbox" name="hidden" value="1" {% if request.GET.hidden == '1' %}checked{% endif %}><label for="checkbox4"><span><span></span></span>Hidden</label>
         <button type="submit" name="apply" class="btn btn-light">Search</button>
         <a class="btn btn-light" href="{% url 'viewer:manage-archives' %}">Clear</a>
       </div>
@@ -58,7 +59,7 @@
       <table class="table table-bordered table-sm generic-table">
         <thead>
         <tr>
-          <th>Select</th><th>Title</th><th>ID</th><th>Gallery ID</th><th>Size</th><th>Images</th><th>Source type</th><th>Reason</th><th>Added</th><th>Public</th>
+          <th>Select</th><th>Title</th><th>ID</th><th>Gallery ID</th><th>Size</th><th>Images</th><th>Source</th><th>Reason</th><th>Added</th><th>Public</th><th>Hidden</th>
         </tr>
         </thead>
         <tbody>
@@ -68,7 +69,7 @@
               <input id="checkbox-{{ archive.id }}" class="toggle-list custom-cb" type="checkbox" name="sel-{{ archive.id }}" value="{{ archive.pk }}"><label for="checkbox-{{ archive.id }}"><span><span></span></span></label>
             </td>
             <td{% if not archive.crc32 %} class="archive-incomplete"{% endif %}>
-              {{ archive.title }}
+              {{ archive.best_title }}
             </td>
             <td>
               {% if archive.thumbnail.name %}
@@ -99,6 +100,11 @@
             </td>
             <td>
               {{ archive.public|yesno }}
+            </td>
+            <td>
+              {% if archive.gallery %}
+              {{ archive.gallery.hidden|yesno }}
+              {% endif %}
             </td>
           </tr>
         {% endfor %}

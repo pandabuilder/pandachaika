@@ -2,7 +2,7 @@ import logging
 import os
 import re
 from datetime import datetime, timezone, timedelta
-from typing import List, Tuple, Any, Optional, Dict
+from typing import Any, Optional
 import html
 
 import requests
@@ -159,7 +159,6 @@ class TorrentDownloader(BaseTorrentDownloader):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self.expected_torrent_name = ''
 
     def request_torrent_download(self, root: str, gid: str, token: str) -> Optional[requests.models.Response]:
 
@@ -179,7 +178,7 @@ class TorrentDownloader(BaseTorrentDownloader):
         return response
 
     @staticmethod
-    def validate_torrent(torrent_link: str, seeds: int, posted_date: str, gallery_posted_date: Optional[datetime]) -> Tuple[bool, List[str]]:
+    def validate_torrent(torrent_link: str, seeds: int, posted_date: str, gallery_posted_date: Optional[datetime]) -> tuple[bool, list[str]]:
         validated = True
         reasons = []
         if not torrent_link:
@@ -285,18 +284,18 @@ class TorrentAPIDownloader(BaseTorrentDownloader):
     type = 'torrent_api'
     provider = constants.provider_name
     skip_if_hidden = False
+    mark_hidden_if_last = True
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self.expected_torrent_name = ''
 
-    def choose_torrent(self, torrents: List[Dict]) -> Optional[Dict]:
+    def choose_torrent(self, torrents: list[dict]) -> Optional[dict]:
 
         if not self.gallery:
             return None
 
-        chosen_torrent_date: Optional[Dict] = None
-        chosen_torrent_size: Optional[Dict] = None
+        chosen_torrent_date: Optional[dict] = None
+        chosen_torrent_size: Optional[dict] = None
         chosen_size_difference: int = -1
         chosen_date_difference: timedelta = timedelta.max
 

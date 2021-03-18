@@ -17,7 +17,7 @@ from django.db.backends.sqlite3.base import DatabaseWrapper
 from django.templatetags.static import static
 from os.path import join as pjoin, basename
 from tempfile import NamedTemporaryFile
-from typing import List, Tuple, Optional, Dict
+from typing import Optional
 from urllib.parse import quote, urlparse
 
 import requests
@@ -30,11 +30,7 @@ from django.utils.text import slugify
 from django.db.models import Value, CharField
 from django.db.models.functions import Concat, Replace
 
-try:
-    from PIL import Image as PImage
-    PImage.MAX_IMAGE_PIXELS = 200000000
-except ImportError:
-    PImage = None
+from PIL import Image as PImage
 import django.db.models.options as options
 from django.urls import reverse
 from django.contrib.auth.models import User
@@ -64,6 +60,7 @@ from viewer.utils.tags import sort_tags, sort_tags_str
 T = typing.TypeVar('T')
 
 options.DEFAULT_NAMES += 'es_index_name', 'es_mapping'
+PImage.MAX_IMAGE_PIXELS = 200000000
 
 
 class OriginalFilenameFileSystemStorage(FileSystemStorage):
@@ -83,17 +80,17 @@ class SpacedSearch(Lookup):
 
     lookup_name = 'ss'
 
-    def as_sql(self, qn: SQLCompiler, connection: DatabaseWrapper) -> Tuple[str, typing.Any]:
+    def as_sql(self, qn: SQLCompiler, connection: DatabaseWrapper) -> tuple[str, typing.Any]:
         lhs, lhs_params = self.process_lhs(qn, connection)
         rhs, rhs_params = self.process_rhs(qn, connection)
         return '%s LIKE %s' % (lhs, rhs), lhs_params + rhs_params
 
-    def as_mysql(self, qn: SQLCompiler, connection: DatabaseWrapper) -> Tuple[str, typing.Any]:
+    def as_mysql(self, qn: SQLCompiler, connection: DatabaseWrapper) -> tuple[str, typing.Any]:
         lhs, lhs_params = self.process_lhs(qn, connection)
         rhs, rhs_params = self.process_rhs(qn, connection)
         return '%s LIKE %s' % (lhs, rhs), lhs_params + rhs_params
 
-    def as_postgresql(self, qn: SQLCompiler, connection: DatabaseWrapper) -> Tuple[str, typing.Any]:
+    def as_postgresql(self, qn: SQLCompiler, connection: DatabaseWrapper) -> tuple[str, typing.Any]:
         lhs, lhs_params = self.process_lhs(qn, connection)
         rhs, rhs_params = self.process_rhs(qn, connection)
         return '%s ILIKE %s' % (lhs, rhs), lhs_params + rhs_params
@@ -133,6 +130,7 @@ class GalleryQuerySet(models.QuerySet):
             ~Q(dl_type__contains='skipped'),
             Q(archive__isnull=True),
             Q(gallery_container__archive__isnull=True),
+            Q(magazine__archive__isnull=True),
             Q(alternative_sources__isnull=True),
             **kwargs
         ).order_by('-create_date')
@@ -143,6 +141,7 @@ class GalleryQuerySet(models.QuerySet):
             ~Q(status=Gallery.DELETED),
             Q(archive__isnull=True),
             Q(gallery_container__archive__isnull=True),
+            Q(magazine__archive__isnull=True),
             *args,
             **kwargs
         ).order_by('-create_date')
@@ -238,9 +237,29 @@ class GalleryManager(models.Manager):
                 if gallery_container:
                     values['gallery_container'] = gallery_container
                 del values['gallery_container_gid']
+            if 'magazine_gid' in values:
+                magazine = Gallery.objects.filter(
+                    gid=values['magazine_gid'], provider=gallery_data.provider
+                ).first()
+                if magazine:
+                    values['magazine'] = magazine
+                del values['magazine_gid']
             for key, value in values.items():
                 setattr(gallery, key, value)
             gallery.save()
+
+            if gallery_data.magazine_chapters_gids:
+                chapters = Gallery.objects.filter(
+                    gid__in=gallery_data.magazine_chapters_gids, provider=gallery_data.provider
+                )
+                chapters.update(magazine=gallery.pk)
+
+            if gallery_data.gallery_contains_gids:
+                contained = Gallery.objects.filter(
+                    gid__in=gallery_data.gallery_contains_gids, provider=gallery_data.provider
+                )
+                contained.update(gallery_container=gallery.pk)
+
             return True
         else:
             return False
@@ -257,9 +276,29 @@ class GalleryManager(models.Manager):
             if gallery_container:
                 values['gallery_container'] = gallery_container
             del values['gallery_container_gid']
+        if 'magazine_gid' in values:
+            magazine = Gallery.objects.filter(
+                gid=values['magazine_gid'], provider=values['provider']
+            ).first()
+            if magazine:
+                values['magazine'] = magazine
+            del values['magazine_gid']
 
         gallery = Gallery(**values)
         gallery.save()
+
+        if gallery_data.magazine_chapters_gids:
+            chapters = Gallery.objects.filter(
+                gid__in=gallery_data.magazine_chapters_gids, provider=values['provider']
+            )
+            chapters.update(magazine=gallery.pk)
+
+        if gallery_data.gallery_contains_gids:
+            contained = Gallery.objects.filter(
+                gid__in=gallery_data.gallery_contains_gids, provider=values['provider']
+            )
+            contained.update(gallery_container=gallery.pk)
+
         if tags:
             gallery.tags.clear()
             for tag in tags:
@@ -290,7 +329,28 @@ class GalleryManager(models.Manager):
                 values['gallery_container'] = gallery_container
             del values['gallery_container_gid']
 
+        if 'magazine_gid' in values:
+            magazine = Gallery.objects.filter(
+                gid=values['magazine_gid'], provider=values['provider']
+            ).first()
+            if magazine:
+                values['magazine'] = magazine
+            del values['magazine_gid']
+
         gallery, _ = self.update_or_create(defaults=values, gid=values['gid'], provider=values['provider'])
+
+        if gallery_data.magazine_chapters_gids:
+            chapters = Gallery.objects.filter(
+                gid__in=gallery_data.magazine_chapters_gids, provider=values['provider']
+            )
+            chapters.update(magazine=gallery.pk)
+
+        if gallery_data.gallery_contains_gids:
+            contained = Gallery.objects.filter(
+                gid__in=gallery_data.gallery_contains_gids, provider=values['provider']
+            )
+            contained.update(gallery_container=gallery.pk)
+
         if tags:
             gallery.tags.clear()
             for tag in tags:
@@ -309,17 +369,11 @@ class GalleryManager(models.Manager):
 
         return gallery
 
+    # This method is mainly used to update own fields, no related fields need to be checked
     def update_by_dl_type(self, values: DataDict, gallery_id: str, dl_type: str) -> typing.Optional['Gallery']:
 
         instance = self.filter(id=gallery_id, dl_type__contains=dl_type).first()
         if instance:
-            if 'gallery_container_gid' in values:
-                gallery_container = Gallery.objects.filter(
-                    gid=values['gallery_container_gid'], provider=values['provider']
-                ).first()
-                if gallery_container:
-                    values['gallery_container'] = gallery_container
-                del values['gallery_container_gid']
             for key, value in values.items():
                 setattr(instance, key, value)
             instance.save()
@@ -329,7 +383,7 @@ class GalleryManager(models.Manager):
 
 
 class ArchiveQuerySet(models.QuerySet):
-    def filter_non_existent(self, root: str, **kwargs: typing.Any) -> List['Archive']:
+    def filter_non_existent(self, root: str, **kwargs: typing.Any) -> list['Archive']:
         archives = self.filter(**kwargs).order_by('-id')
 
         return [archive for archive in archives if not os.path.isfile(os.path.join(root, archive.zipped.path))]
@@ -342,7 +396,7 @@ class ArchiveManager(models.Manager):
     def filter_and_order_by_posted(self, **kwargs: typing.Any) -> ArchiveQuerySet:
         return self.get_queryset().filter(**kwargs).order_by('gallery__posted')
 
-    def filter_non_existent(self, root: str, **kwargs: typing.Any) -> List['Archive']:
+    def filter_non_existent(self, root: str, **kwargs: typing.Any) -> list['Archive']:
         return self.get_queryset().filter_non_existent(root, **kwargs)
 
     def filter_by_dl_remote(self) -> ArchiveQuerySet:
@@ -366,7 +420,7 @@ class ArchiveManager(models.Manager):
         return self.filter(Q(gallery__gid=gid), Q(gallery__provider=provider),
                            Q(filesize=F('gallery__filesize'))).first()
 
-    def update_or_create_by_values_and_gid(self, values: DataDict, gid_provider: Optional[Tuple[str, str]], **kwargs: typing.Any) -> 'Archive':
+    def update_or_create_by_values_and_gid(self, values: DataDict, gid_provider: Optional[tuple[str, str]], **kwargs: typing.Any) -> 'Archive':
         archive, _ = self.update_or_create(defaults=values, **kwargs)
         if gid_provider:
             gallery, _ = Gallery.objects.get_or_create(gid=gid_provider[0], provider=gid_provider[1])
@@ -377,7 +431,7 @@ class ArchiveManager(models.Manager):
         return archive
 
     @staticmethod
-    def create_by_values_and_gid(values: DataDict, gid_provider: Optional[Tuple[str, str]]) -> 'Archive':
+    def create_by_values_and_gid(values: DataDict, gid_provider: Optional[tuple[str, str]]) -> 'Archive':
         archive = Archive(**values)
         archive.simple_save()
         if gid_provider:
@@ -484,6 +538,10 @@ class Gallery(models.Model):
     gallery_container = models.ForeignKey(
         'self', blank=True, null=True, on_delete=models.SET_NULL,
         related_name='gallery_contains'
+    )
+    magazine = models.ForeignKey(
+        'self', blank=True, null=True, on_delete=models.SET_NULL,
+        related_name='magazine_chapters'
     )
     category = models.CharField(
         max_length=20, blank=True, null=True, default='')
@@ -604,7 +662,7 @@ class Gallery(models.Model):
             "input": title_input,
         }
 
-    def get_es_title_suggest(self) -> List[str]:
+    def get_es_title_suggest(self) -> list[str]:
         title_input = []
         if self.title:
             title_input.append(self.title)
@@ -630,20 +688,20 @@ class Gallery(models.Model):
         else:
             return None
 
-    def get_es_tags(self) -> List[DataDict]:
-        data: List[DataDict] = []
+    def get_es_tags(self) -> list[DataDict]:
+        data: list[DataDict] = []
         if self.tags.exists():
             data += [{'scope': c.scope, 'name': c.name, 'full': str(c)} for c in self.tags.all()]
         return data
 
-    def get_es_tag_names(self) -> List[str]:
-        data: List[str] = []
+    def get_es_tag_names(self) -> list[str]:
+        data: list[str] = []
         if self.tags.exists():
             data += [c.name for c in self.tags.all()]
         return data
 
-    def get_es_tag_scopes(self) -> List[str]:
-        data: List[str] = []
+    def get_es_tag_scopes(self) -> list[str]:
+        data: list[str] = []
         if self.tags.exists():
             data += [c.scope for c in self.tags.all()]
         return data
@@ -657,18 +715,26 @@ class Gallery(models.Model):
     def __str__(self) -> str:
         return self.title or self.title_jpn or ''
 
+    @property
+    def best_title(self) -> str:
+        if self.title:
+            return self.title
+        elif self.title_jpn:
+            return self.title_jpn
+        return ""
+
     def tags_str(self) -> str:
         lst = [str(x) for x in self.tags.all()]
         return ', '.join(lst)
 
-    def tag_list(self) -> List[str]:
+    def tag_list(self) -> list[str]:
         lst = [str(x) for x in self.tags.all()]
         return lst
 
-    def tag_list_sorted(self) -> List[str]:
+    def tag_list_sorted(self) -> list[str]:
         return sort_tags_str(self.tags.all())
 
-    def tag_lists(self) -> List[Tuple[str, List['Tag']]]:
+    def tag_lists(self) -> list[tuple[str, list['Tag']]]:
         return sort_tags(self.tags.all())
 
     def public_toggle(self) -> None:
@@ -699,10 +765,14 @@ class Gallery(models.Model):
     def get_absolute_url(self) -> str:
         return reverse('viewer:gallery', args=[str(self.id)])
 
+    # Should be used by small changes.
+    def simple_save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
+        super(Gallery, self).save(*args, **kwargs)
+
     def save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
         is_new = self.pk
         super(Gallery, self).save(*args, **kwargs)
-        if settings.ES_ENABLED and settings.ES_AUTOREFRESH_GALLERY:
+        if settings.ES_CLIENT and settings.ES_AUTOREFRESH_GALLERY:
             if (settings.ES_ONLY_INDEX_PUBLIC and self.public) or not settings.ES_ONLY_INDEX_PUBLIC:
                 payload = self.es_repr()
                 if is_new is not None:
@@ -769,12 +839,12 @@ class Gallery(models.Model):
 
             super(Gallery, self).save(force_update=True)
 
-    def delete(self, *args: typing.Any, **kwargs: typing.Any) -> Tuple[int, Dict[str, int]]:
+    def delete(self, *args: typing.Any, **kwargs: typing.Any) -> tuple[int, dict[str, int]]:
         self.thumbnail.delete(save=False)
         self.remove_wanted_relations()
         prev_pk = self.pk
         deleted = super(Gallery, self).delete(*args, **kwargs)
-        if settings.ES_ENABLED and settings.ES_AUTOREFRESH_GALLERY:
+        if settings.ES_CLIENT and settings.ES_AUTOREFRESH_GALLERY:
             try:
                 settings.ES_CLIENT.delete(
                     index=self._meta.es_index_name,  # type: ignore
@@ -810,7 +880,7 @@ class Gallery(models.Model):
         self.status = self.DENIED
         self.save()
 
-    def match_against_wanted_galleries(self, wanted_filters: Optional['QuerySet[WantedGallery]'] = None, skip_already_found: bool = True) -> 'List[WantedGallery]':
+    def match_against_wanted_galleries(self, wanted_filters: Optional['QuerySet[WantedGallery]'] = None, skip_already_found: bool = True) -> 'list[WantedGallery]':
 
         found_wanted_galleries = []
 
@@ -888,7 +958,7 @@ class Gallery(models.Model):
                     accepted_tags = set(wanted_filter.wanted_tags_list()).intersection(set(self.tag_list()))
                     gallery_tags_scopes = [x.split(":", maxsplit=1)[0] for x in self.tag_list() if len(x) > 1]
                     wanted_gallery_tags_scopes = [x.split(":", maxsplit=1)[0] for x in accepted_tags if len(x) > 1]
-                    scope_count: Dict[str, int] = {}
+                    scope_count: dict[str, int] = {}
                     for scope_name in gallery_tags_scopes:
                         if scope_name in wanted_gallery_tags_scopes:
                             if scope_name not in scope_count:
@@ -906,6 +976,76 @@ class Gallery(models.Model):
                 found_wanted_galleries.append(wanted_filter)
 
         return found_wanted_galleries
+
+
+class GallerySubmitEntryQuerySet(models.QuerySet):
+    def to_be_resolved(self, *args: typing.Any, **kwargs: typing.Any) -> QuerySet:
+        return self.filter(
+            Q(resolved_status=GallerySubmitEntry.RESOLVED_SUBMITTED),
+            **kwargs
+        )
+
+
+class GallerySubmitEntryManager(models.Manager):
+    def get_queryset(self) -> GallerySubmitEntryQuerySet:
+        return GallerySubmitEntryQuerySet(self.model, using=self._db)
+
+    def to_be_resolved(self, *args: typing.Any, **kwargs: typing.Any) -> QuerySet:
+        return self.get_queryset().to_be_resolved(*args, **kwargs)
+
+
+class GallerySubmitEntry(models.Model):
+    objects = GallerySubmitEntryManager()
+
+    RESOLVED_SUBMITTED = 1
+    RESOLVED_APPROVED = 2
+    RESOLVED_DENIED = 3
+    RESOLVED_ALREADY_PRESENT = 4
+
+    RESOLVED_STATUS_CHOICES = (
+        (RESOLVED_SUBMITTED, 'Submitted'),
+        (RESOLVED_APPROVED, 'Approved'),
+        (RESOLVED_DENIED, 'Denied'),
+        (RESOLVED_ALREADY_PRESENT, 'Already present'),
+    )
+
+    class Meta:
+        verbose_name_plural = "Gallery submit entries"
+
+    gallery = models.ForeignKey(Gallery, blank=True, null=True, on_delete=models.SET_NULL)
+    submit_url = models.TextField(blank=True, null=True, default='')
+    submit_reason = models.TextField(blank=True, null=True, default='')
+    submit_extra = models.TextField(blank=True, null=True, default='')
+    submit_result = models.CharField(blank=True, null=True, default='', max_length=200)
+    submit_date = models.DateTimeField(blank=True, default=django_tz.now)
+    create_date = models.DateTimeField(auto_now_add=True)
+    resolved_date = models.DateTimeField(blank=True, null=True)
+    resolved_status = models.SmallIntegerField(
+        choices=RESOLVED_STATUS_CHOICES, db_index=True, default=RESOLVED_SUBMITTED
+    )
+    resolved_reason = models.CharField('Reason', max_length=200, blank=True, null=True, default='backup')
+    resolved_comment = models.TextField(blank=True, null=True, default='')
+
+    def mark_as_denied(self, reason='', comment='') -> None:
+        self.resolved_status = self.RESOLVED_DENIED
+        if reason:
+            self.resolved_reason = reason
+        if comment:
+            self.resolved_comment = comment
+        self.resolved_date = django_tz.now()
+        self.save()
+
+    def mark_as_approved(self, reason='', comment='') -> None:
+        self.resolved_status = self.RESOLVED_APPROVED
+        if reason:
+            self.resolved_reason = reason
+        if comment:
+            self.resolved_comment = comment
+        self.resolved_date = django_tz.now()
+        self.save()
+
+    def __str__(self) -> str:
+        return self.submit_url or 'Empty url'
 
 
 @receiver(post_delete, sender=Gallery)
@@ -1045,7 +1185,7 @@ class Archive(models.Model):
             "input": title_input,
         }
 
-    def get_es_title_suggest(self) -> List[str]:
+    def get_es_title_suggest(self) -> list[str]:
         title_input = []
         if self.title:
             title_input.append(self.title)
@@ -1083,24 +1223,24 @@ class Archive(models.Model):
         else:
             return None
 
-    def get_es_tags(self) -> List[DataDict]:
-        data: List[DataDict] = []
+    def get_es_tags(self) -> list[DataDict]:
+        data: list[DataDict] = []
         if self.tags.exists():
             data += [{'scope': c.scope, 'name': c.name, 'full': str(c)} for c in self.tags.all()]
         if self.custom_tags.exists():
             data += [{'scope': c.scope, 'name': c.name, 'full': str(c)} for c in self.custom_tags.all()]
         return data
 
-    def get_es_tag_names(self) -> List[str]:
-        data: List[str] = []
+    def get_es_tag_names(self) -> list[str]:
+        data: list[str] = []
         if self.tags.exists():
             data += [c.name for c in self.tags.all()]
         if self.custom_tags.exists():
             data += [c.name for c in self.custom_tags.all()]
         return data
 
-    def get_es_tag_scopes(self) -> List[str]:
-        data: List[str] = []
+    def get_es_tag_scopes(self) -> list[str]:
+        data: list[str] = []
         if self.tags.exists():
             data += [c.scope for c in self.tags.all()]
         if self.custom_tags.exists():
@@ -1126,6 +1266,14 @@ class Archive(models.Model):
             os.path.splitext(self.zipped.name)[1]
         )
 
+    @property
+    def best_title(self) -> str:
+        if self.title:
+            return self.title
+        elif self.title_jpn:
+            return self.title_jpn
+        return ""
+
     def filename(self) -> str:
         return os.path.basename(self.zipped.name)
 
@@ -1133,17 +1281,17 @@ class Archive(models.Model):
         lst = [str(x) for x in self.tags.all()] + [str(x) for x in self.custom_tags.all()]
         return ', '.join(lst)
 
-    def tag_list(self) -> List[str]:
+    def tag_list(self) -> list[str]:
         lst = [str(x) for x in self.tags.all()] + [str(x) for x in self.custom_tags.all()]
         return lst
 
-    def tag_list_sorted(self) -> List[str]:
+    def tag_list_sorted(self) -> list[str]:
         return sort_tags_str(list(chain(self.tags.all(), self.custom_tags.all())))
 
-    def tag_lists(self) -> List[Tuple[str, List[Tag]]]:
+    def tag_lists(self) -> list[tuple[str, list[Tag]]]:
         return sort_tags(self.tags.all())
 
-    def custom_tag_lists(self) -> List[Tuple[str, List[Tag]]]:
+    def custom_tag_lists(self) -> list[tuple[str, list[Tag]]]:
         return sort_tags(self.custom_tags.all())
 
     def images(self) -> str:
@@ -1230,7 +1378,7 @@ class Archive(models.Model):
         else:
             return ""
 
-    def get_available_thumbnail_plus_size(self) -> Tuple[str, Optional[int], Optional[int]]:
+    def get_available_thumbnail_plus_size(self) -> tuple[str, Optional[int], Optional[int]]:
         if self.thumbnail.name and self.thumbnail.url:
             return self.thumbnail.url, self.thumbnail_height, self.thumbnail_width
         elif self.gallery and self.gallery.thumbnail.name and self.gallery.thumbnail.url:
@@ -1399,13 +1547,13 @@ class Archive(models.Model):
         if image_set_present:
             for count, image in enumerate(self.image_set.all(), start=1):
                 image.position = count
-                image.archive_position = count
+                # image.archive_position = count
                 image.save()
 
-    def delete(self, *args: typing.Any, **kwargs: typing.Any) -> Tuple[int, Dict[str, int]]:
+    def delete(self, *args: typing.Any, **kwargs: typing.Any) -> tuple[int, dict[str, int]]:
         prev_pk = self.pk
         deleted = super(Archive, self).delete(*args, **kwargs)
-        if settings.ES_ENABLED and settings.ES_AUTOREFRESH:
+        if settings.ES_CLIENT and settings.ES_AUTOREFRESH:
             try:
                 settings.ES_CLIENT.delete(
                     index=self._meta.es_index_name,  # type: ignore
@@ -1420,7 +1568,7 @@ class Archive(models.Model):
     def simple_save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
         is_new = self.pk
         super(Archive, self).save(*args, **kwargs)
-        if settings.ES_ENABLED and settings.ES_AUTOREFRESH:
+        if settings.ES_CLIENT and settings.ES_AUTOREFRESH:
             if (settings.ES_ONLY_INDEX_PUBLIC and self.public) or not settings.ES_ONLY_INDEX_PUBLIC:
                 payload = self.es_repr()
                 if is_new is not None:
@@ -1465,7 +1613,7 @@ class Archive(models.Model):
             return
         image_set_present = bool(self.image_set.all())
         # large thumbnail and image set
-        if PImage and (not self.thumbnail or not image_set_present):
+        if not self.thumbnail or not image_set_present:
             try:
                 my_zip = zipfile.ZipFile(
                     self.zipped.path, 'r')
@@ -1658,8 +1806,10 @@ class Archive(models.Model):
             my_zip.close()
             return False
 
-        if self.image_set.all():
-            first_file = filtered_files[self.image_set.all()[0].archive_position - 1]
+        images_from_archive = self.image_set.all()
+
+        if images_from_archive:
+            first_file = filtered_files[images_from_archive[0].archive_position - 1]
         else:
             first_file = filtered_files[0]
 
@@ -1831,7 +1981,7 @@ class Image(models.Model):
             return str(self.archive.title) + ", position: " + str(self.position)
 
     def dump_image(self, request: HttpRequest) -> DataDict:
-        image_dict: Dict[str, typing.Any] = {
+        image_dict: dict[str, typing.Any] = {
             'position': self.position,
             'url': request.build_absolute_uri(self.image.url),
             'is_horizontal': self.image_width / self.image_height > 1 if self.image_width and self.image_height else False,
@@ -2075,15 +2225,15 @@ class WantedGallery(models.Model):
         lst = [str(x) for x in self.mentions.all()]
         return ', '.join(lst)
 
-    def mentions_list(self) -> List[str]:
+    def mentions_list(self) -> list[str]:
         lst = [str(x) for x in self.mentions.all()]
         return lst
 
-    def wanted_tags_list(self) -> List[str]:
+    def wanted_tags_list(self) -> list[str]:
         lst = [str(x) for x in self.wanted_tags.all()]
         return lst
 
-    def unwanted_tags_list(self) -> List[str]:
+    def unwanted_tags_list(self) -> list[str]:
         lst = [str(x) for x in self.unwanted_tags.all()]
         return lst
 
@@ -2139,9 +2289,9 @@ class WantedGallery(models.Model):
                 gallery=matched_gallery
             )
 
-    def get_matching_galleries(self) -> typing.List['Gallery']:
+    def get_matching_galleries(self) -> list['Gallery']:
 
-        matching_galleries: List['Gallery'] = []
+        matching_galleries: list['Gallery'] = []
 
         galleries = Gallery.objects.eligible_for_use().filter(~Q(foundgallery__wanted_gallery=self))
 
@@ -2238,7 +2388,7 @@ class WantedGallery(models.Model):
                     accepted_tags = set(self.wanted_tags_list()).intersection(set(gallery.tag_list()))
                     gallery_tags_scopes = [x.split(":", maxsplit=1)[0] for x in gallery.tag_list() if len(x) > 1]
                     wanted_gallery_tags_scopes = [x.split(":", maxsplit=1)[0] for x in accepted_tags if len(x) > 1]
-                    scope_count: Dict[str, int] = {}
+                    scope_count: dict[str, int] = {}
                     for scope_name in gallery_tags_scopes:
                         if scope_name in wanted_gallery_tags_scopes:
                             if scope_name not in scope_count:
@@ -2277,22 +2427,6 @@ class WantedGallery(models.Model):
 
     def save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
         super(WantedGallery, self).save(*args, **kwargs)
-        found_galleries = FoundGallery.objects.filter(wanted_gallery=self)
-        if found_galleries and not self.found:
-            self.found = True
-            self.date_found = django_tz.now()
-            gm = GalleryMatch.objects.filter(wanted_gallery=self, gallery__in=found_galleries.values_list('gallery__pk', flat=True))
-            if gm:
-                gm.delete()
-            if self.add_as_hidden:
-                for found_gallery in found_galleries:
-                    if not found_gallery.gallery.hidden:
-                        found_gallery.gallery.hidden = True
-                        found_gallery.gallery.save()
-            super(WantedGallery, self).save(*args, **kwargs)
-        elif not found_galleries and self.found:
-            self.found = False
-            super(WantedGallery, self).save(*args, **kwargs)
 
 
 class FoundGallery(models.Model):

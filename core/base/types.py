@@ -1,6 +1,6 @@
 from datetime import datetime
 import typing
-from typing import Optional, List, Union, Dict, Any, Tuple
+from typing import Optional, Union, Any
 if typing.TYPE_CHECKING:
     from core.base.setup import Settings
 
@@ -10,8 +10,10 @@ class GalleryData:
     def __init__(
             self, gid: str, provider: str,
             token: Optional[str] = None, link: Optional[str] = None,
-            tags: List[str] = None, title: Optional[str] = None,
-            title_jpn: Optional[str] = None, comment: Optional[str] = None, gallery_container_gid: Optional[str] = None,
+            tags: list[str] = None, title: Optional[str] = None,
+            title_jpn: Optional[str] = None, comment: Optional[str] = None,
+            gallery_container_gid: Optional[str] = None, gallery_contains_gids: list[str] = None,
+            magazine_gid: Optional[str] = None, magazine_chapters_gids: list[str] = None,
             category: Optional[str] = None, posted: Optional[datetime] = None,
             filesize: Optional[int] = None, filecount: Optional[int] = None,
             expunged: Optional[int] = None, rating: Optional[str] = None,
@@ -32,6 +34,9 @@ class GalleryData:
         else:
             self.tags = []
         self.gallery_container_gid = gallery_container_gid
+        self.gallery_contains_gids = gallery_contains_gids
+        self.magazine_gid = magazine_gid
+        self.magazine_chapters_gids = magazine_chapters_gids
         self.provider = provider
         self.title = title
         self.title_jpn = title_jpn
@@ -57,7 +62,7 @@ class GalleryData:
         self.root = root
         self.filename = filename
         self.queries = queries
-        self.extra_data: Dict = {}
+        self.extra_data: dict = {}
 
     def __str__(self) -> str:
         return str(self.__dict__)
@@ -71,13 +76,13 @@ class GalleryData:
         return self.__dict__ == other.__dict__
 
 
-DataDict = Dict[str, Any]
+DataDict = dict[str, Any]
 
-MatchesValues = Tuple[str, GalleryData, float]
+MatchesValues = tuple[str, GalleryData, float]
 
 
 class ProviderSettings:
-    def __init__(self, global_settings: 'Settings', config: Dict[str, Any]) -> None:
+    def __init__(self, global_settings: 'Settings', config: dict[str, Any]) -> None:
         self.cookies: DataDict = {}
         self.proxy: str = ""
         self.proxies: DataDict = {}
@@ -119,6 +124,7 @@ class TorrentClient(object):
         self.secure = secure
         self.total_size = 0
         self.expected_torrent_name = ''
+        self.expected_torrent_extension = ''
         self.set_expected = True
 
     def add_torrent(self, torrent_data: Union[str, bytes], download_dir: str = None) -> bool:
@@ -131,4 +137,4 @@ class TorrentClient(object):
         pass
 
 
-QueueItem = Dict[str, Any]
+QueueItem = dict[str, Any]

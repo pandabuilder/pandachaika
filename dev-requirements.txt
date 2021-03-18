@@ -1,8 +1,8 @@
 -r requirements.txt
 django-debug-toolbar
 django-unused-media
-mypy>=0.782,<0.790
-flake8==3.8.3
+mypy==0.812
+flake8==3.8.4
 coverage
 django-nose
-django-stubs==1.6.0
+django-stubs==1.7.0
