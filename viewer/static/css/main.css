@@ -69,6 +69,10 @@ body a {
   color: #f0ad4e;
 }
 
+.archive-diff {
+  color: #ff4747;
+}
+
 .alert-error {
   color: #721c24;
   background-color: #f8d7da;

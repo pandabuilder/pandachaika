@@ -39,55 +39,10 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
             wanted_gallery_instance = WantedGallery.objects.get(pk=pk)
         except WantedGallery.DoesNotExist:
             raise Http404("Wanted gallery does not exist")
-        if tool == 'search-providers-by-title':
+        if tool == 'create-possible-matches-internally':
             provider = request.GET.get('provider', '')
-            try:
-                cutoff = float(request.GET.get('cutoff', '0.4'))
-            except ValueError:
-                cutoff = 0.4
-            try:
-                max_matches = int(request.GET.get('max-matches', '10'))
-            except ValueError:
-                max_matches = 10
-            matchers = crawler_settings.provider_context.get_matchers(
-                crawler_settings, filter_name=provider, force=True, matcher_type='title'
-            )
-            for matcher_element in matchers:
-                matcher = matcher_element[0]
-                results = matcher.create_closer_matches_values(
-                    wanted_gallery_instance.search_title,
-                    cutoff=cutoff,
-                    max_matches=max_matches
-                )
-                logger.info(
-                    "Matcher: {} found {} results.".format(
-                        str(matcher),
-                        len(results)
-                    )
-                )
-                for gallery_data in results:
-                    gallery_data[1].dl_type = 'gallery_match'
-                    gallery = Gallery.objects.update_or_create_from_values(gallery_data[1])
-                    if gallery:
-                        GalleryMatch.objects.get_or_create(
-                            wanted_gallery=wanted_gallery_instance,
-                            gallery=gallery,
-                            defaults={'match_accuracy': gallery_data[2]})
-            return HttpResponseRedirect(request.META["HTTP_REFERER"])
-        elif tool == 'search-internal-galleries-matches':
-            provider = request.GET.get('provider', '')
-            try:
-                cutoff = float(request.GET.get('cutoff', '0.4'))
-            except ValueError:
-                cutoff = 0.4
-            try:
-                max_matches = int(request.GET.get('max-matches', '10'))
-            except ValueError:
-                max_matches = 10
-            wanted_gallery_instance.search_gallery_title_internal_matches(
-                provider_filter=provider,
-                max_matches=max_matches,
-                cutoff=cutoff
+            wanted_gallery_instance.create_gallery_matches_internally(
+                provider_filter=provider
             )
             logger.info("Wanted gallery {} ({}) internal gallery match resulted in {} possible matches.".format(
                 wanted_gallery_instance,
@@ -98,8 +53,8 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
         elif tool == 'clear-possible-matches':
             wanted_gallery_instance.possible_matches.clear()
             return HttpResponseRedirect(request.META["HTTP_REFERER"])
-        elif tool == 'match-against-galleries':
-            wanted_gallery_instance.match_against_galleries()
+        elif tool == 'create-matches-internally':
+            wanted_gallery_instance.create_found_galleries_internally()
             return HttpResponseRedirect(request.META["HTTP_REFERER"])
         elif tool == 'select-as-match':
             try:
@@ -109,8 +64,6 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
             FoundGallery.objects.get_or_create(wanted_gallery=wanted_gallery_instance, gallery=matched_gallery)
             wanted_gallery_instance.found = True
             wanted_gallery_instance.date_found = django_tz.now()
-            # wanted_gallery_instance.should_search = False
-            # wanted_gallery_instance.keep_searching = False
             gm = GalleryMatch.objects.filter(wanted_gallery=wanted_gallery_instance, gallery=matched_gallery)
             if gm:
                 gm.delete()

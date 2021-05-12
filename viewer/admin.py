@@ -3,6 +3,7 @@ from typing import Optional
 from django.db.models import F, QuerySet
 from django.forms import ModelForm, BaseFormSet
 from django.http import HttpRequest
+from django.utils.dateparse import parse_duration
 
 from viewer.models import (
     Archive,
@@ -226,7 +227,8 @@ class WantedGalleryAdmin(admin.ModelAdmin):
                'mark_keep_search', 'mark_not_keep_search',
                'mark_found', 'mark_not_found',
                'search_title_from_title', 'set_reason', 'add_unwanted_provider',
-               'enable_notify_when_found', 'disable_notify_when_found'
+               'enable_notify_when_found', 'disable_notify_when_found',
+               'set_wait_for_time'
                ]
 
     action_form = UpdateActionForm
@@ -349,6 +351,16 @@ class WantedGalleryAdmin(admin.ModelAdmin):
             message_bit = "%s wanted galleries were" % rows_updated
         self.message_user(request, "%s successfully added unwanted provider: %s." % (message_bit, unwanted_provider_slug))
     add_unwanted_provider.short_description = "Add unwanted provider by slug name"  # type: ignore
+
+    def set_wait_for_time(self, request: HttpRequest, queryset: QuerySet) -> None:
+        wait_for_time = request.POST['extra_field']
+        rows_updated = queryset.update(wait_for_time=parse_duration(wait_for_time))
+        if rows_updated == 1:
+            message_bit = "1 wanted gallery was"
+        else:
+            message_bit = "%s wanted galleries were" % rows_updated
+        self.message_user(request, "%s successfully set wait for time to: %s." % (message_bit, wait_for_time))
+    set_wait_for_time.short_description = "Set wait for time of selected wanted galleries"  # type: ignore
 
 
 class GalleryMatchAdmin(admin.ModelAdmin):

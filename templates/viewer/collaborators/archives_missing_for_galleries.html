@@ -1,9 +1,10 @@
 {% extends "viewer/base.html" %}
-{% block title %}Manage archives | {{ block.super }}{% endblock %}
+{% block title %}Missing archives | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
 {% load static %}
 
 {% block content %}
+    {% load viewer_extras %}
     {% if messages %}
         {% for message in messages %}
         <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
@@ -11,8 +12,8 @@
     {% endif %}
     <!-- Galleries not used  -->
     <div class="page-header">
-    <h2>Manage archives</h2>
-    <p class="lead">Number of archives (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
+    <h2>Galleries without associated archives</h2>
+    <p class="lead">Number of galleries (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
     </div>
     <form action="{{ request.get_full_path }}" method="GET">
       {% for field in form %}
@@ -23,21 +24,25 @@
       {% endfor %}
       <div class="page-line form-inline">
         <button id="toggle-all" class="btn btn-info" type="button">Toggle All</button>
+        <select id="provider" name="provider" class="form-control" title="provider" aria-label="provider">
+          <option value="">all</option>
+          {% for provider in providers %}
+            <option value="{{ provider }}" {% if request.GET.provider == provider %} selected{% endif %}>{{ provider }}</option>
+          {% endfor %}
+        </select>
         <label>Filecount</label>
         <input size="2" type="text" class="form-control mr-sm-1" name="filecount_from" value="{{ request.GET.filecount_from }}" placeholder="from"/>
         <input size="2" type="text" class="form-control mr-sm-1" name="filecount_to" value="{{ request.GET.filecount_to }}" placeholder="to"/>
         <input title="Category" class="form-control" name="category" placeholder="Category" value="{{ request.GET.category }}">
-        <input title="Source type" class="form-control" name="source_type" placeholder="Source type" value="{{ request.GET.source_type }}">
+        <input title="Download type" class="form-control" name="dl_type" placeholder="Download type" value="{{ request.GET.dl_type }}">
         <input title="Reason" class="form-control" name="reason" placeholder="Reason" value="{{ request.GET.reason }}">
         <input id="checkbox2" class="custom-cb" type="checkbox" name="non_public" value="1" {% if request.GET.non_public == '1' %}checked{% endif %}><label for="checkbox2"><span><span></span></span>Only private</label>
         <input id="checkbox3" class="custom-cb" type="checkbox" name="public" value="1" {% if request.GET.public == '1' %}checked{% endif %}><label for="checkbox3"><span><span></span></span>Only public</label>
-        <input id="checkbox4" class="custom-cb" type="checkbox" name="hidden" value="1" {% if request.GET.hidden == '1' %}checked{% endif %}><label for="checkbox4"><span><span></span></span>Hidden</label>
         <button type="submit" name="apply" class="btn btn-light">Search</button>
-        <a class="btn btn-light" href="{% url 'viewer:manage-archives' %}">Clear</a>
+        <a class="btn btn-light" href="{% url 'viewer:missing-archives' %}">Clear</a>
       </div>
     </form>
     <form action="{{ request.get_full_path }}" method="POST">{% csrf_token %}
-    {% load viewer_extras %}
     <!-- Next/Prev page links  -->
     {% if results.object_list and results.paginator.num_pages > 1 %}
       <div>
@@ -59,52 +64,45 @@
       <table class="table table-bordered table-sm generic-table">
         <thead>
         <tr>
-          <th>Select</th><th>Title</th><th>ID</th><th>Gallery ID</th><th>Size</th><th>Images</th><th>Source</th><th>Reason</th><th>Added</th><th>Public</th><th>Hidden</th>
+          <th>Select</th><th>URL</th><th>Title</th><th>Size</th><th>Images</th><th>Source URL | Image</th><th>Linked to Wanted Gallery?</th><th>DL type</th><th>Reason</th><th>Added</th>
         </tr>
         </thead>
         <tbody>
-        {% for archive in results %}
+        {% for gallery in results %}
           <tr>
             <td>
-              <input id="checkbox-{{ archive.id }}" class="toggle-list custom-cb" type="checkbox" name="sel-{{ archive.id }}" value="{{ archive.pk }}"><label for="checkbox-{{ archive.id }}"><span><span></span></span></label>
-            </td>
-            <td class="{{ archive|archive_title_class }}">
-              {{ archive.best_title }}
+              <input id="checkbox-{{ gallery.id }}" class="toggle-list custom-cb" type="checkbox" name="sel-{{ gallery.id }}" value="{{ gallery.pk }}"><label for="checkbox-{{ gallery.id }}"><span><span></span></span></label>
             </td>
             <td>
-              {% if archive.thumbnail.name %}
-                <a href="{% url 'viewer:archive' archive.pk %}" class="img-preview" data-image-url="{{ archive.thumbnail.url }}" rel="popover">{{ archive.pk }}</a>
+              <a href="{% url 'viewer:gallery' gallery.pk %}">{{ gallery.pk }}</a>
+            </td>
+            <td>
+              {{ gallery.title }}
+            </td>
+            <td>
+              {{ gallery.filesize }} ({{ gallery.filesize|filesizeformat }})
+            </td>
+            <td>
+              {{ gallery.filecount }}
+            </td>
+            <td>
+              {% if gallery.thumbnail.name %}
+                <a href="{{ gallery.get_link }}" class="img-preview" data-image-url="{{ gallery.thumbnail.url }}" rel="popover noopener noreferrer nofollow">{{ gallery.get_link }}</a>
               {% else %}
-                <a href="{% url 'viewer:archive' archive.pk %}">{{ archive.pk }}</a>
+                {{ gallery.get_link|urlize_all_rel }}
               {% endif %}
             </td>
             <td>
-              {% if archive.gallery %}
-              <a href="{% url 'viewer:gallery' archive.gallery.pk %}">{{ archive.gallery.pk }}</a>
-              {% endif %}
+              {{ gallery.foundgallery_set.count|yesno:"yes,no" }}
             </td>
             <td>
-              {{ archive.filesize }} ({{ archive.filesize|filesizeformat }})
+              {{ gallery.dl_type }}
             </td>
             <td>
-              {{ archive.filecount }}
+              {{ gallery.reason }}
             </td>
             <td>
-              {{ archive.source_type }}
-            </td>
-            <td>
-              {{ archive.reason }}
-            </td>
-            <td>
-              {{ archive.create_date|date:"DATETIME_FORMAT" }}
-            </td>
-            <td>
-              {{ archive.public|yesno }}
-            </td>
-            <td>
-              {% if archive.gallery %}
-              {{ archive.gallery.hidden|yesno }}
-              {% endif %}
+              {{ gallery.create_date|date:"DATETIME_FORMAT" }}
             </td>
           </tr>
         {% endfor %}
@@ -131,28 +129,24 @@
     <div class="form-group">
       <input size="10" class="form-control" name="reason" value="" placeholder="Reason" maxlength="200"/>
     </div>
-    {% if perms.viewer.change_archivegroup %}
-    <table class="table">
-      {{ group_form }}
-    </table>
-    <button name="add_to_group" class="btn btn-light">Add to Group</button>
+    {% if perms.viewer.download_gallery %}
+    <button name="download_galleries" class="btn btn-light">Force queue for download</button>
     {% endif %}
-    {% if perms.viewer.publish_archive %}
-    <button name="publish_archives" class="btn btn-light">Publish</button>
-    <button name="unpublish_archives" class="btn btn-light">Unpublish</button>
+    {% if perms.viewer.publish_gallery %}
+    <button name="publish_galleries" class="btn btn-light">Publish</button>
+    {% endif %}
+    {% if perms.viewer.private_gallery %}
+    <button name="private_galleries" class="btn btn-light">Make private</button>
     {% endif %}
     {% if perms.viewer.update_metadata %}
-    <button name="update_metadata" class="btn btn-light">Update metadata</button>
+    <button name="recall_api" class="btn btn-light">Recall API</button>
     {% endif %}
-    {% if perms.viewer.delete_archive %}
-    <button name="delete_archives" class="btn btn-light">Delete (WARNING!)</button>
+    {% if perms.viewer.mark_delete_gallery %}
+    <button name="delete_galleries" class="btn btn-light">Delete (WARNING!)</button>
     {% endif %}
     </form>
 {% endblock %}
 {% block afterJQ %}
-  {% if perms.viewer.change_archivegroup %}
-  {{ group_form.media }}
-  {% endif %}
   {% load compress %}
   {% compress css %}
     <link href="{% static 'autocomplete_light/vendor/jal/src/style.css' %}" type="text/css" media="all" rel="stylesheet" />

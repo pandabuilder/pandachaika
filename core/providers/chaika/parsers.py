@@ -4,6 +4,8 @@ import typing
 from collections import defaultdict
 from collections.abc import Iterable
 from datetime import datetime, timezone
+import re
+from urllib.parse import urljoin
 
 from core.base.parsers import BaseParser
 from viewer.models import Gallery
@@ -22,7 +24,7 @@ logger = logging.getLogger(__name__)
 class Parser(BaseParser):
     name = constants.provider_name
     ignore = False
-    accepted_urls = ['gs=', 'gsp=', 'gd=']
+    accepted_urls = ['gs=', 'gsp=', 'gd=', '/archive/', '/gallery/']
 
     def filter_accepted_urls(self, urls: Iterable[str]) -> list[str]:
         return [x for x in urls if any(word in x for word in self.accepted_urls) and self.own_settings.url in x]
@@ -72,34 +74,92 @@ class Parser(BaseParser):
 
     def crawl_urls(self, urls: list[str], wanted_filters=None, wanted_only: bool = False) -> None:
 
-        request_dict = construct_request_dict(self.settings, self.own_settings)
-
         for url in urls:
-            response = request_with_retries(
-                url,
-                request_dict,
-                post=False,
-            )
-
-            if not response:
-                logger.error("Did not get a response from URL: {}".format(url))
-                continue
 
             dict_list = []
+            request_dict = construct_request_dict(self.settings, self.own_settings)
 
-            try:
-                json_decoded = response.json()
-            except(ValueError, KeyError):
-                logger.error("Could not parse response to JSON: {}".format(response.text))
-                continue
+            if '/archive/' in url:
+                match_archive_pk = re.search(r'/archive/(\d+)/', url)
+                if match_archive_pk:
+                    api_url = urljoin(self.own_settings.url, constants.api_path)
+                    request_dict['params'] = {'archive': match_archive_pk.group(1)}
+                    archive_response = request_with_retries(
+                        api_url,
+                        request_dict,
+                        post=False,
+                    )
+                    if not archive_response:
+                        logger.error("Did not get a response from URL: {}".format(api_url))
+                        continue
+                    try:
+                        json_decoded = archive_response.json()
+                    except(ValueError, KeyError):
+                        logger.error("Could not parse response to JSON: {}".format(archive_response.text))
+                        continue
+                    if json_decoded['gallery']:
+                        request_dict['params'] = {'gd': json_decoded['gallery']}
+                        gallery_response = request_with_retries(
+                            api_url,
+                            request_dict,
+                            post=False,
+                        )
+                        if not gallery_response:
+                            logger.error("Did not get a response from URL: {}".format(api_url))
+                            continue
+                        try:
+                            json_decoded = gallery_response.json()
+                            dict_list.append(json_decoded)
+                        except(ValueError, KeyError):
+                            logger.error("Could not parse response to JSON: {}".format(gallery_response.text))
+                            continue
+                    else:
+                        logger.error("Archive: {} does not have an associated Gallery".format(url))
+                        continue
+            elif '/gallery/' in url:
+                match_gallery_pk = re.search(r'/gallery/(\d+)/', url)
+                if match_gallery_pk:
+                    api_url = urljoin(self.own_settings.url, constants.api_path)
+                    request_dict['params'] = {'gd': match_gallery_pk.group(1)}
+                    gallery_response = request_with_retries(
+                        api_url,
+                        request_dict,
+                        post=False,
+                    )
+                    if not gallery_response:
+                        logger.error("Did not get a response from URL: {}".format(api_url))
+                        continue
+                    try:
+                        json_decoded = gallery_response.json()
+                        dict_list.append(json_decoded)
+                    except(ValueError, KeyError):
+                        logger.error("Could not parse response to JSON: {}".format(gallery_response.text))
+                        continue
 
-            if type(json_decoded) == dict:
-                if 'galleries' in json_decoded:
-                    dict_list = json_decoded['galleries']
-                else:
-                    dict_list.append(json_decoded)
-            elif type(json_decoded) == list:
-                dict_list = json_decoded
+            else:
+                response = request_with_retries(
+                    url,
+                    request_dict,
+                    post=False,
+                )
+
+                if not response:
+                    logger.error("Did not get a response from URL: {}".format(url))
+                    continue
+
+                try:
+                    json_decoded = response.json()
+                except(ValueError, KeyError):
+                    logger.error("Could not parse response to JSON: {}".format(response.text))
+                    continue
+
+                if type(json_decoded) == dict:
+                    if 'galleries' in json_decoded:
+                        dict_list = json_decoded['galleries']
+                    else:
+                        dict_list.append(json_decoded)
+                elif type(json_decoded) == list:
+                    dict_list = json_decoded
 
             galleries_gids = []
             found_galleries = set()

@@ -45,30 +45,34 @@ def archive_details(request: HttpRequest, pk: int, view: str = "cover") -> HttpR
     if not request.user.is_authenticated:
         view = "cover"
 
+    d: dict[str, typing.Any] = {'archive': archive, 'view': view}
+
     num_images = 30
     if view in ("full", "edit"):
         num_images = 10
     if view in ("single", "cover"):
         num_images = 1
 
-    images = archive.image_set.filter(extracted=True)
+    if request.user.is_authenticated:
 
-    if images:
-        paginator = Paginator(images, num_images)
-        try:
-            page = int(request.GET.get("page", '1'))
-        except ValueError:
-            page = 1
+        images = archive.image_set.filter(extracted=True)
 
-        try:
-            images_page: typing.Optional[Page] = paginator.page(page)
-        except (InvalidPage, EmptyPage):
-            images_page = paginator.page(paginator.num_pages)
+        if images:
+            paginator = Paginator(images, num_images)
+            try:
+                page = int(request.GET.get("page", '1'))
+            except ValueError:
+                page = 1
 
-    else:
-        images_page = None
+            try:
+                images_page: typing.Optional[Page] = paginator.page(page)
+            except (InvalidPage, EmptyPage):
+                images_page = paginator.page(paginator.num_pages)
 
-    d: dict[str, typing.Any] = {'archive': archive, 'images': images_page, 'view': view}
+        else:
+            images_page = None
+
+        d.update({'images': images_page})
 
     if view == "edit" and request.user.is_staff:
 
@@ -107,14 +111,24 @@ def archive_details(request: HttpRequest, pk: int, view: str = "cover") -> HttpR
     if request.user.has_perm('viewer.change_archive'):
         if request.POST.get('change-archive'):
             # create a form instance and populate it with data from the request:
+            old_gallery = archive.gallery
             edit_form = ArchiveEditForm(request.POST, instance=archive)
             # check whether it's valid:
             if edit_form.is_valid():
+                # TODO: Maybe this should be in save mathod for the form
                 new_archive = edit_form.save(commit=False)
                 new_archive.simple_save()
                 edit_form.save_m2m()
-                if new_archive.gallery and new_archive.gallery.tags.all():
-                    new_archive.tags.set(new_archive.gallery.tags.all())
+                if new_archive.gallery:
+                    if new_archive.gallery.tags.all():
+                        new_archive.tags.set(new_archive.gallery.tags.all())
+                    if new_archive.gallery != old_gallery:
+                        new_archive.title = new_archive.gallery.title
+                        new_archive.title_jpn = new_archive.gallery.title_jpn
+                        if edit_form.cleaned_data['old_gallery_to_alt'] and old_gallery is not None:
+                            new_archive.alternative_sources.add(old_gallery)
+                        new_archive.simple_save()
+                        edit_form = ArchiveEditForm(instance=new_archive)
 
                 message = 'Archive successfully modified'
                 messages.success(request, message)
@@ -320,14 +334,23 @@ def archive_thumb(request: HttpRequest, pk: int) -> HttpResponse:
 def extract_toggle(request: HttpRequest, pk: int) -> HttpResponse:
     """Extract archive toggle."""
 
-    if not request.user.is_staff:
-        return render_error(request, "You need to be an admin to toggle extract an archive.")
-
+    if not request.user.has_perm('viewer.expand_archive'):
+        return render_error(request, "You don't have permission the expand an Archive.")
     try:
         with transaction.atomic():
             archive = Archive.objects.select_for_update().get(pk=pk)
-            logger.info('Toggling images for ' + archive.zipped.name)
+            logger.info('Toggling images for archive: {}'.format(archive.get_absolute_url()))
             archive.extract_toggle()
+            if archive.extracted:
+                action = 'EXPAND_ARCHIVE'
+            else:
+                action = 'REDUCE_ARCHIVE'
+            event_log(
+                request.user,
+                action,
+                content_object=archive,
+                result='success'
+            )
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
 

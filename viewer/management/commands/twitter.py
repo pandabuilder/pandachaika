@@ -24,6 +24,11 @@ class Command(BaseCommand):
                             action='store',
                             default='',
                             help='Ending tweet id to process.')
+        parser.add_argument('-id', '--id',
+                            required=False,
+                            action='store',
+                            nargs='+',
+                            help='One or more tweet id to process.')
         parser.add_argument('-w', '--wanted',
                             required=False,
                             action='store_true',
@@ -39,9 +44,11 @@ class Command(BaseCommand):
             tweets = tweets.filter(tweet_id__gte=options['from_id'])
         if options['to_id']:
             tweets = tweets.filter(tweet_id__lte=options['to_id'])
+        if options['id']:
+            tweets = tweets.filter(tweet_id__in=options['id'])
 
         if options['wanted']:
-            own_settings = settings.providers[constants.provider_name]
+            own_settings = crawler_settings.providers[constants.provider_name]
             for tweet_obj in tweets:
                 for message in match_tweet_with_wanted_galleries(tweet_obj, crawler_settings, own_settings):
                     self.stdout.write(message)

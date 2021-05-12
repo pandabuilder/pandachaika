@@ -72,6 +72,8 @@ class BaseDownloader(metaclass=Meta):
             self.original_gallery.reason = self.settings.gallery_reason
         self.gallery_db_entry = self.settings.gallery_model.objects.update_or_create_from_values(self.original_gallery)
         if self.gallery_db_entry:
+            # TODO: Investigate why we need a new update_index here to push to ES index.
+            self.gallery_db_entry.update_index()
             for archive in self.gallery_db_entry.archive_set.all():
                 if archive.gallery:
                     archive.title = archive.gallery.title

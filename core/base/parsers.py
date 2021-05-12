@@ -1,7 +1,7 @@
 import copy
 import json
 import typing
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import time
 from typing import Optional
 
@@ -29,6 +29,16 @@ if typing.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def aggregate_wanted_time_taken(func):
+    def wrapper_save_time_taken(*args, **kwargs):
+        start = time.perf_counter()
+        func(*args, **kwargs)
+        end = time.perf_counter()
+        args[0].time_taken_wanted += end - start
+
+    return wrapper_save_time_taken
+
+
 class BaseParser:
     name = ''
     ignore = False
@@ -43,6 +53,7 @@ class BaseParser:
         self.general_utils = utilities.GeneralUtils(self.settings)
         self.downloaders: list[tuple['BaseDownloader', int]] = self.settings.provider_context.get_downloaders(self.settings, self.general_utils, filter_name=self.name)
         self.last_used_downloader: str = 'none'
+        self.time_taken_wanted: float = 0
         self.archive_callback: Optional[Callable[[Optional['Archive'], Optional[str], str], None]] = None
         self.gallery_callback: Optional[Callable[[Optional['Gallery'], Optional[str], str], None]] = None
 
@@ -137,6 +148,7 @@ class BaseParser:
         return False, message
 
     # Priorities are: title, tags then file count.
+    @aggregate_wanted_time_taken
     def compare_gallery_with_wanted_filters(self, gallery: GalleryData, link: str, wanted_filters: QuerySet, gallery_wanted_lists: dict[str, list['WantedGallery']]) -> None:
 
         if not self.settings.found_gallery_model:
@@ -184,6 +196,11 @@ class BaseParser:
                 Q(unwanted_title__isnull=True) | Q(unwanted_title='')
             )
 
+        if gallery.posted:
+            filtered_wanted = filtered_wanted.filter(
+                Q(wait_for_time__isnull=True) | Q(wait_for_time__lte=django_tz.now() - gallery.posted)
+            )
+
         for wanted_filter in filtered_wanted:
             # Skip wanted_filter that's already found.
             already_found = self.settings.found_gallery_model.objects.filter(
@@ -212,18 +229,28 @@ class BaseParser:
                     accepted_tags = set(wanted_filter.wanted_tags_list()).intersection(set(gallery.tags))
                     gallery_tags_scopes = [x.split(":", maxsplit=1)[0] for x in gallery.tags if len(x) > 1]
                     wanted_gallery_tags_scopes = [x.split(":", maxsplit=1)[0] for x in accepted_tags if len(x) > 1]
-                    scope_count: dict[str, int] = {}
+                    scope_count: dict[str, int] = defaultdict(int)
                     for scope_name in gallery_tags_scopes:
                         if scope_name in wanted_gallery_tags_scopes:
-                            if scope_name not in scope_count:
-                                scope_count[scope_name] = 1
+                            if wanted_filter.exclusive_scope_name:
+                                if wanted_filter.exclusive_scope_name == scope_name:
+                                    scope_count[scope_name] += 1
                             else:
                                 scope_count[scope_name] += 1
                     for scope, count in scope_count.items():
                         if count > 1:
                             accepted = False
+                # Review based on 'accept if none' scope.
+                if not accepted and wanted_filter.wanted_tags_accept_if_none_scope:
+                    missing_tags = set(wanted_filter.wanted_tags_list()).difference(set(gallery.tags))
+                    # If all the missing tags start with the parameter,
+                    # and no other tag is in gallery with this parameter, mark as accepted
+                    scope_formatted = wanted_filter.wanted_tags_accept_if_none_scope + ":"
+                    if all(x.startswith(scope_formatted) for x in missing_tags)\
+                            and not any(x.startswith(scope_formatted) for x in gallery.tags):
+                        accepted = True
             if accepted & bool(wanted_filter.unwanted_tags.all()):
-                if set(wanted_filter.unwanted_tags_list()).issubset(set(gallery.tags)):
+                if any(item in gallery.tags for item in wanted_filter.unwanted_tags_list()):
                     accepted = False
             if accepted and wanted_filter.wanted_page_count_lower and gallery.filecount is not None and gallery.filecount:
                 accepted = gallery.filecount >= wanted_filter.wanted_page_count_lower
@@ -308,6 +335,9 @@ class BaseParser:
 
     def pass_gallery_data_to_downloaders(self, gallery_data_list: list[GalleryData], gallery_wanted_lists: dict[str, list['WantedGallery']]):
         gallery_count = len(gallery_data_list)
+
+        if self.time_taken_wanted:
+            logger.info("Time taken to compare with WantedGallery: {} seconds.".format(int(self.time_taken_wanted + 0.5)))
 
         if gallery_count == 0:
             logger.info("No galleries need downloading, returning.")

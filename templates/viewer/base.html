@@ -62,7 +62,7 @@
             <li class="nav-item dropdown">
               <a href="#" class="nav-link dropdown-toggle" id="navbarDropdown" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Collaborator<span class="caret"></span></a>
               <div class="dropdown-menu" aria-labelledby="navbarDropdown">
-                {% if perms.viewer.approve_gallery %}
+                {% if perms.viewer.view_submitted_gallery %}
                   <a class="dropdown-item" href="{% url 'viewer:submit-queue' %}">Submit queue</a>
                 {% endif %}
                 {% if perms.viewer.manage_archive %}
@@ -79,6 +79,9 @@
                 {% endif %}
                 {% if perms.viewer.view_wantedgallery %}
                   <a class="dropdown-item" href="{% url 'viewer:col-wanted-galleries' %}">Wanted galleries</a>
+                {% endif %}
+                {% if perms.viewer.manage_missing_archives %}
+                  <a class="dropdown-item" href="{% url 'viewer:col-missing-archives' %}?provider=panda">Manage missing archives</a>
                 {% endif %}
                 {% if perms.viewer.read_all_logs %}
                   <a class="dropdown-item" href="{% url 'viewer:users-event-log' %}">Users' event log</a>
@@ -98,7 +101,6 @@
                 <a class="dropdown-item" href="{% url 'viewer:repeated-archives' %}">Repeated archives (same gallery)</a>
                 <a class="dropdown-item" href="{% url 'viewer:archives-by-field' %}">Repeated archives by field</a>
                 <a class="dropdown-item" href="{% url 'viewer:galleries-by-field' %}">Repeated galleries by field</a>
-                <a class="dropdown-item" href="{% url 'viewer:missing-archives' %}?provider=panda">Non used panda galleries</a>
                 <a class="dropdown-item" href="{% url 'viewer:archive-filesize-different' %}">Archives not matching gallery filesize</a>
                 <a class="dropdown-item" href="{% url 'viewer:archive-not-present' %}">Archives with file not present in filesystem</a>
                 <a class="dropdown-item" href="{% url 'viewer:archives-not-matched' %}">Archives without gallery matches</a>
@@ -112,6 +114,7 @@
                 <a class="dropdown-item" href="{% url 'viewer:upload-archive' %}">Upload archive</a>
                 <a class="dropdown-item" href="{% url 'viewer:match-archives' %}">Match archives</a>
                 <a class="dropdown-item" href="{% url 'viewer:col-wanted-galleries' %}">Wanted galleries</a>
+                <a class="dropdown-item" href="{% url 'viewer:col-missing-archives' %}?provider=panda">Manage missing archives</a>
                 <a class="dropdown-item" href="{% url 'viewer:users-event-log' %}">Users' event log</a>
               </div>
             </li>
@@ -130,18 +133,21 @@
               <a href="#" class="nav-link dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Other tools<span class="caret"></span></a>
               <div class="dropdown-menu">
                 <a class="dropdown-item" href="/explorer/">Explorer</a>
-                <a class="dropdown-item" href="{% url 'viewer:es-index-view' %}">Advanced search</a>
+                <a class="dropdown-item" href="{% url 'viewer:es-index-view' %}">Advanced search (Archive)</a>
+                <a class="dropdown-item" href="{% url 'viewer:es-gallery-index-view' %}">Advanced search (Gallery)</a>
                 <a class="dropdown-item" href="{% url 'viewer:public-stats' %}">Collection stats</a>
                 <a class="dropdown-item" href="{% url 'viewer:tag-frequency' %}">Tag frequency</a>
                 <a class="dropdown-item" href="{% url 'viewer:gallery-frequency' %}">Gallery frequency</a>
                 <a class="dropdown-item" href="{% url 'viewer:archive-groups' %}">Archive Groups</a>
+                <a class="dropdown-item" href="{% url 'viewer:missing-archives' %}">Public missing galleries</a>
               </div>
             </li>
           {% else %}
             <li class="nav-item dropdown">
               <a href="#" class="nav-link dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Other tools<span class="caret"></span></a>
               <div class="dropdown-menu">
-                <a class="dropdown-item" href="{% url 'viewer:es-index-view' %}">Advanced search</a>
+                <a class="dropdown-item" href="{% url 'viewer:es-index-view' %}">Advanced search (Archive)</a>
+                <a class="dropdown-item" href="{% url 'viewer:es-gallery-index-view' %}">Advanced search (Gallery)</a>
                 <a class="dropdown-item" href="{% url 'viewer:public-stats' %}">Backup stats</a>
                 <a class="dropdown-item" href="/public/stats.html">Full Metadata stats</a>
                 <a class="dropdown-item" href="{% url 'viewer:tag-frequency' %}">Tag frequency</a>

@@ -65,7 +65,7 @@
               {% endif %}
             </td>
             <td>
-              {{ event.create_date|date:"DATETIME_FORMAT" }}
+              {{ event.create_date|date:"y-m-d, H:i:s" }}
             </td>
           </tr>
         {% endfor %}

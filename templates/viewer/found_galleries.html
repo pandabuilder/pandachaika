@@ -16,7 +16,7 @@
     <p class="lead">Number of found gallery records (in page, total): {{ results|length }}, {{ results.paginator.count|default:"0" }}</p>
   </div>
   {% load viewer_extras %}
-  {% if user.is_staff %}
+  {% if user.is_authenticated %}
     <form action="{% url 'viewer:found-galleries' %}" method="GET">
       {% for field in form %}
         <div class="page-line">

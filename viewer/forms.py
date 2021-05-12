@@ -476,8 +476,9 @@ class WantedGalleryCreateOrEditForm(ModelForm):
             'title', 'title_jpn', 'search_title', 'regexp_search_title',
             'unwanted_title', 'regexp_unwanted_title',
             'wanted_tags', 'unwanted_tags', 'wanted_providers', 'unwanted_providers',
-            'wanted_tags_exclusive_scope', 'category', 'wanted_page_count_lower', 'wanted_page_count_upper',
-            'release_date', 'should_search', 'keep_searching', 'reason', 'book_type', 'publisher',
+            'wanted_tags_exclusive_scope', 'exclusive_scope_name', 'wanted_tags_accept_if_none_scope', 'category',
+            'wanted_page_count_lower', 'wanted_page_count_upper',
+            'release_date', 'wait_for_time', 'should_search', 'keep_searching', 'reason', 'book_type', 'publisher',
             'page_count'
         ]
         help_texts = {
@@ -487,15 +488,20 @@ class WantedGalleryCreateOrEditForm(ModelForm):
             'regexp_search_title': 'Use Search Title as a regexp match',
             'unwanted_title': 'Text in Gallery title to exclude',
             'regexp_unwanted_title': 'Use Unwanted Title as a regexp match',
-            'wanted_tags': 'Tags in Gallery that must exist',
-            'unwanted_tags': 'Tags in Gallery that must not exist',
+            'wanted_tags': 'Tags in Gallery that must exist (AND logic)',
+            'unwanted_tags': 'Tags in Gallery that must not exist (OR logic)',
             'wanted_tags_exclusive_scope': 'Do not accept Galleries that have '
                                            'more than 1 tag in the same wanted tag scope',
+            'exclusive_scope_name': 'Exclusive scope filter is restringed to an specific scope',
+            'wanted_tags_accept_if_none_scope': 'Scope from wanted tags that is either present'
+                                                ' with the tag names or not at all',
             'category': 'Category in Gallery to match',
             'wanted_page_count_lower': 'Gallery must have more or equal than this value (0 is ignored)',
             'wanted_page_count_upper': 'Gallery must have less or equal than this value (0 is ignored)',
             'wanted_providers': 'Limit the provider to match (panda, fakku, etc). Default is search in all providers',
             'unwanted_providers': 'Exclude galleries from these providers (panda, fakku, etc)',
+            'wait_for_time': 'Time after gallery is posted to wait for it to be considered, in timedelta format.'
+                             ' Useful if waiting for unwanted tags',
             'release_date': 'This Gallery will only be searched when the current date is higher than this value',
             'should_search': 'Enable searching for this Gallery',
             'keep_searching': 'Keep searching for this Gallery after one successful match',
@@ -520,6 +526,8 @@ class WantedGalleryCreateOrEditForm(ModelForm):
                 attrs={'data-placeholder': 'Tag name', 'class': 'form-control'}
             ),
             'wanted_tags_exclusive_scope': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
+            'exclusive_scope_name': forms.widgets.TextInput(attrs={'class': 'form-control'}),
+            'wanted_tags_accept_if_none_scope': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'category': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'wanted_page_count_lower': forms.widgets.NumberInput(attrs={'min': 0, 'class': 'form-control'}),
             'wanted_page_count_upper': forms.widgets.NumberInput(attrs={'min': 0, 'class': 'form-control'}),
@@ -531,6 +539,7 @@ class WantedGalleryCreateOrEditForm(ModelForm):
                 url='provider-pk-autocomplete',
                 attrs={'data-placeholder': 'Provider name', 'class': 'form-control'}
             ),
+            'wait_for_time': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'release_date': Html5DateInput(attrs={'class': 'form-control'}),
             'should_search': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
             'keep_searching': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
@@ -628,6 +637,11 @@ class ArchiveCreateForm(ModelForm):
 
 
 class ArchiveEditForm(ModelForm):
+    old_gallery_to_alt = forms.BooleanField(
+        initial=False,
+        required=False,
+        help_text='When changing the main Gallery, add the old one as Alternative Source'
+    )
 
     class Meta:
         model = Archive

@@ -66,8 +66,3 @@ If you want to run every request through a proxy, export the environment variabl
 $ export HTTP_PROXY="http://10.10.1.10:3128"
 $ export HTTPS_PROXY="http://10.10.1.10:1080"
 ~~~~
-
-TODO
----------------------
-
-I don't know.

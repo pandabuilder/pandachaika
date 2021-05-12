@@ -35,7 +35,7 @@
         <input size="2" type="text" class="form-control mr-sm-1" name="filecount_from" value="{{ display_prms.filecount_from }}" placeholder="from"/>
         <input size="2" type="text" class="form-control mr-sm-1" name="filecount_to" value="{{ display_prms.filecount_to }}" placeholder="to"/>
         <input id="checkbox1" class="custom-cb" type="checkbox" name="expunged" value="1" {% if display_prms.expunged == '1' %}checked{% endif %}><label for="checkbox1"><span><span></span></span>Expunged</label>
-        {% if user.is_staff %}
+        {% if user.is_authenticated %}
           <input id="checkbox2" class="custom-cb" type="checkbox" name="hidden" value="1" {% if display_prms.hidden == '1' %}checked{% endif %}><label for="checkbox2"><span><span></span></span>Hidden</label>
           <input id="checkbox4" class="custom-cb" type="checkbox" name="not_used" value="1" {% if display_prms.not_used == '1' %}checked{% endif %}><label for="checkbox4"><span><span></span></span>Not used</label>
           <input id="checkbox7" class="custom-cb" type="checkbox" name="not_normal" value="1" {% if display_prms.not_normal == '1' %}checked{% endif %}><label for="checkbox7"><span><span></span></span>Show not normal</label>

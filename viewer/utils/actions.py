@@ -10,6 +10,10 @@ def event_log(user, action, reason=None, data=None, result=None, content_object=
     if create_date is None:
         create_date = django_tz.now()
 
+    if data:
+        # Force limit string length (reason field max_length)
+        data = data[:500]
+
     event = EventLog.objects.create(
         user=user,
         action=action,

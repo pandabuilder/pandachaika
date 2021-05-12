@@ -102,7 +102,8 @@ def replace_illegal_name(filepath: str) -> str:
         filepath = filepath[:-1]
 
     # Limit to 255 characters, 251 plus .zip
-    return filepath[0:251]
+    # Update: Limit should be 256 bytes length (ext4).
+    return filepath.encode('utf-8')[0:251].decode('utf-8')
 
 
 def replace_illegal_win32_with_unicode_full_width(filepath: str) -> str:

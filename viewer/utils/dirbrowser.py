@@ -32,7 +32,7 @@ class DirBrowser(object):
         files = sorted([
             (f, os.path.isdir(os.path.join(p, f)))
             for f in dir_list
-        ])
+        ], key=lambda x: (not x[1], x[0]))
         if not self.path == p:
             files.insert(0, ('..', os.path.isdir(os.path.join(p, '..'))))
         return files

@@ -7,3 +7,5 @@ TODO: Change remotesite format, send metadata directly, don't send links to craw
 TODO: Each provider should have it's own schedule in auto_wanted.
 TODO: Improve the preload login, prioritize next images over last ones, single queue over parallel.
 TODO: COL: Enable web matcher.
+
+TODO: 'Archives repeated by fields' page, allow option to delete one but link source metadata to remaining.

@@ -141,6 +141,7 @@
             </span>
         </div>
       {% endif %}
+    {% if perms.viewer.approve_gallery %}
     <div class="form-group">
       <input size="10" class="form-control" name="reason" value="" placeholder="Gallery & Archive Reason" maxlength="200"/>
     </div>
@@ -151,9 +152,10 @@
       <label for="entry_comment">Comment</label>
       <textarea name="entry_comment" class="form-control" id="entry_comment" rows="5"></textarea>
     </div>
-    <button name="download_galleries" class="btn btn-light">Start download</button>
+    <button name="download_galleries" class="btn btn-light">Approve & start download</button>
     <button name="approve_galleries" class="btn btn-light">Approve galleries (no download)</button>
     <button name="deny_galleries" class="btn btn-light">Deny galleries</button>
+    {% endif %}
     </form>
 {% endblock %}
 {% block afterJQ %}

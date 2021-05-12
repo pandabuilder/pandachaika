@@ -9,7 +9,10 @@ from typing import Any, Optional
 from core.base.setup import Settings
 from core.base.utilities import module_exists
 
-BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+if 'PANDA_BASE_DIR' in os.environ:
+    BASE_DIR = os.environ['PANDA_BASE_DIR']
+else:
+    BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 
 if 'PANDA_CONFIG_DIR' in os.environ:
     crawler_settings = Settings(load_from_disk=True, default_dir=os.environ['PANDA_CONFIG_DIR'])
@@ -29,6 +32,8 @@ DEBUG = crawler_settings.django_debug_mode
 
 # Might want to limit it here.
 ALLOWED_HOSTS = ['*']
+
+DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
 
 if crawler_settings.urls.behind_proxy:
     USE_X_FORWARDED_HOST = True
@@ -234,14 +239,23 @@ FILE_UPLOAD_PERMISSIONS = 0o755
 MAIN_URL = crawler_settings.urls.viewer_main_url
 
 STATIC_ROOT = os.path.join(BASE_DIR, 'static/')
-STATIC_URL = MAIN_URL.replace("/", "") + crawler_settings.urls.static_url
-
 MEDIA_ROOT = crawler_settings.MEDIA_ROOT
-MEDIA_URL = MAIN_URL.replace("/", "") + crawler_settings.urls.media_url
+
+if crawler_settings.urls.static_url.startswith('https://'):
+    STATIC_URL = crawler_settings.urls.static_url
+else:
+    STATIC_URL = MAIN_URL.replace("/", "") + crawler_settings.urls.static_url
+
+if crawler_settings.urls.media_url.startswith('https://'):
+    MEDIA_URL = crawler_settings.urls.media_url
+else:
+    MEDIA_URL = MAIN_URL.replace("/", "") + crawler_settings.urls.media_url
 
 if MAIN_URL != '':
-    STATIC_URL = "/" + STATIC_URL
-    MEDIA_URL = "/" + MEDIA_URL
+    if not STATIC_URL.startswith('https://'):
+        STATIC_URL = "/" + STATIC_URL
+    if not MEDIA_URL.startswith('https://'):
+        MEDIA_URL = "/" + MEDIA_URL
     CSRF_COOKIE_PATH = "/" + MAIN_URL
     SESSION_COOKIE_PATH = "/" + MAIN_URL
 

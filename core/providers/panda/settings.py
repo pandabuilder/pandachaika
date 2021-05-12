@@ -29,6 +29,7 @@ class OwnSettings(ProviderSettings):
             # '[Misc]',
             '[Private]'
         )
+        self.use_ex_for_fjord = False
 
 
 def parse_config(global_settings: 'Settings', config: dict[str, typing.Any]) -> 'OwnSettings':
@@ -43,6 +44,8 @@ def parse_config(global_settings: 'Settings', config: dict[str, typing.Any]) -> 
             settings.stop_page_number = int(config['general']['stop_page_number'])
         if 'accepted_rss_categories' in config['general']:
             settings.accepted_rss_categories = config['general']['accepted_rss_categories'].split(",")
+        if 'use_ex_for_fjord' in config['general']:
+            settings.use_ex_for_fjord = config['general'].getboolean('use_ex_for_fjord')
     if 'locations' in config:
         if 'archive_dl_folder' in config['locations']:
             settings.archive_dl_folder = config['locations']['archive_dl_folder']

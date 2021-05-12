@@ -5,7 +5,7 @@ import shutil
 import typing
 import uuid
 import zipfile
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone, date
 from itertools import chain
 
@@ -614,12 +614,18 @@ class Gallery(models.Model):
                 'reason': {'type': 'keyword'},
                 'public': {'type': 'boolean'},
                 'category': {'type': 'keyword'},
+                'source_url': {'type': 'text', 'index': False},
                 'thumbnail': {'type': 'text', 'index': False}
             }
         }
         verbose_name_plural = "galleries"
         permissions = (
             ("publish_gallery", "Can publish available galleries"),
+            ("private_gallery", "Can set private available galleries"),
+            ("download_gallery", "Can download present galleries"),
+            ("mark_delete_gallery", "Can mark galleries as deleted"),
+            ("manage_missing_archives", "Can manage missing archives"),
+            ("view_submitted_gallery", "Can view submitted galleries"),
             ("approve_gallery", "Can approve submitted galleries"),
             ("wanted_gallery_found", "Can be notified of new wanted gallery matches"),
             ("crawler_adder", "Can add links to the crawler with more options"),
@@ -712,6 +718,9 @@ class Gallery(models.Model):
         else:
             return None
 
+    def get_es_source_url(self) -> str:
+        return self.get_link()
+
     def __str__(self) -> str:
         return self.title or self.title_jpn or ''
 
@@ -757,7 +766,7 @@ class Gallery(models.Model):
 
     # Kinda not optimal
     def is_submitted(self) -> bool:
-        return self.origin == self.ORIGIN_SUBMITTED and self.status != self.DENIED and not self.archive_set.all()
+        return self.origin == self.ORIGIN_SUBMITTED and self.status != self.DENIED and self.status != self.DELETED and not self.archive_set.all()
 
     def get_link(self) -> str:
         return settings.PROVIDER_CONTEXT.resolve_all_urls(self)
@@ -838,6 +847,32 @@ class Gallery(models.Model):
                 lf.close()
 
             super(Gallery, self).save(force_update=True)
+
+    def update_index(self) -> None:
+        if settings.ES_CLIENT and settings.ES_AUTOREFRESH_GALLERY:
+            if (settings.ES_ONLY_INDEX_PUBLIC and self.public) or not settings.ES_ONLY_INDEX_PUBLIC:
+                payload = self.es_repr()
+                del payload['_id']
+                try:
+                    settings.ES_CLIENT.update(
+                        index=self._meta.es_index_name,  # type: ignore
+                        id=self.pk,
+                        refresh=True,
+                        body={
+                            'doc': payload
+                        },
+                        request_timeout=30
+                    )
+                except elasticsearch.exceptions.NotFoundError:
+                    settings.ES_CLIENT.create(
+                        index=self._meta.es_index_name,  # type: ignore
+                        id=self.pk,
+                        refresh=True,
+                        body={
+                            'doc': payload
+                        },
+                        request_timeout=30
+                    )
 
     def delete(self, *args: typing.Any, **kwargs: typing.Any) -> tuple[int, dict[str, int]]:
         self.thumbnail.delete(save=False)
@@ -945,6 +980,11 @@ class Gallery(models.Model):
             filtered_wanted = filtered_wanted.filter(Q(wanted_providers=None) | Q(wanted_providers__slug=self.provider))
             filtered_wanted = filtered_wanted.filter(Q(unwanted_providers=None) | ~Q(unwanted_providers__slug=self.provider))
 
+        if self.posted:
+            filtered_wanted = filtered_wanted.filter(
+                Q(wait_for_time__isnull=True) | Q(wait_for_time__lte=django_tz.now() - self.posted)
+            )
+
         for wanted_filter in filtered_wanted:
             # if wanted_filter.wanted_providers.count():
             #     if not wanted_filter.wanted_providers.filter(slug=self.provider).first():
@@ -958,18 +998,28 @@ class Gallery(models.Model):
                     accepted_tags = set(wanted_filter.wanted_tags_list()).intersection(set(self.tag_list()))
                     gallery_tags_scopes = [x.split(":", maxsplit=1)[0] for x in self.tag_list() if len(x) > 1]
                     wanted_gallery_tags_scopes = [x.split(":", maxsplit=1)[0] for x in accepted_tags if len(x) > 1]
-                    scope_count: dict[str, int] = {}
+                    scope_count: dict[str, int] = defaultdict(int)
                     for scope_name in gallery_tags_scopes:
                         if scope_name in wanted_gallery_tags_scopes:
-                            if scope_name not in scope_count:
-                                scope_count[scope_name] = 1
+                            if wanted_filter.exclusive_scope_name:
+                                if wanted_filter.exclusive_scope_name == scope_name:
+                                    scope_count[scope_name] += 1
                             else:
                                 scope_count[scope_name] += 1
                     for scope, count in scope_count.items():
                         if count > 1:
                             accepted = False
+                # Review based on 'accept if none' scope.
+                if not accepted and wanted_filter.wanted_tags_accept_if_none_scope:
+                    missing_tags = set(wanted_filter.wanted_tags_list()).difference(set(self.tag_list()))
+                    # If all the missing tags start with the parameter,
+                    # and no other tag is in gallery with this parameter, mark as accepted
+                    scope_formatted = wanted_filter.wanted_tags_accept_if_none_scope + ":"
+                    if all(x.startswith(scope_formatted) for x in missing_tags)\
+                            and not any(x.startswith(scope_formatted) for x in self.tag_list()):
+                        accepted = True
             if accepted & bool(wanted_filter.unwanted_tags.all()):
-                if set(wanted_filter.unwanted_tags_list()).issubset(set(self.tag_list())):
+                if any(item in self.tag_list() for item in wanted_filter.unwanted_tags_list()):
                     accepted = False
 
             if accepted:
@@ -1149,6 +1199,7 @@ class Archive(models.Model):
             ("match_archive", "Can match archives"),
             ("update_metadata", "Can update metadata"),
             ("upload_with_metadata_archive", "Can upload a file with an associated metadata source"),
+            ("expand_archive", "Can extract and reduce archives")
         )
 
     def es_repr(self) -> DataDict:
@@ -2169,7 +2220,6 @@ class WantedGallery(models.Model):
     artists = models.ManyToManyField(Artist, blank=True)
     cover_artist = models.ForeignKey(
         Artist, blank=True, null=True, related_name="cover_artist", on_delete=models.SET_NULL)
-    look_for_duration = models.DurationField('Look for duration', default=timedelta(days=30))
     should_search = models.BooleanField('Should search', blank=True, default=False)
     keep_searching = models.BooleanField('Keep searching', blank=True, default=False)
     add_as_hidden = models.BooleanField('Add as hidden', blank=True, default=False)
@@ -2184,6 +2234,8 @@ class WantedGallery(models.Model):
     wanted_page_count_upper = models.IntegerField(blank=True, default=0)
     wanted_tags = models.ManyToManyField(Tag, blank=True)
     wanted_tags_exclusive_scope = models.BooleanField(blank=True, default=False)
+    exclusive_scope_name = models.CharField(max_length=200, blank=True, default='')
+    wanted_tags_accept_if_none_scope = models.CharField(max_length=200, blank=True, default='')
     unwanted_tags = models.ManyToManyField(Tag, blank=True, related_name="unwanted_tags")
     category = models.CharField(
         max_length=20, blank=True, null=True, default='')
@@ -2192,6 +2244,7 @@ class WantedGallery(models.Model):
         'Provider', max_length=50, blank=True, null=True, default='')
     wanted_providers = models.ManyToManyField('Provider', blank=True)
     unwanted_providers = models.ManyToManyField('Provider', blank=True, related_name="unwanted_providers")
+    wait_for_time = models.DurationField('Wait for time', blank=True, null=True)
     found_galleries = models.ManyToManyField(
         Gallery, related_name="found_galleries",
         blank=True,
@@ -2249,34 +2302,18 @@ class WantedGallery(models.Model):
         self.release_date = datetime.combine(most_occurring_date, datetime.min.time())
         self.save()
 
-    def search_gallery_title_internal_matches(self, provider_filter: str = '', cutoff: float = 0.4, max_matches: int = 20) -> None:
-        galleries_title_id = []
+    def create_gallery_matches_internally(self, provider_filter: str = '') -> None:
 
-        if provider_filter:
-            galleries = Gallery.objects.eligible_for_use(provider__contains=provider_filter)
-        else:
-            galleries = Gallery.objects.eligible_for_use()
-        galleries = galleries.filter(~Q(foundgallery__wanted_gallery=self))
-        for gallery in galleries:
-            if gallery.title:
-                galleries_title_id.append(
-                    (clean_title(gallery.title), gallery.pk))
-            if gallery.title_jpn:
-                galleries_title_id.append(
-                    (clean_title(gallery.title_jpn), gallery.pk))
+        matched_galleries = self.get_matching_galleries(provider_filter)
 
-        similar_list = get_list_closer_gallery_titles_from_list(
-            self.search_title, galleries_title_id, cutoff, max_matches)
+        for matched_gallery in matched_galleries:
+            GalleryMatch.objects.get_or_create(
+                wanted_gallery=self,
+                gallery=matched_gallery,
+                defaults={'match_accuracy': 1}
+            )
 
-        if similar_list:
-
-            for similar in similar_list:
-                GalleryMatch.objects.get_or_create(
-                    wanted_gallery=self,
-                    gallery_id=similar[1],
-                    defaults={'match_accuracy': similar[2]})
-
-    def match_against_galleries(self) -> None:
+    def create_found_galleries_internally(self) -> None:
 
         matched_galleries = self.get_matching_galleries()
 
@@ -2289,11 +2326,14 @@ class WantedGallery(models.Model):
                 gallery=matched_gallery
             )
 
-    def get_matching_galleries(self) -> list['Gallery']:
+    def get_matching_galleries(self, provider_filter: str = '') -> list['Gallery']:
 
         matching_galleries: list['Gallery'] = []
 
         galleries = Gallery.objects.eligible_for_use().filter(~Q(foundgallery__wanted_gallery=self))
+
+        if provider_filter:
+            galleries = galleries.filter(provider=provider_filter)
 
         has_wanted_tags = bool(self.wanted_tags.all())
         has_unwanted_tags = bool(self.unwanted_tags.all())
@@ -2354,31 +2394,45 @@ class WantedGallery(models.Model):
                 q_objects_unwanted_title
             )
 
+        if self.wait_for_time:
+            galleries = galleries.filter(
+                Q(posted__isnull=True) | Q(posted__lte=django_tz.now() - self.wait_for_time)
+            )
+
         # if has_wanted_tags:
         #     galleries = galleries.filter(tags__in=self.wanted_tags.all())
         #
         # if has_unwanted_tags:
         #     galleries = galleries.filter(~Q(tags__in=self.unwanted_tags.all()))
         #
-        # if self.category:
-        #     galleries = galleries.filter(category__iexact=self.category)
-        #
-        # if self.wanted_page_count_upper:
-        #     galleries = galleries.filter(filecount__le=self.wanted_page_count_upper)
-        #
-        # if self.wanted_page_count_lower:
-        #     galleries = galleries.filter(filecount__ge=self.wanted_page_count_lower)
-        #
+        if self.category:
+            galleries = galleries.filter(category__iexact=self.category)
+
+        if self.wanted_page_count_upper:
+            galleries = galleries.filter(filecount__lte=self.wanted_page_count_upper)
+
+        if self.wanted_page_count_lower:
+            galleries = galleries.filter(filecount__gte=self.wanted_page_count_lower)
+
+        # Disabled because wanted_providers superseeds provider
         # if self.provider:
         #     galleries = galleries.filter(provider__iexact=self.provider)
 
+        if wanted_providers_count:
+            galleries = galleries.filter(provider__in=[x.slug for x in self.wanted_providers.all()])
+
+        if unwanted_providers_count:
+            galleries = galleries.exclude(provider__in=[x.slug for x in self.unwanted_providers.all()])
+
+        if has_wanted_tags:
+            for wanted_tag in self.wanted_tags.all():
+                galleries = galleries.filter(tags__id__exact=wanted_tag.id)
+
+        if has_unwanted_tags:
+            for unwanted_tag in self.unwanted_tags.all():
+                galleries = galleries.exclude(tags__id__exact=unwanted_tag.id)
+
         for gallery in galleries:
-            if wanted_providers_count:
-                if not self.wanted_providers.filter(slug=gallery.provider).first():
-                    continue
-            if unwanted_providers_count:
-                if self.unwanted_providers.filter(slug=gallery.provider).first():
-                    continue
             accepted = True
             if has_wanted_tags:
                 if not set(self.wanted_tags_list()).issubset(set(gallery.tag_list())):
@@ -2388,18 +2442,28 @@ class WantedGallery(models.Model):
                     accepted_tags = set(self.wanted_tags_list()).intersection(set(gallery.tag_list()))
                     gallery_tags_scopes = [x.split(":", maxsplit=1)[0] for x in gallery.tag_list() if len(x) > 1]
                     wanted_gallery_tags_scopes = [x.split(":", maxsplit=1)[0] for x in accepted_tags if len(x) > 1]
-                    scope_count: dict[str, int] = {}
+                    scope_count: dict[str, int] = defaultdict(int)
                     for scope_name in gallery_tags_scopes:
                         if scope_name in wanted_gallery_tags_scopes:
-                            if scope_name not in scope_count:
-                                scope_count[scope_name] = 1
+                            if self.exclusive_scope_name:
+                                if self.exclusive_scope_name == scope_name:
+                                    scope_count[scope_name] += 1
                             else:
                                 scope_count[scope_name] += 1
                     for scope, count in scope_count.items():
                         if count > 1:
                             accepted = False
+                # Review based on 'accept if none' scope.
+                if not accepted and self.wanted_tags_accept_if_none_scope:
+                    missing_tags = set(self.wanted_tags_list()).difference(set(gallery.tag_list()))
+                    # If all the missing tags start with the parameter,
+                    # and no other tag is in gallery with this parameter, mark as accepted
+                    scope_formatted = self.wanted_tags_accept_if_none_scope + ":"
+                    if all(x.startswith(scope_formatted) for x in missing_tags)\
+                            and not any(x.startswith(scope_formatted) for x in gallery.tag_list()):
+                        accepted = True
             if accepted & has_unwanted_tags:
-                if set(self.unwanted_tags_list()).issubset(set(gallery.tag_list())):
+                if any(item in gallery.tag_list() for item in self.unwanted_tags_list()):
                     accepted = False
 
             if accepted:
@@ -2589,7 +2653,7 @@ class EventLog(models.Model):
     content_object = GenericForeignKey('content_type', 'object_id')
     action = models.CharField(max_length=50, db_index=True)
     reason = models.CharField(max_length=200, blank=True, null=True, default='')
-    data = models.CharField(max_length=200, blank=True, null=True, default='')
+    data = models.CharField(max_length=500, blank=True, null=True, default='')
     result = models.CharField(max_length=200, blank=True, null=True, default='')
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     create_date = models.DateTimeField(default=django_tz.now, db_index=True)

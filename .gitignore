@@ -22,3 +22,4 @@ __pycache__/
 /cover/
 /venv/
 .dmypy.json
+aux_*.py

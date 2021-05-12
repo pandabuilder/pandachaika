@@ -41,13 +41,20 @@ def map_external_gallery_data_to_internal(gallery_data: DataDict) -> GalleryData
     m = re.search(constants.default_fjord_tags, ",".join(internal_gallery_data.tags))
     if m:
         internal_gallery_data.fjord = True
+    else:
+        internal_gallery_data.fjord = False
+
     if internal_gallery_data.thumbnail_url and constants.ex_thumb_url in internal_gallery_data.thumbnail_url:
         internal_gallery_data.thumbnail_url = internal_gallery_data.thumbnail_url.replace(constants.ex_thumb_url, constants.ge_thumb_url)
     return internal_gallery_data
 
 
 def link_from_gid_token_fjord(gid: str, token: str, fjord: bool = False) -> str:
-    return '{}/g/{}/{}/'.format(constants.ge_page, gid, token)
+    if fjord:
+        return '{}/g/{}/{}/'.format(constants.ex_page, gid, token)
+    else:
+        return '{}/g/{}/{}/'.format(constants.ge_page, gid, token)
+    # return '{}/g/{}/{}/'.format(constants.ge_page, gid, token)
 
 
 def get_gid_token_from_link(link: str) -> tuple[str, str]:
@@ -59,7 +66,7 @@ def get_gid_token_from_link(link: str) -> tuple[str, str]:
         return '', ''
 
 
-def fjord_gid_token_from_link(link: str) -> tuple[typing.Optional[str], typing.Optional[str], typing.Optional[str]]:
+def root_gid_token_from_link(link: str) -> tuple[typing.Optional[str], typing.Optional[str], typing.Optional[str]]:
     m = re.search(r'(.+)/g/(\d+)/(\w+)', link)
     if m:
         return m.group(1), m.group(2), m.group(3)

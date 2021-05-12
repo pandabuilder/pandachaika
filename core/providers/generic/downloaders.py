@@ -64,14 +64,19 @@ class GenericTorrentDownloader(BaseDownloader):
             )
             if client.expected_torrent_name == '':
                 from core.libs.bencoding import Decoder
-                if client.convert_to_base64 and type(torrent_data) is str:
-                    torrent_data = cast(str, torrent_data)
-                    torrent_metadata = Decoder(base64.decodebytes(torrent_data.encode('utf-8'))).decode()
-                else:
-                    torrent_data = cast(bytes, torrent_data)
-                    torrent_metadata = Decoder(torrent_data).decode()
-                client.expected_torrent_name = os.path.splitext(torrent_metadata[b'info'][b'name'])[0]
-                client.expected_torrent_extension = os.path.splitext(torrent_metadata[b'info'][b'name'])[1]
+                try:
+                    if client.convert_to_base64 and type(torrent_data) is str:
+                        torrent_data = cast(str, torrent_data)
+                        torrent_metadata = Decoder(base64.decodebytes(torrent_data.encode('utf-8'))).decode()
+                    else:
+                        torrent_data = cast(bytes, torrent_data)
+                        torrent_metadata = Decoder(torrent_data).decode()
+                    client.expected_torrent_name = os.path.splitext(torrent_metadata[b'info'][b'name'])[0]
+                    client.expected_torrent_extension = os.path.splitext(torrent_metadata[b'info'][b'name'])[1]
+                except (RuntimeError, EOFError):
+                    self.return_code = 0
+                    logger.error("Error decoding torrent data: {!r}".format(torrent_data))
+                    return
 
         if result:
             if client.expected_torrent_name:

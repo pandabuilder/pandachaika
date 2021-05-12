@@ -19,7 +19,7 @@ from core.base.utilities import (
 from core.base.types import GalleryData, DataDict
 from viewer.models import Gallery
 from .utilities import link_from_gid_token_fjord, map_external_gallery_data_to_internal, \
-    get_gid_token_from_link, fjord_gid_token_from_link, SearchHTMLParser
+    get_gid_token_from_link, root_gid_token_from_link, SearchHTMLParser
 from . import constants
 from . import utilities
 
@@ -165,11 +165,16 @@ class Parser(BaseParser):
 
         return unique_urls
 
-    def get_values_from_gallery_link_list(self, url_list: Iterable[str]) -> list[GalleryData]:
+    def get_values_from_gallery_link_list(self, url_list: Iterable[str], use_fjord: bool = False) -> list[GalleryData]:
 
         gid_token_chunks = list(chunks([get_gid_token_from_link(link) for link in url_list], 25))
 
         galleries_data = []
+
+        if self.own_settings.cookies and use_fjord:
+            api_page = constants.ex_api_url
+        else:
+            api_page = constants.ge_api_url
 
         for i, group in enumerate(gid_token_chunks):
 
@@ -177,9 +182,10 @@ class Parser(BaseParser):
                 time.sleep(self.own_settings.wait_timer)
             if not self.settings.silent_processing:
                 logger.info(
-                    "Calling fjord API ({}). "
+                    "Calling API ({}), URL: {}. "
                     "Gallery group: {}, galleries in group: {}, total groups: {}".format(
                         self.name,
+                        api_page,
                         i + 1,
                         len(group),
                         len(gid_token_chunks)
@@ -195,7 +201,7 @@ class Parser(BaseParser):
             request_dict['data'] = json.dumps(data)
 
             response = request_with_retries(
-                constants.ge_api_url,
+                api_page,
                 request_dict,
                 post=True,
             )
@@ -217,21 +223,31 @@ class Parser(BaseParser):
                     )
                     continue
                 internal_gallery_data = map_external_gallery_data_to_internal(gallery_data)
-                m = re.search(constants.default_fjord_tags, ",".join(internal_gallery_data.tags))
-                if m:
-                    internal_gallery_data.fjord = True
+                if use_fjord and internal_gallery_data.fjord:
+                    internal_gallery_data.root = constants.ex_page
+                    internal_gallery_data.link = link_from_gid_token_fjord(
+                        gallery_data['gid'], gallery_data['token'], True
+                    )
                 else:
-                    internal_gallery_data.fjord = False
+                    internal_gallery_data.root = constants.ge_page
+                    internal_gallery_data.link = link_from_gid_token_fjord(
+                        gallery_data['gid'], gallery_data['token'], False
+                    )
                 galleries_data.append(internal_gallery_data)
 
         return galleries_data
 
     def get_values_from_gallery_link(self, link: str) -> Optional[GalleryData]:
 
-        fjord, gid, token = fjord_gid_token_from_link(link)
+        link_root, gid, token = root_gid_token_from_link(link)
 
-        if fjord is None or gid is None or token is None:
+        if link_root is None or gid is None or token is None:
             return None
+
+        if self.own_settings.use_ex_for_fjord and self.own_settings.cookies and link_root == constants.ex_api_url:
+            api_page = constants.ex_api_url
+        else:
+            api_page = constants.ge_api_url
 
         data = utilities.request_data_from_gid_token_iterable([(gid, token)])
 
@@ -242,7 +258,7 @@ class Parser(BaseParser):
         request_dict['data'] = json.dumps(data)
 
         response = request_with_retries(
-            constants.ge_api_url,
+            api_page,
             request_dict,
             post=True,
         )
@@ -408,6 +424,7 @@ class Parser(BaseParser):
             return
 
         fetch_format_galleries_chunks = list(chunks(fetch_format_galleries, 25))
+        fjord_galleries: list[str] = []
         for i, group in enumerate(fetch_format_galleries_chunks):
             # Set based on recommendation in official documentation
             if i % 3 == 2:
@@ -474,7 +491,21 @@ class Parser(BaseParser):
                     if wanted_only and not gallery_wanted_lists[internal_gallery_data.gid]:
                         continue
 
-                gallery_data_list.append(internal_gallery_data)
+                if self.own_settings.use_ex_for_fjord:
+                    m = re.search(constants.default_fjord_tags, ",".join(internal_gallery_data.tags))
+
+                    if m and self.own_settings.cookies:
+                        fjord_galleries.append(link_from_gid_token_fjord(gallery_data['gid'], gallery_data['token'], True))
+                    else:
+                        gallery_data_list.append(internal_gallery_data)
+                else:
+                    gallery_data_list.append(internal_gallery_data)
+
+        if self.own_settings.use_ex_for_fjord and fjord_galleries:
+            fjord_galleries_data = self.get_values_from_gallery_link_list(fjord_galleries, True)
+
+            if fjord_galleries_data:
+                gallery_data_list.extend(fjord_galleries_data)
 
         self.pass_gallery_data_to_downloaders(gallery_data_list, gallery_wanted_lists)
 

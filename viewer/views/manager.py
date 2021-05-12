@@ -10,7 +10,6 @@ from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.conf import settings
 
-from core.base.setup import Settings
 from core.base.utilities import thread_exists
 from viewer.forms import GallerySearchForm, ArchiveSearchForm, WantedGallerySearchForm
 from viewer.models import Archive, Gallery, ArchiveMatches, Tag, WantedGallery, GalleryMatch, FoundGallery
@@ -365,140 +364,8 @@ def archive_filesize_different_from_gallery(request: HttpRequest) -> HttpRespons
 
 
 def missing_archives_for_galleries(request: HttpRequest) -> HttpResponse:
-    p = request.POST
-    get = request.GET
-
-    title = get.get("title", '')
-    tags = get.get("tags", '')
-
-    try:
-        page = int(get.get("page", '1'))
-    except ValueError:
-        page = 1
-
-    if 'clear' in get:
-        form = GallerySearchForm()
-    else:
-        form = GallerySearchForm(initial={'title': title, 'tags': tags})
-
-    if p and request.user.is_staff:
-        pks = []
-        for k, v in p.items():
-            if k.startswith("sel-"):
-                # k, pk = k.split('-')
-                # results[pk][k] = v
-                pks.append(v)
-
-        preserved = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(pks)])
-
-        results_gallery = Gallery.objects.filter(id__in=pks).order_by(preserved)
-
-        if 'delete_galleries' in p:
-            for gallery in results_gallery:
-                message = 'Removing gallery: {}, link: {}'.format(gallery.title, gallery.get_link())
-                logger.info(message)
-                messages.success(request, message)
-                gallery.mark_as_deleted()
-        elif 'publish_galleries' in p:
-            for gallery in results_gallery:
-                message = 'Publishing gallery: {}, link: {}'.format(gallery.title, gallery.get_link())
-                logger.info(message)
-                messages.success(request, message)
-                gallery.set_public()
-        elif 'private_galleries' in p:
-            for gallery in results_gallery:
-                message = 'Making private gallery: {}, link: {}'.format(gallery.title, gallery.get_link())
-                logger.info(message)
-                messages.success(request, message)
-                gallery.set_private()
-        elif 'download_galleries' in p:
-            for gallery in results_gallery:
-                message = 'Queueing gallery: {}, link: {}'.format(gallery.title, gallery.get_link())
-                logger.info(message)
-                messages.success(request, message)
-
-                # Force replace_metadata when queueing from this list, since it's mostly used to download non used.
-                current_settings = Settings(load_from_config=crawler_settings.config)
-
-                if current_settings.workers.web_queue:
-
-                    current_settings.replace_metadata = True
-                    current_settings.retry_failed = True
-
-                    if 'reason' in p and p['reason'] != '':
-                        reason = p['reason']
-                        # Force limit string length (reason field max_length)
-                        current_settings.archive_reason = reason[:200]
-                        current_settings.archive_details = gallery.reason or ''
-                        current_settings.gallery_reason = reason[:200]
-                    elif gallery.reason:
-                        current_settings.archive_reason = gallery.reason
-
-                    current_settings.workers.web_queue.enqueue_args_list(
-                        (gallery.get_link(),),
-                        override_options=current_settings
-                    )
-        elif 'recall_api' in p:
-            message = 'Recalling API for {} galleries'.format(results_gallery.count())
-            logger.info(message)
-            messages.success(request, message)
-
-            gallery_links = [x.get_link() for x in results_gallery]
-            gallery_providers = list(results_gallery.values_list('provider', flat=True).distinct())
-
-            current_settings = Settings(load_from_config=crawler_settings.config)
-
-            if current_settings.workers.web_queue:
-                current_settings.set_update_metadata_options(providers=gallery_providers)  # type: ignore
-
-                current_settings.workers.web_queue.enqueue_args_list(gallery_links,
-                                                                     override_options=current_settings)
-
-    if 'force_public' in request.GET:
-        force_public = True
-    else:
-        force_public = False
-    if request.user.is_staff and not force_public:
-
-        providers = Gallery.objects.all().values_list('provider', flat=True).distinct()
-
-        params = {
-        }
-
-        for k, v in get.items():
-            params[k] = v
-
-        for k in gallery_filter_keys:
-            if k not in params:
-                params[k] = ''
-
-        results = filter_galleries_simple(params)
-
-        results = results.non_used_galleries().prefetch_related('foundgallery_set')  # type: ignore
-
-        paginator = Paginator(results, 50)
-        try:
-            results_page = paginator.page(page)
-        except (InvalidPage, EmptyPage):
-            results_page = paginator.page(paginator.num_pages)
-
-        d = {'results': results_page, 'providers': providers, 'force_public': force_public, 'form': form}
-    else:
-
-        params = {
-        }
-
-        for k, v in get.items():
-            params[k] = v
-
-        for k in gallery_filter_keys:
-            if k not in params:
-                params[k] = ''
-
-        results = filter_galleries_simple(params)
-
-        results = results.non_used_galleries(public=True, provider__in=['panda', 'fakku'])  # type: ignore
-        d = {'results': results, 'force_public': True}
+    results = Gallery.objects.non_used_galleries(public=True, provider__in=['panda', 'fakku'])  # type: ignore
+    d = {'results': results}
     return render(request, "viewer/archives_missing_for_galleries.html", d)
 
 
@@ -943,7 +810,7 @@ def found_galleries(request: HttpRequest) -> HttpResponse:
     except ValueError:
         page = 1
 
-    if not request.user.is_staff:
+    if not request.user.is_authenticated:
         results = FoundGallery.objects.filter(
             wanted_gallery__public=True,
             gallery__public=True

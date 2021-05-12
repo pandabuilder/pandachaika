@@ -79,11 +79,11 @@ class MegaArchiveDownloader(BaseDownloader):
             logger.error("The link could not be downloaded: {}".format(message_text))
             return
 
-        # If we downloaded a folder, just take the first result
+        # If we downloaded a folder, just take the first result. Folder returns full path, tested with megatools 1.11.0
         file_names = message_text.splitlines()
-        file_name = file_names[0]
+        file_name = os.path.basename(file_names[0])
 
-        output_path = os.path.join(directory_path, file_name)
+        output_path = file_names[0]
 
         if not os.path.isfile(output_path):
             self.return_code = 0

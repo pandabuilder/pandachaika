@@ -10,6 +10,8 @@ from django.utils.html import WRAPPING_PUNCTUATION, TRAILING_PUNCTUATION_CHARS, 
     smart_urlquote, simple_url_2_re
 from django.utils.safestring import SafeText, mark_safe, SafeData
 
+from viewer.models import Archive
+
 register = template.Library()
 
 T = TypeVar('T', float, int)
@@ -210,3 +212,14 @@ def _urlize_all_text(text, trim_url_limit=None, nofollow=False, autoescape=False
         elif autoescape:
             words[i] = html.escape(word)
     return ''.join(words)
+
+
+@register.filter
+def archive_title_class(archive: Archive) -> str:
+    if not archive.crc32:
+        title_class = 'archive-incomplete'
+    elif archive.gallery and archive.gallery.filesize and archive.filesize != archive.gallery.filesize:
+        title_class = 'archive-diff'
+    else:
+        title_class = ''
+    return title_class

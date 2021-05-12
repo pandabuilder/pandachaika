@@ -2,7 +2,9 @@ import re
 import typing
 from datetime import timedelta
 
-from core.base.utilities import format_title_to_wanted_search
+from bs4 import BeautifulSoup
+
+from core.base.utilities import format_title_to_wanted_search, request_with_retries
 from viewer.models import TweetPost, WantedGallery, Artist
 
 if typing.TYPE_CHECKING:
@@ -10,15 +12,53 @@ if typing.TYPE_CHECKING:
     from .settings import OwnSettings
 
 
+def get_image_link_from_tweet_text(tweet_text: str, settings: 'Settings') -> typing.Optional[str]:
+    tweet_links = re.findall(r"https://t.co/\w+", tweet_text)
+    for tweet_link in tweet_links:
+        request_dict = {
+            'timeout': settings.timeout_timer,
+            'allow_redirects': False
+        }
+        r = request_with_retries(
+            tweet_link,
+            request_dict,
+            post=False,
+        )
+        if not r:
+            return None
+        if 'Location' in r.headers:
+            if r.headers['Location'].startswith('https://www.wani.com/product/'):
+                request_dict_image = {
+                    'headers': settings.requests_headers,
+                    'timeout': settings.timeout_timer,
+                }
+                product_page = request_with_retries(
+                    r.headers['Location'],
+                    request_dict_image,
+                    post=False,
+                )
+                if not product_page:
+                    return None
+                product_page.encoding = 'utf-8'
+                soup = BeautifulSoup(product_page.text, 'html.parser')
+                product_head = soup.find("head")
+                if product_head:
+                    img_container = product_head.find("meta", property="og:image")
+                    if img_container:
+                        return img_container['content']
+
+    return None
+
+
 def match_tweet_with_wanted_galleries(tweet_obj: TweetPost, settings: 'Settings', own_settings: 'OwnSettings'):
 
     publisher = 'wanimagazine'
     source = 'twitter'
 
-    yield("Tweet id: {}, processing...".format(tweet_obj.tweet_id))
+    yield "Tweet id: {}, processing...".format(tweet_obj.tweet_id)
 
     if not tweet_obj.text:
-        yield ("Created tweet id: {} did not contain text to analyze".format(tweet_obj.tweet_id))
+        yield "Created tweet id: {} did not contain text to analyze".format(tweet_obj.tweet_id)
         return
 
     match_tweet_type = re.search('【(.+)】(.*)', tweet_obj.text, re.DOTALL)
@@ -109,12 +149,16 @@ def match_tweet_with_wanted_galleries(tweet_obj: TweetPost, settings: 'Settings'
                         mention_date
                     )
                 )
-
-            if mention_created and tweet_obj.media_url:
-                mention.save_img(tweet_obj.media_url)
-                # wanted_gallery.calculate_nearest_release_date()
                 wanted_gallery.release_date = release_date
                 wanted_gallery.save()
+
+            if not mention.thumbnail:
+                if tweet_obj.media_url:
+                    mention.save_img(tweet_obj.media_url)
+                else:
+                    img_link = get_image_link_from_tweet_text(tweet_obj.text, settings)
+                    if img_link:
+                        mention.save_img(img_link)
 
             for artist in artists:
                 artist_name = artist
@@ -211,12 +255,16 @@ def match_tweet_with_wanted_galleries(tweet_obj: TweetPost, settings: 'Settings'
                             mention_date
                         )
                     )
-
-                if mention_created and tweet_obj.media_url:
-                    mention.save_img(tweet_obj.media_url)
-                    # wanted_gallery.calculate_nearest_release_date()
                     wanted_gallery.release_date = release_date
                     wanted_gallery.save()
+
+                if not mention.thumbnail:
+                    if tweet_obj.media_url:
+                        mention.save_img(tweet_obj.media_url)
+                    else:
+                        img_link = get_image_link_from_tweet_text(tweet_obj.text, settings)
+                        if img_link:
+                            mention.save_img(img_link)
 
                 artist_obj = Artist.objects.filter(name_jpn=artist_name).first()
                 if not artist_obj:
@@ -224,5 +272,7 @@ def match_tweet_with_wanted_galleries(tweet_obj: TweetPost, settings: 'Settings'
                         name=artist_name, name_jpn=artist_name, twitter_handle=twitter_handle
                     )
                 wanted_gallery.artists.add(artist_obj)
+            else:
+                yield ("Book type could not be determined, skipping.")
     else:
         yield("Created tweet id: {} did not match the pattern".format(tweet_obj.tweet_id))

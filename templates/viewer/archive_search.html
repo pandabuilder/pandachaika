@@ -184,7 +184,7 @@
                   {% else %}
                     <td>{{ archive.gallery.posted|date:"SHORT_DATE_FORMAT" }}</td>
                   {% endif %}
-                    <td><a href="{% url 'viewer:archive' archive.pk %}" class="{% if not archive.crc32 %}archive-incomplete{% endif %}" title="{{ archive.title_jpn }}">{{ archive.best_title }}</a></td>
+                    <td><a href="{% url 'viewer:archive' archive.pk %}" class="{% if not archive.crc32 %}archive-incomplete{% endif %}" title="{{ archive.title_jpn|default:"" }}">{{ archive.best_title }}</a></td>
                     <td>{{ archive.source_type }}</td>
                     <td>{{ archive.reason }}</td>
                   <td>{{ archive.filecount }}</td>

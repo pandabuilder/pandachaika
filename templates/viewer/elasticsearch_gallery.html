@@ -1,0 +1,195 @@
+{% extends "viewer/base.html" %}
+{% load static %}
+{% load viewer_extras %}
+{% block extrahead %}
+  <link href="{% static "css/dashboard.css" %}" rel="stylesheet">
+{% endblock %}
+{% block content %}
+
+  <div class="container-fluid">
+    <div class="row">
+      <div class="col-sm-3 col-md-2 sidebar">
+        <ul class="nav flex-column nav-sidebar">
+          <li class="nav-item"><a class="nav-link active" href=""><h3>FILTERS</h3><span class="sr-only">(current)</span></a></li>
+        </ul>
+        <ul class="nav flex-column nav-sidebar">
+          <li class="nav-item"><a class="nav-link active" href="">Tag<span class="sr-only">(current)</span></a></li>
+          {% for tag in aggregations.tags__full %}
+            <li class="nav-item"><a class="nav-link" href="{% url 'viewer:es-gallery-index-view'%}?{{tag.url_args}}">{{tag.name}}: {{tag.count}} ({% if tag.is_active %}-{% else %}+{% endif %})</a></li>
+          {% endfor %}
+          <li class="nav-item"><a class="nav-link active" href="">Category<span class="sr-only">(current)</span></a></li>
+          {% for category in aggregations.category %}
+            <li class="nav-item"><a class="nav-link" href="{% url 'viewer:es-gallery-index-view'%}?{{category.url_args}}">{{category.name}}: {{category.count}} ({% if category.is_active %}-{% else %}+{% endif %})</a></li>
+          {% endfor %}
+          <li class="nav-item"><a class="nav-link active" href="">Source<span class="sr-only">(current)</span></a></li>
+          {% for provider in aggregations.provider %}
+            <li class="nav-item"><a class="nav-link" href="{% url 'viewer:es-gallery-index-view'%}?{{provider.url_args}}">{{provider.name}}: {{provider.count}} ({% if provider.is_active %}-{% else %}+{% endif %})</a></li>
+          {% endfor %}
+          <li class="nav-item"><a class="nav-link active" href="">Reason<span class="sr-only">(current)</span></a></li>
+          {% for reason in aggregations.reason %}
+            <li class="nav-item"><a class="nav-link" href="{% url 'viewer:es-gallery-index-view'%}?{{reason.url_args}}">{{reason.name}}: {{reason.count}} ({% if reason.is_active %}-{% else %}+{% endif %})</a></li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="col-sm-9 offset-sm-3 col-md-10 offset-md-2 main">
+        <h2>Search powered by <a href="https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-query-string-query.html#query-string-syntax">Elasticsearch</a></h2>
+        <h5>Default fields: title, title_jpn, tags.full. Available fields: title, title_jpn, tags.full, tags.name, tags.scope, size, image_count, posted_date, create_date, provider, reason, category</h5>
+        <div class="row">
+          <div class="col-sm-12 text-center sub-header">
+            <form>
+              <div class="form-inline">
+                <input type="search" name="q" id="search" value="{{ q }}" class="form-control my-group" autocomplete="off" placeholder="Try your luck!">
+                <select id="sort" name="sort" class="form-control" title="sort">
+                  {% if user.is_staff %}
+                    <option value="create_date" {% if sort == "create_date" %} selected{% endif %}>create_date</option>
+                  {% endif %}
+                  <option value="posted_date" {% if sort == "posted_date" %} selected{% endif %}>posted_date</option>
+                  <option value="size" {% if sort == "size" %} selected{% endif %}>size</option>
+                  <option value="image_count" {% if sort == "image_count" %} selected{% endif %}>image_count</option>
+                  <option value="provider" {% if sort == "provider" %} selected{% endif %}>provider</option>
+                </select>
+                <select id="order" name="order" class="form-control" title="order" aria-label="sort_order">
+                  <option value="desc" {% if order == "desc" %} selected{% endif %}>descending</option>
+                  <option value="asc" {% if order == "asc" %} selected{% endif %}>ascending</option>
+                </select>
+                <button type="submit" class="btn btn-light">Search</button>
+                <button type="submit" name="clear" class="btn btn-light">Clear</button>
+              </div>
+              <div class="form-inline">
+              <div>
+                <input id="checkbox2" class="custom-cb" type="checkbox" name="metrics" value="1" {% if request.GET.metrics == '1' %}checked{% endif %}><label for="checkbox2"><span><span></span></span>Calculate metrics</label>
+                <input id="checkbox3" class="custom-cb" type="checkbox" name="show_url" value="1" {% if request.GET.show_url == '1' %}checked{% endif %}><label for="checkbox3"><span><span></span></span>Show Source URL</label>
+              </div>
+              </div>
+            </form>
+          </div>
+          {% if message %}
+            <h5 class="col-sm-12 text-center sub-header">{{ message }}</h5>
+          {% endif %}
+          {% if request.GET.metrics == '1' %}
+            <div class="table-responsive col-md-4 offset-md-4">
+            <table class="table table-striped table-sm">
+              <tr>
+                <td class="label-extended">Count</td>
+                <td>{{ paginator.count }}</td>
+              </tr>
+              <tr>
+                <td class="label-extended">Total size</td>
+                <td>{{ aggregations.sum_size|default:"0" }} bytes ({{ aggregations.sum_size|filesizeformat }})</td>
+              </tr>
+              <tr>
+                <td class="label-extended">Average size</td>
+                <td>{{ aggregations.avg_size|floatformat:"0"|default:"0" }} bytes ({{ aggregations.avg_size|filesizeformat }})</td>
+              </tr>
+              <tr>
+                <td class="label-extended">Maximum size</td>
+                <td>{{ aggregations.max_size|default:"0" }} bytes ({{ aggregations.max_size|filesizeformat }})</td>
+              </tr>
+              <tr>
+                <td class="label-extended">Minimum size</td>
+                <td>{{ aggregations.min_size|default:"0" }} bytes ({{ aggregations.min_size|filesizeformat }})</td>
+              </tr>
+              <tr>
+                <td class="label-extended">Total pages</td>
+                <td>{{ aggregations.sum_count|floatformat:"0"|default:"0" }}</td>
+              </tr>
+              <tr>
+                <td class="label-extended">Average pages</td>
+                <td>{{ aggregations.avg_count|floatformat:"0"|default:"0" }}</td>
+              </tr>
+              <tr>
+                <td class="label-extended">Maximum pages</td>
+                <td>{{ aggregations.max_count|floatformat:"0"|default:"0" }}</td>
+              </tr>
+              <tr>
+                <td class="label-extended">Minimum pages</td>
+                <td>{{ aggregations.min_count|floatformat:"0"|default:"0" }}</td>
+              </tr>
+            </table>
+            </div>
+          {% endif %}
+          {% if not results %}
+            <h5 class="col-sm-12 text-center">No results!</h5>
+          {% else %}
+            <h5 class="col-sm-12 text-center">Results on page: {{ results.from }} to {{ results.to }}, total: {{ paginator.count }}, current page: {{ paginator.number }} total pages: {{ paginator.num_pages }}</h5>
+            <div class="col-md-4 offset-md-4 text-center">
+              <nav>
+                <ul class="pagination justify-content-center mb-0">
+                  <li class="page-item{% if paginator.number == 1 %} disabled{% endif %}">
+                    <a class="page-link" href="?{% url_replace 'page' '1' %}" aria-label="First">
+                      <span aria-hidden="true">&laquo;</span>
+                    </a>
+                  </li>
+                  {% for p in paginator.page_range %}
+                    <li class="page-item{% if p == paginator.number %} active{% endif %}">
+                      <a class="page-link" href="?{% url_replace 'page' p %}">{{ p }}</a>
+                    </li>
+                  {% empty %}
+                    <li class="page-item active">
+                      <a class="page-link" href="?{% url_replace 'page' '1' %}">1</a>
+                    </li>
+                  {% endfor %}
+                  <li class="page-item{% if paginator.number == paginator.num_pages %} disabled{% endif %}">
+                    <a class="page-link" href="?{% url_replace 'page' paginator.num_pages %}" aria-label="Last">
+                      <span aria-hidden="true">&raquo;</span>
+                    </a>
+                  </li>
+                </ul>
+              </nav>
+            </div>
+        </div>
+          <table class="table table-striped table-responsive-md">
+            <thead>
+            <tr>
+              <th style="width:4%">#</th>
+              {% if user.is_staff %}
+                <th style="width:71%">Title</th>
+                {% if request.GET.show_url == '1' %}
+                <th>URL</th>
+                {% endif %}
+                <th style="width:4%"><a href="?{% url_multi_replace sort='image_count' order=order|revert_order %}">Images</a></th>
+                <th style="width:6%"><a href="?{% url_multi_replace sort='size' order=order|revert_order %}">Size</a></th>
+                <th style="width:5%"><a href="?{% url_multi_replace sort='category' order=order|revert_order %}">Category</a></th>
+                <th style="width:5%"><a href="?{% url_multi_replace sort='create_date' order=order|revert_order %}">Available</a></th>
+                <th style="width:5%"><a href="?{% url_multi_replace sort='posted_date' order=order|revert_order %}">Original</a></th>
+              {% else %}
+                <th style="width:76%">Title</th>
+                {% if request.GET.show_url == '1' %}
+                <th>URL</th>
+                {% endif %}
+                <th style="width:4%"><a href="?{% url_multi_replace sort='image_count' order=order|revert_order %}">Images</a></th>
+                <th style="width:6%"><a href="?{% url_multi_replace sort='size' order=order|revert_order %}">Size</a></th>
+                <th style="width:5%"><a href="?{% url_multi_replace sort='create_date' order=order|revert_order %}">Available</a></th>
+                <th style="width:5%"><a href="?{% url_multi_replace sort='posted_date' order=order|revert_order %}">Original</a></th>
+              {% endif %}
+            </tr>
+            </thead>
+            <tbody>
+            {% for hit in hits %}
+              <tr>
+                <td><a href="{% url 'viewer:gallery' hit.pk %}">{{ hit.pk }}</a></td>
+                <td>{% firstof hit.title hit.title_jpn "No title" %}</td>
+                {% if request.GET.show_url == '1' %}
+                <td>{{ hit.source_url|urlize_all_rel }}</td>
+                {% endif %}
+                <td>{{ hit.image_count }}</td>
+                <td>{{ hit.size|filesizeformat }}</td>
+                <td>{{ hit.category|default:'none' }}</td>
+                {% if user.is_staff %}
+                  <td>{{ hit.create_date_c|date:"SHORT_DATE_FORMAT" }}</td>
+                {% endif %}
+                <td>{{ hit.posted_date_c|date:"SHORT_DATE_FORMAT"|default:'none' }}</td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+
+          {% endif %}
+      </div>
+    </div>
+  </div>
+
+{% endblock content %}
+
+{% block afterJQ %}
+{% endblock afterJQ %}

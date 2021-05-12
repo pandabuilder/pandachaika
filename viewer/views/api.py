@@ -5,9 +5,9 @@ import json
 import re
 from collections import defaultdict
 
-from typing import Any, Union
+from typing import Any, Union, Optional
 
-from django.contrib.auth import authenticate, login
+from django.contrib.auth import authenticate, login, logout
 from django.core.paginator import Paginator, EmptyPage
 from django.db.models import Q, QuerySet
 from django.http import HttpResponse, HttpRequest, HttpResponseBadRequest
@@ -18,7 +18,7 @@ from django.conf import settings
 
 from core.base.setup import Settings
 from core.base.utilities import str_to_int, timestamp_or_zero
-from viewer.models import Archive, Gallery
+from viewer.models import Archive, Gallery, UserArchivePrefs
 from viewer.utils.matching import generate_possible_matches_for_archives
 from viewer.views.head import gallery_filter_keys, gallery_order_fields, filter_archives_simple, archive_filter_keys
 from viewer.utils.functions import gallery_search_results_to_json
@@ -26,23 +26,36 @@ from viewer.utils.functions import gallery_search_results_to_json
 crawler_settings = settings.CRAWLER_SETTINGS
 
 
+@csrf_exempt
 def api_login(request: HttpRequest) -> HttpResponse:
     if request.method == 'POST':
-        username = request.POST['username']
-        password = request.POST['password']
+        username = request.POST.get("username", '')
+        password = request.POST.get("password", '')
+        if not username or not password:
+            return HttpResponse(
+                json.dumps({'success': False, 'message': 'Username or password is empty.'}),
+                content_type='application/json'
+            )
         user = authenticate(username=username, password=password)
         if user is not None:
             if user.is_active:  # type: ignore
                 login(request, user)
                 data: dict[str, Any] = {'success': True}
             else:
-                data = {'success': False, 'error': 'This account has been disabled.'}
+                data = {'success': False, 'message': 'This account has been disabled.'}
         else:
-            data = {'success': False, 'error': 'Invalid login credentials.'}
+            data = {'success': False, 'message': 'Invalid login credentials.'}
 
         return HttpResponse(json.dumps(data), content_type='application/json')
 
     return HttpResponseBadRequest()
+
+
+@csrf_exempt
+def api_logout(request: HttpRequest) -> HttpResponse:
+    logout(request)
+    data = {'success': True, 'message': 'Logged out.'}
+    return HttpResponse(json.dumps(data), content_type='application/json')
 
 
 # NOTE: This is used by 3rd parties, do not modify, at most create a new function if something needs changing
@@ -559,6 +572,10 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                             else:
                                 response['message'] = "Crawling: " + args['link']
                     else:
+                        extra_args = []
+                        if 'reason' in args and args['reason']:
+                            extra_args.append(args['reason'])
+
                         if 'parentLink' in args:
                             parent_archive = None
                             parsers = crawler_settings.provider_context.get_parsers(crawler_settings)
@@ -576,16 +593,45 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                             if parent_archive and parent_archive.gallery:
                                 link = parent_archive.gallery.get_link()
                                 if 'action' in args and args['action'] == 'replaceFound':
+
+                                    # Preserve old archive extra data
+                                    old_user_favorites = UserArchivePrefs.objects.filter(archive=parent_archive).values('user', 'favorite_group')
+                                    old_custom_tags = parent_archive.custom_tags.all()
+                                    old_extracted = parent_archive.extracted
+
                                     parent_archive.gallery.mark_as_deleted()
                                     parent_archive.gallery = None
                                     parent_archive.delete_all_files()
                                     parent_archive.delete_files_but_archive()
                                     parent_archive.delete()
                                     response['message'] = "Crawling: " + args['link'] + ", deleting parent: " + link
-                                    crawler_settings.workers.web_queue.enqueue_args(args['link'])
+
+                                    def archive_callback(x: Optional['Archive'], crawled_url: Optional[str], result: str) -> None:
+
+                                        if x:
+                                            for old_user_favorite in old_user_favorites:
+                                                UserArchivePrefs.objects.get_or_create(
+                                                    archive=x,
+                                                    user=old_user_favorite['user'],
+                                                    favorite_group=old_user_favorite['favorite_group']
+                                                )
+
+                                            if old_custom_tags:
+                                                x.custom_tags.set(old_custom_tags)
+
+                                            if old_extracted and not x.extracted and x.crc32:
+                                                x.extract_toggle()
+
+                                    crawler_settings.workers.web_queue.enqueue_args_list(
+                                        [args['link']] + extra_args,
+                                        archive_callback=archive_callback
+                                    )
                                 elif 'action' in args and args['action'] == 'queueFound':
                                     response['message'] = "Crawling: " + args['link'] + ", keeping parent: " + link
-                                    crawler_settings.workers.web_queue.enqueue_args(args['link'])
+                                    extra_args_string = ''
+                                    if extra_args:
+                                        extra_args_string = " " + " ".join(extra_args)
+                                    crawler_settings.workers.web_queue.enqueue_args(args['link'] + extra_args_string)
                                 else:
                                     response['message'] = "Please confirm deletion of parent: " + link
                                     response['action'] = 'confirmDeletion'
@@ -607,7 +653,11 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                                     response['message'] = "Archive exists, crawling to check for redownload: " + args['link']
                                 else:
                                     response['message'] = "Crawling: " + args['link']
-                                crawler_settings.workers.web_queue.enqueue_args(args['link'])
+
+                                extra_args_string = ''
+                                if extra_args:
+                                    extra_args_string = " " + " ".join(extra_args)
+                                crawler_settings.workers.web_queue.enqueue_args(args['link'] + extra_args_string)
                         else:
                             archive = None
                             parsers = crawler_settings.provider_context.get_parsers(crawler_settings)
@@ -626,7 +676,10 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                                 response['message'] = "Archive exists, crawling to check for redownload: " + args['link']
                             else:
                                 response['message'] = "Crawling: " + args['link']
-                            crawler_settings.workers.web_queue.enqueue_args(args['link'])
+                            extra_args_string = ''
+                            if extra_args:
+                                extra_args_string = " " + " ".join(extra_args)
+                            crawler_settings.workers.web_queue.enqueue_args(args['link'] + extra_args_string)
                     if not response:
                         response['error'] = 'Could not parse request'
                     return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")

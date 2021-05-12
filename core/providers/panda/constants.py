@@ -12,6 +12,7 @@ ge_thumb_url = 'https://ehgt.org'
 ex_thumb_url = 'https://exhentai.org/t'
 
 ge_api_url = 'https://api.e-hentai.org/api.php'
+ex_api_url = 'https://exhentai.org/api.php'
 
 ex_page_short = 'exhentai.org'
 ge_page_short = 'e-hentai.org'

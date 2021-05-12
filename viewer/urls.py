@@ -1,9 +1,10 @@
 from django.urls import path
 from django.urls import re_path
+from django.conf import settings
 
 from viewer.views import head, browser, wanted, exp, api, archive, admin, manager, collaborators, groups, admin_api
 from viewer.feeds import LatestArchivesFeed
-from viewer.views.elasticsearch import ESHomePageView, autocomplete_view, title_suggest_view
+from viewer.views.elasticsearch import ESHomePageView, ESHomeGalleryPageView, autocomplete_view, title_suggest_view
 
 app_name = 'viewer'
 
@@ -11,6 +12,7 @@ urlpatterns = [
 
     re_path(r"^dir-browser/$", browser.directory_parser, name='directory-parser'),
     re_path(r"^api-login/*$", api.api_login, name='api-login'),
+    re_path(r"^api-logout/*$", api.api_logout, name='api-logout'),
     re_path(r"^jsearch/*$", api.json_search, name='json-search'),
     re_path(r"^api/*$", api.json_search, name='api'),
     re_path(r"^jsonapi$", api.json_parser, name='json-parser'),
@@ -24,8 +26,6 @@ urlpatterns = [
     re_path(r"^archive/(\d+)/generate-matches/$", archive.generate_matches, name='archive-generate-matches'),
     re_path(r"^archive/(\d+)/rematch/$", archive.rematch_archive, name='archive-rematch'),
     re_path(r"^archive/(\d+)/delete/$", archive.delete_archive, name='archive-delete'),
-    re_path(r"^archive/(\d+)/download/$", archive.archive_download, name='archive-download'),
-    re_path(r"^archive/(\d+)/ext-download/$", archive.archive_ext_download, name='archive-ext-download'),
     re_path(r"^archive/(\d+)/thumb/$", archive.archive_thumb, name='archive-thumb'),
     re_path(r"^update/(\d+)/([\w-]+)/(\d*)/$", archive.archive_update, name='archive-update-tool-id'),
     re_path(r"^update/(\d+)/([\w-]+)/$", archive.archive_update, name='archive-update-tool'),
@@ -51,6 +51,17 @@ urlpatterns = [
     re_path(r"^about/$", head.about, name='about'),
     re_path(r"^$", head.search, name="main-page"),
 ]
+
+if settings.CRAWLER_SETTINGS.urls.external_as_main_download and settings.CRAWLER_SETTINGS.urls.external_media_server:
+    urlpatterns += [
+        re_path(r"^archive/(\d+)/download/$", archive.archive_ext_download, name='archive-download'),
+        re_path(r"^archive/(\d+)/ext-download/$", archive.archive_download, name='archive-ext-download'),
+    ]
+else:
+    urlpatterns += [
+        re_path(r"^archive/(\d+)/download/$", archive.archive_download, name='archive-download'),
+        re_path(r"^archive/(\d+)/ext-download/$", archive.archive_ext_download, name='archive-ext-download'),
+    ]
 
 # Manager lists.
 urlpatterns += [
@@ -102,6 +113,7 @@ urlpatterns += [
     re_path(r"^col-update/(\d+)/([\w-]+)/$", collaborators.archive_update, name='col-archive-update-tool'),
     re_path(r"^col-update/(\d+)/([\w-]+)/([\w-]+)/$", collaborators.archive_update, name='col-archive-update-tool-name'),
     re_path(r"^col-update/(\d+)/$", collaborators.archive_update, name='col-archive-update'),
+    re_path(r"^col-missing-archives/$", collaborators.missing_archives_for_galleries, name='col-missing-archives'),
     re_path(r"^users-event-log/$", collaborators.users_event_log, name='users-event-log'),
 
 ]
@@ -133,4 +145,5 @@ urlpatterns += [
     re_path(r'^autocomplete-view/$', autocomplete_view, name='es-autocomplete-view'),
     re_path(r'^title-suggest/$', title_suggest_view, name='es-suggest-view'),
     re_path(r'^es-index/$', ESHomePageView.as_view(), name='es-index-view'),
+    re_path(r'^es-gallery-index/$', ESHomeGalleryPageView.as_view(), name='es-gallery-index-view'),
 ]

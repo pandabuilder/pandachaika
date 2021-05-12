@@ -11,6 +11,7 @@ from typing import Any, Optional, Union
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
+from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.models import User
 from django.http.request import HttpRequest
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
@@ -177,7 +178,8 @@ def session_settings(request: HttpRequest) -> HttpResponse:
 
 
 # TODO: Generalize this script for several providers.
-@login_required
+# Since we expose the api key here, until this is a per user parameter, only an admin can use this.
+@staff_member_required(login_url='viewer:login')  # type: ignore
 def panda_userscript(request: HttpRequest) -> HttpResponse:
 
     return render(
@@ -486,7 +488,7 @@ def filter_galleries(request: HttpRequest, session_filters: dict[str, str], requ
         ).filter(Q(num_contains__gt=0) | Q(num_chapters__gt=0))
     if request_filters["reason"]:
         results = results.filter(reason__contains=request_filters["reason"])
-    if request.user.is_staff:
+    if request.user.is_authenticated:
         if request_filters["not_used"]:
             results = results.non_used_galleries()  # type: ignore
         if request_filters["hidden"]:
@@ -1013,8 +1015,10 @@ def url_submit(request: HttpRequest) -> HttpResponse:
                 found_valid_urls.extend(urls_filtered)
                 for url_filtered in urls_filtered:
                     gid = parser.id_from_url(url_filtered)
+                    if not gid:
+                        continue
                     gallery = Gallery.objects.filter(gid=gid, provider=parser.name).first()
-                    url_provider_gallery_tuple.append((url_filtered, gallery))
+                    url_provider_gallery_tuple.append((url_filtered, gallery, parser.name, gid))
                     if not gallery:
                         url_messages.append('{}: New URL, will be added to the submit queue'.format(
                             url_filtered
@@ -1073,8 +1077,9 @@ def url_submit(request: HttpRequest) -> HttpResponse:
         extra_text = [x for x in urls if x not in found_valid_urls]
 
         gallery_submit_entries: dict[str, GallerySubmitEntry] = {}
+        gallery_submit_entries_by_id: dict[tuple[str, str], GallerySubmitEntry] = {}
 
-        for url_filtered, gallery in url_provider_gallery_tuple:
+        for url_filtered, gallery, provider_name, gallery_id in url_provider_gallery_tuple:
             if not gallery:
                 submit_entry = GallerySubmitEntry(
                     submit_url=url_filtered,
@@ -1093,6 +1098,7 @@ def url_submit(request: HttpRequest) -> HttpResponse:
                 submit_entry.save()
 
             gallery_submit_entries[url_filtered] = submit_entry
+            gallery_submit_entries_by_id[(gallery_id, provider_name)] = submit_entry
 
         no_commands_in_args_list: list[str] = list()
         for parser in parsers:
@@ -1100,11 +1106,16 @@ def url_submit(request: HttpRequest) -> HttpResponse:
                 no_commands_in_args_list.extend(parser.filter_accepted_urls(urls))
 
         def gallery_callback(x: Optional['Gallery'], crawled_url: Optional[str], result: str) -> None:
+            # TODO: This needs work, if an ex link is changed to a e-h link, it's not found
             if crawled_url in gallery_submit_entries:
-                if x:
-                    gallery_submit_entries[crawled_url].gallery = x
                 gallery_submit_entries[crawled_url].submit_result = result
                 gallery_submit_entries[crawled_url].save()
+            # For some reason we're getting a int here, convert to str
+            if x:
+                gallery_gid = str(x.gid)
+                if (gid, x.provider) in gallery_submit_entries_by_id:
+                    gallery_submit_entries_by_id[(gallery_gid, x.provider)].gallery = x
+                    gallery_submit_entries_by_id[(gallery_gid, x.provider)].save()
 
         current_settings.workers.web_queue.enqueue_args_list(
             no_commands_in_args_list,

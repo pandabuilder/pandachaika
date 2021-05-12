@@ -29,7 +29,7 @@ crawler_settings = settings.CRAWLER_SETTINGS
 logger = logging.getLogger(__name__)
 
 
-@permission_required('viewer.approve_gallery')
+@permission_required('viewer.view_submitted_gallery')
 def submit_queue(request: HttpRequest) -> HttpResponse:
     p = request.POST
     get = request.GET
@@ -63,7 +63,7 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
 
         gallery_entries = GallerySubmitEntry.objects.filter(id__in=pks).order_by(preserved)
 
-        if 'deny_galleries' in p:
+        if 'deny_galleries' in p and request.user.has_perm('viewer.approve_gallery'):
             for gallery_entry in gallery_entries:
                 gallery = gallery_entry.gallery
                 if gallery:
@@ -79,7 +79,7 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
                     event_log(
                         request.user,
                         'DENY_GALLERY',
-                        reason=user_reason,
+                        reason=entry_reason,
                         content_object=gallery,
                         result='denied'
                     )
@@ -97,12 +97,12 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
                     event_log(
                         request.user,
                         'DENY_URL',
-                        reason=user_reason,
+                        reason=entry_reason,
                         content_object=gallery_entry,
                         result='denied'
                     )
 
-        elif 'approve_galleries' in p:
+        elif 'approve_galleries' in p and request.user.has_perm('viewer.approve_gallery'):
             for gallery_entry in gallery_entries:
                 gallery = gallery_entry.gallery
                 if gallery:
@@ -121,7 +121,7 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
                     event_log(
                         request.user,
                         'APPROVE_GALLERY',
-                        reason=user_reason,
+                        reason=entry_reason,
                         content_object=gallery,
                         result='accepted'
                     )
@@ -139,12 +139,12 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
                     event_log(
                         request.user,
                         'APPROVE_URL',
-                        reason=user_reason,
+                        reason=entry_reason,
                         content_object=gallery_entry,
                         result='accepted'
                     )
 
-        elif 'download_galleries' in p:
+        elif 'download_galleries' in p and request.user.has_perm('viewer.approve_gallery'):
             for gallery_entry in gallery_entries:
                 gallery = gallery_entry.gallery
                 if gallery:
@@ -205,7 +205,7 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
                     event_log(
                         request.user,
                         'ACCEPT_GALLERY',
-                        reason=user_reason,
+                        reason=entry_reason,
                         content_object=gallery,
                         result='accepted'
                     )
@@ -264,7 +264,7 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
                         event_log(
                             request.user,
                             'ACCEPT_URL',
-                            reason=user_reason,
+                            reason=entry_reason,
                             content_object=gallery_entry,
                             result='accepted'
                         )
@@ -580,6 +580,9 @@ def user_crawler(request: AuthenticatedHttpRequest) -> HttpResponse:
         # create dictionary of properties for each archive
         current_settings.replace_metadata = False
         current_settings.config['allowed']['replace_metadata'] = 'no'
+        # Allow collaborators to readd a gallery if it failed.
+        current_settings.retry_failed = True
+        current_settings.config['allowed']['retry_failed'] = 'yes'
         for k, v in p.items():
             if k == "downloader":
                 if v == 'no-generic':
@@ -1074,3 +1077,175 @@ def upload_archive(request: HttpRequest) -> HttpResponse:
         'edit_form': edit_form
     }
     return render(request, "viewer/collaborators/add_archive.html", d)
+
+
+@permission_required('viewer.manage_missing_archives')
+def missing_archives_for_galleries(request: HttpRequest) -> HttpResponse:
+    p = request.POST
+    get = request.GET
+
+    title = get.get("title", '')
+    tags = get.get("tags", '')
+
+    try:
+        page = int(get.get("page", '1'))
+    except ValueError:
+        page = 1
+
+    if 'clear' in get:
+        form = GallerySearchForm()
+    else:
+        form = GallerySearchForm(initial={'title': title, 'tags': tags})
+
+    if p:
+        pks = []
+        for k, v in p.items():
+            if k.startswith("sel-"):
+                # k, pk = k.split('-')
+                # results[pk][k] = v
+                pks.append(v)
+
+        if 'reason' in p and p['reason'] != '':
+            reason = p['reason']
+        else:
+            reason = ''
+
+        preserved = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(pks)])
+
+        results_gallery = Gallery.objects.filter(id__in=pks).order_by(preserved)
+
+        if 'delete_galleries' in p and request.user.has_perm('viewer.mark_delete_gallery'):
+            for gallery in results_gallery:
+                message = 'Removing gallery: {}, link: {}'.format(gallery.title, gallery.get_link())
+                logger.info(message)
+                messages.success(request, message)
+                gallery.mark_as_deleted()
+        elif 'publish_galleries' in p and request.user.has_perm('viewer.publish_gallery'):
+            for gallery in results_gallery:
+                message = 'Publishing gallery: {}, link: {}'.format(gallery.title, gallery.get_link())
+                logger.info(message)
+                messages.success(request, message)
+                gallery.set_public()
+                event_log(
+                    request.user,
+                    'PUBLISH_GALLERY',
+                    reason=reason,
+                    content_object=gallery,
+                    result='success',
+                )
+        elif 'private_galleries' in p and request.user.has_perm('viewer.private_gallery'):
+            for gallery in results_gallery:
+                message = 'Making private gallery: {}, link: {}'.format(gallery.title, gallery.get_link())
+                logger.info(message)
+                messages.success(request, message)
+                gallery.set_private()
+                event_log(
+                    request.user,
+                    'UNPUBLISH_GALLERY',
+                    reason=reason,
+                    content_object=gallery,
+                    result='success',
+                )
+        elif 'download_galleries' in p and request.user.has_perm('viewer.download_gallery'):
+            for gallery in results_gallery:
+                message = 'Queueing gallery: {}, link: {}'.format(gallery.title, gallery.get_link())
+                logger.info(message)
+                messages.success(request, message)
+
+                # Force replace_metadata when queueing from this list, since it's mostly used to download non used.
+                current_settings = Settings(load_from_config=crawler_settings.config)
+
+                if current_settings.workers.web_queue:
+
+                    current_settings.replace_metadata = True
+                    current_settings.retry_failed = True
+
+                    if reason:
+                        # Force limit string length (reason field max_length)
+                        current_settings.archive_reason = reason[:200]
+                        current_settings.archive_details = gallery.reason or ''
+                        current_settings.gallery_reason = reason[:200]
+                    elif gallery.reason:
+                        current_settings.archive_reason = gallery.reason
+
+                    def archive_callback(x: Optional['Archive'], crawled_url: Optional[str], result: str) -> None:
+                        event_log(
+                            request.user,
+                            'DOWNLOAD_ARCHIVE',
+                            reason=reason,
+                            content_object=x,
+                            result=result,
+                            data=crawled_url
+                        )
+
+                    def gallery_callback(x: Optional['Gallery'], crawled_url: Optional[str], result: str) -> None:
+                        event_log(
+                            request.user,
+                            'DOWNLOAD_GALLERY',
+                            reason=reason,
+                            content_object=x,
+                            result=result,
+                            data=crawled_url
+                        )
+
+                    current_settings.workers.web_queue.enqueue_args_list(
+                        (gallery.get_link(),),
+                        override_options=current_settings,
+                        archive_callback=archive_callback,
+                        gallery_callback=gallery_callback,
+
+                    )
+        elif 'recall_api' in p and request.user.has_perm('viewer.update_metadata'):
+            message = 'Recalling API for {} galleries'.format(results_gallery.count())
+            logger.info(message)
+            messages.success(request, message)
+
+            gallery_links = [x.get_link() for x in results_gallery]
+            gallery_providers = list(results_gallery.values_list('provider', flat=True).distinct())
+
+            current_settings = Settings(load_from_config=crawler_settings.config)
+
+            if current_settings.workers.web_queue:
+                current_settings.set_update_metadata_options(providers=gallery_providers)  # type: ignore
+
+                def gallery_callback(x: Optional['Gallery'], crawled_url: Optional[str], result: str) -> None:
+                    event_log(
+                        request.user,
+                        'UPDATE_METADATA',
+                        reason=reason,
+                        content_object=x,
+                        result=result,
+                        data=crawled_url
+                    )
+
+                current_settings.workers.web_queue.enqueue_args_list(
+                    gallery_links,
+                    override_options=current_settings,
+                    gallery_callback=gallery_callback
+                )
+
+    providers = Gallery.objects.all().values_list('provider', flat=True).distinct()
+
+    params = {
+    }
+
+    for k, v in get.items():
+        params[k] = v
+
+    for k in gallery_filter_keys:
+        if k not in params:
+            params[k] = ''
+
+    results = filter_galleries_simple(params)
+
+    results = results.non_used_galleries().prefetch_related('foundgallery_set')  # type: ignore
+
+    paginator = Paginator(results, 50)
+    try:
+        results_page = paginator.page(page)
+    except (InvalidPage, EmptyPage):
+        results_page = paginator.page(paginator.num_pages)
+
+    d = {'results': results_page, 'providers': providers, 'form': form}
+
+    return render(request, "viewer/collaborators/archives_missing_for_galleries.html", d)

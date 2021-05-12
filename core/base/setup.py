@@ -154,7 +154,7 @@ class UrlSettings:
         'behind_proxy', 'enable_public_submit', 'enable_public_stats',
         'enable_gallery_frequency', 'enable_tag_frequency',
         'viewer_main_url', 'media_url', 'static_url', 'external_media_server',
-        'main_webserver_url'
+        'main_webserver_url', 'external_as_main_download'
     ]
 
     def __init__(self) -> None:
@@ -167,6 +167,7 @@ class UrlSettings:
         self.media_url: str = '/media/'
         self.static_url: str = '/static/'
         self.external_media_server = ''
+        self.external_as_main_download = False
         self.main_webserver_url = ''
 
 
@@ -251,9 +252,7 @@ class Settings:
 
         self.convert_rar_to_zip = False
 
-        self.requests_headers = {
-            'user-agent': 'Mozilla/5.0 (Windows NT 6.3; WOW64; rv:38.0) \
-            Gecko/20100101 Firefox/38.0',
+        self.requests_headers: dict[str, Any] = {
         }
 
         self.providers: dict[str, Any] = {}
@@ -625,6 +624,8 @@ class Settings:
                 self.urls.enable_tag_frequency = config['urls'].getboolean('enable_tag_frequency')
             if 'external_media_server' in config['urls']:
                 self.urls.external_media_server = config['urls']['external_media_server']
+            if 'external_as_main_download' in config['urls']:
+                self.urls.external_as_main_download = config['urls'].getboolean('external_as_main_download')
             if 'main_webserver_url' in config['urls']:
                 self.urls.main_webserver_url = config['urls']['main_webserver_url']
         if 'remote_site' in config:

@@ -25,20 +25,14 @@
                 <ul class="list-group w-100">
                   <li class="list-group-item"><input size="10" class="form-control" name="provider" value=""
                                                      placeholder="Provider filter"/></li>
-                  <li class="list-group-item"><input title="Cutoff" size="10" type="number" step="0.01" class="form-control"
-                                                     name="cutoff" value="" placeholder="Cutoff"/></li>
-                  <li class="list-group-item"><input title="Max matches" size="10" type="number" step="1" class="form-control"
-                                                     name="max-matches" value="10" placeholder="Max Matches"/></li>
                   <li class="list-group-item">
-                    <button class="btn btn-light" name="tool" value="search-providers-by-title">set provider matches</button>
-                  </li>
-                  <li class="list-group-item">
-                    <button class="btn btn-light" name="tool" value="search-internal-galleries-matches">set internal provider
-                      matches
+                    <button class="btn btn-light" name="tool" value="create-possible-matches-internally">
+                      Create possible matches locally
                     </button>
                   </li>
                   <li class="list-group-item">
-                    <button class="btn btn-light" name="tool" value="match-against-galleries">Match against galleries
+                    <button class="btn btn-light" name="tool" value="create-matches-internally">
+                      Create matches locally
                     </button>
                   </li>
                 </ul>
@@ -68,7 +62,7 @@
       Description
     </div>
     <ul class="list-group list-group-flush">
-      <li class="list-group-item d-flex justify-content-between py-1"><label class="my-0">Japanese title:</label><span>{{ wanted_gallery.title_jpn }}</span></li>
+      <li class="list-group-item d-flex justify-content-between py-1"><label class="my-0">Japanese title:</label><span>{{ wanted_gallery.title_jpn|default:"Not set" }}</span></li>
       <li class="list-group-item d-flex justify-content-between py-1">
       <div class="card w-100 text-white bg-secondary">
         <div class="card-header py-1">
@@ -87,9 +81,8 @@
         </ul>
       </div>
       </li>
-      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Book type:</label>{{ wanted_gallery.book_type }}</li>
-      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Book type:</label>{{ wanted_gallery.book_type }}</li>
-      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Publisher:</label>{{ wanted_gallery.publisher }}</li>
+      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Book type:</label>{{ wanted_gallery.book_type|default:"Not set" }}</li>
+      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Publisher:</label>{{ wanted_gallery.publisher|default:"Not set" }}</li>
       <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Pages:</label>{{ wanted_gallery.page_count }}</li>
       <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Reason:</label>{{ wanted_gallery.reason }}</li>
     </ul>
@@ -138,7 +131,9 @@
       </div>
       </li>
       <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Wanted tags exclusive scope:</label>{{ wanted_gallery.wanted_tags_exclusive_scope|yesno }}</li>
-      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Category:</label>{{ wanted_gallery.category }}</li>
+      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Exclusive scope name:</label>{{ wanted_gallery.exclusive_scope_name|default:"Not set" }}</li>
+      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Wanted tags 'accept if none' scope:</label>{{ wanted_gallery.wanted_tags_accept_if_none_scope|default:"Not set" }}</li>
+      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Category:</label>{{ wanted_gallery.category|default:"Not set" }}</li>
       <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Wanted page count lower bound:</label>{{ wanted_gallery.wanted_page_count_lower }}</li>
       <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Wanted page count upper bound:</label>{{ wanted_gallery.wanted_page_count_upper }}</li>
     </ul>
@@ -150,7 +145,7 @@
       Search information
     </div>
     <ul class="list-group list-group-flush">
-      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Provider:</label>{{ wanted_gallery.provider }}</li>
+      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Provider:</label>{{ wanted_gallery.provider|default:"Not set" }}</li>
       <li class="list-group-item d-flex justify-content-between py-1">
       <div class="card w-100 text-white bg-secondary">
         <div class="card-header py-1">
@@ -179,7 +174,8 @@
         </ul>
       </div>
       </li>
-      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Release date:</label>{{ wanted_gallery.release_date|date }}</li>
+      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Release date:</label>{{ wanted_gallery.release_date|date|default:"Not set" }}</li>
+      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Wait for time:</label>{{ wanted_gallery.wait_for_time|default:"Not set" }}</li>
       <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Should search:</label>{{ wanted_gallery.should_search|yesno }}</li>
       <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Keep searching:</label>{{ wanted_gallery.keep_searching|yesno }}</li>
       <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Found:</label>{{ wanted_gallery.found|yesno }}</li>

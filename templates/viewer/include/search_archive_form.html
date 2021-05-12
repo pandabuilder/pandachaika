@@ -75,7 +75,7 @@
         <td>
           <input id="checkbox-{{ archive.id }}" class="toggle-list custom-cb" type="checkbox" name="sel-{{ archive.id }}" value="{{ archive.pk }}"><label for="checkbox-{{ archive.id }}"><span><span></span></span></label>
         </td>
-        <td{% if not archive.crc32 %} class="archive-incomplete"{% endif %}>
+        <td class="{{ archive|archive_title_class }}">
           {{ archive.title }}
         </td>
         <td>

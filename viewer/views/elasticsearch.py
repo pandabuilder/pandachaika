@@ -28,13 +28,33 @@ if es_client:
 class ESHomePageView(TemplateView):
 
     template_name = "viewer/elasticsearch.html"
+    index_name = es_index_name
+
+    possible_sorts = [
+        'public_date',
+        'create_date',
+        'original_date',
+        'size',
+        'image_count',
+    ]
+
+    aggs_bucket_fields = [
+        ('tags__full', 'tags.full', 100),
+        ('source_type', 'source_type', 20),
+        ('reason', 'reason', 20)
+    ]
+
+    public_sort_field = 'public_date'
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
 
         if not settings.ES_ENABLED or not es_client:
             return {'message': 'Elasticsearch is disabled for this instance.'}
 
-        s = Search(using=es_client, index=es_index_name)
+        if not es_client.indices.exists(self.index_name):
+            return {'message': 'Expected index does not exist.'}
+
+        s = Search(using=es_client, index=self.index_name)
 
         message = None
         count_result = 0
@@ -44,9 +64,11 @@ class ESHomePageView(TemplateView):
 
         s = self.gen_es_query(self.request, s)
 
-        s.aggs.bucket('tags__full', 'terms', field='tags.full', size=100)
-        s.aggs.bucket('source_type', 'terms', field='source_type', size=20)
-        s.aggs.bucket('reason', 'terms', field='reason', size=20)
+        for bucket_name, field, size in self.aggs_bucket_fields:
+            s.aggs.bucket(bucket_name, 'terms', field=field, size=size)
+        # s.aggs.bucket('tags__full', 'terms', field='tags.full', size=100)
+        # s.aggs.bucket('source_type', 'terms', field='source_type', size=20)
+        # s.aggs.bucket('reason', 'terms', field='reason', size=20)
 
         if 'metrics' in self.request.GET:
             s.aggs.metric('avg_size', 'avg', field='size')
@@ -75,19 +97,13 @@ class ESHomePageView(TemplateView):
                 message = "Refine your search, can't go that far back (limit: {}).".format(max_result_window)
 
             # Sort
-            possible_sorts = (
-                'public_date',
-                'create_date',
-                'original_date',
-                'size',
-                'image_count',
-            )
+
             sort = self.request.GET.get('sort', '')
             order = self.request.GET.get('order', 'desc')
 
-            if not sort and (sort not in possible_sorts):
+            if not sort and (sort not in self.possible_sorts):
                 if not self.request.user.is_authenticated:
-                    sort = 'public_date'
+                    sort = self.public_sort_field
                 else:
                     sort = 'create_date'
             if order == 'desc':
@@ -196,7 +212,7 @@ class ESHomePageView(TemplateView):
         else:
             s = s.query('match_all')
         for field_name in req_dict.keys():
-            if field_name in ('page', 'q', 'order', 'sort', 'metrics'):
+            if field_name in ('page', 'q', 'order', 'sort', 'metrics', 'show_url'):
                 continue
             if '__' in field_name:
                 filter_field_name = field_name.replace('__', '.')
@@ -249,9 +265,45 @@ class ESHomePageView(TemplateView):
         return paginator
 
 
+class ESHomeGalleryPageView(ESHomePageView):
+
+    template_name = "viewer/elasticsearch_gallery.html"
+    index_name = settings.ES_GALLERY_INDEX_NAME
+
+    possible_sorts = [
+        'create_date',
+        'posted_date',
+        'size',
+        'image_count',
+        'provider',
+    ]
+
+    aggs_bucket_fields = [
+        ('tags__full', 'tags.full', 100),
+        ('category', 'category', 20),
+        ('provider', 'provider', 20),
+        ('reason', 'reason', 20)
+    ]
+
+    public_sort_field = 'posted_date'
+
+    @staticmethod
+    def convert_hit_to_template(hit):
+        hit.pk = hit.meta.id
+        # 2014-09-04T21:34:00+00:00
+        hit.create_date_c = datetime.strptime(hit.create_date.replace("+00:00", "+0000"), '%Y-%m-%dT%H:%M:%S%z')
+        if hit.posted_date:
+            hit.posted_date_c = datetime.strptime(hit.posted_date.replace("+00:00", "+0000"), '%Y-%m-%dT%H:%M:%S%z')
+        else:
+            hit.posted_date_c = None
+        return hit
+
+
 # Not being used client-side
 def autocomplete_view(request: HttpRequest) -> HttpResponse:
     if not settings.ES_ENABLED or not es_client:
+        return HttpResponse({})
+    if not es_client.indices.exists(es_index_name):
         return HttpResponse({})
 
     query = request.GET.get('q', '')
@@ -275,6 +327,11 @@ def autocomplete_view(request: HttpRequest) -> HttpResponse:
 
 # Not being used client-side
 def title_suggest_view(request: HttpRequest) -> HttpResponse:
+    if not settings.ES_ENABLED or not es_client:
+        return HttpResponse({})
+    if not es_client.indices.exists(es_index_name):
+        return HttpResponse({})
+
     query = request.GET.get('q', '')
     s = Search(using=es_client, index=es_index_name) \
         .source(['title']) \

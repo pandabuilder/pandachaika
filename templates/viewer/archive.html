@@ -45,7 +45,7 @@
       </li>
 
     {% endif %}
-    <li class="title-main{% if not archive.crc32 %} archive-incomplete{% endif %}"><h5>{{ archive.title }}</h5></li>
+    <li class="title-main {{ archive|archive_title_class }}"><h5>{{ archive.title }}</h5></li>
     {% if archive.title_jpn %}<li class="subtitle">{{ archive.title_jpn }}</li>{% endif %}
     <li class="subtitle">
       <table>
@@ -181,8 +181,8 @@
     {% endif %}
     <li class="subtitle">
     {% if user.is_staff %}
-      {% if not images and archive.crc32 %}
-          <a class="btn btn-light" href="{% url 'viewer:archive-extract-toggle' archive.pk %}">Expand archive</a>
+      {% if archive.crc32 %}
+          <a class="btn btn-light" href="{% url 'viewer:archive-extract-toggle' archive.pk %}">{% if not images %}Expand{% else %}Reduce{% endif %} archive</a>
           <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}">Download archive</a>
           <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}?original=1">Download with original name</a>
           <a class="btn btn-light" href="{% url 'viewer:api' %}?archive={{ archive.pk }}">JSON info</a>
@@ -193,6 +193,9 @@
       <button class="btn btn-secondary" id="edit-archive" data-toggle="collapse" data-target="#change-archive-form" name="edit-archive" type="button" aria-label="toggle edit archive">Edit <i class="fas fa-chevron-down"></i></button>
 
     {% elif archive.crc32 %}
+        {% if perms.viewer.expand_archive %}
+        <a class="btn btn-light" href="{% url 'viewer:archive-extract-toggle' archive.pk %}">{% if not images %}Expand{% else %}Reduce{% endif %} archive</a>
+        {% endif %}
         <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}">Download archive</a>
         <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}?original=1">Download with original name</a>
         <a class="btn btn-light" href="{% url 'viewer:api' %}?archive={{ archive.pk }}">JSON info</a>
@@ -212,7 +215,7 @@
     {% include 'viewer/include/archive_edit.html' %}
     {% endif %}
      <!-- Pagination and messages -->
-    {% if user.is_staff %}
+    {% if user.is_authenticated %}
       {% if images and images.paginator.num_pages > 1 %}
         <!-- Next/Prev page links  -->
         <li class="text-center">
@@ -229,8 +232,8 @@
       {% endif %}
     {% endif %}
 
-    {% if user.is_staff %}
-      {% if view == "edit" %}
+    {% if user.is_authenticated %}
+      {% if view == "edit" and user.is_staff %}
         <!-- EDIT VIEW  -->
         <li class="subtitle">
           <a href="{% url 'viewer:archive-generate-matches' archive.pk %}">generate matches internally</a> >>

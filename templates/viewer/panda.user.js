@@ -6,7 +6,7 @@
 // @include     http://exhentai.org/*
 // @include     https://e-hentai.org/*
 // @include     https://exhentai.org/*
-// @version     0.1.8
+// @version     0.1.9
 // @grant       GM_xmlhttpRequest
 // ==/UserScript==
 
@@ -58,12 +58,16 @@ function displayModalConfirm(message, cbOK, cbNO) {
 
 }
 
-function sendWebCrawlerAction ( link, parentLink, action ) {
+function sendWebCrawlerAction ( link, parentLink, action, reason ) {
 
     var data ={ api_key : '{{ api_key }}',operation : 'webcrawler',args : {link: link, action: action} };
 
     if(parentLink !== null) {
         data.args.parentLink = parentLink;
+    }
+
+    if(reason !== null) {
+        data.args.reason = reason;
     }
 
     GM_xmlhttpRequest( {
@@ -78,8 +82,8 @@ function sendWebCrawlerAction ( link, parentLink, action ) {
             if(jsonResponse.action === 'confirmDeletion') {
                 displayModalConfirm(
                     jsonResponse.message,
-                    function () { sendWebCrawlerAction(link, parentLink, 'replaceFound') },
-                    function () { sendWebCrawlerAction(link, parentLink, 'queueFound') }
+                    function () { sendWebCrawlerAction(link, parentLink, 'replaceFound', getDownloadReason()) },
+                    function () { sendWebCrawlerAction(link, parentLink, 'queueFound', getDownloadReason()) }
                 );
             }
             else {
@@ -92,6 +96,10 @@ function sendWebCrawlerAction ( link, parentLink, action ) {
 
 }
 
+function getDownloadReason() {
+    return localStorage.getItem('pandabackup-download reason');
+}
+
 function modifyDivList(currentDiv) {
 
     var galleryLink = currentDiv.getElementsByTagName('a')[0].getAttribute('href');
@@ -99,7 +107,7 @@ function modifyDivList(currentDiv) {
     var div2 =document.createElement('div');
     div2.style.margin ='5px 0px 0px 0px';
     div2.innerHTML ='<img class="n" src="https://ehgt.org/g/t.png" alt="T" title="' +galleryLink +'"/></img>';
-    div2.addEventListener('click',function () { sendWebCrawlerAction(galleryLink, null); });
+    div2.addEventListener('click',function () { sendWebCrawlerAction(galleryLink, null, null, getDownloadReason()); });
     currentDiv.parentNode.appendChild(div2);
 
 }
@@ -114,7 +122,7 @@ function modifyDivThumbnail(currentDiv) {
     div2.style.margin ='5px -20px 0px 10px';
     div2.innerHTML = '<img class="tn" src="https://ehgt.org/g/t.png" alt="T" title="' + galleryLink + '"/></img>';
     div2.addEventListener('click',function () {
-        sendWebCrawlerAction(galleryLink, null);
+        sendWebCrawlerAction(galleryLink, null, null, getDownloadReason());
     });
     rightBot.parentNode.appendChild(div2);
 
@@ -208,7 +216,7 @@ color: black;\
             var galleryLink =document.URL;
             var div2 =document.createElement('div');
             div2.innerHTML ='<img style="height: auto; width: auto" src="https://ehgt.org/g/t.png" alt="T" title="' + galleryLink + '"/></img>';
-            div2.addEventListener('click',function () { sendWebCrawlerAction(galleryLink, parentLink); });
+            div2.addEventListener('click',function () { sendWebCrawlerAction(galleryLink, parentLink, null, getDownloadReason()); });
             container.appendChild(div2);
         }());
         return true;
