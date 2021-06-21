@@ -4,6 +4,7 @@ from typing import Any
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
+from django.db import transaction
 from django.db.models import Q, Prefetch, F, Case, When
 from django.http import HttpRequest, HttpResponse, Http404, HttpResponseRedirect
 from django.shortcuts import render
@@ -143,6 +144,13 @@ def archive_group_edit(request: HttpRequest, pk: int = None, slug: str = None) -
     d: dict[str, Any] = {
         'archive_group': archive_group_instance,
     }
+
+    if 'extract_all' in get and request.user.has_perm('viewer.expand_archive'):
+        archives_to_extract = archive_group_instance.archivegroupentry_set.select_for_update().filter(archive__extracted=False)
+        with transaction.atomic():
+            for archive_group_entry in archives_to_extract:
+                archive_group_entry.archive.extract()
+        return HttpResponseRedirect(request.META["HTTP_REFERER"])
 
     if request.POST.get('submit-archive-group'):
         # create a form instance and populate it with data from the request:

@@ -1,0 +1,9 @@
+<form action="" method="POST" enctype="multipart/form-data">
+  {% csrf_token %}
+  <div id="add-change-gallery-form" class="page-line">
+    <table class="table">
+      {{ edit_form }}
+    </table>
+    <button type="submit" name="submit-gallery" value="Submit" class="btn btn-light mr-sm-1">Submit</button>
+  </div>
+</form>

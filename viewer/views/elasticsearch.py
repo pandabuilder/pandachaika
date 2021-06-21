@@ -29,6 +29,7 @@ class ESHomePageView(TemplateView):
 
     template_name = "viewer/elasticsearch.html"
     index_name = es_index_name
+    page_title = 'Archive Search'
 
     possible_sorts = [
         'public_date',
@@ -135,6 +136,7 @@ class ESHomePageView(TemplateView):
         context['sort'] = self.request.GET.get("sort", '')
         context['order'] = self.request.GET.get("order", 'desc')
         context['message'] = message
+        context['page_title'] = self.page_title
 
         return context
 
@@ -269,6 +271,7 @@ class ESHomeGalleryPageView(ESHomePageView):
 
     template_name = "viewer/elasticsearch_gallery.html"
     index_name = settings.ES_GALLERY_INDEX_NAME
+    page_title = 'Gallery Search'
 
     possible_sorts = [
         'create_date',
@@ -299,6 +302,7 @@ class ESHomeGalleryPageView(ESHomePageView):
         return hit
 
 
+# TODO: This method doesn't seem to be returning (response object)
 # Not being used client-side
 def autocomplete_view(request: HttpRequest) -> HttpResponse:
     if not settings.ES_ENABLED or not es_client:
@@ -310,22 +314,25 @@ def autocomplete_view(request: HttpRequest) -> HttpResponse:
 
     s = Search(using=es_client, index=es_index_name)
 
-    resp = s.suggest(
+    response = s.suggest(
         'title_complete',
         query,
         completion={
             "field": 'title_complete',
         }
-    )
-    options = resp['title_complete'][0]['options']
+    ).execute()
+
+    options = response['title_complete'][0]['options']
     data = json.dumps(
-        [{'id': i['_id'], 'value': i['text']} for i in options]
+        [{'id': i['_id'], 'title': i['text']} for i in options]
     )
     mime_type = 'application/json; charset=utf-8'
-    return HttpResponse(data, mime_type)
+    http_response = HttpResponse(data, mime_type)
+    # http_response['Access-Control-Allow-Origin'] = 'http://localhost:3000'
+    # http_response['Access-Control-Allow-Credentials'] = 'true'
+    return http_response
 
 
-# Not being used client-side
 def title_suggest_view(request: HttpRequest) -> HttpResponse:
     if not settings.ES_ENABLED or not es_client:
         return HttpResponse({})
@@ -339,7 +346,11 @@ def title_suggest_view(request: HttpRequest) -> HttpResponse:
     response = s.execute()
 
     data = json.dumps(
-        [{'id': i.meta.id, 'value': i.title} for i in response]
+        [{'id': i.meta.id, 'title': i.title} for i in response]
     )
     mime_type = 'application/json; charset=utf-8'
-    return HttpResponse(data, mime_type)
+    http_response = HttpResponse(data, mime_type)
+    if settings.DEBUG:
+        http_response['Access-Control-Allow-Origin'] = 'http://localhost:3000'
+        http_response['Access-Control-Allow-Credentials'] = 'true'
+    return http_response

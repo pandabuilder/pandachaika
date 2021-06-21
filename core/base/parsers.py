@@ -253,9 +253,9 @@ class BaseParser:
                 if any(item in gallery.tags for item in wanted_filter.unwanted_tags_list()):
                     accepted = False
             if accepted and wanted_filter.wanted_page_count_lower and gallery.filecount is not None and gallery.filecount:
-                accepted = gallery.filecount >= wanted_filter.wanted_page_count_lower
+                accepted = int(gallery.filecount) >= wanted_filter.wanted_page_count_lower
             if accepted and wanted_filter.wanted_page_count_upper and gallery.filecount is not None and gallery.filecount:
-                accepted = gallery.filecount <= wanted_filter.wanted_page_count_upper
+                accepted = int(gallery.filecount) <= wanted_filter.wanted_page_count_upper
             if accepted and wanted_filter.category and gallery.category is not None and gallery.category:
                 accepted = (wanted_filter.category.lower() == gallery.category.lower())
 
@@ -402,12 +402,13 @@ class BaseParser:
                         wanted_gallery_found.send(
                             sender=self.settings.gallery_model,
                             gallery=downloader[0].gallery_db_entry,
+                            archive=downloader[0].archive_db_entry,
                             wanted_gallery_list=gallery_wanted_lists[gallery.gid]
                         )
                 if downloader[0].archive_db_entry:
                     if not downloader[0].archive_only and downloader[0].gallery_db_entry:
                         logger.info(
-                            "Download complete, using downloader:  {}. Archive link: {}. Gallery link: {}".format(
+                            "Download complete, using downloader: {}. Archive link: {}. Gallery link: {}".format(
                                 downloader[0],
                                 downloader[0].archive_db_entry.get_absolute_url(),
                                 downloader[0].gallery_db_entry.get_absolute_url()
@@ -569,12 +570,15 @@ class InternalParser(BaseParser):
             if gallery.gid in found_galleries:
                 continue
 
-            if self.general_utils.discard_by_tag_list(gallery.tags):
+            discarded_tags = self.general_utils.discard_by_tag_list(gallery.tags)
+
+            if discarded_tags:
                 logger.info(
-                    "Gallery {} of {}: Skipping gallery {}, because it's tagged with global discarded tags".format(
+                    "Gallery {} of {}: Skipping gallery link {}, because it's tagged with global discarded tags: {}".format(
                         count,
                         len(total_galleries_filtered),
-                        gallery.title
+                        gallery.title,
+                        discarded_tags
                     )
                 )
                 continue

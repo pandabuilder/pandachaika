@@ -154,7 +154,7 @@ class UrlSettings:
         'behind_proxy', 'enable_public_submit', 'enable_public_stats',
         'enable_gallery_frequency', 'enable_tag_frequency',
         'viewer_main_url', 'media_url', 'static_url', 'external_media_server',
-        'main_webserver_url', 'external_as_main_download'
+        'main_webserver_url', 'external_as_main_download', 'elasticsearch_as_main_urls'
     ]
 
     def __init__(self) -> None:
@@ -163,6 +163,7 @@ class UrlSettings:
         self.enable_public_stats: bool = False
         self.enable_gallery_frequency: bool = False
         self.enable_tag_frequency: bool = False
+        self.elasticsearch_as_main_urls: bool = False
         self.viewer_main_url: str = ''
         self.media_url: str = '/media/'
         self.static_url: str = '/static/'
@@ -253,6 +254,9 @@ class Settings:
         self.convert_rar_to_zip = False
 
         self.requests_headers: dict[str, Any] = {
+        }
+
+        self.experimental: dict[str, Any] = {
         }
 
         self.providers: dict[str, Any] = {}
@@ -419,6 +423,8 @@ class Settings:
                 self.add_as_public = config['general'].getboolean('add_as_public')
             if 'timeout_timer' in config['general']:
                 self.timeout_timer = int(config['general']['timeout_timer'])
+        if 'experimental' in config:
+            self.experimental.update(config['experimental'])
         if 'matchers' in config:
             for matcher in config['matchers']:
                 self.matchers[matcher] = int(config['matchers'][matcher])
@@ -628,6 +634,8 @@ class Settings:
                 self.urls.external_as_main_download = config['urls'].getboolean('external_as_main_download')
             if 'main_webserver_url' in config['urls']:
                 self.urls.main_webserver_url = config['urls']['main_webserver_url']
+            if 'elasticsearch_as_main_urls' in config['urls']:
+                self.urls.elasticsearch_as_main_urls = config['urls'].getboolean('elasticsearch_as_main_urls')
         if 'remote_site' in config:
             if 'api_url' in config['remote_site']:
                 self.remote_site['api_url'] = config['remote_site']['api_url']

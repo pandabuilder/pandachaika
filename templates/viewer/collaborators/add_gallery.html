@@ -1,0 +1,25 @@
+{% extends "viewer/base.html" %}
+{% block title %}Add new Gallery | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+
+{% load static %}
+
+{% block content %}
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+  <div class="page-header">
+  <h2>Add new Gallery</h2>
+  <p class="lead">Add a new Gallery (Metadata). It will be added as a private Gallery</p>
+  <p class="lead">If no thumbnail is provided, it will be fetched by the server</p>
+  </div>
+  {% if perms.viewer.add_gallery %}
+  {% include 'viewer/include/gallery_add.html' %}
+  {% endif %}
+
+{% endblock %}
+{% block afterJQ %}
+  {{ edit_form.media }}
+{% endblock %}

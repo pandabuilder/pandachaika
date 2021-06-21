@@ -23,6 +23,7 @@ from core.base.utilities import timestamp_or_zero, str_to_int
 from viewer.forms import GallerySearchForm, SpanErrorList, GallerySearchSimpleForm
 from viewer.models import Gallery, Tag, Archive, Image, UserArchivePrefs
 from viewer.views.head import archive_filter_keys, filter_archives, render_error
+from viewer.views.api import simple_archive_filter
 
 crawler_settings = settings.CRAWLER_SETTINGS
 
@@ -317,7 +318,7 @@ def api(request: HttpRequest, model: str = None, obj_id: str = None, action: str
                 return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
             if action == 'extract_toggle':
                 try:
-                    if request.user.is_staff or data.get('api_key', '') == crawler_settings.api_key:
+                    if request.user.has_perm('viewer.expand_archive') or data.get('api_key', '') == crawler_settings.api_key:
                         with transaction.atomic():
                             archive = Archive.objects.select_for_update().get(pk=archive_id)
                             archive.extract_toggle()
@@ -330,6 +331,37 @@ def api(request: HttpRequest, model: str = None, obj_id: str = None, action: str
 
                 response = json.dumps({
                     'result': "ok",
+                    'change': {
+                        'field': 'extracted',
+                        'value': archive.extracted,
+                    },
+                })
+            elif action == 'extract_archive':
+                try:
+                    if request.user.has_perm('viewer.expand_archive') or data.get('api_key', '') == crawler_settings.api_key:
+                        with transaction.atomic():
+                            archive = Archive.objects.select_for_update().get(pk=archive_id)
+                            if archive.extracted:
+                                return HttpResponse(
+                                    json.dumps({
+                                        'result': "warning",
+                                        'message': "Archive: {} is already extracted.".format(archive_id)
+                                    }), content_type="application/json; charset=utf-8")
+                            archive.extract()
+                    else:
+                        return HttpResponse(json.dumps({
+                            'result': "error",
+                            'message': "You don't have permission for this action."
+                        }), content_type="application/json; charset=utf-8")
+                except Archive.DoesNotExist:
+                    return HttpResponse(json.dumps({
+                        'result': "error",
+                        'message': "Archive does not exist."
+                    }), content_type="application/json; charset=utf-8")
+
+                response = json.dumps({
+                    'result': "ok",
+                    'message': "Extraction successful.",
                     'change': {
                         'field': 'extracted',
                         'value': archive.extracted,
@@ -382,7 +414,7 @@ def api(request: HttpRequest, model: str = None, obj_id: str = None, action: str
                         'url': request.build_absolute_uri(reverse('viewer:archive', args=(archive.pk,))),
                         'expunged': archive.gallery.expunged if archive.gallery else '',
                         'rating': float(str_to_int(archive.gallery.rating)) if archive.gallery else '',
-                        'fjord': archive.gallery.fjord if archive.gallery else '',
+                        'fjord': archive.gallery.fjord if archive.gallery else None,
                         'tags': archive.tag_list_sorted(),
                         'extracted': archive.extracted,
                         'image': (request.build_absolute_uri(archive.thumbnail.url) if archive.thumbnail else None),
@@ -446,7 +478,23 @@ def api(request: HttpRequest, model: str = None, obj_id: str = None, action: str
             if 'extracted' in data:
                 archives_list_filtered = archives_list_filtered.filter(extracted=True)
 
-            response = archives_to_json_response(archives_list_filtered, request)
+            response = archives_to_json_response(archives_list_filtered.prefetch_related('tags', 'custom_tags'), request)
+        elif model == 'archives_simple':
+            q_args = data.get('q', '')
+            if request.user.is_authenticated or data.get('api_key', '') == crawler_settings.api_key:
+                results = simple_archive_filter(q_args, public=False)
+            else:
+                results = simple_archive_filter(q_args, public=True)
+            response = json.dumps(
+                [
+                    {
+                        'id': o.pk,
+                        'title': o.best_title,
+                        # 'tags': o.tag_list_sorted(),
+                    } for o in results
+                ]
+            )
+            return HttpResponse(response, content_type="application/json; charset=utf-8")
         elif model == 'me':
             response = json.dumps(
                 {
@@ -461,8 +509,9 @@ def api(request: HttpRequest, model: str = None, obj_id: str = None, action: str
         response = json.dumps({'result': "Unsupported request method"})
 
     http_response = HttpResponse(response, content_type="application/json; charset=utf-8")
-    # http_response['Access-Control-Allow-Origin'] = 'http://localhost:3000'
-    # http_response['Access-Control-Allow-Credentials'] = 'true'
+    if settings.DEBUG:
+        http_response['Access-Control-Allow-Origin'] = 'http://localhost:3000'
+        http_response['Access-Control-Allow-Credentials'] = 'true'
     return http_response
 
 

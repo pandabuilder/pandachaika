@@ -67,6 +67,8 @@
                 {% endif %}
                 {% if perms.viewer.manage_archive %}
                   <a class="dropdown-item" href="{% url 'viewer:manage-archives' %}?non_public=1">Manage archives</a>
+                  <a class="dropdown-item" href="{% url 'viewer:archives-by-field' %}">Similar archives by field</a>
+                  <a class="dropdown-item" href="{% url 'viewer:archives-by-thumbnail' %}">Similar archives by thumbnail</a>
                 {% endif %}
                 {% if perms.viewer.crawler_adder %}
                   <a class="dropdown-item" href="{% url 'viewer:user-crawler' %}">Add URLs</a>
@@ -99,7 +101,8 @@
               <a href="#" class="nav-link dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Lists<span class="caret"></span></a>
               <div class="dropdown-menu">
                 <a class="dropdown-item" href="{% url 'viewer:repeated-archives' %}">Repeated archives (same gallery)</a>
-                <a class="dropdown-item" href="{% url 'viewer:archives-by-field' %}">Repeated archives by field</a>
+                <a class="dropdown-item" href="{% url 'viewer:archives-by-field' %}">Similar archives by field</a>
+                <a class="dropdown-item" href="{% url 'viewer:archives-by-thumbnail' %}">Similar archives by thumbnail</a>
                 <a class="dropdown-item" href="{% url 'viewer:galleries-by-field' %}">Repeated galleries by field</a>
                 <a class="dropdown-item" href="{% url 'viewer:archive-filesize-different' %}">Archives not matching gallery filesize</a>
                 <a class="dropdown-item" href="{% url 'viewer:archive-not-present' %}">Archives with file not present in filesystem</a>

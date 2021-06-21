@@ -618,12 +618,14 @@ def logs(request: HttpRequest, tool: str = "all") -> HttpResponse:
             r'(?!' + current_base_uri + r')/' + crawler_settings.urls.viewer_main_url + r"archive/\d+/?",
             r'(?!' + current_base_uri + r')/' + crawler_settings.urls.viewer_main_url + r"gallery/\d+/?",
             r'(?!' + current_base_uri + r')/' + crawler_settings.urls.viewer_main_url + r"wanted-gallery/\d+/?",
+            r'(?!' + current_base_uri + r')/' + crawler_settings.urls.viewer_main_url + r"archive-group/[a-z0-9]+(?:-[a-z0-9]+)*/?",
         ]
     else:
         patterns = [
             r'(?<!' + current_base_uri + r')/archive/\d+/?',
             r'(?<!' + current_base_uri + r')/gallery/\d+/?',
             r'(?<!' + current_base_uri + r')/wanted-gallery/\d+/?',
+            r'(?<!' + current_base_uri + r')/archive-group/[a-z0-9]+(?:-[a-z0-9]+)*/?',
         ]
 
     def build_request(match_obj: typing.Match) -> str:

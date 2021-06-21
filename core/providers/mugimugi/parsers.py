@@ -139,11 +139,14 @@ class Parser(BaseParser):
             if not internal_gallery_data.link:
                 continue
 
-            if self.general_utils.discard_by_tag_list(internal_gallery_data.tags):
+            discarded_tags = self.general_utils.discard_by_tag_list(internal_gallery_data.tags)
+
+            if discarded_tags:
                 if not self.settings.silent_processing:
                     logger.info(
-                        "Skipping gallery link {} because it's tagged with global discarded tags".format(
-                            internal_gallery_data.link
+                        "Skipping gallery link {}, because it's tagged with global discarded tags: {}".format(
+                            internal_gallery_data.link,
+                            discarded_tags
                         )
                     )
                 continue

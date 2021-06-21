@@ -185,14 +185,19 @@ class Parser(BaseParser):
                         logger.info("{} Real GID: {}".format(discard_message, found_gallery.gid))
                         found_galleries.add(found_gallery.gid)
 
-            for count, gallery in enumerate(total_galleries_filtered):
+            for count, gallery in enumerate(total_galleries_filtered, start=1):
 
                 if gallery.gid in found_galleries:
                     continue
 
-                if self.general_utils.discard_by_tag_list(gallery.tags):
+                discarded_tags = self.general_utils.discard_by_tag_list(gallery.tags)
+
+                if discarded_tags:
                     logger.info(
-                        "Skipping gallery {}, because it's tagged with global discarded tags".format(gallery.title)
+                        "Skipping gallery link {}, because it's tagged with global discarded tags: {}".format(
+                            gallery.title,
+                            discarded_tags
+                        )
                     )
                     continue
 
@@ -207,7 +212,7 @@ class Parser(BaseParser):
                         continue
 
                 logger.info(
-                    "Gallery {} of {}: Gallery {} (GID: {}) will be processed.".format(
+                    "Gallery {} of {}: Gallery {} (Real GID: {}) will be processed.".format(
                         count,
                         len(total_galleries_filtered),
                         gallery.title,

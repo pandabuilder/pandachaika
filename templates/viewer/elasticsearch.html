@@ -1,4 +1,5 @@
 {% extends "viewer/base.html" %}
+{% block title %}{{ page_title }} | {{ block.super }}{% endblock %}
 {% load static %}
 {% load viewer_extras %}
 {% block extrahead %}
@@ -28,7 +29,7 @@
         </ul>
       </div>
       <div class="col-sm-9 offset-sm-3 col-md-10 offset-md-2 main">
-        <h2>Search powered by <a href="https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-query-string-query.html#query-string-syntax">Elasticsearch</a></h2>
+        <h2>{{ page_title }}: Powered by <a href="https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-query-string-query.html#query-string-syntax">Elasticsearch</a></h2>
         <h5>Default fields: title, title_jpn, tags.full. Available fields: title, title_jpn, tags.full, tags.name, tags.scope, size, image_count, public_date, original_date, source_type, reason, category</h5>
         <div class="row">
           <div class="col-sm-12 text-center sub-header">

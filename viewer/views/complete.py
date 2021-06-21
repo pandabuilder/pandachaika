@@ -12,12 +12,16 @@ from django.db.models import Q, QuerySet
 from django.http import HttpResponse, HttpRequest
 from django.template import Context
 from django.utils.html import format_html
+from django.conf import settings
 
 from viewer.models import Archive, Tag, Gallery, WantedGallery, ArchiveGroup, Provider
 
 
 if typing.TYPE_CHECKING:
     from django.db.models.query import ValuesQuerySet
+
+
+crawler_settings = settings.CRAWLER_SETTINGS
 
 
 class ArchiveAutocomplete(autocomplete.JalQuerySetView):
@@ -575,9 +579,20 @@ class GallerySelectAutocomplete(autocomplete.Select2QuerySetView):
 
         q = self.q
         q_formatted = '%' + q.replace(' ', '%') + '%'
-        m = re.search(r'(\d+)', q)
-        if m:
-            q_object = Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted) | Q(gid__exact=m.group(1))
+
+        gallery_id_provider = None
+
+        parsers = crawler_settings.provider_context.get_parsers(crawler_settings)
+
+        for parser in parsers:
+            if parser.id_from_url_implemented():
+                accepted_urls = parser.filter_accepted_urls((q,))
+                if accepted_urls:
+                    gallery_id_provider = parser.id_from_url(accepted_urls[0]), parser.name
+                    break
+
+        if gallery_id_provider:
+            q_object = Q(gid=gallery_id_provider[0], provider=gallery_id_provider[1])
         else:
             q_object = Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted)
         if self.request.user.is_authenticated:

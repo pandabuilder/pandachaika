@@ -69,6 +69,8 @@ class PostDownloader(object):
                     if self.web_queue and archive.gallery:
                         temp_settings = Settings(load_from_config=self.settings.config)
                         temp_settings.allow_downloaders_only(['panda_archive'], True, True, True)
+                        if archive.reason:
+                            temp_settings.archive_reason = archive.reason
                         self.web_queue.enqueue_args_list((archive.gallery.get_link(),), override_options=temp_settings)
                         return
                 else:
@@ -103,6 +105,8 @@ class PostDownloader(object):
                     if self.web_queue:
                         temp_settings = Settings(load_from_config=self.settings.config)
                         temp_settings.allow_downloaders_only(['panda_archive'], True, True, True)
+                        if archive.reason:
+                            temp_settings.archive_reason = archive.reason
                         self.web_queue.enqueue_args_list(
                             (updated_archive.gallery.get_link(), ),
                             override_options=temp_settings
@@ -441,6 +445,10 @@ class PostDownloader(object):
                     img_file = os.path.split(img_file_original)[1]
                     if mode == 'local_move':
                         shutil.move(img_file_original, os.path.join(dir_path, img_file))
+                    # Disabled since we can't hardlink to a temp filesystem
+                    elif mode == 'local_hardlink':
+                        # os.link(img_file_original, os.path.join(dir_path, img_file))
+                        shutil.copy(img_file_original, os.path.join(dir_path, img_file))
                     else:
                         shutil.copy(img_file_original, os.path.join(dir_path, img_file))
                 with ZipFile(os.path.join(self.settings.MEDIA_ROOT,
@@ -482,6 +490,10 @@ class PostDownloader(object):
                             continue
                         if mode == 'local_move':
                             shutil.move(os.path.join(target, img_file), os.path.join(dir_path, img_file))
+                        # Disabled since we can't hardlink to a temp filesystem
+                        elif mode == 'local_hardlink':
+                            # os.link(os.path.join(target, img_file), os.path.join(dir_path, img_file))
+                            shutil.copy(os.path.join(target, img_file), os.path.join(dir_path, img_file))
                         else:
                             shutil.copy(os.path.join(target, img_file), os.path.join(dir_path, img_file))
 
@@ -499,6 +511,8 @@ class PostDownloader(object):
                         ))
                     if mode == 'local_move':
                         shutil.move(target, matched_file[2].zipped.path)
+                    elif mode == 'local_hardlink':
+                        os.link(target, matched_file[2].zipped.path)
                     else:
                         shutil.copy(target, matched_file[2].zipped.path)
                     if self.settings.convert_rar_to_zip:

@@ -5,6 +5,7 @@ import logging
 from os.path import basename
 from urllib.parse import quote
 import typing
+from typing import Optional
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -335,7 +336,7 @@ def extract_toggle(request: HttpRequest, pk: int) -> HttpResponse:
     """Extract archive toggle."""
 
     if not request.user.has_perm('viewer.expand_archive'):
-        return render_error(request, "You don't have permission the expand an Archive.")
+        return render_error(request, "You don't have the permission to expand an Archive.")
     try:
         with transaction.atomic():
             archive = Archive.objects.select_for_update().get(pk=pk)
@@ -358,11 +359,72 @@ def extract_toggle(request: HttpRequest, pk: int) -> HttpResponse:
 
 
 @login_required
+def extract(request: HttpRequest, pk: int) -> HttpResponse:
+    """Extract archive toggle."""
+
+    if not request.user.has_perm('viewer.expand_archive'):
+        return render_error(request, "You don't have the permission to expand an Archive.")
+    try:
+        with transaction.atomic():
+            archive = Archive.objects.select_for_update().get(pk=pk)
+            if archive.extracted:
+                return render_error(request, "Archive is already extracted.")
+
+            resized = bool(request.GET.get("resized", ''))
+
+            if resized:
+                logger.info('Expanding images (resized) for archive: {}'.format(archive.get_absolute_url()))
+            else:
+                logger.info('Expanding images for archive: {}'.format(archive.get_absolute_url()))
+
+            archive.extract(resized=resized)
+            action = 'EXPAND_ARCHIVE'
+            event_log(
+                request.user,
+                action,
+                content_object=archive,
+                result='success'
+            )
+    except Archive.DoesNotExist:
+        raise Http404("Archive does not exist")
+
+    return HttpResponseRedirect(request.META["HTTP_REFERER"])
+
+
+@login_required
+def reduce(request: HttpRequest, pk: int) -> HttpResponse:
+    """Reduce archive."""
+
+    if not request.user.has_perm('viewer.expand_archive'):
+        return render_error(request, "You don't have the permission to expand an Archive.")
+    try:
+        with transaction.atomic():
+            archive = Archive.objects.select_for_update().get(pk=pk)
+            if not archive.extracted:
+                return render_error(request, "Archive is already reduced.")
+
+            logger.info('Reducing images for archive: {}'.format(archive.get_absolute_url()))
+
+            archive.reduce()
+            action = 'REDUCE_ARCHIVE'
+            event_log(
+                request.user,
+                action,
+                content_object=archive,
+                result='success'
+            )
+    except Archive.DoesNotExist:
+        raise Http404("Archive does not exist")
+
+    return HttpResponseRedirect(request.META["HTTP_REFERER"])
+
+
+@login_required
 def public_toggle(request: HttpRequest, pk: int) -> HttpResponse:
     """Public archive toggle."""
 
-    if not request.user.is_staff:
-        return render_error(request, "You need to be an admin to toggle public access for an archive.")
+    if not request.user.has_perm('viewer.publish_archive'):
+        return render_error(request, "You don't have the permission to change public status for an Archive.")
 
     try:
         archive = Archive.objects.get(pk=pk)
@@ -416,8 +478,8 @@ def recalc_info(request: HttpRequest, pk: int) -> HttpResponse:
 def recall_api(request: HttpRequest, pk: int) -> HttpResponse:
     """Recall provider API, if possible."""
 
-    if not request.user.is_staff:
-        return render_error(request, "You need to be an admin to recall the API.")
+    if not request.user.has_perm('viewer.update_metadata'):
+        return render_error(request, "You don't have the permission to refresh source metadata on an Archive.")
 
     try:
         archive = Archive.objects.get(pk=pk)
@@ -435,7 +497,20 @@ def recall_api(request: HttpRequest, pk: int) -> HttpResponse:
 
         current_settings.set_update_metadata_options(providers=(gallery.provider,))
 
-        current_settings.workers.web_queue.enqueue_args_list((gallery.get_link(),), override_options=current_settings)
+        def gallery_callback(x: Optional['Gallery'], crawled_url: Optional[str], result: str) -> None:
+            event_log(
+                request.user,
+                'UPDATE_METADATA',
+                content_object=x,
+                result=result,
+                data=crawled_url
+            )
+
+        current_settings.workers.web_queue.enqueue_args_list(
+            (gallery.get_link(),),
+            override_options=current_settings,
+            gallery_callback=gallery_callback
+        )
 
         logger.info(
             'Updating gallery API data for gallery: {} and related archives'.format(

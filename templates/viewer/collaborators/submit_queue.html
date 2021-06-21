@@ -40,6 +40,7 @@
         <input id="checkbox-f2" class="custom-cb" type="checkbox" name="approved" value="1" {% if "approved" in request.GET %}checked{% endif %}><label for="checkbox-f2"><span><span></span></span>Show approved</label>
         <input id="checkbox-f4" class="custom-cb" type="checkbox" name="already_present" value="1" {% if "already_present" in request.GET %}checked{% endif %}><label for="checkbox-f4"><span><span></span></span>Show present</label>
         <input id="checkbox-f3" class="custom-cb" type="checkbox" name="filter_galleries" value="1" {% if "filter_galleries" in request.GET %}checked{% endif %}><label for="checkbox-f3"><span><span></span></span>Filter galleries</label>
+        <input id="checkbox-f5" class="custom-cb" type="checkbox" name="has_similar" value="1" {% if "has_similar" in request.GET %}checked{% endif %}><label for="checkbox-f5"><span><span></span></span>With similar</label>
         <button type="submit" name="apply" class="btn btn-light">Search</button>
         <a class="btn btn-light" href="{% url 'viewer:submit-queue' %}">Clear</a>
       </div>
@@ -66,7 +67,7 @@
       <table class="table table-bordered table-sm generic-table">
         <thead>
         <tr>
-          <th>Select</th><th>URL</th><th>Gallery</th><th>Title</th><th>Size</th><th>Images</th><th>Source URL | Image</th><th title="Linked to Wanted Gallery?">Wanted</th><th title="Gallery has Archive?">Archive</th><th>Entry Reason</th><th>Submitted</th><th>Status</th><th>Public</th>
+          <th>Select</th><th>URL</th><th>Gallery</th><th>Title</th><th>Size</th><th>Images</th><th>Source URL</th><th title="Linked to Wanted Gallery?">Wanted</th><th title="Gallery has Archive?">Archive</th><th title="Similar Galleries by filesize and filecount">Similar</th><th>Entry Reason</th><th>Submitted</th><th>Status</th><th>Public</th><th>Gallery Status</th>
         </tr>
         </thead>
         <tbody>
@@ -108,6 +109,17 @@
               {{ entry.gallery.archive_set.count|yesno:"yes,no" }}
             </td>
             <td>
+              {% for similar_gallery in entry.similar_galleries.all %}
+                <span style="padding-right: 10px;">
+                  {% if similar_gallery.thumbnail.name %}
+                    <a href="{% url 'viewer:gallery' similar_gallery.pk %}" class="img-preview" data-image-url="{{ similar_gallery.thumbnail.url }}" rel="popover">{{ similar_gallery.pk }}</a>
+                  {% else %}
+                    <a href="{% url 'viewer:gallery' similar_gallery.pk %}" rel="popover">{{ similar_gallery.pk }}</a>
+                  {% endif %}
+                </span>
+              {% endfor %}
+            </td>
+            <td>
               {{ entry.submit_reason }}
             </td>
             <td>
@@ -118,6 +130,9 @@
             </td>
             <td>
               {{ entry.gallery.public|yesno }}
+            </td>
+            <td>
+              {{ entry.gallery.get_status_display }}
             </td>
           </tr>
         {% endfor %}
@@ -155,6 +170,9 @@
     <button name="download_galleries" class="btn btn-light">Approve & start download</button>
     <button name="approve_galleries" class="btn btn-light">Approve galleries (no download)</button>
     <button name="deny_galleries" class="btn btn-light">Deny galleries</button>
+    {% endif %}
+    {% if perms.viewer.publish_gallery %}
+    <button name="publish_galleries" class="btn btn-light">Publish galleries & archives</button>
     {% endif %}
     </form>
 {% endblock %}

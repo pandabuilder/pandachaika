@@ -1,5 +1,5 @@
 {% extends "viewer/base.html" %}
-{% block title %}{{ gallery.title }} | {{ block.super }}{% endblock %}
+{% block title %}{{ gallery.best_title }} | {{ block.super }}{% endblock %}
 {% load static %}
 {% block sidebar %}{% endblock %}
 
@@ -15,13 +15,15 @@
   <ul class="info">
     {% if user.is_authenticated %}
       <li class="right-options">
-        <div>Gallery: {% if user.is_staff %}
-        <a href="{% url 'admin:viewer_gallery_change' gallery.pk %}">admin</a>
-        <a href="{% url 'viewer:gallery-tool' gallery.pk 'toggle-hidden' %}">toggle hidden</a>
-        <a href="{% url 'viewer:gallery-tool' gallery.pk 'toggle-public' %}">toggle public</a>
-        <a href="{% url 'viewer:gallery-tool' gallery.pk 'mark-deleted' %}">mark deleted</a>
-        <a href="{% url 'viewer:gallery-tool' gallery.pk 'recall-api' %}">recall api</a>
-        <a href="{% url 'viewer:gallery-tool' gallery.pk 'download' %}">default download</a>
+        <div>Gallery:
+        {% if user.is_staff %}<a href="{% url 'admin:viewer_gallery_change' gallery.pk %}">admin</a>{% endif %}
+        {% if user.is_staff %}<a href="{% url 'viewer:gallery-tool' gallery.pk 'toggle-hidden' %}">toggle hidden</a>{% endif %}
+        {% if perms.viewer.publish_gallery %}<a href="{% url 'viewer:gallery-tool' gallery.pk 'toggle-public' %}">toggle public</a>{% endif %}
+        {% if perms.viewer.mark_delete_gallery %}<a href="{% url 'viewer:gallery-tool' gallery.pk 'mark-deleted' %}">mark deleted</a>{% endif %}
+        {% if perms.viewer.update_metadata %}<a href="{% url 'viewer:gallery-tool' gallery.pk 'recall-api' %}">recall api</a>{% endif %}
+        {% if perms.viewer.update_metadata %}<a href="{% url 'viewer:gallery-tool' gallery.pk 'refetch-thumbnail' %}">refetch thumbnail</a>{% endif %}
+        {% if perms.viewer.download_gallery %}<a href="{% url 'viewer:gallery-tool' gallery.pk 'download' %}">default download</a>{% endif %}
+        {% if user.is_staff %}
         <span class="dropdown">
           <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-toggle="dropdown">force download<span class="caret"></span></button>
           <div class="dropdown-menu dropdown-menu-right">
@@ -116,11 +118,11 @@
           <th>Fjord</th>
           <td>{{ gallery.fjord|yesno }}</td>
         </tr>
+        {% if user.is_authenticated %}
         <tr>
           <th>Status</th>
           <td>{{ gallery.get_status_display }}</td>
         </tr>
-        {% if user.is_staff %}
         <tr>
           <th>Reason</th>
           <td>{{ gallery.reason }}</td>
@@ -133,10 +135,13 @@
           <th>Hidden</th>
           <td>{{ gallery.hidden|yesno }}</td>
         </tr>
+        {% endif %}
+        {% if user.is_staff %}
         <tr>
           <th>Download type</th>
           <td>{{ gallery.dl_type }}</td>
-        </tr>{% endif %}
+        </tr>
+        {% endif %}
       </table>
     </li>
     <a class="btn btn-light" href="{% url 'viewer:api' %}?gallery={{ gallery.pk }}">JSON info</a>

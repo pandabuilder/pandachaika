@@ -64,7 +64,7 @@
       <table class="table table-bordered table-sm generic-table">
         <thead>
         <tr>
-          <th>Select</th><th>URL</th><th>Title</th><th>Size</th><th>Images</th><th>Source URL | Image</th><th>Linked to Wanted Gallery?</th><th>DL type</th><th>Reason</th><th>Added</th>
+          <th>Select</th><th>URL</th><th>Title</th><th>Size</th><th>Images</th><th>Source URL | Image</th><th>Linked to Wanted Gallery?</th><th>DL type</th><th>Reason</th><th>Added</th><th>Public</th>
         </tr>
         </thead>
         <tbody>
@@ -104,6 +104,9 @@
             <td>
               {{ gallery.create_date|date:"DATETIME_FORMAT" }}
             </td>
+            <td>
+              {{ gallery.public|yesno }}
+            </td>
           </tr>
         {% endfor %}
         </tbody>
@@ -142,7 +145,10 @@
     <button name="recall_api" class="btn btn-light">Recall API</button>
     {% endif %}
     {% if perms.viewer.mark_delete_gallery %}
-    <button name="delete_galleries" class="btn btn-light">Delete (WARNING!)</button>
+    <button name="delete_galleries" class="btn btn-light">Mark Deleted</button>
+    {% endif %}
+    {% if perms.viewer.delete_gallery %}
+    <button name="real_delete_galleries" class="btn btn-light">Delete (WARNING!)</button>
     {% endif %}
     </form>
 {% endblock %}

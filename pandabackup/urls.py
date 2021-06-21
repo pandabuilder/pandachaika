@@ -149,6 +149,7 @@ if settings.DEBUG:
     except ImportError:
         debug_toolbar = None
 
+
 urlpatterns += [
     re_path(r'^' + settings.MAIN_URL, include('viewer.urls')),
 ]

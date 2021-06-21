@@ -20,6 +20,8 @@ urlpatterns = [
     re_path(r"^archive/(\d+)/$", archive.archive_details, name='archive'),
     re_path(r"^archive/(\d+)/(cover|full|thumbnails|edit|single)/$", archive.archive_details, name='archive-details'),
     re_path(r"^archive/(\d+)/extract-toggle/$", archive.extract_toggle, name='archive-extract-toggle'),
+    re_path(r"^archive/(\d+)/extract/$", archive.extract, name='archive-extract'),
+    re_path(r"^archive/(\d+)/reduce/$", archive.reduce, name='archive-reduce'),
     re_path(r"^archive/(\d+)/public-toggle/$", archive.public_toggle, name='archive-public-toggle'),
     re_path(r"^archive/(\d+)/recalc-info/$", archive.recalc_info, name='archive-recalc-info'),
     re_path(r"^archive/(\d+)/recall-api/$", archive.recall_api, name='archive-recall-api'),
@@ -44,13 +46,26 @@ urlpatterns = [
     re_path(r"^session-settings/$", head.session_settings, name='session-settings'),
     re_path(r"^img/(\d+)/$", head.image_url, name='image-url'),
     re_path(r"^content/panda.user.js$", head.panda_userscript, name='panda-user-script'),
-    re_path(r"^(tag)/(.+?)/$", head.search, name='archive-tag-search'),
-    re_path(r"^(gallery-tag)/(.+?)/$", head.gallery_list, name='gallery-tag-search'),
-    re_path(r"^galleries/$", head.gallery_list, name='gallery-list'),
-    re_path(r"^search/$", head.search, name='archive-search'),
     re_path(r"^about/$", head.about, name='about'),
-    re_path(r"^$", head.search, name="main-page"),
 ]
+
+# For now we dont have a ES page for direct tag search (Archive/Gallery). It defaults to regular page.
+if settings.CRAWLER_SETTINGS.urls.elasticsearch_as_main_urls and settings.CRAWLER_SETTINGS.elasticsearch.enable:
+    urlpatterns += [
+        re_path(r"^(gallery-tag)/(.+?)/$", ESHomeGalleryPageView.as_view(), name='gallery-tag-search'),
+        re_path(r'^galleries/$', ESHomeGalleryPageView.as_view(), name='gallery-list'),
+        re_path(r'^(tag)/(.+?)/$$', ESHomePageView.as_view(), name='archive-tag-search'),
+        re_path(r'^search/$', ESHomePageView.as_view(), name='archive-search'),
+        re_path(r"^$", ESHomePageView.as_view(), name="main-page"),
+    ]
+else:
+    urlpatterns += [
+        re_path(r"^(gallery-tag)/(.+?)/$", head.gallery_list, name='gallery-tag-search'),
+        re_path(r"^galleries/$", head.gallery_list, name='gallery-list'),
+        re_path(r"^(tag)/(.+?)/$", head.search, name='archive-tag-search'),
+        re_path(r"^search/$", head.search, name='archive-search'),
+        re_path(r"^$", head.search, name="main-page"),
+    ]
 
 if settings.CRAWLER_SETTINGS.urls.external_as_main_download and settings.CRAWLER_SETTINGS.urls.external_media_server:
     urlpatterns += [
@@ -66,7 +81,6 @@ else:
 # Manager lists.
 urlpatterns += [
     re_path(r"^repeated-archives/$", manager.repeated_archives_for_galleries, name='repeated-archives'),
-    re_path(r"^archives-by-field/$", manager.repeated_archives_by_field, name='archives-by-field'),
     re_path(r"^galleries-by-field/$", manager.repeated_galleries_by_field, name='galleries-by-field'),
     re_path(r"^archive-filesize-different/$", manager.archive_filesize_different_from_gallery, name='archive-filesize-different'),
     re_path(r"^missing-archives/$", manager.missing_archives_for_galleries, name='missing-archives'),
@@ -104,6 +118,7 @@ urlpatterns += [
     re_path(r"^my-event-log/$", collaborators.my_event_log, name='my-event-log'),
     re_path(r"^submit-queue/$", collaborators.submit_queue, name='submit-queue'),
     re_path(r"^upload-archive/$", collaborators.upload_archive, name='upload-archive'),
+    re_path(r"^upload-gallery/$", collaborators.upload_gallery, name='upload-gallery'),
     re_path(r"^manage-archives/$", collaborators.manage_archives, name='manage-archives'),
     re_path(r"^col-wanted-galleries/$", collaborators.wanted_galleries, name='col-wanted-galleries'),
     re_path(r"^col-wanted-gallery/(\d+)/$", collaborators.wanted_gallery, name='col-wanted-gallery'),
@@ -115,6 +130,8 @@ urlpatterns += [
     re_path(r"^col-update/(\d+)/$", collaborators.archive_update, name='col-archive-update'),
     re_path(r"^col-missing-archives/$", collaborators.missing_archives_for_galleries, name='col-missing-archives'),
     re_path(r"^users-event-log/$", collaborators.users_event_log, name='users-event-log'),
+    re_path(r"^archives-by-field/$", collaborators.archives_similar_by_fields, name='archives-by-field'),
+    re_path(r"^archives-by-thumbnail/$", collaborators.archives_similar_thumbnail, name='archives-by-thumbnail'),
 
 ]
 

@@ -37,7 +37,7 @@
         <label for="sort">Sort</label>
         <select id="sort" name="sort" class="form-control mx-sm-1">
           <option value="posted" {% if prm.sort == "posted" %} selected{% endif %}>posted date</option>
-          {% if user.is_staff %}
+          {% if user.is_authenticated %}
             <option value="create_date" {% if prm.sort == "create_date" %} selected{% endif %}>create date</option>
             <option value="public_date" {% if prm.sort == "public_date" %} selected{% endif %}>public date</option>
           {% else %}
@@ -61,7 +61,7 @@
         {% if user.is_authenticated %}<input id="checkbox1" class="custom-cb" type="checkbox" name="only_favorites" value="1"
                                              {% if display_prms.only_favorites == '1' %}checked{% endif %}><label
             for="checkbox1"><span><span></span></span>Only favorites</label>{% endif %}
-        {% if user.is_staff %}<input id="checkbox2" class="custom-cb" type="checkbox" name="non_public" value="1"
+        {% if user.is_authenticated %}<input id="checkbox2" class="custom-cb" type="checkbox" name="non_public" value="1"
                                      {% if display_prms.non_public == '1' %}checked{% endif %}><label
             for="checkbox2"><span><span></span></span>Only private</label>
           <input id="checkbox3" class="custom-cb" type="checkbox" name="public" value="1"
@@ -215,9 +215,10 @@
                       <div>
                       {% if archive.extracted %}
                         <a class="btn btn-sm btn-info" href="{% url 'viewer:new-image-viewer' archive.pk '1' %}?{% url_replace 'extracted' '1' %}">View online</a>
-                        <a class="btn btn-sm btn-light" href="{% url 'viewer:archive-extract-toggle' archive.pk %}">Reduce archive</a>
+                        <a class="btn btn-sm btn-light" href="{% url 'viewer:archive-reduce' archive.pk %}">Reduce archive</a>
                       {% else %}
-                        <a class="btn btn-sm btn-light" href="{% url 'viewer:archive-extract-toggle' archive.pk %}">Expand archive</a>
+                        <a class="btn btn-sm btn-light" href="{% url 'viewer:archive-extract' archive.pk %}">Expand archive</a>
+                        <a class="btn btn-sm btn-light" href="{% url 'viewer:archive-extract' archive.pk %}?resized=1">Expand (resized) archive</a>
                       {% endif %}
                         <a class="btn btn-sm btn-light" href="{% url 'viewer:archive-download' archive.pk %}">Download archive</a>
                         <a class="btn btn-sm btn-light" href="{% url 'viewer:archive-download' archive.pk %}?original=1">Download with original name</a>

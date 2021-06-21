@@ -39,7 +39,7 @@ class TitleMatcher(Matcher):
             return clean_title(file_name)
 
     def search_method(self, title_to_search: str) -> bool:
-        return self.compare_by_title_json(title_to_search)
+        return self.compare_by_title_search_page(title_to_search)
 
     def format_match_values(self) -> Optional[DataDict]:
 
@@ -90,6 +90,7 @@ class TitleMatcher(Matcher):
         else:
             return False
 
+    # Not as good as the Advance Search page. Disabled for now.
     def compare_by_title_json(self, title: str) -> bool:
 
         # https://www.fakku.net/suggest/return%20of%20me
@@ -125,6 +126,41 @@ class TitleMatcher(Matcher):
         for gallery in response_data:
             if gallery['type'] in ('doujinshi', 'manga', 'hentai', 'magazine'):
                 matches_links.add(urljoin(constants.main_url, gallery['link']))
+
+        self.gallery_links = list(matches_links)
+        if len(self.gallery_links) > 0:
+            self.found_by = self.name
+            return True
+        else:
+            return False
+
+    def compare_by_title_search_page(self, title: str) -> bool:
+
+        # https://www.fakku.net/search/+title
+        full_url = urljoin(constants.main_url, 'search/+') + quote(title)
+
+        logger.info("Querying URL: {}".format(full_url))
+
+        request_dict = construct_request_dict(self.settings, self.own_settings)
+
+        response = request_with_retries(
+            full_url,
+            request_dict,
+            post=False, retries=3
+        )
+
+        if not response:
+            logger.info("Got no response from server")
+            return False
+
+        response.encoding = 'utf-8'
+        soup_1 = BeautifulSoup(response.text, 'html.parser')
+
+        matches_links = set()
+
+        for link_container in soup_1.find_all("div", class_=re.compile("content-meta")):
+            title_container = link_container.find("a", class_="content-title")
+            matches_links.add(urljoin(constants.main_url, title_container.get('href')))
 
         self.gallery_links = list(matches_links)
         if len(self.gallery_links) > 0:

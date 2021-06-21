@@ -14,12 +14,13 @@
   <!-- ArchiveGroup  -->
   <div class="container">
     <div class="row">
-    <div class="col-md-8 col-sm-12">
+    <div class="col-md-7 col-sm-12">
         <h3>{{ archive_group.title }}</h3>
     </div>
-      <div class="col-md-4 col-sm-12">
+      <div class="col-md-5 col-sm-12">
         <button class="btn btn-secondary float-right" id="edit-archive-group" data-toggle="collapse" data-target="#add-change-archive-group-form" name="edit-archive-group" type="button" aria-label="toggle edit archive group">Edit <i class="fas fa-chevron-down"></i></button>
         <a class="btn {% if 'add_multiple' in request.GET %}btn-info{% else %}btn-secondary{% endif %} float-right" href="?{% url_toggle 'add_multiple' %}" role="button">Add Multiple Archives</a>
+        {% if perms.viewer.expand_archive %}<a class="btn btn-secondary float-right" href="{% url 'viewer:archive-group-edit' archive_group.title_slug %}?extract_all=" role="button">Extract all</a>{% endif %}
         <a class="btn btn-secondary float-right" href="{% url 'viewer:archive-group' archive_group.title_slug %}" role="button">View</a>
       </div>
     </div>

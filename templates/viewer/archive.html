@@ -1,5 +1,5 @@
 {% extends "viewer/base.html" %}
-<title>{% block title %}{{ archive.best_title }} | {{ block.super }}{% endblock %}</title>
+{% block title %}{{ archive.best_title }} | {{ block.super }}{% endblock %}
 {% load static %}
 {% block content %}
   {% load viewer_extras %}
@@ -12,19 +12,14 @@
   <ul class="info">
     {% if user.is_authenticated %}
       <li class="right-options"><div><span>
-        <span>Archive:</span>{% if user.is_staff %}
-        <span><a href="{% url 'viewer:archive-extract-toggle' archive.pk %}">{% if images %}reduce{% elif archive.crc32 %}
-          expand{% endif %}</a></span>
-      {% endif %}
-        {% if user.is_staff %}<span><a href="{% url 'viewer:archive-recalc-info' archive.pk %}">recalc</a></span>
-      {% endif %}
-        {% if user.is_staff %}<span><a href="{% url 'viewer:archive-recall-api' archive.pk %}">recall api</a></span>{% endif %}
+        <span>Archive:</span>
+        {% if perms.viewer.expand_archive %}<span>{% if images %}<a href="{% url 'viewer:archive-reduce' archive.pk %}">reduce</a>{% elif archive.crc32 %}<a href="{% url 'viewer:archive-extract' archive.pk %}">expand</a>{% endif %}</span>{% endif %}
+        {% if user.is_staff %}<span><a href="{% url 'viewer:archive-recalc-info' archive.pk %}">recalc</a></span>{% endif %}
+        {% if perms.viewer.update_metadata %}<span><a href="{% url 'viewer:archive-recall-api' archive.pk %}">recall api</a></span>{% endif %}
         {% if user.is_staff %}<span><a href="{% url 'viewer:archive-rematch' archive.pk %}">rematch</a></span>{% endif %}
         {% if user.is_staff %}<span><a href="{% url 'viewer:archive-delete' archive.pk %}">delete</a></span>{% endif %}
-        {% if user.is_staff %}
-          {% if archive.gallery %}<span><a href="{% url 'viewer:gallery-tool' archive.gallery.pk 'toggle-hidden' %}">{% if archive.gallery.hidden %}open{% else %}hidden{% endif %}</a></span>{% endif %}
-          <span><a href="{% url 'viewer:archive-public-toggle' archive.pk %}">{% if archive.public %}private{% else %}public{% endif %}</a></span>
-        {% endif %}
+        {% if user.is_staff %}{% if archive.gallery %}<span><a href="{% url 'viewer:gallery-tool' archive.gallery.pk 'toggle-hidden' %}">{% if archive.gallery.hidden %}open{% else %}hidden{% endif %}</a></span>{% endif %}{% endif %}
+        {% if perms.viewer.publish_archive %}<span><a href="{% url 'viewer:archive-public-toggle' archive.pk %}">{% if archive.public %}private{% else %}public{% endif %}</a></span>{% endif %}
         {% if user.is_staff %}<span><a href="{% url 'admin:viewer_archive_change' archive.pk %}">admin</a></span>{% endif %}
         {% if user_archive_preferences.favorite_group == 0 %}
           <span><a href="{% url 'viewer:user-archive-preferences' archive.pk 'favorite' %}">favorite</a></span>
@@ -76,13 +71,13 @@
         </tr>
         {% endif %}
         <tr>
-          {% if user.is_staff %}
+          {% if user.is_authenticated %}
             <th>Added to backup</th><td>{{ archive.create_date|date:"DATETIME_FORMAT" }}</td>
           {% else %}
             <th>Available in backup</th><td>{{ archive.public_date|date:"DATETIME_FORMAT" }}</td>
           {% endif %}
         </tr>
-      {% if user.is_staff %}
+      {% if user.is_authenticated %}
         <tr>
           <th>Published date</th><td>{{ archive.public_date|date:"DATETIME_FORMAT" }}</td>
         </tr>
@@ -120,10 +115,12 @@
             <th>Alternative sources</th>
             <td>
               <ul class="simple-tags">
-                {% for alternative_gallery in archive.alternative_sources.all %}
+                {% for alternative_gallery in archive.alternative_sources.eligible_for_use %}
+                  {% if user.is_authenticated or alternative_gallery.public %}
                   <li>
                     <a href="{% url 'viewer:gallery' alternative_gallery.pk %}">{{ alternative_gallery.title }}</a>
                   </li>
+                  {% endif %}
                 {% endfor %}
               </ul>
             </td>
@@ -182,10 +179,17 @@
     <li class="subtitle">
     {% if user.is_staff %}
       {% if archive.crc32 %}
-          <a class="btn btn-light" href="{% url 'viewer:archive-extract-toggle' archive.pk %}">{% if not images %}Expand{% else %}Reduce{% endif %} archive</a>
+          {% if archive.extracted %}
+            <a class="btn btn-info" href="{% url 'viewer:new-image-viewer' archive.pk '1' %}">View online</a>
+            <a class="btn btn-light" href="{% url 'viewer:archive-reduce' archive.pk %}">Reduce archive</a>
+          {% else %}
+            <a class="btn btn-light" href="{% url 'viewer:archive-extract' archive.pk %}">Expand archive</a>
+            <a class="btn btn-light" href="{% url 'viewer:archive-extract' archive.pk %}?resized=1">Expand (resized) archive</a>
+          {% endif %}
           <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}">Download archive</a>
           <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}?original=1">Download with original name</a>
           <a class="btn btn-light" href="{% url 'viewer:api' %}?archive={{ archive.pk }}">JSON info</a>
+          <a class="btn btn-light hash-preview" tabindex="0" role="button" data-toggle="popover" data-pk="{{ archive.pk }}">Images SHA1</a>
           {% if archive.thumbnail.name %}
             <a class="btn btn-light img-preview" data-image-url="{{ archive.thumbnail.url }}" rel="popover">Hover for cover</a>
           {% endif %}
@@ -194,11 +198,18 @@
 
     {% elif archive.crc32 %}
         {% if perms.viewer.expand_archive %}
-        <a class="btn btn-light" href="{% url 'viewer:archive-extract-toggle' archive.pk %}">{% if not images %}Expand{% else %}Reduce{% endif %} archive</a>
+          {% if archive.extracted %}
+            <a class="btn btn-info" href="{% url 'viewer:new-image-viewer' archive.pk '1' %}">View online</a>
+            <a class="btn btn-light" href="{% url 'viewer:archive-reduce' archive.pk %}">Reduce archive</a>
+          {% else %}
+            <a class="btn btn-light" href="{% url 'viewer:archive-extract' archive.pk %}">Expand archive</a>
+            <a class="btn btn-light" href="{% url 'viewer:archive-extract' archive.pk %}?resized=1">Expand (resized) archive</a>
+          {% endif %}
         {% endif %}
         <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}">Download archive</a>
         <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}?original=1">Download with original name</a>
         <a class="btn btn-light" href="{% url 'viewer:api' %}?archive={{ archive.pk }}">JSON info</a>
+        <a class="btn btn-light hash-preview" tabindex="0" role="button" data-toggle="popover" data-pk="{{ archive.pk }}">Images SHA1</a>
         {% if archive.thumbnail.name %}
           <a class="btn btn-light img-preview" data-image-url="{{ archive.thumbnail.url }}" rel="popover">Hover for cover</a>
         {% endif %}
@@ -338,6 +349,43 @@
     </script>
   {% endcompress %}
   {% endif %}
+  {% compress js %}
+    <script>
+        var hashData = {};
+        var hashUrl = '{% url 'viewer:api' %}?ah=';
+        function hashToHtml (hash) {
+            return hash
+        }
+        $(document).ready(function() {
+            $(".hash-preview").click(function() {
+                var el = $(this);
+                var pk = $(this).data('pk');
+                if (hashData[pk]) {
+                    return hashData[pk];
+                }
+                else {
+                    $.get(hashUrl + pk, function(response) {
+                        if (response.image_hashes) {
+                            hashData[pk] = response.image_hashes.map(hashToHtml);
+                            let textareaHashes = document.createElement('textarea');
+                            textareaHashes.setAttribute("readonly", true);
+                            textareaHashes.setAttribute("class", "form-control");
+                            textareaHashes.setAttribute("rows", "10");
+                            textareaHashes.setAttribute("style", "background-color: #29527a; width: 360px;");
+                            textareaHashes.innerHTML = hashData[pk].join("\n");
+                            el.unbind('click').popover({
+                                content: textareaHashes,
+                                html: true,
+                            }).popover('show');
+                        }
+                    });
+                }
+            }).on("show.bs.popover", function() {
+                $($(this).data("bs.popover").getTipElement()).css("max-width", "600px");
+            });
+        });
+    </script>
+  {% endcompress %}
   {% if user.is_staff %}
     {{ form.media }}
     <script type="text/javascript">

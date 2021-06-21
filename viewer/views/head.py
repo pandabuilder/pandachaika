@@ -26,6 +26,7 @@ from django.utils.html import urlize, linebreaks
 
 from core.base.setup import Settings
 from core.base.types import DataDict
+from viewer.utils.actions import event_log
 
 from viewer.forms import (
     ArchiveSearchForm,
@@ -244,17 +245,18 @@ def gallery_details(request: HttpRequest, pk: int, tool: str = None) -> HttpResp
     if not (gallery.public or request.user.is_authenticated):
         raise Http404("Gallery does not exist")
 
-    if request.user.is_staff and tool == "download":
-        if 'downloader' in request.GET:
+    if request.user.has_perm('viewer.download_gallery') and tool == "download":
+        if 'downloader' in request.GET and request.user.is_staff:
             current_settings = Settings(load_from_config=crawler_settings.config)
             current_settings.allow_downloaders_only([request.GET['downloader']], True, True, True)
             if current_settings.workers.web_queue:
                 current_settings.workers.web_queue.enqueue_args_list((gallery.get_link(),), override_options=current_settings)
         else:
             # Since this is used from the gallery page mainly to download an already added gallery using
-            # downloader settings, force replace_metadata
+            # downloader settings, force replace_metadata and retry_failed
             current_settings = Settings(load_from_config=crawler_settings.config)
             current_settings.replace_metadata = True
+            current_settings.retry_failed = True
             if current_settings.workers.web_queue:
                 current_settings.workers.web_queue.enqueue_args_list((gallery.get_link(),), override_options=current_settings)
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
@@ -264,27 +266,86 @@ def gallery_details(request: HttpRequest, pk: int, tool: str = None) -> HttpResp
         gallery.save()
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
 
-    if request.user.is_staff and tool == "toggle-public":
+    if request.user.has_perm('viewer.publish_gallery') and tool == "toggle-public":
         gallery.public_toggle()
+
+        if gallery.public:
+            event_log(
+                request.user,
+                'PUBLISH_GALLERY',
+                content_object=gallery,
+                result='success'
+            )
+        else:
+            event_log(
+                request.user,
+                'UNPUBLISH_GALLERY',
+                content_object=gallery,
+                result='success'
+            )
+
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
 
-    if request.user.is_staff and tool == "mark-deleted":
+    if request.user.has_perm('viewer.mark_delete_gallery') and tool == "mark-deleted":
         gallery.mark_as_deleted()
+
+        event_log(
+            request.user,
+            'DELETE_GALLERY',
+            content_object=gallery,
+            result='deleted'
+        )
+
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
 
-    if request.user.is_staff and tool == "recall-api":
+    if request.user.has_perm('viewer.update_metadata') and tool == "recall-api":
 
         current_settings = Settings(load_from_config=crawler_settings.config)
 
         if current_settings.workers.web_queue and gallery.provider:
 
+            def gallery_callback(x: Optional['Gallery'], crawled_url: Optional[str], result: str) -> None:
+                event_log(
+                    request.user,
+                    'UPDATE_METADATA',
+                    content_object=x,
+                    result=result,
+                    data=crawled_url
+                )
+
             current_settings.set_update_metadata_options(providers=(gallery.provider,))
 
-            current_settings.workers.web_queue.enqueue_args_list((gallery.get_link(),), override_options=current_settings)
+            current_settings.workers.web_queue.enqueue_args_list(
+                (gallery.get_link(),),
+                override_options=current_settings,
+                gallery_callback=gallery_callback
+            )
 
             logger.info(
                 'Updating gallery API data for gallery: {} and related archives'.format(
                     gallery.get_absolute_url()
+                )
+            )
+
+        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+
+    if request.user.has_perm('viewer.update_metadata') and tool == "refetch-thumbnail":
+
+        if gallery.thumbnail_url:
+
+            success = gallery.fetch_thumbnail(force_redownload=True)
+
+            event_log(
+                request.user,
+                'REFETCH_THUMBNAIL',
+                content_object=gallery,
+                result='sucess' if success else 'failed',
+                data=gallery.thumbnail_url
+            )
+
+            logger.info(
+                'Refetching gallery: {} thumbnail from url: {}'.format(
+                    gallery.get_absolute_url(), gallery.thumbnail_url
                 )
             )
 
@@ -1317,9 +1378,33 @@ def filter_archives_simple(params: dict[str, Any]) -> QuerySet[Archive]:
     if params["match_type"]:
         results = results.filter(match_type__icontains=params["match_type"])
     if params["source_type"]:
-        results = results.filter(source_type__icontains=params["source_type"])
+        if "," in params["source_type"]:
+            source_types = params["source_type"].split(',')
+            for source_type in source_types:
+                source_type = source_type.strip()
+                if source_type.startswith("-"):
+                    results = results.exclude(source_type__icontains=source_type[1:])
+                else:
+                    results = results.filter(source_type__icontains=source_type)
+        else:
+            if params["source_type"].startswith("-"):
+                results = results.exclude(source_type__icontains=params["source_type"][1:])
+            else:
+                results = results.filter(source_type__icontains=params["source_type"])
     if params["reason"]:
-        results = results.filter(reason__icontains=params["reason"])
+        if "," in params["reason"]:
+            reasons = params["reason"].split(',')
+            for reason in reasons:
+                reason = reason.strip()
+                if reason.startswith("-"):
+                    results = results.exclude(reason__icontains=reason[1:])
+                else:
+                    results = results.filter(reason__icontains=reason)
+        else:
+            if params["reason"].startswith("-"):
+                results = results.filter(reason__icontains=params["reason"][1:])
+            else:
+                results = results.filter(reason__icontains=params["reason"])
     if params["uploader"]:
         results = results.filter(gallery__uploader__icontains=params["uploader"])
     if params["category"]:

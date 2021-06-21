@@ -50,15 +50,16 @@ class GeneralUtils:
     def __init__(self, global_settings: 'setup.Settings') -> None:
         self.settings = global_settings
 
-    def discard_by_tag_list(self, tag_list: Optional[list[str]]):
+    def discard_by_tag_list(self, tag_list: Optional[list[str]]) -> Optional[list[str]]:
 
         if self.settings.update_metadata_mode:
-            return False
+            return None
         if tag_list is None:
-            return False
-        if any(x in self.settings.discard_tags for x in tag_list):
-            return True
-        return False
+            return None
+        found_tags = set(self.settings.discard_tags).intersection(tag_list)
+        if found_tags:
+            return list(found_tags)
+        return None
 
     def get_torrent(self, torrent_url: str, cookies: dict[str, Any], convert_to_base64: bool = False) -> Union[str, bytes]:
 
@@ -103,7 +104,11 @@ def replace_illegal_name(filepath: str) -> str:
 
     # Limit to 255 characters, 251 plus .zip
     # Update: Limit should be 256 bytes length (ext4).
-    return filepath.encode('utf-8')[0:251].decode('utf-8')
+    try:
+        formatted_path = filepath.encode('utf-8')[0:251].decode('utf-8')
+    except UnicodeDecodeError:
+        formatted_path = filepath[0:251]
+    return formatted_path
 
 
 def replace_illegal_win32_with_unicode_full_width(filepath: str) -> str:
@@ -693,10 +698,10 @@ def request_with_retries(
 
         except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
             if retry_count < retries - 1:
-                logger.warning("Request failed, retry: {} of {}: {}".format(retry_count, retries, str(e)))
+                logger.warning("Request failed, attempt: {} of {}: {}".format(retry_count + 1, retries, str(e)))
                 continue
             else:
-                logger.error("Failed to reach URL: {}".format(url))
+                logger.error("Request failed, attempt: {} of {}: Unreachable URL: {}".format(retry_count + 1, retries, url))
                 return None
     return None
 

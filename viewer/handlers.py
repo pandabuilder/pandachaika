@@ -9,7 +9,7 @@ from django.dispatch import receiver
 from django.urls import reverse
 from django.utils.html import urlize, linebreaks
 
-from viewer.models import Gallery, users_with_perm, WantedGallery
+from viewer.models import Gallery, Archive, users_with_perm, WantedGallery, ArchiveGroupEntry
 from viewer.signals import wanted_gallery_found
 from viewer.utils.functions import send_mass_html_mail
 
@@ -17,10 +17,21 @@ logger = logging.getLogger(__name__)
 crawler_settings = settings.CRAWLER_SETTINGS
 
 
+# This handler is handling email notifications and ArchiveGroup, maybe it should be separated in 2 signals.
 @receiver(wanted_gallery_found, sender=Gallery)
 def wanted_gallery_found_handler(sender: typing.Any, **kwargs: typing.Any) -> None:
     gallery: Gallery = kwargs['gallery']
+    archive: typing.Optional[Archive] = kwargs['archive']
     wanted_gallery_list: list[WantedGallery] = kwargs['wanted_gallery_list']
+
+    if archive:
+        for wanted_gallery in wanted_gallery_list:
+            if wanted_gallery.add_to_archive_group:
+                archive_group_entry = ArchiveGroupEntry(
+                    archive=archive,
+                    archive_group=wanted_gallery.add_to_archive_group
+                )
+                archive_group_entry.save()
 
     notify_wanted_filters = [
         "({}, {})".format((x.title or 'not set'), (x.reason or 'not set')) for x in

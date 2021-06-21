@@ -1,12 +1,16 @@
+import json
 import logging
+import os
 import threading
+from collections import defaultdict
+from itertools import groupby
 from typing import Optional
 
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import permission_required, login_required
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
-from django.db.models import Q, Prefetch, Count, Case, When
+from django.db.models import Q, Prefetch, Count, Case, When, QuerySet
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect, Http404
 from django.shortcuts import render
 from django.urls import reverse
@@ -16,7 +20,7 @@ from core.base.utilities import thread_exists
 from viewer.utils.matching import generate_possible_matches_for_archives
 from viewer.utils.actions import event_log
 from viewer.forms import GallerySearchForm, ArchiveSearchForm, WantedGallerySearchForm, WantedGalleryCreateOrEditForm, \
-    ArchiveCreateForm, ArchiveGroupSelectForm
+    ArchiveCreateForm, ArchiveGroupSelectForm, GalleryCreateForm
 from viewer.models import Archive, Gallery, EventLog, ArchiveMatches, Tag, WantedGallery, ArchiveGroup, \
     ArchiveGroupEntry, GallerySubmitEntry
 from viewer.utils.tags import sort_tags
@@ -70,8 +74,8 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
                     message = 'Denying gallery: {}, link: {}, source link: {}'.format(
                         gallery.title, gallery.get_absolute_url(), gallery.get_link()
                     )
-                    if 'reason' in p and p['reason'] != '':
-                        message += ', reason: {}'.format(p['reason'])
+                    if entry_reason != '':
+                        message += ', reason: {}'.format(entry_reason)
                     logger.info("User {}: {}".format(request.user.username, message))
                     messages.success(request, message)
                     gallery.mark_as_denied()
@@ -101,7 +105,36 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
                         content_object=gallery_entry,
                         result='denied'
                     )
-
+        elif 'publish_galleries' in p and request.user.has_perm('viewer.publish_gallery'):
+            for gallery_entry in gallery_entries:
+                gallery = gallery_entry.gallery
+                if gallery and not gallery.public:
+                    message = 'Publishing gallery and related archives: {}, link: {}, source link: {}'.format(
+                        gallery.title, gallery.get_absolute_url(), gallery.get_link()
+                    )
+                    if 'reason' in p and p['reason'] != '':
+                        message += ', reason: {}'.format(p['reason'])
+                    logger.info("User {}: {}".format(request.user.username, message))
+                    messages.success(request, message)
+                    gallery.set_public()
+                    event_log(
+                        request.user,
+                        'PUBLISH_GALLERY',
+                        reason=entry_reason,
+                        content_object=gallery,
+                        result='success'
+                    )
+                    if request.user.has_perm('viewer.publish_archive'):
+                        for archive in gallery.archive_set.all():
+                            if not archive.public:
+                                archive.set_public()
+                                event_log(
+                                    request.user,
+                                    'PUBLISH_ARCHIVE',
+                                    reason=entry_reason,
+                                    content_object=archive,
+                                    result='success'
+                                )
         elif 'approve_galleries' in p and request.user.has_perm('viewer.approve_gallery'):
             for gallery_entry in gallery_entries:
                 gallery = gallery_entry.gallery
@@ -211,7 +244,7 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
                     )
 
                 elif gallery_entry.submit_url:
-                    message = 'Queueing URL: {}, '.format(
+                    message = 'Queueing URL: {}'.format(
                         gallery_entry.submit_url
                     )
                     if 'reason' in p and p['reason'] != '':
@@ -271,7 +304,7 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
 
     providers = Gallery.objects.all().values_list('provider', flat=True).distinct()
 
-    submit_entries = GallerySubmitEntry.objects.all().prefetch_related('gallery').order_by('-submit_date')
+    submit_entries: QuerySet[GallerySubmitEntry] = GallerySubmitEntry.objects.all().prefetch_related('gallery').order_by('-submit_date')
 
     if 'filter_galleries' in get:
         params = {
@@ -301,6 +334,9 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
 
     if 'submit_reason' in get:
         submit_entries = submit_entries.filter(submit_reason__icontains=get['submit_reason'])
+
+    if 'has_similar' in get:
+        submit_entries = submit_entries.annotate(similar_count=Count('similar_galleries')).filter(similar_count__gt=0)
 
     paginator = Paginator(submit_entries, 50)
     try:
@@ -442,6 +478,23 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                             gallery.get_absolute_url()
                         )
                     )
+        elif 'recalc_fileinfo' in p and request.user.has_perm('viewer.recalc_fileino'):
+            for archive in archives:
+                message = 'Recalculating file information for archive: {}, link: {}'.format(
+                    archive.title, archive.get_absolute_url()
+                )
+                if 'reason' in p and p['reason'] != '':
+                    message += ', reason: {}'.format(p['reason'])
+                logger.info("User {}: {}".format(request.user.username, message))
+                messages.success(request, message)
+                archive.recalc_fileinfo()
+                event_log(
+                    request.user,
+                    'RECALC_ARCHIVE',
+                    reason=user_reason,
+                    content_object=archive,
+                    result='success'
+                )
         elif 'add_to_group' in p and request.user.has_perm('viewer.change_archivegroup'):
 
             if 'archive_group' in p:
@@ -1039,7 +1092,7 @@ def upload_archive(request: HttpRequest) -> HttpResponse:
             new_archive = edit_form.save(commit=False)
             new_archive.user = request.user
             new_archive = edit_form.save()
-            message = 'Archive successfully uploaded'
+            message = 'Archive successfully uploaded: {}'.format(new_archive.get_absolute_url())
             messages.success(request, message)
             logger.info("User {}: {}".format(request.user.username, message))
             event_log(
@@ -1079,6 +1132,54 @@ def upload_archive(request: HttpRequest) -> HttpResponse:
     return render(request, "viewer/collaborators/add_archive.html", d)
 
 
+# This is an alternative way to add Galleries, the preffered way is to crawl a link.
+# Mostly used in scenarios when the metadata is already fetched on another instance or backup.
+# Problem is that it only accepts already created tags, magazine, gallery_container
+@permission_required('viewer.add_gallery')
+def upload_gallery(request: HttpRequest) -> HttpResponse:
+    if request.POST.get('submit-gallery'):
+        # create a form instance and populate it with data from the request:
+        edit_form = GalleryCreateForm(request.POST, request.FILES)
+        # check whether it's valid:
+        if edit_form.is_valid():
+            new_gallery = edit_form.save(commit=False)
+            message = 'Gallery successfully created: {}'.format(new_gallery.get_absolute_url())
+            messages.success(request, message)
+            logger.info("User {}: {}".format(request.user.username, message))
+            event_log(
+                request.user,
+                'CREATE_GALLERY',
+                content_object=new_gallery,
+                result='added'
+            )
+        else:
+            messages.error(request, 'The provided data is not valid', extra_tags='danger')
+    else:
+        if 'gallery' in request.GET:
+            try:
+                gallery_id = int(request.GET['gallery'])
+                try:
+                    gallery: Optional[Gallery] = Gallery.objects.get(pk=gallery_id)
+                except Gallery.DoesNotExist:
+                    gallery = None
+            except ValueError:
+                gallery = None
+        else:
+            gallery = None
+
+        if gallery:
+            edit_form = GalleryCreateForm(
+                instance=gallery
+            )
+        else:
+            edit_form = GalleryCreateForm()
+
+    d = {
+        'edit_form': edit_form
+    }
+    return render(request, "viewer/collaborators/add_gallery.html", d)
+
+
 @permission_required('viewer.manage_missing_archives')
 def missing_archives_for_galleries(request: HttpRequest) -> HttpResponse:
     p = request.POST
@@ -1116,10 +1217,31 @@ def missing_archives_for_galleries(request: HttpRequest) -> HttpResponse:
 
         if 'delete_galleries' in p and request.user.has_perm('viewer.mark_delete_gallery'):
             for gallery in results_gallery:
-                message = 'Removing gallery: {}, link: {}'.format(gallery.title, gallery.get_link())
+                message = 'Marking deleted for gallery: {}, link: {}'.format(gallery.title, gallery.get_link())
                 logger.info(message)
                 messages.success(request, message)
                 gallery.mark_as_deleted()
+                event_log(
+                    request.user,
+                    'MARK_DELETE_GALLERY',
+                    reason=reason,
+                    content_object=gallery,
+                    result='success',
+                )
+        elif 'real_delete_galleries' in p and request.user.has_perm('viewer.delete_gallery'):
+            for gallery in results_gallery:
+                message = 'Deleting gallery: {}, link: {}'.format(gallery.title, gallery.get_link())
+                old_gallery_link = gallery.get_link()
+                logger.info(message)
+                messages.success(request, message)
+                gallery.delete()
+                event_log(
+                    request.user,
+                    'DELETE_GALLERY',
+                    reason=reason,
+                    data=old_gallery_link,
+                    result='success',
+                )
         elif 'publish_galleries' in p and request.user.has_perm('viewer.publish_gallery'):
             for gallery in results_gallery:
                 message = 'Publishing gallery: {}, link: {}'.format(gallery.title, gallery.get_link())
@@ -1249,3 +1371,250 @@ def missing_archives_for_galleries(request: HttpRequest) -> HttpResponse:
     d = {'results': results_page, 'providers': providers, 'form': form}
 
     return render(request, "viewer/collaborators/archives_missing_for_galleries.html", d)
+
+
+@permission_required('viewer.manage_archive')
+def archives_similar_by_fields(request: HttpRequest) -> HttpResponse:
+    p = request.POST
+    get = request.GET
+
+    title = get.get("title", '')
+    tags = get.get("tags", '')
+
+    if 'clear' in get:
+        form = ArchiveSearchForm()
+    else:
+        form = ArchiveSearchForm(initial={'title': title, 'tags': tags})
+
+    if p:
+        pks = []
+        groups = defaultdict(list)
+        group_mains = defaultdict(list)
+        for k, v in p.items():
+            if k.startswith("del-"):
+                # k, pk = k.split('-')
+                # results[pk][k] = v
+                _, pk = k.split('-')
+                pks.append(int(pk))
+                groups[int(pk)].append(int(v))
+            if k.startswith("main-"):
+                # k, pk = k.split('-')
+                # results[pk][k] = v
+                _, pk = k.split('-')
+                group_mains[int(v)].append(int(pk))
+
+        archives = Archive.objects.filter(id__in=pks).order_by('-create_date')
+
+        user_reason = p.get('reason', '')
+
+        if 'delete_archives' in p and request.user.has_perm('viewer.delete_archive'):
+            for archive in archives:
+                message = 'Removing archive: {} and deleting file: {}'.format(
+                    archive.get_absolute_url(), archive.zipped.path
+                )
+                logger.info(message)
+                messages.success(request, message)
+
+                gallery = archive.gallery
+
+                if gallery:
+                    for group_id in groups[archive.pk]:
+                        if group_id in group_mains:
+                            for main_id in group_mains[group_id]:
+                                try:
+                                    main_archive = Archive.objects.get(pk=main_id)
+                                except Archive.DoesNotExist:
+                                    continue
+                                main_archive.alternative_sources.add(gallery)
+                                message = 'Adding to archive: {}, gallery as alternative source: {}'.format(
+                                    main_archive.get_absolute_url(), gallery.get_absolute_url()
+                                )
+                                if main_archive.public and not gallery.public:
+                                    gallery.set_public()
+                                logger.info(message)
+                                messages.success(request, message)
+
+                if gallery and gallery.archive_set.count() <= 1 and gallery.alternative_sources.count() < 1:
+                    gallery.mark_as_deleted()
+                archive.delete_all_files()
+                archive.delete()
+
+                event_log(
+                    request.user,
+                    'DELETE_ARCHIVE',
+                    reason=user_reason,
+                    content_object=gallery,
+                    result='deleted'
+                )
+
+        elif 'delete_objects' in p and request.user.has_perm('viewer.delete_archive'):
+            for archive in archives:
+                message = 'Removing archive: {}, keeping file: {}'.format(
+                    archive.get_absolute_url(), archive.zipped.path
+                )
+                logger.info(message)
+                messages.success(request, message)
+
+                gallery = archive.gallery
+
+                if gallery:
+                    for group_id in groups[archive.pk]:
+                        if group_id in group_mains:
+                            for main_id in group_mains[group_id]:
+                                try:
+                                    main_archive = Archive.objects.get(pk=main_id)
+                                except Archive.DoesNotExist:
+                                    continue
+                                main_archive.alternative_sources.add(gallery)
+                                message = 'Adding to archive: {}, gallery as alternative source: {}'.format(
+                                    main_archive.get_absolute_url(), gallery.get_absolute_url()
+                                )
+                                if main_archive.public and not gallery.public:
+                                    gallery.set_public()
+                                logger.info(message)
+                                messages.success(request, message)
+
+                if gallery and gallery.archive_set.count() <= 1 and gallery.alternative_sources.count() < 1:
+                    gallery.mark_as_deleted()
+                archive.delete_files_but_archive()
+                archive.delete()
+
+                event_log(
+                    request.user,
+                    'DELETE_ARCHIVE',
+                    reason=user_reason,
+                    content_object=gallery,
+                    result='deleted'
+                )
+
+    params = {
+        'sort': 'create_date',
+        'asc_desc': 'desc',
+    }
+
+    for k, v in get.items():
+        params[k] = v
+
+    for k in archive_filter_keys:
+        if k not in params:
+            params[k] = ''
+
+    results = filter_archives_simple(params)
+
+    if 'no-custom-tags' in get:
+        results = results.annotate(num_custom_tags=Count('custom_tags')).filter(num_custom_tags=0)
+
+    by_size_count = {}
+    by_crc32 = {}
+    group_count = 1
+
+    for k_filesize, v_filesize in groupby(results.exclude(filesize__isnull=True).exclude(filecount__isnull=True).order_by('filesize', 'filecount').distinct(), lambda x: (x.filesize, x.filecount)):
+        objects = list(v_filesize)
+        if len(objects) > 1:
+            group_count += 1
+            by_size_count[group_count] = objects
+
+    for k_crc32, v_crc32 in groupby(results.exclude(crc32__isnull=True).exclude(crc32='').order_by('crc32').distinct(), lambda x: x.crc32):
+        objects = list(v_crc32)
+        if len(objects) > 1:
+            group_count += 1
+            by_crc32[group_count] = objects
+
+    # paginator = Paginator(results, 100)
+    # try:
+    #     results = paginator.page(page)
+    # except (InvalidPage, EmptyPage):
+    #     results = paginator.page(paginator.num_pages)
+
+    d = {
+        'by_size_count': by_size_count,
+        'by_crc32': by_crc32,
+        'form': form
+    }
+    return render(request, "viewer/archives_similar_by_fields.html", d)
+
+
+SimilarResult = dict[str, list[tuple[str, int]]]
+
+
+@permission_required('viewer.manage_archive')
+def archives_similar_thumbnail(request: HttpRequest) -> HttpResponse:
+
+    if 'results_file' in crawler_settings.experimental:
+        if os.path.isfile(crawler_settings.experimental['results_file']):
+            input_json = crawler_settings.experimental['results_file']
+        else:
+            messages.error(request, 'The required results JSON file does not exist.', extra_tags='danger')
+            return HttpResponseRedirect(request.META["HTTP_REFERER"])
+    else:
+        messages.error(request, 'The required results JSON file does not exist.', extra_tags='danger')
+        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+
+    get = request.GET
+
+    title = get.get("title", '')
+    tags = get.get("tags", '')
+
+    try:
+        score = int(get.get("score", '-1'))
+    except ValueError:
+        score = -1
+
+    try:
+        page = int(get.get("page", '1'))
+    except ValueError:
+        page = 1
+
+    if 'clear' in get:
+        form = ArchiveSearchForm()
+    else:
+        form = ArchiveSearchForm(initial={'title': title, 'tags': tags})
+
+    params = {
+        'sort': 'create_date',
+        'asc_desc': 'desc',
+    }
+
+    for k, v in get.items():
+        params[k] = v
+
+    for k in archive_filter_keys:
+        if k not in params:
+            params[k] = ''
+
+    results = filter_archives_simple(params)
+
+    with open(input_json, 'r') as f:
+        score_results: SimilarResult = json.load(f)
+
+        if score != -1:
+            score_results = {x[0]: [y for y in x[1] if y[1] <= score] for x in score_results.items()}
+            score_results = {x[0]: x[1] for x in score_results.items() if len(x[1]) > 0}
+
+        results = results.filter(pk__in=score_results.keys())
+
+        paginator = Paginator(results, 100)
+        try:
+            results_page = paginator.page(page)
+        except (InvalidPage, EmptyPage):
+            results_page = paginator.page(paginator.num_pages)
+
+        results_pks = results_page.object_list.values_list('pk', flat=True)
+
+        similar_pks = list(set([int(similar_id[0]) for similar_ids in score_results.items() if int(similar_ids[0]) in results_pks for similar_id in similar_ids[1]]))
+
+        similar_archives = {str(x.pk): x for x in filter_archives_simple(params).filter(pk__in=similar_pks)}
+
+        similar_archives_pks = similar_archives.keys()
+
+        # TODO: We are passing empty Achives to the template, filtering needs rework
+        filtered_scores_temp = {x[0]: [y for y in x[1] if y[0] in similar_archives_pks] for x in score_results.items() if int(x[0]) in results_pks}
+        filtered_scores = {int(x[0]): x[1] for x in filtered_scores_temp.items()}
+
+        d = {
+            'filtered_scores': filtered_scores,
+            'results': results_page,
+            'similar_archives': similar_archives,
+            'form': form
+        }
+        return render(request, "viewer/archives_similar_thumbnail.html", d)

@@ -49,7 +49,7 @@ from core.base.utilities import (
     get_zip_fileinfo,
     sha1_from_file_object,
     clean_title,
-    request_with_retries, get_images_from_zip)
+    request_with_retries, get_images_from_zip, get_title_from_path)
 from core.base.types import GalleryData, DataDict
 from core.base.utilities import (
     get_dict_allowed_fields, replace_illegal_name
@@ -730,7 +730,7 @@ class Gallery(models.Model):
             return self.title
         elif self.title_jpn:
             return self.title_jpn
-        return ""
+        return str(self.pk)
 
     def tags_str(self) -> str:
         lst = [str(x) for x in self.tags.all()]
@@ -817,7 +817,10 @@ class Gallery(models.Model):
                         },
                         request_timeout=30
                     )
-        if self.thumbnail_url and not self.thumbnail:
+        self.fetch_thumbnail()
+
+    def fetch_thumbnail(self, force_redownload=False) -> bool:
+        if self.thumbnail_url and (not self.thumbnail or force_redownload):
             request_dict = {
                 'stream': True,
                 'headers': settings.CRAWLER_SETTINGS.requests_headers,
@@ -838,6 +841,8 @@ class Gallery(models.Model):
             if response:
                 disassembled = urlparse(self.thumbnail_url)
                 file_name = basename(disassembled.path)
+                if not file_name:
+                    file_name = 'g_thumbnail'
                 lf = NamedTemporaryFile()
                 if response.status_code == requests.codes.ok:
                     for chunk in response.iter_content(chunk_size=1024):
@@ -846,7 +851,11 @@ class Gallery(models.Model):
                     self.thumbnail.save(file_name, File(lf), save=False)
                 lf.close()
 
-            super(Gallery, self).save(force_update=True)
+                super(Gallery, self).save(force_update=True)
+
+                return True
+
+        return False
 
     def update_index(self) -> None:
         if settings.ES_CLIENT and settings.ES_AUTOREFRESH_GALLERY:
@@ -1075,6 +1084,8 @@ class GallerySubmitEntry(models.Model):
     )
     resolved_reason = models.CharField('Reason', max_length=200, blank=True, null=True, default='backup')
     resolved_comment = models.TextField(blank=True, null=True, default='')
+    # Related name set to + to avoid clutter on Gallery model
+    similar_galleries = models.ManyToManyField(Gallery, related_name='+', blank=True, default='')
 
     def mark_as_denied(self, reason='', comment='') -> None:
         self.resolved_status = self.RESOLVED_DENIED
@@ -1096,6 +1107,19 @@ class GallerySubmitEntry(models.Model):
 
     def __str__(self) -> str:
         return self.submit_url or 'Empty url'
+
+    def save(self, *args, **kwargs):
+        # Only calculate similar galleries for similar galleries
+        if self.gallery and self.resolved_status == self.RESOLVED_SUBMITTED:
+            similar_galleries = Gallery.objects.\
+                filter(filesize=self.gallery.filesize, filecount=self.gallery.filecount).\
+                exclude(filesize__isnull=True).exclude(filecount__isnull=True).\
+                exclude(gid=self.gallery.gid, provider=self.gallery.provider)
+            self.similar_galleries.set(similar_galleries)
+        # Clear similar galleries for resolved galleries (will add more code to galleries without similar galleries)
+        if self.pk is not None and self.resolved_status != self.RESOLVED_SUBMITTED:
+            self.similar_galleries.clear()
+        super().save(*args, **kwargs)
 
 
 @receiver(post_delete, sender=Gallery)
@@ -1198,6 +1222,7 @@ class Archive(models.Model):
             ("manage_archive", "Can manage available archives"),
             ("match_archive", "Can match archives"),
             ("update_metadata", "Can update metadata"),
+            ("recalc_fileinfo", "Can recalculate file info"),
             ("upload_with_metadata_archive", "Can upload a file with an associated metadata source"),
             ("expand_archive", "Can extract and reduce archives")
         )
@@ -1323,7 +1348,7 @@ class Archive(models.Model):
             return self.title
         elif self.title_jpn:
             return self.title_jpn
-        return ""
+        return str(self.pk)
 
     def filename(self) -> str:
         return os.path.basename(self.zipped.name)
@@ -1381,6 +1406,10 @@ class Archive(models.Model):
                 self.gallery.reason = reason
             self.gallery.public = True
             self.gallery.save()
+        # Save instead of update to trigger save method stuff (index)
+        for alt_gallery in self.alternative_sources.all():
+            alt_gallery.public = True
+            alt_gallery.save()
 
     def set_private(self, reason: str = '') -> None:
 
@@ -1395,6 +1424,10 @@ class Archive(models.Model):
                 self.gallery.reason = reason
             self.gallery.public = False
             self.gallery.save()
+        # Save instead of update to trigger save method stuff (index)
+        for alt_gallery in self.alternative_sources.all():
+            alt_gallery.public = False
+            alt_gallery.save()
 
     def delete_all_files(self) -> None:
 
@@ -1487,6 +1520,8 @@ class Archive(models.Model):
         self.extracted = False
         self.simple_save()
 
+    # TODO: Replace every use of extract toggle for extract and reduce, to avoid race conditions.
+    # TODO: The ones left are used from JS and API.
     def extract_toggle(self) -> bool:
 
         extracted_images = self.image_set.filter(extracted=True)
@@ -1555,10 +1590,119 @@ class Archive(models.Model):
 
                 image.extracted = True
                 image.save()
+                im.close()
 
             my_zip.close()
 
         self.extracted = not self.extracted
+        self.simple_save()
+        return True
+
+    def reduce(self):
+
+        if not self.extracted:
+            return False
+
+        extracted_images = self.image_set.filter(extracted=True)
+
+        for img in extracted_images:
+            img.image.delete(save=False)
+            img.image = None
+            img.thumbnail.delete(save=False)
+            img.thumbnail = None
+            img.extracted = False
+            img.save()
+
+        self.extracted = False
+        self.simple_save()
+        return True
+
+    def extract(self, resized=False):
+        if self.extracted:
+            return False
+        try:
+            my_zip = zipfile.ZipFile(
+                self.zipped.path, 'r')
+        except (zipfile.BadZipFile, NotImplementedError):
+            return False
+
+        if my_zip.testzip():
+            my_zip.close()
+            return False
+
+        os.makedirs(pjoin(settings.MEDIA_ROOT, "images/extracted/archive_{id}/full/".format(id=self.pk)), exist_ok=True)
+        os.makedirs(pjoin(settings.MEDIA_ROOT, "images/extracted/archive_{id}/thumb/".format(id=self.pk)),
+                    exist_ok=True)
+
+        non_extracted_images = self.image_set.filter(extracted=False)
+        if not non_extracted_images:
+            self.generate_image_set()
+            non_extracted_images = self.image_set.filter(extracted=False)
+        non_extracted_positions = non_extracted_images.values_list('archive_position', flat=True)
+
+        filtered_files = get_images_from_zip(my_zip)
+
+        for count, filename_tuple in enumerate(filtered_files, start=1):
+            if count not in non_extracted_positions:
+                continue
+            try:
+                image = non_extracted_images.get(archive_position=count)
+            except Image.DoesNotExist:
+                self.generate_image_set()
+                image = non_extracted_images.get(archive_position=count)
+            image_name = os.path.split(filename_tuple[2].replace('\\', os.sep))[1]
+
+            # Image
+            full_img_name = pjoin(settings.MEDIA_ROOT, upload_imgpath(self, image_name))
+            thumb_img_name = upload_thumbpath_handler(image, image_name)
+
+            with open(full_img_name, "wb") as current_new_img, my_zip.open(
+                    filename_tuple[1] or filename_tuple[0]) as current_file:
+                if filename_tuple[1]:
+                    with zipfile.ZipFile(current_file) as my_nested_zip:
+                        with my_nested_zip.open(filename_tuple[0]) as current_img:
+                            if resized:
+                                im_resized = PImage.open(current_img)
+                                if im_resized.mode != 'RGB':
+                                    im_resized = im_resized.convert('RGB')
+                                im_w, im_h = im_resized.size
+                                if im_w > im_h:
+                                    im_resized.thumbnail((1500, 9999), PImage.ANTIALIAS)
+                                else:
+                                    im_resized.thumbnail((900, 9999), PImage.ANTIALIAS)
+                                im_resized.save(current_new_img, "JPEG")
+                            else:
+                                shutil.copyfileobj(current_img, current_new_img)  # type: ignore
+                else:
+                    if resized:
+                        im_resized = PImage.open(current_file)
+                        if im_resized.mode != 'RGB':
+                            im_resized = im_resized.convert('RGB')
+                        im_w, im_h = im_resized.size
+                        if im_w > im_h:
+                            im_resized.thumbnail((1500, 9999), PImage.ANTIALIAS)
+                        else:
+                            im_resized.thumbnail((900, 9999), PImage.ANTIALIAS)
+                        im_resized.save(current_new_img, "JPEG")
+                    else:
+                        shutil.copyfileobj(current_file, current_new_img)  # type: ignore
+            image.image.name = upload_imgpath(self, image_name)
+
+            # Thumbnail
+            im = PImage.open(full_img_name)
+            if im.mode != 'RGB':
+                im = im.convert('RGB')
+
+            im.thumbnail((200, 290), PImage.ANTIALIAS)
+            im.save(pjoin(settings.MEDIA_ROOT, thumb_img_name), "JPEG")
+            image.thumbnail.name = thumb_img_name
+
+            image.extracted = True
+            image.save()
+            im.close()
+
+        my_zip.close()
+        self.extracted = True
         self.simple_save()
         return True
 
@@ -1742,6 +1886,7 @@ class Archive(models.Model):
         thumb_name = thumb_path_handler(self, "thumb2.jpg")
         os.makedirs(os.path.dirname(pjoin(settings.MEDIA_ROOT, thumb_name)), exist_ok=True)
         im.save(pjoin(settings.MEDIA_ROOT, thumb_name), "JPEG")
+        im.close()
         self.thumbnail.name = thumb_name
 
     def rename_zipped_tail(self, new_file_name: str) -> bool:
@@ -1784,8 +1929,17 @@ class Archive(models.Model):
                 galleries_title_id.append(
                     (replace_illegal_name(gallery.title_jpn), gallery.pk))
 
-        adj_title = replace_illegal_name(
-            os.path.basename(self.zipped.name)).replace(".zip", "")
+        if provider_filter:
+            matchers = settings.PROVIDER_CONTEXT.get_matchers(
+                settings.CRAWLER_SETTINGS,
+                filter_name="{}_title".format(provider_filter), force=True
+            )
+            if matchers:
+                adj_title = matchers[0][0].format_to_compare_title(self.zipped.name)
+            else:
+                adj_title = get_title_from_path(self.zipped.name)
+        else:
+            adj_title = get_title_from_path(self.zipped.name)
 
         if clear_title:
             adj_title = clean_title(adj_title)
@@ -2054,6 +2208,7 @@ class Image(models.Model):
             size = im.size
             self.image_width = size[0]
             self.image_height = size[1]
+            im.close()
         super(Image, self).save(*args, **kwargs)
 
 
@@ -2174,6 +2329,7 @@ class Mention(models.Model):
         os.makedirs(os.path.dirname(thumb_fn), exist_ok=True)
         im.save(thumb_fn, "JPEG")
         self.thumbnail.name = thumb_relative_path
+        im.close()
 
         self.save()
 
@@ -2261,6 +2417,8 @@ class WantedGallery(models.Model):
         'Page count', blank=True, null=True, default=0)
     create_date = models.DateTimeField(auto_now_add=True)
     last_modified = models.DateTimeField(auto_now=True, blank=True, null=True)
+
+    add_to_archive_group = models.ForeignKey(ArchiveGroup, blank=True, null=True, on_delete=models.SET_NULL)
 
     class Meta:
         verbose_name_plural = "Wanted galleries"

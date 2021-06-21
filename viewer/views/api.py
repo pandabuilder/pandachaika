@@ -2,6 +2,7 @@
 # other tools (userscript, happypanda, etc.)
 
 import json
+import logging
 import re
 from collections import defaultdict
 
@@ -24,6 +25,7 @@ from viewer.views.head import gallery_filter_keys, gallery_order_fields, filter_
 from viewer.utils.functions import gallery_search_results_to_json
 
 crawler_settings = settings.CRAWLER_SETTINGS
+logger = logging.getLogger(__name__)
 
 
 @csrf_exempt
@@ -113,6 +115,27 @@ def json_search(request: HttpRequest) -> HttpResponse:
             response = json.dumps(
                 {
                     'tags': archive.tag_list_sorted(),
+                },
+                # indent=2,
+                sort_keys=True,
+                ensure_ascii=False,
+            )
+            return HttpResponse(response, content_type="application/json; charset=utf-8")
+        # Get tags from a specific archive.
+        elif 'ah' in data:
+            try:
+                archive_id = int(data['ah'])
+            except ValueError:
+                return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+            try:
+                archive = Archive.objects.get(pk=archive_id)
+            except Archive.DoesNotExist:
+                return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+            if not archive.public and not request.user.is_authenticated:
+                return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+            response = json.dumps(
+                {
+                    'image_hashes': [x.sha1 for x in archive.image_set.all()],
                 },
                 # indent=2,
                 sort_keys=True,
@@ -515,7 +538,7 @@ def json_search(request: HttpRequest) -> HttpResponse:
             )
             return HttpResponse(response, content_type="application/json; charset=utf-8")
         else:
-            return HttpResponse(json.dumps({'result': "Wrong command"}), content_type="application/json; charset=utf-8")
+            return HttpResponse(json.dumps({'result': "Unknown command"}), content_type="application/json; charset=utf-8")
     else:
         return HttpResponse(json.dumps({'result': "Request must be GET"}), content_type="application/json; charset=utf-8")
 
@@ -609,6 +632,9 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                                     def archive_callback(x: Optional['Archive'], crawled_url: Optional[str], result: str) -> None:
 
                                         if x:
+                                            logger.info(
+                                                'Preserving old extra info for archive: {}'.format(x.get_absolute_url())
+                                            )
                                             for old_user_favorite in old_user_favorites:
                                                 UserArchivePrefs.objects.get_or_create(
                                                     archive=x,
@@ -620,7 +646,7 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                                                 x.custom_tags.set(old_custom_tags)
 
                                             if old_extracted and not x.extracted and x.crc32:
-                                                x.extract_toggle()
+                                                x.extract()
 
                                     crawler_settings.workers.web_queue.enqueue_args_list(
                                         [args['link']] + extra_args,
@@ -881,11 +907,13 @@ def simple_archive_filter(args: str, public: bool = True) -> 'QuerySet[Archive]'
     """
 
     # sort and filter results by parameters
-    order = '-gallery__posted'
+    # order = '-gallery__posted'
 
     if public:
+        order = '-public_date'
         results = Archive.objects.order_by(order).filter(public=True)
     else:
+        order = '-create_date'
         results = Archive.objects.order_by(order)
 
     q_formatted = '%' + args.replace(' ', '%') + '%'

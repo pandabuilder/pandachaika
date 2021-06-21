@@ -477,7 +477,7 @@ class WantedGalleryCreateOrEditForm(ModelForm):
             'unwanted_title', 'regexp_unwanted_title',
             'wanted_tags', 'unwanted_tags', 'wanted_providers', 'unwanted_providers',
             'wanted_tags_exclusive_scope', 'exclusive_scope_name', 'wanted_tags_accept_if_none_scope', 'category',
-            'wanted_page_count_lower', 'wanted_page_count_upper',
+            'wanted_page_count_lower', 'wanted_page_count_upper', 'add_to_archive_group',
             'release_date', 'wait_for_time', 'should_search', 'keep_searching', 'reason', 'book_type', 'publisher',
             'page_count'
         ]
@@ -498,6 +498,7 @@ class WantedGalleryCreateOrEditForm(ModelForm):
             'category': 'Category in Gallery to match',
             'wanted_page_count_lower': 'Gallery must have more or equal than this value (0 is ignored)',
             'wanted_page_count_upper': 'Gallery must have less or equal than this value (0 is ignored)',
+            'add_to_archive_group': 'ArchiveGroup to add the resulting Archive if found',
             'wanted_providers': 'Limit the provider to match (panda, fakku, etc). Default is search in all providers',
             'unwanted_providers': 'Exclude galleries from these providers (panda, fakku, etc)',
             'wait_for_time': 'Time after gallery is posted to wait for it to be considered, in timedelta format.'
@@ -547,6 +548,11 @@ class WantedGalleryCreateOrEditForm(ModelForm):
             'book_type': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'publisher': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'page_count': forms.widgets.NumberInput(attrs={'min': 0, 'class': 'form-control'}),
+            'add_to_archive_group': autocomplete.ModelSelect2(
+                url='archive-group-select-autocomplete',
+                attrs={
+                    'size': 1, 'data-placeholder': 'Archive Group', 'class': 'form-control'
+                }),
         }
 
 
@@ -726,3 +732,52 @@ class ProfileChangeForm(forms.ModelForm):
             'notify_new_private_archive': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
             'notify_wanted_gallery_found': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
         }
+
+
+class GalleryCreateForm(ModelForm):
+
+    class Meta:
+        model = Gallery
+        fields = [
+            'gid', 'token', 'title', 'title_jpn', 'tags', 'gallery_container', 'magazine',
+            'category', 'uploader', 'comment', 'posted', 'filecount', 'filesize', 'expunged',
+            'hidden', 'fjord', 'provider', 'reason', 'thumbnail_url', 'thumbnail'
+        ]
+        widgets = {
+            'gid': forms.widgets.TextInput(attrs={'class': 'form-control'}),
+            'provider': forms.widgets.TextInput(attrs={'class': 'form-control'}),
+            'token': forms.widgets.TextInput(attrs={'class': 'form-control'}),
+            'title': forms.widgets.TextInput(attrs={'class': 'form-control'}),
+            'title_jpn': forms.widgets.TextInput(attrs={'class': 'form-control'}),
+            'gallery_container': autocomplete.ModelSelect2(
+                url='gallery-select-autocomplete',
+                attrs={'size': 1, 'data-placeholder': 'Gallery', 'class': 'form-control', 'data-width': '100%'}),
+            'magazine': autocomplete.ModelSelect2(
+                url='gallery-select-autocomplete',
+                attrs={'size': 1, 'data-placeholder': 'Gallery', 'class': 'form-control', 'data-width': '100%'}),
+            'tags': autocomplete.ModelSelect2Multiple(
+                url='tag-pk-autocomplete',
+                attrs={'data-placeholder': 'Tag name', 'class': 'form-control'}
+            ),
+            'category': forms.widgets.TextInput(attrs={'class': 'form-control'}),
+            'uploader': forms.widgets.TextInput(attrs={'class': 'form-control'}),
+            'comment': forms.widgets.Textarea(attrs={'class': 'form-control'}),
+            'posted': forms.DateInput(attrs={'class': 'form-control mr-sm-1', 'type': 'date', 'size': 9}),
+            'filecount': forms.widgets.NumberInput(attrs={'class': 'form-control'}),
+            'filesize': forms.widgets.NumberInput(attrs={'class': 'form-control'}),
+            'expunged': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
+            'hidden': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
+            'fjord': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
+            'reason': forms.widgets.TextInput(attrs={'class': 'form-control'}),
+            'thumbnail_url': forms.widgets.URLInput(attrs={'class': 'form-control'}),
+            'thumbnail': forms.widgets.ClearableFileInput(attrs={'class': 'form-control'}),
+        }
+
+        help_texts = {
+            'thumbnail': 'If this field is empty, the thumbnail will be fetched from the thumbnail URL',
+        }
+
+    def clean_tags(self) -> TemporaryUploadedFile:
+        tags = self.cleaned_data['tags']
+        print(tags)
+        return tags

@@ -1,0 +1,159 @@
+{% extends "viewer/base.html" %}
+{% block title %}Similar Archives | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+{% load static %}
+{% block content %}
+  {% load viewer_extras %}
+  {% load dict_key %}
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+  <!-- Non matched archives  -->
+  <div class="page-header">
+    <h2>Similar Thumbnails for Archives</h2>
+    <p class="lead">This method (python imagededup) runs offline and the scores are saved to a file. The results are then rendered on this page.</p>
+    <p class="lead">Similarity is higher when the score is lower. (0 to 10)</p>
+  </div>
+  <form action="{% url 'viewer:archives-by-thumbnail' %}" method="GET">
+    {% for field in form %}
+      <div class="page-line">
+        {{ field.errors }}
+        {{ field }}
+      </div>
+    {% endfor %}
+    <div class="page-line form-inline">
+      <input title="Source type" class="form-control" name="source_type" placeholder="Source type" value="{{ request.GET.source_type }}">
+      <input title="Reason" class="form-control" name="reason" placeholder="Reason" value="{{ request.GET.reason }}">
+      <input title="Minimum Score" class="form-control" name="score" placeholder="Score" type="number" value="{{ request.GET.score }}">
+      <button type="submit" name="apply" class="btn btn-light">Search</button>
+      <a class="btn btn-light" href="{% url 'viewer:archives-by-thumbnail' %}">Clear</a>
+    </div>
+  </form>
+  <form action="{% url 'viewer:archives-by-thumbnail' %}" method="POST">{% csrf_token %}
+    <!-- Next/Prev page links  -->
+    {% if results.object_list and results.paginator.num_pages > 1 %}
+      <div>
+          <span class="step-links">
+              <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
+            {% if results.has_previous %}
+              <a href= "?{% url_replace 'page' results.previous_page_number %}"> previous &lt;&lt; </a>
+            {% endif %}
+            <span class="current">
+                  &nbsp;Page {{ results.number }} of {{ results.paginator.num_pages }}
+              </span>
+            {% if results.has_next %}
+              <a href="?{% url_replace 'page' results.next_page_number %}"> &gt;&gt; next</a>
+            {% endif %}
+            <a href="?{% url_replace 'page' results.paginator.num_pages %}"> &gt;&gt; last</a>
+          </span>
+      </div>
+    {% endif %}
+      <table class="table table-bordered table-sm generic-table">
+        <thead>
+        <tr>
+          <th>Title</th><th>Source</th><th>Count</th><th>Size</th><th>Created</th><th>Archives</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for archive in results %}
+          <tr>
+            <td>
+            {% if archive.thumbnail.name %}
+              <a href="{% url 'viewer:archive' archive.pk %}" data-image-url="{{ archive.thumbnail.url }}" class="img-preview" rel="popover">{{ archive.title }}</a>
+            {% else %}
+              <a href="{% url 'viewer:archive' archive.pk %}">{{ archive.title }}</a>
+            {% endif %}
+            </td>
+            <td>
+              {{ archive.source_type }}
+            </td>
+            <td>
+              {{ archive.filecount }}
+            </td>
+            <td>
+              {{ archive.filesize }}
+            </td>
+            <td>
+              {{ archive.create_date|date:"DATETIME_FORMAT" }}
+            </td>
+            <td>
+              <table class="table table-sm table-bordered generic-table">
+                <thead>
+                <tr>
+                  <th scope="col">Title</th>
+                  <th scope="col">Score</th>
+                  <th scope="col">Source</th>
+                  <th scope="col">Count</th>
+                  <th scope="col">Size</th>
+                  <th scope="col">Created</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for similar_pk, similar_score in filtered_scores|dict_key:archive.pk %}
+                  {% with similar_archive=similar_archives|dict_key:similar_pk reverse_score=10|subtract:similar_score %}
+                  <tr>
+                    <td>
+                      {% if similar_archive.thumbnail.name %}
+                        <a href="{% url 'viewer:archive' similar_archive.pk %}" data-image-url="{{ similar_archive.thumbnail.url }}" class="img-preview" rel="popover">{{ similar_archive.title }}</a>
+                      {% else %}
+                        <a href="{% url 'viewer:archive' similar_archive.pk %}">{{ similar_archive.title }}</a>
+                      {% endif %}
+                    </td>
+                    <td class="{{ reverse_score|color_percent:10 }}">{{ similar_score }}</td>
+                    <td>
+                      {{ similar_archive.source_type }}
+                    </td>
+                    <td>
+                      {{ similar_archive.filecount }}
+                    </td>
+                    <td>
+                      {{ similar_archive.filesize }}
+                    </td>
+                    <td>
+                      {{ similar_archive.create_date|date:"DATETIME_FORMAT" }}
+                    </td>
+                  </tr>
+                  {% endwith %}
+                {% endfor %}
+                </tbody>
+              </table>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    <!-- Next/Prev page links  -->
+      {% if results.object_list and results.paginator.num_pages > 1 %}
+        <div>
+            <span class="step-links">
+                <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
+              {% if results.has_previous %}
+                <a href= "?{% url_replace 'page' results.previous_page_number %}"> previous &lt;&lt; </a>
+              {% endif %}
+              <span class="current">
+                    &nbsp;Page {{ results.number }} of {{ results.paginator.num_pages }}
+                </span>
+              {% if results.has_next %}
+                <a href="?{% url_replace 'page' results.next_page_number %}"> &gt;&gt; next</a>
+              {% endif %}
+              <a href="?{% url_replace 'page' results.paginator.num_pages %}"> &gt;&gt; last</a>
+            </span>
+        </div>
+      {% endif %}
+  </form>
+{% endblock %}
+{% block afterJQ %}
+  {% load compress %}
+  {% compress css %}
+    <link href="{% static 'autocomplete_light/vendor/jal/src/style.css' %}" type="text/css" media="all" rel="stylesheet" />
+  {% endcompress %}
+  {% compress js %}
+    <script type="text/javascript" src="{% static 'autocomplete_light/jquery.init.js' %}"></script>
+    <script type="text/javascript" src="{% static 'autocomplete_light/autocomplete.init.js' %}"></script>
+    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/autocomplete.js' %}"></script>
+    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/text_widget.js' %}"></script>
+    <script type="text/javascript" src="{% static 'autocomplete_light/jal.js' %}"></script>
+  {% endcompress %}
+{% endblock %}

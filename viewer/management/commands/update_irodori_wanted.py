@@ -91,7 +91,7 @@ class Command(BaseCommand):
                     'notify_when_found': False,
                     'public': False,
                     'add_as_hidden': True,
-                    'wait_for_time': timedelta(hours=2),
+                    'wait_for_time': timedelta(minutes=45),
                     'release_date': None,
                     'wanted_tags_exclusive_scope': True,
                     'exclusive_scope_name': artist_tag.scope,

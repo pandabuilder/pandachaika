@@ -1,8 +1,8 @@
 -r requirements.txt
-django-debug-toolbar
-django-unused-media
+django-debug-toolbar==3.2.1
+django-unused-media==0.2.2
 mypy==0.812
 flake8==3.9.2
-coverage
-django-nose
+coverage==5.5
+django-nose==1.4.7
 django-stubs==1.8.0
