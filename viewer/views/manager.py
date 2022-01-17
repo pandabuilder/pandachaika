@@ -10,7 +10,7 @@ from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.conf import settings
 
-from core.base.utilities import thread_exists
+from core.base.utilities import thread_exists, clamp
 from viewer.forms import GallerySearchForm, ArchiveSearchForm, WantedGallerySearchForm
 from viewer.models import Archive, Gallery, ArchiveMatches, Tag, WantedGallery, GalleryMatch, FoundGallery
 from viewer.utils.actions import event_log
@@ -304,7 +304,7 @@ def archives_not_present_in_filesystem(request: HttpRequest) -> HttpResponse:
         if k not in params:
             params[k] = ''
 
-    results = filter_archives_simple(params)
+    results = filter_archives_simple(params, True)
 
     results = results.filter_non_existent(  # type: ignore
         crawler_settings.MEDIA_ROOT
@@ -332,6 +332,16 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
         page = int(get.get("page", '1'))
     except ValueError:
         page = 1
+
+    try:
+        limit = max(1, int(get.get("limit", '100')))
+    except ValueError:
+        limit = 100
+
+    try:
+        inline_thumbnails = bool(get.get("inline-thumbnails", ''))
+    except ValueError:
+        inline_thumbnails = False
 
     if 'clear' in get:
         form = ArchiveSearchForm()
@@ -373,7 +383,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
 
             matcher_filter = p['create_possible_matches']
             try:
-                cutoff = float(p.get('cutoff', '0.4'))
+                cutoff = clamp(float(p.get('cutoff', '0.4')), 0.0, 0.4)
             except ValueError:
                 cutoff = 0.4
             try:
@@ -398,7 +408,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                 return render_error(request, "Local matching worker is already running.")
             provider = p['create_possible_matches_internal']
             try:
-                cutoff = float(p.get('cutoff', '0.4'))
+                cutoff = clamp(float(p.get('cutoff', '0.4')), 0.0, 0.4)
             except ValueError:
                 cutoff = 0.4
             try:
@@ -435,7 +445,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
         if k not in params:
             params[k] = ''
 
-    results = filter_archives_simple(params)
+    results = filter_archives_simple(params, True)
 
     results = results.filter(
         gallery__isnull=True
@@ -460,7 +470,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
     if 'with-possible-matches' in get:
         results = results.annotate(n_possible_matches=Count('possible_matches')).filter(n_possible_matches__gt=0)
 
-    paginator = Paginator(results, 100)
+    paginator = Paginator(results, limit)
     try:
         results_page = paginator.page(page)
     except (InvalidPage, EmptyPage):
@@ -471,7 +481,8 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
         'providers': Gallery.objects.all().values_list('provider', flat=True).distinct(),
         'matchers': crawler_settings.provider_context.get_matchers(crawler_settings, force=True),
         'api_key': crawler_settings.api_key,
-        'form': form
+        'form': form,
+        'inline_thumbnails': inline_thumbnails
     }
     return render(request, "viewer/archives_not_matched.html", d)
 
@@ -572,7 +583,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
             provider = p.get('provider', '')
 
             try:
-                cutoff = float(p.get('cutoff', '0.4'))
+                cutoff = clamp(float(p.get('cutoff', '0.4')), 0.0, 0.4)
             except ValueError:
                 cutoff = 0.4
             try:
@@ -612,7 +623,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
             provider = p.get('provider', '')
 
             try:
-                cutoff = float(p.get('cutoff', '0.4'))
+                cutoff = clamp(float(p.get('cutoff', '0.4')), 0.0, 0.4)
             except ValueError:
                 cutoff = 0.4
             try:
@@ -674,7 +685,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
         'possible_galleries__gallery__archive_set',
         'artists',
         'mentions'
-    ).order_by('-release_date')
+    )
 
     paginator = Paginator(results_filtered, 100)
     try:

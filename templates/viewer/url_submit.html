@@ -11,19 +11,94 @@
   <div class="page-header">
     <h2>URLs submit form</h2>
     <p class="lead">Paste URLs that you want to back up (from sites that allow downloading), and specify the reason.</p>
+    <p class="lead">Check URLS only allows you to check the current status URLs without being added.</p>
     <h5>One per line, an admin will review them later.</h5>
   </div>
   <form action="{% url 'viewer:url-submit' %}" method="POST">{% csrf_token %}
     <div class="form-group">
       <label for="urls">Urls</label>
-      <textarea name="urls" class="form-control" id="urls" rows="10"></textarea>
+      <textarea name="urls" class="form-control" id="urls" rows="10">{{ request.POST.urls }}</textarea>
     </div>
     <div class="form-group">
-      <label for="reason">Reason (wani, bavel, etc.)</label>
+      <label for="reason">Reason (wani, bavel, etc.). Optional but recommended.</label>
       <input class="form-control" id="reason" name="reason" maxlength="93">
     </div>
     <div class="form-group">
-      <button class="btn btn-light">Submit URLs</button>
+      <button class="btn btn-light" name="submit">Submit URLs</button>
+      <button class="btn btn-info" name="check">Check URLs only</button>
+      <a class="btn btn-light" href="{% url 'viewer:url-submit' %}">Clear</a>
     </div>
   </form>
+  {% if 'check' in request.POST %}
+  {% load static %}
+  {% load viewer_extras %}
+  <div class="card bg-dark border-info mb-2">
+    <div class="card-header py-2">
+      URL Report. Removed URLs means that after review it was discarded (possible reasons: reupload, resampled, etc)
+    </div>
+    <div class="card-body">
+    {% if results %}
+      <div class="table-responsive">
+        <table class="table table-sm table-striped">
+          <thead>
+          <tr>
+            <th scope="col">Checked URL</th>
+            <th scope="col">Gallery (Metadata)</th>
+            <th scope="col">Public</th>
+            <th scope="col">Posted date</th>
+            {% if user.is_authenticated %}<th scope="col">Status</th>{% endif %}
+            <th scope="col">Archives (Associated files)</th>
+          </tr>
+          </thead>
+          <tbody>
+          {% for found_entry in results %}
+            <tr>
+              <td>{{ found_entry.0|urlize_all_rel }}</td>
+              <td>
+                {% if found_entry.1 %}
+                  {% if user.is_authenticated or found_entry.1.public %}
+                    <a href="{% url 'viewer:gallery' found_entry.1.pk %}" data-image-url="{% if found_entry.1.thumbnail.name %}{{ found_entry.1.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover">{{ found_entry.1.best_title }}</a>
+                  {% else %}
+                    {% if found_entry.1.is_normal %}
+                    URL already exists and it's being reviewed
+                      {% else %}
+                    URL was added and removed
+                    {% endif %}
+                  {% endif %}
+                {% else %}
+                URL has not been added
+                {% endif %}
+              </td>
+              <td>{% if found_entry.1 %}{% if user.is_authenticated or found_entry.1.public %}{{ found_entry.1.public|yesno }}{% endif %}{% endif %}</td>
+              <td>{% if found_entry.1 %}{% if user.is_authenticated or found_entry.1.public %}{{ found_entry.1.posted|date:"SHORT_DATE_FORMAT" }}{% endif %}{% endif %}</td>
+              {% if user.is_authenticated %}<td>{% if found_entry.1 %}{{ found_entry.1.get_status_display }}{% endif %}</td>{% endif %}
+              <td>
+              <ul>
+              {% for archive in found_entry.1.archive_set.all %}
+                {% if archive.public or user.is_authenticated %}
+                <li>
+                  <a href="{% url 'viewer:archive' archive.pk %}" data-image-url="{% if archive.thumbnail.name %}{{ archive.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover">{{ archive.pk }}</a><span> (main) on: {{ archive.public_date|date:"SHORT_DATE_FORMAT"|default:"not yet" }}</span>
+                </li>
+                {% endif %}
+              {% endfor %}
+              {% for archive in found_entry.1.alternative_sources.all %}
+                {% if archive.public or user.is_authenticated %}
+                <li>
+                  <a href="{% url 'viewer:archive' archive.pk %}" data-image-url="{% if archive.thumbnail.name %}{{ archive.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover">{{ archive.pk }}</a><span> (alt) on: {{ archive.public_date|date:"SHORT_DATE_FORMAT"|default:"not yet" }}</span>
+                </li>
+                {% endif %}
+              {% endfor %}
+              </ul>
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div>No found URLs</div>
+    {% endif %}
+          </div>
+    </div>
+  {% endif %}
 {% endblock %}

@@ -1,7 +1,7 @@
 import copy
 import json
 import typing
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 import time
 from typing import Optional
 
@@ -13,6 +13,7 @@ import traceback
 from collections import defaultdict
 from collections.abc import Callable, Iterable
 
+from django.db import close_old_connections
 from django.db.models import QuerySet, Q, Value, CharField, F
 from django.db.models.functions import Concat, Replace
 
@@ -155,6 +156,10 @@ class BaseParser:
             logger.error("FoundGallery model has not been initiated.")
             return
 
+        if not self.settings.wanted_gallery_model:
+            logger.error("WantedGallery model has not been initiated.")
+            return
+
         if gallery.title or gallery.title_jpn:
             q_objects = Q()
             q_objects_unwanted = Q()
@@ -177,7 +182,7 @@ class BaseParser:
                 q_objects_regexp.add(Q(g_title_jpn__regex=F('search_title')), Q.OR)
                 q_objects_unwanted_regexp.add(~Q(g_title_jpn__regex=F('unwanted_title')), Q.AND)
 
-            filtered_wanted = wanted_filters.filter(
+            filtered_wanted: QuerySet[WantedGallery] = wanted_filters.filter(
                 Q(search_title__isnull=True)
                 | Q(search_title='')
                 | Q(Q(regexp_search_title=False), q_objects)
@@ -201,19 +206,29 @@ class BaseParser:
                 Q(wait_for_time__isnull=True) | Q(wait_for_time__lte=django_tz.now() - gallery.posted)
             )
 
+        filtered_wanted = filtered_wanted.prefetch_related(
+            'wanted_providers',
+            'unwanted_providers',
+            'wanted_tags',
+            'unwanted_tags'
+        )
+
+        already_founds = self.settings.found_gallery_model.objects.filter(
+            wanted_gallery__in=filtered_wanted,
+            gallery__gid=gallery.gid,
+            gallery__provider=self.name
+        ).select_related(
+            'gallery',
+            'wanted_gallery'
+        )
+
         for wanted_filter in filtered_wanted:
             # Skip wanted_filter that's already found.
-            already_found = self.settings.found_gallery_model.objects.filter(
-                wanted_gallery__pk=wanted_filter.pk,
-                gallery__gid=gallery.gid,
-                gallery__provider=self.name
-            ).first()
+            already_found = [x for x in already_founds if x.wanted_gallery.id == wanted_filter.id]
             # Skip already found unless it's a submitted gallery.
-            if already_found and not already_found.gallery.is_submitted():
+            if already_found and not already_found[0].gallery.is_submitted():
                 continue
             # Skip wanted_filter that's not a global filter or is not for this provider.
-            if wanted_filter.provider and wanted_filter.provider != self.name:
-                continue
             if wanted_filter.wanted_providers.count():
                 if not wanted_filter.wanted_providers.filter(slug=self.name).first():
                     continue
@@ -261,10 +276,17 @@ class BaseParser:
 
             if accepted:
                 gallery_wanted_lists[gallery.gid].append(wanted_filter)
-                wanted_filter.found = True
-                wanted_filter.date_found = django_tz.now()
-                wanted_filter.save()
+                # wanted_filter.found = True
+                # wanted_filter.date_found = django_tz.now()
+                # We don't save here since we're using bulk_update
+                # wanted_filter.save()
+
         if len(gallery_wanted_lists[gallery.gid]) > 0:
+            self.settings.wanted_gallery_model.objects.filter(id__in=[x.pk for x in gallery_wanted_lists[gallery.gid]]).update(
+                found=True,
+                date_found=django_tz.now()
+            )
+
             logger.info("Gallery link: {}, title: {}, matched filters: {}.".format(
                 link,
                 gallery.title,
@@ -298,6 +320,10 @@ class BaseParser:
     def id_from_url(url: str) -> Optional[str]:
         pass
 
+    @staticmethod
+    def token_from_url(url: str) -> Optional[str]:
+        pass
+
     @classmethod
     def id_from_url_implemented(cls) -> bool:
         if cls.id_from_url is not BaseParser.id_from_url:
@@ -326,6 +352,7 @@ class BaseParser:
             )
         except BaseException:
             logger.critical(traceback.format_exc())
+        close_old_connections()
 
     def crawl_urls(
             self, urls: list[str],
@@ -337,7 +364,8 @@ class BaseParser:
         gallery_count = len(gallery_data_list)
 
         if self.time_taken_wanted:
-            logger.info("Time taken to compare with WantedGallery: {} seconds.".format(int(self.time_taken_wanted + 0.5)))
+            logger.info(
+                "Time taken to compare with WantedGallery: {} seconds.".format(int(self.time_taken_wanted + 0.5)))
 
         if gallery_count == 0:
             logger.info("No galleries need downloading, returning.")
@@ -346,7 +374,7 @@ class BaseParser:
             logger.info("{} galleries for downloaders to work with.".format(gallery_count))
 
         if not self.settings.update_metadata_mode:
-            downloaders_msg = 'Downloaders: (name, priority)'
+            downloaders_msg = 'Downloaders (name, priority):'
 
             for downloader in self.downloaders:
                 downloaders_msg += " ({}, {})".format(downloader[0], downloader[1])
@@ -374,12 +402,25 @@ class BaseParser:
         else:
             logger.info("Link: {}".format(gallery.link))
 
-        for cnt, downloader in enumerate(self.downloaders):
+        # If there's a WG match, and we are processing submitted galleries, revert the downloaders to default.
+        if len(gallery_wanted_lists[gallery.gid]) > 0 and len(self.downloaders) == 1 and self.downloaders[0][0].type == 'submit':
+            to_use_downloaders = self.settings.provider_context.get_downloaders(
+                self.settings, self.general_utils,
+                filter_name=self.name, priorities=self.settings.back_up_downloaders
+            )
+            downloaders_msg = 'WantedGallery match, reverting to default downloaders (name, priority):'
+            for downloader in to_use_downloaders:
+                downloaders_msg += " ({}, {})".format(downloader[0], downloader[1])
+            logger.info(downloaders_msg)
+        else:
+            to_use_downloaders = self.downloaders
+
+        for cnt, downloader in enumerate(to_use_downloaders):
             downloader[0].init_download(copy.deepcopy(gallery))
 
             if downloader[0].return_code == 1:
 
-                if (cnt + 1) == len(self.downloaders) and downloader[0].mark_hidden_if_last:
+                if (cnt + 1) == len(to_use_downloaders) and downloader[0].mark_hidden_if_last:
                     if downloader[0].gallery_db_entry:
                         downloader[0].gallery_db_entry.hidden = True
                         downloader[0].gallery_db_entry.simple_save()
@@ -391,9 +432,6 @@ class BaseParser:
                             wanted_gallery=wanted_gallery,
                             gallery=downloader[0].gallery_db_entry
                         )
-                        if wanted_gallery.add_as_hidden and downloader[0].gallery_db_entry:
-                            downloader[0].gallery_db_entry.hidden = True
-                            downloader[0].gallery_db_entry.simple_save()
                         if downloader[0].archive_db_entry and wanted_gallery.reason:
                             downloader[0].archive_db_entry.reason = wanted_gallery.reason
                             downloader[0].archive_db_entry.simple_save()
@@ -481,7 +519,7 @@ class BaseParser:
                             self.settings.workers.web_queue.enqueue_args_list([gallery_url, "--stop-nested"])
 
                 return
-            elif downloader[0].return_code == 0 and (cnt + 1) == len(self.downloaders):
+            elif downloader[0].return_code == 0 and (cnt + 1) == len(to_use_downloaders):
                 self.last_used_downloader = 'none'
                 if not downloader[0].archive_only:
                     downloader[0].original_gallery = gallery

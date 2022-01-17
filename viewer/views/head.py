@@ -16,7 +16,7 @@ from django.contrib.auth.models import User
 from django.http.request import HttpRequest
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
 from django.urls import reverse
-from django.db.models import Q, Avg, Max, Min, Sum, Count, QuerySet, F
+from django.db.models import Q, Avg, Max, Min, Sum, Count, QuerySet, F, Prefetch
 from django.http import Http404, BadHeaderError
 from django.http import HttpResponseRedirect, HttpResponse
 from django.http.request import QueryDict
@@ -35,8 +35,8 @@ from viewer.forms import (
 from viewer.models import (
     Archive, Image, Tag, Gallery,
     UserArchivePrefs, WantedGallery,
-    users_with_perm, Profile, GalleryQuerySet, GallerySubmitEntry)
-from viewer.utils.functions import send_mass_html_mail, gallery_search_results_to_json
+    users_with_perm, Profile, GalleryQuerySet, GallerySubmitEntry, ArchiveGroup)
+from viewer.utils.functions import send_mass_html_mail, gallery_search_results_to_json, archive_search_result_to_json
 from viewer.utils.tags import sort_tags
 from viewer.utils.types import AuthenticatedHttpRequest
 
@@ -62,11 +62,28 @@ archive_filter_keys = (
     "qsearch"
 )
 
-archive_order_fields = (
+archive_order_fields = [
     "title", "title_jpn", "rating", "filesize",
-    "filecount", "posted", "create_date", "public_date",
-    "category", "reason", "source_type"
-)
+    "filecount", "posted", "create_date", "public_date", "last_modified",
+    "category", "reason", "source_type", "gallery__posted", "gallery__uploader", "gallery__category"
+]
+
+archive_public_order_fields = [
+    "title", "title_jpn", "rating", "filesize",
+    "filecount", "posted", "public_date",
+    "category", "reason", "source_type", "gallery__posted", "gallery__uploader", "gallery__category"
+]
+
+archive_sort_by_fields = [
+    "title", "title_jpn", "filesize", "filecount", "public_date", "reason", "source_type",
+    "create_date", "last_modified",
+    "gallery__category", "gallery__posted", "gallery__uploader", "gallery__category"
+]
+
+archive_public_sort_by_fields = [
+    "title", "title_jpn", "filesize", "filecount", "public_date", "reason", "source_type",
+    "gallery__category", "gallery__posted", "gallery__uploader", "gallery__category"
+]
 
 gallery_order_fields = (
     "title", "title_jpn", "rating", "filesize",
@@ -79,6 +96,12 @@ wanted_gallery_filter_keys = (
     "provider", "not_used", "wanted-should-search", "wanted-should-search-not", "book_type",
     "publisher", "wanted-found", "wanted-not-found", "reason",
     "wanted-no-found-galleries", "with-possible-matches", "tags"
+)
+
+wanted_gallery_order_fields = (
+    "title", "date_found",
+    "create_date", "last_modified",
+    "release_date"
 )
 
 
@@ -291,7 +314,7 @@ def gallery_details(request: HttpRequest, pk: int, tool: str = None) -> HttpResp
 
         event_log(
             request.user,
-            'DELETE_GALLERY',
+            'MARK_DELETE_GALLERY',
             content_object=gallery,
             result='deleted'
         )
@@ -392,6 +415,8 @@ def gallery_list(request: HttpRequest, mode: str = 'none', tag: str = None) -> H
     get = request.GET
     request.GET = cleared_queries
 
+    json_request = 'json' in get
+
     display_prms: dict[str, Any] = {}
 
     # init parameters
@@ -419,7 +444,7 @@ def gallery_list(request: HttpRequest, mode: str = 'none', tag: str = None) -> H
         # request.session["gallery_parameters"].clear()
     else:
         if mode == 'gallery-tag' and tag:
-            display_prms['tags'] = tag
+            display_prms['tags'] = "^" + tag
         else:
             # create dictionary of properties for each archive and a dict of
             # search/filter parameters
@@ -438,7 +463,17 @@ def gallery_list(request: HttpRequest, mode: str = 'none', tag: str = None) -> H
 
     parameters['main_filters'] = True
     request.session["gallery_parameters"] = parameters
-    results = filter_galleries(request, parameters, display_prms)
+    results = filter_galleries(request, parameters, display_prms, json_request=json_request)
+
+    if json_request:
+        if request.user.is_authenticated:
+            used_prefetch = Prefetch('archive_set', to_attr='available_archives')
+        else:
+            used_prefetch = Prefetch('archive_set', queryset=Archive.objects.filter(public=True), to_attr='available_archives')
+        results = results.prefetch_related(
+            'tags',
+            used_prefetch
+        ).distinct()
 
     if "random" in get:
         count = results.count()
@@ -456,7 +491,7 @@ def gallery_list(request: HttpRequest, mode: str = 'none', tag: str = None) -> H
     except (InvalidPage, EmptyPage):
         results_page = paginator.page(1)
 
-    if 'json' in get:
+    if json_request:
         response = json.dumps(
             {
                 'galleries': gallery_search_results_to_json(request, results_page),
@@ -497,7 +532,7 @@ filter_galleries_defer = (
 )
 
 
-def filter_galleries(request: HttpRequest, session_filters: dict[str, str], request_filters: dict[str, str]) -> Union[GalleryQuerySet, QuerySet[Gallery]]:
+def filter_galleries(request: HttpRequest, session_filters: dict[str, str], request_filters: dict[str, str], json_request: bool = False) -> Union[GalleryQuerySet, QuerySet[Gallery]]:
     """Filter gallery results through parameters and return results list."""
 
     # sort and filter results by parameters
@@ -610,7 +645,8 @@ def filter_galleries(request: HttpRequest, session_filters: dict[str, str], requ
         results = results.distinct()
 
     # Remove fields that are admin related, not public facing
-    results = results.defer(*filter_galleries_defer)
+    if not json_request:
+        results = results.defer(*filter_galleries_defer)
 
     return results
 
@@ -632,6 +668,8 @@ def search(request: HttpRequest, mode: str = 'none', tag: str = None) -> HttpRes
             del cleared_queries[entry]
 
     get = request.GET
+
+    json_request = 'json' in get
 
     if 'rss' in get:
         return redirect('viewer:archive-rss')
@@ -669,7 +707,7 @@ def search(request: HttpRequest, mode: str = 'none', tag: str = None) -> HttpRes
         for field_name, errors in form_simple.errors.items():
             messages.error(request, field_name + ": " + ", ".join(errors), extra_tags='danger')
         if mode == 'tag' and tag:
-            display_prms['tags'] = tag
+            display_prms['tags'] = "^" + tag
         # create dictionary of properties for each archive and a dict of
         # search/filter parameters
         for k, v in get.items():
@@ -709,8 +747,13 @@ def search(request: HttpRequest, mode: str = 'none', tag: str = None) -> HttpRes
         links = [request.build_absolute_uri(reverse('viewer:archive-download', args=(x.pk,))) for x in results]
         return HttpResponse("\n".join(links), content_type="text/plain; charset=utf-8")
 
+    if json_request:
+        results = results.distinct().select_related('gallery'). \
+            prefetch_related(
+            'tags').prefetch_related('custom_tags').defer('gallery__comment')
+
     # make paginator
-    if parameters['view'] == 'list':
+    if parameters['view'] == 'list' or json_request:
         archives_per_page = 100
     else:
         archives_per_page = 24
@@ -720,6 +763,22 @@ def search(request: HttpRequest, mode: str = 'none', tag: str = None) -> HttpRes
         results_page = paginator.page(page)
     except (InvalidPage, EmptyPage):
         results_page = paginator.page(1)
+
+    if json_request:
+        response = json.dumps(
+            {
+                'archives': archive_search_result_to_json(request, results_page),
+                'has_previous': results_page.has_previous(),
+                'has_next': results_page.has_next(),
+                'num_pages': paginator.num_pages,
+                'count': paginator.count,
+                'number': results_page.number,
+            },
+            # indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        return HttpResponse(response, content_type="application/json; charset=utf-8")
 
     display_prms['page_range'] = list(
         range(
@@ -740,25 +799,32 @@ def filter_archives(request: HttpRequest, session_filters: dict[str, str], reque
     """Filter results through parameters
     and return results list.
     """
+    needs_distinct = False
+
+    if not request.user.is_authenticated and not force_private:
+        results: QuerySet[Archive] = Archive.objects.filter(public=True)
+        to_use_order_fields = archive_public_order_fields
+    else:
+        results = Archive.objects.all()
+        to_use_order_fields = archive_order_fields
+
     # sort and filter results by parameters
     order = "posted"
     sorting_field = order
-    needs_distinct = False
-    if session_filters["sort"] and session_filters["sort"] in archive_order_fields:
+    if session_filters["sort"] and session_filters["sort"] in to_use_order_fields:
         order = session_filters["sort"]
         sorting_field = order
     if order == 'rating':
         order = 'gallery__' + order
     elif order == 'posted':
         order = 'gallery__' + order
+    elif order == 'category':
+        order = 'gallery__' + order
 
     if session_filters["asc_desc"] == "desc":
-        results: QuerySet[Archive] = Archive.objects.order_by(F(order).desc(nulls_last=True))
+        results = results.order_by(F(order).desc(nulls_last=True))
     else:
-        results = Archive.objects.order_by(F(order).asc(nulls_last=True))
-
-    if not request.user.is_authenticated and not force_private:
-        results = results.filter(public=True)
+        results = results.order_by(F(order).asc(nulls_last=True))
 
     if request_filters["title"]:
         q_formatted = '%' + request_filters["title"].replace(' ', '%') + '%'
@@ -859,6 +925,16 @@ def filter_archives(request: HttpRequest, session_filters: dict[str, str], reque
             user=request.user.id, favorite_group__gt=0).values_list('archive')
         results = results.filter(id__in=user_arch_ids)
 
+    if "archive-group" in request_filters and request_filters["archive-group"]:
+        try:
+            archive_group_instance = ArchiveGroup.objects.get(title_slug=request_filters["archive-group"])
+            if archive_group_instance.public or request.user.is_authenticated:
+                results = results.filter(archive_groups=archive_group_instance)
+                if "group-order" in request_filters and request_filters["group-order"]:
+                    results = results.order_by("archivegroupentry")
+        except ArchiveGroup.DoesNotExist:
+            pass
+
     if "non_public" in request_filters and request_filters["non_public"]:
         results = results.filter(public=False)
 
@@ -866,12 +942,7 @@ def filter_archives(request: HttpRequest, session_filters: dict[str, str], reque
         results = results.filter(public=True)
 
     if session_filters["view"] == "list":
-        if sorting_field == 'rating':
-            if needs_distinct:
-                results = results.distinct().select_related('gallery')
-            else:
-                results = results.select_related('gallery')
-        elif sorting_field == 'posted':
+        if sorting_field in ('rating', 'posted', 'last_modified'):
             if needs_distinct:
                 results = results.distinct().select_related('gallery')
             else:
@@ -888,7 +959,7 @@ def filter_archives(request: HttpRequest, session_filters: dict[str, str], reque
     else:
         results = results.distinct()
 
-    results = results.defer("details")
+    results = results.defer("details", "origin")
 
     return results
 
@@ -901,7 +972,9 @@ def quick_search(request: HttpRequest, parameters: DataDict, display_parameters:
         order = parameters["sort"]
     if order == 'rating':
         order = 'gallery__' + order
-    if order == 'posted':
+    elif order == 'posted':
+        order = 'gallery__' + order
+    elif order == 'category':
         order = 'gallery__' + order
 
     if parameters["asc_desc"] == "desc":
@@ -1026,13 +1099,16 @@ def url_submit(request: HttpRequest) -> HttpResponse:
 
     p = request.POST
 
-    if p:
+    d = {}
+
+    if p and "submit" in p:
         current_settings = Settings(load_from_config=crawler_settings.config)
         if not current_settings.workers.web_queue:
             messages.error(request, 'Cannot submit link currently. Please contact an admin.')
             return HttpResponseRedirect(reverse('viewer:url-submit'))
         url_set = set()
         # create dictionary of properties for each url
+        current_settings.back_up_downloaders = current_settings.downloaders.copy()
         current_settings.replace_metadata = False
         current_settings.config['allowed']['replace_metadata'] = 'no'
         for k, v in current_settings.config['downloaders'].items():
@@ -1109,6 +1185,32 @@ def url_submit(request: HttpRequest) -> HttpResponse:
                             url_messages.append('{}: Already in submit queue, link: {}, reason: {}'.format(
                                 url_filtered, request.build_absolute_uri(gallery.get_absolute_url()), gallery.reason)
                             )
+                    elif gallery.is_deleted():
+                        messages.info(
+                            request,
+                            'URL {} was deleted from the backup.'.format(
+                                url_filtered
+                            )
+                        )
+                        url_messages.append(
+                            '{}: Was marked as deleted: {}'.format(
+                                url_filtered,
+                                request.build_absolute_uri(gallery.get_absolute_url())
+                            )
+                        )
+                    elif gallery.is_denied():
+                        messages.info(
+                            request,
+                            'URL {} was submitted but denied.'.format(
+                                url_filtered
+                            )
+                        )
+                        url_messages.append(
+                            '{}: Was submitted but denied: {}'.format(
+                                url_filtered,
+                                request.build_absolute_uri(gallery.get_absolute_url())
+                            )
+                        )
                     elif gallery.public:
                         messages.info(
                             request,
@@ -1231,8 +1333,38 @@ def url_submit(request: HttpRequest) -> HttpResponse:
         logger.info("{}\n{}".format(admin_subject, "\n".join(admin_messages)))
 
         return HttpResponseRedirect(reverse('viewer:url-submit'))
+    elif p and "check" in p:
+        submit_text = p.get("urls")
 
-    return render(request, "viewer/url_submit.html")
+        url_dict = dict()
+        if submit_text:
+            for item in submit_text.split("\n"):
+                # Don't allow commands.
+                if not item.startswith('-'):
+                    url_dict[item.rstrip('\r')] = 1
+
+        url_list = list(url_dict.keys())
+        parsers = crawler_settings.provider_context.get_parsers(crawler_settings)
+
+        url_gallery_tuple = []
+
+        for parser in parsers:
+            if parser.id_from_url_implemented():
+                urls_filtered = parser.filter_accepted_urls(url_list)
+                for url_filtered in urls_filtered:
+                    gid = parser.id_from_url(url_filtered)
+                    if not gid:
+                        continue
+                    # We force public galleries only here.
+                    found_galleries = Gallery.objects.filter(
+                        gid=gid, provider=parser.name
+                    ).prefetch_related('archive_set', 'alternative_sources')
+
+                    url_gallery_tuple.append((url_filtered, found_galleries.first()))
+
+        d.update({'results': url_gallery_tuple})
+
+    return render(request, "viewer/url_submit.html", d)
 
 
 def public_stats(request: HttpRequest) -> HttpResponse:
@@ -1337,24 +1469,50 @@ def user_archive_preferences(request: AuthenticatedHttpRequest, archive_pk: int,
                                 {'user_archive_preferences': current_user_archive_preferences})
 
 
-def filter_archives_simple(params: dict[str, Any]) -> QuerySet[Archive]:
+def filter_archives_simple(params: dict[str, Any], authenticated=False) -> QuerySet[Archive]:
     """Filter results through parameters
     and return results list.
     """
-    # sort and filter results by parameters
-    order = "posted"
-    if params["sort"]:
-        order = params["sort"]
-    if order == 'rating':
-        order = 'gallery__' + order
-    elif order == 'posted':
-        order = 'gallery__' + order
-
-    if params["asc_desc"] == "desc":
-        # order = '-' + order
-        results: QuerySet[Archive] = Archive.objects.order_by(F(order).desc(nulls_last=True))
+    if 'sort_by' in params and params['sort_by']:
+        if authenticated:
+            to_use_order_fields = archive_sort_by_fields
+        else:
+            to_use_order_fields = archive_public_sort_by_fields
+        try:
+            sort_objs = json.loads(params['sort_by'])
+        except ValueError:
+            sort_objs = [{'id': 'posted', 'desc': True}]
+        order_arguments = [
+            F(x['id'].replace(".", "__")).desc(nulls_last=True) if x['desc'] else F(x['id'].replace(".", "__")).asc(nulls_last=True)
+            for x in sort_objs if x['id'] in to_use_order_fields
+        ]
+        if order_arguments:
+            results: QuerySet[Archive] = Archive.objects.order_by(*order_arguments)
+        else:
+            results = Archive.objects.order_by(F("gallery__posted").desc(nulls_last=True))
     else:
-        results = Archive.objects.order_by(F(order).asc(nulls_last=True))
+        if authenticated:
+            to_use_order_fields = archive_order_fields
+        else:
+            to_use_order_fields = archive_public_order_fields
+        # sort and filter results by parameters
+        order = "posted"
+        if params["sort"] and params["sort"] in to_use_order_fields:
+            order = params["sort"]
+        if order == 'rating':
+            order = 'gallery__' + order
+        elif order == 'posted':
+            order = 'gallery__' + order
+        elif order == 'category':
+            order = 'gallery__' + order
+
+        if params["asc_desc"] == "desc":
+            # order = '-' + order
+            order_argument = F(order).desc(nulls_last=True)
+        else:
+            order_argument = F(order).asc(nulls_last=True)
+
+        results = Archive.objects.order_by(order_argument)
 
     if params["title"]:
         q_formatted = '%' + params["title"].replace(' ', '%') + '%'
@@ -1375,6 +1533,13 @@ def filter_archives_simple(params: dict[str, Any]) -> QuerySet[Archive]:
         results = results.filter(gallery__posted__gte=params["posted_from"])
     if params["posted_to"]:
         results = results.filter(gallery__posted__lte=params["posted_to"])
+
+    if authenticated:
+        if "created_from" in params and params["created_from"]:
+            results = results.filter(create_date__gte=params["created_from"])
+        if "created_to" in params and params["created_to"]:
+            results = results.filter(create_date__lte=params["created_to"])
+
     if params["match_type"]:
         results = results.filter(match_type__icontains=params["match_type"])
     if params["source_type"]:
@@ -1604,7 +1769,7 @@ def filter_wanted_galleries_simple(params: dict[str, Any]) -> QuerySet[WantedGal
     """
     # sort and filter results by parameters
     order = "release_date"
-    if 'sort' in params and params["sort"]:
+    if 'sort' in params and params["sort"] and params["sort"] in wanted_gallery_order_fields:
         order = params["sort"]
     if 'asc_desc' in params and params["asc_desc"] == "desc":
         order = '-' + order

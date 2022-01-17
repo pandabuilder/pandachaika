@@ -42,6 +42,7 @@ PUSHOVER_API_URL = 'https://api.pushover.net/1/messages.json'
 
 ZIP_CONTAINER_REGEX = re.compile(r'(\.zip|\.cbz)$', re.IGNORECASE)
 IMAGES_REGEX = re.compile(r'(\.jpeg|\.jpg|\.png|\.gif)$', re.IGNORECASE)
+ZIP_CONTAINER_EXTENSIONS = [".zip", ".cbz"]
 
 
 # The idea of this class is to contain certain methods, to not have to pass arguments that are global.
@@ -161,7 +162,13 @@ def calc_crc32(filename: str) -> str:
     return "%X" % (prev & 0xFFFFFFFF)
 
 
-def sha1_from_file_object(file_object: typing.IO[bytes]):
+def sha1_from_file_object(fp: Union[typing.IO, str]):
+
+    if isinstance(fp, str):
+        file_object: Union[typing.IO, typing.BinaryIO] = open(fp, "rb")
+    else:
+        file_object = fp
+
     block_size = 65536
     hasher = hashlib.sha1()
     buf = file_object.read(block_size)
@@ -486,6 +493,13 @@ def timestamp_or_zero(posted: Optional[datetime]) -> float:
         return 0.0
 
 
+def timestamp_or_null(posted: Optional[datetime]) -> Optional[int]:
+    if posted:
+        return int(posted.timestamp())
+    else:
+        return None
+
+
 def compare_search_title_with_strings(original_title: str, titles: list[str]) -> bool:
     if not original_title:
         return False
@@ -581,10 +595,16 @@ def unescape(text: Optional[str]) -> Optional[str]:
 
 def get_thread_status() -> list[tuple[tuple[str, str, str], bool]]:
     info_list = []
+    thread_names = set()
 
     thread_list = threading.enumerate()
     for thread_info in setup.GlobalInfo.worker_threads:
         info_list.append((thread_info, any([thread_info[0] == thread.name for thread in thread_list])))
+        thread_names.add(thread_info[0])
+
+    for thread_data in thread_list:
+        if thread_data.name not in thread_names:
+            info_list.append(((thread_data.name, 'None', 'other'), thread_data.is_alive()))
 
     return info_list
 
@@ -727,3 +747,13 @@ def get_filename_from_cd(cd: typing.Optional[str] = None):
     if len(fname) == 0:
         return None
     return fname[0]
+
+
+def clamp(n, minn, maxn):
+    return max(min(maxn, n), minn)
+
+
+def remove_archive_extensions(filename: str):
+    for extension in ZIP_CONTAINER_EXTENSIONS:
+        filename = filename.replace(extension, "")
+    return filename

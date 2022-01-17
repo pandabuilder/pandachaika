@@ -112,8 +112,13 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'webpack_loader',
-    'viewer',
 ]
+
+if DEBUG and module_exists('corsheaders'):
+    INSTALLED_APPS += ['corsheaders']
+    CORS_ORIGIN_ALLOW_ALL = True
+
+INSTALLED_APPS += ['viewer']
 
 if module_exists('compressor'):
     INSTALLED_APPS += ['compressor']
@@ -123,15 +128,6 @@ if module_exists('django_unused_media'):
 
 if DEBUG and module_exists('debug_toolbar'):
     INSTALLED_APPS += ['debug_toolbar']
-
-if DEBUG and module_exists('django_nose'):
-    INSTALLED_APPS += ['django_nose']
-    TEST_RUNNER = 'django_nose.NoseTestSuiteRunner'
-    NOSE_ARGS = [
-        '--with-coverage',
-        '--cover-package=viewer,core',
-        '--cover-html',
-    ]
 
 MIDDLEWARE = [
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -156,6 +152,14 @@ WEBPACK_LOADER = {
     'DEFAULT': {
         'BUNDLE_DIR_NAME': '',
         'STATS_FILE': os.path.join(BASE_DIR, 'webpack-stats.json'),
+    },
+    'MANAGE': {
+        'BUNDLE_DIR_NAME': '',
+        'STATS_FILE': os.path.join(BASE_DIR, 'webpack-stats-manage.json'),
+    },
+    'COMPARE': {
+        'BUNDLE_DIR_NAME': '',
+        'STATS_FILE': os.path.join(BASE_DIR, 'webpack-stats-compare.json'),
     }
 }
 
@@ -183,6 +187,15 @@ if DEBUG and module_exists('debug_toolbar'):
     MIDDLEWARE = ['debug_toolbar.middleware.DebugToolbarMiddleware'] + \
         MIDDLEWARE
 
+
+# # Profiling
+# if DEBUG and module_exists('django_cprofile_middleware'):
+#     MIDDLEWARE = ['django_cprofile_middleware.middleware.ProfilerMiddleware'] + \
+#         MIDDLEWARE
+
+if DEBUG and module_exists('corsheaders'):
+    MIDDLEWARE = ['corsheaders.middleware.CorsMiddleware'] + \
+        MIDDLEWARE
 
 # Database
 if crawler_settings.db_engine == 'mysql':

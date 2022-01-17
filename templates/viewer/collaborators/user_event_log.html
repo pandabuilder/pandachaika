@@ -14,6 +14,20 @@
     <p class="lead">Number of events (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
     </div>
     {% load viewer_extras %}
+    <form action="{{ request.get_full_path }}" method="GET">
+      <div class="form-inline page-line">
+        <label for="actions">Actions: </label>
+        <select multiple id="actions" name="actions" class="form-control" title="actions" aria-label="actions">
+        {% with selected_actions=request.GET|get_list:'actions' %}
+          {% for action in actions %}
+            <option value="{{ action }}" {% if action in selected_actions %} selected{% endif %}>{{ action }}</option>
+          {% endfor %}
+        {% endwith %}
+        </select>
+        <button type="submit" name="apply" class="btn btn-info">Search</button>
+        <a class="btn btn-light" href="{% url 'viewer:users-event-log' %}">Clear</a>
+      </div>
+    </form>
     <!-- Next/Prev page links  -->
     {% if results.object_list and results.paginator.num_pages > 1 %}
       <div>
@@ -51,7 +65,7 @@
               {{ event.reason }}
             </td>
             <td>
-              {{ event.data }}
+              {{ event.data|default:"None" }}
             </td>
             <td>
               {{ event.result }}

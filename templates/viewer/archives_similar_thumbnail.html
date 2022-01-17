@@ -24,11 +24,15 @@
       </div>
     {% endfor %}
     <div class="page-line form-inline">
+      <button id="toggle-all" class="btn btn-secondary" type="button">Toggle All</button>
+      <button data-role="toggle-field" data-field="source_type" class="btn btn-info" type="button" title="Select or deselect all the Archives with the same source as the filter">Toggle Source</button>
+      <button data-role="toggle-field" data-field="reason" class="btn btn-info" type="button" title="Select or deselect all the Archives with the same reason as the filter">Toggle Reason</button>
       <input title="Source type" class="form-control" name="source_type" placeholder="Source type" value="{{ request.GET.source_type }}">
       <input title="Reason" class="form-control" name="reason" placeholder="Reason" value="{{ request.GET.reason }}">
       <input title="Minimum Score" class="form-control" name="score" placeholder="Score" type="number" value="{{ request.GET.score }}">
-      <button type="submit" name="apply" class="btn btn-light">Search</button>
+      <button type="submit" name="apply" class="btn btn-info">Search</button>
       <a class="btn btn-light" href="{% url 'viewer:archives-by-thumbnail' %}">Clear</a>
+      <input id="checkbox-f1" class="custom-cb" type="checkbox" name="filter-similar" value="1" {% if "filter-similar" in request.GET %}checked{% endif %}><label for="checkbox-f1"><span><span></span></span>Apply filter to similars</label>
     </div>
   </form>
   <form action="{% url 'viewer:archives-by-thumbnail' %}" method="POST">{% csrf_token %}
@@ -53,12 +57,17 @@
       <table class="table table-bordered table-sm generic-table">
         <thead>
         <tr>
-          <th>Title</th><th>Source</th><th>Count</th><th>Size</th><th>Created</th><th>Archives</th>
+          <th>Select</th><th>Title</th><th>Source</th><th>Count</th><th>Size</th><th>Created</th><th>Archives</th>
         </tr>
         </thead>
         <tbody>
         {% for archive in results %}
+          {% with scores_by_archive=filtered_scores|dict_key:archive.pk %}
+            {% if scores_by_archive %}
           <tr>
+            <td>
+              <input id="sel-{{ archive.id }}" class="toggle-list custom-cb" data-source_type="{{ archive.source_type }}" data-reason="{{ archive.reason }}" type="checkbox" name="sel-{{ archive.id }}" value="{{ archive.id }}"><label for="sel-{{ archive.id }}"><span><span></span></span></label>
+            </td>
             <td>
             {% if archive.thumbnail.name %}
               <a href="{% url 'viewer:archive' archive.pk %}" data-image-url="{{ archive.thumbnail.url }}" class="img-preview" rel="popover">{{ archive.title }}</a>
@@ -91,7 +100,7 @@
                 </tr>
                 </thead>
                 <tbody>
-                {% for similar_pk, similar_score in filtered_scores|dict_key:archive.pk %}
+                {% for similar_pk, similar_score in scores_by_archive %}
                   {% with similar_archive=similar_archives|dict_key:similar_pk reverse_score=10|subtract:similar_score %}
                   <tr>
                     <td>
@@ -105,10 +114,10 @@
                     <td>
                       {{ similar_archive.source_type }}
                     </td>
-                    <td>
+                    <td class="{{ similar_archive.filecount|color_percent:archive.filecount }}">
                       {{ similar_archive.filecount }}
                     </td>
-                    <td>
+                    <td class="{{ similar_archive.filesize|color_percent:archive.filesize }}">
                       {{ similar_archive.filesize }}
                     </td>
                     <td>
@@ -121,6 +130,8 @@
               </table>
             </td>
           </tr>
+            {% endif %}
+          {% endwith %}
         {% endfor %}
         </tbody>
       </table>
@@ -142,6 +153,15 @@
             </span>
         </div>
       {% endif %}
+    <div class="form-group">
+      <input size="10" class="form-control" name="reason" value="" placeholder="Reason" maxlength="200"/>
+    </div>
+    {% if perms.viewer.delete_archive %}
+    <button type="submit" name="delete_objects" class="btn btn-light">Delete selected archives</button>
+    {% endif %}
+    {% if perms.viewer.delete_archive %}
+    <button type="submit" name="delete_archives" class="btn btn-light">Delete (WARNING!) selected archives and files</button>
+    {% endif %}
   </form>
 {% endblock %}
 {% block afterJQ %}
@@ -156,4 +176,12 @@
     <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/text_widget.js' %}"></script>
     <script type="text/javascript" src="{% static 'autocomplete_light/jal.js' %}"></script>
   {% endcompress %}
+  <script type="text/javascript">
+  $('button[data-role="toggle-field"]').click(function() {
+    var field_name = $(this).data("field");
+    var current_value = $(`input[name=${field_name}]`).val();
+    $(`input.toggle-list[${'data-' + field_name}="${current_value}"]`).click();
+  });
+  </script>
+  <script type="text/javascript" src="{% static 'js/list_operations.js' %}"></script>
 {% endblock %}

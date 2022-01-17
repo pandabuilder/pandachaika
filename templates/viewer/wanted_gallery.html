@@ -50,6 +50,12 @@
               </ul>
             </form>
             </div>
+            <div class="card bg-dark border-info dropdown-item">
+            <div class="card-header bg-light">
+              Extra tools
+            </div>
+            <a class="btn btn-secondary float-right" href="{% url 'viewer:col-create-wanted-gallery' %}?wanted-gallery={{ wanted_gallery.id }}" role="button">Use as template to create another</a>
+            </div>
             <a class="border-info dropdown-item my-1" href="{% url 'admin:viewer_wantedgallery_change' wanted_gallery.pk %}" role="button">Admin page</a>
       </div>
     </div>
@@ -145,7 +151,6 @@
       Search information
     </div>
     <ul class="list-group list-group-flush">
-      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Provider:</label>{{ wanted_gallery.provider|default:"Not set" }}</li>
       <li class="list-group-item d-flex justify-content-between py-1">
       <div class="card w-100 text-white bg-secondary">
         <div class="card-header py-1">
@@ -179,7 +184,9 @@
       <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Should search:</label>{{ wanted_gallery.should_search|yesno }}</li>
       <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Keep searching:</label>{{ wanted_gallery.keep_searching|yesno }}</li>
       <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Found:</label>{{ wanted_gallery.found|yesno }}</li>
-
+      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Found on:</label>{{ wanted_gallery.date_found|date:"DATETIME_FORMAT" }}</li>
+      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Created on:</label>{{ wanted_gallery.create_date|date:"DATETIME_FORMAT" }}</li>
+      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Last modified:</label>{{ wanted_gallery.last_modified|date:"DATETIME_FORMAT" }}</li>
     </ul>
   </div>
     </div>

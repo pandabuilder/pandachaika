@@ -39,6 +39,7 @@
           <option value="posted" {% if prm.sort == "posted" %} selected{% endif %}>posted date</option>
           {% if user.is_authenticated %}
             <option value="create_date" {% if prm.sort == "create_date" %} selected{% endif %}>create date</option>
+            <option value="last_modified" {% if prm.sort == "last_modified" %} selected{% endif %}>last modified</option>
             <option value="public_date" {% if prm.sort == "public_date" %} selected{% endif %}>public date</option>
           {% else %}
             <option value="public_date" {% if prm.sort == "public_date" %} selected{% endif %}>public date</option>
@@ -48,25 +49,23 @@
           <option value="rating" {% if prm.sort == "rating" %} selected{% endif %}>rating</option>
           <option value="filecount" {% if prm.sort == "filecount" %} selected{% endif %}>images</option>
           <option value="filesize" {% if prm.sort == "filesize" %} selected{% endif %}>size</option>
+          <option value="category" {% if prm.sort == "category" %} selected{% endif %}>category</option>
         </select>
         <select id="asc_desc" name="asc_desc" class="form-control mr-sm-1" title="sort_order" aria-label="sort_order">
           <option value="asc" {% if prm.asc_desc == "asc" %} selected{% endif %}>ascending</option>
           <option value="desc" {% if prm.asc_desc == "desc" %} selected{% endif %}>descending</option>
         </select>
-        <button type="submit" name="apply" class="btn btn-light mr-sm-1">Search</button>
+        <button type="submit" name="apply" class="btn btn-info mr-sm-1">Search</button>
         <button type="submit" name="clear" class="btn btn-light mr-sm-1">Clear</button>
-        <button type="button" class="btn btn-info mr-sm-1" data-toggle="collapse" data-target="#extra_filters">More filters</button>
+        <button type="button" class="btn btn-secondary mr-sm-1" data-toggle="collapse" data-target="#extra_filters">More filters</button>
         <button type="submit" name="gen-ddl" class="btn btn-light mr-sm-1">Generate DDLs</button>
         <button type="submit" name="rss" onclick="this.form.action='{% url "viewer:archive-rss" %}'; this.form.submit(); this.form.action='{% url "viewer:main-page" %}'; return false;" class="btn btn-light">View as RSS</button>
-        {% if user.is_authenticated %}<input id="checkbox1" class="custom-cb" type="checkbox" name="only_favorites" value="1"
-                                             {% if display_prms.only_favorites == '1' %}checked{% endif %}><label
-            for="checkbox1"><span><span></span></span>Only favorites</label>{% endif %}
-        {% if user.is_authenticated %}<input id="checkbox2" class="custom-cb" type="checkbox" name="non_public" value="1"
-                                     {% if display_prms.non_public == '1' %}checked{% endif %}><label
-            for="checkbox2"><span><span></span></span>Only private</label>
-          <input id="checkbox3" class="custom-cb" type="checkbox" name="public" value="1"
-                 {% if display_prms.public == '1' %}checked{% endif %}><label
-            for="checkbox3"><span><span></span></span>Only public</label>{% endif %}
+        <button type="submit" name="json" class="btn btn-light mr-sm-1">As JSON</button>
+        {% if user.is_authenticated %}
+          <input id="checkbox1" class="custom-cb" type="checkbox" name="only_favorites" value="1" {% if display_prms.only_favorites == '1' %}checked{% endif %}><label for="checkbox1"><span><span></span></span>Favorite</label>
+          <input id="checkbox2" class="custom-cb" type="checkbox" name="non_public" value="1" {% if display_prms.non_public == '1' %}checked{% endif %}><label for="checkbox2"><span><span></span></span>Private</label>
+          <input id="checkbox3" class="custom-cb" type="checkbox" name="public" value="1" {% if display_prms.public == '1' %}checked{% endif %}><label for="checkbox3"><span><span></span></span>Public</label>
+        {% endif %}
       </div>
     </div>
     {% if results %}
@@ -160,10 +159,12 @@
             <div class="table-responsive">
             <table class="table table-sm table-bordered result-table mb-0">
               <thead>
-              <tr>{% if prm.sort == "create_date" %}
+              <tr>{% if prm.sort == "create_date" and user.is_authenticated %}
                 <th class="w-5"><a href="?{% url_replace 'sort' 'create_date' %}">Created</a></th>
               {% elif prm.sort == "public_date" %}
                 <th><a href="?{% url_replace 'sort' 'public_date' %}">Added</a></th>
+              {% elif prm.sort == "last_modified" and user.is_authenticated %}
+                <th><a href="?{% url_replace 'sort' 'last_modified' %}">Modified</a></th>
               {% else %}
                 <th><a href="?{% url_replace 'sort' 'posted' %}">Posted</a></th>
               {% endif %}
@@ -177,10 +178,12 @@
               <tbody>
               {% for archive in results.object_list %}
                 <tr class="result-list">
-                  {% if prm.sort == "create_date" %}
+                  {% if prm.sort == "create_date" and user.is_authenticated %}
                     <td>{{ archive.create_date|date:"SHORT_DATE_FORMAT" }}</td>
                   {% elif prm.sort == "public_date" %}
                     <td>{{ archive.public_date|date:"SHORT_DATE_FORMAT" }}</td>
+                  {% elif prm.sort == "last_modified" and user.is_authenticated %}
+                    <td>{{ archive.last_modified|date:"SHORT_DATE_FORMAT" }}</td>
                   {% else %}
                     <td>{{ archive.gallery.posted|date:"SHORT_DATE_FORMAT" }}</td>
                   {% endif %}
@@ -208,8 +211,8 @@
                     </a>
                   </td>
                   <td class="td-extended">
-                    <h5 class="{% if not archive.crc32 %}archive-incomplete{% endif %}">{{ archive.title }}</h5>
-                    <h6>{{ archive.title_jpn }}</h6>
+                    <h5 class="{% if not archive.crc32 %}archive-incomplete{% endif %}">{{ archive.best_title }}</h5>
+                    <h6>{{ archive.title_jpn|default_if_none:"" }}</h6>
                     {% if user.is_staff %}
                       <div><em>{{ archive.zipped }}</em></div>
                       <div>
@@ -271,7 +274,7 @@
                     <div><label class="label-extended">Size:</label>{{ archive.filesize|filesizeformat }}</div>
                     {% if archive.gallery %}<div><label class="label-extended">Category:</label>{{ archive.gallery.category }}</div>{% endif %}
                     {% if archive.gallery %}<div><label class="label-extended">Posted:</label>{{ archive.gallery.posted|date:"SHORT_DATE_FORMAT" }}</div>{% endif %}
-                    {% if user.is_staff %}
+                    {% if user.is_authenticated %}
                       <div><label class="label-extended">Created:</label>{{ archive.create_date|date:"SHORT_DATE_FORMAT" }}</div>
                       <div><label class="label-extended">Published:</label>{{ archive.public_date|date:"SHORT_DATE_FORMAT" }}</div>
                     {% else %}
@@ -284,7 +287,7 @@
                     <div><label class="label-extended">Reason:</label>{{ archive.reason }}</div>
                     {% if archive.gallery %}<div><label class="label-extended">Uploader:</label>{{ archive.gallery.uploader }}</div>{% endif %}
                     {% if archive.gallery %}<div><label class="label-extended">Rating:</label>{{ archive.gallery.rating }}</div>{% endif %}
-                    {% if user.is_staff and archive.gallery %}<div><label class="label-extended">Hidden:</label>{{ archive.gallery.hidden|yesno }}</div>{% endif %}
+                    {% if user.is_authenticated and archive.gallery %}<div><label class="label-extended">Hidden:</label>{{ archive.gallery.hidden|yesno }}</div>{% endif %}
                   </td>
                 </tr>
               {% endfor %}

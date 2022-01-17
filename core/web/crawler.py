@@ -338,6 +338,7 @@ class WebCrawler(object):
                             'wanted_filters': wanted_filters, 'wanted_only': args.wanted_only
                         }
                     )
+                    provider_thread.daemon = True
                     provider_thread.start()
                     provider_threads.append(provider_thread)
 
@@ -417,6 +418,7 @@ class WebCrawler(object):
                             'wanted_filters': wanted_filters, 'wanted_only': False
                         }
                     )
+                    provider_thread.daemon = True
                     provider_thread.start()
                     provider_threads.append(provider_thread)
 

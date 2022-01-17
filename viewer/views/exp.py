@@ -367,6 +367,37 @@ def api(request: HttpRequest, model: str = None, obj_id: str = None, action: str
                         'value': archive.extracted,
                     },
                 })
+            elif action == 'reduce_archive':
+                try:
+                    if request.user.has_perm('viewer.expand_archive') or data.get('api_key', '') == crawler_settings.api_key:
+                        with transaction.atomic():
+                            archive = Archive.objects.select_for_update().get(pk=archive_id)
+                            if not archive.extracted:
+                                return HttpResponse(
+                                    json.dumps({
+                                        'result': "warning",
+                                        'message': "Archive: {} is already reduced.".format(archive_id)
+                                    }), content_type="application/json; charset=utf-8")
+                            archive.reduce()
+                    else:
+                        return HttpResponse(json.dumps({
+                            'result': "error",
+                            'message': "You don't have permission for this action."
+                        }), content_type="application/json; charset=utf-8")
+                except Archive.DoesNotExist:
+                    return HttpResponse(json.dumps({
+                        'result': "error",
+                        'message': "Archive does not exist."
+                    }), content_type="application/json; charset=utf-8")
+
+                response = json.dumps({
+                    'result': "ok",
+                    'message': "Reduction successful.",
+                    'change': {
+                        'field': 'extracted',
+                        'value': archive.extracted,
+                    },
+                })
             elif action == 'image_list':
                 positions = data.getlist('i')
                 try:
@@ -456,7 +487,7 @@ def api(request: HttpRequest, model: str = None, obj_id: str = None, action: str
             for k, v in data.items():
                 if k in parameters:
                     parameters[k] = v
-                elif k in display_prms:
+                else:
                     display_prms[k] = v
 
             if 'view' not in parameters or parameters['view'] == '':
@@ -509,14 +540,15 @@ def api(request: HttpRequest, model: str = None, obj_id: str = None, action: str
         response = json.dumps({'result': "Unsupported request method"})
 
     http_response = HttpResponse(response, content_type="application/json; charset=utf-8")
-    if settings.DEBUG:
-        http_response['Access-Control-Allow-Origin'] = 'http://localhost:3000'
-        http_response['Access-Control-Allow-Credentials'] = 'true'
     return http_response
 
 
 def archives_to_json_response(archives_list: 'QuerySet[Archive]', request: HttpRequest) -> str:
-    paginator = Paginator(archives_list, 48)
+    try:
+        archives_per_page = min(100, max(1, int(request.GET.get("limit", '48'))))
+    except ValueError:
+        archives_per_page = 48
+    paginator = Paginator(archives_list, archives_per_page)
     try:
         page = int(request.GET.get("page", '1'))
     except ValueError:

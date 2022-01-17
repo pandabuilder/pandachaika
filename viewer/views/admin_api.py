@@ -345,18 +345,46 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
                 )
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
     elif tool == "start_timed_updater":
-        if crawler_settings.workers.timed_updater:
-            crawler_settings.workers.timed_updater.start_running(timer=crawler_settings.autoupdater.cycle_timer)
+        if tool_arg:
+            for provider_auto_updater in crawler_settings.workers.timed_auto_updaters:
+                if provider_auto_updater.provider_name == tool_arg:
+                    provider_auto_updater.start_running(
+                        timer=crawler_settings.providers[provider_auto_updater.provider_name].autoupdater_timer
+                    )
+                    break
+        else:
+            for provider_auto_updater in crawler_settings.workers.timed_auto_updaters:
+                provider_auto_updater.start_running(
+                    timer=crawler_settings.providers[provider_auto_updater.provider_name].autoupdater_timer
+                )
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
     elif tool == "stop_timed_updater":
-        if crawler_settings.workers.timed_updater:
-            crawler_settings.workers.timed_updater.stop_running()
+        if tool_arg:
+            for provider_auto_updater in crawler_settings.workers.timed_auto_updaters:
+                if provider_auto_updater.provider_name == tool_arg:
+                    provider_auto_updater.stop_running()
+                    break
+        else:
+            for provider_auto_updater in crawler_settings.workers.timed_auto_updaters:
+                provider_auto_updater.stop_running()
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
     elif tool == "force_run_timed_updater":
-        if crawler_settings.workers.timed_updater:
-            crawler_settings.workers.timed_updater.stop_running()
-            crawler_settings.workers.timed_updater.force_run_once = True
-            crawler_settings.workers.timed_updater.start_running(timer=crawler_settings.autoupdater.cycle_timer)
+        if tool_arg:
+            for provider_auto_updater in crawler_settings.workers.timed_auto_updaters:
+                if provider_auto_updater.provider_name == tool_arg:
+                    provider_auto_updater.stop_running()
+                    provider_auto_updater.force_run_once = True
+                    provider_auto_updater.start_running(
+                        timer=crawler_settings.providers[provider_auto_updater.provider_name].autoupdater_timer
+                    )
+                    break
+        else:
+            for provider_auto_updater in crawler_settings.workers.timed_auto_updaters:
+                provider_auto_updater.stop_running()
+                provider_auto_updater.force_run_once = True
+                provider_auto_updater.start_running(
+                    timer=crawler_settings.providers[provider_auto_updater.provider_name].autoupdater_timer
+                )
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
     elif tool == "start_timed_auto_wanted":
         if crawler_settings.workers.timed_auto_wanted:

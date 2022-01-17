@@ -448,7 +448,8 @@ class FolderCrawler(object):
                             'match_type': 'corrupt',
                             'filesize': get_zip_filesize(os.path.join(self.settings.MEDIA_ROOT, filepath)),
                             'filecount': filecount_in_zip(os.path.join(self.settings.MEDIA_ROOT, filepath)),
-                            'source_type': 'folder'
+                            'source_type': 'folder',
+                            'origin': Archive.ORIGIN_FOLDER_SCAN
                         }
                         if self.settings.archive_reason:
                             values.update({'reason': self.settings.archive_reason})
@@ -474,7 +475,8 @@ class FolderCrawler(object):
                                 'filesize': get_zip_filesize(os.path.join(self.settings.MEDIA_ROOT, filepath)),
                                 'filecount': filecount_in_zip(os.path.join(self.settings.MEDIA_ROOT, filepath)),
                                 'gallery_id': archive_to_process.gallery_id,
-                                'source_type': archive_to_process.source_type
+                                'source_type': archive_to_process.source_type,
+                                'origin': Archive.ORIGIN_FOLDER_SCAN
                             }
                             if self.settings.archive_reason:
                                 values.update({'reason': self.settings.archive_reason})
@@ -529,7 +531,8 @@ class FolderCrawler(object):
                         'match_type': 'non-match',
                         'filesize': get_zip_filesize(os.path.join(self.settings.MEDIA_ROOT, filepath)),
                         'filecount': filecount_in_zip(os.path.join(self.settings.MEDIA_ROOT, filepath)),
-                        'source_type': 'folder'
+                        'source_type': 'folder',
+                        'origin': Archive.ORIGIN_FOLDER_SCAN
                     }
                     if self.settings.archive_reason:
                         values.update({'reason': self.settings.archive_reason})

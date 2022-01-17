@@ -22,8 +22,8 @@
       </div>
     {% endfor %}
     <div class="page-line form-inline">
-      <button id="toggle-all" class="btn btn-info" type="button">Toggle All</button>
-      <button type="submit" name="apply" class="btn btn-light">Search</button>
+      <button id="toggle-all" class="btn btn-secondary" type="button">Toggle All</button>
+      <button type="submit" name="apply" class="btn btn-info">Search</button>
       <a class="btn btn-light" href="{% url 'viewer:match-archives' %}">Clear</a>
 {#      <input id="checkbox-f1" type="checkbox" name="no-custom-tags" value="1" {% if "no-custom-tags" in request.GET %}checked{% endif %}><label for="checkbox-f1"><span><span></span></span>No custom tags</label>#}
       <input id="checkbox-f2" class="custom-cb" type="checkbox" name="with-possible-matches" value="1" {% if "with-possible-matches" in request.GET %}checked{% endif %}><label for="checkbox-f2"><span><span></span></span>With possible matches</label>

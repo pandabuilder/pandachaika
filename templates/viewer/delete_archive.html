@@ -33,6 +33,10 @@
           <p><input id="checkbox3" class="custom-cb" type="checkbox" name="mark-gallery-deleted" value="1"><label for="checkbox3"><span><span></span></span></label>Mark associated gallery as deleted</p>
           <p>{{ archive.gallery.filesize }} >> {{ archive.gallery.filecount }} >> {{ archive.gallery.title }} >> {{ archive.gallery.get_link|urlize_all_rel }}</p>
         </li>
+        <li class="list-group-item">
+          <p><input id="checkbox4" class="custom-cb" type="checkbox" name="delete-gallery" value="1"><label for="checkbox4"><span><span></span></span></label>Delete gallery</p>
+          <p>{{ archive.gallery.filesize }} >> {{ archive.gallery.filecount }} >> {{ archive.gallery.title }} >> {{ archive.gallery.get_link|urlize_all_rel }}</p>
+        </li>
       {% endif %}
     </ul>
     <div class="form-group">

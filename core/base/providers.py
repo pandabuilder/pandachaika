@@ -78,7 +78,6 @@ class ProviderContext:
 
     def register_providers(self, module_name_list: list[str]) -> None:
         for module_name in module_name_list:
-
             self.register_provider(module_name)
 
     def register_provider(self, module_name: str) -> None:
@@ -190,7 +189,13 @@ class ProviderContext:
     def get_downloaders(
             self, settings: 'setup.Settings',
             general_utils: GeneralUtils, filter_name: str = None,
-            force: bool = False) -> list[tuple['BaseDownloader', int]]:
+            force: bool = False, priorities: Optional[dict[str, int]] = None) -> list[tuple['BaseDownloader', int]]:
+
+        if priorities:
+            priorities_to_use = priorities
+        else:
+            priorities_to_use = settings.downloaders
+
         downloaders = list()
         for downloader in self.downloaders:
             handler_name = str(downloader)
@@ -202,10 +207,10 @@ class ProviderContext:
                             (downloader_instance, 1)
                         )
                     else:
-                        if handler_name in settings.downloaders and settings.downloaders[handler_name] >= 0:
+                        if handler_name in priorities_to_use and priorities_to_use[handler_name] >= 0:
                             downloader_instance = downloader(settings, general_utils)
                             downloaders.append(
-                                (downloader_instance, settings.downloaders[handler_name])
+                                (downloader_instance, priorities_to_use[handler_name])
                             )
             else:
                 if force:
@@ -214,10 +219,10 @@ class ProviderContext:
                         (downloader_instance, 1)
                     )
                 else:
-                    if handler_name in settings.downloaders and settings.downloaders[handler_name] >= 0:
+                    if handler_name in priorities_to_use and priorities_to_use[handler_name] >= 0:
                         downloader_instance = downloader(settings, general_utils)
                         downloaders.append(
-                            (downloader_instance, settings.downloaders[handler_name])
+                            (downloader_instance, priorities_to_use[handler_name])
                         )
 
         return sorted(downloaders, key=itemgetter(1))

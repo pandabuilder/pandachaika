@@ -2,7 +2,7 @@ import threading
 import logging
 
 import django.utils.timezone as django_tz
-from django.db import connection
+from django.db import close_old_connections
 
 from core.workers.schedulers import BaseScheduler
 from viewer.models import Attribute
@@ -25,7 +25,7 @@ class TimedAutoWanted(BaseScheduler):
                 return
             if self.settings.auto_wanted.enable:
                 logger.info("Starting timed auto wanted.")
-                connection.close()
+                close_old_connections()
                 for provider_name in self.settings.auto_wanted.providers:
 
                     attrs = Attribute.objects.filter(provider__slug=provider_name)

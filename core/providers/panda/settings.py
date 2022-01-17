@@ -12,22 +12,21 @@ class OwnSettings(ProviderSettings):
         super().__init__(global_settings, config)
         self.hath_dl_folder = ''
         self.local_hath_folder = ''
-        self.stop_page_number = 0
         self.remote_hath_dir = ''
         self.archive_dl_folder = ''
         self.torrent_dl_folder = ''
         self.accepted_rss_categories = (
-            '[Doujinshi]',
-            '[Manga]',
-            '[Artist CG Sets]',
-            '[Game CG Sets]',
+            # '[Doujinshi]',
+            # '[Manga]',
+            # '[Artist CG Sets]',
+            # '[Game CG Sets]',
             # '[Western]',
             # '[Image Sets]',
-            '[Non-H]',
+            # '[Non-H]',
             # '[Cosplay]',
             # '[Asian Porn]',
             # '[Misc]',
-            '[Private]'
+            # '[Private]'
         )
         self.use_ex_for_fjord = False
 
@@ -40,8 +39,6 @@ def parse_config(global_settings: 'Settings', config: dict[str, typing.Any]) -> 
     settings.archive_dl_folder = global_settings.archive_dl_folder
 
     if 'general' in config:
-        if 'stop_page_number' in config['general']:
-            settings.stop_page_number = int(config['general']['stop_page_number'])
         if 'accepted_rss_categories' in config['general']:
             settings.accepted_rss_categories = config['general']['accepted_rss_categories'].split(",")
         if 'use_ex_for_fjord' in config['general']:

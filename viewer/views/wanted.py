@@ -69,10 +69,6 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
                 gm.delete()
             wanted_gallery_instance.save()
 
-            if wanted_gallery_instance.add_as_hidden and not matched_gallery.hidden:
-                matched_gallery.hidden = True
-                matched_gallery.save()
-
             logger.info("WantedGallery {} ({}) was matched with gallery {} ({}).".format(
                 wanted_gallery_instance,
                 reverse('viewer:wanted-gallery', args=(wanted_gallery_instance.pk,)),

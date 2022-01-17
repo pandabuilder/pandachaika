@@ -3,6 +3,8 @@ import traceback
 from collections import deque
 from collections.abc import Callable, Iterable
 
+from django import db
+
 import logging
 import typing
 from typing import Optional
@@ -35,6 +37,7 @@ class WebQueue(object):
             except IndexError:
                 return
             try:
+                db.close_old_connections()
                 self.current_processing_items = item
                 web_crawler = WebCrawler(self.settings)
                 web_crawler.start_crawling(
@@ -80,11 +83,6 @@ class WebQueue(object):
             return True
         except IndexError:
             return False
-
-    def enqueue_args(self, args: str) -> None:
-
-        self.queue.append({'args': args.split(), 'override_options': None})
-        self.start_running()
 
     def enqueue_args_list(
             self, args: Iterable[str],

@@ -21,7 +21,9 @@ from viewer.models import (
     Scheduler,
     ArchiveMatches,
     EventLog,
-    Provider, Attribute, ArchiveQuerySet, GalleryQuerySet, GallerySubmitEntry)
+    Provider, Attribute, ArchiveQuerySet, GalleryQuerySet, GallerySubmitEntry, ArchiveManageEntry,
+    MonitoredLink
+)
 from django.contrib import admin
 from django.contrib.admin.helpers import ActionForm
 from django import forms
@@ -35,13 +37,14 @@ class UpdateActionForm(ActionForm):
 
 class ArchiveAdmin(admin.ModelAdmin):
     raw_id_fields = ("gallery", "custom_tags", "tags", "alternative_sources")
-    search_fields = ["title", "title_jpn"]
+    search_fields = ["title", "title_jpn", "zipped"]
     list_display = ["title", "zipped", "gallery_id", "filesize",
                     "filecount", "create_date"]
-    list_filter = ["user", "match_type", "source_type", "public", "gallery__hidden", "reason"]
+    list_filter = ["user", "match_type", "source_type", "public", "gallery__hidden", "reason", "origin"]
     actions = ['make_public', 'mark_source_fakku', 'mark_source_fakku_sub', 'mark_source_cafe',
-               'mark_source_custom', 'set_reason']
+               'mark_source_custom', 'set_reason', "mark_origin"]
     action_form = UpdateActionForm
+    list_select_related = ('gallery',)
 
     def make_public(self, request: HttpRequest, queryset: ArchiveQuerySet) -> None:
         rows_updated = queryset.count()
@@ -63,6 +66,17 @@ class ArchiveAdmin(admin.ModelAdmin):
             message_bit = "%s archives were" % rows_updated
         self.message_user(request, "%s successfully set as %s source." % (message_bit, source_type))
     mark_source_custom.short_description = "Update source of selected archives"  # type: ignore
+
+    # TODO: Use the string value, not the integer.
+    def mark_origin(self, request: HttpRequest, queryset: ArchiveQuerySet) -> None:
+        origin = request.POST['extra_field']
+        rows_updated = queryset.update(origin=origin)
+        if rows_updated == 1:
+            message_bit = "1 archive was"
+        else:
+            message_bit = "%s archives were" % rows_updated
+        self.message_user(request, "%s successfully set as %s origin." % (message_bit, origin))
+    mark_origin.short_description = "Update origin of selected archives"  # type: ignore
 
     def set_reason(self, request: HttpRequest, queryset: ArchiveQuerySet) -> None:
         source_type = request.POST['extra_field']
@@ -416,10 +430,61 @@ class EventLogAdmin(admin.ModelAdmin):
 
 class GallerySubmitEntryAdmin(admin.ModelAdmin):
 
-    raw_id_fields = ["gallery"]
+    raw_id_fields = ["gallery", "similar_galleries"]
     list_filter = ["submit_result", "resolved_status"]
     list_display = ["gallery", "submit_url", "submit_reason", "submit_date", "resolved_status", "resolved_reason", "resolved_date"]
     search_fields = ["gallery__title", "submit_reason", "resolved_reason"]
+
+
+class ArchiveManageEntryAdmin(admin.ModelAdmin):
+
+    raw_id_fields = ["archive"]
+    list_filter = ["mark_check", "mark_user", "resolve_check", "resolve_user", "mark_date", "origin"]
+    list_display = ["archive", "mark_check", "mark_priority", "mark_reason",
+                    "mark_user", "mark_extra", "resolve_check", "resolve_user"]
+    search_fields = ["mark_reason", "mark_extra", "mark_comment", "resolve_comment"]
+
+
+class MonitoredLinkAdmin(admin.ModelAdmin):
+
+    list_filter = ["enabled", "auto_start", "provider"]
+    list_display = ["name", "provider", "enabled", "auto_start",
+                    "create_date"]
+    search_fields = ["name", "url"]
+    actions = ['start_running', 'stop_running', 'force_run']
+
+    def start_running(self, request: HttpRequest, queryset: 'QuerySet[MonitoredLink]') -> None:
+        rows_updated = queryset.count()
+        for monitored_link in queryset:
+            monitored_link.start_running()
+        if rows_updated == 1:
+            message_bit = "1 monitored link was"
+        else:
+            message_bit = "%s monitored links were" % rows_updated
+        self.message_user(request, "%s successfully started." % message_bit)
+    start_running.short_description = "Start selected MonitoredLinks"  # type: ignore
+
+    def stop_running(self, request: HttpRequest, queryset: 'QuerySet[MonitoredLink]') -> None:
+        rows_updated = queryset.count()
+        for monitored_link in queryset:
+            monitored_link.stop_running()
+        if rows_updated == 1:
+            message_bit = "1 monitored link was"
+        else:
+            message_bit = "%s monitored links were" % rows_updated
+        self.message_user(request, "%s successfully stopped." % message_bit)
+    stop_running.short_description = "Stop selected MonitoredLinks"  # type: ignore
+
+    def force_run(self, request: HttpRequest, queryset: 'QuerySet[MonitoredLink]') -> None:
+        rows_updated = queryset.count()
+        for monitored_link in queryset:
+            monitored_link.force_run()
+        if rows_updated == 1:
+            message_bit = "1 monitored link was"
+        else:
+            message_bit = "%s monitored links were" % rows_updated
+        self.message_user(request, "%s successfully force run." % message_bit)
+    force_run.short_description = "Force run selected MonitoredLinks"  # type: ignore
 
 
 admin.site.register(Archive, ArchiveAdmin)
@@ -440,3 +505,5 @@ admin.site.register(ArchiveMatches, ArchiveMatchesAdmin)
 admin.site.register(Provider, ProviderAdmin)
 admin.site.register(EventLog, EventLogAdmin)
 admin.site.register(GallerySubmitEntry, GallerySubmitEntryAdmin)
+admin.site.register(ArchiveManageEntry, ArchiveManageEntryAdmin)
+admin.site.register(MonitoredLink, MonitoredLinkAdmin)

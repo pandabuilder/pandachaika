@@ -1,4 +1,4 @@
-﻿function dirBrowser(directory) {
+function dirBrowser(directory) {
 
     var xmlhttp = new XMLHttpRequest();
 

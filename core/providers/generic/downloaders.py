@@ -7,7 +7,7 @@ import requests
 
 from core.base.types import DataDict
 from core.base.utilities import replace_illegal_name, available_filename, get_filename_from_cd, get_zip_fileinfo, \
-    calc_crc32, construct_request_dict
+    calc_crc32, construct_request_dict, remove_archive_extensions
 from core.downloaders.torrent import get_torrent_client
 
 from core.downloaders.handlers import BaseDownloader, BaseGalleryDLDownloader
@@ -169,12 +169,20 @@ class GenericArchiveDownloader(BaseDownloader):
             ))
             self.return_code = 0
 
-        self.gallery.title = filename.replace(".zip", "")
-        self.gallery.filename = replace_illegal_name(available_filename(
+        filename = replace_illegal_name(filename)
+
+        self.gallery.title = remove_archive_extensions(filename)
+        self.gallery.filename = available_filename(
             self.settings.MEDIA_ROOT,
             os.path.join(
                 self.own_settings.archive_dl_folder,
-                filename)))
+                filename
+            )
+        )
+
+        logger.info("Chosen local filename: {}".format(
+            self.gallery.filename
+        ))
 
         filepath = os.path.join(self.settings.MEDIA_ROOT,
                                 self.gallery.filename)
@@ -209,7 +217,7 @@ class GenericArchiveDownloader(BaseDownloader):
         default_values.update(values)
         return Archive.objects.update_or_create_by_values_and_gid(
             default_values,
-            (self.gallery.gid, self.gallery.provider),
+            None,
             zipped=self.gallery.filename
         )
 
@@ -222,4 +230,5 @@ class GenericGalleryDLDownloader(BaseGalleryDLDownloader):
 API = (
     GenericTorrentDownloader,
     GenericArchiveDownloader,
+    GenericGalleryDLDownloader,
 )

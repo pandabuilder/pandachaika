@@ -1,25 +1,62 @@
 before_script:
-  - python3.7 --version
-  - pip3.7 -V
-  - python3.7 -m venv ENV
+  - python3.9 --version
+  - pip3.9 -V
+  - python3.9 -m venv ENV
   - source ENV/bin/activate
 
 stages:
   - test
+  - deploy
 
 test:
   stage: test
   script:
-  - pip3.7 install -r requirements.txt
-  - pip3.7 install coverage
-  - pip3.7 install django-nose
-  - python3.7 manage.py test viewer.tests.test_internal
-  - pip3.7 install flake8==3.7.9
-  - pip3.7 install mypy==0.740
+  - pip3.9 install -r requirements.txt
+  - pip3.9 install mypy==0.812
+  - pip3.9 install django-stubs==1.8.0
+  - pip3.9 install flake8==3.9.2
   - flake8 --ignore="E501,E402,F401,W503,F811" --exclude="migrations,ENV,venv,src,.mypy_cache" .
-  - mypy . --ignore-missing-imports --strict-equality
+  - mypy core pandabackup viewer
+  - python3.9 manage.py test viewer.tests.test_internal viewer.tests.test_core
   cache:
     paths:
     - .mypy_cache
+  tags:
+    - django
+
+deploy_review:
+  stage: deploy
+  before_script:
+    - mkdir -p ~/.ssh
+    - eval $(ssh-agent -s)
+    - 'echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
+    - ssh-add <(echo "$SERVER_PRIV_KEY_REVIEW")
+  script:
+    - rsync -av --delete --exclude='.gitlab-ci.yml' --exclude='.git/' --exclude='static/' --exclude settings.ini . ${SERVER_REMOTE_ADDR_REVIEW}:${SERVER_REMOTE_DIR_REVIEW}
+    - ssh $SERVER_REMOTE_ADDR_REVIEW "cd $SERVER_REMOTE_DIR_REVIEW && python3.9 -m venv ENV && source ENV/bin/activate && pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --noinput && {{test -f ./current.pid && cat ./current.pid | xargs kill -9} || true } && python server.py -d -pf ./current.pid"
+  environment:
+    name: review/$CI_COMMIT_REF_NAME
+    url: $SERVER_URL_REVIEW
+  only:
+    - trunk
+  tags:
+    - django
+
+deploy_prod:
+  stage: deploy
+  before_script:
+    - mkdir -p ~/.ssh
+    - eval $(ssh-agent -s)
+    - 'echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
+    - ssh-add <(echo "$SERVER_PRIV_KEY_PROD")
+  script:
+    - rsync -av --delete --exclude='.gitlab-ci.yml' --exclude='.git/' --exclude='static/' --exclude settings.ini . ${SERVER_REMOTE_ADDR_PROD}:${SERVER_REMOTE_DIR_PROD}
+    - ssh $SERVER_REMOTE_ADDR_PROD "cd $SERVER_REMOTE_DIR_PROD && python3.9 -m venv ENV && source ENV/bin/activate && pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --noinput && {{test -f ./current.pid && cat ./current.pid | xargs kill -9} || true } && python server.py -d -pf ./current.pid"
+  environment:
+    name: review/$CI_COMMIT_REF_NAME
+    url: $SERVER_URL_PROD
+  when: manual
+  only:
+    - trunk
   tags:
     - django

@@ -15,11 +15,22 @@
         <span>Archive:</span>
         {% if perms.viewer.expand_archive %}<span>{% if images %}<a href="{% url 'viewer:archive-reduce' archive.pk %}">reduce</a>{% elif archive.crc32 %}<a href="{% url 'viewer:archive-extract' archive.pk %}">expand</a>{% endif %}</span>{% endif %}
         {% if user.is_staff %}<span><a href="{% url 'viewer:archive-recalc-info' archive.pk %}">recalc</a></span>{% endif %}
+        {% if user.is_staff %}<span><a href="{% url 'viewer:archive-mark-similar' archive.pk %}">mark similar</a></span>{% endif %}
         {% if perms.viewer.update_metadata %}<span><a href="{% url 'viewer:archive-recall-api' archive.pk %}">recall api</a></span>{% endif %}
+        {% if perms.viewer.publish_archive %}<span><a href="{% url 'viewer:archive-calc-imgs-sha1' archive.pk %}">calc sha1</a></span>{% endif %}
         {% if user.is_staff %}<span><a href="{% url 'viewer:archive-rematch' archive.pk %}">rematch</a></span>{% endif %}
-        {% if user.is_staff %}<span><a href="{% url 'viewer:archive-delete' archive.pk %}">delete</a></span>{% endif %}
+        {% if user.is_staff %}
+          <span>
+            <a
+              class="open-archive"
+              href="{% url 'viewer:archive-delete' archive.pk %}"
+              data-popup-url="{% url 'viewer:archive-delete' archive.pk %}"
+              >delete
+            </a>
+          </span>
+        {% endif %}
         {% if user.is_staff %}{% if archive.gallery %}<span><a href="{% url 'viewer:gallery-tool' archive.gallery.pk 'toggle-hidden' %}">{% if archive.gallery.hidden %}open{% else %}hidden{% endif %}</a></span>{% endif %}{% endif %}
-        {% if perms.viewer.publish_archive %}<span><a href="{% url 'viewer:archive-public-toggle' archive.pk %}">{% if archive.public %}private{% else %}public{% endif %}</a></span>{% endif %}
+        {% if perms.viewer.publish_archive %}<span>{% if archive.public %}<a href="{% url 'viewer:archive-private' archive.pk %}">private</a>{% else %}<a href="{% url 'viewer:archive-public' archive.pk %}">public</a>{% endif %}</span>{% endif %}
         {% if user.is_staff %}<span><a href="{% url 'admin:viewer_archive_change' archive.pk %}">admin</a></span>{% endif %}
         {% if user_archive_preferences.favorite_group == 0 %}
           <span><a href="{% url 'viewer:user-archive-preferences' archive.pk 'favorite' %}">favorite</a></span>
@@ -38,16 +49,19 @@
           </div>
         {% endif %}
       </li>
-
     {% endif %}
-    <li class="title-main {{ archive|archive_title_class }}"><h5>{{ archive.title }}</h5></li>
+    <li class="title-main {{ archive|archive_title_class }}"><h5>{{ archive.best_title }}</h5></li>
     {% if archive.title_jpn %}<li class="subtitle">{{ archive.title_jpn }}</li>{% endif %}
     <li class="subtitle">
+    <div class="row">
+    <div class="col-sm-6">
       <table>
-        {% if user.is_staff %}<tr>
+        {% if user.is_staff %}
+        <tr>
           <th>File path</th>
           <td>{{ archive.zipped }}</td>
-        </tr>{% endif %}
+        </tr>
+        {% endif %}
         <tr>
           <th>Images</th>
           <td>{{ archive.filecount }}</td>
@@ -67,7 +81,7 @@
         {% if user.is_authenticated %}
           <tr>
           <th>Details</th>
-          <td>{{ archive.details }}</td>
+          <td>{{ archive.details|linebreaksbr|urlize_all_rel }}</td>
         </tr>
         {% endif %}
         <tr>
@@ -79,10 +93,34 @@
         </tr>
       {% if user.is_authenticated %}
         <tr>
+          <th>Published</th><td>{{ archive.public|yesno }}</td>
+        </tr>
+        <tr>
           <th>Published date</th><td>{{ archive.public_date|date:"DATETIME_FORMAT" }}</td>
         </tr>
       {% endif %}
       </table>
+    </div>
+    {% if user.is_staff %}
+    <div class="col-sm-6">
+      <table>
+        <caption>Private information</caption>
+        <tr>
+          <th>Added by</th>
+          <td>
+              {% if archive.user.pk == 1 %}ServiceAccount{% else %}{{ archive.user }}{% endif %}
+          </td>
+        </tr>
+        <tr>
+          <th>Added origin</th>
+          <td>
+              {{ archive.get_origin_display }}
+          </td>
+        </tr>
+      </table>
+    </div>
+    {% endif %}
+    </div>
     </li>
     {% if archive.gallery %}
       <li class="subtitle line-top">
@@ -118,7 +156,7 @@
                 {% for alternative_gallery in archive.alternative_sources.eligible_for_use %}
                   {% if user.is_authenticated or alternative_gallery.public %}
                   <li>
-                    <a href="{% url 'viewer:gallery' alternative_gallery.pk %}">{{ alternative_gallery.title }}</a>
+                    <a href="{% url 'viewer:gallery' alternative_gallery.pk %}">{{ alternative_gallery.best_title }}</a>
                   </li>
                   {% endif %}
                 {% endfor %}
@@ -142,7 +180,7 @@
         </table>
       </li>
     {% endif %}
-    {% if archive.tag_lists %}
+    {% if tag_count %}
       <li class="subtitle">
         <ul class="tags">
           {% for tag_list in archive.tag_lists %}
@@ -159,7 +197,7 @@
         </ul>
       </li>
     {% endif %}
-    {% if archive.custom_tag_lists %}
+    {% if custom_tag_count %}
       <li class="subtitle">
         <ul class="tags">
           {% for tag_list in archive.custom_tag_lists %}
@@ -195,6 +233,7 @@
           {% endif %}
       {% endif %}
       <button class="btn btn-secondary" id="edit-archive" data-toggle="collapse" data-target="#change-archive-form" name="edit-archive" type="button" aria-label="toggle edit archive">Edit <i class="fas fa-chevron-down"></i></button>
+      <button class="btn {% if manage_entries_count %}btn-success{% else %}btn-secondary{% endif %}" id="manage-archive" data-toggle="collapse" data-target="#manage-archive-form" name="manage-archive" type="button" aria-label="toggle edit archive">Manage <i class="fas fa-chevron-down"></i></button>
 
     {% elif archive.crc32 %}
         {% if perms.viewer.expand_archive %}
@@ -216,14 +255,44 @@
         {% if perms.viewer.change_archive %}
         <button class="btn btn-secondary" id="edit-archive" data-toggle="collapse" data-target="#change-archive-form" name="edit-archive" type="button" aria-label="toggle edit archive">Edit <i class="fas fa-chevron-down"></i></button>
         {% endif %}
+        {% if perms.viewer.mark_archive %}
+        <button class="btn {% if manage_entries_count %}btn-success{% else %}btn-secondary{% endif %}" id="manage-archive" data-toggle="collapse" data-target="#manage-archive-form" name="manage-archive" type="button" aria-label="toggle edit archive">Manage <i class="fas fa-chevron-down"></i></button>
+        {% endif %}
     {% else %}
         {% if perms.viewer.change_archive %}
         <button class="btn btn-secondary" id="edit-archive" data-toggle="collapse" data-target="#change-archive-form" name="edit-archive" type="button" aria-label="toggle edit archive">Edit <i class="fas fa-chevron-down"></i></button>
+        {% endif %}
+        {% if perms.viewer.mark_archive %}
+        <button class="btn {% if manage_entries_count %}btn-success{% else %}btn-secondary{% endif %}" id="manage-archive" data-toggle="collapse" data-target="#manage-archive-form" name="manage-archive" type="button" aria-label="toggle edit archive">Manage <i class="fas fa-chevron-down"></i></button>
         {% endif %}
     {% endif %}
     </li>
     {% if perms.viewer.change_archive %}
     {% include 'viewer/include/archive_edit.html' %}
+    {% endif %}
+    {% if perms.viewer.view_marks %}
+      <li class="subtitle">
+      <div class="row">
+      {% for archive_manage_instance in manage_entries %}
+        <div class="col-sm-3">
+          <div class="card panel">
+            <div class="card-header">
+              by: {% if not archive_manage_instance.mark_user or archive_manage_instance.mark_user.pk == 1 %}ServiceAccount{% else %}{{ archive_manage_instance.mark_user }}{% endif %}, on: {{ archive_manage_instance.mark_date|date:"y-m-d, H:i:s" }}, priority: {{ archive_manage_instance.mark_priority }}
+            </div>
+            <div class="card-body">
+              <h5 class="card-title">{{ archive_manage_instance.mark_reason }}</h5>
+              <p class="card-text">{{ archive_manage_instance.mark_comment|urlize_all_rel|convert_special_urls|linebreaks }}</p>
+              <p class="card-text">{{ archive_manage_instance.mark_extra }}</p>
+              {% if archive_manage_instance.mark_user == user or user.is_staff %}<a href="{% url 'viewer:archive-manage-delete' archive_manage_instance.pk %}" class="btn btn-primary">Delete mark</a>{% endif %}
+            </div>
+          </div>
+        </div>
+     {% endfor %}
+      </div>
+      </li>
+      {% if perms.viewer.mark_archive %}
+      {% include 'viewer/include/archive_manage.html' %}
+      {% endif %}
     {% endif %}
      <!-- Pagination and messages -->
     {% if user.is_authenticated %}
@@ -349,6 +418,24 @@
     </script>
   {% endcompress %}
   {% endif %}
+  {% if perms.viewer.mark_archive %}
+  {{ archive_manage_formset.media }}
+  {% load compress %}
+  {% compress js %}
+    <script>
+    $('#manage-archive').click(function () {
+    if($('#manage-archive i').hasClass('fa-chevron-down'))
+    {
+       $('#manage-archive').html('Manage <i class="fas fa-chevron-up"></i>');
+    }
+    else
+    {
+        $('#manage-archive').html('Manage <i class="fas fa-chevron-down"></i>');
+    }
+    });
+    </script>
+  {% endcompress %}
+  {% endif %}
   {% compress js %}
     <script>
         var hashData = {};
@@ -394,5 +481,6 @@
     <script type="text/javascript" src="{% static 'js/vendor/keys.min.js' %}"></script>
     <script type="text/javascript" src="{% static 'js/archnav.js' %}"></script>
     <script type="text/javascript" src="{% static 'js/admin.js' %}"></script>
+    {% include "viewer/include/archive_modal.html" %}
   {% endif %}
 {% endblock %}

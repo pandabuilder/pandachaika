@@ -10,7 +10,7 @@ from typing import Any, Union, Optional
 
 from django.contrib.auth import authenticate, login, logout
 from django.core.paginator import Paginator, EmptyPage
-from django.db.models import Q, QuerySet
+from django.db.models import Q, QuerySet, Prefetch
 from django.http import HttpResponse, HttpRequest, HttpResponseBadRequest
 from django.http.request import QueryDict
 from django.urls import reverse
@@ -22,7 +22,8 @@ from core.base.utilities import str_to_int, timestamp_or_zero
 from viewer.models import Archive, Gallery, UserArchivePrefs
 from viewer.utils.matching import generate_possible_matches_for_archives
 from viewer.views.head import gallery_filter_keys, gallery_order_fields, filter_archives_simple, archive_filter_keys
-from viewer.utils.functions import gallery_search_results_to_json
+from viewer.utils.functions import gallery_search_results_to_json, gallery_search_dict_to_json, \
+    archive_search_result_to_json
 
 crawler_settings = settings.CRAWLER_SETTINGS
 logger = logging.getLogger(__name__)
@@ -100,6 +101,26 @@ def json_search(request: HttpRequest) -> HttpResponse:
                 ensure_ascii=False,
             )
             return HttpResponse(response, content_type="application/json; charset=utf-8")
+        elif 'archives' in data:
+            try:
+                archive_ids: list[str] = data.getlist('archives', [])
+            except ValueError:
+                return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+            if not archive_ids:
+                return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
+            try:
+                if request.user.is_authenticated:
+                    archives = Archive.objects.filter(pk__in=archive_ids)
+                else:
+                    archives = Archive.objects.filter(pk__in=archive_ids, public=True)
+            except Archive.DoesNotExist:
+                return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+            response = json.dumps(
+                archive_search_result_to_json(request, archives),
+                # indent=2,
+                ensure_ascii=False,
+            )
+            return HttpResponse(response, content_type="application/json; charset=utf-8")
         # Get tags from a specific archive.
         elif 'at' in data:
             try:
@@ -121,7 +142,7 @@ def json_search(request: HttpRequest) -> HttpResponse:
                 ensure_ascii=False,
             )
             return HttpResponse(response, content_type="application/json; charset=utf-8")
-        # Get tags from a specific archive.
+        # Get hashes from a specific archive.
         elif 'ah' in data:
             try:
                 archive_id = int(data['ah'])
@@ -166,6 +187,7 @@ def json_search(request: HttpRequest) -> HttpResponse:
                     'expunged': gallery.expunged,
                     'rating': float(str_to_int(gallery.rating)),
                     'fjord': gallery.fjord,
+                    'link': gallery.get_link(),
                     'tags': gallery.tag_list(),
                     'archives': [
                         {
@@ -180,15 +202,77 @@ def json_search(request: HttpRequest) -> HttpResponse:
                 ensure_ascii=False,
             )
             return HttpResponse(response, content_type="application/json; charset=utf-8")
+        # Get fields from a specific gallery (Using gid).
+        elif 'gid' in data:
+            gallery_gid = data['gid']
+            if 'provider' in data:
+                possible_gallery = Gallery.objects.filter_first(gid=gallery_gid, provider=data['provider'])
+            else:
+                possible_gallery = Gallery.objects.filter_first(gid=gallery_gid)
+            if not possible_gallery:
+                return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
+            else:
+                gallery = possible_gallery
+            if not gallery.public and not request.user.is_authenticated:
+                return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
+            response = json.dumps(
+                {
+                    'title': gallery.title,
+                    'title_jpn': gallery.title_jpn,
+                    'category': gallery.category,
+                    'uploader': gallery.uploader,
+                    'posted': int(timestamp_or_zero(gallery.posted)),
+                    'filecount': gallery.filecount,
+                    'filesize': gallery.filesize,
+                    'expunged': gallery.expunged,
+                    'rating': float(str_to_int(gallery.rating)),
+                    'fjord': gallery.fjord,
+                    'link': gallery.get_link(),
+                    'tags': gallery.tag_list(),
+                    'archives': [
+                        {
+                            'id': archive.id, 'download': reverse('viewer:archive-download', args=(archive.pk,))
+                        } for archive in gallery.archive_set.filter_by_authenticated_status(
+                            authenticated=request.user.is_authenticated
+                        )
+                    ],
+                },
+                # indent=2,
+                sort_keys=True,
+                ensure_ascii=False,
+            )
+            return HttpResponse(response, content_type="application/json; charset=utf-8")
+        # Get tags from a specific Gallery.
+        elif 'gt' in data:
+            try:
+                gallery_id = int(data['gt'])
+            except ValueError:
+                return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
+            try:
+                gallery = Gallery.objects.get(pk=gallery_id)
+            except Gallery.DoesNotExist:
+                return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
+            if not gallery.public and not request.user.is_authenticated:
+                return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
+            response = json.dumps(
+                {
+                    'tags': gallery.tag_list_sorted(),
+                },
+                # indent=2,
+                sort_keys=True,
+                ensure_ascii=False,
+            )
+            return HttpResponse(response, content_type="application/json; charset=utf-8")
         # Get fields from several archives by one of it's images sha1 value.
         elif 'sha1' in data:
-            archives = Archive.objects.filter(image__sha1=data['sha1'])
-            if not archives:
-                return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
+            archives = Archive.objects.filter(image__sha1=data['sha1']).select_related('gallery').prefetch_related('tags', 'custom_tags')
+
             if not request.user.is_authenticated:
                 archives = archives.filter(public=True)
+
             if not archives:
                 return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
+
             response = json.dumps(
                 [{
                     'id': archive.id,
@@ -228,7 +312,9 @@ def json_search(request: HttpRequest) -> HttpResponse:
                 if k not in params:
                     params[k] = ''
 
-            results = filter_archives_simple(params)
+            results = filter_archives_simple(
+                params, authenticated=request.user.is_authenticated
+            ).prefetch_related('tags', 'custom_tags')
 
             if not request.user.is_authenticated:
                 results = results.filter(public=True).order_by('-public_date')
@@ -246,9 +332,9 @@ def json_search(request: HttpRequest) -> HttpResponse:
         elif 'q' in data:
             q_args = data['q']
             if not request.user.is_authenticated:
-                results = simple_archive_filter(q_args, public=True)
+                results = simple_archive_filter(q_args, public=True).prefetch_related('tags', 'custom_tags')
             else:
-                results = simple_archive_filter(q_args, public=False)
+                results = simple_archive_filter(q_args, public=False).prefetch_related('tags', 'custom_tags')
             response = json.dumps(
                 [{
                     'id': o.pk,
@@ -274,11 +360,15 @@ def json_search(request: HttpRequest) -> HttpResponse:
                     args[k] = ''
 
             # args = data
+            # args = data
             if not request.user.is_authenticated:
                 args['public'] = '1'
             else:
                 args['public'] = ''
-            galleries_matcher = filter_galleries_no_request(args)
+
+            galleries_matcher = filter_galleries_no_request(args).prefetch_related(
+                'tags'
+            )
 
             if not galleries_matcher:
                 return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
@@ -334,7 +424,9 @@ def json_search(request: HttpRequest) -> HttpResponse:
                 args['public'] = '1'
             else:
                 args['public'] = ''
-            results_gallery = filter_galleries_no_request(args)
+            results_gallery = filter_galleries_no_request(args).prefetch_related(
+                'tags'
+            )
             if not results_gallery:
                 return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
             response = json.dumps(
@@ -379,7 +471,9 @@ def json_search(request: HttpRequest) -> HttpResponse:
                 args['public'] = '1'
             else:
                 args['public'] = ''
-            results_gallery = filter_galleries_no_request(args)
+            results_gallery = filter_galleries_no_request(args).prefetch_related(
+                'tags'
+            )
             if not results_gallery:
                 return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
             response = json.dumps(
@@ -428,9 +522,15 @@ def json_search(request: HttpRequest) -> HttpResponse:
             # args = data
             if not request.user.is_authenticated:
                 args['public'] = '1'
+                used_prefetch = Prefetch('archive_set', queryset=Archive.objects.filter(public=True),
+                                         to_attr='available_archives')
             else:
                 args['public'] = ''
-            results_gallery = filter_galleries_no_request(args)
+                used_prefetch = Prefetch('archive_set', to_attr='available_archives')
+            results_gallery = filter_galleries_no_request(args).prefetch_related(
+                'tags',
+                used_prefetch
+            )
             if not results_gallery:
                 return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
             response = json.dumps(
@@ -458,9 +558,15 @@ def json_search(request: HttpRequest) -> HttpResponse:
             # args = data
             if not request.user.is_authenticated:
                 args['public'] = '1'
+                used_prefetch = Prefetch('archive_set', queryset=Archive.objects.filter(public=True),
+                                         to_attr='available_archives')
             else:
                 args['public'] = ''
-            results_gallery = filter_galleries_no_request(args)
+                used_prefetch = Prefetch('archive_set', to_attr='available_archives')
+            results_gallery = filter_galleries_no_request(args).prefetch_related(
+                'tags',
+                used_prefetch
+            )
 
             paginator = Paginator(results_gallery, 48)
             try:
@@ -537,6 +643,47 @@ def json_search(request: HttpRequest) -> HttpResponse:
                 ensure_ascii=False,
             )
             return HttpResponse(response, content_type="application/json; charset=utf-8")
+        # Archive search, no pagination (Used to download from another instance,
+        # that's why search is done on archives, and it returns Gallery info)
+        elif 'as' in data:
+
+            archive_args = request.GET.copy()
+
+            params = {
+                'sort': 'create_date',
+                'asc_desc': 'desc',
+            }
+
+            for k, v in archive_args.items():
+                params[k] = v
+
+            for k in archive_filter_keys:
+                if k not in params:
+                    params[k] = ''
+
+            results_archive = filter_archives_simple(
+                params, authenticated=request.user.is_authenticated
+            ).select_related('gallery').prefetch_related('gallery__tags')
+
+            if not request.user.is_authenticated:
+                results_archive = results_archive.filter(public=True).order_by('-public_date')
+
+            if not results_archive:
+                return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
+
+            found_galleries = defaultdict(list)
+
+            for archive in results_archive:
+                if archive.gallery:
+                    found_galleries[archive.gallery].append(archive)
+
+            response = json.dumps(
+                gallery_search_dict_to_json(request, found_galleries),
+                # indent=2,
+                sort_keys=True,
+                ensure_ascii=False,
+            )
+            return HttpResponse(response, content_type="application/json; charset=utf-8")
         else:
             return HttpResponse(json.dumps({'result': "Unknown command"}), content_type="application/json; charset=utf-8")
     else:
@@ -578,6 +725,9 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                             current_settings.allow_downloaders_only([args['downloader']], True, True, True)
                             archive = None
                             parsers = current_settings.provider_context.get_parsers(current_settings)
+                            if request.user.is_authenticated:
+                                current_settings.archive_user = request.user
+                            current_settings.archive_origin = Archive.ORIGIN_ADD_URL
                             for parser in parsers:
                                 if parser.id_from_url_implemented():
                                     urls_filtered = parser.filter_accepted_urls((args['link'], ))
@@ -595,13 +745,21 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                             else:
                                 response['message'] = "Crawling: " + args['link']
                     else:
+                        current_settings = Settings(load_from_config=crawler_settings.config)
+                        if request.user.is_authenticated:
+                            current_settings.archive_user = request.user
+                        current_settings.archive_origin = Archive.ORIGIN_ADD_URL
                         extra_args = []
                         if 'reason' in args and args['reason']:
-                            extra_args.append(args['reason'])
+                            extra_args.append("-reason " + args['reason'])
 
                         if 'parentLink' in args:
                             parent_archive = None
-                            parsers = crawler_settings.provider_context.get_parsers(crawler_settings)
+                            if not current_settings.workers.web_queue:
+                                response['error'] = 'The webqueue is not running'
+                                return HttpResponse(json.dumps(response),
+                                                    content_type="application/json; charset=utf-8")
+                            parsers = current_settings.provider_context.get_parsers(current_settings)
                             for parser in parsers:
                                 if parser.id_from_url_implemented():
                                     urls_filtered = parser.filter_accepted_urls((args['parentLink'],))
@@ -648,22 +806,20 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                                             if old_extracted and not x.extracted and x.crc32:
                                                 x.extract()
 
-                                    crawler_settings.workers.web_queue.enqueue_args_list(
+                                    current_settings.workers.web_queue.enqueue_args_list(
                                         [args['link']] + extra_args,
                                         archive_callback=archive_callback
                                     )
                                 elif 'action' in args and args['action'] == 'queueFound':
                                     response['message'] = "Crawling: " + args['link'] + ", keeping parent: " + link
-                                    extra_args_string = ''
-                                    if extra_args:
-                                        extra_args_string = " " + " ".join(extra_args)
-                                    crawler_settings.workers.web_queue.enqueue_args(args['link'] + extra_args_string)
+                                    current_settings.workers.web_queue.enqueue_args_list([args['link']] + extra_args,
+                                                                                         override_options=current_settings)
                                 else:
                                     response['message'] = "Please confirm deletion of parent: " + link
                                     response['action'] = 'confirmDeletion'
                             else:
                                 archive = None
-                                parsers = crawler_settings.provider_context.get_parsers(crawler_settings)
+                                parsers = current_settings.provider_context.get_parsers(current_settings)
                                 for parser in parsers:
                                     if parser.id_from_url_implemented():
                                         urls_filtered = parser.filter_accepted_urls((args['link'],))
@@ -680,13 +836,15 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                                 else:
                                     response['message'] = "Crawling: " + args['link']
 
-                                extra_args_string = ''
-                                if extra_args:
-                                    extra_args_string = " " + " ".join(extra_args)
-                                crawler_settings.workers.web_queue.enqueue_args(args['link'] + extra_args_string)
+                                current_settings.workers.web_queue.enqueue_args_list([args['link']] + extra_args,
+                                                                                     override_options=current_settings)
                         else:
                             archive = None
-                            parsers = crawler_settings.provider_context.get_parsers(crawler_settings)
+                            if not current_settings.workers.web_queue:
+                                response['error'] = 'The webqueue is not running'
+                                return HttpResponse(json.dumps(response),
+                                                    content_type="application/json; charset=utf-8")
+                            parsers = current_settings.provider_context.get_parsers(current_settings)
                             for parser in parsers:
                                 if parser.id_from_url_implemented():
                                     urls_filtered = parser.filter_accepted_urls((args['link'],))
@@ -702,10 +860,8 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                                 response['message'] = "Archive exists, crawling to check for redownload: " + args['link']
                             else:
                                 response['message'] = "Crawling: " + args['link']
-                            extra_args_string = ''
-                            if extra_args:
-                                extra_args_string = " " + " ".join(extra_args)
-                            crawler_settings.workers.web_queue.enqueue_args(args['link'] + extra_args_string)
+                            current_settings.workers.web_queue.enqueue_args_list([args['link']] + extra_args,
+                                                                                 override_options=current_settings)
                     if not response:
                         response['error'] = 'Could not parse request'
                     return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
@@ -737,6 +893,9 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                         current_settings.allow_type_downloaders_only('fake')
                         current_settings.set_enable_download()
                         if current_settings.workers.web_queue:
+                            if request.user.is_authenticated:
+                                current_settings.archive_user = request.user
+                            current_settings.archive_origin = Archive.ORIGIN_ADD_URL
                             current_settings.workers.web_queue.enqueue_args_list(pages_links, override_options=current_settings)
                         else:
                             pages_links = []
@@ -758,7 +917,7 @@ def json_parser(request: HttpRequest) -> HttpResponse:
 
                     gids_list = list(gids_set)
 
-                    existing_galleries = Gallery.objects.filter(gid__in=gids_list)
+                    existing_galleries = Gallery.objects.filter(gid__in=gids_list).exclude(status=Gallery.DELETED)
                     for gallery_object in existing_galleries:
                         if gallery_object.is_submitted():
                             gallery_object.delete()
@@ -790,6 +949,9 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                                 current_settings.archive_details = data['archive_details']
                             current_settings.allow_type_downloaders_only('fake')
                         if current_settings.workers.web_queue:
+                            if request.user.is_authenticated:
+                                current_settings.archive_user = request.user
+                            current_settings.archive_origin = Archive.ORIGIN_ADD_URL
                             current_settings.workers.web_queue.enqueue_args_list(pages_links, override_options=current_settings)
                         else:
                             pages_links = []
@@ -862,7 +1024,9 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                 # Already authorized by api key.
                 args['public'] = False
 
-                results = filter_galleries_no_request(args)
+                results = filter_galleries_no_request(args).prefetch_related(
+                    'tags'
+                )
                 if not results:
                     return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
                 response_text = json.dumps(

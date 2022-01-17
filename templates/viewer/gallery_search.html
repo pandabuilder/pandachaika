@@ -62,10 +62,10 @@
           <option value="asc" {% if prm.asc_desc == "asc" %}selected{% endif %}>ascending</option>
           <option value="desc" {% if prm.asc_desc == "desc" %}selected{% endif %}>descending</option>
         </select>
-        <button type="submit" name="apply" class="btn btn-light mr-sm-1">Search</button>
+        <button type="submit" name="apply" class="btn btn-info mr-sm-1">Search</button>
         <button type="submit" name="clear" class="btn btn-light mr-sm-1">Clear</button>
-        {#        <button type="submit" name="random" class="btn btn-light">I'm feeling lucky</button>#}
-        <button type="button" class="btn btn-info" data-toggle="collapse" data-target="#extra_filters">More filters</button>
+        <button type="submit" name="json" class="btn btn-light mr-sm-1">As JSON</button>
+        <button type="button" class="btn btn-secondary" data-toggle="collapse" data-target="#extra_filters">More filters</button>
       <input id="checkbox8" class="custom-cb" type="checkbox" name="show_source" value="1" {% if prm.show_source == '1' %}checked{% endif %}><label for="checkbox8"><span><span></span></span>Show source</label>
       </div>
     </div>

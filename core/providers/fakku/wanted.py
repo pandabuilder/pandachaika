@@ -232,7 +232,6 @@ def wanted_generator(settings: 'Settings', attrs: 'AttributeManager'):
                             book_type=gallery.category,
                             page_count=gallery.filecount,
                             publisher=publisher_name,
-                            add_as_hidden=True,
                             reason=attrs.fetch_value('wanted_reason_{}'.format(query_name)) or '',
                             public=attrs.fetch_value('wanted_public_{}'.format(query_name)) or False,
                             should_search=attrs.fetch_value('wanted_should_search_{}'.format(query_name)) or False,

@@ -1,8 +1,8 @@
 -r requirements.txt
-django-debug-toolbar==3.2.1
+django-debug-toolbar==3.2.4
 django-unused-media==0.2.2
 mypy==0.812
-flake8==3.9.2
-coverage==5.5
-django-nose==1.4.7
+flake8==4.0.1
 django-stubs==1.8.0
+django-cors-headers==3.11.0
+# django-cprofile-middleware

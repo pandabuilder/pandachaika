@@ -37,7 +37,7 @@
               <div class="form-inline">
                 <input type="search" name="q" id="search" value="{{ q }}" class="form-control my-group" autocomplete="off" placeholder="Try your luck!">
                 <select id="sort" name="sort" class="form-control" title="sort">
-                  {% if user.is_staff %}
+                  {% if user.is_authenticated %}
                     <option value="create_date" {% if sort == "create_date" %} selected{% endif %}>create_date</option>
                   {% endif %}
                   <option value="public_date" {% if sort == "public_date" %} selected{% endif %}>public_date</option>
@@ -49,7 +49,7 @@
                   <option value="desc" {% if order == "desc" %} selected{% endif %}>descending</option>
                   <option value="asc" {% if order == "asc" %} selected{% endif %}>ascending</option>
                 </select>
-                <button type="submit" class="btn btn-light">Search</button>
+                <button type="submit" class="btn btn-info">Search</button>
                 <button type="submit" name="clear" class="btn btn-light">Clear</button>
               </div>
               <div class="form-inline">
@@ -138,7 +138,7 @@
             <thead>
             <tr>
               <th style="width:4%">#</th>
-              {% if user.is_staff %}
+              {% if user.is_authenticated %}
                 <th style="width:71%">Title</th>
                 <th style="width:4%"><a href="?{% url_multi_replace sort='image_count' order=order|revert_order %}">Images</a></th>
                 <th style="width:6%"><a href="?{% url_multi_replace sort='size' order=order|revert_order %}">Size</a></th>
@@ -161,7 +161,7 @@
                 <td>{% firstof hit.title hit.title_jpn "No title" %}</td>
                 <td>{{ hit.image_count }}</td>
                 <td>{{ hit.size|filesizeformat }}</td>
-                {% if user.is_staff %}
+                {% if user.is_authenticated %}
                   <td>{{ hit.create_date_c|date:"SHORT_DATE_FORMAT" }}</td>
                 {% endif %}
                 <td>{{ hit.public_date_c|date:"SHORT_DATE_FORMAT"|default:'none' }}</td>

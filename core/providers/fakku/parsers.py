@@ -76,9 +76,9 @@ class Parser(BaseParser):
 
     def process_magazine_page(self, link: str, response_text: str) -> Optional[GalleryData]:
         soup = BeautifulSoup(response_text, 'html.parser')
-        magazine_container = soup.find("div", class_="wrap")
+        magazine_container = soup.find("div", class_="grid")
 
-        comic_regex = re.compile("content-comic")
+        comic_regex = re.compile("col-comic")
 
         if magazine_container:
             gid = link.replace(constants.main_url + '/', '')
@@ -88,16 +88,20 @@ class Parser(BaseParser):
             gallery.link = link
             gallery.tags = []
             gallery.magazine_chapters_gids = []
-            gallery.title = magazine_container.find("a", itemprop="item", href=re.compile("/" + gid)).span.get_text()
+            gallery_title_container = magazine_container.find("ol", class_="table-cell")
+            if gallery_title_container:
+                possible_titles = list(gallery_title_container.findAll("li", itemprop="itemListElement"))
+                if possible_titles:
+                    gallery.title = possible_titles[-1].find("span", itemprop="name").get_text()
             gallery.category = 'Manga'  # We assume every magazine is commercial, and we keep using panda definition
 
-            thumbnail_container = magazine_container.find("img", class_="content-poster")
+            thumbnail_container = magazine_container.find("img", class_="object-cover")
             if thumbnail_container:
                 gallery.thumbnail_url = thumbnail_container.get("src")
                 if gallery.thumbnail_url and gallery.thumbnail_url.startswith('//'):
                     gallery.thumbnail_url = 'https:' + gallery.thumbnail_url
 
-            description_container = magazine_container.find("p", class_=re.compile("attribute-description"))
+            description_container = soup.find("div", class_=re.compile("flex-auto align-top space-y-4 text-left"))
 
             if description_container:
                 comment_text = description_container.decode_contents().replace("\n", "").replace("<br/>", "\n")
@@ -106,29 +110,30 @@ class Parser(BaseParser):
 
             chapters_container = magazine_container.find_all("div", class_=comic_regex)
 
-            tags_set = set()
+            # tags_set = set()
             artists_set = set()
 
             for chapter_container in chapters_container:
-                chapter_title_container = chapter_container.find("a", class_="content-title")
+                chapter_title_container = chapter_container.find("a", class_=re.compile("text-lg text-brand-light font-semibold"))
                 if chapter_title_container:
-                    # chapter_title = chapter_title_container.get_text()
                     chapter_link = chapter_title_container.get('href').replace(constants.main_url + '/', '')
                     chapter_gid = chapter_link[1:] if chapter_link[0] == '/' else chapter_link
                     gallery.magazine_chapters_gids.append(chapter_gid)
 
-                tags_container = chapter_container.find("div", {"class": "tags"})
-
-                for tag_a in tags_container.find_all("a", href=lambda x: x and '/tags/' in x):
-                    tags_set.add(
-                        translate_tag(tag_a.get_text().strip()))
+                # Note: They removed tags per chapter, so we can't aggregate this info.
+                # tags_container = chapter_container.find("div", {"class": "tags"})
+                # if tags_container:
+                #
+                #     for tag_a in tags_container.find_all("a", href=lambda x: x and '/tags/' in x):
+                #         tags_set.add(
+                #             translate_tag(tag_a.get_text().strip()))
 
                 artist = chapter_container.find("a", href=lambda x: x and '/artists/' in x)
 
                 if artist:
                     artists_set.add("artist:" + translate_tag(artist.get_text().strip()))
 
-            gallery.tags = list(tags_set)
+            # gallery.tags = list(tags_set)
             gallery.tags.extend(list(artists_set))
 
             return gallery
@@ -138,35 +143,40 @@ class Parser(BaseParser):
     def process_regular_gallery_page(self, link: str, response_text: str) -> Optional[GalleryData]:
 
         soup = BeautifulSoup(response_text, 'html.parser')
-        gallery_container = soup.find("div", class_=re.compile("content-wrap"))
+        gallery_container = soup.find("div", class_=re.compile("relative w-full table"))
         if gallery_container:
             gallery = GalleryData(link.replace(constants.main_url + '/', '').replace('manga/', 'hentai/'), self.name)
             gallery.link = link
             gallery.tags = []
             if self.own_settings.get_posted_date_from_feed:
                 gallery.posted = self.parse_posted_date_from_feed(constants.aux_feed_url, gallery.gid)
-            gallery.title = gallery_container.find("div", class_="content-name").h1.get_text()
+            gallery.title = gallery_container.find("h1", class_="block col-span-full text-3xl py-2 font-bold text-brand-light text-left dark:text-white dark:link:text-white").get_text()
+
+            description_container = soup.find("meta", property="og:description")
+            if description_container:
+                gallery.comment = description_container['content'].strip()
+            thumbnail_container = soup.find("meta", property="og:image")
+            if thumbnail_container:
+                gallery.thumbnail_url = thumbnail_container['content']
 
             if gallery.gid.startswith('manga') or gallery.gid.startswith('hentai'):
                 gallery.category = 'Manga'
             elif gallery.gid.startswith('doujinshi'):
                 gallery.category = 'Doujinshi'
 
-            thumbnail_container = gallery_container.find("img", class_="tablet-50")
-            if thumbnail_container:
-                gallery.thumbnail_url = thumbnail_container.get("src")
-                if gallery.thumbnail_url and gallery.thumbnail_url.startswith('//'):
-                    gallery.thumbnail_url = 'https:' + gallery.thumbnail_url
-
             is_doujinshi = False
-            for gallery_row in gallery_container.find_all("div", {"class": "row"}):
-                left_text = gallery_row.find("div", {"class": "row-left"}).get_text()
-                right_div = gallery_row.find("div", {"class": "row-right"})
+            for gallery_row in gallery_container.find_all("div", {"class": "table text-sm w-full"}):
+                left_container = gallery_row.find("div", class_=re.compile("inline-block w-24 text-left"))
+                if left_container:
+                    left_text = left_container.get_text()
+                else:
+                    left_text = ''
+                right_div = gallery_row.find("div", class_=re.compile("table-cell w-full"))
                 if left_text == "Series" or left_text == "Parody":
-                    right_text = right_div.get_text().strip()
-                    # if not right_text == "Original Work":
-                    gallery.tags.append(
-                        translate_tag("parody:" + right_text))
+                    for parody in right_div.find_all("a"):
+                        gallery.tags.append(
+                            translate_tag("parody:" + parody.get_text().strip())
+                        )
                 elif left_text == "Artist":
                     for artist in right_div.find_all("a"):
                         gallery.tags.append(
@@ -208,14 +218,13 @@ class Parser(BaseParser):
                     gallery.uploader, right_date_text = right_div.get_text().strip().split(' on ')
                     right_date_text = re.sub(r'(\d+)(st|nd|rd|th)', r'\1', right_date_text)
                     gallery.posted = datetime.strptime(right_date_text, "%B %d, %Y")
-                elif left_text == "Description":
-                    gallery.comment = right_div.get_text()
-                elif left_text == "Tags":
+                elif left_text == "":
                     for tag_a in right_div.find_all("a", href=lambda x: x and '/tags/' in x):
                         if tag_a.get_text().strip() == 'doujin':
                             is_doujinshi = True
-                        gallery.tags.append(
-                            translate_tag(tag_a.get_text().strip()))
+                        gallery.tags.append(translate_tag(tag_a.get_text().strip()))
+                    if right_div.find_all("a", href=lambda x: x and '/unlimited' == x):
+                        gallery.tags.append(translate_tag('unlimited'))
             if is_doujinshi:
                 gallery.category = 'Doujinshi'
             else:

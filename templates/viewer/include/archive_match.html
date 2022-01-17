@@ -1,0 +1,17 @@
+{% load viewer_extras %}
+{% load static %}
+<div class="gallery cover-boder acc-{{ match.match_accuracy|color_percent:1 }}">
+  <a class="cover" href="{% url 'viewer:gallery' match.gallery.pk %}">
+    <div class="cover-title">{{ match.gallery.best_title }}</div>
+    {% with thumbnail_details=archive.get_available_thumbnail_plus_size %}
+    <img class="image-container mx-auto" alt="" title="{{ match.gallery.best_title }}"
+        width="{{ thumbnail_details.2 }}" height="{{ thumbnail_details.1 }}" src="{% if match.gallery.thumbnail.name %}{{ match.gallery.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}"/>
+    {% endwith %}
+  </a>
+  <div class="caption">
+    <a href="{% url 'viewer:archive-update-tool-id' archive.pk 'select-as-match' match.gallery.pk %}"><i class="fas fa-check"></i></a> | {{ match.gallery.filecount }} | {{ match.gallery.filesize|filesizeformat }} | {{ match.match_type }} | <span class="acc-{{ match.match_accuracy|color_percent:1 }}">{{ match.match_accuracy|floatformat:3 }}</span> | {{ match.gallery.archive_set.all|yesno }} | <a class="tag-preview-g" tabindex="0" role="button" data-toggle="popover" data-trigger="focus" data-pk="{{ match.gallery.pk }}">Tags</a> | <a href="{% url 'viewer:api' %}?gallery={{ match.gallery.pk }}">JSON</a>
+  </div>
+    <div>{{ match.gallery.artist_tags.0.name }}</div>
+    <div>{{ match.gallery.get_link|urlize_all_rel }}</div>
+    <div>{{ match.gallery.posted|date:"DATETIME_FORMAT" }}</div>
+</div>

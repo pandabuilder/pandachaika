@@ -18,7 +18,7 @@ from django.conf import settings
 from dal import autocomplete
 from dal_jal.widgets import JalWidgetMixin
 from viewer.models import Archive, ArchiveMatches, Image, Gallery, Profile, WantedGallery, ArchiveGroup, \
-    ArchiveGroupEntry, Tag
+    ArchiveGroupEntry, Tag, ArchiveManageEntry
 
 from dal.widgets import (
     WidgetMixin
@@ -195,8 +195,8 @@ class ArchiveSearchSimpleForm(forms.Form):
             url='source-autocomplete',
             attrs={
                 'class': 'form-control mr-sm-1',
-                'placeholder': 'panda, etc.',
-                'data-autocomplete-minimum-characters': 3,
+                'placeholder': '',
+                'data-autocomplete-minimum-characters': 0,
                 'size': 10,
             },
         ),
@@ -209,8 +209,8 @@ class ArchiveSearchSimpleForm(forms.Form):
             url='reason-autocomplete',
             attrs={
                 'class': 'form-control mr-sm-1',
-                'placeholder': 'wani, etc.',
-                'data-autocomplete-minimum-characters': 3,
+                'placeholder': '',
+                'data-autocomplete-minimum-characters': 0,
                 'size': 10,
             },
         ),
@@ -238,7 +238,7 @@ class ArchiveSearchSimpleForm(forms.Form):
             attrs={
                 'class': 'form-control',
                 'placeholder': '',
-                'data-autocomplete-minimum-characters': 3,
+                'data-autocomplete-minimum-characters': 0,
                 'size': 10,
             },
         ),
@@ -253,6 +253,73 @@ class ArchiveSearchSimpleForm(forms.Form):
         required=False,
         label='',
         widget=forms.NumberInput(attrs={'class': 'form-control mr-sm-1', 'placeholder': 'to'})
+    )
+
+
+class ArchiveManageSearchSimpleForm(forms.Form):
+
+    filecount_from = forms.IntegerField(
+        required=False,
+        label='Images',
+        widget=forms.NumberInput(attrs={'class': 'form-control number-input mr-sm-1', 'placeholder': 'from'})
+    )
+    filecount_to = forms.IntegerField(
+        required=False,
+        label='',
+        widget=forms.NumberInput(attrs={'class': 'form-control number-input mr-sm-1', 'placeholder': 'to'})
+    )
+    created_from = forms.DateTimeField(
+        required=False,
+        label='Created',
+        widget=forms.DateInput(attrs={'class': 'form-control mr-sm-1', 'placeholder': 'from', 'type': 'date', 'size': 9}),
+        input_formats=['%Y-%m-%d']
+    )
+    created_to = forms.DateTimeField(
+        required=False,
+        label='',
+        widget=forms.DateInput(attrs={'class': 'form-control mr-sm-1', 'placeholder': 'to', 'type': 'date', 'size': 9}),
+        input_formats=['%Y-%m-%d']
+    )
+    source_type = forms.CharField(
+        required=False,
+        label='',
+        widget=JalTextWidget(
+            url='source-autocomplete',
+            attrs={
+                'class': 'form-control mr-sm-1',
+                'placeholder': 'Source',
+                'data-autocomplete-minimum-characters': 0,
+                'size': 12,
+            },
+        ),
+    )
+
+    reason = forms.CharField(
+        required=False,
+        label='',
+        widget=JalTextWidget(
+            url='reason-autocomplete',
+            attrs={
+                'class': 'form-control mr-sm-1',
+                'placeholder': 'Reason',
+                'data-autocomplete-minimum-characters': 0,
+                'size': 12,
+            },
+        ),
+    )
+
+    category = forms.CharField(
+        required=False,
+        label='',
+        widget=JalTextWidget(
+            url='category-autocomplete',
+            attrs={
+                'class': 'form-control',
+                'placeholder': 'Category',
+                'data-autocomplete-minimum-characters': 0,
+                'size': 12,
+            },
+        ),
     )
 
 
@@ -373,7 +440,7 @@ class GallerySearchSimpleForm(forms.Form):
             attrs={
                 'class': 'form-control mr-sm-1',
                 'placeholder': 'panda, etc.',
-                'data-autocomplete-minimum-characters': 3,
+                'data-autocomplete-minimum-characters': 0,
                 'size': 10,
             },
         ),
@@ -387,7 +454,7 @@ class GallerySearchSimpleForm(forms.Form):
             attrs={
                 'class': 'form-control mr-sm-1',
                 'placeholder': 'wani, etc.',
-                'data-autocomplete-minimum-characters': 3,
+                'data-autocomplete-minimum-characters': 0,
                 'size': 10,
             },
         ),
@@ -415,7 +482,7 @@ class GallerySearchSimpleForm(forms.Form):
             attrs={
                 'class': 'form-control',
                 'placeholder': '',
-                'data-autocomplete-minimum-characters': 3,
+                'data-autocomplete-minimum-characters': 0,
                 'size': 10,
             },
         ),
@@ -461,6 +528,74 @@ class WantedGallerySearchForm(forms.Form):
                 'data-autocomplete-minimum-characters': 3,
             },
         ),
+    )
+
+
+class WantedGalleryColSearchForm(WantedGallerySearchForm):
+    title = forms.CharField(
+        required=False,
+        widget=JalTextWidget(
+            url='col-wanted-gallery-autocomplete',
+            attrs={
+                'class': 'form-control',
+                'placeholder': 'Title, Japanese title or search title, mouse click on autocomplete opens it',
+                'data-autocomplete-minimum-characters': 3,
+                'data-autocomplete-xhr-wait': 50,
+                'data-autocomplete-auto-hilight-first': 0,
+                'data-autocomplete-bind-mouse-down': 0,
+            },
+        ),
+    )
+
+
+class EmptyChoiceField(forms.ChoiceField):
+    def __init__(self, choices=(), empty_label=None, required=True, widget=None, label=None,
+                 initial=None, help_text=None, *args, **kwargs):
+
+        # prepend an empty label if it exists (and field is not required!)
+        if not required and empty_label is not None:
+            choices = tuple([(u'', empty_label)] + list(choices))
+
+        super(EmptyChoiceField, self).__init__(
+            choices=choices, required=required, widget=widget, label=label,
+            initial=initial, help_text=help_text, *args, **kwargs
+        )
+
+
+class ArchiveManageEntrySimpleForm(forms.Form):
+
+    mark_reason = forms.CharField(
+        required=False,
+        label='Reason',
+        widget=forms.widgets.TextInput(attrs={'class': 'form-control'}),
+    )
+
+    mark_comment = forms.CharField(
+        required=False,
+        label='Comment',
+        widget=forms.widgets.TextInput(attrs={'class': 'form-control'}),
+    )
+
+    origin = EmptyChoiceField(
+        choices=ArchiveManageEntry.ORIGIN_CHOICES, required=False, empty_label='',
+        widget=forms.widgets.Select(attrs={'class': 'form-control'}),
+    )
+
+    mark_extra = forms.CharField(
+        required=False,
+        label='Extra',
+        widget=forms.widgets.TextInput(attrs={'class': 'form-control'}),
+    )
+
+    priority_from = forms.IntegerField(
+        required=False,
+        label='Priority',
+        widget=forms.NumberInput(attrs={'class': 'form-control mr-sm-1', 'placeholder': 'from', 'size': 9})
+    )
+    priority_to = forms.IntegerField(
+        required=False,
+        label='',
+        widget=forms.NumberInput(attrs={'class': 'form-control mr-sm-1', 'placeholder': 'to', 'size': 9})
     )
 
 
@@ -669,6 +804,43 @@ class ArchiveEditForm(ModelForm):
         }
 
 
+class ArchiveManageEditForm(ModelForm):
+
+    class Meta:
+        model = ArchiveManageEntry
+        fields = [
+            # 'mark_check',
+            'mark_priority', 'mark_reason', 'mark_comment', 'mark_extra',
+            # 'resolve_check', 'resolve_comment'
+        ]
+        widgets = {
+            # 'mark_check': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
+            'mark_priority': forms.widgets.NumberInput(attrs={'class': 'form-control'}),
+            'mark_reason': JalTextWidget(
+                url='archive-manager-reason-autocomplete',
+                attrs={
+                    'class': 'form-control',
+                    'placeholder': '',
+                    'data-autocomplete-minimum-characters': 0,
+                    'size': 10,
+                },
+            ),
+            'mark_comment': forms.widgets.Textarea(attrs={'class': 'form-control'}),
+            'mark_extra': forms.widgets.TextInput(attrs={'class': 'form-control'}),
+            # 'resolve_check': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
+            # 'resolve_comment': forms.widgets.Textarea(attrs={'class': 'form-control'})
+        }
+        help_texts = {
+            'mark_priority': '0 to 1, low priority. 1 to 4, mid priority. 4 to 5, high priority. '
+                             'Low priority is hidden on search results by default.',
+        }
+
+
+ArchiveManageEditFormSet = inlineformset_factory(
+    Archive, ArchiveManageEntry, form=ArchiveManageEditForm, extra=1,
+    can_delete=True)
+
+
 class ImageForm(forms.ModelForm):
     position = forms.IntegerField(required=True,
                                   widget=forms.NumberInput(attrs={'size': 10}))
@@ -779,5 +951,4 @@ class GalleryCreateForm(ModelForm):
 
     def clean_tags(self) -> TemporaryUploadedFile:
         tags = self.cleaned_data['tags']
-        print(tags)
         return tags

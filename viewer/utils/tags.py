@@ -8,7 +8,7 @@ if typing.TYPE_CHECKING:
 
 scope_priorities = [
     "language", "artist", "group", "parody", "character",
-    "female", "male", "misc", "magazine", "publisher"
+    "female", "male", "mixed", "other", "misc", "magazine", "publisher"
 ]
 
 

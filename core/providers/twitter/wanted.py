@@ -25,7 +25,7 @@ def wanted_generator(settings: 'Settings', attrs: QuerySet):
     def process_wani_tweets(current_tweets: list[dict[str, Any]]):
         publisher = 'wanimagazine'
 
-        yield('Parsing of {} tweets starting...'.format(len(current_tweets)))
+        yield 'Parsing of {} tweets starting...'.format(len(current_tweets))
 
         for tweet in current_tweets:
 

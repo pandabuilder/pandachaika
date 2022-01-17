@@ -1,14 +1,14 @@
 {% extends "viewer/base.html" %}
-{% block title %}{{ image_object.archive.title }} | {{ block.super }}{% endblock %}
+{% block title %}Loading... | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
 {% load static %}
 {% load render_bundle from webpack_loader %}
 {% block extrahead %}
-  {% render_bundle 'main' 'css' %}
+  {% render_bundle 'main' 'css' 'DEFAULT' %}
 {% endblock %}
 
 {% block content %}
 <noscript>You need to enable JavaScript to run this app.</noscript>
   <div id="root"></div>
-  {% render_bundle 'main' 'js' %}
+  {% render_bundle 'main' 'js' 'DEFAULT' %}
 {% endblock %}

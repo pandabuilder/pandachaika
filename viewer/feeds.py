@@ -34,7 +34,7 @@ class LatestArchivesFeed(Feed):
             if k not in params:
                 params[k] = ''
 
-        results = filter_archives_simple(params)
+        results = filter_archives_simple(params, authenticated=request.user.is_authenticated)
 
         if not request.user.is_authenticated:
             results = results.filter(public=True).order_by('-public_date')

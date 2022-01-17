@@ -23,7 +23,7 @@ class Command(BaseCommand):
         parser.add_argument('-af', '--artist_file',
                             required=False,
                             action='store',
-                            help='File path containing arists\' names.')
+                            help='File path containing artists\' names.')
         parser.add_argument('-wp', '--wanted_providers',
                             required=False,
                             action='store',
@@ -56,8 +56,8 @@ class Command(BaseCommand):
 
         parody_tag, _ = Tag.objects.get_or_create(scope="parody", name="original")
 
-        already_uploaded_tag, _ = Tag.objects.get_or_create(name="already_uploaded")
-        forbidden_content_tag, _ = Tag.objects.get_or_create(name="forbidden_content")
+        already_uploaded_tag, _ = Tag.objects.get_or_create(scope="other", name="already_uploaded")
+        forbidden_content_tag, _ = Tag.objects.get_or_create(scope="other", name="forbidden_content")
         english_tag, _ = Tag.objects.get_or_create(scope="language", name="english")
 
         unwanted_tags = [
@@ -66,21 +66,33 @@ class Command(BaseCommand):
         ]
 
         for artist in artists:
-            self.stdout.write("Analizing arist: {}".format(artist))
+            self.stdout.write("Analizing artist/group: {}".format(artist))
             # Some artists are group in panda, others artist
             # We expect the tag to already exist, it is not created from here
             artist_tag = None
-            if Tag.objects.filter(scope="group", name=artist).first():
-                artist_tag = Tag.objects.filter(scope="group", name=artist).first()
-            if Tag.objects.filter(scope="artist", name=artist).first():
-                artist_tag = Tag.objects.filter(scope="artist", name=artist).first()
+
+            scope_name = artist.split(":", maxsplit=1)
+            if len(scope_name) > 1:
+                artist_tag, tag_created = Tag.objects.get_or_create(
+                    scope=scope_name[0],
+                    name=scope_name[1])
+            else:
+                if Tag.objects.filter(scope="group", name=artist).first():
+                    artist_tag = Tag.objects.filter(scope="group", name=artist).first()
+                if Tag.objects.filter(scope="artist", name=artist).first():
+                    artist_tag = Tag.objects.filter(scope="artist", name=artist).first()
+
+                tag_created = False
 
             if not artist_tag:
-                self.stdout.write("Skipping arist: {}, since it doesn't have a tag.".format(artist))
+                self.stdout.write("Skipping artist/group: {}, since it doesn't have a tag.".format(artist))
                 continue
 
+            if tag_created:
+                self.stdout.write("Tag didn\'t exist and was created.")
+
             obj_raw, created = WantedGallery.objects.get_or_create(
-                title='Irodori artist RAW: {}'.format(artist),
+                title='Irodori {} RAW: {}'.format(artist_tag.scope, artist_tag.name),
                 book_type='user_irodori_raw',
                 publisher='irodori',
                 category="Doujinshi",
@@ -90,7 +102,6 @@ class Command(BaseCommand):
                     'keep_searching': True,
                     'notify_when_found': False,
                     'public': False,
-                    'add_as_hidden': True,
                     'wait_for_time': timedelta(minutes=45),
                     'release_date': None,
                     'wanted_tags_exclusive_scope': True,
@@ -112,10 +123,10 @@ class Command(BaseCommand):
                     obj_raw.wanted_providers.set(providers)
                 self.stdout.write("Added WantedGallery: {}".format(obj_raw.title))
             else:
-                self.stdout.write("Skipping arist: {}, since it was already created.".format(artist))
+                self.stdout.write("Skipping {}: {}, since it was already created.".format(artist_tag.scope, artist_tag.name))
 
             obj_english, created = WantedGallery.objects.get_or_create(
-                title='Irodori artist English: {}'.format(artist),
+                title='Irodori {} English: {}'.format(artist_tag.scope, artist_tag.name),
                 book_type='user_irodori_eng',
                 publisher='irodori',
                 category="Doujinshi",
@@ -125,8 +136,7 @@ class Command(BaseCommand):
                     'keep_searching': True,
                     'notify_when_found': False,
                     'public': False,
-                    'add_as_hidden': True,
-                    'wait_for_time': timedelta(hours=2),
+                    'wait_for_time': timedelta(minutes=50),
                     'release_date': None,
                     'wanted_tags_exclusive_scope': True,
                     'exclusive_scope_name': artist_tag.scope,
@@ -146,7 +156,7 @@ class Command(BaseCommand):
                     obj_english.wanted_providers.set(providers)
                 self.stdout.write("Added WantedGallery: {}".format(obj_english.title))
             else:
-                self.stdout.write("Skipping arist: {}, since it was already created.".format(artist))
+                self.stdout.write("Skipping {}: {}, since it was already created.".format(artist_tag.scope, artist_tag.name))
 
         end = time.perf_counter()
 

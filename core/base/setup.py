@@ -10,7 +10,7 @@ import typing
 from typing import Any, Optional
 
 from core.base.providers import ProviderContext
-from core.base.types import DataDict
+from core.base.types import DataDict, ProviderSettings
 from core.workers.holder import WorkerContext
 
 if typing.TYPE_CHECKING:
@@ -30,7 +30,6 @@ class GlobalInfo:
         ('webcrawler', 'Processes gallery links, can coexist with web_queue', 'processor'),
         ('foldercrawler', 'Processes galleries on the filesystem', 'processor'),
         ('post_downloader', 'Transfers archives downloaded with other programs (torrent, hath)', 'scheduler'),
-        ('auto_updater', 'Auto updates existing gallery metadata after being added, to get new metadata', 'scheduler'),
         ('auto_wanted', 'Parses providers for new galleries to create wanted galleries entries', 'scheduler'),
     ]
 
@@ -48,6 +47,13 @@ class AutoCheckerSettings:
         self.startup: bool = False
         self.cycle_timer: float = 0
         self.providers: list[str] = []
+
+
+class MonitoredLinksSettings:
+    __slots__ = ['enable']
+
+    def __init__(self) -> None:
+        self.enable: bool = False
 
 
 class AutoWantedSettings:
@@ -193,6 +199,7 @@ class Settings:
         self.archive_reason = ''
         self.archive_source = ''
         self.archive_details = ''
+        self.archive_origin: Optional[int] = None
         self.archive_user: Optional[User] = None
         self.silent_processing = False
         self.update_metadata_mode = False
@@ -219,6 +226,8 @@ class Settings:
 
         self.gallery_dl = GalleryDLSettings()
 
+        self.monitored_links = MonitoredLinksSettings()
+
         self.filename_filter = ['*.zip']
 
         self.retry_failed = False
@@ -244,6 +253,7 @@ class Settings:
 
         self.matchers: dict[str, int] = {}
         self.downloaders: dict[str, int] = {}
+        self.back_up_downloaders: dict[str, int] = {}
 
         self.copy_match_file = True
 
@@ -252,6 +262,8 @@ class Settings:
         self.log_location = ''
 
         self.convert_rar_to_zip = False
+        self.mark_similar_new_archives = False
+        self.auto_hash_images = False
 
         self.requests_headers: dict[str, Any] = {
         }
@@ -423,6 +435,10 @@ class Settings:
                 self.add_as_public = config['general'].getboolean('add_as_public')
             if 'timeout_timer' in config['general']:
                 self.timeout_timer = int(config['general']['timeout_timer'])
+            if 'mark_similar_new_archives' in config['general']:
+                self.mark_similar_new_archives = config['general'].getboolean('mark_similar_new_archives')
+            if 'auto_hash_images' in config['general']:
+                self.auto_hash_images = config['general'].getboolean('auto_hash_images')
         if 'experimental' in config:
             self.experimental.update(config['experimental'])
         if 'matchers' in config:
@@ -645,6 +661,9 @@ class Settings:
                 self.remote_site['sessionid'] = config['remote_site']['sessionid']
             if 'remote_folder' in config['remote_site']:
                 self.remote_site['remote_folder'] = config['remote_site']['remote_folder']
+        if 'monitored_links' in config:
+            if 'enable' in config['monitored_links']:
+                self.monitored_links.enable = config['monitored_links'].getboolean('enable')
 
         for provider_name, parse_config in self.provider_context.settings_parsers:
             provider_sections = [(section.replace(provider_name + "_", ""), config[section]) for section in config.sections() if provider_name in section]

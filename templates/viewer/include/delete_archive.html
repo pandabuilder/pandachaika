@@ -1,0 +1,38 @@
+{% load viewer_extras %}
+<div class="page-header">
+  <h4>Deleting archive: {{ archive.title }}</h4>
+</div>
+
+<button id="select-all" class="btn btn-info">Select All</button>
+
+<form action="{% url 'viewer:archive-delete' archive.pk %}" method="POST">{% csrf_token %}
+  <ul class="list-group">
+    <li class="list-group-item">
+      <p><input id="checkbox1" class="custom-cb" type="checkbox" name="delete-archive" value="1" checked><label for="checkbox1"><span><span></span></span></label>Delete archive entry</p>
+      <p>{{ archive.title }} >> {{ archive.filesize|filesizeformat }} >> {{ archive.filesize }} >> {{ archive.filecount }} >> {{ archive.source_type }}</p>
+    </li>
+    <li class="list-group-item">
+      <p><input id="checkbox2" class="custom-cb" type="checkbox" name="delete-file" value="1"><label for="checkbox2"><span><span></span></span></label>Delete associated file</p>
+      <p>{{ archive.zipped.path }} >> {{ archive.filesize|filesizeformat }} >> {{ archive.filesize }} >> {{ archive.filecount }} >> {{ archive.source_type }}</p>
+    </li>
+    {% if archive.gallery %}
+      <li class="list-group-item">
+        <p><input id="checkbox3" class="custom-cb" type="checkbox" name="mark-gallery-deleted" value="1"><label for="checkbox3"><span><span></span></span></label>Mark associated gallery as deleted</p>
+        <p>{{ archive.gallery.filesize }} >> {{ archive.gallery.filecount }} >> {{ archive.gallery.title }} >> {{ archive.gallery.get_link|urlize_all_rel }}</p>
+      </li>
+      <li class="list-group-item">
+        <p><input id="checkbox4" class="custom-cb" type="checkbox" name="delete-gallery" value="1"><label for="checkbox4"><span><span></span></span></label>Delete gallery</p>
+        <p>{{ archive.gallery.filesize }} >> {{ archive.gallery.filecount }} >> {{ archive.gallery.title }} >> {{ archive.gallery.get_link|urlize_all_rel }}</p>
+      </li>
+    {% endif %}
+  </ul>
+  <div class="form-group">
+    <input size="10" class="form-control" name="reason" value="" placeholder="Reason" maxlength="200"/>
+  </div>
+  <button type="submit" name="delete_confirm" class="btn btn-light">Confirm delete</button>
+</form>
+<script>
+$('#select-all').click(function() {
+    $('p input[type="checkbox"]').prop('checked', true);
+});
+</script>

@@ -1,0 +1,90 @@
+{% extends "viewer/base.html" %}
+{% block title %}{{ title }} | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+{% load static %}
+
+{% block content %}
+    {% if messages %}
+        {% for message in messages %}
+        <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+        {% endfor %}
+    {% endif %}
+    <div class="page-header">
+    <h2>{{ title }}</h2>
+    <p class="lead">Number of monitored links (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
+    </div>
+    {% load viewer_extras %}
+    <!-- Next/Prev page links  -->
+    {% if results.object_list and results.paginator.num_pages > 1 %}
+      <div>
+          <span class="step-links">
+              <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
+            {% if results.has_previous %}
+              <a href= "?{% url_replace 'page' results.previous_page_number %}"> previous &lt;&lt; </a>
+            {% endif %}
+            <span class="current">
+                  &nbsp;Page {{ results.number }} of {{ results.paginator.num_pages }}
+              </span>
+            {% if results.has_next %}
+              <a href="?{% url_replace 'page' results.next_page_number %}"> &gt;&gt; next</a>
+            {% endif %}
+            <a href="?{% url_replace 'page' results.paginator.num_pages %}"> &gt;&gt; last</a>
+          </span>
+      </div>
+    {% endif %}
+      <table class="table table-bordered table-sm generic-table">
+        <thead>
+        <tr>
+          <th>Name</th><th>URL</th><th>Enabled</th><th>Description</th><th>Provider</th><th title="Applies on paginated pages">Stop page</th><th>Frequency</th><th>Created on</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for monitored_link in results %}
+          <tr>
+            <td>
+              {{ monitored_link.name }}
+            </td>
+            <td>
+              {{ monitored_link.url|urlize_all_rel }}
+            </td>
+            <td>
+              {{ monitored_link.enabled|yesno }}
+            </td>
+            <td>
+              {{ monitored_link.description }}
+            </td>
+            <td>
+              {{ monitored_link.provider.slug }}
+            </td>
+            <td>
+              {{ monitored_link.stop_page }}
+            </td>
+            <td>
+              {{ monitored_link.frequency }}
+            </td>
+            <td>
+              {{ monitored_link.create_date|date:"y-m-d, H:i:s" }}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    <!-- Next/Prev page links  -->
+      {% if results.object_list and results.paginator.num_pages > 1 %}
+        <div>
+            <span class="step-links">
+                <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
+              {% if results.has_previous %}
+                <a href= "?{% url_replace 'page' results.previous_page_number %}"> previous &lt;&lt; </a>
+              {% endif %}
+              <span class="current">
+                    &nbsp;Page {{ results.number }} of {{ results.paginator.num_pages }}
+                </span>
+              {% if results.has_next %}
+                <a href="?{% url_replace 'page' results.next_page_number %}"> &gt;&gt; next</a>
+              {% endif %}
+              <a href="?{% url_replace 'page' results.paginator.num_pages %}"> &gt;&gt; last</a>
+            </span>
+        </div>
+      {% endif %}
+{% endblock %}

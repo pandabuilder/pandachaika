@@ -29,7 +29,7 @@
           <option value="{{ provider }}" {% if request.GET.provider == provider %} selected{% endif %}>{{ provider }}</option>
         {% endfor %}
       </select>
-      <button type="submit" name="apply" class="btn btn-light">Search</button>
+      <button type="submit" name="apply" class="btn btn-info">Search</button>
       <a class="btn btn-light" href="{% url 'viewer:archive-filesize-different' %}">Clear</a>
     </div>
   </form>

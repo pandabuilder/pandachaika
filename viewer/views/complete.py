@@ -14,8 +14,7 @@ from django.template import Context
 from django.utils.html import format_html
 from django.conf import settings
 
-from viewer.models import Archive, Tag, Gallery, WantedGallery, ArchiveGroup, Provider
-
+from viewer.models import Archive, Tag, Gallery, WantedGallery, ArchiveGroup, Provider, ArchiveManageEntry
 
 if typing.TYPE_CHECKING:
     from django.db.models.query import ValuesQuerySet
@@ -156,6 +155,13 @@ class WantedGalleryAutocomplete(autocomplete.JalQuerySetView):
         return qs[0:self.limit_choices]
 
 
+class WantedGalleryColAutocomplete(WantedGalleryAutocomplete):
+    def choice_html(self, choice: WantedGallery) -> str:
+        return self.choice_html_format % (choice.title,
+                                          choice.get_col_absolute_url(),
+                                          choice.title)
+
+
 class ArchiveGroupAutocomplete(autocomplete.JalQuerySetView):
     model = ArchiveGroup
 
@@ -196,6 +202,59 @@ class ArchiveGroupAutocomplete(autocomplete.JalQuerySetView):
             )
 
         return qs[0:self.limit_choices]
+
+
+class ArchiveManageEntryFieldAutocomplete(autocomplete.JalQuerySetView):
+    model = ArchiveManageEntry
+
+    choice_html_format = u'''
+        <a class="block choice" data-value="%s">%s</a>
+    '''
+    empty_html_format = '<span class="block"><em>%s</em></span>'
+    autocomplete_html_format = '%s'
+    limit_choices = 10
+
+    def render_to_response(self, context: Context) -> HttpResponse:
+
+        html = ''.join(
+            [self.choice_html(c) for c in self.choices_for_request()])
+
+        if not html:
+            html = self.empty_html_format % 'No matches found'
+
+        return HttpResponse(self.autocomplete_html_format % html)
+
+    def choice_html(self, choice: Optional[str]) -> str:
+        return self.choice_html_format % (self.get_result_value(choice),
+                                          self.get_result_label(choice))
+
+    @staticmethod
+    def get_result_value(result: Optional[str]) -> str:
+        if result:
+            return result
+        else:
+            return ''
+
+    @staticmethod
+    def get_result_label(result: Optional[str]) -> str:
+        if result:
+            return result
+        else:
+            return ''
+
+    def choices_for_request(self) -> 'Iterable[Optional[str]]':
+        raise NotImplementedError
+
+
+class ArchiveManageEntryMarkReasonAutocomplete(ArchiveManageEntryFieldAutocomplete):
+    def choices_for_request(self) -> 'Iterable[Optional[str]]':
+
+        q = self.request.GET.get('q', '')
+
+        if self.request.user.is_authenticated:
+            mark_reasons = ArchiveManageEntry.objects.filter(mark_reason__contains=q).order_by('mark_reason').values_list('mark_reason', flat=True).distinct()
+            return mark_reasons[0:self.limit_choices]
+        return []
 
 
 class ArchiveFieldAutocomplete(autocomplete.JalQuerySetView):
@@ -553,18 +612,28 @@ class CustomTagAutocomplete(autocomplete.Select2QuerySetView):
         else:
             name = t
             scope = ''
-        custom_tag = Tag.objects.filter(name=name, scope=scope).first()
-        if custom_tag:
-            return http.JsonResponse({
-                'id': custom_tag.pk,
-                'text': str(custom_tag),
-            })
+        custom_tag = Tag.objects.get_or_create(name=name, scope=scope, defaults={'source': 'user'})[0]
+        return http.JsonResponse({
+            'id': custom_tag.pk,
+            'text': str(custom_tag),
+        })
+
+    def get_queryset(self) -> QuerySet:
+
+        tag_clean = self.request.GET.get('q', '').replace(" ", "_")
+
+        scope_name = tag_clean.split(":", maxsplit=1)
+
+        if len(scope_name) > 1:
+            results = Tag.objects.filter(
+                Q(name__contains=scope_name[1]),
+                Q(scope__contains=scope_name[0]))
         else:
-            tag = Tag.objects.create(name=name, scope=scope, source='user')
-            return http.JsonResponse({
-                'id': tag.pk,
-                'text': str(tag),
-            })
+            results = Tag.objects.filter(
+                Q(name__contains=tag_clean)
+                | Q(scope__contains=tag_clean))
+
+        return results.distinct().order_by('source')
 
 
 class GallerySelectAutocomplete(autocomplete.Select2QuerySetView):

@@ -272,7 +272,7 @@ class FTPHandler(object):
 
         for cnt, remote_archive in enumerate(remote_info['result'], start=1):
 
-            yield("Checking remote file {} of {}".format(cnt, len(remote_info['result'])))
+            yield "Checking remote file {} of {}".format(cnt, len(remote_info['result']))
 
             local_archives = Archive.objects.filter(
                 gallery__gid=remote_archive['gid'], gallery__provider=remote_archive['provider'],

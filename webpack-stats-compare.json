@@ -1,0 +1,82 @@
+{
+  "status": "done",
+  "assets": {
+    "static/css/main.7cfaf057.chunk.css": {
+      "name": "static/css/main.7cfaf057.chunk.css",
+      "path": "static\\css\\main.7cfaf057.chunk.css",
+      "publicPath": "/static/compare/static/css/main.7cfaf057.chunk.css"
+    },
+    "static/js/main.46a9b69f.chunk.js": {
+      "name": "static/js/main.46a9b69f.chunk.js",
+      "path": "static\\js\\main.46a9b69f.chunk.js",
+      "publicPath": "/static/compare/static/js/main.46a9b69f.chunk.js"
+    },
+    "static/js/runtime-main.acdfc341.js": {
+      "name": "static/js/runtime-main.acdfc341.js",
+      "path": "static\\js\\runtime-main.acdfc341.js",
+      "publicPath": "/static/compare/static/js/runtime-main.acdfc341.js"
+    },
+    "static/js/2.8b4a8be6.chunk.js": {
+      "name": "static/js/2.8b4a8be6.chunk.js",
+      "path": "static\\js\\2.8b4a8be6.chunk.js",
+      "publicPath": "/static/compare/static/js/2.8b4a8be6.chunk.js"
+    },
+    "static/js/3.e8c8c20a.chunk.js": {
+      "name": "static/js/3.e8c8c20a.chunk.js",
+      "path": "static\\js\\3.e8c8c20a.chunk.js",
+      "publicPath": "/static/compare/static/js/3.e8c8c20a.chunk.js"
+    },
+    "static/js/2.8b4a8be6.chunk.js.LICENSE.txt": {
+      "name": "static/js/2.8b4a8be6.chunk.js.LICENSE.txt",
+      "path": "static\\js\\2.8b4a8be6.chunk.js.LICENSE.txt",
+      "publicPath": "/static/compare/static/js/2.8b4a8be6.chunk.js.LICENSE.txt"
+    },
+    "static/css/main.7cfaf057.chunk.css.map": {
+      "name": "static/css/main.7cfaf057.chunk.css.map",
+      "path": "static\\css\\main.7cfaf057.chunk.css.map",
+      "publicPath": "/static/compare/static/css/main.7cfaf057.chunk.css.map"
+    },
+    "static/js/main.46a9b69f.chunk.js.map": {
+      "name": "static/js/main.46a9b69f.chunk.js.map",
+      "path": "static\\js\\main.46a9b69f.chunk.js.map",
+      "publicPath": "/static/compare/static/js/main.46a9b69f.chunk.js.map"
+    },
+    "static/js/runtime-main.acdfc341.js.map": {
+      "name": "static/js/runtime-main.acdfc341.js.map",
+      "path": "static\\js\\runtime-main.acdfc341.js.map",
+      "publicPath": "/static/compare/static/js/runtime-main.acdfc341.js.map"
+    },
+    "static/js/2.8b4a8be6.chunk.js.map": {
+      "name": "static/js/2.8b4a8be6.chunk.js.map",
+      "path": "static\\js\\2.8b4a8be6.chunk.js.map",
+      "publicPath": "/static/compare/static/js/2.8b4a8be6.chunk.js.map"
+    },
+    "static/js/3.e8c8c20a.chunk.js.map": {
+      "name": "static/js/3.e8c8c20a.chunk.js.map",
+      "path": "static\\js\\3.e8c8c20a.chunk.js.map",
+      "publicPath": "/static/compare/static/js/3.e8c8c20a.chunk.js.map"
+    },
+    "index.html": {
+      "name": "index.html",
+      "path": "index.html",
+      "publicPath": "/static/compare/index.html"
+    },
+    "asset-manifest.json": {
+      "name": "asset-manifest.json",
+      "path": "asset-manifest.json",
+      "publicPath": "/static/compare/asset-manifest.json"
+    }
+  },
+  "chunks": {
+    "main": [
+      "static/js/runtime-main.acdfc341.js",
+      "static/js/runtime-main.acdfc341.js.map",
+      "static/js/2.8b4a8be6.chunk.js",
+      "static/js/2.8b4a8be6.chunk.js.map",
+      "static/css/main.7cfaf057.chunk.css",
+      "static/js/main.46a9b69f.chunk.js",
+      "static/js/main.46a9b69f.chunk.js.map"
+    ]
+  },
+  "publicPath": "/static/compare/"
+}

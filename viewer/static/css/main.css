@@ -73,6 +73,18 @@ body a {
   color: #ff4747;
 }
 
+.mark-high {
+  color: rgb(210, 1, 56);
+}
+
+.mark-mid {
+  color: rgb(103, 207, 0);
+}
+
+.mark-low {
+  color: #0a72ff;
+}
+
 .alert-error {
   color: #721c24;
   background-color: #f8d7da;
@@ -463,6 +475,28 @@ img {
   background-color: #122963;
 }
 
+.cover-boder {
+  border-radius: 2px;
+  border-style: solid;
+  border-width: thin;
+}
+
+.acc-total {
+  background-color: #0d8a26 !important;
+}
+
+.acc-very-high {
+  background-color: #175bb6 !important;
+}
+
+.acc-high {
+  background-color: #122963 !important;
+}
+
+.acc- {
+  background-color: #272727 !important;
+}
+
 .w-20 {
   width: 20%;
 }
@@ -711,4 +745,8 @@ input.custom-cb[type=checkbox]:not(old):checked + label > span::before {
 
 .autocomplete-light-text-widget > .choice {
   color: black !important;
+}
+
+.modal-background {
+   background-color: #122963 !important;
 }

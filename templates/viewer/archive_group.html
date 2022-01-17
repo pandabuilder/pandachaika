@@ -16,32 +16,57 @@
     <div class="row">
     <div class="col-md-10 col-sm-12">
         <h3>{{ archive_group.title }}</h3>
+
     </div>
       {% if perms.viewer.change_archivegroup %}
       <div class="col-md-2 col-sm-12">
+        {% if perms.viewer.expand_archive %}<a class="btn btn-secondary float-right" href="{% url 'viewer:archive-group-edit' archive_group.title_slug %}?extract_all=" role="button">Extract all</a>{% endif %}
         <a class="btn btn-secondary float-right" href="{% url 'viewer:archive-group-edit' archive_group.title_slug %}" role="button">Edit</a>
       </div>
       {% endif %}
     </div>
   </div>
   <div class="arch-cont">
-  {% for archive_entry in archive_group.archivegroupentry_set.all %}
-    {% with archive=archive_entry.archive %}
-    <div class="gallery">
-      <a class="cover" href="{% url 'viewer:archive' archive.pk %}">
-        <div class="cover-title{% if not archive.crc32 %} archive-incomplete{% endif %}" title="{{ archive_entry.title }}">{{ archive_entry.title }}</div>
-        {% with thumbnail_details=archive.get_available_thumbnail_plus_size %}
-        <img class="image-container mx-auto" alt="" title="{{ archive.title }}"
-            width="{{ thumbnail_details.2 }}" height="{{ thumbnail_details.1 }}" src="{{ thumbnail_details.0 }}"/>
-        {% endwith %}
-      </a>
-      <div class="caption">
-        {{ archive.filecount }} | {{ archive.filesize|filesizeformat }} | {% if archive.crc32 %}<a href="{% url 'viewer:archive-download' archive.pk %}">DL</a>{% else %}DL{% endif %} | <a class="tag-preview" tabindex="0" role="button" data-toggle="popover" data-trigger="focus" data-pk="{{ archive.pk }}">Tags</a>
-        {% if user.is_authenticated and archive.extracted %}| <a href="{% url 'viewer:new-image-viewer' archive.pk '1' %}?{% url_replace 'extracted' '1' %}">View</a>{% endif %}
+
+  <!-- Next/Prev page links  -->
+    {% if results.object_list and results.paginator.num_pages > 1 %}
+      <div>
+          <span class="step-links">
+              <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
+            {% if results.has_previous %}
+              <a href= "?{% url_replace 'page' results.previous_page_number %}"> previous &lt;&lt; </a>
+            {% endif %}
+            <span class="current">
+                  &nbsp;Page {{ results.number }} of {{ results.paginator.num_pages }}, {{ results.paginator.count }} archives
+              </span>
+            {% if results.has_next %}
+              <a href="?{% url_replace 'page' results.next_page_number %}"> &gt;&gt; next</a>
+            {% endif %}
+            <a href="?{% url_replace 'page' results.paginator.num_pages %}"> &gt;&gt; last</a>
+          </span>
       </div>
-    </div>
-    {% endwith %}
+    {% endif %}
+  {% for archive_entry in results %}
+    {% include 'viewer/include/archive_group_entry.html' with archive_entry=archive_entry %}
   {% endfor %}
+  <!-- Next/Prev page links  -->
+    {% if results.object_list and results.paginator.num_pages > 1 %}
+      <div>
+          <span class="step-links">
+              <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
+            {% if results.has_previous %}
+              <a href= "?{% url_replace 'page' results.previous_page_number %}"> previous &lt;&lt; </a>
+            {% endif %}
+            <span class="current">
+                  &nbsp;Page {{ results.number }} of {{ results.paginator.num_pages }}, {{ results.paginator.count }} archives
+              </span>
+            {% if results.has_next %}
+              <a href="?{% url_replace 'page' results.next_page_number %}"> &gt;&gt; next</a>
+            {% endif %}
+            <a href="?{% url_replace 'page' results.paginator.num_pages %}"> &gt;&gt; last</a>
+          </span>
+      </div>
+    {% endif %}
   </div>
 
 {% endblock %}

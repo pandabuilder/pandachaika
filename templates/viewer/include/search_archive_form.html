@@ -32,13 +32,13 @@
     <input title="Category" class="form-control" name="category" placeholder="Category" value="{{ request.GET.category }}">
     <input title="Source type" class="form-control" name="source_type" placeholder="Source type" value="{{ request.GET.source_type }}">
     <input title="Reason" class="form-control" name="reason" placeholder="Reason" value="{{ request.GET.reason }}">
-    <input id="checkbox2" class="custom-cb" type="checkbox" name="non_public" value="1" {% if request.GET.non_public == '1' %}checked{% endif %}><label for="checkbox2"><span><span></span></span>Only private</label>
-    <input id="checkbox3" class="custom-cb" type="checkbox" name="public" value="1" {% if request.GET.public == '1' %}checked{% endif %}><label for="checkbox3"><span><span></span></span>Only public</label>
+    <input id="checkbox2" class="custom-cb" type="checkbox" name="non_public" value="1" {% if request.GET.non_public == '1' %}checked{% endif %}><label for="checkbox2"><span><span></span></span>Private</label>
+    <input id="checkbox3" class="custom-cb" type="checkbox" name="public" value="1" {% if request.GET.public == '1' %}checked{% endif %}><label for="checkbox3"><span><span></span></span>Public</label>
     <input id="checkbox4" class="custom-cb" type="checkbox" name="groupless" value="1" {% if request.GET.groupless == '1' %}checked{% endif %}><label for="checkbox4"><span><span></span></span>Groupless</label>
   </div>
   <div class="page-line form-inline">
-    <button id="toggle-all" class="btn btn-info" type="button">Toggle All</button>
-    <button type="submit" name="apply" class="btn btn-light">Search</button>
+    <button id="toggle-all" class="btn btn-secondary" type="button">Toggle All</button>
+    <button type="submit" name="apply" class="btn btn-info">Search</button>
     <a class="btn btn-light" href="{{ request.path }}?add_multiple=">Clear</a>
   </div>
   <input id="add_multiple" name="add_multiple" type="hidden" value="">

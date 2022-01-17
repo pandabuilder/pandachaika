@@ -80,15 +80,18 @@ class MegaArchiveDownloader(BaseDownloader):
             return
 
         # If we downloaded a folder, just take the first result. Folder returns full path, tested with megatools 1.11.0
+        # Update: Apparently we need both cases.
         file_names = message_text.splitlines()
         file_name = os.path.basename(file_names[0])
 
         output_path = file_names[0]
 
         if not os.path.isfile(output_path):
-            self.return_code = 0
-            logger.error("The resulting download file was not found: {}".format(file_name))
-            return
+            output_path = os.path.join(directory_path, file_name)
+            if not os.path.isfile(output_path):
+                self.return_code = 0
+                logger.error("The resulting download file was not found: {}".format(file_name))
+                return
 
         self.gallery.filename = available_filename(
             self.settings.MEDIA_ROOT,

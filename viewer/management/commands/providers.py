@@ -19,6 +19,12 @@ class Command(BaseCommand):
                             help=(
                                 'Scan and register all new providers to the database. '
                                 'Already registered ones will be skipped.'))
+        parser.add_argument('-sc', '--scan',
+                            required=False,
+                            action='store_true',
+                            default=False,
+                            help=(
+                                'Scan and show providers found on disk.'))
         parser.add_argument('-r', '--register',
                             required=False,
                             action='store',
@@ -44,6 +50,17 @@ class Command(BaseCommand):
         if options['scan_register']:
             for provider_name, constants in crawler_settings.provider_context.constants:
                 self.register_provider_from_constants(constants, provider_name)
+        if options['scan']:
+            for provider_name, constants in crawler_settings.provider_context.constants:
+                self.stdout.write(
+                    "Provider: {}, name: {}, home page: {}, description: {}, information: {}".format(
+                        provider_name,
+                        getattr(constants, "friendly_name") if hasattr(constants, "friendly_name") else '',
+                        getattr(constants, "home_page") if hasattr(constants, "home_page") else '',
+                        getattr(constants, "description") if hasattr(constants, "description") else '',
+                        getattr(constants, "information") if hasattr(constants, "information") else ''
+                    )
+                )
         if options['register']:
             for provider_to_register in options['register']:
                 constants_list = crawler_settings.provider_context.get_constants(provider_to_register)

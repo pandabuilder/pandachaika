@@ -21,12 +21,11 @@ import re
 from core.base.setup import Settings
 from core.base.types import DataDict
 from core.base.utilities import (
-    calc_crc32, get_zip_filesize,
-    filecount_in_zip, convert_rar_to_zip,
+    calc_crc32, convert_rar_to_zip,
     replace_illegal_name,
-    convert_7z_to_zip)
+    convert_7z_to_zip, get_zip_fileinfo)
 from core.workers.schedulers import BaseScheduler
-from viewer.models import Archive
+from viewer.models import Archive, ArchiveManageEntry
 
 logger = logging.getLogger(__name__)
 
@@ -63,9 +62,7 @@ class PostDownloader(object):
                         "For archive: {}, file check on downloaded zipfile failed on file: {}, "
                         "forcing download as panda_archive to fix it.".format(archive, archive.zipped.path)
                     )
-                    crc32 = calc_crc32(
-                        archive.zipped.path)
-                    Archive.objects.add_or_update_from_values({'crc32': crc32}, pk=archive.pk)
+                    archive.save()
                     if self.web_queue and archive.gallery:
                         temp_settings = Settings(load_from_config=self.settings.config)
                         temp_settings.allow_downloaders_only(['panda_archive'], True, True, True)
@@ -78,19 +75,31 @@ class PostDownloader(object):
                         "For archive: {}, File check on downloaded zipfile: {}. "
                         "Check the file manually.".format(archive, archive.zipped.path)
                     )
-            crc32 = calc_crc32(
-                archive.zipped.path)
-            filesize = get_zip_filesize(
-                archive.zipped.path)
-            filecount = filecount_in_zip(
-                archive.zipped.path)
-            values = {'crc32': crc32,
-                      'filesize': filesize,
-                      'filecount': filecount,
-                      }
-            updated_archive = Archive.objects.add_or_update_from_values(
-                values, pk=archive.pk)
+            crc32 = calc_crc32(archive.zipped.path)
+            filesize, filecount = get_zip_fileinfo(archive.zipped.path)
+            values = {
+                'crc32': crc32,
+                'filesize': filesize,
+                'filecount': filecount,
+            }
+            updated_archive = Archive.objects.add_or_update_from_values(values, pk=archive.pk)
+
+            if self.settings.mark_similar_new_archives:
+                updated_archive.create_marks_for_similar_archives()
+
             if updated_archive.gallery and updated_archive.filesize != updated_archive.gallery.filesize:
+                mark_comment = """Torrent downloaded is not the same file as the gallery reports \
+                (different filesize or filecount). This file must be replaced if the correct one \
+                is found.\n\nDo not publish until then.
+                """
+                manager_entry, _ = ArchiveManageEntry.objects.update_or_create(
+                    archive=updated_archive,
+                    mark_reason="wrong_file",
+                    defaults={
+                        'mark_comment': mark_comment, 'mark_priority': 4.3, 'mark_check': True,
+                        'origin': ArchiveManageEntry.ORIGIN_SYSTEM
+                    },
+                )
                 if Archive.objects.filter(gallery=updated_archive.gallery, filesize=updated_archive.gallery.filesize):
                     logger.info(
                         "For archive: {} size does not match gallery, "

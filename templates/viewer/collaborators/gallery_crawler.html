@@ -35,6 +35,15 @@
   <div class="form-group">
     <input size="10" class="form-control" name="source" value="" placeholder="Override Source type" maxlength="200"/>
   </div>
+  {% if perms.viewer.add_deleted_gallery %}
+  <div class="form-check ml-sm-2 mb-sm-4">
+    <input id="checkbox4" type="checkbox" class="form-check-input custom-cb" name="as-deleted" value="1">
+    <label class="form-check-label" for="checkbox4"><span><span></span></span>
+      Add as deleted
+    </label>
+    <small id="asDeletedHelp" class="form-text text-muted">Useful for adding chain updated galleries, or replaced. This will skip any file download and only create a Gallery (metadata) marked as deleted.</small>
+  </div>
+  {% endif %}
   <div class="form-group">
     <button class="btn btn-light">Submit URLs to Web Crawler</button>
   </div>

@@ -73,7 +73,6 @@ class UrlSubmitDownloader(BaseDownloader):
 
     type = 'submit'
     provider = constants.provider_name
-    skip_if_hidden = False
 
     def start_download(self) -> None:
 

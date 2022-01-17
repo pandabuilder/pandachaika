@@ -118,7 +118,6 @@ def match_tweet_with_wanted_galleries(tweet_obj: TweetPost, settings: 'Settings'
                 defaults={
                     'title': title,
                     'book_type': book_type,
-                    'add_as_hidden': True,
                     'category': 'Manga',
                     'reason': 'wanimagazine',
                     'public': own_settings.add_as_public,
@@ -226,7 +225,6 @@ def match_tweet_with_wanted_galleries(tweet_obj: TweetPost, settings: 'Settings'
                     defaults={'cover_artist': cover_artist,
                               'title': title,
                               'book_type': book_type,
-                              'add_as_hidden': True,
                               'category': 'Manga',
                               'reason': 'wanimagazine',
                               'public': own_settings.add_as_public}
@@ -273,6 +271,6 @@ def match_tweet_with_wanted_galleries(tweet_obj: TweetPost, settings: 'Settings'
                     )
                 wanted_gallery.artists.add(artist_obj)
             else:
-                yield ("Book type could not be determined, skipping.")
+                yield "Book type could not be determined, skipping."
     else:
-        yield("Created tweet id: {} did not match the pattern".format(tweet_obj.tweet_id))
+        yield "Created tweet id: {} did not match the pattern".format(tweet_obj.tweet_id)

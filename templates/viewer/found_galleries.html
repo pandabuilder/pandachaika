@@ -25,7 +25,7 @@
         </div>
       {% endfor %}
       <div class="page-line form-inline">
-        <button name="apply" class="btn btn-light">Search</button>
+        <button name="apply" class="btn btn-info">Search</button>
         <a class="btn btn-light" href="{% url 'viewer:found-galleries' %}">Clear</a>
         <input id="checkbox-f2" class="custom-cb" type="checkbox" name="wanted-should-search" value="1" {% if "wanted-should-search" in request.GET %}checked{% endif %}><label for="checkbox-f2"><span><span></span></span>Should search</label>
         <input id="checkbox-f3" class="custom-cb" type="checkbox" name="wanted-should-search-not" value="1" {% if "wanted-should-search-not" in request.GET %}checked{% endif %}><label for="checkbox-f3"><span><span></span></span>Should not search</label>

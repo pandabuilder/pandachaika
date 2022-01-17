@@ -2,9 +2,11 @@ from django.urls import path
 from django.urls import re_path
 from django.conf import settings
 
-from viewer.views import head, browser, wanted, exp, api, archive, admin, manager, collaborators, groups, admin_api
+from viewer.views import head, browser, wanted, exp, api, archive, \
+    admin, manager, collaborators, groups, admin_api, tools, elasticsearch
 from viewer.feeds import LatestArchivesFeed
-from viewer.views.elasticsearch import ESHomePageView, ESHomeGalleryPageView, autocomplete_view, title_suggest_view
+from viewer.views.elasticsearch import ESHomePageView, ESHomeGalleryPageView, autocomplete_view, \
+    ESArchiveJSONView, ESGalleryJSONView
 
 app_name = 'viewer'
 
@@ -22,16 +24,21 @@ urlpatterns = [
     re_path(r"^archive/(\d+)/extract-toggle/$", archive.extract_toggle, name='archive-extract-toggle'),
     re_path(r"^archive/(\d+)/extract/$", archive.extract, name='archive-extract'),
     re_path(r"^archive/(\d+)/reduce/$", archive.reduce, name='archive-reduce'),
-    re_path(r"^archive/(\d+)/public-toggle/$", archive.public_toggle, name='archive-public-toggle'),
+    re_path(r"^archive/(\d+)/public/$", archive.public, name='archive-public'),
+    re_path(r"^archive/(\d+)/private/$", archive.private, name='archive-private'),
+    re_path(r"^archive/(\d+)/calc-imgs-sha1/$", archive.calculate_images_sha1, name='archive-calc-imgs-sha1'),
     re_path(r"^archive/(\d+)/recalc-info/$", archive.recalc_info, name='archive-recalc-info'),
+    re_path(r"^archive/(\d+)/mark-similar-archives/$", archive.mark_similar_archives, name='archive-mark-similar'),
     re_path(r"^archive/(\d+)/recall-api/$", archive.recall_api, name='archive-recall-api'),
     re_path(r"^archive/(\d+)/generate-matches/$", archive.generate_matches, name='archive-generate-matches'),
     re_path(r"^archive/(\d+)/rematch/$", archive.rematch_archive, name='archive-rematch'),
     re_path(r"^archive/(\d+)/delete/$", archive.delete_archive, name='archive-delete'),
     re_path(r"^archive/(\d+)/thumb/$", archive.archive_thumb, name='archive-thumb'),
+    re_path(r"^archive-manage/(\d+)/delete/$", archive.delete_manage_archive, name='archive-manage-delete'),
     re_path(r"^update/(\d+)/([\w-]+)/(\d*)/$", archive.archive_update, name='archive-update-tool-id'),
     re_path(r"^update/(\d+)/([\w-]+)/$", archive.archive_update, name='archive-update-tool'),
     re_path(r"^update/(\d+)/([\w-]+)/([\w-]+)/$", archive.archive_update, name='archive-update-tool-name'),
+    re_path(r"^live-image-thumbnail/(\d+)/(\d+)/$", archive.image_live_thumb, name='archive-live-image'),
     re_path(r"^update/(\d+)/$", archive.archive_update, name='archive-update'),
     re_path(r"^gallery/(\d+)/thumb/$", head.gallery_thumb, name='gallery-thumb'),
     re_path(r"^gallery/(\d+)/([\w-]+)/$", head.gallery_details, name='gallery-tool'),
@@ -47,6 +54,7 @@ urlpatterns = [
     re_path(r"^img/(\d+)/$", head.image_url, name='image-url'),
     re_path(r"^content/panda.user.js$", head.panda_userscript, name='panda-user-script'),
     re_path(r"^about/$", head.about, name='about'),
+    re_path(r"^archive-auth/$", archive.archive_auth, name='archive-auth'),
 ]
 
 # For now we dont have a ES page for direct tag search (Archive/Gallery). It defaults to regular page.
@@ -54,7 +62,7 @@ if settings.CRAWLER_SETTINGS.urls.elasticsearch_as_main_urls and settings.CRAWLE
     urlpatterns += [
         re_path(r"^(gallery-tag)/(.+?)/$", ESHomeGalleryPageView.as_view(), name='gallery-tag-search'),
         re_path(r'^galleries/$', ESHomeGalleryPageView.as_view(), name='gallery-list'),
-        re_path(r'^(tag)/(.+?)/$$', ESHomePageView.as_view(), name='archive-tag-search'),
+        re_path(r'^(tag)/(.+?)/$', ESHomePageView.as_view(), name='archive-tag-search'),
         re_path(r'^search/$', ESHomePageView.as_view(), name='archive-search'),
         re_path(r"^$", ESHomePageView.as_view(), name="main-page"),
     ]
@@ -120,8 +128,10 @@ urlpatterns += [
     re_path(r"^upload-archive/$", collaborators.upload_archive, name='upload-archive'),
     re_path(r"^upload-gallery/$", collaborators.upload_gallery, name='upload-gallery'),
     re_path(r"^manage-archives/$", collaborators.manage_archives, name='manage-archives'),
+    re_path(r"^new-manage-archives/$", collaborators.new_manage_archives, name='new-manage-archives'),
     re_path(r"^col-wanted-galleries/$", collaborators.wanted_galleries, name='col-wanted-galleries'),
     re_path(r"^col-wanted-gallery/(\d+)/$", collaborators.wanted_gallery, name='col-wanted-gallery'),
+    re_path(r"^col-create-wanted-gallery/$", collaborators.create_wanted_gallery, name='col-create-wanted-gallery'),
     re_path(r"^user-crawler/$", collaborators.user_crawler, name='user-crawler'),
     re_path(r"^match-archives/$", collaborators.archives_not_matched_with_gallery, name='match-archives'),
     re_path(r"^col-update/(\d+)/([\w-]+)/(\d*)/$", collaborators.archive_update, name='col-archive-update-tool-id'),
@@ -130,6 +140,8 @@ urlpatterns += [
     re_path(r"^col-update/(\d+)/$", collaborators.archive_update, name='col-archive-update'),
     re_path(r"^col-missing-archives/$", collaborators.missing_archives_for_galleries, name='col-missing-archives'),
     re_path(r"^users-event-log/$", collaborators.users_event_log, name='users-event-log'),
+    re_path(r"^archive-delete-log$", collaborators.archive_delete_log, name='archive-delete-log'),
+    re_path(r"^monitored-links$", collaborators.monitored_links, name='monitored-links'),
     re_path(r"^archives-by-field/$", collaborators.archives_similar_by_fields, name='archives-by-field'),
     re_path(r"^archives-by-thumbnail/$", collaborators.archives_similar_thumbnail, name='archives-by-thumbnail'),
 
@@ -160,7 +172,17 @@ urlpatterns += [
 
 urlpatterns += [
     re_path(r'^autocomplete-view/$', autocomplete_view, name='es-autocomplete-view'),
-    re_path(r'^title-suggest/$', title_suggest_view, name='es-suggest-view'),
+    re_path(r'^title-suggest/$', elasticsearch.title_suggest_view, name='es-suggest-view'),
+    re_path(r'^es-title-pk-suggest/$', elasticsearch.title_pk_suggest_view, name='es-title-pk-suggest'),
+    re_path(r'^es-archive-simple/$', elasticsearch.archive_simple, name='es-archive-simple'),
+    re_path(r'^es-archives-simple/$', elasticsearch.archives_simple, name='es-archives-simple'),
     re_path(r'^es-index/$', ESHomePageView.as_view(), name='es-index-view'),
     re_path(r'^es-gallery-index/$', ESHomeGalleryPageView.as_view(), name='es-gallery-index-view'),
+    re_path(r'^es-archive-json/$', ESArchiveJSONView.as_view(), name='es-archive-json'),
+    re_path(r'^es-gallery-json/$', ESGalleryJSONView.as_view(), name='es-gallery-json'),
+]
+
+urlpatterns += [
+    re_path(r'^compare-archives/$', tools.compare_archives, name='compare-archives'),
+    re_path(r"^compare-archives-viewer/$", tools.compare_archives_viewer, name='compare-archives-viewer'),
 ]

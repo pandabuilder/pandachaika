@@ -1,10 +1,11 @@
 import logging
 
 import django.utils.timezone as django_tz
-from django.db import connection
+from django.db import close_old_connections
 
 from core.base.setup import Settings
 from core.workers.schedulers import BaseScheduler
+from viewer.models import Archive
 
 logger = logging.getLogger(__name__)
 
@@ -28,11 +29,12 @@ class ProviderTimedAutoCrawler(BaseScheduler):
             if self.stop.wait(timeout=seconds_to_wait):
                 return
             if self.settings.providers[self.provider_name].autochecker_enable:
-                connection.close()
+                close_old_connections()
                 logger.info("Starting timed auto search for provider: {}".format(self.provider_name))
                 current_settings = Settings(load_from_config=self.settings.config)
                 current_settings.silent_processing = True
                 current_settings.replace_metadata = True
+                current_settings.archive_origin = Archive.ORIGIN_WANTED_GALLERY
                 self.web_queue.enqueue_args_list(['-feed', '-wanted', '--include-providers', self.provider_name], override_options=current_settings)
 
             self.update_last_run(django_tz.now())

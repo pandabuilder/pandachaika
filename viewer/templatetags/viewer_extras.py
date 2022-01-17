@@ -1,5 +1,6 @@
 import html
-from typing import Any, TypeVar, Union, ItemsView
+import re
+from typing import Any, TypeVar, Union, ItemsView, Optional
 
 from django import template
 from django.template import RequestContext
@@ -10,6 +11,7 @@ from django.utils.html import WRAPPING_PUNCTUATION, TRAILING_PUNCTUATION_CHARS, 
     smart_urlquote, simple_url_2_re
 from django.utils.safestring import SafeText, mark_safe, SafeData
 
+from core.base.utilities import translate_tag, artist_from_title
 from viewer.models import Archive
 
 register = template.Library()
@@ -82,6 +84,16 @@ def color_percent(fraction: int, total: int) -> str:
 
 
 @register.filter
+def mark_color(mark_priority: float) -> str:
+    if mark_priority >= 4:
+        return 'mark-high'
+    elif 4 > mark_priority >= 1:
+        return 'mark-mid'
+    else:
+        return 'mark-low'
+
+
+@register.filter
 def format_setting_value(value: T) -> Union[T, ItemsView[str, Any]]:
     if hasattr(value, '__dict__'):
         return vars(value).items()
@@ -89,6 +101,21 @@ def format_setting_value(value: T) -> Union[T, ItemsView[str, Any]]:
         return {k: getattr(value, k) for k in value.__slots__}.items()
     else:
         return value
+
+
+SPECIAL_RE = re.compile(r"\(special-link\):\((.*?)\)?\((.*?)\)")
+SPECIAL_FINAL = r"<a href=\2>\1</a>"
+
+SPECIAL_RE_OLD = re.compile(r"special-link:(/archive/\d+/?)")
+SPECIAL_FINAL_OLD = r"<a href=\1>\1</a>"
+
+
+@register.filter(is_safe=True)
+@stringfilter
+def convert_special_urls(value: str) -> str:
+    value = re.sub(SPECIAL_RE, SPECIAL_FINAL, value)
+    value = re.sub(SPECIAL_RE_OLD, SPECIAL_FINAL_OLD, value)
+    return value
 
 
 @register.filter(is_safe=True, needs_autoescape=True)
@@ -223,3 +250,16 @@ def archive_title_class(archive: Archive) -> str:
     else:
         title_class = ''
     return title_class
+
+
+@register.filter
+def get_list(dictionary, key):
+    return dictionary.getlist(key)
+
+
+@register.filter
+def artist_name_from_str(title: Optional[str]) -> str:
+    if title:
+        return translate_tag(artist_from_title(title))
+    else:
+        return ''

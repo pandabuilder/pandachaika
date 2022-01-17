@@ -446,3 +446,6 @@ def match_internal(archives: 'QuerySet[Archive]', providers: Iterable[str],
                     match_type='size',
                     match_accuracy=1
                 )
+
+        # TODO: Add library imagehash to compare here, the idea is that the hash is calculated before and here is just
+        # a differential between the hashes

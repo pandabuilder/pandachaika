@@ -106,10 +106,20 @@ class GeneralPagesTest(TestCase):
         test_user1 = User.objects.create_user(username='testuser1', password='12345')
         test_user1.save()
 
+        # Tags
+        self.tag1 = Tag.objects.create(name="sister", scope="female")
+        self.tag2 = Tag.objects.create(name="hisasi", scope="artist")
+        self.tag3 = Tag.objects.create(name="fue", scope="artist")
+        self.tag4 = Tag.objects.create(name="anzuame", scope="artist")
+        self.tag_english = Tag.objects.create(name="english", scope="language")
+
         # Galleries
         self.test_gallery1 = Gallery.objects.create(title='sample non public gallery 1', gid='344', provider='panda', category='Manga')
+        self.test_gallery1.tags.add(self.tag1, self.tag2, self.tag_english)
         self.test_gallery2 = Gallery.objects.create(title='sample non public gallery 2', gid='342', provider='test', category='Doujinshi')
+        self.test_gallery2.tags.add(self.tag1, self.tag3, self.tag_english)
         self.test_gallery3 = Gallery.objects.create(title='sample non public gallery 3', gid='897', provider='test', category='Manga', public=True)
+        self.test_gallery3.tags.add(self.tag1, self.tag4)
 
         # Archives
         self.test_book1 = Archive.objects.create(title='archive 1', user=test_admin1, gallery=self.test_gallery1)
@@ -127,7 +137,6 @@ class GeneralPagesTest(TestCase):
             book_type='Manga',
             page_count=23,
             publisher='wanimagazine',
-            add_as_hidden=True,
             reason='wanimagazine',
             public=False,
             should_search=True,
@@ -141,7 +150,6 @@ class GeneralPagesTest(TestCase):
             book_type='Doujinshi',
             page_count=50,
             publisher='wanimagazine',
-            add_as_hidden=True,
             reason='wanimagazine',
             public=True,
             should_search=True,

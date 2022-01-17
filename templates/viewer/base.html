@@ -88,6 +88,15 @@
                 {% if perms.viewer.read_all_logs %}
                   <a class="dropdown-item" href="{% url 'viewer:users-event-log' %}">Users' event log</a>
                 {% endif %}
+                {% if perms.viewer.read_delete_logs %}
+                  <a class="dropdown-item" href="{% url 'viewer:archive-delete-log' %}">Archive delete log</a>
+                {% endif %}
+                {% if perms.viewer.view_monitored_links %}
+                  <a class="dropdown-item" href="{% url 'viewer:monitored-links' %}">Monitored Links</a>
+                {% endif %}
+                {% if perms.viewer.read_private_stats %}
+                  <a class="dropdown-item" href="{% url 'viewer:stats-collection' %}">General Stats</a>
+                {% endif %}
                   <div class="dropdown-divider"></div>
                   <a class="dropdown-item" href="{% url 'viewer:archive-groups' %}">Archive Groups</a>
               </div>
@@ -119,6 +128,8 @@
                 <a class="dropdown-item" href="{% url 'viewer:col-wanted-galleries' %}">Wanted galleries</a>
                 <a class="dropdown-item" href="{% url 'viewer:col-missing-archives' %}?provider=panda">Manage missing archives</a>
                 <a class="dropdown-item" href="{% url 'viewer:users-event-log' %}">Users' event log</a>
+                <a class="dropdown-item" href="{% url 'viewer:archive-delete-log' %}">Archive delete log</a>
+                <a class="dropdown-item" href="{% url 'viewer:monitored-links' %}">Monitored Links</a>
               </div>
             </li>
             <li class="nav-item dropdown">

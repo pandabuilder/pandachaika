@@ -2,10 +2,12 @@
 # exclusively.
 
 import logging
+import re
 from os.path import basename
-from urllib.parse import quote
+from urllib.parse import quote, urlparse, unquote
 import typing
 from typing import Optional
+import base64
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -22,15 +24,18 @@ from core.local.foldercrawlerthread import FolderCrawlerThread
 from viewer.utils.actions import event_log
 from viewer.forms import (
     ArchiveModForm, ImageFormSet,
-    ArchiveEditForm)
+    ArchiveEditForm, ArchiveManageEditFormSet)
 from viewer.models import (
-    Archive, Tag, Gallery,
-    UserArchivePrefs
+    Archive, Tag, Gallery, Image,
+    UserArchivePrefs, ArchiveManageEntry
 )
 from viewer.views.head import render_error
 
 logger = logging.getLogger(__name__)
 crawler_settings = settings.CRAWLER_SETTINGS
+
+
+archive_download_regex = re.compile(r"/archive/(\d+)/download/$", re.IGNORECASE)
 
 
 def archive_details(request: HttpRequest, pk: int, view: str = "cover") -> HttpResponse:
@@ -116,7 +121,7 @@ def archive_details(request: HttpRequest, pk: int, view: str = "cover") -> HttpR
             edit_form = ArchiveEditForm(request.POST, instance=archive)
             # check whether it's valid:
             if edit_form.is_valid():
-                # TODO: Maybe this should be in save mathod for the form
+                # TODO: Maybe this should be in save method for the form
                 new_archive = edit_form.save(commit=False)
                 new_archive.simple_save()
                 edit_form.save_m2m()
@@ -147,6 +152,60 @@ def archive_details(request: HttpRequest, pk: int, view: str = "cover") -> HttpR
         else:
             edit_form = ArchiveEditForm(instance=archive)
         d.update({'edit_form': edit_form})
+
+    if request.user.has_perm('viewer.mark_archive') and request.user.is_authenticated:
+        if request.POST.get('manage-archive'):
+            archive_manage_formset = ArchiveManageEditFormSet(request.POST, instance=archive)
+            # check whether it's valid:
+            if archive_manage_formset.is_valid():
+
+                archive_manages = archive_manage_formset.save(commit=False)
+                for manage_instance in archive_manages:
+                    if manage_instance.pk is None:
+                        manage_instance.archive = archive
+                        manage_instance.mark_check = True
+                        manage_instance.mark_user = request.user
+                        manage_instance.origin = ArchiveManageEntry.ORIGIN_USER
+                        event_log(
+                            request.user,
+                            'MARK_ARCHIVE',
+                            content_object=archive,
+                            result='created'
+                        )
+                    else:
+                        event_log(
+                            request.user,
+                            'MARK_ARCHIVE',
+                            content_object=archive,
+                            result='modified'
+                        )
+                    manage_instance.save()
+                for manage_instance in archive_manage_formset.deleted_objects:
+                    if manage_instance.mark_user != request.user and not request.user.is_staff:
+                        messages.error(request, 'Cannot delete the specified mark, you are not the owner', extra_tags='danger')
+                    else:
+                        event_log(
+                            request.user,
+                            'MARK_ARCHIVE',
+                            content_object=archive,
+                            result='deleted'
+                        )
+                        manage_instance.delete()
+
+                messages.success(request, 'Sucessfully modified Archive manage data')
+                archive_manage_formset = ArchiveManageEditFormSet(instance=archive, queryset=ArchiveManageEntry.objects.filter(mark_user=request.user))
+            else:
+                messages.error(request, 'The provided data is not valid', extra_tags='danger')
+        else:
+            archive_manage_formset = ArchiveManageEditFormSet(instance=archive, queryset=ArchiveManageEntry.objects.filter(mark_user=request.user))
+
+        d.update({'archive_manage_formset': archive_manage_formset})
+
+    if request.user.has_perm('viewer.view_marks'):
+        manage_entries = ArchiveManageEntry.objects.filter(archive=archive)
+        d.update({'manage_entries': manage_entries, 'manage_entries_count': manage_entries.count()})
+
+    d.update({'tag_count': archive.tags.all().count(), 'custom_tag_count': archive.custom_tags.all().count()})
 
     return render(request, "viewer/archive.html", d)
 
@@ -269,13 +328,30 @@ def archive_update(request: HttpRequest, pk: int, tool: str = None, tool_use_id:
     return HttpResponseRedirect(request.META["HTTP_REFERER"])
 
 
+def archive_auth(request: HttpRequest) -> HttpResponse:
+    archive_url = request.META.get('HTTP_X_ORIGINAL_URI', None)
+    if archive_url is None:
+        return HttpResponse(status=403)
+
+    archive_parts = urlparse(archive_url)
+
+    archive_path = unquote(archive_parts.path).removeprefix('/download/')
+    try:
+        archive = Archive.objects.get(zipped=archive_path)
+    except Archive.DoesNotExist:
+        return HttpResponse(status=403)
+    if not archive.public and not request.user.is_authenticated:
+        return HttpResponse(status=403)
+    return HttpResponse(status=200)
+
+
 def archive_download(request: HttpRequest, pk: int) -> HttpResponse:
     try:
         archive = Archive.objects.get(pk=pk)
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
     if not archive.public and not request.user.is_authenticated:
-        raise Http404("Archive is not public")
+        raise Http404("Archive does not exist")
     if 'HTTP_X_FORWARDED_HOST' in request.META:
         response = HttpResponse()
         response["Content-Type"] = "application/zip"
@@ -297,7 +373,7 @@ def archive_ext_download(request: HttpRequest, pk: int) -> HttpResponse:
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
     if not archive.public and not request.user.is_authenticated:
-        raise Http404("Archive is not public")
+        raise Http404("Archive does not exist")
 
     if 'original' in request.GET:
         filename = quote(basename(archive.zipped.name))
@@ -319,7 +395,7 @@ def archive_thumb(request: HttpRequest, pk: int) -> HttpResponse:
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
     if not archive.public and not request.user.is_authenticated:
-        raise Http404("Archive is not public")
+        raise Http404("Archive does not exist")
     if 'HTTP_X_FORWARDED_HOST' in request.META:
         response = HttpResponse()
         response["Content-Type"] = "image/jpeg"
@@ -329,6 +405,32 @@ def archive_thumb(request: HttpRequest, pk: int) -> HttpResponse:
         return response
     else:
         return HttpResponseRedirect(archive.thumbnail.url)
+
+
+@login_required
+def image_live_thumb(request: HttpRequest, archive_pk: int, position: int) -> HttpResponse:
+    try:
+        image = Image.objects.get(archive=archive_pk, position=position)
+    except Image.DoesNotExist:
+        raise Http404("Archive does not exist")
+    if not image.archive.public and not request.user.is_authenticated:
+        raise Http404("Archive does not exist")
+
+    full_image = bool(request.GET.get("full", ''))
+
+    image_data = image.fetch_image_data(use_original_image=full_image)
+    if not image_data:
+        return HttpResponse('')
+
+    if request.GET.get("base64", ''):
+        image_data_enconded = "data:image/jpeg;base64," + base64.b64encode(image_data).decode('utf-8')
+        response = HttpResponse(image_data_enconded)
+        response['Cache-Control'] = "max-age=86400"
+    else:
+        response = HttpResponse(image_data)
+        response["Content-Type"] = "image/jpeg"
+        response['Cache-Control'] = "max-age=86400"
+    return response
 
 
 @login_required
@@ -420,35 +522,73 @@ def reduce(request: HttpRequest, pk: int) -> HttpResponse:
 
 
 @login_required
-def public_toggle(request: HttpRequest, pk: int) -> HttpResponse:
-    """Public archive toggle."""
+def public(request: HttpRequest, pk: int) -> HttpResponse:
+    """Public archive."""
 
     if not request.user.has_perm('viewer.publish_archive'):
-        return render_error(request, "You don't have the permission to change public status for an Archive.")
+        return render_error(request, "You don't have the permission to public an Archive.")
 
     try:
-        archive = Archive.objects.get(pk=pk)
+        with transaction.atomic():
+            archive = Archive.objects.select_for_update().get(pk=pk)
+            if archive.public:
+                return render_error(request, "Archive is already public.")
+            archive.set_public()
+            logger.info('Setting public status to public for Archive: {}'.format(archive.get_absolute_url()))
+            event_log(
+                request.user,
+                'PUBLISH_ARCHIVE',
+                content_object=archive,
+                result='published'
+            )
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
 
-    if archive.public:
-        archive.set_private()
-        logger.info('Setting public status to: private for ' + archive.zipped.name)
-        event_log(
-            request.user,
-            'UNPUBLISH_ARCHIVE',
-            content_object=archive,
-            result='unpublished'
-        )
-    else:
-        archive.set_public()
-        logger.info('Setting public status to: public for ' + archive.zipped.name)
-        event_log(
-            request.user,
-            'PUBLISH_ARCHIVE',
-            content_object=archive,
-            result='published'
-        )
+    return HttpResponseRedirect(request.META["HTTP_REFERER"])
+
+
+@login_required
+def private(request: HttpRequest, pk: int) -> HttpResponse:
+    """Private archive."""
+
+    if not request.user.has_perm('viewer.publish_archive'):
+        return render_error(request, "You don't have the permission to private an Archive.")
+
+    try:
+        with transaction.atomic():
+            archive = Archive.objects.select_for_update().get(pk=pk)
+            if not archive.public:
+                return render_error(request, "Archive is already private.")
+            archive.set_private()
+            logger.info('Setting public status to private for Archive: {}'.format(archive.get_absolute_url()))
+            event_log(
+                request.user,
+                'UNPUBLISH_ARCHIVE',
+                content_object=archive,
+                result='unpublished'
+            )
+    except Archive.DoesNotExist:
+        raise Http404("Archive does not exist")
+
+    return HttpResponseRedirect(request.META["HTTP_REFERER"])
+
+
+@login_required
+def calculate_images_sha1(request: HttpRequest, pk: int) -> HttpResponse:
+    """Calculate archive's images SHA1."""
+
+    # TODO: Different permission
+    if not request.user.has_perm('viewer.publish_archive'):
+        return render_error(request, "You don't have the permission to calculate SHA1.")
+
+    try:
+        archive: Archive = Archive.objects.get(pk=pk)
+    except Archive.DoesNotExist:
+        raise Http404("Archive does not exist")
+
+    logger.info('Calculating images SHA1 for Archive: {}'.format(archive.get_absolute_url()))
+    if archive.image_set.filter(sha1__isnull=False).count() == 0:
+        archive.calculate_sha1_for_images()
 
     return HttpResponseRedirect(request.META["HTTP_REFERER"])
 
@@ -465,11 +605,29 @@ def recalc_info(request: HttpRequest, pk: int) -> HttpResponse:
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
 
-    logger.info('Recalculating file info for ' + archive.zipped.name)
+    logger.info('Recalculating file info for Archive: {}'.format(archive.get_absolute_url()))
     archive.recalc_fileinfo()
     archive.generate_image_set(force=False)
     archive.fix_image_positions()
     archive.generate_thumbnails()
+
+    return HttpResponseRedirect(request.META["HTTP_REFERER"])
+
+
+@login_required
+def mark_similar_archives(request: HttpRequest, pk: int) -> HttpResponse:
+    """Create similar info as marks for archive."""
+
+    if not request.user.is_staff:
+        return render_error(request, "You need to be an admin to mark similar archives.")
+
+    try:
+        archive = Archive.objects.get(pk=pk)
+    except Archive.DoesNotExist:
+        raise Http404("Archive does not exist")
+
+    logger.info('Create similar info as marks for Archive: {}'.format(archive.get_absolute_url()))
+    archive.create_marks_for_similar_archives()
 
     return HttpResponseRedirect(request.META["HTTP_REFERER"])
 
@@ -618,28 +776,72 @@ def delete_archive(request: HttpRequest, pk: int) -> HttpResponse:
             messages.success(request, message)
 
             gallery = archive.gallery
+            archive_report = archive.delete_text_report()
 
+            user_reason = p.get('reason', '')
+
+            # Mark deleted takes priority over delete
             if "mark-gallery-deleted" in p and archive.gallery:
                 archive.gallery.mark_as_deleted()
                 archive.gallery = None
+            elif "delete-gallery" in p and archive.gallery:
+                old_gallery_link = archive.gallery.get_link()
+                archive.gallery.delete()
+                archive.gallery = None
+                event_log(
+                    request.user,
+                    'DELETE_GALLERY',
+                    reason=user_reason,
+                    data=old_gallery_link,
+                    result='deleted',
+                )
             if "delete-file" in p:
                 archive.delete_all_files()
             if "delete-archive" in p:
                 archive.delete_files_but_archive()
                 archive.delete()
 
-            user_reason = p.get('reason', '')
-
             event_log(
                 request.user,
                 'DELETE_ARCHIVE',
                 reason=user_reason,
                 content_object=gallery,
-                result='deleted'
+                result='deleted',
+                data=archive_report
             )
 
             return HttpResponseRedirect(reverse('viewer:main-page'))
 
     d = {'archive': archive}
 
-    return render(request, "viewer/delete_archive.html", d)
+    return render(request, "viewer/include/delete_archive.html", d)
+
+
+@login_required
+def delete_manage_archive(request: HttpRequest, pk: int) -> HttpResponse:
+    """Recalculate archive info."""
+
+    if not request.user.has_perm('viewer.mark_archive'):
+        return render_error(request, "You don't have the permission to mark an Archive.")
+
+    try:
+        archive_manage_entry = ArchiveManageEntry.objects.get(pk=pk)
+    except ArchiveManageEntry.DoesNotExist:
+        messages.error(request, "ArchiveManageEntry does not exist")
+        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+
+    if archive_manage_entry.mark_user != request.user and not request.user.is_staff:
+        return render_error(request, "You don't have the permission to delete this mark.")
+
+    messages.success(request, 'Deleting ArchiveManageEntry for Archive: {}'.format(archive_manage_entry.archive))
+
+    event_log(
+        request.user,
+        'DELETE_MANAGER_ARCHIVE',
+        content_object=archive_manage_entry.archive,
+        result='deleted'
+    )
+
+    archive_manage_entry.delete()
+
+    return HttpResponseRedirect(request.META["HTTP_REFERER"])

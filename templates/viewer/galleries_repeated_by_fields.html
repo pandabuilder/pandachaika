@@ -22,7 +22,7 @@
       </div>
     {% endfor %}
     <div class="page-line form-inline">
-      <button id="toggle-all" class="btn btn-info" type="button">Toggle All</button>
+      <button id="toggle-all" class="btn btn-secondary" type="button">Toggle All</button>
       <select id="provider" name="provider" class="form-control" title="provider" aria-label="provider">
         <option value="">all</option>
         {% for provider in providers %}
@@ -34,7 +34,7 @@
       <input size="2" type="text" class="form-control mr-sm-1" name="filecount_to" value="{{ request.GET.filecount_to }}" placeholder="to"/>
       <input title="Category" class="form-control" name="category" placeholder="Category" value="{{ request.GET.category }}">
       <input title="Download type" class="form-control" name="dl_type" placeholder="Download type" value="{{ request.GET.dl_type }}">
-      <button type="submit" name="apply" class="btn btn-light">Search</button>
+      <button type="submit" name="apply" class="btn btn-info">Search</button>
       <a class="btn btn-light" href="{% url 'viewer:galleries-by-field' %}">Clear</a>
       <input id="checkbox-f1" class="custom-cb" type="checkbox" name="same-uploader" value="1" {% if "same-uploader" in request.GET %}checked{% endif %}><label for="checkbox-f1"><span><span></span></span>Same uploader</label>
       <input id="checkbox-f2" class="custom-cb" type="checkbox" name="has-archives" value="1" {% if "has-archives" in request.GET %}checked{% endif %}><label for="checkbox-f2"><span><span></span></span>Has Archives</label>

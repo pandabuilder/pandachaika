@@ -1,6 +1,6 @@
 <form action="" method="POST">
   {% csrf_token %}
-  <div id="add-change-wanted-form" class="collapse page-line">
+  <div id="add-change-wanted-form" class="{% if not collapsed %}collapse {% endif %}page-line">
     <table class="table">
       {{ edit_form }}
     </table>

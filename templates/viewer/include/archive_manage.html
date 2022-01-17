@@ -1,0 +1,11 @@
+<form action="" method="POST">
+  {% csrf_token %}
+  <div id="manage-archive-form" class="collapse page-line">
+    {% if archive_manage_formset %}
+      <table class="table">
+          {{ archive_manage_formset }}
+      </table>
+    {% endif %}
+    <button type="submit" name="manage-archive" value="Submit" class="btn btn-light mr-sm-1">Submit</button>
+  </div>
+</form>

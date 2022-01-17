@@ -21,18 +21,49 @@
           {{ field }}
         </div>
       {% endfor %}
+    <div class="page-line form-inline">
+        <label class="mr-sm-1" for="sort">Sort</label>
+        <select id="sort" name="sort" class="form-control mr-sm-1">
+          <option value="create_date" {% if request.GET.sort == "create_date" %} selected{% endif %}>create date</option>
+          <option value="posted" {% if request.GET.sort == "posted" %} selected{% endif %}>posted date</option>
+          <option value="public_date" {% if request.GET.sort == "public_date" %} selected{% endif %}>public date</option>
+          <option value="last_modified" {% if request.GET.sort == "last_modified" %} selected{% endif %}>last modified</option>
+          <option value="title" {% if request.GET.sort == "title" %} selected{% endif %}>title</option>
+          <option value="title_jpn" {% if request.GET.sort == "title_jpn" %} selected{% endif %}>title jpn</option>
+          <option value="rating" {% if request.GET.sort == "rating" %} selected{% endif %}>rating</option>
+          <option value="filecount" {% if request.GET.sort == "filecount" %} selected{% endif %}>images</option>
+          <option value="filesize" {% if request.GET.sort == "filesize" %} selected{% endif %}>size</option>
+        </select>
+        <select id="asc_desc" name="asc_desc" class="form-control mr-sm-1" title="sort_order" aria-label="sort_order">
+          <option value="desc" {% if request.GET.asc_desc == "desc" %} selected{% endif %}>descending</option>
+          <option value="asc" {% if request.GET.asc_desc == "asc" %} selected{% endif %}>ascending</option>
+        </select>
+       {% for field in search_form %}
+          {{ field.errors }}
+          {{ field.label_tag }}{{ field }}
+      {% endfor %}
+    </div>
       <div class="page-line form-inline">
-        <button id="toggle-all" class="btn btn-info" type="button">Toggle All</button>
-        <label>Filecount</label>
-        <input size="2" type="text" class="form-control mr-sm-1" name="filecount_from" value="{{ request.GET.filecount_from }}" placeholder="from"/>
-        <input size="2" type="text" class="form-control mr-sm-1" name="filecount_to" value="{{ request.GET.filecount_to }}" placeholder="to"/>
-        <input title="Category" class="form-control" name="category" placeholder="Category" value="{{ request.GET.category }}">
-        <input title="Source type" class="form-control" name="source_type" placeholder="Source type" value="{{ request.GET.source_type }}">
-        <input title="Reason" class="form-control" name="reason" placeholder="Reason" value="{{ request.GET.reason }}">
-        <input id="checkbox2" class="custom-cb" type="checkbox" name="non_public" value="1" {% if request.GET.non_public == '1' %}checked{% endif %}><label for="checkbox2"><span><span></span></span>Only private</label>
-        <input id="checkbox3" class="custom-cb" type="checkbox" name="public" value="1" {% if request.GET.public == '1' %}checked{% endif %}><label for="checkbox3"><span><span></span></span>Only public</label>
+        <input id="checkbox2" class="custom-cb" type="checkbox" name="non_public" value="1" {% if request.GET.non_public == '1' %}checked{% endif %}><label for="checkbox2"><span><span></span></span>Private</label>
+        <input id="checkbox3" class="custom-cb" type="checkbox" name="public" value="1" {% if request.GET.public == '1' %}checked{% endif %}><label for="checkbox3"><span><span></span></span>Public</label>
         <input id="checkbox4" class="custom-cb" type="checkbox" name="hidden" value="1" {% if request.GET.hidden == '1' %}checked{% endif %}><label for="checkbox4"><span><span></span></span>Hidden</label>
-        <button type="submit" name="apply" class="btn btn-light">Search</button>
+        {% if perms.viewer.view_marks %}<input id="checkbox5" class="custom-cb" type="checkbox" name="marked" value="1" {% if request.GET.marked == '1' %}checked{% endif %}><label for="checkbox5"><span><span></span></span>Marked</label>{% endif %}
+      </div>
+      {% if perms.viewer.view_marks %}
+      <div class="page-line form-inline">
+        <button type="button" class="btn btn-secondary mr-sm-2" data-toggle="collapse" data-target="#extra_filters">Filter marks</button>
+        <span id="extra_filters" class="collapse{% if mark_filters %} show{% endif %}">
+          <div class="form-inline">
+            {% for field in mark_form_simple %}
+              {{ field.label_tag }}{{ field }}
+            {% endfor %}
+          </div>
+        </span>
+      </div>
+      {% endif %}
+      <div class="page-line form-inline">
+        <button id="toggle-all" class="btn btn-secondary mr-sm-1" type="button">Toggle All</button>
+        <button type="submit" name="apply" class="btn btn-info mr-sm-1">Search</button>
         <a class="btn btn-light" href="{% url 'viewer:manage-archives' %}">Clear</a>
       </div>
     </form>
@@ -45,12 +76,16 @@
               <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
             {% if results.has_previous %}
               <a href= "?{% url_replace 'page' results.previous_page_number %}"> previous &lt;&lt; </a>
+            {% else %}
+              <span> previous &lt;&lt; </span>
             {% endif %}
             <span class="current">
                   &nbsp;Page {{ results.number }} of {{ results.paginator.num_pages }}
               </span>
             {% if results.has_next %}
               <a href="?{% url_replace 'page' results.next_page_number %}"> &gt;&gt; next</a>
+            {% else %}
+              <span> &gt;&gt; next</span>
             {% endif %}
             <a href="?{% url_replace 'page' results.paginator.num_pages %}"> &gt;&gt; last</a>
           </span>
@@ -59,7 +94,7 @@
       <table class="table table-bordered table-sm generic-table">
         <thead>
         <tr>
-          <th>Select</th><th>Title</th><th>ID</th><th>Gallery ID</th><th>Size</th><th>Images</th><th>Source</th><th>Reason</th><th>Added</th><th>Public</th><th>Hidden</th>
+          <th>Select</th><th>Title</th><th>ID</th><th>Gallery ID</th><th>Size</th><th>Images</th><th>Source</th><th>Reason</th><th>Added on</th><th>Added by</th><th>Public</th><th>Hidden</th>
         </tr>
         </thead>
         <tbody>
@@ -69,7 +104,7 @@
               <input id="checkbox-{{ archive.id }}" class="toggle-list custom-cb" type="checkbox" name="sel-{{ archive.id }}" value="{{ archive.pk }}"><label for="checkbox-{{ archive.id }}"><span><span></span></span></label>
             </td>
             <td class="{{ archive|archive_title_class }}">
-              {{ archive.best_title }}
+              {{ archive.best_title }} {% if perms.viewer.view_marks and archive.manage_entries.all|length %}<span class="right-options"><i class="fas fa-bullseye {{ archive.manage_entries.first.mark_priority|mark_color }}" title="First mark reason: {{ archive.manage_entries.first.mark_reason }}"></i></span>{% endif %}
             </td>
             <td>
               {% if archive.thumbnail.name %}
@@ -84,7 +119,8 @@
               {% endif %}
             </td>
             <td>
-              {{ archive.filesize }} ({{ archive.filesize|filesizeformat }})
+              <div>{{ archive.filesize }}</div>
+              <div>{{ archive.filesize|filesizeformat }}</div>
             </td>
             <td>
               {{ archive.filecount }}
@@ -96,7 +132,11 @@
               {{ archive.reason }}
             </td>
             <td>
-              {{ archive.create_date|date:"DATETIME_FORMAT" }}
+              {{ archive.create_date|date:"m/d/Y H:i:s" }}
+            </td>
+            <td>
+              <div>{% if archive.user.pk == 1 %}ServiceAccount{% else %}{{ archive.user }}{% endif %}</div>
+              <div>{{ archive.get_origin_display }}</div>
             </td>
             <td>
               {{ archive.public|yesno }}
@@ -113,19 +153,23 @@
     <!-- Next/Prev page links  -->
       {% if results.object_list and results.paginator.num_pages > 1 %}
         <div>
-            <span class="step-links">
-                <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
-              {% if results.has_previous %}
-                <a href= "?{% url_replace 'page' results.previous_page_number %}"> previous &lt;&lt; </a>
-              {% endif %}
-              <span class="current">
-                    &nbsp;Page {{ results.number }} of {{ results.paginator.num_pages }}
-                </span>
-              {% if results.has_next %}
-                <a href="?{% url_replace 'page' results.next_page_number %}"> &gt;&gt; next</a>
-              {% endif %}
-              <a href="?{% url_replace 'page' results.paginator.num_pages %}"> &gt;&gt; last</a>
-            </span>
+          <span class="step-links">
+              <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
+            {% if results.has_previous %}
+              <a href= "?{% url_replace 'page' results.previous_page_number %}"> previous &lt;&lt; </a>
+            {% else %}
+              <span> previous &lt;&lt; </span>
+            {% endif %}
+            <span class="current">
+                  &nbsp;Page {{ results.number }} of {{ results.paginator.num_pages }}
+              </span>
+            {% if results.has_next %}
+              <a href="?{% url_replace 'page' results.next_page_number %}"> &gt;&gt; next</a>
+            {% else %}
+              <span> &gt;&gt; next</span>
+            {% endif %}
+            <a href="?{% url_replace 'page' results.paginator.num_pages %}"> &gt;&gt; last</a>
+          </span>
         </div>
       {% endif %}
     <div class="form-group">
@@ -149,6 +193,12 @@
     {% endif %}
     {% if perms.viewer.delete_archive %}
     <button name="delete_archives" class="btn btn-light">Delete (WARNING!)</button>
+    {% endif %}
+    {% if perms.viewer.delete_archive and perms.viewer.mark_delete_gallery %}
+    <span><input id="checkbox7" class="custom-cb" type="checkbox" name="mark_delete_galleries" value="1"><label for="checkbox6"><span><span></span></span></label>Mark galleries as deleted</span>
+    {% endif %}
+    {% if perms.viewer.delete_archive and perms.viewer.delete_gallery %}
+    <span><input id="checkbox6" class="custom-cb" type="checkbox" name="delete_galleries" value="1"><label for="checkbox6"><span><span></span></span></label>Delete galleries</span>
     {% endif %}
     </form>
 {% endblock %}

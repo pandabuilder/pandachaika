@@ -90,6 +90,14 @@ class ProviderSettings:
         self.autochecker_timer: float = global_settings.autochecker.cycle_timer
         self.autochecker_enable: bool = global_settings.autochecker.enable
         self.wait_timer: int = global_settings.wait_timer
+        self.stop_page_number: Optional[int] = None
+
+        # Auto updater
+        self.autoupdater_enable: bool = global_settings.autoupdater.enable
+        self.autoupdater_timer: float = global_settings.autoupdater.cycle_timer
+        self.autoupdater_buffer_delta: int = global_settings.autoupdater.buffer_delta
+        self.autoupdater_buffer_back: int = global_settings.autoupdater.buffer_back
+        self.autoupdater_buffer_after: int = global_settings.autoupdater.buffer_after
 
         if 'cookies' in config:
             self.cookies.update(config['cookies'])
@@ -105,6 +113,18 @@ class ProviderSettings:
                 self.autochecker_enable = config['general'].getboolean('autochecker_enable')
             if 'wait_timer' in config['general']:
                 self.wait_timer = int(config['general']['wait_timer'])
+            if 'autoupdater_timer' in config['general']:
+                self.autoupdater_timer = float(config['general']['autoupdater_timer'])
+            if 'autoupdater_enable' in config['general']:
+                self.autoupdater_enable = config['general'].getboolean('autoupdater_enable')
+            if 'autoupdater_buffer_delta' in config['general']:
+                self.autoupdater_buffer_delta = int(config['general']['autoupdater_buffer_delta'])
+            if 'autoupdater_buffer_back' in config['general']:
+                self.autoupdater_buffer_back = int(config['general']['autoupdater_buffer_back'])
+            if 'autoupdater_buffer_after' in config['general']:
+                self.autoupdater_buffer_after = int(config['general']['autoupdater_buffer_after'])
+            if 'stop_page_number' in config['general']:
+                self.stop_page_number = int(config['general']['stop_page_number'])
         if 'proxies' in config:
             self.proxies.update(config['proxies'])
 

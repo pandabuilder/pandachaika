@@ -5,9 +5,9 @@ from django.core.mail import get_connection, EmailMultiAlternatives
 from django.http import HttpRequest
 from django.urls import reverse
 
-from core.base.utilities import timestamp_or_zero
+from core.base.utilities import timestamp_or_zero, timestamp_or_null
 
-from viewer.models import Gallery
+from viewer.models import Gallery, Archive
 
 
 def send_mass_html_mail(datatuple, fail_silently=False, user=None, password=None,
@@ -33,6 +33,65 @@ def send_mass_html_mail(datatuple, fail_silently=False, user=None, password=None
         message.attach_alternative(html, 'text/html')
         messages.append(message)
     return connection.send_messages(messages)
+
+
+def archive_search_result_to_json(request: HttpRequest, archives: Iterable[Archive]) -> list[dict[str, Any]]:
+    response = [
+        {
+            'id': archive.pk,
+            'title': archive.title,
+            'title_jpn': archive.title_jpn,
+            'filecount': archive.filecount,
+            'filesize': archive.filesize,
+            'posted': timestamp_or_null(archive.gallery.posted) if archive.gallery else None,
+            'public_date': timestamp_or_null(archive.public_date),
+            'create_date': timestamp_or_null(archive.create_date) if request.user.is_authenticated else None,
+            'source': archive.source_type,
+            'reason': archive.reason,
+            'category': archive.gallery.category if archive.gallery else None,
+            'uploader': archive.gallery.uploader if archive.gallery else None,
+            'rating': archive.gallery.rating if archive.gallery else None,
+            'link': archive.gallery.get_link() if archive.gallery else None,
+            'download': request.build_absolute_uri(reverse('viewer:archive-download', args=(archive.pk,))),
+            'url': request.build_absolute_uri(reverse('viewer:archive', args=(archive.pk,))),
+            'thumbnail': request.build_absolute_uri(archive.thumbnail.url) if archive.thumbnail else None,
+            'tags': archive.tag_list_sorted()
+        } for archive in archives
+    ]
+    return response
+
+
+def archive_manage_results_to_json(request: HttpRequest, archives: Iterable[Archive]) -> list[dict[str, Any]]:
+    response = [
+        {
+            'id': archive.pk,
+            'title': archive.title,
+            'title_jpn': archive.title_jpn,
+            'filecount': archive.filecount,
+            'filesize': archive.filesize,
+            'public_date': timestamp_or_null(archive.public_date),
+            'create_date': timestamp_or_null(archive.create_date) if request.user.is_authenticated else None,
+            'last_modified': timestamp_or_null(archive.last_modified) if request.user.is_authenticated else None,
+            'source_type': archive.source_type,
+            'reason': archive.reason,
+            'download': request.build_absolute_uri(reverse('viewer:archive-download', args=(archive.pk,))),
+            'url': request.build_absolute_uri(reverse('viewer:archive', args=(archive.pk,))),
+            'thumbnail': request.build_absolute_uri(archive.thumbnail.url) if archive.thumbnail else None,
+            'tags': archive.tag_list_sorted(),
+            'manage_entries': [x.mark_as_json_string() for x in archive.manage_entries.all()],
+            'gallery': {
+                'id': archive.gallery.pk,
+                'posted': int(timestamp_or_zero(archive.gallery.posted)),
+                'category': archive.gallery.category,
+                'uploader': archive.gallery.uploader,
+                'rating': archive.gallery.rating,
+                'link': archive.gallery.get_link(),
+                'hidden': archive.gallery.hidden,
+                'url': request.build_absolute_uri(reverse('viewer:gallery', args=(archive.gallery.pk,))),
+            } if archive.gallery else None,
+        } for archive in archives
+    ]
+    return response
 
 
 def gallery_search_results_to_json(request: HttpRequest, galleries: Iterable[Gallery]) -> list[dict[str, Any]]:
@@ -64,7 +123,42 @@ def gallery_search_results_to_json(request: HttpRequest, galleries: Iterable[Gal
                 ),
                 'source': archive.source_type,
                 'reason': archive.reason
-            } for archive in gallery.archive_set.filter_by_authenticated_status(authenticated=request.user.is_authenticated)
+            } for archive in gallery.available_archives  # type: ignore
         ],
     } for gallery in galleries
+    ]
+
+
+def gallery_search_dict_to_json(request: HttpRequest, galleries: dict[Gallery, list[Archive]]) -> list[dict[str, Any]]:
+    return [{
+        'id': gallery.pk,
+        'gid': gallery.gid,
+        'token': gallery.token,
+        'title': gallery.title,
+        'title_jpn': gallery.title_jpn,
+        'category': gallery.category,
+        'uploader': gallery.uploader,
+        'comment': gallery.comment,
+        'posted': int(timestamp_or_zero(gallery.posted)),
+        'filecount': gallery.filecount,
+        'filesize': gallery.filesize,
+        'expunged': gallery.expunged,
+        'provider': gallery.provider,
+        'rating': gallery.rating,
+        'fjord': gallery.fjord,
+        'tags': gallery.tag_list(),
+        'link': gallery.get_link(),
+        'thumbnail': request.build_absolute_uri(
+            reverse('viewer:gallery-thumb', args=(gallery.pk,))) if gallery.thumbnail else '',
+        'thumbnail_url': gallery.thumbnail_url,
+        'archives': [
+            {
+                'link': request.build_absolute_uri(
+                    reverse('viewer:archive-download', args=(archive.pk,))
+                ),
+                'source': archive.source_type,
+                'reason': archive.reason
+            } for archive in archives
+        ],
+    } for gallery, archives in galleries.items()
     ]

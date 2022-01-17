@@ -29,6 +29,7 @@
       <div class="row">
         <div class="col-md-12">
           <button name="clear_all_matches" class="btn btn-light">Clear all matches</button>
+          <a class="btn btn-secondary" href="{% url 'viewer:col-create-wanted-gallery' %}" role="button">Create Wanted Gallery</a>
         </div>
       </div>
     </form>
@@ -40,8 +41,20 @@
         </div>
       {% endfor %}
       <div class="page-line form-inline">
-        <button id="toggle-all" class="btn btn-info" type="button">Toggle All</button>
-        <button name="apply" class="btn btn-light">Search</button>
+        <button id="toggle-all" class="btn btn-secondary" type="button">Toggle All</button>
+        <label for="sort">Sort</label>
+        <select id="sort" name="sort" class="form-control mx-sm-1">
+          <option value="release_date" {% if request.GET.sort == "release_date" %} selected{% endif %}>release date</option>
+          <option value="create_date" {% if request.GET.sort == "create_date" %} selected{% endif %}>create date</option>
+          <option value="last_modified" {% if request.GET.sort == "last_modified" %} selected{% endif %}>last modified</option>
+          <option value="date_found" {% if request.GET.sort == "date_found" %} selected{% endif %}>date found</option>
+          <option value="title" {% if request.GET.sort == "title" %} selected{% endif %}>title</option>
+        </select>
+        <select id="asc_desc" name="asc_desc" class="form-control mr-sm-1" title="sort_order" aria-label="sort_order">
+          <option value="desc" {% if request.GET.asc_desc == "desc" %} selected{% endif %}>descending</option>
+          <option value="asc" {% if request.GET.asc_desc == "asc" %} selected{% endif %}>ascending</option>
+        </select>
+        <button name="apply" class="btn btn-info">Search</button>
         <a class="btn btn-light" href="{% url 'viewer:wanted-galleries' %}">Clear</a>
         <input id="checkbox-f2" class="custom-cb" type="checkbox" name="wanted-should-search" value="1" {% if "wanted-should-search" in request.GET %}checked{% endif %}><label for="checkbox-f2"><span><span></span></span>Should search</label>
         <input id="checkbox-f3" class="custom-cb" type="checkbox" name="wanted-should-search-not" value="1" {% if "wanted-should-search-not" in request.GET %}checked{% endif %}><label for="checkbox-f3"><span><span></span></span>Should not search</label>

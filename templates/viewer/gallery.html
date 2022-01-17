@@ -124,6 +124,10 @@
           <td>{{ gallery.get_status_display }}</td>
         </tr>
         <tr>
+          <th>Origin</th>
+          <td>{{ gallery.get_origin_display }}</td>
+        </tr>
+        <tr>
           <th>Reason</th>
           <td>{{ gallery.reason }}</td>
         </tr>
@@ -195,11 +199,11 @@
         {% endfor %}
       </ul>
     </li>
-    {% if user.is_staff %}
-      <li><label class="label-extended">Found by these wanted galleries:</label>
+    {% if perms.viewer.view_wantedgallery %}
+      <li><label class="label-extended">Matched filters defined by these wanted galleries:</label>
         <ul>
           {% for found_entry in gallery.foundgallery_set.all %}
-            <li><a href="{% url 'viewer:wanted-gallery' found_entry.wanted_gallery.id %}">{{ found_entry.wanted_gallery }}</a>, found date: {{ found_entry.create_date }}</li>
+            <li><a href="{% if user.is_staff %}{% url 'viewer:wanted-gallery' found_entry.wanted_gallery.id %}{% else %}{% url 'viewer:col-wanted-gallery' found_entry.wanted_gallery.id %}{% endif %}">{{ found_entry.wanted_gallery }}</a>, found date: {{ found_entry.create_date }}</li>
           {% endfor %}
         </ul>
       </li>

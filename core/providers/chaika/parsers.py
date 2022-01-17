@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 class Parser(BaseParser):
     name = constants.provider_name
     ignore = False
-    accepted_urls = ['gs=', 'gsp=', 'gd=', '/archive/', '/gallery/']
+    accepted_urls = ['gs=', 'as=', 'gsp=', 'gd=', '/archive/', '/gallery/', '/es-gallery-json/']
 
     def filter_accepted_urls(self, urls: Iterable[str]) -> list[str]:
         return [x for x in urls if any(word in x for word in self.accepted_urls) and self.own_settings.url in x]
@@ -72,12 +72,51 @@ class Parser(BaseParser):
 
         return total_galleries_filtered
 
+    def crawl_elastic_json(self, feed_url: str = '') -> list[ChaikaGalleryData]:
+
+        # Since this source only has metadata, we reeable other downloaders
+
+        request_dict = construct_request_dict(self.settings, self.own_settings)
+
+        response = request_with_retries(
+            feed_url,
+            request_dict,
+            post=False,
+        )
+
+        if not response:
+            return []
+
+        try:
+            json_decoded = response.json()
+        except(ValueError, KeyError):
+            logger.error("Could not parse response to JSON: {}".format(response.text))
+            return []
+
+        dict_list = json_decoded['hits']
+
+        total_galleries_filtered: list[ChaikaGalleryData] = []
+
+        for gallery in dict_list:
+            gallery['posted'] = datetime.fromisoformat(gallery['posted_date'].replace("+0000", "+00:00"))
+            parser = self.settings.provider_context.get_parsers(self.settings, filter_name=gallery['provider'])[0]
+            gid = parser.id_from_url(gallery['source_url'])
+            if gid:
+                token = parser.token_from_url(gallery['source_url']),
+                gallery['token'] = token
+                gallery['tags'] = [x['full'] for x in gallery['tags']]
+                gallery_data = ChaikaGalleryData(gid, **gallery)
+                total_galleries_filtered.append(gallery_data)
+
+        return total_galleries_filtered
+
     def crawl_urls(self, urls: list[str], wanted_filters=None, wanted_only: bool = False) -> None:
 
         for url in urls:
 
             dict_list = []
             request_dict = construct_request_dict(self.settings, self.own_settings)
+            total_galleries_filtered: list[ChaikaGalleryData] = []
 
             if '/archive/' in url:
                 match_archive_pk = re.search(r'/archive/(\d+)/', url)
@@ -135,7 +174,11 @@ class Parser(BaseParser):
                     except(ValueError, KeyError):
                         logger.error("Could not parse response to JSON: {}".format(gallery_response.text))
                         continue
-
+            # TODO: This is disabled until there's a way to pass the metadata, to other providers' downloaders
+            # elif '/es-gallery-json/' in url:
+            #     parse_results = self.crawl_elastic_json()
+            #     if parse_results:
+            #         total_galleries_filtered.extend(parse_results)
             else:
                 response = request_with_retries(
                     url,
@@ -163,7 +206,6 @@ class Parser(BaseParser):
 
             galleries_gids = []
             found_galleries = set()
-            total_galleries_filtered: list[ChaikaGalleryData] = []
             gallery_wanted_lists: dict[str, list['WantedGallery']] = defaultdict(list)
 
             for gallery in dict_list:

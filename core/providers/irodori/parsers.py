@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 class Parser(BaseParser):
     name = constants.provider_name
-    accepted_urls = [constants.no_scheme_url + '/products/']
+    accepted_urls = [constants.no_scheme_url]
 
     def get_values_from_gallery_link(self, link: str) -> Optional[GalleryData]:
 
@@ -43,12 +43,98 @@ class Parser(BaseParser):
 
         response.encoding = 'utf-8'
 
-        return self.process_regular_gallery_page(link, response.text)
+        return self.process_regular_gallery_page_v2(link, response.text)
 
     PAGES_REGEX = re.compile(r'Pages:\s+(\d+)', re.IGNORECASE)
     JP_TITLE_REGEX = re.compile(r'Japanese Title:\s+(.+)', re.IGNORECASE)
     DATE_CONVENTION_REGEX = re.compile(r'Date/Convention:\s+(.+)', re.IGNORECASE)
     OTHER_LANGUAGE_REGEX = re.compile(r'\*This work is in (\w+). For the English version', re.IGNORECASE)
+
+    def process_regular_gallery_page_v2(self, link: str, response_text: str) -> Optional[GalleryData]:
+
+        soup = BeautifulSoup(response_text, 'html.parser')
+        gallery = GalleryData(link.replace(constants.main_url + '/', ''), self.name)
+        gallery.link = link
+        gallery.tags = []
+        title_container = soup.find("meta", property="og:title")
+        gallery.title = title_container['content'] if title_container else ''
+
+        # Defaulting to Doujinshi (might need to change later)
+        gallery.category = 'Doujinshi'
+
+        # gallery.title = parsed_json.get('title', '')
+        # gallery.posted = date_parser.parse(parsed_json.get('published_at', None))
+
+        img_container = soup.find("div", class_="product-left")
+
+        if img_container:
+            img_link_container_0 = img_container.find("div", {"class": "main-image"})
+            if img_link_container_0:
+                img_link_container_1 = img_link_container_0.find("div", {"data-index": "0"})
+                if img_link_container_1:
+                    img_link_container_2 = img_link_container_1.find("img")
+                    if img_link_container_2:
+                        img_link_line = img_link_container_2['srcset']
+                        img_links = img_link_line.split(" ")
+                        for img in img_links:
+                            if img.startswith('https://'):
+                                gallery.thumbnail_url = img
+
+        product_container = soup.find("div", id="product", class_="product-details")
+
+        if product_container:
+
+            description_text = product_container.find("div", class_="block-content")
+            if description_text:
+                gallery.comment = description_text.get_text().strip()
+
+            stats_container = product_container.find("div", class_="product-stats")
+            if stats_container:
+                artist_container = stats_container.find("li", class_="product-manufacturer")
+                if artist_container:
+                    name_container = artist_container.find("a")
+                    if name_container:
+                        gallery.tags.append(
+                            translate_tag("artist:" + name_container.get_text())
+                        )
+                pages_container = stats_container.find("li", class_="product-upc")
+                if pages_container:
+                    int_container = pages_container.find("span")
+                    if int_container:
+                        gallery.filecount = int(int_container.get_text())
+                jpn_title_container = stats_container.find("li", class_="product-mpn")
+                if jpn_title_container:
+                    text_container = jpn_title_container.find("span")
+                    if text_container:
+                        gallery.title_jpn = text_container.get_text()
+
+        product_id_container = soup.find("input", {'id': "product-id", 'name': "product_id"})
+
+        if product_id_container:
+            product_id = product_id_container['value']
+            tag_link = 'index.php?route=product/product/cattags&product_id={}'.format(product_id)
+            tags_request_dict = construct_request_dict(self.settings, self.own_settings)
+
+            tag_link = urljoin(constants.main_url, tag_link)
+
+            response = request_with_retries(
+                tag_link,
+                tags_request_dict,
+                post=False,
+            )
+
+            if response:
+                response.encoding = 'utf-8'
+                tags_soup = BeautifulSoup(response.text, 'html.parser')
+                tags_container = tags_soup.find("ul", class_="ctagList")
+                if tags_container:
+                    for tag_container in tags_container.find_all("span", {"class": "post-ctag"}):
+                        tag_text = tag_container.get_text()
+                        gallery.tags.append(
+                            translate_tag(tag_text.strip())
+                        )
+
+        return gallery
 
     def process_regular_gallery_page(self, link: str, response_text: str) -> Optional[GalleryData]:
 

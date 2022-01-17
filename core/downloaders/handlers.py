@@ -32,7 +32,6 @@ class BaseDownloader(metaclass=Meta):
     provider = ''
     archive_only = False
     no_metadata = False
-    skip_if_hidden = False
     mark_hidden_if_last = False
 
     def __init__(self, settings: 'Settings', general_utils: GeneralUtils) -> None:
@@ -110,8 +109,13 @@ class BaseDownloader(metaclass=Meta):
                 default_values['source_type'] = self.settings.archive_source
             if self.settings.archive_user:
                 default_values['user'] = self.settings.archive_user
+            if self.settings.archive_origin:
+                default_values['origin'] = self.settings.archive_origin
 
             self.archive_db_entry = self.update_archive_db(default_values)
+
+            if self.archive_db_entry and self.settings.mark_similar_new_archives:
+                self.archive_db_entry.create_marks_for_similar_archives()
 
 
 class BaseInfoDownloader(BaseDownloader):
@@ -133,8 +137,6 @@ class BaseFakeDownloader(BaseDownloader):
 
         if not self.original_gallery:
             return
-
-        self.original_gallery.hidden = True
 
         logger.info("Adding {} gallery info to database, and faking the archive file".format(self.provider))
 

@@ -23,7 +23,7 @@
         </div>
       {% endfor %}
       <div class="page-line form-inline">
-        <button id="toggle-all" class="btn btn-info" type="button">Toggle All</button>
+        <button id="toggle-all" class="btn btn-secondary" type="button">Toggle All</button>
         <select id="provider" name="provider" class="form-control" title="provider" aria-label="provider">
           <option value="">all</option>
           {% for provider in providers %}
@@ -36,9 +36,9 @@
         <input title="Category" class="form-control" name="category" placeholder="Category" value="{{ request.GET.category }}">
         <input title="Download type" class="form-control" name="dl_type" placeholder="Download type" value="{{ request.GET.dl_type }}">
         <input title="Reason" class="form-control" name="reason" placeholder="Reason" value="{{ request.GET.reason }}">
-        <input id="checkbox2" class="custom-cb" type="checkbox" name="non_public" value="1" {% if request.GET.non_public == '1' %}checked{% endif %}><label for="checkbox2"><span><span></span></span>Only private</label>
-        <input id="checkbox3" class="custom-cb" type="checkbox" name="public" value="1" {% if request.GET.public == '1' %}checked{% endif %}><label for="checkbox3"><span><span></span></span>Only public</label>
-        <button type="submit" name="apply" class="btn btn-light">Search</button>
+        <input id="checkbox2" class="custom-cb" type="checkbox" name="non_public" value="1" {% if request.GET.non_public == '1' %}checked{% endif %}><label for="checkbox2"><span><span></span></span>Private</label>
+        <input id="checkbox3" class="custom-cb" type="checkbox" name="public" value="1" {% if request.GET.public == '1' %}checked{% endif %}><label for="checkbox3"><span><span></span></span>Public</label>
+        <button type="submit" name="apply" class="btn btn-info">Search</button>
         <a class="btn btn-light" href="{% url 'viewer:missing-archives' %}">Clear</a>
       </div>
     </form>

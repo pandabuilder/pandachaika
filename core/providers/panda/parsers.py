@@ -11,6 +11,7 @@ from typing import Optional
 
 import feedparser
 import requests
+from bs4 import BeautifulSoup
 from django.db.models import QuerySet
 
 from core.base.parsers import BaseParser
@@ -113,10 +114,68 @@ class Parser(BaseParser):
 
             request_dict = construct_request_dict(self.settings, self.own_settings)
 
-            main_page_text = requests.get(
+            response = request_with_retries(
                 url,
-                **request_dict
-            ).text
+                request_dict,
+                post=False,
+            )
+
+            if not response:
+                logger.info("Got no response, stopping")
+                break
+
+            response.encoding = 'utf-8'
+
+            if 'No hits found' in response.text:
+                logger.info("Empty page found, ending")
+                break
+            else:
+                logger.info(
+                    "Got content on search page {}, looking for galleries and jumping "
+                    "to the next page. Link: {}".format(current_page, url)
+                )
+                main_page_parser = SearchHTMLParser()
+                main_page_parser.feed(response.text)
+                logger.info("Number of galleries found: {}".format(len(main_page_parser.galleries)))
+                if len(main_page_parser.galleries) >= 1:
+                    for gallery_url in main_page_parser.galleries:
+                        unique_urls.add(gallery_url)
+                else:
+                    logger.info("Empty page found, ending")
+                    break
+                if self.own_settings.stop_page_number is not None:
+                    if current_page >= self.own_settings.stop_page_number:
+                        logger.info(
+                            "Got to stop page number: {}, "
+                            "ending (setting: provider.stop_page_number).".format(self.own_settings.stop_page_number)
+                        )
+                        break
+                current_page += 1
+                params = {'page': [str(current_page)]}
+                query.update(params)
+                new_query = urllib.parse.urlencode(query, doseq=True)
+                url = urllib.parse.urlunparse(
+                    list(parsed[0:4]) + [new_query] + list(parsed[5:]))
+                time.sleep(self.own_settings.wait_timer)
+
+        return unique_urls
+
+    def get_galleries_from_lofi_page_link(self, url: str) -> set[str]:
+
+        unique_urls = set()
+
+        while True:
+            parsed = urllib.parse.urlparse(url)
+            query = urllib.parse.parse_qs(parsed.query)
+            if 'page' in query:
+                current_page = int(query['page'][0])
+            else:
+                params = {'page': ['0']}
+                query.update(params)
+                new_query = urllib.parse.urlencode(query, doseq=True)
+                url = urllib.parse.urlunparse(
+                    list(parsed[0:4]) + [new_query] + list(parsed[5:]))
+                current_page = 0
 
             request_dict = construct_request_dict(self.settings, self.own_settings)
 
@@ -140,21 +199,28 @@ class Parser(BaseParser):
                     "Got content on search page {}, looking for galleries and jumping "
                     "to the next page. Link: {}".format(current_page, url)
                 )
-                main_page_parser = SearchHTMLParser()
-                main_page_parser.feed(main_page_text)
-                logger.info("Number of galleries found: {}".format(len(main_page_parser.galleries)))
-                if len(main_page_parser.galleries) >= 1:
-                    for gallery_url in main_page_parser.galleries:
+                current_found_links = []
+                soup = BeautifulSoup(response.text, 'html.parser')
+                gallery_containers = soup.findAll("td", class_="ii")
+                for gallery_container in gallery_containers:
+                    link_container = gallery_container.find("a")
+                    if link_container:
+                        found_link = link_container.get("href").replace("lofi/", "")
+                        current_found_links.append(found_link)
+                logger.info("Number of galleries found: {}".format(len(current_found_links)))
+                if len(current_found_links) >= 1:
+                    for gallery_url in current_found_links:
                         unique_urls.add(gallery_url)
                 else:
                     logger.info("Empty page found, ending")
                     break
-                if 0 < self.own_settings.stop_page_number <= current_page:
-                    logger.info(
-                        "Got to stop page number: {}, "
-                        "ending (setting: provider.stop_page_number).".format(self.own_settings.stop_page_number)
-                    )
-                    break
+                if self.own_settings.stop_page_number is not None:
+                    if current_page >= self.own_settings.stop_page_number:
+                        logger.info(
+                            "Got to stop page number: {}, "
+                            "ending (setting: provider.stop_page_number).".format(self.own_settings.stop_page_number)
+                        )
+                        break
                 current_page += 1
                 params = {'page': [str(current_page)]}
                 query.update(params)
@@ -310,7 +376,10 @@ class Parser(BaseParser):
         )
 
         for item in feed['items']:
-            if any([item['title'].startswith(category) for category in self.own_settings.accepted_rss_categories]):
+            if self.own_settings.accepted_rss_categories:
+                if any([item['title'].startswith(category) for category in self.own_settings.accepted_rss_categories]):
+                    urls.append(item['link'])
+            else:
                 urls.append(item['link'])
         return urls
 
@@ -325,6 +394,14 @@ class Parser(BaseParser):
         m = re.search(r'(.+)/g/(\d+)/(\w+)', url)
         if m and m.group(2):
             return m.group(2)
+        else:
+            return None
+
+    @staticmethod
+    def token_from_url(url: str) -> Optional[str]:
+        m = re.search(r'(.+)/g/(\d+)/(\w+)', url)
+        if m and m.group(3):
+            return m.group(3)
         else:
             return None
 
@@ -370,6 +447,12 @@ class Parser(BaseParser):
 
             # Do not crawl main page links if they were submitted anonymously, to prevent spam.
             if len(self.downloaders) == 1 and self.downloaders[0][0].type == 'submit':
+                continue
+
+            if '/lofi/' in url:
+                if not self.settings.silent_processing:
+                    logger.info("Provided URL {} is a lofi page link, adding".format(url))
+                unique_urls.update(self.get_galleries_from_lofi_page_link(url))
                 continue
 
             # assuming main page URLs

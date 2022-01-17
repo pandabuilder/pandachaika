@@ -239,6 +239,37 @@
     </tbody>
   </table>
 
+  <h3>Breakdown by Reasons (for Archives)</h3>
+  <table class="table table-striped">
+    <thead>
+    <tr>
+      <th>Reason</th><th>Archives</th><th>Total size</th><th>Average size</th><th>Maximum size</th><th>Minimum size</th><th>Average pages</th><th>Total pages</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for reason, reason_stats in archive_reasons.items %}
+    <tr>
+      <td>
+        {{ reason }}
+      </td>
+      <td>
+        {{ reason_stats.n_archives }}
+      </td>
+      <td>
+        {{ reason_stats.archive.filesize__sum|default:"0" }} bytes ({{ reason_stats.archive.filesize__sum|filesizeformat }})
+      </td>
+      <td>
+        {{ reason_stats.archive.filesize__avg|floatformat:"0"|default:"0" }} bytes ({{ reason_stats.archive.filesize__avg|filesizeformat }})
+      </td>
+      <td>{{ reason_stats.archive.filesize__max|default:"0" }} bytes ({{ reason_stats.archive.filesize__max|filesizeformat }})</td>
+      <td>{{ reason_stats.archive.filesize__min|default:"0" }} bytes ({{ reason_stats.archive.filesize__min|filesizeformat }})</td>
+      <td>{{ reason_stats.archive.filecount__avg|floatformat:"0"|default:"0" }}</td>
+      <td>{{ reason_stats.archive.filecount__sum|default:"0" }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
   <div class="row">
     <div class="card panel col-sm-6 col-md-4">
       <div class="card-header">10 most used tags</div>

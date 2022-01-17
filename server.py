@@ -159,13 +159,13 @@ if __name__ == '__main__':
     # SIGTERM exits, SIGUSR2 forces restart.
     cherrypy.engine.signal_handler = user_handler
 
+    if args.pidfile:
+        plugins.PIDFile(cherrypy.engine, args.pidfile).subscribe()
+
     if args.daemonize:
         # TODO: Daemonizing is stopping the start_workers method form starting workers on startup.
         cherrypy.config.update({'log.screen': False})
         plugins.Daemonizer(cherrypy.engine).subscribe()
-
-    if args.pidfile:
-        plugins.PIDFile(cherrypy.engine, args.pidfile).subscribe()
 
     DjangoAppPlugin(cherrypy.engine,
                     settings_module='pandabackup.settings',

@@ -83,8 +83,8 @@ def stats_workers(request: HttpRequest) -> HttpResponse:
 def stats_collection(request: HttpRequest) -> HttpResponse:
     """Display galleries and archives stats."""
 
-    if not request.user.is_staff:
-        return render_error(request, "You need to be an admin to display the stats.")
+    if not request.user.has_perm('viewer.read_private_stats'):
+        return render_error(request, "You don't have the permissions to read this page.")
 
     # General
     stats_dict = {
@@ -126,7 +126,7 @@ def stats_collection(request: HttpRequest) -> HttpResponse:
         providers_dict[provider] = {
             'galleries': Gallery.objects.filter(provider=provider).count(),
             'archives': Archive.objects.filter(gallery__provider=provider).count(),
-            'wanted_galleries': WantedGallery.objects.filter(provider=provider).count(),
+            'wanted_galleries': WantedGallery.objects.filter(wanted_providers__slug=provider).count(),
 
         }
 
@@ -140,6 +140,21 @@ def stats_collection(request: HttpRequest) -> HttpResponse:
             'n_galleries': Gallery.objects.filter(category=category).count(),
             'gallery': Gallery.objects.filter(
                 filesize__gt=0, category=category
+            ).aggregate(
+                Avg('filesize'), Max('filesize'), Min('filesize'), Sum('filesize'), Avg('filecount'), Sum('filecount')
+            )
+        }
+
+    # Per reason
+    reasons = Archive.objects.all().values_list('reason', flat=True).distinct().order_by('reason')
+
+    reasons_dict = {}
+
+    for reason in reasons:
+        reasons_dict[reason] = {
+            'n_archives': Archive.objects.filter(reason=reason).count(),
+            'archive': Archive.objects.filter(
+                filesize__gt=0, reason=reason
             ).aggregate(
                 Avg('filesize'), Max('filesize'), Min('filesize'), Sum('filesize'), Avg('filecount'), Sum('filecount')
             )
@@ -175,7 +190,8 @@ def stats_collection(request: HttpRequest) -> HttpResponse:
 
     d = {
         'stats': stats_dict, 'providers': providers_dict,
-        'gallery_categories': categories_dict, 'gallery_languages': languages_dict
+        'gallery_categories': categories_dict, 'gallery_languages': languages_dict,
+        'archive_reasons': reasons_dict
     }
 
     return render(request, "viewer/stats_collection.html", d)
@@ -534,18 +550,46 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
                 )
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
     elif tool == "start_timed_updater":
-        if crawler_settings.workers.timed_updater:
-            crawler_settings.workers.timed_updater.start_running(timer=crawler_settings.autoupdater.cycle_timer)
+        if tool_arg:
+            for provider_auto_updater in crawler_settings.workers.timed_auto_updaters:
+                if provider_auto_updater.provider_name == tool_arg:
+                    provider_auto_updater.start_running(
+                        timer=crawler_settings.providers[provider_auto_updater.provider_name].autoupdater_timer
+                    )
+                    break
+        else:
+            for provider_auto_updater in crawler_settings.workers.timed_auto_updaters:
+                provider_auto_updater.start_running(
+                    timer=crawler_settings.providers[provider_auto_updater.provider_name].autoupdater_timer
+                )
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
     elif tool == "stop_timed_updater":
-        if crawler_settings.workers.timed_updater:
-            crawler_settings.workers.timed_updater.stop_running()
+        if tool_arg:
+            for provider_auto_updater in crawler_settings.workers.timed_auto_updaters:
+                if provider_auto_updater.provider_name == tool_arg:
+                    provider_auto_updater.stop_running()
+                    break
+        else:
+            for provider_auto_updater in crawler_settings.workers.timed_auto_updaters:
+                provider_auto_updater.stop_running()
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
     elif tool == "force_run_timed_updater":
-        if crawler_settings.workers.timed_updater:
-            crawler_settings.workers.timed_updater.stop_running()
-            crawler_settings.workers.timed_updater.force_run_once = True
-            crawler_settings.workers.timed_updater.start_running(timer=crawler_settings.autoupdater.cycle_timer)
+        if tool_arg:
+            for provider_auto_updater in crawler_settings.workers.timed_auto_updaters:
+                if provider_auto_updater.provider_name == tool_arg:
+                    provider_auto_updater.stop_running()
+                    provider_auto_updater.force_run_once = True
+                    provider_auto_updater.start_running(
+                        timer=crawler_settings.providers[provider_auto_updater.provider_name].autoupdater_timer
+                    )
+                    break
+        else:
+            for provider_auto_updater in crawler_settings.workers.timed_auto_updaters:
+                provider_auto_updater.stop_running()
+                provider_auto_updater.force_run_once = True
+                provider_auto_updater.start_running(
+                    timer=crawler_settings.providers[provider_auto_updater.provider_name].autoupdater_timer
+                )
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
     elif tool == "start_timed_auto_wanted":
         if crawler_settings.workers.timed_auto_wanted:
@@ -572,9 +616,14 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
         (provider_name, threads_status['auto_search_' + provider_name]) for provider_name in crawler_settings.autochecker.providers if 'auto_search_' + provider_name in threads_status
     )
 
+    autoupdater_providers = (
+        (provider_name, threads_status['auto_updater_' + provider_name]) for provider_name in crawler_settings.autoupdater.providers if 'auto_updater_' + provider_name in threads_status
+    )
+
     d = {
         'tool': tool, 'settings_text': settings_text, 'threads_status': threads_status,
-        'autochecker_providers': autochecker_providers
+        'autochecker_providers': autochecker_providers,
+        'autoupdater_providers': autoupdater_providers
     }
 
     return render(request, "viewer/tools.html", d)

@@ -22,13 +22,10 @@ from . import constants
 logger = logging.getLogger(__name__)
 
 
-# We define a skip_if_hidden parameter in here,
-# since there's no point in trying to use those downloaders in hidden galleries.
 class ArchiveDownloader(BaseDownloader):
 
     type = 'archive'
     provider = constants.provider_name
-    skip_if_hidden = True
 
     def request_archive_download(self, root: str, gid: str, token: str, key: str) -> Optional[requests.models.Response]:
 
@@ -155,7 +152,6 @@ class ArchiveDownloader(BaseDownloader):
 class TorrentDownloader(BaseTorrentDownloader):
 
     provider = constants.provider_name
-    skip_if_hidden = True
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -283,7 +279,6 @@ class TorrentAPIDownloader(BaseTorrentDownloader):
 
     type = 'torrent_api'
     provider = constants.provider_name
-    skip_if_hidden = False
     mark_hidden_if_last = True
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -402,7 +397,6 @@ class HathDownloader(BaseDownloader):
 
     type = 'hath'
     provider = constants.provider_name
-    skip_if_hidden = True
 
     def start_download(self) -> None:
 
@@ -525,7 +519,6 @@ class UrlSubmitDownloader(BaseDownloader):
 
     type = 'submit'
     provider = constants.provider_name
-    skip_if_hidden = False
 
     def start_download(self) -> None:
 

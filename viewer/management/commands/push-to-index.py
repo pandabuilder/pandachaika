@@ -65,7 +65,7 @@ class Command(BaseCommand):
 
         indices_client = IndicesClient(client=self.es_client)
         index_name = model._meta.es_index_name  # type: ignore
-        if indices_client.exists(index_name):
+        if indices_client.exists(index=index_name):
             indices_client.delete(index=index_name)
         indices_client.create(index=index_name)
         indices_client.close(index=index_name)
