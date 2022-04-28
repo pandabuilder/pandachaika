@@ -42,6 +42,7 @@ urlpatterns = [
     re_path(r"^update/(\d+)/$", archive.archive_update, name='archive-update'),
     re_path(r"^gallery/(\d+)/thumb/$", head.gallery_thumb, name='gallery-thumb'),
     re_path(r"^gallery/(\d+)/([\w-]+)/$", head.gallery_details, name='gallery-tool'),
+    re_path(r"^gallery-tool-reason/(\d+)/([\w-]+)/$", head.gallery_enter_reason, name='gallery-tool-reason'),
     re_path(r"^gallery/(\d+)/$", head.gallery_details, name='gallery'),
     re_path(r"^wanted-gallery/(\d+)/$", wanted.wanted_gallery, name='wanted-gallery'),
     re_path(r"^user-archive-preferences/(\d+)/([\w-]+)/$", head.user_archive_preferences, name='user-archive-preferences'),

@@ -149,19 +149,23 @@ def repeated_galleries_by_field(request: HttpRequest) -> HttpResponse:
             archives=Count('archive')
         ).filter(archives__gt=0)
 
+    if 'has-size' in get:
+        results = results.filter(filesize__gt=0)
+
     by_title = {}
     by_filesize = {}
 
-    if 'same-uploader' in get:
-        for k_tu, v_tu in groupby(results.order_by('title', 'uploader'), lambda x: (x.title, x.uploader)):
-            objects = list(v_tu)
-            if len(objects) > 1:
-                by_title[str(k_tu)] = objects
-    else:
-        for k_title, v_title in groupby(results.order_by('title'), lambda x: x.title or ''):
-            objects = list(v_title)
-            if len(objects) > 1:
-                by_title[k_title] = objects
+    if 'by-title' in get:
+        if 'same-uploader' in get:
+            for k_tu, v_tu in groupby(results.order_by('title', 'uploader'), lambda x: (x.title, x.uploader)):
+                objects = list(v_tu)
+                if len(objects) > 1:
+                    by_title[str(k_tu)] = objects
+        else:
+            for k_title, v_title in groupby(results.order_by('title'), lambda x: x.title or ''):
+                objects = list(v_title)
+                if len(objects) > 1:
+                    by_title[k_title] = objects
 
     if 'by-filesize' in get:
         for k_filesize, v_filesize in groupby(results.order_by('filesize'), lambda x: str(x.filesize or '')):
@@ -383,7 +387,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
 
             matcher_filter = p['create_possible_matches']
             try:
-                cutoff = clamp(float(p.get('cutoff', '0.4')), 0.0, 0.4)
+                cutoff = clamp(float(p.get('cutoff', '0.4')), 0.0, 1.0)
             except ValueError:
                 cutoff = 0.4
             try:
@@ -408,7 +412,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                 return render_error(request, "Local matching worker is already running.")
             provider = p['create_possible_matches_internal']
             try:
-                cutoff = clamp(float(p.get('cutoff', '0.4')), 0.0, 0.4)
+                cutoff = clamp(float(p.get('cutoff', '0.4')), 0.0, 1.0)
             except ValueError:
                 cutoff = 0.4
             try:
@@ -583,7 +587,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
             provider = p.get('provider', '')
 
             try:
-                cutoff = clamp(float(p.get('cutoff', '0.4')), 0.0, 0.4)
+                cutoff = clamp(float(p.get('cutoff', '0.4')), 0.0, 1.0)
             except ValueError:
                 cutoff = 0.4
             try:
@@ -623,7 +627,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
             provider = p.get('provider', '')
 
             try:
-                cutoff = clamp(float(p.get('cutoff', '0.4')), 0.0, 0.4)
+                cutoff = clamp(float(p.get('cutoff', '0.4')), 0.0, 1.0)
             except ValueError:
                 cutoff = 0.4
             try:

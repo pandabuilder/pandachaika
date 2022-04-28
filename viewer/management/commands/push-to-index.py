@@ -16,9 +16,11 @@ class Command(BaseCommand):
         super().__init__(*args, **kwargs)
         from elasticsearch import Elasticsearch, RequestsHttpConnection
 
+        # TODO: Timeout as option.
         self.es_client = Elasticsearch(
             [crawler_settings.elasticsearch.url],
-            connection_class=RequestsHttpConnection
+            connection_class=RequestsHttpConnection,
+            timeout=crawler_settings.elasticsearch.timeout,
         )
 
     def add_arguments(self, parser):
@@ -113,7 +115,7 @@ class Command(BaseCommand):
             data = [
                 self.convert_for_bulk(s, 'create') for s in query
             ]
-            bulk(client=self.es_client, actions=data, stats_only=True, raise_on_error=False)
+            bulk(client=self.es_client, actions=data, stats_only=True, raise_on_error=False, request_timeout=30)
         else:
             paginator = Paginator(query, bulk_size)
 
@@ -129,7 +131,7 @@ class Command(BaseCommand):
                     self.convert_for_bulk(s, 'create') for s in page
                 ]
 
-                bulk(client=self.es_client, actions=data, stats_only=True, raise_on_error=False)
+                bulk(client=self.es_client, actions=data, stats_only=True, raise_on_error=False, request_timeout=30)
 
     def convert_for_bulk(self, django_object, action=None):
         data = django_object.es_repr()

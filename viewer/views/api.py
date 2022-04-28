@@ -108,6 +108,12 @@ def json_search(request: HttpRequest) -> HttpResponse:
                 return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
             if not archive_ids:
                 return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
+
+            try:
+                [int(x) for x in archive_ids]
+            except ValueError:
+                return HttpResponse(json.dumps({'result': "Invalid Archive ID."}),
+                                    content_type="application/json; charset=utf-8")
             try:
                 if request.user.is_authenticated:
                     archives = Archive.objects.filter(pk__in=archive_ids)
@@ -1187,11 +1193,11 @@ def filter_galleries_no_request(filter_args: Union[dict[str, Any], QueryDict]) -
     if filter_args["category"]:
         results = results.filter(category__icontains=filter_args["category"])
     if filter_args["expunged"]:
-        results = results.filter(expunged=filter_args["expunged"])
+        results = results.filter(expunged=bool(filter_args["expunged"]))
     if filter_args["hidden"]:
-        results = results.filter(hidden=filter_args["hidden"])
+        results = results.filter(hidden=bool(filter_args["hidden"]))
     if filter_args["fjord"]:
-        results = results.filter(fjord=filter_args["fjord"])
+        results = results.filter(fjord=bool(filter_args["fjord"]))
     if filter_args["uploader"]:
         results = results.filter(uploader=filter_args["uploader"])
     if filter_args["provider"]:

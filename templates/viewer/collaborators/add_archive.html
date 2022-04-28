@@ -3,22 +3,23 @@
 {% block sidebar %}{% endblock %}
 
 {% load static %}
+{% block extrahead %}
+    <script type="text/javascript" src="{% static 'js/vendor/htmx.min.js' %}"></script>
+{% endblock %}
 
 {% block content %}
-  {% if messages %}
-    {% for message in messages %}
-      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
-    {% endfor %}
-  {% endif %}
-  <div class="page-header">
-  <h2>Add new Archive</h2>
-  <p class="lead">Upload a new file as an Archive, and set some initial fields</p>
-  </div>
-  {% if perms.viewer.upload_with_metadata_archive %}
-  {% include 'viewer/include/archive_add.html' %}
-  {% endif %}
-
+<div id="messages-slot">
+{% include 'viewer/include/messages.html' %}
+</div>
+<div class="page-header">
+<h2>Add new Archive</h2>
+<p class="lead">Upload a new file as an Archive, and set some initial fields</p>
+</div>
+{% if perms.viewer.upload_with_metadata_archive %}
+{% include 'viewer/include/archive_add.html' %}
+{% endif %}
 {% endblock %}
+
 {% block afterJQ %}
   {{ edit_form.media }}
 {% endblock %}

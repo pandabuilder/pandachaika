@@ -11,8 +11,8 @@
   {% endif %}
   <!-- Non matched galleries  -->
   <div class="page-header">
-    <h2>galleries repeated by fields</h2>
-    <p class="lead">Number of gallery groups (by title): {{ by_title|length }}</p>
+    <h2>Galleries repeated by fields</h2>
+    <p class="lead">Number of gallery groups (by title, by size): ({{ by_title|length }}, {{ by_filesize|length }})</p>
   </div>
   <form action="{% url 'viewer:galleries-by-field' %}" method="GET">
     {% for field in form %}
@@ -38,6 +38,8 @@
       <a class="btn btn-light" href="{% url 'viewer:galleries-by-field' %}">Clear</a>
       <input id="checkbox-f1" class="custom-cb" type="checkbox" name="same-uploader" value="1" {% if "same-uploader" in request.GET %}checked{% endif %}><label for="checkbox-f1"><span><span></span></span>Same uploader</label>
       <input id="checkbox-f2" class="custom-cb" type="checkbox" name="has-archives" value="1" {% if "has-archives" in request.GET %}checked{% endif %}><label for="checkbox-f2"><span><span></span></span>Has Archives</label>
+      <input id="checkbox-f7" class="custom-cb" type="checkbox" name="has-size" value="1" {% if "has-size" in request.GET %}checked{% endif %}><label for="checkbox-f7"><span><span></span></span>Has size</label>
+      <input id="checkbox-f6" class="custom-cb" type="checkbox" name="by-title" value="1" {% if "by-title" in request.GET %}checked{% endif %}><label for="checkbox-f6"><span><span></span></span>By title</label>
       <input id="checkbox-f3" class="custom-cb" type="checkbox" name="by-filesize" value="1" {% if "by-filesize" in request.GET %}checked{% endif %}><label for="checkbox-f3"><span><span></span></span>By filesize</label>
     </div>
   </form>
@@ -48,7 +50,7 @@
         <table class="table table-bordered table-sm generic-table">
           <thead>
           <tr>
-            <th>Select</th><th>URL</th><th>Title</th><th>Size</th><th>Images</th><th>Source URL | Image</th><th>Uploader</th><th>DL type</th><th>Reason</th><th>Added</th><th>Has archives</th>
+            <th>Select</th><th>URL</th><th>Title</th><th>Size</th><th>Images</th><th>Source URL | Image</th><th>Uploader</th><th>DL type</th><th>Reason</th><th>Added</th><th>Has archives</th><th>Has alt. archives</th>
           </tr>
           </thead>
           <tbody>
@@ -90,6 +92,9 @@
               </td>
               <td>
                 {{ gallery.archive_set.all|yesno:"yes,no" }}
+              </td>
+              <td>
+                {{ gallery.alternative_sources.all|yesno:"yes,no" }}
               </td>
             </tr>
           {% endfor %}
@@ -103,7 +108,7 @@
         <table class="table table-bordered table-sm generic-table">
           <thead>
           <tr>
-            <th>Select</th><th>URL</th><th>Title</th><th>Size</th><th>Images</th><th>Source URL | Image</th><th>Uploader</th><th>DL type</th><th>Reason</th><th>Added</th><th>Has archives</th>
+            <th>Select</th><th>URL</th><th>Title</th><th>Size</th><th>Images</th><th>Source URL | Image</th><th>Uploader</th><th>DL type</th><th>Reason</th><th>Added</th><th>Has archives</th><th>Has alt. archives</th>
           </tr>
           </thead>
           <tbody>
@@ -145,6 +150,9 @@
               </td>
               <td>
                 {{ gallery.archive_set.all|yesno:"yes,no" }}
+              </td>
+              <td>
+                {{ gallery.alternative_sources.all|yesno:"yes,no" }}
               </td>
             </tr>
           {% endfor %}

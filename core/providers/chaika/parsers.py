@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 import logging
+import time
 import typing
+import urllib
 from collections import defaultdict
 from collections.abc import Iterable
 from datetime import datetime, timezone
@@ -72,6 +74,75 @@ class Parser(BaseParser):
 
         return total_galleries_filtered
 
+    def crawl_elastic_json_paginated(self, feed_url: str = '') -> list[ChaikaGalleryData]:
+
+        unique_urls: dict[str, ChaikaGalleryData] = dict()
+
+        while True:
+
+            parsed = urllib.parse.urlparse(feed_url)
+            query = urllib.parse.parse_qs(parsed.query)
+            if 'page' in query:
+                current_page = int(query['page'][0])
+            else:
+                params = {'page': ['1']}
+                query.update(params)
+                new_query = urllib.parse.urlencode(query, doseq=True)
+                feed_url = urllib.parse.urlunparse(list(parsed[0:4]) + [new_query] + list(parsed[5:]))
+                current_page = 1
+
+            request_dict = construct_request_dict(self.settings, self.own_settings)
+
+            response = request_with_retries(
+                feed_url,
+                request_dict,
+                post=False,
+            )
+
+            if not response:
+                break
+
+            try:
+                json_decoded = response.json()
+            except(ValueError, KeyError):
+                logger.error("Could not parse response to JSON: {}".format(response.text))
+                break
+
+            dict_list = json_decoded['hits']
+
+            for gallery in dict_list:
+                gallery['posted'] = datetime.fromisoformat(gallery['posted_date'].replace("+0000", "+00:00"))
+                parser = self.settings.provider_context.get_parsers(self.settings, filter_name=gallery['provider'])[0]
+                gid = parser.id_from_url(gallery['source_url'])
+                if gid:
+                    token = parser.token_from_url(gallery['source_url'])
+                    gallery['token'] = token
+                    gallery['tags'] = [x['full'] for x in gallery['tags']]
+                    gallery_data = ChaikaGalleryData(gid, **gallery)
+                    if 'source_thumbnail' in gallery:
+                        gallery_data.thumbnail_url = gallery['source_thumbnail']
+                    if gallery['source_url'] not in unique_urls:
+                        unique_urls[gallery['source_url']] = gallery_data
+
+            if self.own_settings.stop_page_number is not None:
+                if current_page >= self.own_settings.stop_page_number:
+                    logger.info(
+                        "Got to stop page number: {}, "
+                        "ending (setting: provider.stop_page_number).".format(self.own_settings.stop_page_number)
+                    )
+                    break
+            current_page += 1
+            params = {'page': [str(current_page)]}
+            query.update(params)
+            new_query = urllib.parse.urlencode(query, doseq=True)
+            feed_url = urllib.parse.urlunparse(
+                list(parsed[0:4]) + [new_query] + list(parsed[5:]))
+            time.sleep(self.own_settings.wait_timer)
+
+        total_galleries_filtered: list[ChaikaGalleryData] = list(unique_urls.values())
+
+        return total_galleries_filtered
+
     def crawl_elastic_json(self, feed_url: str = '') -> list[ChaikaGalleryData]:
 
         # Since this source only has metadata, we reeable other downloaders
@@ -112,7 +183,22 @@ class Parser(BaseParser):
 
     def crawl_urls(self, urls: list[str], wanted_filters=None, wanted_only: bool = False) -> None:
 
+        # If we are crawling an url from a Wanted source (MonitoredLinks), force download using default downloaders
+        # from each gallery's original provider, instead of just downloading the archive from chaika
+        # This helps in providing a way of having a high frequency crawler that captures most links, then having
+        # another instance that parses the results from that one.
+
+        # TODO: The problem with this implementation is that we are forcing downloaders from other providers when using
+        # WantedGallery checks, you could still want to just download metadata only.
+        # we could expose an option per MonitoredLink (argument to crawler), that gets here through crawl_urls.
+        # if wanted_only:
+        #     force_provider = True
+        # else:
+        #     force_provider = False
+
         for url in urls:
+
+            galleries_gids = []
 
             dict_list = []
             request_dict = construct_request_dict(self.settings, self.own_settings)
@@ -174,11 +260,16 @@ class Parser(BaseParser):
                     except(ValueError, KeyError):
                         logger.error("Could not parse response to JSON: {}".format(gallery_response.text))
                         continue
-            # TODO: This is disabled until there's a way to pass the metadata, to other providers' downloaders
-            # elif '/es-gallery-json/' in url:
-            #     parse_results = self.crawl_elastic_json()
-            #     if parse_results:
-            #         total_galleries_filtered.extend(parse_results)
+            elif '/es-gallery-json/' in url:
+                parse_results = self.crawl_elastic_json_paginated(url)
+                if parse_results:
+                    galleries_gids.extend([x.gid for x in parse_results])
+                    total_galleries_filtered.extend(parse_results)
+
+                    logger.info("Provided JSON URL for provider ({}), found {} links".format(
+                        self.name,
+                        len(total_galleries_filtered))
+                    )
             else:
                 response = request_with_retries(
                     url,
@@ -204,7 +295,6 @@ class Parser(BaseParser):
                 elif type(json_decoded) == list:
                     dict_list = json_decoded
 
-            galleries_gids = []
             found_galleries = set()
             gallery_wanted_lists: dict[str, list['WantedGallery']] = defaultdict(list)
 
@@ -224,8 +314,11 @@ class Parser(BaseParser):
                     )
 
                     if discard_approved:
-                        logger.info("{} Real GID: {}".format(discard_message, found_gallery.gid))
+                        if not self.settings.silent_processing:
+                            logger.info("{} Real GID: {}".format(discard_message, found_gallery.gid))
                         found_galleries.add(found_gallery.gid)
+
+            gallery_data_list: list[ChaikaGalleryData] = []
 
             for count, gallery in enumerate(total_galleries_filtered, start=1):
 
@@ -235,12 +328,13 @@ class Parser(BaseParser):
                 discarded_tags = self.general_utils.discard_by_tag_list(gallery.tags)
 
                 if discarded_tags:
-                    logger.info(
-                        "Skipping gallery link {}, because it's tagged with global discarded tags: {}".format(
-                            gallery.title,
-                            discarded_tags
+                    if not self.settings.silent_processing:
+                        logger.info(
+                            "Skipping gallery link {}, because it's tagged with global discarded tags: {}".format(
+                                gallery.title,
+                                discarded_tags
+                            )
                         )
-                    )
                     continue
 
                 if wanted_filters:
@@ -262,22 +356,51 @@ class Parser(BaseParser):
                     )
                 )
 
-                if gallery.thumbnail:
-                    original_thumbnail_url = gallery.thumbnail_url
+                # We predownload the thumbnail for not wanted to avoid adding
+                # too much code to parsers to deal with an existing Gallery
+                if not wanted_only:
 
-                    gallery.thumbnail_url = gallery.thumbnail
+                    if gallery.thumbnail:
+                        original_thumbnail_url = gallery.thumbnail_url
+                        chaika_thumbnail_url = gallery.thumbnail
 
-                    gallery_obj = Gallery.objects.update_or_create_from_values(gallery)
+                        gallery.thumbnail_url = ''
+                        gallery.thumbnail = ''
 
-                    gallery_obj.thumbnail_url = original_thumbnail_url
+                        gallery_obj = Gallery.objects.update_or_create_from_values(gallery)
 
-                    gallery_obj.save()
+                        gallery_obj.thumbnail_url = chaika_thumbnail_url
+
+                        gallery_obj.fetch_thumbnail(force_provider=self.name)
+
+                        gallery_obj.thumbnail_url = original_thumbnail_url
+
+                        gallery_obj.save()
+                    else:
+                        Gallery.objects.update_or_create_from_values(gallery)
+
+                if wanted_only:
+                    gallery_data_list.append(gallery)
                 else:
-                    Gallery.objects.update_or_create_from_values(gallery)
+                    # we don't force providers if the link already has an own archive to download
+                    if gallery.archives:
+                        for archive in gallery.archives:
+                            gallery.temp_archive = archive
+                            self.pass_gallery_data_to_downloaders([gallery], gallery_wanted_lists)
 
-                for archive in gallery.archives:
-                    gallery.temp_archive = archive
-                    self.pass_gallery_data_to_downloaders([gallery], gallery_wanted_lists)
+            # TODO: We are assuming that only when running wanted_only is when we'll want to use each gallery's own
+            # provider. Might need a way to also force this when crawling a link.
+            if wanted_only:
+                # This doesn't work, specifically with providers that get extra data from their own APIs (panda)
+                # conv_data_list = [x.to_gallery_data() for x in gallery_data_list]
+                # self.pass_gallery_data_to_downloaders(conv_data_list, gallery_wanted_lists, force_provider=force_provider)
+
+                gallery_links = [x.link for x in gallery_data_list if x.link]
+
+                gallery_links.append('--no-wanted-check')
+
+                if self.settings.workers.web_queue:
+                    self.settings.workers.web_queue.enqueue_args_list(gallery_links)
 
 
 API = (

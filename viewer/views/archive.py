@@ -629,7 +629,10 @@ def mark_similar_archives(request: HttpRequest, pk: int) -> HttpResponse:
     logger.info('Create similar info as marks for Archive: {}'.format(archive.get_absolute_url()))
     archive.create_marks_for_similar_archives()
 
-    return HttpResponseRedirect(request.META["HTTP_REFERER"])
+    if "HTTP_REFERER" in request.META:
+        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+    else:
+        return HttpResponseRedirect(reverse('viewer:archive', args=[str(pk)]))
 
 
 @login_required

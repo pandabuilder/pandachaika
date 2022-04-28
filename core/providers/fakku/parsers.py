@@ -188,20 +188,28 @@ class Parser(BaseParser):
                             translate_tag("author:" + author.get_text().strip())
                         )
                 elif left_text == "Magazine":
-                    gallery.tags.append(
-                        translate_tag("magazine:" + right_div.get_text().strip()))
-                    belongs_to_magazine = right_div.find("a")
-                    if belongs_to_magazine:
-                        gallery.magazine_gid = belongs_to_magazine.get("href")[1:]
+                    for magazine in right_div.find_all("a"):
+                        gallery.tags.append(
+                            translate_tag("magazine:" + magazine.get_text().strip())
+                        )
+                        # TODO: Since we only support many-to-1 gallery magazine/contained, we just link the first one.
+                        # Both should be migrated to many-to-many.
+                        gallery.magazine_gid = magazine.get("href")[1:]
                 elif left_text == "Publisher":
-                    gallery.tags.append(
-                        translate_tag("publisher:" + right_div.get_text().strip()))
+                    for current_tag in right_div.find_all("a"):
+                        gallery.tags.append(
+                            translate_tag("publisher:" + current_tag.get_text().strip())
+                        )
                 elif left_text == "Circle":
-                    gallery.tags.append(
-                        translate_tag("group:" + right_div.get_text().strip()))
+                    for group_tag in right_div.find_all("a"):
+                        gallery.tags.append(
+                            translate_tag("group:" + group_tag.get_text().strip())
+                        )
                 elif left_text == "Event":
-                    gallery.tags.append(
-                        translate_tag("event:" + right_div.get_text().strip()))
+                    for current_tag in right_div.find_all("a"):
+                        gallery.tags.append(
+                            translate_tag("event:" + current_tag.get_text().strip())
+                        )
                 elif left_text == "Book":
                     belongs_to_container = right_div.find("a")
                     if belongs_to_container:

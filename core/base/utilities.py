@@ -51,9 +51,9 @@ class GeneralUtils:
     def __init__(self, global_settings: 'setup.Settings') -> None:
         self.settings = global_settings
 
-    def discard_by_tag_list(self, tag_list: Optional[list[str]]) -> Optional[list[str]]:
+    def discard_by_tag_list(self, tag_list: Optional[list[str]], force_check: bool = False) -> Optional[list[str]]:
 
-        if self.settings.update_metadata_mode:
+        if not force_check and self.settings.update_metadata_mode:
             return None
         if tag_list is None:
             return None

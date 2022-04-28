@@ -43,6 +43,8 @@ class WantedGalleryTest(TestCase):
         # Tags
         english_tag = Tag.objects.create(scope="language", name="english")
         artist_tag = Tag.objects.create(scope="artist", name="suzunomoku")
+        artist2_tag = Tag.objects.create(scope="artist", name="mitsuya")
+        parody_tag = Tag.objects.create(scope="parody", name="original")
 
         # Galleries
         self.test_gallery1 = Gallery.objects.create(title='sample non public gallery 1', gid='344', provider='panda')
@@ -93,6 +95,58 @@ class WantedGalleryTest(TestCase):
             gallery=self.test_gallery3
         )
 
+        # Set 4
+        self.test_wanted_gallery4 = WantedGallery.objects.create(
+            title='test wanted gallery 4',
+            book_type='Manga',
+            publisher='wanimagazine',
+            reason='wanimagazine',
+            should_search=True,
+            keep_searching=True,
+            notify_when_found=False,
+            wanted_tags_exclusive_scope=True,
+            exclusive_scope_name='artist'
+        )
+        self.test_wanted_gallery4.wanted_tags.set([english_tag, artist2_tag])
+
+        self.test_wanted_gallery4b = WantedGallery.objects.create(
+            title='test wanted gallery 4b',
+            book_type='Manga',
+            publisher='wanimagazine',
+            reason='wanimagazine',
+            should_search=True,
+            keep_searching=True,
+            notify_when_found=False,
+            wanted_tags_exclusive_scope=True,
+            exclusive_scope_name='artist',
+            wanted_tags_accept_if_none_scope='parody'
+        )
+        self.test_wanted_gallery4b.wanted_tags.set([artist2_tag, parody_tag])
+
+        self.test_wanted_gallery4c = WantedGallery.objects.create(
+            title='test wanted gallery 4c',
+            book_type='Manga',
+            publisher='wanimagazine',
+            reason='wanimagazine',
+            should_search=True,
+            keep_searching=True,
+            notify_when_found=False,
+            wanted_tags_accept_if_none_scope='parody'
+        )
+        self.test_wanted_gallery4c.wanted_tags.set([artist2_tag, parody_tag])
+
+        self.test_gallery4 = Gallery.objects.create(
+            title='New Release 4', gid='34665', provider='panda', category='Manga',
+            token='4324239'
+        )
+        self.test_gallery4.tags.set([english_tag, artist_tag, artist2_tag])
+
+        self.test_gallery5 = Gallery.objects.create(
+            title='New Release 5', gid='346659', provider='panda', category='Manga',
+            token='4324288'
+        )
+        self.test_gallery5.tags.set([english_tag, artist2_tag, parody_tag])
+
     def test_match_gallery(self):
         settings = Settings(load_from_disk=True)
         parser = PandaParser(settings)
@@ -130,17 +184,36 @@ class WantedGalleryTest(TestCase):
         self.assertEqual(len(gallery_wanted_lists[incoming_gallery.gid]), 11)
         self.assertEqual(WantedGallery.objects.filter(found=True).count(), 12)
 
-        incoming_gallery2 = self.test_gallery3.as_gallery_data()
-        incoming_gallery3 = self.test_gallery1.as_gallery_data()
-        incoming_gallery4 = self.test_gallery2.as_gallery_data()
+        incoming_gallery1 = self.test_gallery1.as_gallery_data()
+        incoming_gallery2 = self.test_gallery2.as_gallery_data()
+        incoming_gallery3 = self.test_gallery3.as_gallery_data()
+        incoming_gallery4 = self.test_gallery4.as_gallery_data()
+        incoming_gallery5 = self.test_gallery5.as_gallery_data()
 
         gallery_wanted_lists: dict[str, list['WantedGallery']] = defaultdict(list)
 
         # 2 are not already found, remaining it is.
+        parser.compare_gallery_with_wanted_filters(incoming_gallery1, incoming_gallery1.link, wanted_galleries, gallery_wanted_lists)
         parser.compare_gallery_with_wanted_filters(incoming_gallery2, incoming_gallery2.link, wanted_galleries, gallery_wanted_lists)
         parser.compare_gallery_with_wanted_filters(incoming_gallery3, incoming_gallery3.link, wanted_galleries, gallery_wanted_lists)
         parser.compare_gallery_with_wanted_filters(incoming_gallery4, incoming_gallery4.link, wanted_galleries, gallery_wanted_lists)
+        parser.compare_gallery_with_wanted_filters(incoming_gallery5, incoming_gallery5.link, wanted_galleries, gallery_wanted_lists)
 
-        self.assertEqual(len(gallery_wanted_lists[incoming_gallery2.gid]), 0)
-        self.assertEqual(len(gallery_wanted_lists[incoming_gallery3.gid]), 1)
-        self.assertEqual(len(gallery_wanted_lists[incoming_gallery4.gid]), 1)
+        self.assertEqual(len(gallery_wanted_lists[incoming_gallery1.gid]), 1)
+        self.assertEqual(len(gallery_wanted_lists[incoming_gallery2.gid]), 1)
+        self.assertEqual(len(gallery_wanted_lists[incoming_gallery3.gid]), 0)
+        # Should be wg1 and wg4_c, but not wg4 and wg4_b, even if parody is set, should be rejected at multiple scopes,
+        # don't accept repeated artist tag Gallery
+        self.assertEqual(len(gallery_wanted_lists[incoming_gallery4.gid]), 2)
+        # Should be wg4 , wg4_b and wg4_c, because it has only 1 artist tag, and even with parody missing,
+        # it has acccept of none
+        self.assertEqual(len(gallery_wanted_lists[incoming_gallery5.gid]), 3)
+
+        rematch_result_1 = self.test_gallery1.match_against_wanted_galleries(wanted_galleries, skip_already_found=False)
+        rematch_result_4 = self.test_gallery4.match_against_wanted_galleries(wanted_galleries, skip_already_found=False)
+        rematch_result_5 = self.test_gallery5.match_against_wanted_galleries(wanted_galleries, skip_already_found=False)
+
+        # Make sure compare_gallery_with_wanted_filters gives the same result as match_against_wanted_galleries
+        self.assertEqual(rematch_result_1, gallery_wanted_lists[incoming_gallery1.gid])
+        self.assertEqual(rematch_result_4, gallery_wanted_lists[incoming_gallery4.gid])
+        self.assertEqual(rematch_result_5, gallery_wanted_lists[incoming_gallery5.gid])

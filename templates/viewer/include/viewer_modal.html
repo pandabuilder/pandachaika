@@ -1,0 +1,22 @@
+<script>
+  $(document).on("click", ".open-modal", function (e) {
+    e.preventDefault();
+    var $popup = $("#popup");
+    var popup_url = $(this).data("popup-url");
+    $(".modal-body", $popup).load(popup_url, function () {
+      $popup.modal("show");
+    });
+  });
+</script>
+
+<div id="popup" class="modal fade" role="dialog">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content modal-background">
+      <div class="modal-body"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-info" data-dismiss="modal">Close
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,9 +1,29 @@
-<form action="" method="POST" enctype="multipart/form-data">
+<form id="archive-upload" hx-encoding='multipart/form-data' hx-post='' hx-target="#messages-slot">
   {% csrf_token %}
   <div id="add-change-archive-form" class="page-line">
     <table class="table">
       {{ edit_form }}
     </table>
+        <div class="page-line">
+            <div class="progress">
+                <div id="progress-upload-archive" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%" aria-valuenow="25" aria-valuemin="0" aria-valuemax="100"></div>
+            </div>
+        </div>
     <button type="submit" name="submit-archive" value="Submit" class="btn btn-light mr-sm-1">Submit</button>
   </div>
 </form>
+<script>
+    htmx.on('#archive-upload', 'htmx:xhr:progress', function(evt) {
+      const next_value = evt.detail.loaded/evt.detail.total * 100;
+      const progressBar = htmx.find('#progress-upload-archive');
+      progressBar.style.width = next_value + "%";
+      progressBar.innerHTML = parseInt(next_value) + "%";
+      progressBar.setAttribute('aria-valuenow', next_value);
+    });
+    htmx.on('#archive-upload', 'htmx:xhr:abort', function(evt) {
+      const progressBar = htmx.find('#progress-upload-archive');
+      progressBar.style.width = "0%";
+      progressBar.innerHTML = "0%";
+      progressBar.setAttribute('aria-valuenow', 0);
+    });
+</script>

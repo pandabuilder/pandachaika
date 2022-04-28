@@ -53,7 +53,7 @@ class BaseParser:
             self.own_settings = None
         self.general_utils = utilities.GeneralUtils(self.settings)
         self.downloaders: list[tuple['BaseDownloader', int]] = self.settings.provider_context.get_downloaders(self.settings, self.general_utils, filter_name=self.name)
-        self.last_used_downloader: str = 'none'
+        self.last_used_downloader: Optional['BaseDownloader'] = None
         self.time_taken_wanted: float = 0
         self.archive_callback: Optional[Callable[[Optional['Archive'], Optional[str], str], None]] = None
         self.gallery_callback: Optional[Callable[[Optional['Gallery'], Optional[str], str], None]] = None
@@ -164,7 +164,9 @@ class BaseParser:
             q_objects = Q()
             q_objects_unwanted = Q()
             q_objects_regexp = Q()
+            q_objects_regexp_icase = Q()
             q_objects_unwanted_regexp = Q()
+            q_objects_unwanted_regexp_icase = Q()
             if gallery.title:
                 wanted_filters = wanted_filters.annotate(g_title=Value(gallery.title, output_field=CharField()))
 
@@ -172,7 +174,9 @@ class BaseParser:
                 q_objects_unwanted.add(~Q(g_title__ss=Concat(Value('%'), Replace(F('unwanted_title'), Value(' '), Value('%')), Value('%'))), Q.AND)
 
                 q_objects_regexp.add(Q(g_title__regex=F('search_title')), Q.OR)
+                q_objects_regexp_icase.add(Q(g_title__iregex=F('search_title')), Q.OR)
                 q_objects_unwanted_regexp.add(~Q(g_title__regex=F('unwanted_title')), Q.AND)
+                q_objects_unwanted_regexp_icase.add(~Q(g_title__iregex=F('unwanted_title')), Q.AND)
 
             if gallery.title_jpn:
                 wanted_filters = wanted_filters.annotate(g_title_jpn=Value(gallery.title_jpn, output_field=CharField()))
@@ -180,18 +184,22 @@ class BaseParser:
                 q_objects_unwanted.add(~Q(g_title_jpn__ss=Concat(Value('%'), Replace(F('unwanted_title'), Value(' '), Value('%')), Value('%'))), Q.AND)
 
                 q_objects_regexp.add(Q(g_title_jpn__regex=F('search_title')), Q.OR)
+                q_objects_regexp_icase.add(Q(g_title_jpn__iregex=F('search_title')), Q.OR)
                 q_objects_unwanted_regexp.add(~Q(g_title_jpn__regex=F('unwanted_title')), Q.AND)
+                q_objects_unwanted_regexp_icase.add(~Q(g_title_jpn__iregex=F('unwanted_title')), Q.AND)
 
             filtered_wanted: QuerySet[WantedGallery] = wanted_filters.filter(
                 Q(search_title__isnull=True)
                 | Q(search_title='')
                 | Q(Q(regexp_search_title=False), q_objects)
-                | Q(Q(regexp_search_title=True), q_objects_regexp)
+                | Q(Q(regexp_search_title=True, regexp_search_title_icase=False), q_objects_regexp)
+                | Q(Q(regexp_search_title=True, regexp_search_title_icase=True), q_objects_unwanted_regexp_icase)
             ).filter(
                 Q(unwanted_title__isnull=True)
                 | Q(unwanted_title='')
                 | Q(Q(regexp_unwanted_title=False), q_objects_unwanted)
-                | Q(Q(regexp_unwanted_title=True), q_objects_unwanted_regexp)
+                | Q(Q(regexp_unwanted_title=True, regexp_unwanted_title_icase=False), q_objects_unwanted_regexp)
+                | Q(Q(regexp_unwanted_title=True, regexp_unwanted_title_icase=True), q_objects_unwanted_regexp_icase)
             )
 
         else:
@@ -239,6 +247,15 @@ class BaseParser:
             if bool(wanted_filter.wanted_tags.all()):
                 if not set(wanted_filter.wanted_tags_list()).issubset(set(gallery.tags)):
                     accepted = False
+                # Review based on 'accept if none' scope.
+                if not accepted and wanted_filter.wanted_tags_accept_if_none_scope:
+                    missing_tags = set(wanted_filter.wanted_tags_list()).difference(set(gallery.tags))
+                    # If all the missing tags start with the parameter,
+                    # and no other tag is in gallery with this parameter, mark as accepted
+                    scope_formatted = wanted_filter.wanted_tags_accept_if_none_scope + ":"
+                    if all(x.startswith(scope_formatted) for x in missing_tags)\
+                            and not any(x.startswith(scope_formatted) for x in gallery.tags):
+                        accepted = True
                 # Do not accept galleries that have more than 1 tag in the same wanted tag scope.
                 if accepted & wanted_filter.wanted_tags_exclusive_scope:
                     accepted_tags = set(wanted_filter.wanted_tags_list()).intersection(set(gallery.tags))
@@ -255,31 +272,26 @@ class BaseParser:
                     for scope, count in scope_count.items():
                         if count > 1:
                             accepted = False
-                # Review based on 'accept if none' scope.
-                if not accepted and wanted_filter.wanted_tags_accept_if_none_scope:
-                    missing_tags = set(wanted_filter.wanted_tags_list()).difference(set(gallery.tags))
-                    # If all the missing tags start with the parameter,
-                    # and no other tag is in gallery with this parameter, mark as accepted
-                    scope_formatted = wanted_filter.wanted_tags_accept_if_none_scope + ":"
-                    if all(x.startswith(scope_formatted) for x in missing_tags)\
-                            and not any(x.startswith(scope_formatted) for x in gallery.tags):
-                        accepted = True
-            if accepted & bool(wanted_filter.unwanted_tags.all()):
-                if any(item in gallery.tags for item in wanted_filter.unwanted_tags_list()):
-                    accepted = False
-            if accepted and wanted_filter.wanted_page_count_lower and gallery.filecount is not None and gallery.filecount:
-                accepted = int(gallery.filecount) >= wanted_filter.wanted_page_count_lower
-            if accepted and wanted_filter.wanted_page_count_upper and gallery.filecount is not None and gallery.filecount:
-                accepted = int(gallery.filecount) <= wanted_filter.wanted_page_count_upper
-            if accepted and wanted_filter.category and gallery.category is not None and gallery.category:
-                accepted = (wanted_filter.category.lower() == gallery.category.lower())
+                    if not accepted:
+                        continue
 
-            if accepted:
-                gallery_wanted_lists[gallery.gid].append(wanted_filter)
-                # wanted_filter.found = True
-                # wanted_filter.date_found = django_tz.now()
-                # We don't save here since we're using bulk_update
-                # wanted_filter.save()
+            if not accepted:
+                continue
+
+            if bool(wanted_filter.unwanted_tags.all()):
+                if any(item in gallery.tags for item in wanted_filter.unwanted_tags_list()):
+                    continue
+            if wanted_filter.wanted_page_count_lower and gallery.filecount is not None and gallery.filecount:
+                if not int(gallery.filecount) >= wanted_filter.wanted_page_count_lower:
+                    continue
+            if wanted_filter.wanted_page_count_upper and gallery.filecount is not None and gallery.filecount:
+                if not int(gallery.filecount) <= wanted_filter.wanted_page_count_upper:
+                    continue
+            if wanted_filter.category and gallery.category is not None and gallery.category:
+                if not (wanted_filter.category.lower() == gallery.category.lower()):
+                    continue
+
+            gallery_wanted_lists[gallery.gid].append(wanted_filter)
 
         if len(gallery_wanted_lists[gallery.gid]) > 0:
             self.settings.wanted_gallery_model.objects.filter(id__in=[x.pk for x in gallery_wanted_lists[gallery.gid]]).update(
@@ -333,7 +345,7 @@ class BaseParser:
     def get_feed_urls(self) -> list[str]:
         pass
 
-    def crawl_feed(self, feed_url: str = '') -> typing.Union[list[typing.Any]]:
+    def crawl_feed(self, feed_url: str = '') -> list[typing.Any]:
         pass
 
     def feed_urls_implemented(self) -> bool:
@@ -360,7 +372,7 @@ class BaseParser:
     ) -> None:
         pass
 
-    def pass_gallery_data_to_downloaders(self, gallery_data_list: list[GalleryData], gallery_wanted_lists: dict[str, list['WantedGallery']]):
+    def pass_gallery_data_to_downloaders(self, gallery_data_list: list[GalleryData], gallery_wanted_lists: dict[str, list['WantedGallery']], force_provider: bool = False):
         gallery_count = len(gallery_data_list)
 
         if self.time_taken_wanted:
@@ -381,17 +393,22 @@ class BaseParser:
             logger.info(downloaders_msg)
 
         for i, gallery in enumerate(gallery_data_list, start=1):
-            if not self.last_used_downloader.endswith('info') and not self.last_used_downloader.endswith('none'):
-                if self.own_settings:
+            if self.last_used_downloader is not None and not self.last_used_downloader.type != 'info':
+                # We can't assume that every parser has its own downloader,
+                # could be from another provider, so we can't directly use self.own_settings
+                last_used_provider = self.last_used_downloader.provider
+                if last_used_provider in self.settings.providers:
+                    time.sleep(self.settings.providers[last_used_provider].wait_timer)
+                elif self.own_settings:
                     time.sleep(self.own_settings.wait_timer)
                 else:
                     time.sleep(self.settings.wait_timer)
             logger.info("Working with gallery {} of {}".format(i, gallery_count))
             if self.settings.add_as_public:
                 gallery.public = True
-            self.work_gallery_data(gallery, gallery_wanted_lists)
+            self.work_gallery_data(gallery, gallery_wanted_lists, force_provider)
 
-    def work_gallery_data(self, gallery: GalleryData, gallery_wanted_lists: dict[str, list['WantedGallery']]) -> None:
+    def work_gallery_data(self, gallery: GalleryData, gallery_wanted_lists: dict[str, list['WantedGallery']], force_provider: bool = False) -> None:
 
         if not self.settings.found_gallery_model:
             logger.error("FoundGallery model has not been initiated.")
@@ -412,6 +429,15 @@ class BaseParser:
             for downloader in to_use_downloaders:
                 downloaders_msg += " ({}, {})".format(downloader[0], downloader[1])
             logger.info(downloaders_msg)
+        elif force_provider:
+            to_use_downloaders = self.settings.provider_context.get_downloaders(
+                self.settings, self.general_utils,
+                filter_name=gallery.provider
+            )
+            downloaders_msg = 'Forcing downloaders to Gallery provider: {}. Downloaders (name, priority):'.format(gallery.provider)
+            for downloader in to_use_downloaders:
+                downloaders_msg += " ({}, {})".format(downloader[0], downloader[1])
+            logger.info(downloaders_msg)
         else:
             to_use_downloaders = self.downloaders
 
@@ -425,7 +451,7 @@ class BaseParser:
                         downloader[0].gallery_db_entry.hidden = True
                         downloader[0].gallery_db_entry.simple_save()
 
-                self.last_used_downloader = str(downloader[0])
+                self.last_used_downloader = downloader[0]
                 if not downloader[0].archive_only:
                     for wanted_gallery in gallery_wanted_lists[gallery.gid]:
                         self.settings.found_gallery_model.objects.get_or_create(
@@ -495,6 +521,13 @@ class BaseParser:
                             ]
                             gallery_urls.append("--stop-nested")
 
+                            logger.info(
+                                "Gallery: {} contains galleries: {}, adding to queue".format(
+                                    downloader[0].gallery_db_entry.get_absolute_url(),
+                                    gallery_urls
+                                )
+                            )
+
                             self.settings.workers.web_queue.enqueue_args_list(gallery_urls)
 
                         if gallery.magazine_chapters_gids:
@@ -508,19 +541,38 @@ class BaseParser:
                             ]
                             gallery_urls.append("--stop-nested")
 
+                            logger.info(
+                                "Gallery: {} is a magazine and contains galleries: {}, adding to queue".format(
+                                    downloader[0].gallery_db_entry.get_absolute_url(),
+                                    gallery_urls
+                                )
+                            )
+
                             self.settings.workers.web_queue.enqueue_args_list(gallery_urls)
 
                         if gallery.magazine_gid and not self.settings.gallery_model.objects.filter(gid=gallery.magazine_gid, provider=gallery.provider):
                             gallery_url = self.settings.gallery_model(gid=gallery.magazine_gid, provider=gallery.provider).get_link()
+                            logger.info(
+                                "Gallery: {} is in magazine: {}, adding to queue".format(
+                                    downloader[0].gallery_db_entry.get_absolute_url(),
+                                    gallery_url
+                                )
+                            )
                             self.settings.workers.web_queue.enqueue_args_list([gallery_url, "--stop-nested"])
 
                         if gallery.gallery_container_gid and not self.settings.gallery_model.objects.filter(gid=gallery.gallery_container_gid, provider=gallery.provider):
                             gallery_url = self.settings.gallery_model(gid=gallery.gallery_container_gid, provider=gallery.provider).get_link()
+                            logger.info(
+                                "Gallery: {} is contained in: {}, adding to queue".format(
+                                    downloader[0].gallery_db_entry.get_absolute_url(),
+                                    gallery_url
+                                )
+                            )
                             self.settings.workers.web_queue.enqueue_args_list([gallery_url, "--stop-nested"])
 
                 return
             elif downloader[0].return_code == 0 and (cnt + 1) == len(to_use_downloaders):
-                self.last_used_downloader = 'none'
+                self.last_used_downloader = None
                 if not downloader[0].archive_only:
                     downloader[0].original_gallery = gallery
                     downloader[0].original_gallery.dl_type = 'failed'

@@ -22,7 +22,7 @@
         {% if user.is_staff %}
           <span>
             <a
-              class="open-archive"
+              class="open-modal"
               href="{% url 'viewer:archive-delete' archive.pk %}"
               data-popup-url="{% url 'viewer:archive-delete' archive.pk %}"
               >delete
@@ -481,6 +481,6 @@
     <script type="text/javascript" src="{% static 'js/vendor/keys.min.js' %}"></script>
     <script type="text/javascript" src="{% static 'js/archnav.js' %}"></script>
     <script type="text/javascript" src="{% static 'js/admin.js' %}"></script>
-    {% include "viewer/include/archive_modal.html" %}
+    {% include "viewer/include/viewer_modal.html" %}
   {% endif %}
 {% endblock %}

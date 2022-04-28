@@ -608,8 +608,8 @@ class WantedGalleryCreateOrEditForm(ModelForm):
     class Meta:
         model = WantedGallery
         fields = [
-            'title', 'title_jpn', 'search_title', 'regexp_search_title',
-            'unwanted_title', 'regexp_unwanted_title',
+            'title', 'title_jpn', 'search_title', 'regexp_search_title', 'regexp_search_title_icase',
+            'unwanted_title', 'regexp_unwanted_title', 'regexp_unwanted_title_icase',
             'wanted_tags', 'unwanted_tags', 'wanted_providers', 'unwanted_providers',
             'wanted_tags_exclusive_scope', 'exclusive_scope_name', 'wanted_tags_accept_if_none_scope', 'category',
             'wanted_page_count_lower', 'wanted_page_count_upper', 'add_to_archive_group',
@@ -621,8 +621,10 @@ class WantedGalleryCreateOrEditForm(ModelForm):
             'title_jpn': 'Informative only',
             'search_title': 'Text in Gallery title to match',
             'regexp_search_title': 'Use Search Title as a regexp match',
+            'regexp_search_title_icase': 'Case-insensitive use of regexp Search Title',
             'unwanted_title': 'Text in Gallery title to exclude',
             'regexp_unwanted_title': 'Use Unwanted Title as a regexp match',
+            'regexp_unwanted_title_icase': 'ase-insensitive use of regexp Unwanted Title',
             'wanted_tags': 'Tags in Gallery that must exist (AND logic)',
             'unwanted_tags': 'Tags in Gallery that must not exist (OR logic)',
             'wanted_tags_exclusive_scope': 'Do not accept Galleries that have '
@@ -651,8 +653,10 @@ class WantedGalleryCreateOrEditForm(ModelForm):
             'title_jpn': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'search_title': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'regexp_search_title': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
+            'regexp_search_title_icase': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
             'unwanted_title': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'regexp_unwanted_title': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
+            'regexp_unwanted_title_icase': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
             'wanted_tags': autocomplete.ModelSelect2Multiple(
                 url='tag-pk-autocomplete',
                 attrs={'data-placeholder': 'Tag name', 'class': 'form-control'}

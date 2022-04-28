@@ -26,6 +26,9 @@ if es_client:
     from elasticsearch_dsl import Search, Q
 
 
+ES_SKIP_FIELDS = ('page', 'q', 'order', 'sort', 'metrics', 'show_url', 'count', 'no_agg')
+
+
 class ESHomePageView(TemplateView):
 
     template_name = "viewer/elasticsearch.html"
@@ -223,7 +226,7 @@ class ESHomePageView(TemplateView):
         else:
             s = s.query('match_all')
         for field_name in req_dict.keys():
-            if field_name in ('page', 'q', 'order', 'sort', 'metrics', 'show_url', 'count'):
+            if field_name in ES_SKIP_FIELDS:
                 continue
             if '__' in field_name:
                 filter_field_name = field_name.replace('__', '.')
@@ -474,11 +477,12 @@ class ESArchiveJSONView(View):
 
         s = self.gen_es_query(self.request, s)
 
-        for bucket_name, field, size in self.aggs_bucket_fields:
-            s.aggs.bucket(bucket_name, 'terms', field=field, size=size)
-        # s.aggs.bucket('tags__full', 'terms', field='tags.full', size=100)
-        # s.aggs.bucket('source_type', 'terms', field='source_type', size=20)
-        # s.aggs.bucket('reason', 'terms', field='reason', size=20)
+        if 'no_agg' not in self.request.GET:
+            for bucket_name, field, size in self.aggs_bucket_fields:
+                s.aggs.bucket(bucket_name, 'terms', field=field, size=size)
+            # s.aggs.bucket('tags__full', 'terms', field='tags.full', size=100)
+            # s.aggs.bucket('source_type', 'terms', field='source_type', size=20)
+            # s.aggs.bucket('reason', 'terms', field='reason', size=20)
 
         if 'metrics' in self.request.GET:
             s.aggs.metric('avg_size', 'avg', field='size')
@@ -541,10 +545,11 @@ class ESArchiveJSONView(View):
                 'to': es_pagination['search']['from'] + len(context['hits'])
             }
 
-            context['aggregations'] = self.prepare_facet_data(
-                search_result.aggregations,
-                self.request.GET
-            )
+            if 'no_agg' not in self.request.GET:
+                context['aggregations'] = self.prepare_facet_data(
+                    search_result.aggregations,
+                    self.request.GET
+                )
             context['paginator'] = es_pagination
 
         context['q'] = self.request.GET.get("q", '')
@@ -625,7 +630,7 @@ class ESArchiveJSONView(View):
         else:
             s = s.query('match_all')
         for field_name in req_dict.keys():
-            if field_name in ('page', 'q', 'order', 'sort', 'metrics', 'show_url', 'count'):
+            if field_name in ('page', 'q', 'order', 'sort', 'metrics', 'show_url', 'count', 'no_agg'):
                 continue
             if '__' in field_name:
                 filter_field_name = field_name.replace('__', '.')

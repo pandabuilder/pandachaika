@@ -19,7 +19,16 @@
         {% if user.is_staff %}<a href="{% url 'admin:viewer_gallery_change' gallery.pk %}">admin</a>{% endif %}
         {% if user.is_staff %}<a href="{% url 'viewer:gallery-tool' gallery.pk 'toggle-hidden' %}">toggle hidden</a>{% endif %}
         {% if perms.viewer.publish_gallery %}<a href="{% url 'viewer:gallery-tool' gallery.pk 'toggle-public' %}">toggle public</a>{% endif %}
-        {% if perms.viewer.mark_delete_gallery %}<a href="{% url 'viewer:gallery-tool' gallery.pk 'mark-deleted' %}">mark deleted</a>{% endif %}
+        {% if perms.viewer.mark_delete_gallery %}
+          <span>
+            <a
+              class="open-modal"
+              href="{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-deleted' %}"
+              data-popup-url="{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-deleted' %}"
+              >mark deleted
+            </a>
+          </span>
+        {% endif %}
         {% if perms.viewer.update_metadata %}<a href="{% url 'viewer:gallery-tool' gallery.pk 'recall-api' %}">recall api</a>{% endif %}
         {% if perms.viewer.update_metadata %}<a href="{% url 'viewer:gallery-tool' gallery.pk 'refetch-thumbnail' %}">refetch thumbnail</a>{% endif %}
         {% if perms.viewer.download_gallery %}<a href="{% url 'viewer:gallery-tool' gallery.pk 'download' %}">default download</a>{% endif %}
@@ -209,7 +218,10 @@
       </li>
     {% endif %}
   </ul>
+{% endblock %}
+{% block afterJQ %}
   {% if user.is_staff %}
     <script type="text/javascript" src="{% static 'js/admin.js' %}"></script>
+    {% include "viewer/include/viewer_modal.html" %}
   {% endif %}
 {% endblock %}

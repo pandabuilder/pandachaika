@@ -14,7 +14,7 @@ from core.base.types import DataDict, ProviderSettings
 from core.workers.holder import WorkerContext
 
 if typing.TYPE_CHECKING:
-    from viewer.models import Gallery, Archive, WantedGallery, FoundGallery
+    from viewer.models import Gallery, Archive, WantedGallery, FoundGallery, ArchiveManageEntry
     from django.contrib.auth.models import User
 
 
@@ -123,7 +123,7 @@ class ElasticSearchSettings:
     __slots__ = [
         'enable', 'url', 'max_result_window', 'auto_refresh',
         'index_name', 'auto_refresh_gallery', 'gallery_index_name',
-        'only_index_public'
+        'only_index_public', 'timeout'
     ]
 
     def __init__(self) -> None:
@@ -135,6 +135,7 @@ class ElasticSearchSettings:
         self.index_name: str = 'viewer'
         self.gallery_index_name: str = 'viewer_gallery'
         self.only_index_public: bool = False
+        self.timeout: int = 20
 
 
 class WebServerSettings:
@@ -187,6 +188,7 @@ class Settings:
     archive_model: Optional['typing.Type[Archive]'] = None
     found_gallery_model: Optional['typing.Type[FoundGallery]'] = None
     wanted_gallery_model: Optional['typing.Type[WantedGallery]'] = None
+    archive_manage_entry_model: Optional['typing.Type[ArchiveManageEntry]'] = None
 
     def __init__(self, load_from_disk: bool = False,
                  default_dir: str = None,
@@ -208,6 +210,7 @@ class Settings:
         self.replace_metadata = False
         self.redownload = False
         self.auto_download_nested = False
+        self.recheck_wanted_on_update = False
 
         self.MEDIA_ROOT = ''
         self.django_secret_key = ''
@@ -383,11 +386,13 @@ class Settings:
     @classmethod
     def set_models(cls, gallery_model: 'typing.Type[Gallery]',
                    archive_model: 'typing.Type[Archive]', found_gallery_model: 'typing.Type[FoundGallery]',
-                   wanted_gallery_model: 'typing.Type[WantedGallery]'):
+                   wanted_gallery_model: 'typing.Type[WantedGallery]',
+                   archive_manage_entry_model: 'typing.Type[ArchiveManageEntry]'):
         cls.gallery_model = gallery_model
         cls.archive_model = archive_model
         cls.found_gallery_model = found_gallery_model
         cls.wanted_gallery_model = wanted_gallery_model
+        cls.archive_manage_entry_model = archive_manage_entry_model
 
     def dict_to_settings(self, config: configparser.ConfigParser) -> None:
 
@@ -439,6 +444,8 @@ class Settings:
                 self.mark_similar_new_archives = config['general'].getboolean('mark_similar_new_archives')
             if 'auto_hash_images' in config['general']:
                 self.auto_hash_images = config['general'].getboolean('auto_hash_images')
+            if 'recheck_wanted_on_update' in config['general']:
+                self.recheck_wanted_on_update = config['general'].getboolean('recheck_wanted_on_update')
         if 'experimental' in config:
             self.experimental.update(config['experimental'])
         if 'matchers' in config:
@@ -504,6 +511,8 @@ class Settings:
                 self.elasticsearch.gallery_index_name = config['elasticsearch']['gallery_index_name']
             if 'only_index_public' in config['elasticsearch']:
                 self.elasticsearch.only_index_public = config['elasticsearch'].getboolean('only_index_public')
+            if 'timeout' in config['elasticsearch']:
+                self.elasticsearch.timeout = int(config['elasticsearch']['timeout'])
         if 'gallery_dl' in config:
             if 'executable_name' in config['gallery_dl']:
                 self.gallery_dl.executable_name = config['gallery_dl']['executable_name']

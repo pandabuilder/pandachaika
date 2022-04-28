@@ -17,7 +17,7 @@ from django.shortcuts import render
 from django.urls import reverse
 
 from core.base.setup import Settings
-from core.base.utilities import thread_exists, clamp
+from core.base.utilities import thread_exists, clamp, get_schedulers_status
 from viewer.utils.functions import archive_manage_results_to_json
 from viewer.utils.matching import generate_possible_matches_for_archives
 from viewer.utils.actions import event_log
@@ -1029,7 +1029,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                 return render_error(request, "Local matching worker is already running.")
             provider = p['create_possible_matches']
             try:
-                cutoff = clamp(float(p.get('cutoff', '0.4')), 0.0, 0.4)
+                cutoff = clamp(float(p.get('cutoff', '0.4')), 0.0, 1.0)
             except ValueError:
                 cutoff = 0.4
             try:
@@ -1301,8 +1301,10 @@ def upload_archive(request: HttpRequest) -> HttpResponse:
         else:
             messages.error(request, 'The provided data is not valid', extra_tags='danger')
             # return HttpResponseRedirect(request.META["HTTP_REFERER"])
-    else:
 
+        return render(request, "viewer/include/messages.html")
+
+    else:
         if 'gallery' in request.GET:
             try:
                 gallery_id = int(request.GET['gallery'])
@@ -2010,8 +2012,13 @@ def monitored_links(request: HttpRequest) -> HttpResponse:
     except (InvalidPage, EmptyPage):
         results_page = paginator.page(paginator.num_pages)
 
+    schedulers_list = get_schedulers_status(crawler_settings.workers.timed_link_monitors)
+
+    schedulers = {int(x[0].replace("link_monitor_", "")): x for x in schedulers_list}
+
     d = {
         'results': results_page,
         'title': 'Monitored Links',
+        "schedulers": schedulers,
     }
     return render(request, "viewer/collaborators/monitored_links.html", d)

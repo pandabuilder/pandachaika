@@ -75,41 +75,44 @@ class PostDownloader(object):
                         "For archive: {}, File check on downloaded zipfile: {}. "
                         "Check the file manually.".format(archive, archive.zipped.path)
                     )
-            crc32 = calc_crc32(archive.zipped.path)
-            filesize, filecount = get_zip_fileinfo(archive.zipped.path)
-            values = {
-                'crc32': crc32,
-                'filesize': filesize,
-                'filecount': filecount,
-            }
-            updated_archive = Archive.objects.add_or_update_from_values(values, pk=archive.pk)
+            # crc32 = calc_crc32(archive.zipped.path)
+            # filesize, filecount = get_zip_fileinfo(archive.zipped.path)
+            # values = {
+            #     'crc32': crc32,
+            #     'filesize': filesize,
+            #     'filecount': filecount,
+            # }
+            # updated_archive = Archive.objects.add_or_update_from_values(values, pk=archive.pk)
+
+            archive.recalc_fileinfo()
+            archive.save()
 
             if self.settings.mark_similar_new_archives:
-                updated_archive.create_marks_for_similar_archives()
+                archive.create_marks_for_similar_archives()
 
-            if updated_archive.gallery and updated_archive.filesize != updated_archive.gallery.filesize:
+            if archive.gallery and archive.filesize != archive.gallery.filesize:
                 mark_comment = """Torrent downloaded is not the same file as the gallery reports \
                 (different filesize or filecount). This file must be replaced if the correct one \
                 is found.\n\nDo not publish until then.
                 """
                 manager_entry, _ = ArchiveManageEntry.objects.update_or_create(
-                    archive=updated_archive,
+                    archive=archive,
                     mark_reason="wrong_file",
                     defaults={
                         'mark_comment': mark_comment, 'mark_priority': 4.3, 'mark_check': True,
                         'origin': ArchiveManageEntry.ORIGIN_SYSTEM
                     },
                 )
-                if Archive.objects.filter(gallery=updated_archive.gallery, filesize=updated_archive.gallery.filesize):
+                if Archive.objects.filter(gallery=archive.gallery, filesize=archive.gallery.filesize):
                     logger.info(
                         "For archive: {} size does not match gallery, "
-                        "but there's already another archive that matches.".format(updated_archive)
+                        "but there's already another archive that matches.".format(archive)
                     )
                     return
                 if archive.source_type and 'panda' in archive.source_type:
                     logger.info(
                         "For archive: {} size does not match gallery, "
-                        "downloading again from panda_archive.".format(updated_archive)
+                        "downloading again from panda_archive.".format(archive)
                     )
                     if self.web_queue:
                         temp_settings = Settings(load_from_config=self.settings.config)
@@ -117,7 +120,7 @@ class PostDownloader(object):
                         if archive.reason:
                             temp_settings.archive_reason = archive.reason
                         self.web_queue.enqueue_args_list(
-                            (updated_archive.gallery.get_link(), ),
+                            (archive.gallery.get_link(), ),
                             override_options=temp_settings
                         )
                 else:
@@ -482,16 +485,16 @@ class PostDownloader(object):
                     else:
                         cleaned_torrent_name = os.path.splitext(os.path.basename(archive.zipped.path))[0]
                     if replace_illegal_name(os.path.splitext(filename)[0]) == cleaned_torrent_name:
-                        files_matched_torrent.append([filename, not os.path.isfile(
-                            os.path.join(self.settings.torrent['download_dir'], filename)), archive])
+                        files_matched_torrent.append((filename, not os.path.isfile(
+                            os.path.join(self.settings.torrent['download_dir'], filename)), archive))
 
-            for matched_file in files_matched_torrent:
-                target = os.path.join(self.settings.torrent['download_dir'], matched_file[0])
-                if matched_file[1]:
+            for matched_name, matched_bool, matched_archive in files_matched_torrent:
+                target = os.path.join(self.settings.torrent['download_dir'], matched_name)
+                if matched_bool:
                     logger.info(
                         "For archive: {archive}, creating zip for folder: {filename}".format(
-                            archive=matched_file[2],
-                            filename=matched_file[0],
+                            archive=matched_archive,
+                            filename=matched_name,
                         ))
                     dir_path = mkdtemp()
                     for img_file in os.listdir(target):
@@ -506,7 +509,7 @@ class PostDownloader(object):
                         else:
                             shutil.copy(os.path.join(target, img_file), os.path.join(dir_path, img_file))
 
-                    with ZipFile(matched_file[2].zipped.path, 'w') as archive_file:
+                    with ZipFile(matched_archive.zipped.path, 'w') as archive_file:
                         for (root_path, _, file_names) in os.walk(dir_path):
                             for current_file in file_names:
                                 archive_file.write(
@@ -515,34 +518,34 @@ class PostDownloader(object):
                 else:
                     logger.info(
                         "For archive: {archive}, downloading file: {filename}".format(
-                            archive=matched_file[2],
-                            filename=matched_file[0],
+                            archive=matched_archive,
+                            filename=matched_name,
                         ))
                     if mode == 'local_move':
-                        shutil.move(target, matched_file[2].zipped.path)
+                        shutil.move(target, matched_archive.zipped.path)
                     elif mode == 'local_hardlink':
-                        os.link(target, matched_file[2].zipped.path)
+                        os.link(target, matched_archive.zipped.path)
                     else:
-                        shutil.copy(target, matched_file[2].zipped.path)
+                        shutil.copy(target, matched_archive.zipped.path)
                     if self.settings.convert_rar_to_zip:
-                        if os.path.splitext(matched_file[0])[1].lower() == ".rar":
+                        if os.path.splitext(matched_name)[1].lower() == ".rar":
                             logger.info(
                                 "For archive: {}, converting rar: {} to zip".format(
-                                    matched_file[2],
-                                    matched_file[2].zipped.path
+                                    matched_archive,
+                                    matched_archive.zipped.path
                                 )
                             )
-                            convert_rar_to_zip(matched_file[2].zipped.path)
-                        elif os.path.splitext(matched_file[0])[1].lower() == ".7z":
+                            convert_rar_to_zip(matched_archive.zipped.path)
+                        elif os.path.splitext(matched_name)[1].lower() == ".7z":
                             logger.info(
                                 "For archive: {}, converting 7z: {} to zip".format(
-                                    matched_file[2],
-                                    matched_file[2].zipped.path
+                                    matched_archive,
+                                    matched_archive.zipped.path
                                 )
                             )
-                            convert_7z_to_zip(matched_file[2].zipped.path)
+                            convert_7z_to_zip(matched_archive.zipped.path)
 
-                self.process_downloaded_archive(matched_file[2])
+                self.process_downloaded_archive(matched_archive)
 
     def transfer_all_missing(self, archives: Iterable[Archive] = None) -> None:
 

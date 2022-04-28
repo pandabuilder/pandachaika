@@ -623,7 +623,8 @@ class Gallery(models.Model):
                 'expunged': {'type': 'boolean'},
                 'uploader': {'type': 'keyword'},
                 'source_url': {'type': 'text', 'index': False},
-                'thumbnail': {'type': 'text', 'index': False}
+                'thumbnail': {'type': 'text', 'index': False},
+                'source_thumbnail': {'type': 'text', 'index': False}
             }
         }
         verbose_name_plural = "galleries"
@@ -724,6 +725,12 @@ class Gallery(models.Model):
     def get_es_thumbnail(self) -> typing.Optional[str]:
         if self.thumbnail:
             return self.thumbnail.url
+        else:
+            return None
+
+    def get_es_source_thumbnail(self) -> typing.Optional[str]:
+        if self.thumbnail_url:
+            return self.thumbnail_url
         else:
             return None
 
@@ -866,20 +873,26 @@ class Gallery(models.Model):
                     )
         self.fetch_thumbnail()
 
-    def fetch_thumbnail(self, force_redownload=False) -> bool:
+    def fetch_thumbnail(self, force_redownload: bool = False, force_provider: Optional[str] = None) -> bool:
         if self.thumbnail_url and (not self.thumbnail or force_redownload):
             request_dict = {
                 'stream': True,
                 'headers': settings.CRAWLER_SETTINGS.requests_headers,
                 'timeout': settings.CRAWLER_SETTINGS.timeout_timer,
             }
+
+            if force_provider:
+                provider_to_use = force_provider
+            else:
+                provider_to_use = self.provider
+
             if self.provider in settings.CRAWLER_SETTINGS.providers:
-                if settings.CRAWLER_SETTINGS.providers[self.provider].cookies:
-                    request_dict['cookies'] = settings.CRAWLER_SETTINGS.providers[self.provider].cookies
-                if settings.CRAWLER_SETTINGS.providers[self.provider].proxies:
-                    request_dict['proxies'] = settings.CRAWLER_SETTINGS.providers[self.provider].proxies
-                if settings.CRAWLER_SETTINGS.providers[self.provider].timeout_timer:
-                    request_dict['timeout'] = settings.CRAWLER_SETTINGS.providers[self.provider].timeout_timer
+                if settings.CRAWLER_SETTINGS.providers[provider_to_use].cookies:
+                    request_dict['cookies'] = settings.CRAWLER_SETTINGS.providers[provider_to_use].cookies
+                if settings.CRAWLER_SETTINGS.providers[provider_to_use].proxies:
+                    request_dict['proxies'] = settings.CRAWLER_SETTINGS.providers[provider_to_use].proxies
+                if settings.CRAWLER_SETTINGS.providers[provider_to_use].timeout_timer:
+                    request_dict['timeout'] = settings.CRAWLER_SETTINGS.providers[provider_to_use].timeout_timer
             response = request_with_retries(
                 self.thumbnail_url,
                 request_dict,
@@ -985,7 +998,9 @@ class Gallery(models.Model):
             q_objects = Q()
             q_objects_unwanted = Q()
             q_objects_regexp = Q()
+            q_objects_regexp_icase = Q()
             q_objects_unwanted_regexp = Q()
+            q_objects_unwanted_regexp_icase = Q()
             if self.title:
                 wanted_filters = wanted_filters.annotate(g_title=Value(self.title, output_field=CharField()))
 
@@ -993,7 +1008,9 @@ class Gallery(models.Model):
                 q_objects_unwanted.add(~Q(g_title__ss=Concat(Value('%'), Replace(F('unwanted_title'), Value(' '), Value('%')), Value('%'))), Q.AND)
 
                 q_objects_regexp.add(Q(g_title__regex=F('search_title')), Q.OR)
+                q_objects_regexp_icase.add(Q(g_title__iregex=F('search_title')), Q.OR)
                 q_objects_unwanted_regexp.add(~Q(g_title__regex=F('unwanted_title')), Q.AND)
+                q_objects_unwanted_regexp_icase.add(~Q(g_title__iregex=F('unwanted_title')), Q.AND)
 
             if self.title_jpn:
                 wanted_filters = wanted_filters.annotate(g_title_jpn=Value(self.title_jpn, output_field=CharField()))
@@ -1001,18 +1018,22 @@ class Gallery(models.Model):
                 q_objects_unwanted.add(~Q(g_title_jpn__ss=Concat(Value('%'), Replace(F('unwanted_title'), Value(' '), Value('%')), Value('%'))), Q.AND)
 
                 q_objects_regexp.add(Q(g_title_jpn__regex=F('search_title')), Q.OR)
+                q_objects_regexp_icase.add(Q(g_title_jpn__iregex=F('search_title')), Q.OR)
                 q_objects_unwanted_regexp.add(~Q(g_title_jpn__regex=F('unwanted_title')), Q.AND)
+                q_objects_unwanted_regexp_icase.add(~Q(g_title_jpn__iregex=F('unwanted_title')), Q.AND)
 
             filtered_wanted = wanted_filters.filter(
                 Q(search_title__isnull=True)
                 | Q(search_title='')
                 | Q(Q(regexp_search_title=False), q_objects)
-                | Q(Q(regexp_search_title=True), q_objects_regexp)
+                | Q(Q(regexp_search_title=True, regexp_search_title_icase=False), q_objects_regexp)
+                | Q(Q(regexp_search_title=True, regexp_search_title_icase=True), q_objects_unwanted_regexp_icase)
             ).filter(
                 Q(unwanted_title__isnull=True)
                 | Q(unwanted_title='')
                 | Q(Q(regexp_unwanted_title=False), q_objects_unwanted)
-                | Q(Q(regexp_unwanted_title=True), q_objects_unwanted_regexp)
+                | Q(Q(regexp_unwanted_title=True, regexp_unwanted_title_icase=False), q_objects_unwanted_regexp)
+                | Q(Q(regexp_unwanted_title=True, regexp_unwanted_title_icase=True), q_objects_unwanted_regexp_icase)
             )
 
         else:
@@ -1032,7 +1053,6 @@ class Gallery(models.Model):
                 Q(wanted_page_count_lower=0) | Q(wanted_page_count_lower__lt=self.filecount))
 
         if self.provider:
-            filtered_wanted = filtered_wanted.filter(Q(provider='') | Q(provider__iexact=self.provider))
             filtered_wanted = filtered_wanted.filter(Q(wanted_providers=None) | Q(wanted_providers__slug=self.provider))
             filtered_wanted = filtered_wanted.filter(Q(unwanted_providers=None) | ~Q(unwanted_providers__slug=self.provider))
 
@@ -1049,6 +1069,15 @@ class Gallery(models.Model):
             if bool(wanted_filter.wanted_tags.all()):
                 if not set(wanted_filter.wanted_tags_list()).issubset(set(self.tag_list())):
                     accepted = False
+                # Review based on 'accept if none' scope.
+                if not accepted and wanted_filter.wanted_tags_accept_if_none_scope:
+                    missing_tags = set(wanted_filter.wanted_tags_list()).difference(set(self.tag_list()))
+                    # If all the missing tags start with the parameter,
+                    # and no other tag is in gallery with this parameter, mark as accepted
+                    scope_formatted = wanted_filter.wanted_tags_accept_if_none_scope + ":"
+                    if all(x.startswith(scope_formatted) for x in missing_tags)\
+                            and not any(x.startswith(scope_formatted) for x in self.tag_list()):
+                        accepted = True
                 # Do not accept galleries that have more than 1 tag in the same wanted tag scope.
                 if accepted & wanted_filter.wanted_tags_exclusive_scope:
                     accepted_tags = set(wanted_filter.wanted_tags_list()).intersection(set(self.tag_list()))
@@ -1065,21 +1094,17 @@ class Gallery(models.Model):
                     for scope, count in scope_count.items():
                         if count > 1:
                             accepted = False
-                # Review based on 'accept if none' scope.
-                if not accepted and wanted_filter.wanted_tags_accept_if_none_scope:
-                    missing_tags = set(wanted_filter.wanted_tags_list()).difference(set(self.tag_list()))
-                    # If all the missing tags start with the parameter,
-                    # and no other tag is in gallery with this parameter, mark as accepted
-                    scope_formatted = wanted_filter.wanted_tags_accept_if_none_scope + ":"
-                    if all(x.startswith(scope_formatted) for x in missing_tags)\
-                            and not any(x.startswith(scope_formatted) for x in self.tag_list()):
-                        accepted = True
-            if accepted & bool(wanted_filter.unwanted_tags.all()):
-                if any(item in self.tag_list() for item in wanted_filter.unwanted_tags_list()):
-                    accepted = False
+                    if not accepted:
+                        continue
 
-            if accepted:
-                found_wanted_galleries.append(wanted_filter)
+            if not accepted:
+                continue
+
+            if bool(wanted_filter.unwanted_tags.all()):
+                if any(item in self.tag_list() for item in wanted_filter.unwanted_tags_list()):
+                    continue
+
+            found_wanted_galleries.append(wanted_filter)
 
         return found_wanted_galleries
 
@@ -2556,11 +2581,11 @@ class Image(models.Model):
     def fetch_image_data(self, use_original_image=False) -> Optional[bytes]:
         if self.extracted:
             if use_original_image:
-                with self.thumbnail.open() as fp:
+                with self.image.open() as fp:
                     image_data = fp.read()
                     return image_data
             else:
-                with self.image.open() as fp:
+                with self.thumbnail.open() as fp:
                     image_data = fp.read()
                     return image_data
         else:
@@ -2778,8 +2803,10 @@ class WantedGallery(models.Model):
         'Reason', max_length=200, blank=True, null=True, default='backup')
     search_title = models.CharField(max_length=500, blank=True, default='')
     regexp_search_title = models.BooleanField('Regexp search title', blank=True, default=False)
+    regexp_search_title_icase = models.BooleanField('Regexp search title case-insensitive', blank=True, default=False)
     unwanted_title = models.CharField(max_length=500, blank=True, default='')
     regexp_unwanted_title = models.BooleanField('Regexp unwanted title', blank=True, default=False)
+    regexp_unwanted_title_icase = models.BooleanField('Regexp unwanted title case-insensitive', blank=True, default=False)
     wanted_page_count_lower = models.IntegerField(blank=True, default=0)
     wanted_page_count_upper = models.IntegerField(blank=True, default=0)
     wanted_tags = models.ManyToManyField(Tag, blank=True)
@@ -2894,14 +2921,24 @@ class WantedGallery(models.Model):
             q_objects_unwanted_title = Q()
             if self.search_title:
                 if self.regexp_search_title:
-                    q_objects_search_title.add(
-                        Q(title__regex=self.search_title),
-                        Q.OR
-                    )
-                    q_objects_search_title.add(
-                        Q(title_jpn__regex=self.search_title),
-                        Q.OR
-                    )
+                    if self.regexp_search_title_icase:
+                        q_objects_search_title.add(
+                            Q(title__iregex=self.search_title),
+                            Q.OR
+                        )
+                        q_objects_search_title.add(
+                            Q(title_jpn__iregex=self.search_title),
+                            Q.OR
+                        )
+                    else:
+                        q_objects_search_title.add(
+                            Q(title__regex=self.search_title),
+                            Q.OR
+                        )
+                        q_objects_search_title.add(
+                            Q(title_jpn__regex=self.search_title),
+                            Q.OR
+                        )
                 else:
                     q_formatted = '%' + self.search_title.replace(' ', '%') + '%'
                     q_objects_search_title.add(
@@ -2923,14 +2960,24 @@ class WantedGallery(models.Model):
 
             if self.unwanted_title:
                 if self.regexp_unwanted_title:
-                    q_objects_unwanted_title.add(
-                        ~Q(title__regex=self.unwanted_title),
-                        Q.AND
-                    )
-                    q_objects_unwanted_title.add(
-                        ~Q(title_jpn__regex=self.unwanted_title),
-                        Q.AND
-                    )
+                    if self.regexp_unwanted_title_icase:
+                        q_objects_unwanted_title.add(
+                            ~Q(title__iregex=self.unwanted_title),
+                            Q.AND
+                        )
+                        q_objects_unwanted_title.add(
+                            ~Q(title_jpn__iregex=self.unwanted_title),
+                            Q.AND
+                        )
+                    else:
+                        q_objects_unwanted_title.add(
+                            ~Q(title__regex=self.unwanted_title),
+                            Q.AND
+                        )
+                        q_objects_unwanted_title.add(
+                            ~Q(title_jpn__regex=self.unwanted_title),
+                            Q.AND
+                        )
                 else:
                     q_formatted = '%' + self.unwanted_title.replace(' ', '%') + '%'
                     q_objects_unwanted_title.add(

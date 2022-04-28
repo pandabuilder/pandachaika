@@ -2,7 +2,7 @@
 {% block title %}{{ title }} | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
 {% load static %}
-
+{% load dict_key %}
 {% block content %}
     {% if messages %}
         {% for message in messages %}
@@ -35,11 +35,12 @@
       <table class="table table-bordered table-sm generic-table">
         <thead>
         <tr>
-          <th>Name</th><th>URL</th><th>Enabled</th><th>Description</th><th>Provider</th><th title="Applies on paginated pages">Stop page</th><th>Frequency</th><th>Created on</th>
+          <th>Name</th><th>URL</th><th>Enabled</th><th>Description</th><th>Provider</th><th title="Applies on paginated pages">Stop page</th><th>Frequency</th><th>Created on</th><th>Last run</th><th>Next run</th><th>Next run in</th>
         </tr>
         </thead>
         <tbody>
         {% for monitored_link in results %}
+            {% with link_pk=monitored_link.pk %}
           <tr>
             <td>
               {{ monitored_link.name }}
@@ -65,7 +66,17 @@
             <td>
               {{ monitored_link.create_date|date:"y-m-d, H:i:s" }}
             </td>
+            <td>
+              {{ schedulers|dict_key:link_pk|dict_key:2|date:"y-m-d, H:i:s" }}
+            </td>
+            <td>
+              {{ schedulers|dict_key:link_pk|dict_key:4|date:"y-m-d, H:i:s" }}
+            </td>
+            <td>
+              {{ schedulers|dict_key:link_pk|dict_key:4|timeuntil }}
+            </td>
           </tr>
+            {% endwith %}
         {% endfor %}
         </tbody>
       </table>

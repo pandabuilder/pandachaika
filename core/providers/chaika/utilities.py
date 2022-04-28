@@ -26,5 +26,16 @@ class ChaikaGalleryData(GalleryData):
             archiver_key=archiver_key, root=root, filename=filename, queries=queries, thumbnail=thumbnail,
             **kwargs
         )
-        self.archives = archives
+        if archives is None:
+            self.archives = []
+        else:
+            self.archives = archives
         self.temp_archive = temp_archive
+
+    def to_gallery_data(self):
+
+        attributes = vars(self)
+
+        cleaned_attrs = {x: y for x, y in attributes.items() if x not in ['gid', 'provider']}
+
+        return GalleryData(self.gid, self.provider, **cleaned_attrs)

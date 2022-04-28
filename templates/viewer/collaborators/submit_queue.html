@@ -46,136 +46,165 @@
         <a class="btn btn-light" href="{% url 'viewer:submit-queue' %}">Clear</a>
       </div>
     </form>
-    <form action="{{ request.get_full_path }}" method="POST">{% csrf_token %}
-    <!-- Next/Prev page links  -->
-    {% if results.object_list and results.paginator.num_pages > 1 %}
-      <div>
-          <span class="step-links">
-              <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
-            {% if results.has_previous %}
-              <a href= "?{% url_replace 'page' results.previous_page_number %}"> previous &lt;&lt; </a>
-            {% endif %}
-            <span class="current">
-                  &nbsp;Page {{ results.number }} of {{ results.paginator.num_pages }}
-              </span>
-            {% if results.has_next %}
-              <a href="?{% url_replace 'page' results.next_page_number %}"> &gt;&gt; next</a>
-            {% endif %}
-            <a href="?{% url_replace 'page' results.paginator.num_pages %}"> &gt;&gt; last</a>
-          </span>
-      </div>
-    {% endif %}
-      <table class="table table-bordered table-sm generic-table">
-        <thead>
-        <tr>
-          <th>Select</th><th>URL</th><th>Gallery</th><th>Title</th><th>Size</th><th>Images</th><th>Source URL</th><th title="Linked to Wanted Gallery?">Wanted</th><th title="Gallery has Archive?">Archive</th><th title="Similar Galleries by filesize and filecount">Similar</th><th>Entry Reason</th><th>Submitted</th><th>Status</th><th>Public</th><th>Gallery Status</th>
-        </tr>
-        </thead>
-        <tbody>
-        {% for entry in results %}
-          <tr>
-            <td>
-              <input id="checkbox-{{ entry.id }}" class="toggle-list custom-cb" type="checkbox" name="sel-{{ entry.id }}" value="{{ entry.pk }}"><label for="checkbox-{{ entry.id }}"><span><span></span></span></label>
-            </td>
-            <td>
-              {{ entry.submit_url|urlize_all_rel }}
-            </td>
-            <td>
-              {% if entry.gallery.thumbnail.name %}
-              <a href="{% url 'viewer:gallery' entry.gallery.pk %}">{{ entry.gallery.pk }}</a>
-              {% else %}
-                No gallery
-              {% endif %}
-            </td>
-            <td>
-              {{ entry.gallery.title }}
-            </td>
-            <td>
-              {{ entry.gallery.filesize }} ({{ entry.gallery.filesize|filesizeformat }})
-            </td>
-            <td>
-              {{ entry.gallery.filecount }}
-            </td>
-            <td>
-              {% if entry.gallery.thumbnail.name %}
-                <a href="{{ entry.gallery.get_link }}" class="img-preview" data-image-url="{{ entry.gallery.thumbnail.url }}" rel="popover noopener noreferrer nofollow">{{ entry.gallery.get_link }}</a>
-              {% else %}
-                {{ entry.gallery.get_link|urlize_all_rel }}
-              {% endif %}
-            </td>
-            <td>
-              {{ entry.gallery.foundgallery_set.count|yesno:"yes,no" }}
-            </td>
-            <td>
-              {{ entry.gallery.archive_set.count|yesno:"yes,no" }}
-            </td>
-            <td>
-              {% for similar_gallery in entry.similar_galleries.all %}
-                <span style="padding-right: 10px;">
-                  {% if similar_gallery.thumbnail.name %}
-                    <a href="{% url 'viewer:gallery' similar_gallery.pk %}" class="img-preview" data-image-url="{{ similar_gallery.thumbnail.url }}" rel="popover">{{ similar_gallery.pk }}</a>
+    <div id="contained-data">
+        <form action="{{ request.get_full_path }}" method="POST">{% csrf_token %}
+        <!-- Next/Prev page links  -->
+          <div>
+              <nav aria-label="Middle navigation">
+                <ul class="pagination justify-content-center my-0">
+                    <li class="page-item{% if results.number == 1 %} disabled{% endif %}">
+                      <a class="page-link" href="?{% url_replace 'page' '1' %}" aria-label="First">
+                        <span aria-hidden="true">&laquo;</span>
+                      </a>
+                    </li>
+                  {% if results.has_previous %}
+                    <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.previous_page_number %}">Previous</a></li>
                   {% else %}
-                    <a href="{% url 'viewer:gallery' similar_gallery.pk %}" rel="popover">{{ similar_gallery.pk }}</a>
+                    <li class="page-item disabled"><a class="page-link" href="#">Previous</a></li>
                   {% endif %}
-                </span>
-              {% endfor %}
-            </td>
-            <td>
-              {{ entry.submit_reason }}
-            </td>
-            <td>
-              {{ entry.submit_date|date:"DATETIME_FORMAT" }}
-            </td>
-            <td>
-              {{ entry.get_resolved_status_display }}
-            </td>
-            <td>
-              {{ entry.gallery.public|yesno }}
-            </td>
-            <td>
-              {{ entry.gallery.get_status_display }}
-            </td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    <!-- Next/Prev page links  -->
-      {% if results.object_list and results.paginator.num_pages > 1 %}
-        <div>
-            <span class="step-links">
-                <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
-              {% if results.has_previous %}
-                <a href= "?{% url_replace 'page' results.previous_page_number %}"> previous &lt;&lt; </a>
-              {% endif %}
-              <span class="current">
-                    &nbsp;Page {{ results.number }} of {{ results.paginator.num_pages }}
-                </span>
-              {% if results.has_next %}
-                <a href="?{% url_replace 'page' results.next_page_number %}"> &gt;&gt; next</a>
-              {% endif %}
-              <a href="?{% url_replace 'page' results.paginator.num_pages %}"> &gt;&gt; last</a>
-            </span>
+                  <li class="page-item">
+                    <div class="mid-item">{{ results.paginator.count }} results</div>
+                  </li>
+                  {% if results.has_next %}
+                    <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.next_page_number %}">Next</a></li>
+                  {% else %}
+                    <li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
+                  {% endif %}
+                    <li class="page-item{% if results.number == results.paginator.num_pages %} disabled{% endif %}">
+                      <a class="page-link" href="?{% url_replace 'page' results.paginator.num_pages %}"
+                         aria-label="Last">
+                        <span aria-hidden="true">&raquo;</span>
+                      </a>
+                    </li>
+                </ul>
+              </nav>
+          </div>
+          <table class="table table-bordered table-sm generic-table my-0">
+            <thead>
+            <tr>
+              <th>Select</th><th>URL</th><th>Gallery</th><th>Title</th><th>Size</th><th>Images</th><th>Source URL</th><th title="Linked to Wanted Gallery?">Wanted</th><th title="Gallery has Archive?">Archive</th><th title="Similar Galleries by filesize and filecount">Similar</th><th>Entry Reason</th><th>Submitted</th><th>Status</th><th>Public</th><th>Gallery Status</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for entry in results %}
+              <tr>
+                <td>
+                  <input id="checkbox-{{ entry.id }}" class="toggle-list custom-cb" type="checkbox" name="sel-{{ entry.id }}" value="{{ entry.pk }}"><label for="checkbox-{{ entry.id }}"><span><span></span></span></label>
+                </td>
+                <td>
+                  {{ entry.submit_url|urlize_all_rel }}
+                </td>
+                <td>
+                  {% if entry.gallery.thumbnail.name %}
+                  <a href="{% url 'viewer:gallery' entry.gallery.pk %}">{{ entry.gallery.pk }}</a>
+                  {% else %}
+                    No gallery
+                  {% endif %}
+                </td>
+                <td>
+                  {{ entry.gallery.title }}
+                </td>
+                <td>
+                  {{ entry.gallery.filesize }} ({{ entry.gallery.filesize|filesizeformat }})
+                </td>
+                <td>
+                  {{ entry.gallery.filecount }}
+                </td>
+                <td>
+                  {% if entry.gallery.thumbnail.name %}
+                    <a href="{{ entry.gallery.get_link }}" class="img-preview" data-image-url="{{ entry.gallery.thumbnail.url }}" rel="popover noopener noreferrer nofollow">{{ entry.gallery.get_link }}</a>
+                  {% else %}
+                    {{ entry.gallery.get_link|urlize_all_rel }}
+                  {% endif %}
+                </td>
+                <td>
+                  {{ entry.gallery.foundgallery_set.count|yesno:"yes,no" }}
+                </td>
+                <td>
+                  {{ entry.gallery.archive_set.count|yesno:"yes,no" }}
+                </td>
+                <td>
+                  {% for similar_gallery in entry.similar_galleries.all %}
+                    <span style="padding-right: 10px;">
+                      {% if similar_gallery.thumbnail.name %}
+                        <a href="{% url 'viewer:gallery' similar_gallery.pk %}" class="img-preview" data-image-url="{{ similar_gallery.thumbnail.url }}" rel="popover">{{ similar_gallery.pk }}</a>
+                      {% else %}
+                        <a href="{% url 'viewer:gallery' similar_gallery.pk %}" rel="popover">{{ similar_gallery.pk }}</a>
+                      {% endif %}
+                    </span>
+                  {% endfor %}
+                </td>
+                <td>
+                  {{ entry.submit_reason }}
+                </td>
+                <td>
+                  {{ entry.submit_date|date:"DATETIME_FORMAT" }}
+                </td>
+                <td>
+                  {{ entry.get_resolved_status_display }}
+                </td>
+                <td>
+                  {{ entry.gallery.public|yesno }}
+                </td>
+                <td>
+                  {{ entry.gallery.get_status_display }}
+                </td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        <!-- Next/Prev page links  -->
+          <div>
+              <nav aria-label="Middle navigation">
+                <ul class="pagination justify-content-center">
+                    <li class="page-item{% if results.number == 1 %} disabled{% endif %}">
+                      <a class="page-link" href="?{% url_replace 'page' '1' %}" aria-label="First">
+                        <span aria-hidden="true">&laquo;</span>
+                      </a>
+                    </li>
+                  {% if results.has_previous %}
+                    <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.previous_page_number %}">Previous</a></li>
+                  {% else %}
+                    <li class="page-item disabled"><a class="page-link" href="#">Previous</a></li>
+                  {% endif %}
+                  <li class="page-item">
+                    <div class="mid-item">{{ results.paginator.count }} results</div>
+                  </li>
+                  {% if results.has_next %}
+                    <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.next_page_number %}">Next</a></li>
+                  {% else %}
+                    <li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
+                  {% endif %}
+                    <li class="page-item{% if results.number == results.paginator.num_pages %} disabled{% endif %}">
+                      <a class="page-link" href="?{% url_replace 'page' results.paginator.num_pages %}"
+                         aria-label="Last">
+                        <span aria-hidden="true">&raquo;</span>
+                      </a>
+                    </li>
+                </ul>
+              </nav>
+          </div>
+        {% if perms.viewer.approve_gallery %}
+        <div class="form-group">
+          <input size="10" class="form-control" name="reason" value="" placeholder="Gallery & Archive Reason" maxlength="200"/>
         </div>
-      {% endif %}
-    {% if perms.viewer.approve_gallery %}
-    <div class="form-group">
-      <input size="10" class="form-control" name="reason" value="" placeholder="Gallery & Archive Reason" maxlength="200"/>
+        <div class="form-group">
+          <input size="10" class="form-control" name="entry_reason" value="" placeholder="Entry Reason" maxlength="200"/>
+        </div>
+        <div class="form-group">
+          <label for="entry_comment">Comment</label>
+          <textarea name="entry_comment" class="form-control" id="entry_comment" rows="5"></textarea>
+        </div>
+        <button name="download_galleries" class="btn btn-light">Approve & start download</button>
+        <button name="approve_galleries" class="btn btn-light">Approve galleries (no download)</button>
+        <button name="deny_galleries" class="btn btn-light">Deny galleries</button>
+        {% endif %}
+        {% if perms.viewer.publish_gallery %}
+        <button name="publish_galleries" class="btn btn-light">Publish galleries & archives</button>
+        {% endif %}
+        </form>
     </div>
-    <div class="form-group">
-      <input size="10" class="form-control" name="entry_reason" value="" placeholder="Entry Reason" maxlength="200"/>
-    </div>
-    <div class="form-group">
-      <label for="entry_comment">Comment</label>
-      <textarea name="entry_comment" class="form-control" id="entry_comment" rows="5"></textarea>
-    </div>
-    <button name="download_galleries" class="btn btn-light">Approve & start download</button>
-    <button name="approve_galleries" class="btn btn-light">Approve galleries (no download)</button>
-    <button name="deny_galleries" class="btn btn-light">Deny galleries</button>
-    {% endif %}
-    {% if perms.viewer.publish_gallery %}
-    <button name="publish_galleries" class="btn btn-light">Publish galleries & archives</button>
-    {% endif %}
-    </form>
+
 {% endblock %}
 {% block afterJQ %}
   {% load compress %}

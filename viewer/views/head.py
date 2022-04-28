@@ -380,6 +380,142 @@ def gallery_details(request: HttpRequest, pk: int, tool: str = None) -> HttpResp
     return render(request, "viewer/gallery.html", d)
 
 
+@login_required
+def gallery_enter_reason(request: HttpRequest, pk: int, tool: str = None) -> HttpResponse:
+    try:
+        gallery = Gallery.objects.get(pk=pk)
+    except Gallery.DoesNotExist:
+        raise Http404("Gallery does not exist")
+    if not (gallery.public or request.user.is_authenticated):
+        raise Http404("Gallery does not exist")
+
+    if request.method == 'POST':
+
+        p = request.POST
+        user_reason = p.get('reason', '')
+        if "confirm_tool" in p:
+
+            if request.user.has_perm('viewer.download_gallery') and tool == "download":
+                if 'downloader' in request.GET and request.user.is_staff:
+                    current_settings = Settings(load_from_config=crawler_settings.config)
+                    current_settings.allow_downloaders_only([request.GET['downloader']], True, True, True)
+                    if current_settings.workers.web_queue:
+                        current_settings.workers.web_queue.enqueue_args_list((gallery.get_link(),), override_options=current_settings)
+                else:
+                    # Since this is used from the gallery page mainly to download an already added gallery using
+                    # downloader settings, force replace_metadata and retry_failed
+                    current_settings = Settings(load_from_config=crawler_settings.config)
+                    current_settings.replace_metadata = True
+                    current_settings.retry_failed = True
+                    if current_settings.workers.web_queue:
+                        current_settings.workers.web_queue.enqueue_args_list((gallery.get_link(),), override_options=current_settings)
+                return HttpResponseRedirect(gallery.get_absolute_url())
+
+            if request.user.is_staff and tool == "toggle-hidden":
+                gallery.hidden = not gallery.hidden
+                gallery.save()
+                return HttpResponseRedirect(gallery.get_absolute_url())
+
+            if request.user.has_perm('viewer.publish_gallery') and tool == "toggle-public":
+                gallery.public_toggle()
+
+                if gallery.public:
+                    event_log(
+                        request.user,
+                        'PUBLISH_GALLERY',
+                        content_object=gallery,
+                        result='success',
+                        reason=user_reason
+                    )
+                else:
+                    event_log(
+                        request.user,
+                        'UNPUBLISH_GALLERY',
+                        content_object=gallery,
+                        result='success',
+                        reason=user_reason
+                    )
+
+                return HttpResponseRedirect(gallery.get_absolute_url())
+
+            if request.user.has_perm('viewer.mark_delete_gallery') and tool == "mark-deleted":
+                gallery.mark_as_deleted()
+
+                event_log(
+                    request.user,
+                    'MARK_DELETE_GALLERY',
+                    content_object=gallery,
+                    result='deleted',
+                    reason=user_reason
+                )
+
+                message = "Gallery: {} will be marked as deleted, reason: {}".format(gallery.get_absolute_url(), user_reason)
+
+                logger.info("User {}: {}".format(request.user.username, message))
+                messages.success(request, message)
+
+                return HttpResponseRedirect(gallery.get_absolute_url())
+
+            if request.user.has_perm('viewer.update_metadata') and tool == "recall-api":
+
+                current_settings = Settings(load_from_config=crawler_settings.config)
+
+                if current_settings.workers.web_queue and gallery.provider:
+
+                    def gallery_callback(x: Optional['Gallery'], crawled_url: Optional[str], result: str) -> None:
+                        event_log(
+                            request.user,
+                            'UPDATE_METADATA',
+                            content_object=x,
+                            result=result,
+                            data=crawled_url,
+                            reason=user_reason
+                        )
+
+                    current_settings.set_update_metadata_options(providers=(gallery.provider,))
+
+                    current_settings.workers.web_queue.enqueue_args_list(
+                        (gallery.get_link(),),
+                        override_options=current_settings,
+                        gallery_callback=gallery_callback
+                    )
+
+                    logger.info(
+                        'Updating gallery API data for gallery: {} and related archives'.format(
+                            gallery.get_absolute_url()
+                        )
+                    )
+
+                return HttpResponseRedirect(gallery.get_absolute_url())
+
+            if request.user.has_perm('viewer.update_metadata') and tool == "refetch-thumbnail":
+
+                if gallery.thumbnail_url:
+
+                    success = gallery.fetch_thumbnail(force_redownload=True)
+
+                    event_log(
+                        request.user,
+                        'REFETCH_THUMBNAIL',
+                        content_object=gallery,
+                        result='sucess' if success else 'failed',
+                        data=gallery.thumbnail_url,
+                        reason=user_reason
+                    )
+
+                    logger.info(
+                        'Refetching gallery: {} thumbnail from url: {}'.format(
+                            gallery.get_absolute_url(), gallery.thumbnail_url
+                        )
+                    )
+
+                return HttpResponseRedirect(gallery.get_absolute_url())
+
+    d = {'gallery': gallery, 'tool': tool}
+
+    return render(request, "viewer/include/gallery_tool_reason.html", d)
+
+
 def gallery_thumb(request: HttpRequest, pk: int) -> HttpResponse:
     try:
         gallery = Gallery.objects.get(pk=pk)

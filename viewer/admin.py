@@ -1,10 +1,14 @@
 from typing import Optional
 
-from django.db.models import F, QuerySet
+from django.db.models import F, QuerySet, Count
 from django.forms import ModelForm, BaseFormSet
 from django.http import HttpRequest
 from django.utils.dateparse import parse_duration
+from django.utils.translation import gettext_lazy as _
+from django.conf import settings
 
+
+from viewer.utils.actions import event_log
 from viewer.models import (
     Archive,
     ArchiveGroup,
@@ -22,13 +26,17 @@ from viewer.models import (
     ArchiveMatches,
     EventLog,
     Provider, Attribute, ArchiveQuerySet, GalleryQuerySet, GallerySubmitEntry, ArchiveManageEntry,
-    MonitoredLink
+    MonitoredLink, TagQuerySet
 )
 from django.contrib import admin
 from django.contrib.admin.helpers import ActionForm
 from django import forms
 
+from core.base.setup import Settings
 from viewer.utils.types import AuthenticatedHttpRequest
+
+
+crawler_settings = settings.CRAWLER_SETTINGS
 
 
 class UpdateActionForm(ActionForm):
@@ -125,10 +133,62 @@ class ArchiveGroupEntryAdmin(admin.ModelAdmin):
     list_display = ["id", "archive_group", "archive", "title", "position"]
 
 
+class GalleryTagsInline(admin.TabularInline):
+    model = Gallery.tags.through
+    raw_id_fields = ('gallery',)
+
+
+class UsedByGalleryListFilter(admin.SimpleListFilter):
+    title = _('used by galleries')
+    parameter_name = 'used-galleries'
+
+    def lookups(self, request, model_admin):
+        return (
+            ('yes', _('Yes')),
+            ('no', _('No')),
+        )
+
+    def queryset(self, request, queryset):
+        if self.value() == 'yes':
+            return queryset.annotate(num_gallery=Count('gallery')).filter(num_gallery__gt=0)
+        if self.value() == 'no':
+            return queryset.annotate(num_gallery=Count('gallery')).filter(num_gallery=0)
+
+
 class TagAdmin(admin.ModelAdmin):
     search_fields = ["name", "scope"]
     list_display = ["id", "name", "scope", "source"]
-    list_filter = ["source"]
+    list_filter = ["source", UsedByGalleryListFilter, "gallery__provider"]
+    inlines = [
+        GalleryTagsInline,
+    ]
+    actions = ['recall_api_gallery']
+
+    def recall_api_gallery(self, request: HttpRequest, queryset: TagQuerySet) -> None:
+        galleries = Gallery.objects.filter(tags__in=queryset)
+        for gallery in galleries:
+            current_settings = Settings(load_from_config=crawler_settings.config)
+
+            if current_settings.workers.web_queue and gallery.provider:
+                current_settings.set_update_metadata_options(providers=(gallery.provider,))
+
+                def gallery_callback(x: Optional['Gallery'], crawled_url: Optional[str], result: str) -> None:
+                    event_log(
+                        request.user,
+                        'UPDATE_METADATA',
+                        content_object=x,
+                        result=result,
+                        data=crawled_url
+                    )
+
+                current_settings.workers.web_queue.enqueue_args_list(
+                    (gallery.get_link(),),
+                    override_options=current_settings,
+                    gallery_callback=gallery_callback
+                )
+
+        self.message_user(request, "%s galleries pulled new metadata." % galleries.count())
+    recall_api_gallery.short_description = "Recall Gallery API to all related galleries"  # type: ignore
 
 
 class GalleryAdmin(admin.ModelAdmin):
@@ -230,17 +290,18 @@ class FoundGalleryInline(admin.TabularInline):
 
 class WantedGalleryAdmin(admin.ModelAdmin):
     search_fields = ["title", "title_jpn"]
-    list_display = ["id", "title", "title_jpn", "search_title", "release_date", "book_type",
-                    "publisher", "should_search", "keep_searching", "found", "date_found"]
+    list_display = ["id", "title", "search_title", "release_date", "book_type",
+                    "publisher", "wait_for_time", "should_search", "keep_searching", "found", "date_found"]
     raw_id_fields = ("mentions", "wanted_tags", "unwanted_tags", "artists", "cover_artist")
     list_filter = [
         "book_type", "publisher", "should_search", "keep_searching",
-        "found", "reason", "public", "notify_when_found", "wanted_providers", "unwanted_providers"
+        "found", "reason", "public", "notify_when_found", "wanted_providers", "unwanted_providers", "wait_for_time"
     ]
     actions = ['make_public', 'mark_should_search', 'mark_not_should_search',
                'mark_keep_search', 'mark_not_keep_search',
                'mark_found', 'mark_not_found',
-               'search_title_from_title', 'set_reason', 'add_unwanted_provider',
+               'search_title_from_title', 'set_reason',
+               'add_wanted_provider', 'add_unwanted_provider', 'remove_wanted_provider', 'remove_unwanted_provider',
                'enable_notify_when_found', 'disable_notify_when_found',
                'set_wait_for_time'
                ]
@@ -349,6 +410,40 @@ class WantedGalleryAdmin(admin.ModelAdmin):
         self.message_user(request, "%s successfully set as reason: %s." % (message_bit, source_type))
     set_reason.short_description = "Set reason of selected wanted galleries"  # type: ignore
 
+    def add_wanted_provider(self, request: HttpRequest, queryset: QuerySet) -> None:
+        wanted_provider_slug = request.POST['extra_field']
+        provider = Provider.objects.filter(slug=wanted_provider_slug).first()
+        rows_updated = 0
+        if provider:
+            missing_provider = queryset.exclude(wanted_providers=provider)
+            for wanted_gallery in missing_provider:
+                wanted_gallery.wanted_providers.add(provider)
+            rows_updated = missing_provider.count()
+
+        if rows_updated == 1:
+            message_bit = "1 wanted gallery was"
+        else:
+            message_bit = "%s wanted galleries were" % rows_updated
+        self.message_user(request, "%s successfully added wanted provider: %s." % (message_bit, wanted_provider_slug))
+    add_wanted_provider.short_description = "Add wanted provider by slug name"  # type: ignore
+
+    def remove_wanted_provider(self, request: HttpRequest, queryset: QuerySet) -> None:
+        wanted_provider_slug = request.POST['extra_field']
+        provider = Provider.objects.filter(slug=wanted_provider_slug).first()
+        rows_updated = 0
+        if provider:
+            present_provider = queryset.filter(wanted_providers=provider)
+            for wanted_gallery in present_provider:
+                wanted_gallery.wanted_providers.remove(provider)
+            rows_updated = present_provider.count()
+
+        if rows_updated == 1:
+            message_bit = "1 wanted gallery was"
+        else:
+            message_bit = "%s wanted galleries were" % rows_updated
+        self.message_user(request, "%s successfully removed wanted provider: %s." % (message_bit, wanted_provider_slug))
+    remove_wanted_provider.short_description = "Remove wanted provider by slug name"  # type: ignore
+
     def add_unwanted_provider(self, request: HttpRequest, queryset: QuerySet) -> None:
         unwanted_provider_slug = request.POST['extra_field']
         provider = Provider.objects.filter(slug=unwanted_provider_slug).first()
@@ -365,6 +460,23 @@ class WantedGalleryAdmin(admin.ModelAdmin):
             message_bit = "%s wanted galleries were" % rows_updated
         self.message_user(request, "%s successfully added unwanted provider: %s." % (message_bit, unwanted_provider_slug))
     add_unwanted_provider.short_description = "Add unwanted provider by slug name"  # type: ignore
+
+    def remove_unwanted_provider(self, request: HttpRequest, queryset: QuerySet) -> None:
+        unwanted_provider_slug = request.POST['extra_field']
+        provider = Provider.objects.filter(slug=unwanted_provider_slug).first()
+        rows_updated = 0
+        if provider:
+            present_provider = queryset.filter(unwanted_providers=provider)
+            for wanted_gallery in present_provider:
+                wanted_gallery.unwanted_providers.remove(provider)
+            rows_updated = present_provider.count()
+
+        if rows_updated == 1:
+            message_bit = "1 wanted gallery was"
+        else:
+            message_bit = "%s wanted galleries were" % rows_updated
+        self.message_user(request, "%s successfully removed unwanted provider: %s." % (message_bit, unwanted_provider_slug))
+    remove_unwanted_provider.short_description = "Remove unwanted provider by slug name"  # type: ignore
 
     def set_wait_for_time(self, request: HttpRequest, queryset: QuerySet) -> None:
         wait_for_time = request.POST['extra_field']

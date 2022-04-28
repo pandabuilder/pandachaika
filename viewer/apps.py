@@ -9,6 +9,6 @@ class ViewerConfig(AppConfig):
         from . import handlers
         settings.PROVIDER_CONTEXT.register_providers(settings.PROVIDERS)
         settings.CRAWLER_SETTINGS.load_config_from_file()
-        from .models import Archive, Gallery, FoundGallery, WantedGallery
+        from .models import Archive, Gallery, FoundGallery, WantedGallery, ArchiveManageEntry
 
-        settings.CRAWLER_SETTINGS.set_models(Gallery, Archive, FoundGallery, WantedGallery)
+        settings.CRAWLER_SETTINGS.set_models(Gallery, Archive, FoundGallery, WantedGallery, ArchiveManageEntry)

@@ -325,7 +325,8 @@ if crawler_settings.elasticsearch.enable:
     from elasticsearch import Elasticsearch, RequestsHttpConnection
     ES_CLIENT: Optional[Elasticsearch] = Elasticsearch(
         [crawler_settings.elasticsearch.url],
-        connection_class=RequestsHttpConnection
+        connection_class=RequestsHttpConnection,
+        timeout=crawler_settings.elasticsearch.timeout
     )
     ES_ENABLED = True
 else:
