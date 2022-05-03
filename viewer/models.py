@@ -1044,7 +1044,7 @@ class Gallery(models.Model):
             )
 
         if self.category:
-            filtered_wanted = filtered_wanted.filter(Q(category='') | Q(category__iexact=self.category))
+            filtered_wanted = filtered_wanted.filter(Q(category__isnull=True) | Q(category='') | Q(category__iexact=self.category))
 
         if self.filecount:
             filtered_wanted = filtered_wanted.filter(
