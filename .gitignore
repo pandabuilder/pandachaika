@@ -22,6 +22,7 @@ __pycache__/
 /cover/
 /venv/
 .dmypy.json
+/.vscode/
 aux_*.py
 aux_*.txt
 aux_*.json

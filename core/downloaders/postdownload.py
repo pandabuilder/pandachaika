@@ -549,8 +549,24 @@ class PostDownloader(object):
 
     def transfer_all_missing(self, archives: Iterable[Archive] = None) -> None:
 
-        if self.settings.download_handler.startswith('local'):
-            self.copy_all_missing(self.settings.download_handler, archives)
+        method_for_torrents = self.settings.download_handler_torrent or self.settings.download_handler
+        method_for_hath = self.settings.download_handler_hath or self.settings.download_handler
+
+        if method_for_torrents != method_for_hath and archives is not None:
+            archives_from_torrents = [x for x in archives if x.match_type and 'torrent' in x.match_type]
+            archives_from_haths = [x for x in archives if x.match_type and 'hath' in x.match_type]
+
+            if archives_from_torrents:
+                self.do_transfer_by_method(method_for_torrents, archives_from_torrents)
+            if archives_from_haths:
+                self.do_transfer_by_method(method_for_hath, archives_from_haths)
+
+        else:
+            self.do_transfer_by_method(method_for_torrents, archives)
+
+    def do_transfer_by_method(self, method_to_use: str, archives: Iterable[Archive] = None) -> None:
+        if method_to_use.startswith('local'):
+            self.copy_all_missing(method_to_use, archives)
         else:
             for retry_count in range(3):
                 try:

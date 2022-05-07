@@ -217,6 +217,9 @@ class Settings:
         self.django_debug_mode = False
         self.api_key = ''
         self.download_handler = 'local'
+        # More specific, if not set, will use 'download_handler'
+        self.download_handler_torrent = ''
+        self.download_handler_hath = ''
         self.autochecker = AutoCheckerSettings()
         self.auto_wanted = AutoWantedSettings()
         self.autoupdater = AutoUpdaterSettings()
@@ -424,6 +427,10 @@ class Settings:
                 self.api_key = config['general']['api_key']
             if 'download_handler' in config['general']:
                 self.download_handler = config['general']['download_handler']
+            if 'download_handler_torrent' in config['general']:
+                self.download_handler_torrent = config['general']['download_handler_torrent']
+            if 'download_handler_hath' in config['general']:
+                self.download_handler_hath = config['general']['download_handler_hath']
             if 'wait_timer' in config['general']:
                 self.wait_timer = int(config['general']['wait_timer'])
             if 'timed_downloader_startup' in config['general']:
