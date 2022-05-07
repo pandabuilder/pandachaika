@@ -8,10 +8,11 @@ from urllib.parse import urljoin
 from core.base.matchers import Matcher
 from core.base.types import MatchesValues, DataDict, GalleryData
 from core.base.utilities import (
-    filecount_in_zip,
+    filecount_in_zip, file_matches_any_filter,
     get_zip_filesize, clean_title,
     request_with_retries, construct_request_dict, calc_crc32)
 from . import constants
+from .utilities import clean_title as chaika_clean_title
 from core.base.comparison import get_gallery_closer_title_from_gallery_values
 
 logger = logging.getLogger(__name__)
@@ -168,7 +169,7 @@ class HashMatcher(BaseExactMatcher):
 
 class TitleMatcher(Matcher):
 
-    name = 'title'
+    name = 'main_title'
     provider = constants.provider_name
     type = 'title'
     time_to_wait_after_compare = 0
@@ -178,13 +179,134 @@ class TitleMatcher(Matcher):
         return self.values_array
 
     def format_to_search_title(self, file_name: str) -> str:
-        if file_name.endswith('.zip'):
+        if file_matches_any_filter(file_name, self.settings.filename_filter):
             return clean_title(self.get_title_from_path(file_name))
         else:
             return clean_title(file_name)
 
     def format_to_compare_title(self, file_name: str) -> str:
-        if file_name.endswith('.zip'):
+        if file_matches_any_filter(file_name, self.settings.filename_filter):
+            return clean_title(self.get_title_from_path(file_name))
+        else:
+            return clean_title(file_name)
+
+    def search_method(self, title_to_search: str) -> bool:
+        return self.compare_by_title(title_to_search)
+
+    def format_match_values(self) -> Optional[DataDict]:
+
+        if not self.match_values:
+            return None
+        self.match_gid = self.match_values.gid
+        self.match_provider = self.match_values.provider
+        values = {
+            'title': self.match_values.title,
+            'title_jpn': self.match_values.title_jpn,
+            'zipped': self.file_path,
+            'crc32': self.crc32,
+            'match_type': self.found_by,
+            'filesize': get_zip_filesize(os.path.join(self.settings.MEDIA_ROOT, self.file_path)),
+            'filecount': filecount_in_zip(os.path.join(self.settings.MEDIA_ROOT, self.file_path)),
+            'source_type': self.match_provider or self.provider
+        }
+
+        return values
+
+    def compare_by_title(self, gallery_title: str) -> bool:
+
+        api_url = urljoin(self.own_settings.url, constants.api_path)
+        logger.info("Querying URL: {}".format(api_url))
+
+        request_dict = construct_request_dict(self.settings, self.own_settings)
+        request_dict['params'] = {'match': True, 'title': gallery_title}
+
+        response = request_with_retries(
+            api_url,
+            request_dict,
+            post=False, retries=3
+        )
+
+        if not response:
+            logger.info("Got no response from server")
+            return False
+
+        response_data = response.json()
+
+        matches_links = set()
+
+        if 'error' in response_data:
+            logger.info("Got error from server: {}".format(response_data['error']))
+            return False
+
+        for gallery in response_data:
+            if 'link' in gallery:
+                matches_links.add(gallery['link'])
+                if 'gallery_container' in gallery and gallery['gallery_container']:
+                    if self.settings.gallery_model:
+                        gallery_container = self.settings.gallery_model.objects.filter(
+                            gid=gallery['gallery_container'], provider=gallery['provider']
+                        )
+                        first_gallery_container = gallery_container.first()
+                        if first_gallery_container:
+                            gallery['gallery_container_gid'] = first_gallery_container.gid
+                if 'magazine' in gallery and gallery['magazine']:
+                    if self.settings.gallery_model:
+                        magazine = self.settings.gallery_model.objects.filter(
+                            gid=gallery['magazine'], provider=gallery['provider']
+                        )
+                        first_magazine = magazine.first()
+                        if first_magazine:
+                            gallery['magazine_gid'] = first_magazine.gid
+                if 'posted' in gallery:
+                    if gallery['posted'] != 0:
+                        gallery['posted'] = datetime.fromtimestamp(int(gallery['posted']), timezone.utc)
+                    else:
+                        gallery['posted'] = None
+                self.values_array.append(GalleryData(**gallery))
+
+        self.gallery_links = list(matches_links)
+        if len(self.gallery_links) > 0:
+            self.found_by = self.name
+            return True
+        else:
+            return False
+
+
+class CleanTitleMatcher(TitleMatcher):
+    name = 'main_clean_title'
+
+    def format_to_search_title(self, file_name: str) -> str:
+        if file_matches_any_filter(file_name, self.settings.filename_filter):
+            return chaika_clean_title(self.get_title_from_path(file_name))
+        else:
+            return chaika_clean_title(file_name)
+
+    def format_to_compare_title(self, file_name: str) -> str:
+        if file_matches_any_filter(file_name, self.settings.filename_filter):
+            return chaika_clean_title(self.get_title_from_path(file_name))
+        else:
+            return chaika_clean_title(file_name)
+
+
+class TitleMetaMatcher(Matcher):
+
+    name = 'meta_title'
+    provider = constants.provider_name
+    type = 'title'
+    time_to_wait_after_compare = 0
+    default_cutoff = 0.6
+
+    def get_metadata_after_matching(self) -> list[GalleryData]:
+        return self.values_array
+
+    def format_to_search_title(self, file_name: str) -> str:
+        if file_matches_any_filter(file_name, self.settings.filename_filter):
+            return clean_title(self.get_title_from_path(file_name))
+        else:
+            return clean_title(file_name)
+
+    def format_to_compare_title(self, file_name: str) -> str:
+        if file_matches_any_filter(file_name, self.settings.filename_filter):
             return clean_title(self.get_title_from_path(file_name))
         else:
             return clean_title(file_name)
@@ -350,5 +472,7 @@ class FileSizeMatcher(BaseExactMatcher):
 API = (
     HashMatcher,
     TitleMatcher,
+    CleanTitleMatcher,
+    TitleMetaMatcher,
     FileSizeMatcher,
 )

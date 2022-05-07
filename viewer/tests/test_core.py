@@ -1,4 +1,5 @@
 from collections import defaultdict
+from datetime import datetime, timezone
 
 from django.test import TestCase
 
@@ -6,7 +7,7 @@ from core.base.setup import Settings
 from core.base.types import GalleryData
 from core.base.comparison import get_list_closer_gallery_titles_from_list
 from core.providers.panda.parsers import Parser as PandaParser
-from viewer.models import Gallery, WantedGallery, Tag, FoundGallery
+from viewer.models import Gallery, WantedGallery, Tag, FoundGallery, Provider
 
 
 class CoreTest(TestCase):
@@ -45,6 +46,8 @@ class WantedGalleryTest(TestCase):
         artist_tag = Tag.objects.create(scope="artist", name="suzunomoku")
         artist2_tag = Tag.objects.create(scope="artist", name="mitsuya")
         parody_tag = Tag.objects.create(scope="parody", name="original")
+
+        provider_instance = Provider.objects.filter(slug='fakku').first()
 
         # Galleries
         self.test_gallery1 = Gallery.objects.create(title='sample non public gallery 1', gid='344', provider='panda')
@@ -147,6 +150,29 @@ class WantedGalleryTest(TestCase):
         )
         self.test_gallery5.tags.set([english_tag, artist2_tag, parody_tag])
 
+        self.test_wanted_gallery5 = WantedGallery.objects.create(
+            title='test wanted gallery 5',
+            search_title='kairakuten',
+            publisher='wanimagazine',
+            reason='wanimagazine',
+            should_search=True,
+            keep_searching=True,
+            notify_when_found=False,
+            unwanted_title='[Chinese]'
+        )
+
+        if provider_instance:
+            self.test_wanted_gallery5.unwanted_providers.add(provider_instance)
+
+        self.test_gallery6 = Gallery.objects.create(
+            title='COMIC Kairakuten 2022-06 [Digital]',
+            title_jpn='COMIC 快楽天 2022年6月号 [DL版]',
+            gid='2207323', token='95307725e5', provider='panda', category='Manga',
+            posted=datetime.fromtimestamp(1651311800, timezone.utc),
+            filecount=376,
+            filesize=1043530781
+        )
+
     def test_match_gallery(self):
         settings = Settings(load_from_disk=True)
         parser = PandaParser(settings)
@@ -181,14 +207,15 @@ class WantedGalleryTest(TestCase):
         with self.assertNumQueries(7):
             parser.compare_gallery_with_wanted_filters(incoming_gallery, gallery_link, wanted_galleries, gallery_wanted_lists)
 
-        self.assertEqual(len(gallery_wanted_lists[incoming_gallery.gid]), 11)
-        self.assertEqual(WantedGallery.objects.filter(found=True).count(), 12)
+        self.assertEqual(len(gallery_wanted_lists[incoming_gallery.gid]), 12)
+        self.assertEqual(WantedGallery.objects.filter(found=True).count(), 13)
 
         incoming_gallery1 = self.test_gallery1.as_gallery_data()
         incoming_gallery2 = self.test_gallery2.as_gallery_data()
         incoming_gallery3 = self.test_gallery3.as_gallery_data()
         incoming_gallery4 = self.test_gallery4.as_gallery_data()
         incoming_gallery5 = self.test_gallery5.as_gallery_data()
+        incoming_gallery6 = self.test_gallery6.as_gallery_data()
 
         gallery_wanted_lists: dict[str, list['WantedGallery']] = defaultdict(list)
 
@@ -198,6 +225,7 @@ class WantedGalleryTest(TestCase):
         parser.compare_gallery_with_wanted_filters(incoming_gallery3, incoming_gallery3.link, wanted_galleries, gallery_wanted_lists)
         parser.compare_gallery_with_wanted_filters(incoming_gallery4, incoming_gallery4.link, wanted_galleries, gallery_wanted_lists)
         parser.compare_gallery_with_wanted_filters(incoming_gallery5, incoming_gallery5.link, wanted_galleries, gallery_wanted_lists)
+        parser.compare_gallery_with_wanted_filters(incoming_gallery6, incoming_gallery6.link, wanted_galleries, gallery_wanted_lists)
 
         self.assertEqual(len(gallery_wanted_lists[incoming_gallery1.gid]), 1)
         self.assertEqual(len(gallery_wanted_lists[incoming_gallery2.gid]), 1)
@@ -208,12 +236,39 @@ class WantedGalleryTest(TestCase):
         # Should be wg4 , wg4_b and wg4_c, because it has only 1 artist tag, and even with parody missing,
         # it has acccept of none
         self.assertEqual(len(gallery_wanted_lists[incoming_gallery5.gid]), 3)
+        self.assertEqual(len(gallery_wanted_lists[incoming_gallery6.gid]), 1)
 
         rematch_result_1 = self.test_gallery1.match_against_wanted_galleries(wanted_galleries, skip_already_found=False)
         rematch_result_4 = self.test_gallery4.match_against_wanted_galleries(wanted_galleries, skip_already_found=False)
         rematch_result_5 = self.test_gallery5.match_against_wanted_galleries(wanted_galleries, skip_already_found=False)
+        rematch_result_6 = self.test_gallery6.match_against_wanted_galleries(wanted_galleries, skip_already_found=False)
 
         # Make sure compare_gallery_with_wanted_filters gives the same result as match_against_wanted_galleries
         self.assertEqual(rematch_result_1, gallery_wanted_lists[incoming_gallery1.gid])
         self.assertEqual(rematch_result_4, gallery_wanted_lists[incoming_gallery4.gid])
         self.assertEqual(rematch_result_5, gallery_wanted_lists[incoming_gallery5.gid])
+        self.assertEqual(rematch_result_6, gallery_wanted_lists[incoming_gallery6.gid])
+
+        # Replicate the code inside core/base/handlers.py
+        FoundGallery.objects.get_or_create(
+            wanted_gallery=self.test_wanted_gallery5,
+            gallery=self.test_gallery6
+        )
+
+        self.test_wanted_gallery5.found = True
+        self.test_wanted_gallery5.save()
+
+        wanted_found = WantedGallery.objects.filter(foundgallery__gallery=self.test_gallery6)
+
+        rematch_wanted = self.test_gallery6.match_against_wanted_galleries(
+            wanted_filters=wanted_found,
+            skip_already_found=False
+        )
+
+        wanted_invalidated: list['WantedGallery'] = []
+
+        for single_wanted_found in wanted_found:
+            if single_wanted_found not in rematch_wanted:
+                wanted_invalidated.append(single_wanted_found)
+
+        self.assertEqual(len(wanted_invalidated), 0)

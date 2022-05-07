@@ -90,6 +90,10 @@ class Matcher(metaclass=Meta):
         results: list[tuple[str, GalleryData, float]] = []
         title_to_search = self.format_to_search_title(title)
 
+        logger.info(
+            "For matcher: {}, searching using title: {}.".format(str(self), title_to_search)
+        )
+
         if self.search_method(title_to_search):
             if self.time_to_wait_after_compare > 0:
                 time.sleep(self.time_to_wait_after_compare)

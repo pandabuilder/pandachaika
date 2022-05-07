@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from typing import Optional, Any
 
@@ -39,3 +40,11 @@ class ChaikaGalleryData(GalleryData):
         cleaned_attrs = {x: y for x, y in attributes.items() if x not in ['gid', 'provider']}
 
         return GalleryData(self.gid, self.provider, **cleaned_attrs)
+
+
+def clean_title(title: str) -> str:
+    # Remove parenthesis
+    adjusted_title = re.sub(r'\s+\(.+?\)', r'', re.sub(r'\[.+?\]\s*', r'', title)).replace("_", "")
+    # Remove non words, non whitespace
+    # adjusted_title = re.sub(r'[^\w\s]', r' ', adjusted_title)
+    return adjusted_title

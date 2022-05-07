@@ -11,7 +11,7 @@ from core.base.types import MatchesValues, DataDict
 from core.base.utilities import (
     filecount_in_zip,
     get_zip_filesize,
-    sha1_from_file_object, clean_title, construct_request_dict, get_images_from_zip)
+    sha1_from_file_object, clean_title, construct_request_dict, get_images_from_zip, file_matches_any_filter)
 from core.providers.panda.utilities import link_from_gid_token_fjord, get_gid_token_from_link, SearchHTMLParser, \
     GalleryHTMLParser
 from . import constants
@@ -143,13 +143,13 @@ class TitleMatcher(Matcher):
     default_cutoff = 0.7
 
     def format_to_search_title(self, file_name: str) -> str:
-        if file_name.endswith('.zip'):
+        if file_matches_any_filter(file_name, self.settings.filename_filter):
             return clean_title(self.get_title_from_path(file_name))
         else:
             return clean_title(file_name)
 
     def format_to_compare_title(self, file_name: str) -> str:
-        if file_name.endswith('.zip'):
+        if file_matches_any_filter(file_name, self.settings.filename_filter):
             return clean_title(self.get_title_from_path(file_name))
         else:
             return clean_title(file_name)

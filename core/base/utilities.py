@@ -10,6 +10,7 @@ import threading
 import typing
 import zipfile
 import zlib
+import fnmatch
 from datetime import timedelta, datetime
 from difflib import SequenceMatcher
 from itertools import tee, islice, chain
@@ -471,6 +472,13 @@ def format_title_to_wanted_search(title: str) -> str:
     words_and_ws = re.sub(r'\W', ' ', title)
     words_and_ws_once = re.sub(r'\s+', ' ', words_and_ws)
     return words_and_ws_once
+
+
+def file_matches_any_filter(title: str, filters: list[str]) -> bool:
+    for filename_filter in filters:
+        if fnmatch.filter(title, filename_filter):
+            return True
+    return False
 
 
 def artist_from_title(title: str) -> str:

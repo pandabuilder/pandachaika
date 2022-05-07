@@ -7,7 +7,7 @@ from core.base.types import GalleryData, DataDict
 from core.base.utilities import (
     filecount_in_zip,
     get_zip_filesize,
-    clean_title, request_with_retries, construct_request_dict)
+    clean_title, request_with_retries, construct_request_dict, file_matches_any_filter)
 from core.providers.mugimugi.utilities import convert_api_response_text_to_gallery_dicts
 from . import constants
 
@@ -26,13 +26,13 @@ class TitleMatcher(Matcher):
         return self.values_array
 
     def format_to_search_title(self, file_name: str) -> str:
-        if file_name.endswith('.zip'):
+        if file_matches_any_filter(file_name, self.settings.filename_filter):
             return clean_title(self.get_title_from_path(file_name))
         else:
             return clean_title(file_name)
 
     def format_to_compare_title(self, file_name: str) -> str:
-        if file_name.endswith('.zip'):
+        if file_matches_any_filter(file_name, self.settings.filename_filter):
             return clean_title(self.get_title_from_path(file_name))
         else:
             return clean_title(file_name)
