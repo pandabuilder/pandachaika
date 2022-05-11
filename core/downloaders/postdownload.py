@@ -143,7 +143,7 @@ class PostDownloader(object):
                 self.current_download['downloaded'] += downloaded
                 current = time.perf_counter()
                 if current > start:
-                    self.current_download['speed'] = self.current_download['downloaded'] / ((current - start) * 1024)
+                    self.current_download['speed'] = self.current_download['downloaded'] / (current - start)
                 callback(data)
             self.current_download['filename'] = ''
             self.current_download['speed'] = 0

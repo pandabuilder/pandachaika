@@ -393,7 +393,7 @@ class BaseParser:
             logger.info(downloaders_msg)
 
         for i, gallery in enumerate(gallery_data_list, start=1):
-            if self.last_used_downloader is not None and not self.last_used_downloader.type != 'info':
+            if self.last_used_downloader is not None and self.last_used_downloader.type != 'info':
                 # We can't assume that every parser has its own downloader,
                 # could be from another provider, so we can't directly use self.own_settings
                 last_used_provider = self.last_used_downloader.provider

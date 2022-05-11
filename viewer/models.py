@@ -35,6 +35,7 @@ from django.db.models import Value, CharField
 from django.db.models.functions import Concat, Replace
 
 from PIL import Image as PImage
+from PIL import ImageFile
 import django.db.models.options as options
 from django.urls import reverse
 from django.contrib.auth.models import User
@@ -66,6 +67,7 @@ T = typing.TypeVar('T')
 options.DEFAULT_NAMES += 'es_index_name', 'es_mapping'
 PImage.MAX_IMAGE_PIXELS = 200000000
 EMPTY_TITLE = 'No title'
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
 class OriginalFilenameFileSystemStorage(FileSystemStorage):
