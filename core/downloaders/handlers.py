@@ -61,18 +61,32 @@ class BaseDownloader(metaclass=Meta):
     def update_gallery_db(self) -> None:
         if not self.original_gallery or not self.settings.gallery_model:
             return
+        gallery_model = self.settings.gallery_model
         if self.settings.keep_dl_type and self.original_gallery.dl_type is not None:
             self.original_gallery.dl_type = None
         if self.type == 'submit':
-            self.original_gallery.origin = self.settings.gallery_model.ORIGIN_SUBMITTED
+            self.original_gallery.origin = gallery_model.ORIGIN_SUBMITTED
         if self.no_metadata:
-            self.original_gallery.status = self.settings.gallery_model.NO_METADATA
+            self.original_gallery.status = gallery_model.NO_METADATA
         if self.settings.gallery_reason:
             self.original_gallery.reason = self.settings.gallery_reason
-        self.gallery_db_entry = self.settings.gallery_model.objects.update_or_create_from_values(self.original_gallery)
+        self.gallery_db_entry = gallery_model.objects.update_or_create_from_values(self.original_gallery)
         if self.gallery_db_entry:
             # TODO: Investigate why we need a new update_index here to push to ES index.
             self.gallery_db_entry.update_index()
+
+            if self.settings.link_child is not None:
+                child_gallery = gallery_model.objects.filter(gid=self.settings.link_child, provider=self.gallery_db_entry.provider).first()
+                if child_gallery:
+                    child_gallery.parent_gallery = self.gallery_db_entry
+                    child_gallery.save()
+
+            if self.settings.link_newer is not None:
+                newer_gallery = gallery_model.objects.filter(gid=self.settings.link_newer, provider=self.gallery_db_entry.provider).first()
+                if newer_gallery:
+                    newer_gallery.first_gallery = self.gallery_db_entry
+                    newer_gallery.save()
+
             # If we are updating a gallery's metadata, and we get a new tag that would have been rejected,
             # mark the archive. Do the same for a wanted match.
             wanted_invalidated: list['WantedGallery'] = []

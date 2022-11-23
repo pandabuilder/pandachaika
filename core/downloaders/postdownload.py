@@ -21,9 +21,9 @@ import re
 from core.base.setup import Settings
 from core.base.types import DataDict
 from core.base.utilities import (
-    calc_crc32, convert_rar_to_zip,
+    convert_rar_to_zip,
     replace_illegal_name,
-    convert_7z_to_zip, get_zip_fileinfo)
+    convert_7z_to_zip)
 from core.workers.schedulers import BaseScheduler
 from viewer.models import Archive, ArchiveManageEntry
 

@@ -1,9 +1,14 @@
+import typing
+from typing import Optional, Union
+
 from PIL import Image as PImage
 from PIL import UnidentifiedImageError
 from django.db.models import QuerySet
 
 from core.base import hashing
-from viewer.models import Archive
+
+if typing.TYPE_CHECKING:
+    from viewer.models import Archive
 
 
 class CompareObjectsService:
@@ -22,7 +27,7 @@ class CompareObjectsService:
 
     @staticmethod
     def image_loader(hashfunc, hash_size=8):
-        def inner_function(path: str):
+        def inner_function(path: Union[typing.IO, typing.BinaryIO, str]):
             try:
                 image = CompareObjectsService.alpharemover(PImage.open(path))
                 return str(hashfunc(image))
@@ -31,7 +36,7 @@ class CompareObjectsService:
         return inner_function
 
     @classmethod
-    def hash_archives(cls, archives: QuerySet[Archive], algorithms: list[str], thumbnails: bool = True, images: bool = True) -> dict:
+    def hash_archives(cls, archives: 'QuerySet[Archive]', algorithms: list[str], thumbnails: bool = True, images: bool = True) -> dict:
 
         results_per_algorithm: dict[str, dict] = {
 
@@ -66,3 +71,25 @@ class CompareObjectsService:
             results_per_algorithm[algo_name] = results
 
         return results_per_algorithm
+
+    @classmethod
+    def hash_thumbnail(cls, fp: Union[typing.IO, str], algorithm: str) -> Optional[str]:
+
+        if isinstance(fp, str):
+            file_object: Union[typing.IO, typing.BinaryIO] = open(fp, "rb")
+        else:
+            file_object = fp
+
+        chosen_algo = None
+
+        if algorithm in cls.file_hash_functions:
+            chosen_algo = cls.file_hash_functions[algorithm]
+
+        if algorithm in cls.image_hash_functions:
+            chosen_algo = cls.image_loader(cls.image_hash_functions[algorithm])
+
+        if not chosen_algo:
+            return None
+
+        result = chosen_algo(file_object)
+        return result

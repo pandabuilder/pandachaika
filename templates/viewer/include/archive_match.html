@@ -8,8 +8,9 @@
         width="{{ thumbnail_details.2 }}" height="{{ thumbnail_details.1 }}" src="{% if match.gallery.thumbnail.name %}{{ match.gallery.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}"/>
     {% endwith %}
   </a>
+    <a class="btn btn-info btn-sm" href="{% url 'viewer:archive-update-tool-id' archive.pk 'select-as-match' match.gallery.pk %}">Select as match</a>
   <div class="caption">
-    <a href="{% url 'viewer:archive-update-tool-id' archive.pk 'select-as-match' match.gallery.pk %}"><i class="fas fa-check"></i></a> | {{ match.gallery.filecount }} | {{ match.gallery.filesize|filesizeformat }} | {{ match.match_type }} | <span class="acc-{{ match.match_accuracy|color_percent:1 }}">{{ match.match_accuracy|floatformat:3 }}</span> | {{ match.gallery.archive_set.all|yesno }} | <a class="tag-preview-g" tabindex="0" role="button" data-toggle="popover" data-trigger="focus" data-pk="{{ match.gallery.pk }}">Tags</a> | <a href="{% url 'viewer:api' %}?gallery={{ match.gallery.pk }}">JSON</a>
+    {{ match.gallery.filecount }} | {{ match.gallery.filesize|filesizeformat }} | {{ match.match_type }} | <span class="acc-{{ match.match_accuracy|color_percent:1 }}">{{ match.match_accuracy|floatformat:3 }}</span> | {{ match.gallery.archive_set.all|yesno }} | <a class="tag-preview-g" tabindex="0" role="button" data-toggle="popover" data-trigger="focus" data-pk="{{ match.gallery.pk }}">Tags</a> | <a href="{% url 'viewer:api' %}?gallery={{ match.gallery.pk }}">JSON</a>
   </div>
     <div>{{ match.gallery.artist_tags.0.name }}</div>
     <div>{{ match.gallery.get_link|urlize_all_rel }}</div>

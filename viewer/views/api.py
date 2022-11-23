@@ -402,6 +402,8 @@ def json_search(request: HttpRequest) -> HttpResponse:
                         reverse('viewer:gallery-thumb', args=(gallery.pk,))) if gallery.thumbnail else '',
                     'thumbnail_url': gallery.thumbnail_url,
                     'gallery_container': gallery.gallery_container.gid if gallery.gallery_container else '',
+                    'parent_gid': gallery.parent_gallery.gid if gallery.parent_gallery else '',
+                    'first_gid': gallery.first_gallery.gid if gallery.first_gallery else '',
                     'magazine': gallery.magazine.gid if gallery.magazine else ''
                 } for gallery in galleries_matcher
                 ],

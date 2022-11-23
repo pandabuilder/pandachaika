@@ -26,7 +26,8 @@ from viewer.models import (
     ArchiveMatches,
     EventLog,
     Provider, Attribute, ArchiveQuerySet, GalleryQuerySet, GallerySubmitEntry, ArchiveManageEntry,
-    MonitoredLink, TagQuerySet
+    ArchiveRecycleEntry,
+    MonitoredLink, TagQuerySet, GalleryProviderData, ItemProperties
 )
 from django.contrib import admin
 from django.contrib.admin.helpers import ActionForm
@@ -48,7 +49,8 @@ class ArchiveAdmin(admin.ModelAdmin):
     search_fields = ["title", "title_jpn", "zipped"]
     list_display = ["title", "zipped", "gallery_id", "filesize",
                     "filecount", "create_date"]
-    list_filter = ["user", "match_type", "source_type", "public", "gallery__hidden", "reason", "origin"]
+    list_filter = ["user", "match_type", "source_type", "public",
+                   "gallery__hidden", "reason", "origin", "extracted", "binned"]
     actions = ['make_public', 'mark_source_fakku', 'mark_source_fakku_sub', 'mark_source_cafe',
                'mark_source_custom', 'set_reason', "mark_origin"]
     action_form = UpdateActionForm
@@ -191,9 +193,14 @@ class TagAdmin(admin.ModelAdmin):
     recall_api_gallery.short_description = "Recall Gallery API to all related galleries"  # type: ignore
 
 
+class GalleryProviderDataInline(admin.TabularInline):
+    model = GalleryProviderData
+    extra = 1
+
+
 class GalleryAdmin(admin.ModelAdmin):
     search_fields = ["title", "title_jpn", "gid"]
-    raw_id_fields = ("tags", "gallery_container", "magazine")
+    raw_id_fields = ("tags", "gallery_container", "magazine", "first_gallery", "parent_gallery")
     list_display = [
         "__str__", "id", "gid", "token",
         "category", "filesize", "posted", "create_date", "last_modified",
@@ -205,6 +212,7 @@ class GalleryAdmin(admin.ModelAdmin):
     ]
     actions = ['make_hidden', 'make_public', 'make_private', 'set_provider', 'set_reason', 'make_normal']
     action_form = UpdateActionForm
+    inlines = (GalleryProviderDataInline,)
 
     def make_hidden(self, request: HttpRequest, queryset: GalleryQuerySet) -> None:
         rows_updated = queryset.update(hidden=True)
@@ -540,6 +548,13 @@ class EventLogAdmin(admin.ModelAdmin):
     search_fields = ["user__username", "user__email", "reason", "result"]
 
 
+class ItemPropertiesAdmin(admin.ModelAdmin):
+
+    list_filter = ["name", "tag", "content_type"]
+    list_display = ["name", "tag", "value", "content_type", "object_id"]
+    search_fields = ["name", "tag", "value"]
+
+
 class GallerySubmitEntryAdmin(admin.ModelAdmin):
 
     raw_id_fields = ["gallery", "similar_galleries"]
@@ -555,6 +570,14 @@ class ArchiveManageEntryAdmin(admin.ModelAdmin):
     list_display = ["archive", "mark_check", "mark_priority", "mark_reason",
                     "mark_user", "mark_extra", "resolve_check", "resolve_user"]
     search_fields = ["mark_reason", "mark_extra", "mark_comment", "resolve_comment"]
+
+
+class ArchiveRecycleEntryAdmin(admin.ModelAdmin):
+
+    raw_id_fields = ["archive"]
+    list_filter = ["user", "date_deleted", "origin"]
+    list_display = ["archive", "reason", "user"]
+    search_fields = ["reason", "comment"]
 
 
 class MonitoredLinkAdmin(admin.ModelAdmin):
@@ -616,6 +639,8 @@ admin.site.register(Scheduler, SchedulerAdmin)
 admin.site.register(ArchiveMatches, ArchiveMatchesAdmin)
 admin.site.register(Provider, ProviderAdmin)
 admin.site.register(EventLog, EventLogAdmin)
+admin.site.register(ItemProperties, ItemPropertiesAdmin)
 admin.site.register(GallerySubmitEntry, GallerySubmitEntryAdmin)
 admin.site.register(ArchiveManageEntry, ArchiveManageEntryAdmin)
+admin.site.register(ArchiveRecycleEntry, ArchiveRecycleEntryAdmin)
 admin.site.register(MonitoredLink, MonitoredLinkAdmin)

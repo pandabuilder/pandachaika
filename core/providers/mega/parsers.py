@@ -20,11 +20,12 @@ class Parser(BaseParser):
     name = constants.provider_name
     accepted_urls = [constants.base_url, constants.old_base_url]
 
-    def crawl_urls(self, urls: list[str], wanted_filters=None, wanted_only: bool = False) -> None:
+    def crawl_urls(self, urls: list[str], wanted_filters=None, wanted_only: bool = False,
+                   preselected_wanted_matches: dict[str, list['WantedGallery']] = None) -> None:
 
         unique_urls = set()
         gallery_data_list = []
-        gallery_wanted_lists: dict[str, list['WantedGallery']] = defaultdict(list)
+        gallery_wanted_lists: dict[str, list['WantedGallery']] = preselected_wanted_matches or defaultdict(list)
 
         if not self.downloaders:
             logger.warning('No downloaders enabled, returning.')

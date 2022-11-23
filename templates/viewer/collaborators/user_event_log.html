@@ -15,6 +15,12 @@
     </div>
     {% load viewer_extras %}
     <form action="{{ request.get_full_path }}" method="GET">
+      {% for field in form %}
+        <div class="page-line">
+          {{ field.errors }}
+          {{ field }}
+        </div>
+      {% endfor %}
       <div class="form-inline page-line">
         <label for="actions">Actions: </label>
         <select multiple id="actions" name="actions" class="form-control" title="actions" aria-label="actions">

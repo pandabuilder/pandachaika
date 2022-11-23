@@ -173,6 +173,22 @@ class WantedGalleryTest(TestCase):
             filesize=1043530781
         )
 
+        # Regex
+        self.test_wanted_gallery_regex = WantedGallery.objects.create(
+            title='test wanted gallery regex',
+            book_type='user',
+            reason='kairakuten_raw',
+            should_search=True,
+            keep_searching=True,
+            notify_when_found=False,
+            search_title=r'COMIC Kairakuten \d{4}-\d{2}',
+            regexp_search_title=True,
+            regexp_search_title_icase=True,
+            category='Manga',
+            wanted_page_count_lower=100,
+            wanted_page_count_upper=0,
+        )
+
     def test_match_gallery(self):
         settings = Settings(load_from_disk=True)
         parser = PandaParser(settings)
@@ -236,7 +252,8 @@ class WantedGalleryTest(TestCase):
         # Should be wg4 , wg4_b and wg4_c, because it has only 1 artist tag, and even with parody missing,
         # it has acccept of none
         self.assertEqual(len(gallery_wanted_lists[incoming_gallery5.gid]), 3)
-        self.assertEqual(len(gallery_wanted_lists[incoming_gallery6.gid]), 1)
+        # 1 + regex
+        self.assertEqual(len(gallery_wanted_lists[incoming_gallery6.gid]), 2)
 
         rematch_result_1 = self.test_gallery1.match_against_wanted_galleries(wanted_galleries, skip_already_found=False)
         rematch_result_4 = self.test_gallery4.match_against_wanted_galleries(wanted_galleries, skip_already_found=False)

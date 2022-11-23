@@ -43,6 +43,13 @@
     </label>
     <small id="asDeletedHelp" class="form-text text-muted">Useful for adding chain updated galleries, or replaced. This will skip any file download and only create a Gallery (metadata) marked as deleted.</small>
   </div>
+  <div class="form-check ml-sm-2 mb-sm-4">
+    <input id="checkbox5" type="checkbox" class="form-check-input custom-cb" name="skip-non-current" value="1">
+    <label class="form-check-label" for="checkbox5"><span><span></span></span>
+      Add non-current galleries as deleted
+    </label>
+    <small id="skipNonCurrentHelp" class="form-text text-muted">For panda links, when a gallery is detected as part of a chain and it's not the final one, it will be marked as deleted.</small>
+  </div>
   {% endif %}
   <div class="form-group">
     <button class="btn btn-light">Submit URLs to Web Crawler</button>

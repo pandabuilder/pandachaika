@@ -118,12 +118,13 @@ class Parser(BaseParser):
         else:
             return None
 
-    def crawl_urls(self, urls: list[str], wanted_filters: QuerySet = None, wanted_only: bool = False) -> None:
+    def crawl_urls(self, urls: list[str], wanted_filters: QuerySet = None, wanted_only: bool = False,
+                   preselected_wanted_matches: dict[str, list['WantedGallery']] = None) -> None:
 
         unique_urls = set()
         gallery_data_list = []
         fetch_format_galleries = []
-        gallery_wanted_lists: dict[str, list['WantedGallery']] = defaultdict(list)
+        gallery_wanted_lists: dict[str, list['WantedGallery']] = preselected_wanted_matches or defaultdict(list)
 
         if not self.downloaders:
             logger.warning('No downloaders enabled, returning.')

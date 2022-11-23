@@ -157,7 +157,7 @@
             <tbody>
             {% for hit in hits %}
               <tr>
-                <td><a href="{% url 'viewer:archive' hit.pk %}">{{ hit.pk }}</a></td>
+                <td><a href="{% url 'viewer:archive' hit.pk %}" {% if hit.thumbnail %} data-image-url="{{ hit.thumbnail }}" class="img-preview" rel="popover"{% else %} title ="{{ hit.title_jpn }}"{% endif %}>{{ hit.pk }}</a></td>
                 <td>{% firstof hit.title hit.title_jpn "No title" %}</td>
                 <td>{{ hit.image_count }}</td>
                 <td>{{ hit.size|filesizeformat }}</td>

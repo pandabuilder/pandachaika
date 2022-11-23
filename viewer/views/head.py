@@ -35,7 +35,7 @@ from viewer.forms import (
 from viewer.models import (
     Archive, Image, Tag, Gallery,
     UserArchivePrefs, WantedGallery,
-    users_with_perm, Profile, GalleryQuerySet, GallerySubmitEntry, ArchiveGroup)
+    users_with_perm, Profile, GalleryQuerySet, GallerySubmitEntry, ArchiveGroup, GalleryProviderData)
 from viewer.utils.functions import send_mass_html_mail, gallery_search_results_to_json, archive_search_result_to_json
 from viewer.utils.tags import sort_tags
 from viewer.utils.types import AuthenticatedHttpRequest
@@ -376,7 +376,20 @@ def gallery_details(request: HttpRequest, pk: int, tool: str = None) -> HttpResp
 
     tag_lists = sort_tags(gallery.tags.all())
 
-    d = {'gallery': gallery, 'tag_lists': tag_lists, 'settings': crawler_settings}
+    gallery_provider_data = GalleryProviderData.objects.filter(gallery=gallery)
+
+    d = {
+        'gallery': gallery, 'tag_lists': tag_lists, 'settings': crawler_settings,
+        'gallery_provider_data': gallery_provider_data,
+    }
+
+    if gallery.first_gallery:
+        gallery_filters = Q(first_gallery=gallery.first_gallery) | Q(first_gallery=gallery) | Q(pk=gallery.pk) | Q(pk=gallery.first_gallery.pk)
+    else:
+        gallery_filters = Q(first_gallery=gallery) | Q(pk=gallery.pk)
+
+    d.update({'gallery_chain': Gallery.objects.filter(gallery_filters, provider=gallery.provider).order_by('gid')})
+
     return render(request, "viewer/gallery.html", d)
 
 
@@ -386,7 +399,7 @@ def gallery_enter_reason(request: HttpRequest, pk: int, tool: str = None) -> Htt
         gallery = Gallery.objects.get(pk=pk)
     except Gallery.DoesNotExist:
         raise Http404("Gallery does not exist")
-    if not (gallery.public or request.user.is_authenticated):
+    if not request.user.is_authenticated:
         raise Http404("Gallery does not exist")
 
     if request.method == 'POST':
@@ -513,7 +526,7 @@ def gallery_enter_reason(request: HttpRequest, pk: int, tool: str = None) -> Htt
 
     d = {'gallery': gallery, 'tool': tool}
 
-    return render(request, "viewer/include/gallery_tool_reason.html", d)
+    return render(request, "viewer/include/modals/gallery_tool_reason.html", d)
 
 
 def gallery_thumb(request: HttpRequest, pk: int) -> HttpResponse:
@@ -944,6 +957,8 @@ def filter_archives(request: HttpRequest, session_filters: dict[str, str], reque
         results = Archive.objects.all()
         to_use_order_fields = archive_order_fields
 
+    results = results.filter(binned=False)
+
     # sort and filter results by parameters
     order = "posted"
     sorting_field = order
@@ -1121,6 +1136,8 @@ def quick_search(request: HttpRequest, parameters: DataDict, display_parameters:
 
     if not request.user.is_authenticated:
         results = results.filter(public=True)
+
+    results = results.filter(binned=False)
 
     # URL search
     url = display_parameters["qsearch"]
@@ -1605,7 +1622,7 @@ def user_archive_preferences(request: AuthenticatedHttpRequest, archive_pk: int,
                                 {'user_archive_preferences': current_user_archive_preferences})
 
 
-def filter_archives_simple(params: dict[str, Any], authenticated=False) -> QuerySet[Archive]:
+def filter_archives_simple(params: dict[str, Any], authenticated=False, show_binned=False) -> QuerySet[Archive]:
     """Filter results through parameters
     and return results list.
     """
@@ -1774,6 +1791,9 @@ def filter_archives_simple(params: dict[str, Any], authenticated=False) -> Query
 
     if "hidden" in params and params["hidden"]:
         results = results.filter(gallery__hidden=True)
+
+    if not show_binned:
+        results = results.filter(binned=False)
 
     if 'view' in params:
         if params["view"] == "list":

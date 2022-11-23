@@ -28,6 +28,8 @@
 {#      <input id="checkbox-f1" type="checkbox" name="no-custom-tags" value="1" {% if "no-custom-tags" in request.GET %}checked{% endif %}><label for="checkbox-f1"><span><span></span></span>No custom tags</label>#}
       <input id="checkbox-f2" class="custom-cb" type="checkbox" name="with-possible-matches" value="1" {% if "with-possible-matches" in request.GET %}checked{% endif %}><label for="checkbox-f2"><span><span></span></span>With possible matches</label>
       <input id="checkbox-f3" class="custom-cb" type="checkbox" name="show-matched" value="1" {% if "show-matched" in request.GET %}checked{% endif %}><label for="checkbox-f3"><span><span></span></span>Show matched</label>
+      <input id="checkbox-f4" class="custom-cb" type="checkbox" name="inline-thumbnails" value="1" {% if "inline-thumbnails" in request.GET %}checked{% endif %}><label for="checkbox-f4"><span><span></span></span>Inline thumbnails</label>
+      <input title="Limit" size="18" type="number" step="1" class="form-control" name="limit" value="{{ request.GET.limit }}" placeholder="Archives per page"/>
     </div>
   </form>
   <!-- Next/Prev page links  -->
@@ -62,12 +64,24 @@
             {% if archive.thumbnail.name %}
               <a href="#" data-image-url="{{ archive.thumbnail.url }}" class="img-preview" rel="popover">Thumbnail</a></p>
             {% endif %}
+          {% if archive.thumbnail.name and inline_thumbnails %}
+          <p>
+          {% include 'viewer/include/archive_cover.html' with show_artist=1 %}
+          {% with matches=archive.possible_galleries %}
+            {% if matches|length > 0 %}
+                {% for match in matches %}
+                  {% include 'viewer/include/archive_col_match.html' %}
+                {% endfor %}
+            {% endif %}
+          {% endwith %}
+          </p>
+          {% else %}
           {% with matches=archive.possible_galleries %}
             {% if matches|length > 0 %}
               <table class="table table-bordered table-sm generic-table">
                 <thead>
                 <tr>
-                  <th>Select</th><th>First Artist</th><th>Title</th><th>URL</th><th>Type</th><th>Accuracy</th><th>Posted</th><th>Count</th><th>Size</th>
+                  <th>Select</th><th>First Artist</th><th>Title</th><th>URL</th><th>Type</th><th>Accuracy</th><th>Posted</th><th>Count</th><th>Size</th><th>Linked?</th>
                 </tr>
                 </thead>
                 <tbody>
@@ -105,12 +119,16 @@
                     <td class="{{ match.gallery.filesize|color_percent:archive.filesize }}">
                       {{ match.gallery.filesize }}
                     </td>
+                    <td>
+                      {{ match.gallery.archive_set.all|yesno }}
+                    </td>
                   </tr>
                 {% endfor %}
                 </tbody>
               </table>
             {% endif %}
           {% endwith %}
+          {% endif %}
         </li>
       {% endfor %}
     </ul>
@@ -159,5 +177,62 @@
     <script type="text/javascript" src="{% static 'autocomplete_light/jal.js' %}"></script>
   {% endcompress %}
   <script type="text/javascript" src="{% static 'js/list_operations.js' %}"></script>
-{#  <script type="text/javascript" src="{% static 'js/admin.js' %}"></script>#}
+  <script>
+    var tagData = {};
+    var tagUrl = '{% url 'viewer:api' %}?at=';
+    function tagToHtml (tag) {
+        return '<div class="tag">' + tag + '</div>'
+    }
+    $(document).ready(function() {
+        $(".tag-preview").click(function() {
+            var el = $(this);
+            var pk = $(this).data('pk');
+            if (tagData[pk]) {
+                return tagData[pk];
+            }
+            else {
+                $.get(tagUrl + pk, function(response) {
+                    if (response.tags) {
+                        tagData[pk] = response.tags.map(tagToHtml);
+                        el.unbind('click').popover({
+                            content: tagData[pk].join(""),
+                            {#            title: 'Dynamic response!',#}
+                            html: true,
+                            {#                        delay: {show: 500, hide: 100}#}
+                        }).popover('show');
+                    }
+                });
+            }
+        });
+    });
+  </script>
+  <script>
+    var tagDataGallery = {};
+    var tagUrlGallery = '{% url 'viewer:api' %}?gt=';
+    function tagToHtml (tag) {
+        return '<div class="tag">' + tag + '</div>'
+    }
+    $(document).ready(function() {
+        $(".tag-preview-g").click(function() {
+            var el = $(this);
+            var pk = $(this).data('pk');
+            if (tagDataGallery[pk]) {
+                return tagDataGallery[pk];
+            }
+            else {
+                $.get(tagUrlGallery + pk, function(response) {
+                    if (response.tags) {
+                        tagDataGallery[pk] = response.tags.map(tagToHtml);
+                        el.unbind('click').popover({
+                            content: tagDataGallery[pk].join(""),
+                            {#            title: 'Dynamic response!',#}
+                            html: true,
+                            {#                        delay: {show: 500, hide: 100}#}
+                        }).popover('show');
+                    }
+                });
+            }
+        });
+    });
+  </script>
 {% endblock %}

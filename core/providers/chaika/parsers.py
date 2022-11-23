@@ -112,12 +112,15 @@ class Parser(BaseParser):
 
             for gallery in dict_list:
                 gallery['posted'] = datetime.fromisoformat(gallery['posted_date'].replace("+0000", "+00:00"))
+                gallery['link'] = gallery['source_url']
                 parser = self.settings.provider_context.get_parsers(self.settings, filter_name=gallery['provider'])[0]
                 gid = parser.id_from_url(gallery['source_url'])
                 if gid:
                     token = parser.token_from_url(gallery['source_url'])
                     gallery['token'] = token
                     gallery['tags'] = [x['full'] for x in gallery['tags']]
+                    if 'gid' in gallery:
+                        del gallery['gid']
                     gallery_data = ChaikaGalleryData(gid, **gallery)
                     if 'source_thumbnail' in gallery:
                         gallery_data.thumbnail_url = gallery['source_thumbnail']
@@ -170,18 +173,22 @@ class Parser(BaseParser):
 
         for gallery in dict_list:
             gallery['posted'] = datetime.fromisoformat(gallery['posted_date'].replace("+0000", "+00:00"))
+            gallery['link'] = gallery['source_url']
             parser = self.settings.provider_context.get_parsers(self.settings, filter_name=gallery['provider'])[0]
             gid = parser.id_from_url(gallery['source_url'])
             if gid:
                 token = parser.token_from_url(gallery['source_url']),
                 gallery['token'] = token
                 gallery['tags'] = [x['full'] for x in gallery['tags']]
+                if 'gid' in gallery:
+                    del gallery['gid']
                 gallery_data = ChaikaGalleryData(gid, **gallery)
                 total_galleries_filtered.append(gallery_data)
 
         return total_galleries_filtered
 
-    def crawl_urls(self, urls: list[str], wanted_filters=None, wanted_only: bool = False) -> None:
+    def crawl_urls(self, urls: list[str], wanted_filters=None, wanted_only: bool = False,
+                   preselected_wanted_matches: dict[str, list['WantedGallery']] = None) -> None:
 
         # If we are crawling an url from a Wanted source (MonitoredLinks), force download using default downloaders
         # from each gallery's original provider, instead of just downloading the archive from chaika
@@ -296,7 +303,7 @@ class Parser(BaseParser):
                     dict_list = json_decoded
 
             found_galleries = set()
-            gallery_wanted_lists: dict[str, list['WantedGallery']] = defaultdict(list)
+            gallery_wanted_lists: dict[str, list['WantedGallery']] = preselected_wanted_matches or defaultdict(list)
 
             for gallery in dict_list:
                 if 'result' in gallery:
@@ -344,6 +351,7 @@ class Parser(BaseParser):
                         wanted_filters,
                         gallery_wanted_lists
                     )
+
                     if wanted_only and not gallery_wanted_lists[gallery.gid]:
                         continue
 
@@ -398,6 +406,17 @@ class Parser(BaseParser):
                 gallery_links = [x.link for x in gallery_data_list if x.link]
 
                 gallery_links.append('--no-wanted-check')
+
+                prev_matched = []
+
+                for matched_gallery_id, matched_gallery_wgs in gallery_wanted_lists.items():
+                    for gallery_wg in matched_gallery_wgs:
+                        prev_matched.append('{},{}'.format(matched_gallery_id, gallery_wg.pk))
+
+                if len(prev_matched) > 0:
+                    gallery_links.append("--preselect-wanted-match")
+                    for prev_matched_string in prev_matched:
+                        gallery_links.append(prev_matched_string)
 
                 if self.settings.workers.web_queue:
                     self.settings.workers.web_queue.enqueue_args_list(gallery_links)

@@ -24,6 +24,10 @@ class GalleryData:
             root: Optional[str] = None, filename: Optional[str] = None,
             queries: Optional[int] = None, thumbnail: Optional[str] = None,
             status: Optional[int] = None, origin: Optional[int] = None,
+            first_gallery_gid: Optional[str] = None,
+            parent_gallery_gid: Optional[str] = None,
+            extra_provider_data: Optional[list[tuple[str, str, Any]]] = None,
+            provider_metadata: Optional[str] = None,
             reason: Optional[str] = None, **kwargs: Any
     ) -> None:
         self.gid = gid
@@ -37,6 +41,8 @@ class GalleryData:
         self.gallery_contains_gids = gallery_contains_gids
         self.magazine_gid = magazine_gid
         self.magazine_chapters_gids = magazine_chapters_gids
+        self.first_gallery_gid = first_gallery_gid
+        self.parent_gallery_gid = parent_gallery_gid
         self.provider = provider
         self.title = title
         self.title_jpn = title_jpn
@@ -63,6 +69,8 @@ class GalleryData:
         self.filename = filename
         self.queries = queries
         self.extra_data: dict = {}
+        self.extra_provider_data = extra_provider_data
+        self.provider_metadata = provider_metadata
 
     def __str__(self) -> str:
         return str(self.__dict__)

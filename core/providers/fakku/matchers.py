@@ -13,7 +13,7 @@ from core.base.utilities import (
     get_zip_filesize,
     request_with_retries, construct_request_dict, file_matches_any_filter)
 from . import constants
-from .utilities import clean_title
+from .utilities import clean_title, clean_for_online_search_title
 
 logger = logging.getLogger(__name__)
 
@@ -28,9 +28,9 @@ class TitleMatcher(Matcher):
 
     def format_to_search_title(self, file_name: str) -> str:
         if file_matches_any_filter(file_name, self.settings.filename_filter):
-            return clean_title(self.get_title_from_path(file_name))
+            return clean_for_online_search_title(self.get_title_from_path(file_name))
         else:
-            return clean_title(file_name)
+            return clean_for_online_search_title(file_name)
 
     def format_to_compare_title(self, file_name: str) -> str:
         if file_matches_any_filter(file_name, self.settings.filename_filter):

@@ -1,3 +1,4 @@
+import json
 import typing
 from datetime import datetime, timezone
 
@@ -16,7 +17,7 @@ if typing.TYPE_CHECKING:
 
 def map_external_gallery_data_to_internal(gallery_data: DataDict) -> GalleryData:
     internal_gallery_data = GalleryData(
-        gallery_data['gid'],
+        str(gallery_data['gid']),
         constants.provider_name,
         token=gallery_data['token'],
         archiver_key=gallery_data['archiver_key'],
@@ -33,8 +34,34 @@ def map_external_gallery_data_to_internal(gallery_data: DataDict) -> GalleryData
         tags=translate_tag_list(gallery_data['tags']),
     )
 
+    internal_gallery_data.provider_metadata = json.dumps(gallery_data)
+
+    possible_extra_keys = ('parent_gid', 'parent_key', 'first_gid', 'first_key', 'current_gid', 'current_key')
+
     internal_gallery_data.extra_data['torrents'] = gallery_data['torrents']
     internal_gallery_data.extra_data['torrentcount'] = gallery_data['torrentcount']
+
+    for possible_key in possible_extra_keys:
+        if possible_key in gallery_data:
+            internal_gallery_data.extra_data[possible_key] = gallery_data[possible_key]
+
+    internal_gallery_data.extra_provider_data = list()
+
+    if 'parent_gid' in gallery_data:
+        internal_gallery_data.parent_gallery_gid = gallery_data['parent_gid']
+        if 'parent_key' in gallery_data:
+            parent_link = link_from_gid_token_fjord(gallery_data['parent_gid'], gallery_data['parent_key'])
+            internal_gallery_data.extra_provider_data.append(('parent', 'text', parent_link))
+
+    if 'first_gid' in gallery_data:
+        internal_gallery_data.first_gallery_gid = gallery_data['first_gid']
+        if 'first_key' in gallery_data:
+            parent_link = link_from_gid_token_fjord(gallery_data['first_gid'], gallery_data['first_key'])
+            internal_gallery_data.extra_provider_data.append(('first', 'text', parent_link))
+
+    if 'current_gid' in gallery_data and 'current_key' in gallery_data:
+        current_link = link_from_gid_token_fjord(gallery_data['current_gid'], gallery_data['current_key'])
+        internal_gallery_data.extra_provider_data.append(('current', 'text', current_link))
 
     internal_gallery_data.root = constants.ge_page
 

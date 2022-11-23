@@ -10,7 +10,6 @@ from collections.abc import Iterable
 from typing import Optional
 
 import feedparser
-import requests
 from bs4 import BeautifulSoup
 from django.db.models import QuerySet
 
@@ -405,13 +404,14 @@ class Parser(BaseParser):
         else:
             return None
 
-    def crawl_urls(self, urls: list[str], wanted_filters: QuerySet = None, wanted_only: bool = False) -> None:
+    def crawl_urls(self, urls: list[str], wanted_filters: QuerySet = None, wanted_only: bool = False,
+                   preselected_wanted_matches: dict[str, list['WantedGallery']] = None) -> None:
 
         unique_urls = set()
         gallery_data_list = []
         fetch_format_galleries: list[DataDict] = []
         unique_page_urls = set()
-        gallery_wanted_lists: dict[str, list['WantedGallery']] = defaultdict(list)
+        gallery_wanted_lists: dict[str, list['WantedGallery']] = preselected_wanted_matches or defaultdict(list)
 
         if not self.downloaders:
             logger.warning('No downloaders enabled, returning.')
@@ -596,6 +596,58 @@ class Parser(BaseParser):
                 gallery_data_list.extend(fjord_galleries_data)
 
         self.pass_gallery_data_to_downloaders(gallery_data_list, gallery_wanted_lists)
+
+    def post_gallery_processing(self, gallery_entry: 'Gallery', gallery_data: 'GalleryData'):
+
+        extra_gal_data = gallery_data.extra_data
+
+        galleries_to_add: dict[str, list[str]] = defaultdict(list)
+
+        if self.own_settings.auto_process_newer:
+            if 'current_gid' in extra_gal_data and 'current_key' in extra_gal_data:
+                current_url = link_from_gid_token_fjord(extra_gal_data['current_gid'], extra_gal_data['current_key'])
+
+                logger.info(
+                    "Gallery: {} has current in: {}, adding to queue".format(
+                        gallery_entry.get_absolute_url(),
+                        current_url
+                    )
+                )
+                galleries_to_add[current_url] = []
+
+        if self.own_settings.auto_process_first:
+            if 'first_gid' in extra_gal_data and 'first_key' in extra_gal_data:
+                first_url = link_from_gid_token_fjord(extra_gal_data['first_gid'], extra_gal_data['first_key'])
+
+                logger.info(
+                    "Gallery: {} has first in: {}, adding to queue".format(
+                        gallery_entry.get_absolute_url(),
+                        first_url
+                    )
+                )
+                galleries_to_add[first_url].extend(['--link-newer', str(gallery_entry.gid)])
+
+        if self.own_settings.auto_process_parent:
+            if 'parent_gid' in extra_gal_data and 'parent_key' in extra_gal_data:
+                parent_url = link_from_gid_token_fjord(extra_gal_data['parent_gid'], extra_gal_data['parent_key'])
+
+                logger.info(
+                    "Gallery: {} has parent in: {}, adding to queue".format(
+                        gallery_entry.get_absolute_url(),
+                        parent_url
+                    )
+                )
+                galleries_to_add[parent_url].extend(['--link-child', str(gallery_entry.gid)])
+
+        if self.settings.workers.web_queue and galleries_to_add:
+            list_galleries_to_add = [[x] + galleries_to_add[x] for x in galleries_to_add.keys()]
+            for gallery_to_add in list_galleries_to_add:
+                self.settings.workers.web_queue.enqueue_args_list(gallery_to_add)
+
+    def is_current_link_non_current(self, gallery_data: 'GalleryData') -> bool:
+        if 'current_gid' in gallery_data.extra_data:
+            return True
+        return False
 
 
 API = (

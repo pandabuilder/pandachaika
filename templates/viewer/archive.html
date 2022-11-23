@@ -11,43 +11,51 @@
   <!-- Archives  -->
   <ul class="info">
     {% if user.is_authenticated %}
-      <li class="right-options"><div><span>
-        <span>Archive:</span>
-        {% if perms.viewer.expand_archive %}<span>{% if images %}<a href="{% url 'viewer:archive-reduce' archive.pk %}">reduce</a>{% elif archive.crc32 %}<a href="{% url 'viewer:archive-extract' archive.pk %}">expand</a>{% endif %}</span>{% endif %}
-        {% if user.is_staff %}<span><a href="{% url 'viewer:archive-recalc-info' archive.pk %}">recalc</a></span>{% endif %}
-        {% if user.is_staff %}<span><a href="{% url 'viewer:archive-mark-similar' archive.pk %}">mark similar</a></span>{% endif %}
-        {% if perms.viewer.update_metadata %}<span><a href="{% url 'viewer:archive-recall-api' archive.pk %}">recall api</a></span>{% endif %}
-        {% if perms.viewer.publish_archive %}<span><a href="{% url 'viewer:archive-calc-imgs-sha1' archive.pk %}">calc sha1</a></span>{% endif %}
-        {% if user.is_staff %}<span><a href="{% url 'viewer:archive-rematch' archive.pk %}">rematch</a></span>{% endif %}
+      <li class="right-container">
+      <ul class="right-tools">
+         <li>Tools:</li>
+        {% if perms.viewer.recycle_archive %}
+            <li>
+                {% if archive.is_recycled %}
+                    <a class="open-modal" data-popup-url="{% url 'viewer:archive-tool-reason' archive.pk 'unrecycle' %}" href="{% url 'viewer:archive-tool-reason' archive.pk 'unrecycle' %}">unrecycle</a>
+                {% else %}
+                    <a class="open-modal" data-popup-url="{% url 'viewer:archive-tool-reason' archive.pk 'recycle' %}" href="{% url 'viewer:archive-tool-reason' archive.pk 'recycle' %}">recycle</a>
+                {% endif %}
+            </li>
+        {% endif %}
+        {% if user.is_staff %}<li><a href="{% url 'viewer:archive-recalc-info' archive.pk %}">recalc</a></li>{% endif %}
+        {% if perms.viewer.mark_similar_archive %}<li><a href="{% url 'viewer:archive-mark-similar' archive.pk %}">mark similar</a></li>{% endif %}
+        {% if user.is_staff %}<li><a href="{% url 'viewer:check-convert-type' archive.pk %}">convert zip</a></li>{% endif %}
+        {% if perms.viewer.update_metadata %}<li><a href="{% url 'viewer:archive-recall-api' archive.pk %}">recall api</a></li>{% endif %}
+        {% if perms.viewer.publish_archive %}<li><a href="{% url 'viewer:archive-calc-imgs-sha1' archive.pk %}">calc sha1</a></li>{% endif %}
+        {% if user.is_staff %}<li><a href="{% url 'viewer:archive-rematch' archive.pk %}">rematch</a></li>{% endif %}
         {% if user.is_staff %}
-          <span>
+          <li>
             <a
               class="open-modal"
               href="{% url 'viewer:archive-delete' archive.pk %}"
               data-popup-url="{% url 'viewer:archive-delete' archive.pk %}"
               >delete
             </a>
-          </span>
+          </li>
         {% endif %}
-        {% if user.is_staff %}{% if archive.gallery %}<span><a href="{% url 'viewer:gallery-tool' archive.gallery.pk 'toggle-hidden' %}">{% if archive.gallery.hidden %}open{% else %}hidden{% endif %}</a></span>{% endif %}{% endif %}
-        {% if perms.viewer.publish_archive %}<span>{% if archive.public %}<a href="{% url 'viewer:archive-private' archive.pk %}">private</a>{% else %}<a href="{% url 'viewer:archive-public' archive.pk %}">public</a>{% endif %}</span>{% endif %}
-        {% if user.is_staff %}<span><a href="{% url 'admin:viewer_archive_change' archive.pk %}">admin</a></span>{% endif %}
-        {% if user_archive_preferences.favorite_group == 0 %}
-          <span><a href="{% url 'viewer:user-archive-preferences' archive.pk 'favorite' %}">favorite</a></span>
-        {% else %} <span><a href="{% url 'viewer:user-archive-preferences' archive.pk 'unfavorite' %}">unfavorite</a></span>
+        {% if user.is_staff %}{% if archive.gallery %}<li><a href="{% url 'viewer:gallery-tool' archive.gallery.pk 'toggle-hidden' %}">{% if archive.gallery.hidden %}open{% else %}hidden{% endif %}</a></li>{% endif %}{% endif %}
+        {% if perms.viewer.publish_archive %}<li>{% if archive.public %}<a href="{% url 'viewer:archive-private' archive.pk %}">private</a>{% else %}<a href="{% url 'viewer:archive-public' archive.pk %}">public</a>{% endif %}</li>{% endif %}
+        {% if user.is_staff %}<li><a href="{% url 'admin:viewer_archive_change' archive.pk %}">admin</a></li>{% endif %}
+        {% if user.is_staff %}<li><a href="{% url 'viewer:archive-details' archive.pk 'edit' %}">edit</a></li>
         {% endif %}
-        {% if user.is_staff %}<span><a href="{% url 'viewer:archive-details' archive.pk 'edit' %}">edit</a></span>
-        {% endif %}
-        </span></div>
-        {% if archive.extracted %}
-        <div><span>
-            <span>View: <a href="{% url 'viewer:archive-details' archive.pk 'cover' %}">cover</a></span>
-            <span><a href="{% url 'viewer:archive-details' archive.pk 'thumbnails' %}">thumbnails</a></span>
-            <span><a href="{% url 'viewer:archive-details' archive.pk 'full' %}">full</a></span>
-            <span><a href="{% url 'viewer:archive-details' archive.pk 'single' %}">single</a></span>
-          </span>
-          </div>
-        {% endif %}
+      </ul>
+      {% if archive.extracted %}
+      <div>
+        <ul class="right-tools second-tools">
+            <li>View:</li>
+            <li><a href="{% url 'viewer:archive-details' archive.pk 'cover' %}">cover</a></li>
+            <li><a href="{% url 'viewer:archive-details' archive.pk 'thumbnails' %}">thumbnails</a></li>
+            <li><a href="{% url 'viewer:archive-details' archive.pk 'full' %}">full</a></li>
+            <li><a href="{% url 'viewer:archive-details' archive.pk 'single' %}">single</a></li>
+        </ul>
+      </div>
+      {% endif %}
       </li>
     {% endif %}
     <li class="title-main {{ archive|archive_title_class }}"><h5>{{ archive.best_title }}</h5></li>
@@ -101,9 +109,9 @@
       {% endif %}
       </table>
     </div>
-    {% if user.is_staff %}
+    {% if perms.viewer.archive_internal_info %}
     <div class="col-sm-6">
-      <table>
+      <table class="private-info-table">
         <caption>Private information</caption>
         <tr>
           <th>Added by</th>
@@ -117,6 +125,27 @@
               {{ archive.get_origin_display }}
           </td>
         </tr>
+          {% if archive.is_recycled %}
+        <tr>
+          <th>In Recycle bin?</th>
+          <td>
+              yes
+          </td>
+        </tr>
+        <tr>
+          <th>Recycle reason, user, date</th>
+          <td>
+              {{ archive.recycle_entry.reason|default:"Not set" }}, {{ archive.recycle_entry.user }}, {{ archive.recycle_entry.date_deleted|date:"DATETIME_FORMAT" }}
+          </td>
+        </tr>
+          {% else %}
+        <tr>
+          <th>In Recycle bin?</th>
+          <td>
+              no
+          </td>
+        </tr>
+          {% endif %}
       </table>
     </div>
     {% endif %}
@@ -124,6 +153,8 @@
     </li>
     {% if archive.gallery %}
       <li class="subtitle line-top">
+      <div class="row">
+      <div class="col-sm-6">
         <table>
           <tr>
             <th>Source metadata</th>
@@ -178,6 +209,26 @@
             </td>
           </tr>
         </table>
+      </div>
+
+    {% if gallery_provider_data %}
+    <div class="col-sm-6">
+      <table class="private-info-table">
+        <caption>Provider Extra Metadata</caption>
+          {% for provider_data in gallery_provider_data %}
+            <tr>
+              <th>{{ provider_data.name|capfirst }}</th>
+              <td>
+                  {{ provider_data.value|urlize_all_rel }}
+              </td>
+            </tr>
+            <tr>
+          {% endfor %}
+      </table>
+    </div>
+    {% endif %}
+
+      </div>
       </li>
     {% endif %}
     {% if tag_count %}
@@ -231,6 +282,11 @@
           {% if archive.thumbnail.name %}
             <a class="btn btn-light img-preview" data-image-url="{{ archive.thumbnail.url }}" rel="popover">Hover for cover</a>
           {% endif %}
+          {% if user_archive_preferences.favorite_group == 0 %}
+              <a class="btn btn-light" href="{% url 'viewer:user-archive-preferences' archive.pk 'favorite' %}">Favorite</a>
+          {% else %}
+              <a class="btn btn-light" href="{% url 'viewer:user-archive-preferences' archive.pk 'unfavorite' %}">Unfavorite</a>
+          {% endif %}
       {% endif %}
       <button class="btn btn-secondary" id="edit-archive" data-toggle="collapse" data-target="#change-archive-form" name="edit-archive" type="button" aria-label="toggle edit archive">Edit <i class="fas fa-chevron-down"></i></button>
       <button class="btn {% if manage_entries_count %}btn-success{% else %}btn-secondary{% endif %}" id="manage-archive" data-toggle="collapse" data-target="#manage-archive-form" name="manage-archive" type="button" aria-label="toggle edit archive">Manage <i class="fas fa-chevron-down"></i></button>
@@ -251,6 +307,13 @@
         <a class="btn btn-light hash-preview" tabindex="0" role="button" data-toggle="popover" data-pk="{{ archive.pk }}">Images SHA1</a>
         {% if archive.thumbnail.name %}
           <a class="btn btn-light img-preview" data-image-url="{{ archive.thumbnail.url }}" rel="popover">Hover for cover</a>
+        {% endif %}
+        {% if user.is_authenticated %}
+            {% if user_archive_preferences.favorite_group == 0 %}
+                <a class="btn btn-light" href="{% url 'viewer:user-archive-preferences' archive.pk 'favorite' %}">Favorite</a>
+            {% else %}
+                <a class="btn btn-light" href="{% url 'viewer:user-archive-preferences' archive.pk 'unfavorite' %}">Unfavorite</a>
+            {% endif %}
         {% endif %}
         {% if perms.viewer.change_archive %}
         <button class="btn btn-secondary" id="edit-archive" data-toggle="collapse" data-target="#change-archive-form" name="edit-archive" type="button" aria-label="toggle edit archive">Edit <i class="fas fa-chevron-down"></i></button>
@@ -362,7 +425,26 @@
 
             {% endif %}
           </form>
-
+      <!-- Next/Prev page links  -->
+    <div>
+        <span class="step-links">
+          <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
+          {% if image_queryset.has_previous %}
+            <a href= "?{% url_replace 'page' image_queryset.previous_page_number %}"> previous &lt;&lt; </a>
+          {% else %}
+            <span> previous &lt;&lt; </span>
+          {% endif %}
+          <span class="current">
+                &nbsp;Page {{ image_queryset.number }} of {{ image_queryset.paginator.num_pages }}
+            </span>
+          {% if image_queryset.has_next %}
+            <a href="?{% url_replace 'page' image_queryset.next_page_number %}"> &gt;&gt; next</a>
+          {% else %}
+            <span> &gt;&gt; next</span>
+          {% endif %}
+          <a href="?{% url_replace 'page' image_queryset.paginator.num_pages %}"> &gt;&gt; last</a>
+        </span>
+    </div>
         </li>
       {% else %}
         <!-- COVER VIEW  -->

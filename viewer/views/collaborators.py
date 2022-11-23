@@ -23,9 +23,9 @@ from viewer.utils.matching import generate_possible_matches_for_archives
 from viewer.utils.actions import event_log
 from viewer.forms import GallerySearchForm, ArchiveSearchForm, WantedGalleryCreateOrEditForm, \
     ArchiveCreateForm, ArchiveGroupSelectForm, GalleryCreateForm, ArchiveManageEntrySimpleForm, \
-    WantedGalleryColSearchForm, ArchiveManageSearchSimpleForm
+    WantedGalleryColSearchForm, ArchiveManageSearchSimpleForm, EventLogSearchForm, DeletedArchiveSearchForm
 from viewer.models import Archive, Gallery, EventLog, ArchiveMatches, Tag, WantedGallery, ArchiveGroup, \
-    ArchiveGroupEntry, GallerySubmitEntry, MonitoredLink
+    ArchiveGroupEntry, GallerySubmitEntry, MonitoredLink, ArchiveRecycleEntry
 from viewer.utils.tags import sort_tags
 from viewer.utils.types import AuthenticatedHttpRequest
 from viewer.views.head import gallery_filter_keys, filter_galleries_simple, \
@@ -424,9 +424,36 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                 # results[pk][k] = v
                 pks.append(v)
 
-        preserved = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(pks)])
+        if 'run_for_all' in p and request.user.is_staff:
+            params = {
+                'sort': 'create_date',
+                'asc_desc': 'desc',
+            }
 
-        archives = Archive.objects.filter(id__in=pks).order_by(preserved)
+            for k, v in get.items():
+                params[k] = v
+
+            for k in archive_filter_keys:
+                if k not in params:
+                    params[k] = ''
+
+            if 'sort_by' in get:
+                params['sort_by'] = get.get('sort_by', '')
+
+            archives = filter_archives_simple(params, request.user.is_authenticated, show_binned=True)
+
+            archives, _ = filter_by_marks(archives, request.GET)
+
+            if 'recycled' in get and request.user.has_perm('viewer.recycle_archive'):
+                archives = archives.filter(binned=True)
+            else:
+                archives = archives.filter(binned=False)
+
+            if 'downloading' in get:
+                archives = archives.filter(crc32='')
+        else:
+            preserved = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(pks)])
+            archives = Archive.objects.filter(id__in=pks).order_by(preserved)
         if 'publish_archives' in p and request.user.has_perm('viewer.publish_archive'):
             for archive in archives:
                 message = 'Publishing archive: {}, link: {}'.format(
@@ -513,48 +540,45 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                 if not json_request:
                     messages.success(request, message)
         elif 'update_metadata' in p and request.user.has_perm('viewer.update_metadata'):
-            for archive in archives:
 
-                if not archive.gallery:
-                    continue
+            galleries_from_archives = Gallery.objects.filter(archive__in=archives).distinct()
 
-                gallery = archive.gallery
+            gallery_providers = list(galleries_from_archives.values_list('provider', flat=True).distinct())
 
-                message = 'Updating gallery API data for gallery: {} and related archives'.format(
-                    gallery.get_absolute_url()
+            providers_filtered = [x for x in gallery_providers if x is not None]
+
+            message = 'Updating gallery API data for {} galleries and related archives'.format(
+                galleries_from_archives.count()
+            )
+            if 'reason' in p and p['reason'] != '':
+                message += ', reason: {}'.format(p['reason'])
+            logger.info("User {}: {}".format(request.user.username, message))
+            if not json_request:
+                messages.success(request, message)
+
+            current_settings = Settings(load_from_config=crawler_settings.config)
+
+            if current_settings.workers.web_queue:
+                current_settings.set_update_metadata_options(providers=providers_filtered)
+
+                def gallery_callback(x: Optional['Gallery'], crawled_url: Optional[str], result: str) -> None:
+                    event_log(
+                        request.user,
+                        'UPDATE_METADATA',
+                        reason=user_reason,
+                        content_object=x,
+                        result=result,
+                        data=crawled_url
+                    )
+
+                gallery_links = [x.get_link() for x in galleries_from_archives]
+
+                current_settings.workers.web_queue.enqueue_args_list(
+                    gallery_links,
+                    override_options=current_settings,
+                    gallery_callback=gallery_callback
                 )
-                if 'reason' in p and p['reason'] != '':
-                    message += ', reason: {}'.format(p['reason'])
-                logger.info("User {}: {}".format(request.user.username, message))
-                if not json_request:
-                    messages.success(request, message)
 
-                current_settings = Settings(load_from_config=crawler_settings.config)
-
-                if current_settings.workers.web_queue:
-                    current_settings.set_update_metadata_options(providers=(gallery.provider,))
-
-                    def gallery_callback(x: Optional['Gallery'], crawled_url: Optional[str], result: str) -> None:
-                        event_log(
-                            request.user,
-                            'UPDATE_METADATA',
-                            reason=user_reason,
-                            content_object=x,
-                            result=result,
-                            data=crawled_url
-                        )
-
-                    current_settings.workers.web_queue.enqueue_args_list(
-                        (gallery.get_link(),),
-                        override_options=current_settings,
-                        gallery_callback=gallery_callback
-                    )
-
-                    logger.info(
-                        'Updating gallery API data for gallery: {} and related archives'.format(
-                            gallery.get_absolute_url()
-                        )
-                    )
         elif 'recalc_fileinfo' in p and request.user.has_perm('viewer.recalc_fileinfo'):
             for archive in archives:
                 message = 'Recalculating file information for archive: {}, link: {}'.format(
@@ -605,6 +629,34 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                                 reason=user_reason,
                                 result='added'
                             )
+        elif 'recycle_archives' in p and request.user.is_authenticated and request.user.has_perm('viewer.recycle_archive'):
+            for archive in archives:
+                if not archive.is_recycled():
+                    message = 'Moving to Recycle Bin archive: {}, link: {}'.format(
+                        archive.title, archive.get_absolute_url()
+                    )
+                    if 'reason' in p and p['reason'] != '':
+                        message += ', reason: {}'.format(p['reason'])
+                    logger.info("User {}: {}".format(request.user.username, message))
+                    if not json_request:
+                        messages.success(request, message)
+                    r = ArchiveRecycleEntry(
+                        archive=archive,
+                        reason=user_reason,
+                        user=request.user,
+                        origin=ArchiveRecycleEntry.ORIGIN_USER,
+                    )
+
+                    r.save()
+                    archive.binned = True
+                    archive.simple_save()
+                    event_log(
+                        request.user,
+                        'MOVE_TO_RECYCLE_BIN',
+                        reason=user_reason,
+                        content_object=archive,
+                        result='recycled'
+                    )
         if json_request:
             return HttpResponse('', content_type="application/json; charset=utf-8")
 
@@ -623,9 +675,17 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
     if 'sort_by' in get:
         params['sort_by'] = get.get('sort_by', '')
 
-    results = filter_archives_simple(params, request.user.is_authenticated)
+    results = filter_archives_simple(params, request.user.is_authenticated, show_binned=True)
 
     results, mark_filters = filter_by_marks(results, request.GET)
+
+    if 'recycled' in get and request.user.has_perm('viewer.recycle_archive'):
+        results = results.filter(binned=True)
+    else:
+        results = results.filter(binned=False)
+
+    if 'downloading' in get:
+        results = results.filter(crc32='')
 
     results = results.select_related('gallery', 'user')
 
@@ -730,6 +790,33 @@ def archive_delete_log(request: HttpRequest) -> HttpResponse:
 
     results = EventLog.objects.filter(action="DELETE_ARCHIVE").select_related('user').prefetch_related('content_object')
 
+    data_field = get.get("data_field", '')
+    title = get.get("title", '')
+    tags = get.get("tags", '')
+
+    if 'clear' in get:
+        form = DeletedArchiveSearchForm()
+    else:
+        form = DeletedArchiveSearchForm(initial={'data_field': data_field, 'title': title, 'tags': tags})
+
+    if data_field:
+        results = results.filter(data__contains=data_field)
+
+    if title or tags:
+        params = {
+        }
+
+        for k, v in get.items():
+            params[k] = v
+
+        for k in gallery_filter_keys:
+            if k not in params:
+                params[k] = ''
+
+        gallery_results = filter_galleries_simple(params)
+
+        results = results.filter(object_id__in=gallery_results)
+
     paginator = Paginator(results, 100)
     try:
         results_page = paginator.page(page)
@@ -739,6 +826,7 @@ def archive_delete_log(request: HttpRequest) -> HttpResponse:
     d = {
         'results': results_page,
         'title': 'Archive Delete Log',
+        'form': form,
     }
     return render(request, "viewer/collaborators/archive_delete_logs.html", d)
 
@@ -754,12 +842,28 @@ def users_event_log(request: HttpRequest) -> HttpResponse:
 
     selected_actions = get.getlist("actions")
 
+    data_field = get.get("data_field", '')
+
+    if 'clear' in get:
+        form = EventLogSearchForm()
+    else:
+        form = EventLogSearchForm(initial={'data_field': data_field})
+
     if selected_actions:
         results = EventLog.objects.filter(action__in=selected_actions).select_related('user').prefetch_related('content_object')
     else:
         results = EventLog.objects.all().select_related('user').prefetch_related('content_object')
 
+    if data_field:
+        results = results.filter(data__contains=data_field)
+
     actions = EventLog.objects.order_by().values_list('action', flat=True).distinct()
+
+    # archive_type = ContentType.objects.get_for_model(Archive)
+    # current_archives = EventLog.objects.filter(
+    #     content_type=archive_type, tag='hash-compare',
+    #     name=algorithm
+    # )
 
     paginator = Paginator(results, 100)
     try:
@@ -769,7 +873,8 @@ def users_event_log(request: HttpRequest) -> HttpResponse:
 
     d = {
         'results': results_page,
-        'actions': actions
+        'actions': actions,
+        'form': form,
     }
     return render(request, "viewer/collaborators/user_event_log.html", d)
 
@@ -831,6 +936,8 @@ def user_crawler(request: AuthenticatedHttpRequest) -> HttpResponse:
 
         add_as_deleted = 'as-deleted' in p and p['as-deleted'] == '1'
 
+        skip_non_current = 'skip-non-current' in p and p['skip-non-current'] == '1'
+
         if add_as_deleted and request.user.has_perm('viewer.add_deleted_gallery'):
             # Use this to download using info
             current_settings.allow_type_downloaders_only('info')
@@ -859,6 +966,9 @@ def user_crawler(request: AuthenticatedHttpRequest) -> HttpResponse:
 
         current_settings.archive_user = request.user
         current_settings.archive_origin = Archive.ORIGIN_ADD_URL
+
+        if skip_non_current:
+            current_settings.non_current_links_as_deleted = True
 
         parsers = crawler_settings.provider_context.get_parsers(crawler_settings)
 
@@ -1008,6 +1118,16 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
     except ValueError:
         page = 1
 
+    try:
+        limit = max(1, int(get.get("limit", '100')))
+    except ValueError:
+        limit = 100
+
+    try:
+        inline_thumbnails = bool(get.get("inline-thumbnails", ''))
+    except ValueError:
+        inline_thumbnails = False
+
     if 'clear' in get:
         form = ArchiveSearchForm()
     else:
@@ -1098,7 +1218,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
     if 'with-possible-matches' in get:
         results = results.annotate(n_possible_matches=Count('possible_matches')).filter(n_possible_matches__gt=0)
 
-    paginator = Paginator(results, 50)
+    paginator = Paginator(results, limit)
     try:
         results_page = paginator.page(page)
     except (InvalidPage, EmptyPage):
@@ -1107,7 +1227,8 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
     d = {
         'results': results_page,
         'providers': Gallery.objects.all().values_list('provider', flat=True).distinct(),
-        'form': form
+        'form': form,
+        'inline_thumbnails': inline_thumbnails
     }
     return render(request, "viewer/collaborators/unmatched_archives.html", d)
 

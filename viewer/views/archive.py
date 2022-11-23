@@ -3,7 +3,7 @@
 
 import logging
 import re
-from os.path import basename
+from os.path import basename, splitext
 from urllib.parse import quote, urlparse, unquote
 import typing
 from typing import Optional
@@ -27,7 +27,7 @@ from viewer.forms import (
     ArchiveEditForm, ArchiveManageEditFormSet)
 from viewer.models import (
     Archive, Tag, Gallery, Image,
-    UserArchivePrefs, ArchiveManageEntry
+    UserArchivePrefs, ArchiveManageEntry, ArchiveRecycleEntry, GalleryProviderData, ArchiveGroup, ArchiveGroupEntry
 )
 from viewer.views.head import render_error
 
@@ -93,7 +93,7 @@ def archive_details(request: HttpRequest, pk: int, view: str = "cover") -> HttpR
         except (InvalidPage, EmptyPage):
             all_images = paginator.page(paginator.num_pages)
 
-        form = ArchiveModForm(instance=archive)
+        form = ArchiveModForm(instance=archive, initial={'archive_groups': archive.archive_groups.all()})
         image_formset = ImageFormSet(
             queryset=all_images.object_list,
             prefix='images'
@@ -101,6 +101,7 @@ def archive_details(request: HttpRequest, pk: int, view: str = "cover") -> HttpR
         d.update({
             'form': form,
             'image_formset': image_formset,
+            'image_queryset': all_images,
             'matchers': crawler_settings.provider_context.get_matchers(crawler_settings, force=True),
             'api_key': crawler_settings.api_key,
         })
@@ -207,6 +208,10 @@ def archive_details(request: HttpRequest, pk: int, view: str = "cover") -> HttpR
 
     d.update({'tag_count': archive.tags.all().count(), 'custom_tag_count': archive.custom_tags.all().count()})
 
+    if archive.gallery:
+        gallery_provider_data = GalleryProviderData.objects.filter(gallery=archive.gallery)
+        d.update({'gallery_provider_data': gallery_provider_data})
+
     return render(request, "viewer/archive.html", d)
 
 
@@ -301,13 +306,30 @@ def archive_update(request: HttpRequest, pk: int, tool: str = None, tool_use_id:
                 matched_gallery.dl_type = 'manual:matched'
                 matched_gallery.save()
         if "alternative_sources" in p:
-            lst = []
             alternative_sources = p.getlist("alternative_sources")
-            for alternative_gallery in alternative_sources:
-                lst.append(Gallery.objects.get(pk=alternative_gallery))
-            archive.alternative_sources.set(lst)
+            alt_galleries = Gallery.objects.filter(pk__in=alternative_sources)
+            archive.alternative_sources.set(alt_galleries)
         else:
             archive.alternative_sources.clear()
+        if "archive_groups" in p:
+
+            archive_groups_pks = p.getlist("archive_groups")
+
+            current_ages = ArchiveGroupEntry.objects.filter(archive=archive)
+
+            for current_age in current_ages:
+                if current_age.pk not in archive_groups_pks:
+                    current_age.delete()
+
+            for archive_group_pk in archive_groups_pks:
+                if not ArchiveGroupEntry.objects.filter(archive=archive, archive_group__pk=archive_group_pk).exists():
+                    archive_group = ArchiveGroup.objects.filter(pk=archive_group_pk).first()
+
+                    if archive_group:
+                        archive_group_entry = ArchiveGroupEntry(archive=archive, archive_group=archive_group)
+                        archive_group_entry.save()
+        else:
+            archive.archive_groups.clear()
         archive.simple_save()
 
         messages.success(request, 'Updated archive: {}'.format(archive.title))
@@ -345,6 +367,76 @@ def archive_auth(request: HttpRequest) -> HttpResponse:
     return HttpResponse(status=200)
 
 
+@login_required
+def archive_enter_reason(request: HttpRequest, pk: int, tool: str = None) -> HttpResponse:
+    try:
+        archive = Archive.objects.get(pk=pk)
+    except Archive.DoesNotExist:
+        raise Http404("Archive does not exist")
+    if not request.user.is_authenticated:
+        raise Http404("Archive does not exist")
+
+    if request.method == 'POST':
+
+        p = request.POST
+        user_reason = p.get('reason', '')
+        if "confirm_tool" in p:
+
+            if request.user.has_perm('viewer.recycle_archive') and tool == "recycle":
+
+                if not archive.is_recycled():
+                    with transaction.atomic():
+                        r = ArchiveRecycleEntry(
+                            archive=archive,
+                            reason=user_reason,
+                            user=request.user,
+                            origin=ArchiveRecycleEntry.ORIGIN_USER,
+                        )
+
+                        r.save()
+                        archive.binned = True
+                        archive.simple_save()
+                        event_log(
+                            request.user,
+                            'MOVE_TO_RECYCLE_BIN',
+                            content_object=archive,
+                            result='recycled',
+                            reason=user_reason
+                        )
+                        if archive.public:
+                            archive.set_private()
+                            event_log(
+                                request.user,
+                                'UNPUBLISH_ARCHIVE',
+                                content_object=archive,
+                                result='unpublished'
+                            )
+
+                return HttpResponseRedirect(archive.get_absolute_url())
+
+            elif request.user.has_perm('viewer.recycle_archive') and tool == "unrecycle":
+
+                if archive.is_recycled():
+                    with transaction.atomic():
+                        r = archive.recycle_entry
+                        r.delete()
+                        archive.binned = False
+                        archive.simple_save()
+                        event_log(
+                            request.user,
+                            'RESTORE_FROM_RECYCLE_BIN',
+                            content_object=archive,
+                            result='restored',
+                            reason=user_reason
+                        )
+
+                return HttpResponseRedirect(archive.get_absolute_url())
+
+    d = {'archive': archive, 'tool': tool}
+
+    return render(request, "viewer/include/modals/archive_tool_reason.html", d)
+
+
 def archive_download(request: HttpRequest, pk: int) -> HttpResponse:
     try:
         archive = Archive.objects.get(pk=pk)
@@ -354,7 +446,7 @@ def archive_download(request: HttpRequest, pk: int) -> HttpResponse:
         raise Http404("Archive does not exist")
     if 'HTTP_X_FORWARDED_HOST' in request.META:
         response = HttpResponse()
-        response["Content-Type"] = "application/zip"
+        response["Content-Type"] = "application/vnd.comicbook+zip"
         if 'original' in request.GET:
             response["Content-Disposition"] = 'attachment; filename*=UTF-8\'\'{0}'.format(
                 quote(basename(archive.zipped.name)))
@@ -522,6 +614,47 @@ def reduce(request: HttpRequest, pk: int) -> HttpResponse:
 
 
 @login_required
+def check_and_convert_filetype(request: HttpRequest, pk: int) -> HttpResponse:
+    """Check and convert archive filetype."""
+
+    if not request.user.is_staff:
+        return render_error(request, "You need to be an admin to run this tool.")
+    try:
+        with transaction.atomic():
+            archive = Archive.objects.select_for_update().get(pk=pk)
+
+            logger.info('Checking if archive: {} needs conversion to ZIP.'.format(archive.get_absolute_url()))
+
+            extension, result = archive.check_and_convert_to_zip()
+
+            # Leave up to the user to rename or not, same with recalc
+            # if extension in ['rar', '7z'] and result == 2:
+            #     base_name, current_extension = splitext(archive.zipped.path)
+            #     archive.rename_zipped_pathname(base_name + ".zip")
+
+            if result == 2:
+                result_message = 'success'
+            elif result == 0:
+                result_message = 'skipped'
+            elif result == 1:
+                result_message = 'failed'
+            else:
+                result_message = 'unknown'
+
+            event_log(
+                request.user,
+                'CONVERT_TO_ZIP',
+                content_object=archive,
+                result=result_message,
+                data=extension
+            )
+    except Archive.DoesNotExist:
+        raise Http404("Archive does not exist")
+
+    return HttpResponseRedirect(request.META["HTTP_REFERER"])
+
+
+@login_required
 def public(request: HttpRequest, pk: int) -> HttpResponse:
     """Public archive."""
 
@@ -618,15 +751,15 @@ def recalc_info(request: HttpRequest, pk: int) -> HttpResponse:
 def mark_similar_archives(request: HttpRequest, pk: int) -> HttpResponse:
     """Create similar info as marks for archive."""
 
-    if not request.user.is_staff:
-        return render_error(request, "You need to be an admin to mark similar archives.")
+    if not request.user.has_perm('viewer.mark_similar_archive'):
+        return render_error(request, "You don't have the permission to mark similar archives.")
 
     try:
         archive = Archive.objects.get(pk=pk)
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
 
-    logger.info('Create similar info as marks for Archive: {}'.format(archive.get_absolute_url()))
+    logger.info('Creating similar info as marks for Archive: {}'.format(archive.get_absolute_url()))
     archive.create_marks_for_similar_archives()
 
     if "HTTP_REFERER" in request.META:

@@ -15,14 +15,14 @@ It also includes a JSON API and a UserScript for panda, that allows you to queue
 
 Note: For now it's designed to generate and match .zip files, doesn't work with unpacked galleries.
 
-Note 2: SQLite as a backend hasn't been tested in a while, and can give problems because of threading.
+Note 2: SQLite as a backend is no longer supported, either mysql or postgresql must be used.
 
 Requirements
 ---------------------
 
 Know how to run a Python program and how to install packages.
 
-Python 3.9 is the target version, won't work on Python 2. Must have been compiled with sqlite support (If you're using that database).
+Python 3.9 is the target version, won't work on Python 2.
 
 See requirements.txt.
 

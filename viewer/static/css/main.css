@@ -444,6 +444,43 @@ img {
   float: right;
 }
 
+.right-container {
+  float: right;
+  display: block;
+}
+
+.right-tools {
+  text-align: right;
+  float: right;
+  position: relative;
+}
+
+.right-tools.second-tools {
+  margin-top: 11px;
+}
+
+.right-tools li {
+  display: block;
+  float: left;
+  margin-left: 2px;
+}
+
+.right-tools a {
+  background: #464646;
+  border-radius: 2px;
+  padding: 3px 4px;
+}
+
+.right-tools a.dropdown-item {
+  background: transparent;
+}
+
+.private-info-table tr th {
+  margin: 0px 5px 0px 0px;
+  padding: 0px;
+  display: inline;
+}
+
 .archives {
   width: 80%;
   text-align: center;

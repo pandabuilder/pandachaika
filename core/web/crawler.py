@@ -3,6 +3,7 @@ import threading
 import logging
 
 import os
+from collections import defaultdict
 from collections.abc import Callable
 from typing import Union, Optional, NoReturn
 
@@ -150,6 +151,22 @@ class WebCrawler(object):
                             action='store_true',
                             help='Flag to indicate the parsers that in case of nested links, don\'t process them.')
 
+        parser.add_argument('-lp', '--link-child',
+                            required=False,
+                            action='store',
+                            help='Link backwards a child gallery with its parent')
+
+        parser.add_argument('-ln', '--link-newer',
+                            required=False,
+                            action='store',
+                            help='Link backwards a newer gallery with its first')
+
+        parser.add_argument('-pwm', '--preselect-wanted-match',
+                            required=False,
+                            action='store',
+                            nargs='*',
+                            help='List of url, WantedGallery ids pre-matched to be stored on the database.')
+
         try:
             args = parser.parse_args(arg_line)
             self.parse_error = False
@@ -267,6 +284,27 @@ class WebCrawler(object):
         if args.stop_nested:
             current_settings.stop_nested = args.stop_nested
 
+        if args.link_child:
+            current_settings.link_child = args.link_child
+        else:
+            current_settings.link_child = None
+
+        if args.link_newer:
+            current_settings.link_newer = args.link_newer
+        else:
+            current_settings.link_newer = None
+
+        preselected_wanted_matches: Optional[dict[str, list['WantedGallery']]] = None
+
+        if args.preselect_wanted_match:
+            logger.info('Note: Preselected WantedGallery matches were provided.')
+            preselected_wanted_matches = defaultdict(list)
+            for url_wanted_gallery_id_pair in args.preselect_wanted_match:
+                preselected_gid, preselected_wg_id = url_wanted_gallery_id_pair.rsplit(",", maxsplit=1)
+                wg = WantedGallery.objects.filter(pk=int(preselected_wg_id)).first()
+                if wg:
+                    preselected_wanted_matches[preselected_gid].append(wg)
+
         provider_filter_list: list[str] = []
         if args.include_providers:
             provider_filter_list.extend(args.include_providers)
@@ -316,51 +354,34 @@ class WebCrawler(object):
         # This threading implementation waits for all providers to end to return.
         # A better solution would be that we listen to the queue here and send a new URL to crawl
         # when the provider queue is free.
-        if current_settings.db_engine != "sqlite":
-            provider_threads = []
+        provider_threads = []
 
-            for parser in parsers:
-                urls = parser.filter_accepted_urls(list(to_use_urls))
-                if urls:
-                    to_use_urls = to_use_urls.difference(set(urls))
-                    logger.info(
-                        'Crawling {} links from provider {}. Wanted galleries to check: {}'.format(
-                            len(urls),
-                            parser.name,
-                            wanted_filters.count() if wanted_filters else 0
-                        )
+        for parser in parsers:
+            urls = parser.filter_accepted_urls(list(to_use_urls))
+            if urls:
+                to_use_urls = to_use_urls.difference(set(urls))
+                logger.info(
+                    'Crawling {} links from provider {}. Wanted galleries to check: {}'.format(
+                        len(urls),
+                        parser.name,
+                        wanted_filters.count() if wanted_filters else 0
                     )
-                    provider_thread = threading.Thread(
-                        name='provider_{}_thread'.format(parser.name),
-                        target=parser.crawl_urls_caller,
-                        args=(urls,),
-                        kwargs={
-                            'wanted_filters': wanted_filters, 'wanted_only': args.wanted_only
-                        }
-                    )
-                    provider_thread.daemon = True
-                    provider_thread.start()
-                    provider_threads.append(provider_thread)
+                )
+                provider_thread = threading.Thread(
+                    name='provider_{}_thread'.format(parser.name),
+                    target=parser.crawl_urls_caller,
+                    args=(urls,),
+                    kwargs={
+                        'wanted_filters': wanted_filters, 'wanted_only': args.wanted_only,
+                        'preselected_wanted_matches': preselected_wanted_matches
+                    }
+                )
+                provider_thread.daemon = True
+                provider_thread.start()
+                provider_threads.append(provider_thread)
 
-            for provider_thread in provider_threads:
-                provider_thread.join()
-        else:
-            for parser in parsers:
-                urls = parser.filter_accepted_urls(to_use_urls)
-                if urls:
-                    to_use_urls = to_use_urls.difference(set(urls))
-                    logger.info(
-                        'Crawling {} links from provider {}. Wanted galleries to check: {}'.format(
-                            len(urls),
-                            parser.name,
-                            wanted_filters.count() if wanted_filters else 0
-                        )
-                    )
-                    parser.crawl_urls(
-                        urls,
-                        wanted_filters=wanted_filters,
-                        wanted_only=args.wanted_only,
-                    )
+        for provider_thread in provider_threads:
+            provider_thread.join()
 
         logger.info('Web Crawler links crawling done.')
         return
@@ -402,39 +423,27 @@ class WebCrawler(object):
         # This threading implementation waits for all providers to end to return.
         # A better solution would be that we listen to the queue here and send a new URL to crawl
         # when the provider queue is free.
-        if current_settings.db_engine != "sqlite":
-            provider_threads = []
+        provider_threads = []
 
-            for parser in parsers:
-                urls = parser.filter_accepted_urls(list(to_use_urls))
-                if urls:
-                    to_use_urls = to_use_urls.difference(set(urls))
-                    logger.info('Crawling {} links from provider {}.'.format(len(urls), parser.name))
-                    provider_thread = threading.Thread(
-                        name='provider_{}_thread'.format(parser.name),
-                        target=parser.crawl_urls_caller,
-                        args=(urls,),
-                        kwargs={
-                            'wanted_filters': wanted_filters, 'wanted_only': False
-                        }
-                    )
-                    provider_thread.daemon = True
-                    provider_thread.start()
-                    provider_threads.append(provider_thread)
+        for parser in parsers:
+            urls = parser.filter_accepted_urls(list(to_use_urls))
+            if urls:
+                to_use_urls = to_use_urls.difference(set(urls))
+                logger.info('Crawling {} links from provider {}.'.format(len(urls), parser.name))
+                provider_thread = threading.Thread(
+                    name='provider_{}_thread'.format(parser.name),
+                    target=parser.crawl_urls_caller,
+                    args=(urls,),
+                    kwargs={
+                        'wanted_filters': wanted_filters, 'wanted_only': False
+                    }
+                )
+                provider_thread.daemon = True
+                provider_thread.start()
+                provider_threads.append(provider_thread)
 
-            for provider_thread in provider_threads:
-                provider_thread.join()
-        else:
-            for parser in parsers:
-                urls = parser.filter_accepted_urls(to_use_urls)
-                if urls:
-                    to_use_urls = to_use_urls.difference(set(urls))
-                    logger.info('Crawling {} links from provider {}.'.format(len(urls), parser.name))
-                    parser.crawl_urls(
-                        urls,
-                        wanted_filters=wanted_filters,
-                        wanted_only=False,
-                    )
+        for provider_thread in provider_threads:
+            provider_thread.join()
 
         logger.info('Web Crawler links crawling done.')
         return

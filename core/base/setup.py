@@ -196,6 +196,9 @@ class Settings:
         # INTERNAL USE
         self.gallery_reason: Optional[str] = None
         self.stop_nested = False
+        self.link_child: Optional[str] = None
+        self.link_newer: Optional[str] = None
+        self.stop_nested = False
         # Used by autoupdater to not overwrite original value, since it would be replaced by provider_info
         self.keep_dl_type = False
         self.archive_reason = ''
@@ -211,6 +214,9 @@ class Settings:
         self.redownload = False
         self.auto_download_nested = False
         self.recheck_wanted_on_update = False
+        # Option to add metadata from a non-current link, but no archive download.
+        # The logic for a current link is provider-specific
+        self.non_current_links_as_deleted = False
 
         self.MEDIA_ROOT = ''
         self.django_secret_key = ''
@@ -244,7 +250,7 @@ class Settings:
         self.cherrypy_auto_restart = False
         self.add_as_public = False
 
-        self.db_engine = 'sqlite'
+        self.db_engine = 'postgresql'
         self.database: dict[str, Any] = {}
         self.torrent: dict[str, Any] = {}
         self.webserver = WebServerSettings()
@@ -270,6 +276,7 @@ class Settings:
         self.convert_rar_to_zip = False
         self.mark_similar_new_archives = False
         self.auto_hash_images = False
+        self.auto_phash_images = False
 
         self.requests_headers: dict[str, Any] = {
         }
@@ -414,6 +421,8 @@ class Settings:
                 self.internal_matches_for_non_matches = config['allowed'].getboolean('internal_matches_for_non_matches')
             if 'convert_rar_to_zip' in config['allowed']:
                 self.convert_rar_to_zip = config['allowed'].getboolean('convert_rar_to_zip')
+            if 'non_current_links_as_deleted' in config['general']:
+                self.non_current_links_as_deleted = config['general'].getboolean('non_current_links_as_deleted')
         if 'general' in config:
             if 'filename_filter' in config['general']:
                 self.filename_filter = config['general']['filename_filter'].split(",")
@@ -451,6 +460,8 @@ class Settings:
                 self.mark_similar_new_archives = config['general'].getboolean('mark_similar_new_archives')
             if 'auto_hash_images' in config['general']:
                 self.auto_hash_images = config['general'].getboolean('auto_hash_images')
+            if 'auto_phash_images' in config['general']:
+                self.auto_phash_images = config['general'].getboolean('auto_phash_images')
             if 'recheck_wanted_on_update' in config['general']:
                 self.recheck_wanted_on_update = config['general'].getboolean('recheck_wanted_on_update')
         if 'experimental' in config:
@@ -583,13 +594,6 @@ class Settings:
                 self.log_location = os.path.join(self.default_dir, 'viewer.log')
         if 'database' in config:
             self.database = dict(config['database'])
-            if(('db_engine' in config['general'])
-               and (config['general']['db_engine'] == 'sqlite')) or ('db_engine' not in config['general']):
-                if 'sqlite_location' in config['database']:
-                    if not os.path.exists(os.path.dirname(self.database['sqlite_location'])):
-                        os.makedirs(os.path.dirname(self.database['sqlite_location']))
-                else:
-                    self.database['sqlite_location'] = os.path.join(self.default_dir, "pgallery.db")
         if 'torrent' in config:
             if 'client' in config['torrent']:
                 self.torrent['client'] = config['torrent']['client']

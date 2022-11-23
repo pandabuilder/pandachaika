@@ -29,6 +29,10 @@ class OwnSettings(ProviderSettings):
             # '[Private]'
         )
         self.use_ex_for_fjord = False
+        self.auto_process_newer = False
+        self.auto_process_first = False
+        self.auto_process_parent = False
+        self.mark_relationships = False
 
 
 def parse_config(global_settings: 'Settings', config: dict[str, typing.Any]) -> 'OwnSettings':
@@ -43,6 +47,15 @@ def parse_config(global_settings: 'Settings', config: dict[str, typing.Any]) -> 
             settings.accepted_rss_categories = config['general']['accepted_rss_categories'].split(",")
         if 'use_ex_for_fjord' in config['general']:
             settings.use_ex_for_fjord = config['general'].getboolean('use_ex_for_fjord')
+        if 'auto_process_newer' in config['general']:
+            settings.auto_process_newer = config['general'].getboolean('auto_process_newer')
+        if 'auto_process_first' in config['general']:
+            settings.auto_process_first = config['general'].getboolean('auto_process_first')
+        if 'auto_process_parent' in config['general']:
+            settings.auto_process_parent = config['general'].getboolean('auto_process_parent')
+        # TODO: Mark galleries when a new gallery in chain is detected
+        if 'mark_relationships' in config['general']:
+            settings.mark_relationships = config['general'].getboolean('mark_relationships')
     if 'locations' in config:
         if 'archive_dl_folder' in config['locations']:
             settings.archive_dl_folder = config['locations']['archive_dl_folder']

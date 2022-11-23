@@ -153,7 +153,7 @@ class GenericArchiveDownloader(BaseDownloader):
 
         request_file = requests.get(
             self.gallery.link,
-            stream='True',
+            stream=True,
             **request_dict
         )
 

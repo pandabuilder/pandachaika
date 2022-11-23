@@ -105,7 +105,7 @@ class ArchiveDownloader(BaseDownloader):
 
                 request_file = requests.get(
                     archive_link + '?start=1',
-                    stream='True',
+                    stream=True,
                     **request_dict
                 )
 

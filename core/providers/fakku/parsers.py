@@ -86,6 +86,7 @@ class Parser(BaseParser):
             if self.own_settings.get_posted_date_from_feed:
                 gallery.posted = self.parse_posted_date_from_feed(constants.aux_feed_url, gallery.gid)
             gallery.link = link
+            gallery.provider_metadata = response_text
             gallery.tags = []
             gallery.magazine_chapters_gids = []
             gallery_title_container = magazine_container.find("ol", class_="table-cell")
@@ -147,6 +148,7 @@ class Parser(BaseParser):
         if gallery_container:
             gallery = GalleryData(link.replace(constants.main_url + '/', '').replace('manga/', 'hentai/'), self.name)
             gallery.link = link
+            gallery.provider_metadata = response_text
             gallery.tags = []
             if self.own_settings.get_posted_date_from_feed:
                 gallery.posted = self.parse_posted_date_from_feed(constants.aux_feed_url, gallery.gid)
@@ -282,12 +284,13 @@ class Parser(BaseParser):
         else:
             return None
 
-    def crawl_urls(self, urls: list[str], wanted_filters: QuerySet = None, wanted_only: bool = False) -> None:
+    def crawl_urls(self, urls: list[str], wanted_filters: QuerySet = None, wanted_only: bool = False,
+                   preselected_wanted_matches: dict[str, list['WantedGallery']] = None) -> None:
 
         unique_urls = set()
         gallery_data_list = []
         fetch_format_galleries = []
-        gallery_wanted_lists: dict[str, list['WantedGallery']] = defaultdict(list)
+        gallery_wanted_lists: dict[str, list['WantedGallery']] = preselected_wanted_matches or defaultdict(list)
 
         if not self.downloaders:
             logger.warning('No downloaders enabled, returning.')

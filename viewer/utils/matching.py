@@ -5,11 +5,12 @@ import time
 from collections.abc import Iterable
 
 from django.conf import settings
+from django.contrib.contenttypes.models import ContentType
 from django.db.models import QuerySet, Q
 
 from core.base.comparison import get_list_closer_gallery_titles_from_list
 from core.base.utilities import replace_illegal_name, get_title_from_path, clean_title
-from viewer.models import GalleryMatch, Archive, Gallery, ArchiveMatches, FoundGallery, ArchiveQuerySet
+from viewer.models import GalleryMatch, Archive, Gallery, ArchiveMatches, FoundGallery, ArchiveQuerySet, ItemProperties, Image
 
 crawler_settings = settings.CRAWLER_SETTINGS
 
@@ -365,7 +366,7 @@ def match_external(archives: 'QuerySet[Archive]', matcher_filters: Iterable[str]
 
 def match_internal(archives: 'QuerySet[Archive]', providers: Iterable[str],
                    cutoff: float = 0.4,
-                   max_matches: int = 20, match_by_filesize: bool = True) -> None:
+                   max_matches: int = 20, match_by_filesize: bool = True, match_by_thumbnail: bool = True) -> None:
 
     galleries_per_provider: dict[str, QuerySet[Gallery]] = {}
     galleries_title_id_per_provider: dict[str, list[tuple[str, str]]] = {}
@@ -385,6 +386,10 @@ def match_internal(archives: 'QuerySet[Archive]', providers: Iterable[str],
             if gallery.title_jpn:
                 galleries_title_id_per_provider[provider].append(
                     (replace_illegal_name(gallery.title_jpn), gallery.pk))
+
+    image_type = ContentType.objects.get_for_model(Image)
+    archive_type = ContentType.objects.get_for_model(Archive)
+    gallery_type = ContentType.objects.get_for_model(Gallery)
 
     for i, archive in enumerate(archives, start=1):
 
@@ -417,11 +422,12 @@ def match_internal(archives: 'QuerySet[Archive]', providers: Iterable[str],
                     )
 
                 logger.info(
-                    "{} of {}: Found {} matches (internal search) from title for archive: {}, using provider filter: {}".format(
+                    "{} of {}: Found {} matches (internal search) from title for archive: {}, with formatted title: ({}), using provider filter: {}".format(
                         i,
                         archives.count(),
                         len(similar_list_provider),
                         archive.title,
+                        adj_title,
                         provider
                     )
                 )
@@ -447,5 +453,66 @@ def match_internal(archives: 'QuerySet[Archive]', providers: Iterable[str],
                     match_accuracy=1
                 )
 
-        # TODO: Add library imagehash to compare here, the idea is that the hash is calculated before and here is just
-        # a differential between the hashes
+        if not match_by_thumbnail or not archive.thumbnail:
+            continue
+        current_archive_hashes = ItemProperties.objects.filter(content_type=archive_type, object_id=archive.pk, tag='hash-compare')
+
+        for hash_result in current_archive_hashes:
+            galleries_hashes = ItemProperties.objects.filter(
+                content_type=gallery_type, tag='hash-compare',
+                name=hash_result.name, value=hash_result.value
+            )
+
+            if galleries_hashes.exists():
+                logger.info(
+                    "{} of {}: Found {} matches (internal search) from thumbnail hashes from algorithm: {} for archive: {}".format(
+                        i,
+                        str(archives.count()),
+                        str(galleries_hashes.count()),
+                        hash_result.name,
+                        archive.title
+                    )
+                )
+                for similar_item in galleries_hashes:
+                    gallery_object = similar_item.content_object
+
+                    ArchiveMatches.objects.update_or_create(
+                        archive=archive,
+                        gallery=gallery_object,
+                        match_type='hash_thumbnail_{}'.format(hash_result.name),
+                        match_accuracy=1
+                    )
+
+        images = Image.objects.filter(archive=archive)
+
+        current_images_hashes = ItemProperties.objects.filter(content_type=image_type, object_id__in=images, tag='hash-compare')
+
+        for hash_result in current_images_hashes:
+            galleries_hashes = ItemProperties.objects.filter(
+                content_type=gallery_type, tag='hash-compare',
+                name=hash_result.name, value=hash_result.value
+            )
+
+            image = hash_result.content_object
+
+            if image and galleries_hashes.exists():
+                logger.info(
+                    "{} of {}: Found {} matches (internal search) from image hashes from algorithm: {} for archive: {}, image: {}".format(
+                        i,
+                        str(archives.count()),
+                        str(galleries_hashes.count()),
+                        hash_result.name,
+                        archive.title,
+                        image.position
+                    )
+                )
+                for similar_item in galleries_hashes:
+
+                    gallery_object = similar_item.content_object
+
+                    ArchiveMatches.objects.update_or_create(
+                        archive=archive,
+                        gallery=gallery_object,
+                        match_type='hash_image_{}_{}'.format(image.position, hash_result.name),
+                        match_accuracy=1
+                    )

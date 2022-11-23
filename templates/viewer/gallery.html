@@ -14,38 +14,30 @@
 
   <ul class="info">
     {% if user.is_authenticated %}
-      <li class="right-options">
-        <div>Gallery:
-        {% if user.is_staff %}<a href="{% url 'admin:viewer_gallery_change' gallery.pk %}">admin</a>{% endif %}
-        {% if user.is_staff %}<a href="{% url 'viewer:gallery-tool' gallery.pk 'toggle-hidden' %}">toggle hidden</a>{% endif %}
-        {% if perms.viewer.publish_gallery %}<a href="{% url 'viewer:gallery-tool' gallery.pk 'toggle-public' %}">toggle public</a>{% endif %}
-        {% if perms.viewer.mark_delete_gallery %}
-          <span>
-            <a
-              class="open-modal"
-              href="{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-deleted' %}"
-              data-popup-url="{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-deleted' %}"
-              >mark deleted
-            </a>
-          </span>
-        {% endif %}
-        {% if perms.viewer.update_metadata %}<a href="{% url 'viewer:gallery-tool' gallery.pk 'recall-api' %}">recall api</a>{% endif %}
-        {% if perms.viewer.update_metadata %}<a href="{% url 'viewer:gallery-tool' gallery.pk 'refetch-thumbnail' %}">refetch thumbnail</a>{% endif %}
-        {% if perms.viewer.download_gallery %}<a href="{% url 'viewer:gallery-tool' gallery.pk 'download' %}">default download</a>{% endif %}
-        {% if user.is_staff %}
-        <span class="dropdown">
-          <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-toggle="dropdown">force download<span class="caret"></span></button>
-          <div class="dropdown-menu dropdown-menu-right">
-          {% for downloader, priority in settings.downloaders.items %}
-            <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ settings.api_key }}', '{% static 'favicon-160.png' %}', 'webcrawler', {link: '{{ gallery.get_link }}', downloader: '{{ downloader }}'}); return false;">{{ downloader }}</a>
-          {% endfor %}
-          </div>
-        </span>
-      {% endif %}
-      {% if perms.viewer.upload_with_metadata_archive %}
-        <a href="{% url 'viewer:upload-archive' %}?gallery={{ gallery.id }}">upload archive</a>
-      {% endif %}
-        </div>
+      <li class="right-container">
+        <ul class="right-tools">
+            <li>Tools:</li>
+            {% if user.is_staff %}<li><a href="{% url 'admin:viewer_gallery_change' gallery.pk %}">admin</a></li>{% endif %}
+            {% if user.is_staff %}<li><a href="{% url 'viewer:gallery-tool' gallery.pk 'toggle-hidden' %}">toggle hidden</a></li>{% endif %}
+            {% if perms.viewer.publish_gallery %}<li><a href="{% url 'viewer:gallery-tool' gallery.pk 'toggle-public' %}">toggle public</a></li>{% endif %}
+            {% if perms.viewer.mark_delete_gallery %}<li><a class="open-modal" href="{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-deleted' %}" data-popup-url="{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-deleted' %}">mark deleted</a></li>{% endif %}
+            {% if perms.viewer.update_metadata %}<li><a href="{% url 'viewer:gallery-tool' gallery.pk 'recall-api' %}">recall api</a></li>{% endif %}
+            {% if perms.viewer.update_metadata %}<li><a href="{% url 'viewer:gallery-tool' gallery.pk 'refetch-thumbnail' %}">refetch thumbnail</a></li>{% endif %}
+            {% if perms.viewer.download_gallery %}<li><a href="{% url 'viewer:gallery-tool' gallery.pk 'download' %}">default download</a></li>{% endif %}
+            {% if user.is_staff %}
+                <li>
+                <span class="dropdown">
+                  <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-toggle="dropdown">force download<span class="caret"></span></button>
+                  <div class="dropdown-menu dropdown-menu-right">
+                  {% for downloader, priority in settings.downloaders.items %}
+                    <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ settings.api_key }}', '{% static 'favicon-160.png' %}', 'webcrawler', {link: '{{ gallery.get_link }}', downloader: '{{ downloader }}'}); return false;">{{ downloader }}</a>
+                  {% endfor %}
+                  </div>
+                </span>
+                </li>
+          {% endif %}
+          {% if perms.viewer.upload_with_metadata_archive %}<li><a href="{% url 'viewer:upload-archive' %}?gallery={{ gallery.id }}">upload archive</a></li>{% endif %}
+        </ul>
       </li>
     {% endif %}
 
@@ -99,6 +91,22 @@
           <th>Magazine</th>
           {% if gallery.magazine %}
           <td><a href="{% url 'viewer:gallery' gallery.magazine.id %}">{{ gallery.magazine }}</a></td>
+          {% else %}
+          <td>None</td>
+          {% endif %}
+        </tr>
+        <tr>
+          <th>Parent</th>
+          {% if gallery.parent_gallery %}
+          <td><a href="{% url 'viewer:gallery' gallery.parent_gallery.id %}">{{ gallery.parent_gallery }}</a></td>
+          {% else %}
+          <td>None</td>
+          {% endif %}
+        </tr>
+        <tr>
+          <th>First</th>
+          {% if gallery.first_gallery %}
+          <td><a href="{% url 'viewer:gallery' gallery.first_gallery.id %}">{{ gallery.first_gallery }}</a></td>
           {% else %}
           <td>None</td>
           {% endif %}
@@ -216,6 +224,36 @@
           {% endfor %}
         </ul>
       </li>
+    {% endif %}
+    {% if gallery_chain %}
+    <li class="line-top"><label class="label-extended">Galleries in chain:</label>
+        <ul>
+            {% for gallery_chained in gallery_chain %}
+              {% if gallery_chained.public or user.is_authenticated %}
+                  {% if gallery_chained.pk == gallery.pk %}
+                    {{ forloop.counter }}* > {{ gallery_chained }}
+                  {% else %}
+                    <li>{{ forloop.counter }} > <a href="{% url 'viewer:gallery' gallery_chained.id %}">{{ gallery_chained }}</a></li>
+                  {% endif %}
+              {% endif %}
+            {% endfor %}
+        </ul>
+    </li>
+    {% endif %}
+    {% if gallery_provider_data %}
+    <li class="line-top"><label class="label-extended">Extra Provider Metadata:</label>
+      <table>
+          {% for provider_data in gallery_provider_data %}
+            <tr>
+              <th>{{ provider_data.name|capfirst }}</th>
+              <td>
+                  {{ provider_data.value|urlize_all_rel }}
+              </td>
+            </tr>
+            <tr>
+          {% endfor %}
+      </table>
+    </li>
     {% endif %}
   </ul>
 {% endblock %}

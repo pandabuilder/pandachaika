@@ -40,7 +40,7 @@ class ArchiveDownloader(BaseDownloader):
 
         request_file = requests.get(
             self.gallery.archiver_key,
-            stream='True',
+            stream=True,
             **request_dict
         )
 

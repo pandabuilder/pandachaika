@@ -24,4 +24,4 @@ try:
 except ImportError:
     pass
 
-available_file_hash_functions['sha1'] = sha1_from_file_object
+available_file_hash_functions['sha1'] = lambda x: sha1_from_file_object(x, True)

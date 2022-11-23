@@ -15,7 +15,7 @@ from viewer.views.complete import (
     CategoryAutocomplete, ProviderAutocomplete, TagPkAutocomplete, GallerySelectAutocomplete, ArchiveSelectAutocomplete,
     ArchiveGroupAutocomplete, ArchiveGroupSelectAutocomplete, ArchiveSelectSimpleAutocomplete,
     GalleryProviderAutocomplete, GalleryCategoryAutocomplete, GalleryUploaderAutocomplete, GalleryReasonAutocomplete,
-    WantedGalleryColAutocomplete, ArchiveManageEntryMarkReasonAutocomplete)
+    WantedGalleryColAutocomplete, ArchiveManageEntryMarkReasonAutocomplete, GalleryAllAutocomplete)
 
 admin.autodiscover()
 
@@ -53,6 +53,11 @@ urlpatterns += [
         r'^' + settings.MAIN_URL + r'gallery-autocomplete/$',
         GalleryAutocomplete.as_view(),
         name='gallery-autocomplete',
+    ),
+    re_path(
+        r'^' + settings.MAIN_URL + r'gallery-all-autocomplete/$',
+        GalleryAllAutocomplete.as_view(),
+        name='gallery-all-autocomplete',
     ),
     re_path(
         r'^' + settings.MAIN_URL + r'gallery-select-autocomplete/$',

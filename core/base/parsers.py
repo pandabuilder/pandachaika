@@ -193,7 +193,7 @@ class BaseParser:
                 | Q(search_title='')
                 | Q(Q(regexp_search_title=False), q_objects)
                 | Q(Q(regexp_search_title=True, regexp_search_title_icase=False), q_objects_regexp)
-                | Q(Q(regexp_search_title=True, regexp_search_title_icase=True), q_objects_unwanted_regexp_icase)
+                | Q(Q(regexp_search_title=True, regexp_search_title_icase=True), q_objects_regexp_icase)
             ).filter(
                 Q(unwanted_title__isnull=True)
                 | Q(unwanted_title='')
@@ -355,12 +355,13 @@ class BaseParser:
 
     def crawl_urls_caller(
             self, urls: list[str],
-            wanted_filters: QuerySet = None, wanted_only: bool = False
+            wanted_filters: QuerySet = None, wanted_only: bool = False,
+            preselected_wanted_matches: Optional[dict[str, list['WantedGallery']]] = None
     ):
         try:
             self.crawl_urls(
-                urls,
-                wanted_filters=wanted_filters, wanted_only=wanted_only
+                urls, wanted_filters=wanted_filters, wanted_only=wanted_only,
+                preselected_wanted_matches=preselected_wanted_matches
             )
         except BaseException:
             logger.critical(traceback.format_exc())
@@ -368,9 +369,16 @@ class BaseParser:
 
     def crawl_urls(
             self, urls: list[str],
-            wanted_filters: QuerySet = None, wanted_only: bool = False
+            wanted_filters: QuerySet = None, wanted_only: bool = False,
+            preselected_wanted_matches: Optional[dict[str, list['WantedGallery']]] = None
     ) -> None:
         pass
+
+    def post_gallery_processing(self, gallery_entry: 'Gallery', gallery_data: 'GalleryData'):
+        pass
+
+    def is_current_link_non_current(self, gallery_data: 'GalleryData') -> bool:
+        return False
 
     def pass_gallery_data_to_downloaders(self, gallery_data_list: list[GalleryData], gallery_wanted_lists: dict[str, list['WantedGallery']], force_provider: bool = False):
         gallery_count = len(gallery_data_list)
@@ -440,6 +448,21 @@ class BaseParser:
             logger.info(downloaders_msg)
         else:
             to_use_downloaders = self.downloaders
+
+        is_link_non_current = False
+
+        if self.settings.non_current_links_as_deleted:
+            is_link_non_current = self.is_current_link_non_current(gallery)
+            if is_link_non_current:
+                to_use_downloaders = self.settings.provider_context.get_downloaders(
+                    self.settings, self.general_utils,
+                    filter_name="{}_info".format(self.name), force=True
+                )
+                logger.info(
+                    "Link: {} detected as non-current, it will be added as deleted.".format(
+                        gallery.link
+                    )
+                )
 
         for cnt, downloader in enumerate(to_use_downloaders):
             downloader[0].init_download(copy.deepcopy(gallery))
@@ -570,6 +593,12 @@ class BaseParser:
                             )
                             self.settings.workers.web_queue.enqueue_args_list([gallery_url, "--stop-nested"])
 
+                    self.post_gallery_processing(downloader[0].gallery_db_entry, gallery)
+
+                    if self.settings.non_current_links_as_deleted:
+                        if is_link_non_current:
+                            downloader[0].gallery_db_entry.mark_as_deleted()
+
                 return
             elif downloader[0].return_code == 0 and (cnt + 1) == len(to_use_downloaders):
                 self.last_used_downloader = None
@@ -593,6 +622,13 @@ class BaseParser:
                                 wanted_gallery=wanted_gallery,
                                 gallery=downloader[0].gallery_db_entry
                             )
+
+                        self.post_gallery_processing(downloader[0].gallery_db_entry, gallery)
+
+                        if self.settings.non_current_links_as_deleted:
+                            if self.is_current_link_non_current(gallery):
+                                downloader[0].gallery_db_entry.mark_as_deleted()
+
                     else:
                         logger.warning(
                             "Download completed unsuccessfully using downloader: {},"
@@ -655,19 +691,19 @@ class InternalParser(BaseParser):
                     logger.info(discard_message)
                     found_galleries.add(found_gallery.gid)
 
-        for count, gallery in enumerate(total_galleries_filtered):
+        for count, gallery_data in enumerate(total_galleries_filtered):
 
-            if gallery.gid in found_galleries:
+            if gallery_data.gid in found_galleries:
                 continue
 
-            discarded_tags = self.general_utils.discard_by_tag_list(gallery.tags)
+            discarded_tags = self.general_utils.discard_by_tag_list(gallery_data.tags)
 
             if discarded_tags:
                 logger.info(
                     "Gallery {} of {}: Skipping gallery link {}, because it's tagged with global discarded tags: {}".format(
                         count,
                         len(total_galleries_filtered),
-                        gallery.title,
+                        gallery_data.title,
                         discarded_tags
                     )
                 )
@@ -675,31 +711,31 @@ class InternalParser(BaseParser):
 
             if wanted_filters:
                 self.compare_gallery_with_wanted_filters(
-                    gallery,
-                    gallery.link,
+                    gallery_data,
+                    gallery_data.link,
                     wanted_filters,
                     gallery_wanted_lists
                 )
-                if wanted_only and not gallery_wanted_lists[gallery.gid]:
+                if wanted_only and not gallery_wanted_lists[gallery_data.gid]:
                     continue
 
             logger.info(
                 "Gallery {} of {}:  Gallery {} will be processed.".format(
                     count,
                     len(total_galleries_filtered),
-                    gallery.title
+                    gallery_data.title
                 )
             )
 
-            if gallery.thumbnail:
-                original_thumbnail_url = gallery.thumbnail_url
+            if gallery_data.thumbnail:
+                original_thumbnail_url = gallery_data.thumbnail_url
 
-                gallery.thumbnail_url = gallery.thumbnail
+                gallery_data.thumbnail_url = gallery_data.thumbnail
 
-                gallery_instance = self.settings.gallery_model.objects.update_or_create_from_values(gallery)
+                gallery_instance = self.settings.gallery_model.objects.update_or_create_from_values(gallery_data)
 
                 gallery_instance.thumbnail_url = original_thumbnail_url
 
                 gallery_instance.save()
             else:
-                self.settings.gallery_model.objects.update_or_create_from_values(gallery)
+                self.settings.gallery_model.objects.update_or_create_from_values(gallery_data)

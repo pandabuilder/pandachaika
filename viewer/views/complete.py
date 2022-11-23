@@ -113,6 +113,30 @@ class GalleryAutocomplete(autocomplete.JalQuerySetView):
         return qs[0:self.limit_choices]
 
 
+class GalleryAllAutocomplete(GalleryAutocomplete):
+
+    def choices_for_request(self) -> Iterable[Gallery]:
+        qs = Gallery.objects.all().order_by('pk')
+
+        q = self.request.GET.get('q', '')
+        q_formatted = '%' + q.replace(' ', '%') + '%'
+        m = re.search(r'(\d+)', q)
+        if m:
+            q_object = Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted) | Q(gid__exact=m.group(1))
+        else:
+            q_object = Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted)
+        if self.request.user.is_authenticated:
+            qs = qs.filter(
+                q_object
+            )
+        else:
+            qs = qs.filter(public=True).filter(
+                q_object
+            )
+
+        return qs[0:self.limit_choices]
+
+
 class WantedGalleryAutocomplete(autocomplete.JalQuerySetView):
 
     model = WantedGallery

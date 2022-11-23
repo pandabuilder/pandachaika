@@ -744,6 +744,9 @@ def crawler(request: HttpRequest) -> HttpResponse:
         if 'gallery_only' in p:
             current_settings.allow_type_downloaders_only('info')
 
+        if 'skip-non-current' in p:
+            current_settings.non_current_links_as_deleted = True
+
         if 'run_separate' in p:
             crawler_thread = CrawlerThread(current_settings, urls)
             crawler_thread.start()

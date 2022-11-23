@@ -349,7 +349,7 @@ class ArchiveModForm(forms.ModelForm):
     class Meta:
         model = Archive
         fields = ['title', 'title_jpn', 'source_type', 'reason', 'possible_matches', 'custom_tags', 'zipped',
-                  'alternative_sources', 'details']
+                  'alternative_sources', 'archive_groups', 'details']
         widgets = {
             'custom_tags': autocomplete.ModelSelect2Multiple(
                 url='customtag-autocomplete',
@@ -369,11 +369,21 @@ class ArchiveModForm(forms.ModelForm):
         super(ArchiveModForm, self).__init__(*args, **kwargs)
         self.fields["possible_matches"].queryset = self.instance.possible_matches.order_by(
             "-archivematches__match_accuracy")
+        self.fields["archive_groups"].queryset = self.instance.archive_groups.all()
 
     possible_matches = MatchesModelChoiceField(
         required=False,
         queryset=ArchiveMatches.objects.none(),
         widget=forms.widgets.Select(attrs={'class': 'form-control'}),
+    )
+
+    archive_groups = forms.models.ModelMultipleChoiceField(
+        required=False,
+        queryset=ArchiveGroup.objects.none(),
+        widget=autocomplete.ModelSelect2Multiple(
+            url='archive-group-select-autocomplete',
+            attrs={'size': 1, 'data-placeholder': 'Archive groups', 'class': 'form-control'}
+        ),
     )
 
 
@@ -956,3 +966,49 @@ class GalleryCreateForm(ModelForm):
     def clean_tags(self) -> TemporaryUploadedFile:
         tags = self.cleaned_data['tags']
         return tags
+
+
+class EventLogSearchForm(forms.Form):
+
+    data_field = forms.CharField(
+        required=False,
+        label='',
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Data', 'autocomplete': 'off'})
+    )
+
+
+class DeletedArchiveSearchForm(forms.Form):
+
+    title = forms.CharField(
+        required=False,
+        widget=JalTextWidget(
+            url='gallery-all-autocomplete',
+            attrs={
+                'class': 'form-control',
+                'placeholder': 'Title, Japanese title or ex gallery ID, mouse click on autocomplete opens it',
+                'data-autocomplete-minimum-characters': 3,
+                'data-autocomplete-xhr-wait': 50,
+                'data-autocomplete-auto-hilight-first': 0,
+                'data-autocomplete-bind-mouse-down': 0,
+            },
+        ),
+    )
+
+    tags = forms.CharField(
+        required=False,
+        widget=JalTextWidget(
+            url='tag-autocomplete',
+            attrs={
+                'class': 'form-control',
+                'placeholder': 'Comma separated tags. - to exclude, ^ for exact matching.'
+                               ' End a term with : to match scope only',
+                'data-autocomplete-minimum-characters': 3,
+            },
+        ),
+    )
+
+    data_field = forms.CharField(
+        required=False,
+        label='',
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Data', 'autocomplete': 'off'})
+    )

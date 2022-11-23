@@ -27,7 +27,7 @@ except ImportError:
 try:
     import py7zr
 except ImportError:
-    py7zr = None
+    py7zr = None  # type: ignore
 
 import requests
 
@@ -163,7 +163,7 @@ def calc_crc32(filename: str) -> str:
     return "%X" % (prev & 0xFFFFFFFF)
 
 
-def sha1_from_file_object(fp: Union[typing.IO, str]):
+def sha1_from_file_object(fp: Union[typing.IO, str], close_object: bool = False):
 
     if isinstance(fp, str):
         file_object: Union[typing.IO, typing.BinaryIO] = open(fp, "rb")
@@ -176,7 +176,8 @@ def sha1_from_file_object(fp: Union[typing.IO, str]):
     while len(buf) > 0:
         hasher.update(buf)
         buf = file_object.read(block_size)
-    file_object.close()
+    if close_object or isinstance(fp, str):
+        file_object.close()
     return hasher.hexdigest()
 
 
@@ -317,7 +318,7 @@ def convert_rar_to_zip(filepath: str) -> int:
         return -1
     try:
         file_name = os.path.splitext(filepath)[0]
-        temp_rar_file = file_name + ".rar"
+        temp_rar_file = file_name + ".tar"
         os.rename(filepath, temp_rar_file)
         my_rar = rarfile.RarFile(temp_rar_file, 'r')
 
@@ -348,7 +349,7 @@ def convert_7z_to_zip(filepath: str) -> int:
         return -1
     try:
         file_name = os.path.splitext(filepath)[0]
-        temp_7z_file = file_name + ".7z"
+        temp_7z_file = file_name + ".t7z"
         os.rename(filepath, temp_7z_file)
         my_7z = py7zr.SevenZipFile(temp_7z_file, 'r')
 
@@ -374,6 +375,32 @@ def convert_7z_to_zip(filepath: str) -> int:
     os.remove(temp_7z_file)
     shutil.rmtree(dirpath, ignore_errors=True)
     return 0
+
+
+def check_and_convert_to_zip(filepath: str) -> tuple[str, int]:
+    try:
+        zipfile.ZipFile(filepath, 'r')
+        return 'zip', 0
+    except zipfile.BadZipFile as e:
+        if str(e) != 'File is not a zip file':
+            return 'zip', 1
+    try:
+        rarfile.RarFile(filepath, 'r')
+        convert_rar_to_zip(filepath)
+        return 'rar', 2
+    except rarfile.NotRarFile:
+        pass
+    try:
+        py7zr.SevenZipFile(filepath, 'r')
+        convert_7z_to_zip(filepath)
+        return '7z', 2
+    except py7zr.exceptions.Bad7zFile as e:
+        if str(e) != 'not a 7z file':
+            return 'unknown', 1
+    return 'unknown', 1
+    # zipfile.BadZipFile: File is not a zip file
+    # rarfile.NotRarFile: Not a RAR file
+    # py7zr.exceptions.Bad7zFile: not a 7z file
 
 
 def get_zip_fileinfo(filepath: str) -> tuple[int, int]:
@@ -476,7 +503,7 @@ def format_title_to_wanted_search(title: str) -> str:
 
 def file_matches_any_filter(title: str, filters: list[str]) -> bool:
     for filename_filter in filters:
-        if fnmatch.filter(title, filename_filter):
+        if fnmatch.fnmatch(title, filename_filter):
             return True
     return False
 
@@ -554,7 +581,8 @@ needed_keys = [
     'filesize', 'expunged', 'rating', 'fjord',
     'hidden', 'dl_type', 'comment', 'thumbnail_url',
     'public', 'provider', 'gallery_container_gid', 'magazine_gid',
-    'status', 'origin', 'reason'
+    'status', 'origin', 'reason',
+    'parent_gallery_gid', 'first_gallery_gid', 'provider_metadata'
 ]
 
 

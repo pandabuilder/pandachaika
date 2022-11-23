@@ -128,6 +128,21 @@ function modifyDivThumbnail(currentDiv) {
 
 }
 
+function modifyDivExtended(currentDiv) {
+
+    var galleryLink =currentDiv.getElementsByTagName('div')[0].children[1].getAttribute('href');
+    var rightBot =currentDiv.getElementsByTagName('div')[0].getElementsByClassName('gl3e')[0].getElementsByClassName('gldown')[0];
+
+    var div2 =document.createElement('div');
+    div2.style.margin ='0px 0px 0px 2px';
+    div2.innerHTML = '<img class="tn" src="https://ehgt.org/g/t.png" alt="T" title="' + galleryLink + '"/></img>';
+    div2.addEventListener('click',function () {
+        sendWebCrawlerAction(galleryLink, null, null, getDownloadReason());
+    });
+    rightBot.parentNode.appendChild(div2);
+
+}
+
 function insertCrawler() {
 	//Gallery page
     var container =document.getElementById('gd5');
@@ -234,6 +249,14 @@ color: black;\
     if(list2.length !==0) {
         for(var j =0; j <list2.length; j++) {
             (modifyDivThumbnail(list2[j]));
+        }
+        return true;
+    }
+    //Main page, extended mode
+    var list3 =document.getElementsByClassName('gl2e');
+    if (list3.length !==0) {
+        for(var jj=0; jj <list3.length; jj++) {
+            (modifyDivExtended(list3[jj]));
         }
         return true;
     }

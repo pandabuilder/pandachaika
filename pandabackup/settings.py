@@ -117,6 +117,7 @@ INSTALLED_APPS = [
 if DEBUG and module_exists('corsheaders'):
     INSTALLED_APPS += ['corsheaders']
     CORS_ORIGIN_ALLOW_ALL = True
+    CORS_ALLOW_CREDENTIALS = True
 
 INSTALLED_APPS += ['viewer']
 
@@ -225,12 +226,7 @@ elif crawler_settings.db_engine == 'postgresql':
         }
     }
 else:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': crawler_settings.database['sqlite_location'],
-        }
-    }
+    raise ValueError('Invalid database type. Must choose either mysql or postgresql')
 
 # Internationalization
 
@@ -239,8 +235,6 @@ LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
 
 USE_I18N = True
-
-USE_L10N = True
 
 USE_TZ = True
 
