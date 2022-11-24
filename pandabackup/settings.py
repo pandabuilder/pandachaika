@@ -5,9 +5,14 @@ Django settings for pandabackup project.
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 import os
 from typing import Any, Optional
+import typing
 
 from core.base.setup import Settings
 from core.base.utilities import module_exists
+
+if typing.TYPE_CHECKING:
+    from core.base.providers import ProviderContext
+    from core.workers.holder import WorkerContext
 
 if 'PANDA_BASE_DIR' in os.environ:
     BASE_DIR = os.environ['PANDA_BASE_DIR']
@@ -246,8 +251,8 @@ FILE_UPLOAD_PERMISSIONS = 0o755
 
 MAIN_URL = crawler_settings.urls.viewer_main_url
 
-STATIC_ROOT = os.path.join(BASE_DIR, 'static/')
-MEDIA_ROOT = crawler_settings.MEDIA_ROOT
+STATIC_ROOT: str = os.path.join(BASE_DIR, 'static/')
+MEDIA_ROOT: str = crawler_settings.MEDIA_ROOT
 
 if crawler_settings.urls.static_url.startswith('https://'):
     STATIC_URL = crawler_settings.urls.static_url
@@ -327,12 +332,12 @@ else:
     ES_CLIENT = None
     ES_ENABLED = False
 
-MAX_RESULT_WINDOW = crawler_settings.elasticsearch.max_result_window
-ES_AUTOREFRESH = crawler_settings.elasticsearch.auto_refresh
-ES_AUTOREFRESH_GALLERY = crawler_settings.elasticsearch.auto_refresh_gallery
-ES_INDEX_NAME = crawler_settings.elasticsearch.index_name
-ES_GALLERY_INDEX_NAME = crawler_settings.elasticsearch.gallery_index_name
-ES_ONLY_INDEX_PUBLIC = crawler_settings.elasticsearch.only_index_public
+MAX_RESULT_WINDOW: int = crawler_settings.elasticsearch.max_result_window
+ES_AUTOREFRESH: bool = crawler_settings.elasticsearch.auto_refresh
+ES_AUTOREFRESH_GALLERY: bool = crawler_settings.elasticsearch.auto_refresh_gallery
+ES_INDEX_NAME: str = crawler_settings.elasticsearch.index_name
+ES_GALLERY_INDEX_NAME: str = crawler_settings.elasticsearch.gallery_index_name
+ES_ONLY_INDEX_PUBLIC: bool = crawler_settings.elasticsearch.only_index_public
 
 # These are the default providers, you could register more after the program starts, but that's not supported
 # If for each new provider, you need to call this method to register it.
@@ -354,6 +359,6 @@ PROVIDERS = [
     'core.providers.irodori',
 ]
 
-PROVIDER_CONTEXT = crawler_settings.provider_context
-CRAWLER_SETTINGS = crawler_settings
-WORKERS = crawler_settings.workers
+PROVIDER_CONTEXT: 'ProviderContext' = crawler_settings.provider_context
+CRAWLER_SETTINGS: 'Settings' = crawler_settings
+WORKERS: 'WorkerContext' = crawler_settings.workers

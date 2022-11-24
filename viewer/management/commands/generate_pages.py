@@ -1,9 +1,11 @@
 import time
+import typing
 
 from django.core.management.base import BaseCommand
 from django.conf import settings
 from django.db.models.aggregates import Avg, Max, Min, Sum, Count
 from django.template.loader import render_to_string
+from django.utils.safestring import SafeString
 
 from viewer.models import Gallery, Archive, Tag
 
@@ -118,7 +120,7 @@ class Command(BaseCommand):
             'gallery_providers': providers_dict
         }
 
-        content = render_to_string("viewer/static_public_stats.html", d)
+        content: typing.Union['SafeString', str] = render_to_string("viewer/static_public_stats.html", d)
 
         # TODO: User argument
         content = content.replace("/meta/static/", "https://static.chaika.moe/static/")

@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from datetime import datetime
 import typing
 from typing import Optional, Union, Any
@@ -10,10 +11,10 @@ class GalleryData:
     def __init__(
             self, gid: str, provider: str,
             token: Optional[str] = None, link: Optional[str] = None,
-            tags: list[str] = None, title: Optional[str] = None,
+            tags: Optional[list[str]] = None, title: Optional[str] = None,
             title_jpn: Optional[str] = None, comment: Optional[str] = None,
-            gallery_container_gid: Optional[str] = None, gallery_contains_gids: list[str] = None,
-            magazine_gid: Optional[str] = None, magazine_chapters_gids: list[str] = None,
+            gallery_container_gid: Optional[str] = None, gallery_contains_gids: Optional[list[str]] = None,
+            magazine_gid: Optional[str] = None, magazine_chapters_gids: Optional[list[str]] = None,
             category: Optional[str] = None, posted: Optional[datetime] = None,
             filesize: Optional[int] = None, filecount: Optional[int] = None,
             expunged: Optional[int] = None, rating: Optional[str] = None,
@@ -137,7 +138,7 @@ class ProviderSettings:
             self.proxies.update(config['proxies'])
 
 
-class TorrentClient(object):
+class TorrentClient(ABC):
 
     name = 'torrent'
     convert_to_base64 = False
@@ -155,12 +156,15 @@ class TorrentClient(object):
         self.expected_torrent_extension = ''
         self.set_expected = True
 
-    def add_torrent(self, torrent_data: Union[str, bytes], download_dir: str = None) -> bool:
+    @abstractmethod
+    def add_torrent(self, torrent_data: Union[str, bytes], download_dir: Optional[str] = None) -> bool:
         pass
 
-    def add_url(self, url: str, download_dir: str = None) -> bool:
+    @abstractmethod
+    def add_url(self, url: str, download_dir: Optional[str] = None) -> bool:
         pass
 
+    @abstractmethod
     def connect(self) -> bool:
         pass
 

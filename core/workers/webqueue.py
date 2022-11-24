@@ -86,9 +86,9 @@ class WebQueue(object):
 
     def enqueue_args_list(
             self, args: Iterable[str],
-            override_options: Settings = None,
-            archive_callback: Callable[[Optional['Archive'], Optional[str], str], None] = None,
-            gallery_callback: Callable[[Optional['Gallery'], Optional[str], str], None] = None,
+            override_options: 'Optional[Settings]' = None,
+            archive_callback: 'Optional[Callable[[Optional[Archive], Optional[str], str], None]]' = None,
+            gallery_callback: 'Optional[Callable[[Optional[Gallery], Optional[str], str], None]]' = None,
             use_argparser: bool = True
     ) -> None:
 

@@ -104,8 +104,8 @@ class ArchiveAdmin(admin.ModelAdmin):
         else:
             return None
 
-    def save_model(self, request: AuthenticatedHttpRequest, obj: Archive, form: ModelForm, change: bool) -> None:
-        if not obj.user:
+    def save_model(self, request: HttpRequest, obj: Archive, form: ModelForm, change: bool) -> None:
+        if not obj.user and isinstance(request, AuthenticatedHttpRequest):
             obj.user = request.user
         obj.save()
 
@@ -141,7 +141,7 @@ class GalleryTagsInline(admin.TabularInline):
 
 
 class UsedByGalleryListFilter(admin.SimpleListFilter):
-    title = _('used by galleries')
+    title = _('used by galleries')  # type: ignore
     parameter_name = 'used-galleries'
 
     def lookups(self, request, model_admin):

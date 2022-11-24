@@ -1,5 +1,5 @@
 import logging
-from typing import Any
+from typing import Optional, Any
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
@@ -100,7 +100,7 @@ def archive_groups_explorer(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
-def archive_group(request: HttpRequest, pk: int = None, slug: str = None) -> HttpResponse:
+def archive_group(request: HttpRequest, pk: Optional[int] = None, slug: Optional[str] = None) -> HttpResponse:
     """ArchiveGroup listing."""
     try:
         if pk is not None:
@@ -147,7 +147,7 @@ def archive_group(request: HttpRequest, pk: int = None, slug: str = None) -> Htt
 # TODO: Very heavy queries, specially the archive_group_entry_formset form.
 # probably better to migrate to some interactive way for reorder and adding.
 @permission_required('viewer.change_archivegroup')
-def archive_group_edit(request: HttpRequest, pk: int = None, slug: str = None) -> HttpResponse:
+def archive_group_edit(request: HttpRequest, pk: Optional[int] = None, slug: Optional[str] = None) -> HttpResponse:
     """ArchiveGroup listing."""
     try:
         if pk is not None:
@@ -290,7 +290,8 @@ def archive_group_edit(request: HttpRequest, pk: int = None, slug: str = None) -
         }
 
         for k, v in get.items():
-            params[k] = v
+            if isinstance(v, str):
+                params[k] = v
 
         for k in archive_filter_keys:
             if k not in params:
@@ -305,11 +306,11 @@ def archive_group_edit(request: HttpRequest, pk: int = None, slug: str = None) -
 
         search_results = search_results.select_related('gallery')
 
-        paginator = Paginator(search_results, 100)
+        archive_paginator = Paginator(search_results, 100)
         try:
-            search_results_page = paginator.page(page)
+            search_results_page = archive_paginator.page(page)
         except (InvalidPage, EmptyPage):
-            search_results_page = paginator.page(paginator.num_pages)
+            search_results_page = archive_paginator.page(paginator.num_pages)
 
         d.update(
             search_form=search_form,

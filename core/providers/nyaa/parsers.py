@@ -2,6 +2,7 @@
 import logging
 import re
 import typing
+from typing import Optional
 from urllib.parse import urljoin
 from collections import defaultdict
 
@@ -10,6 +11,7 @@ from core.base.parsers import BaseParser
 from . import constants, utilities
 
 from core.base.types import GalleryData
+
 if typing.TYPE_CHECKING:
     from viewer.models import WantedGallery
 
@@ -32,7 +34,7 @@ class Parser(BaseParser):
             return None
 
     def crawl_urls(self, urls: list[str], wanted_filters=None, wanted_only: bool = False,
-                   preselected_wanted_matches: dict[str, list['WantedGallery']] = None) -> None:
+                   preselected_wanted_matches: Optional[dict[str, list['WantedGallery']]] = None) -> None:
 
         unique_urls = set()
         gallery_data_list = []

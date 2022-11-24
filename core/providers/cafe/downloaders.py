@@ -101,7 +101,7 @@ class ArchiveDownloader(BaseDownloader):
                     self.return_code = 0
                     shutil.rmtree(directory_path, ignore_errors=True)
                     return
-                # yield("Got to last gallery page, stopping")
+                # yield ("Got to last gallery page, stopping")
                 break
 
             soup_2 = BeautifulSoup(gallery_read_page.content, 'html.parser')
@@ -116,7 +116,7 @@ class ArchiveDownloader(BaseDownloader):
             img = img_find['src']
 
             if last_image != '' and last_image == img:
-                # yield('Current image is the same as previous, skipping')
+                # yield ('Current image is the same as previous, skipping')
                 break
             last_image = img
             img_name = os.path.basename(img)
@@ -126,7 +126,7 @@ class ArchiveDownloader(BaseDownloader):
                 **request_dict
             )
             if request_file.status_code == 404:
-                # yield("Got to last image, stopping")
+                # yield ("Got to last image, stopping")
                 break
             with open(os.path.join(directory_path, img_name), "wb") as fo:
                 for chunk in request_file.iter_content(4096):
@@ -137,7 +137,7 @@ class ArchiveDownloader(BaseDownloader):
             if page_match:
                 gallery_read = page_match.group(1) + str(int(page_match.group(2)) + 1)
             else:
-                # yield("Could not match to change page, stopping")
+                # yield ("Could not match to change page, stopping")
                 break
 
         file_path = os.path.join(

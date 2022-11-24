@@ -2,6 +2,7 @@
 import logging
 import time
 import typing
+from typing import Optional
 import urllib
 from collections import defaultdict
 from collections.abc import Iterable
@@ -51,7 +52,7 @@ class Parser(BaseParser):
 
         try:
             json_decoded = response.json()
-        except(ValueError, KeyError):
+        except (ValueError, KeyError):
             logger.error("Could not parse response to JSON: {}".format(response.text))
             return []
 
@@ -104,7 +105,7 @@ class Parser(BaseParser):
 
             try:
                 json_decoded = response.json()
-            except(ValueError, KeyError):
+            except (ValueError, KeyError):
                 logger.error("Could not parse response to JSON: {}".format(response.text))
                 break
 
@@ -163,7 +164,7 @@ class Parser(BaseParser):
 
         try:
             json_decoded = response.json()
-        except(ValueError, KeyError):
+        except (ValueError, KeyError):
             logger.error("Could not parse response to JSON: {}".format(response.text))
             return []
 
@@ -188,7 +189,7 @@ class Parser(BaseParser):
         return total_galleries_filtered
 
     def crawl_urls(self, urls: list[str], wanted_filters=None, wanted_only: bool = False,
-                   preselected_wanted_matches: dict[str, list['WantedGallery']] = None) -> None:
+                   preselected_wanted_matches: Optional[dict[str, list['WantedGallery']]] = None) -> None:
 
         # If we are crawling an url from a Wanted source (MonitoredLinks), force download using default downloaders
         # from each gallery's original provider, instead of just downloading the archive from chaika
@@ -226,7 +227,7 @@ class Parser(BaseParser):
                         continue
                     try:
                         json_decoded = archive_response.json()
-                    except(ValueError, KeyError):
+                    except (ValueError, KeyError):
                         logger.error("Could not parse response to JSON: {}".format(archive_response.text))
                         continue
                     if json_decoded['gallery']:
@@ -242,7 +243,7 @@ class Parser(BaseParser):
                         try:
                             json_decoded = gallery_response.json()
                             dict_list.append(json_decoded)
-                        except(ValueError, KeyError):
+                        except (ValueError, KeyError):
                             logger.error("Could not parse response to JSON: {}".format(gallery_response.text))
                             continue
                     else:
@@ -264,7 +265,7 @@ class Parser(BaseParser):
                     try:
                         json_decoded = gallery_response.json()
                         dict_list.append(json_decoded)
-                    except(ValueError, KeyError):
+                    except (ValueError, KeyError):
                         logger.error("Could not parse response to JSON: {}".format(gallery_response.text))
                         continue
             elif '/es-gallery-json/' in url:
@@ -290,7 +291,7 @@ class Parser(BaseParser):
 
                 try:
                     json_decoded = response.json()
-                except(ValueError, KeyError):
+                except (ValueError, KeyError):
                     logger.error("Could not parse response to JSON: {}".format(response.text))
                     continue
 

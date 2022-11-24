@@ -5,6 +5,7 @@ import json
 import re
 from itertools import chain
 import typing
+from typing import Optional
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -82,14 +83,16 @@ def get_gallery_data(data: QueryDict) -> 'QuerySet[Gallery]':
 
     results = Gallery.objects.order_by(order)
 
-    if 'title' in data:
-        q_formatted = '%' + data['title'].replace(' ', '%') + '%'
+    title_data = data.get('title')
+    if title_data is not None:
+        q_formatted = '%' + title_data.replace(' ', '%') + '%'
         results = results.filter(
             Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted)
         )
 
-    if 'tags' in data:
-        tags = data['tags'].split(',')
+    tags_data = data.get('tags')
+    if tags_data is not None:
+        tags = tags_data.split(',')
         for tag in tags:
             tag = tag.strip().replace(" ", "_")
             tag_clean = re.sub("^[-|^]", "", tag)
@@ -134,14 +137,18 @@ def get_gallery_data(data: QueryDict) -> 'QuerySet[Gallery]':
                     tag_query
                 )
 
-    if 'filecount_from' in data:
-        results = results.filter(filecount__gte=int(float(data['filecount_from'])))
-    if 'filecount_to' in data:
-        results = results.filter(filecount__lte=int(float(data['filecount_to'])))
-    if 'filesize_from' in data:
-        results = results.filter(filesize__gte=int(float(data['filesize_from'])))
-    if 'filesize_to' in data:
-        results = results.filter(filesize__lte=int(float(data['filesize_to'])))
+    filecount_from = data.get("filecount_from")
+    if filecount_from is not None:
+        results = results.filter(filecount__gte=int(float(filecount_from)))
+    filecount_to = data.get("filecount_to")
+    if filecount_to is not None:
+        results = results.filter(filecount__lte=int(float(filecount_to)))
+    filesize_from = data.get("filesize_from")
+    if filesize_from is not None:
+        results = results.filter(filesize__gte=int(float(filesize_from)))
+    filesize_to = data.get("filesize_to")
+    if filesize_to is not None:
+        results = results.filter(filesize__lte=int(float(filesize_to)))
     if 'posted_from' in data:
         results = results.filter(posted__gte=data['posted_from'])
     if 'posted_to' in data:
@@ -200,8 +207,9 @@ def get_archive_data(data: QueryDict) -> 'QuerySet[Archive]':
 
     # sort and filter results by parameters
     order = 'create_date'
-    if 'order' in data:
-        order = data['order']
+    order_data = data.get('order')
+    if order_data is not None:
+        order = order_data
     if order == 'rating':
         order = 'gallery__' + order
     elif order == 'posted':
@@ -211,26 +219,34 @@ def get_archive_data(data: QueryDict) -> 'QuerySet[Archive]':
 
     results = Archive.objects.order_by(order)
 
-    if 'title' in data:
-        q_formatted = '%' + data['title'].replace(' ', '%') + '%'
+    title = data.get("title")
+
+    if title is not None:
+        q_formatted = '%' + title.replace(' ', '%') + '%'
         results = results.filter(
             Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted)
         )
 
     if 'filename' in data:
         results = results.filter(zipped__icontains=data['filename'])
-    if 'rating_from' in data:
-        results = results.filter(gallery__rating__gte=float(data['rating_from']))
-    if 'rating_to' in data:
-        results = results.filter(gallery__rating__lte=float(data['rating_to']))
-    if 'filecount_from' in data:
-        results = results.filter(filecount__gte=int(float(data['filecount_from'])))
-    if 'filecount_to' in data:
-        results = results.filter(filecount__lte=int(float(data['filecount_to'])))
-    if 'filesize_from' in data:
-        results = results.filter(filesize__gte=int(float(data['filesize_from'])))
-    if 'filesize_to' in data:
-        results = results.filter(filesize__lte=int(float(data['filesize_to'])))
+    rating_from = data.get("rating_from")
+    if rating_from is not None:
+        results = results.filter(gallery__rating__gte=float(rating_from))
+    rating_to = data.get("rating_to")
+    if rating_to is not None:
+        results = results.filter(gallery__rating__lte=float(rating_to))
+    filecount_from = data.get("filecount_from")
+    if filecount_from is not None:
+        results = results.filter(filecount__gte=int(float(filecount_from)))
+    filecount_to = data.get("filecount_to")
+    if filecount_to is not None:
+        results = results.filter(filecount__lte=int(float(filecount_to)))
+    filesize_from = data.get("filesize_from")
+    if filesize_from is not None:
+        results = results.filter(filesize__gte=int(float(filesize_from)))
+    filesize_to = data.get("filesize_to")
+    if filesize_to is not None:
+        results = results.filter(filesize__lte=int(float(filesize_to)))
     if 'posted_from' in data:
         results = results.filter(gallery__posted__gte=data['posted_from'])
     if 'posted_to' in data:
@@ -266,9 +282,9 @@ def get_archive_data(data: QueryDict) -> 'QuerySet[Archive]':
     #             results = results.filter(
     #                 Q(tags__name__contains=tag_name),
     #                 Q(tags__scope__contains=tag_scope))
-
-    if 'q' in data:
-        terms = data['q'].split()
+    q_string = data.get('q')
+    if q_string is not None:
+        terms = q_string.split()
         for term in terms:
             # q_formatted = '%' + term.strip().replace(' ', '%') + '%'
             # title_query = (
@@ -308,7 +324,7 @@ def get_archive_data(data: QueryDict) -> 'QuerySet[Archive]':
 
 
 # TODO: move modifying actions to POST requests. If something changes here, must update panda-react too.
-def api(request: HttpRequest, model: str = None, obj_id: str = None, action: str = None) -> HttpResponse:
+def api(request: HttpRequest, model: Optional[str] = None, obj_id: Optional[str] = None, action: Optional[str] = None) -> HttpResponse:
     if request.method == 'GET':
         data = request.GET
         if model == 'archive' and obj_id is not None:
@@ -585,6 +601,6 @@ def archives_to_json_response(archives_list: 'QuerySet[Archive]', request: HttpR
 
 
 @login_required
-def new_image_viewer(request: HttpRequest, archive: int = None, image: int = None) -> HttpResponse:
+def new_image_viewer(request: HttpRequest, archive: Optional[int] = None, image: Optional[int] = None) -> HttpResponse:
 
     return render(request, "viewer/new_image_viewer.html")

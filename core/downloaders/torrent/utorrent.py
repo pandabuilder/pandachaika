@@ -24,7 +24,7 @@ class uTorrent(TorrentClient):
     def __str__(self) -> str:
         return self.name
 
-    def add_torrent(self, torrent_data: Union[str, bytes], download_dir: str = None) -> bool:
+    def add_torrent(self, torrent_data: Union[str, bytes], download_dir: Optional[str] = None) -> bool:
 
         self.total_size = 0
         self.expected_torrent_name = ''
@@ -53,7 +53,7 @@ class uTorrent(TorrentClient):
             lf.close()
             return False
 
-    def add_url(self, url: str, download_dir: str = None) -> bool:
+    def add_url(self, url: str, download_dir: Optional[str] = None) -> bool:
 
         self.total_size = 0
         self.expected_torrent_name = ''

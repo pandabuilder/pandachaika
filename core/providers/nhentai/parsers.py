@@ -118,8 +118,8 @@ class Parser(BaseParser):
         else:
             return None
 
-    def crawl_urls(self, urls: list[str], wanted_filters: QuerySet = None, wanted_only: bool = False,
-                   preselected_wanted_matches: dict[str, list['WantedGallery']] = None) -> None:
+    def crawl_urls(self, urls: list[str], wanted_filters: Optional[QuerySet] = None, wanted_only: bool = False,
+                   preselected_wanted_matches: Optional[dict[str, list['WantedGallery']]] = None) -> None:
 
         unique_urls = set()
         gallery_data_list = []
@@ -132,7 +132,7 @@ class Parser(BaseParser):
 
         for url in urls:
 
-            if not(constants.gallery_container_url in url):
+            if not (constants.gallery_container_url in url):
                 logger.warning("Invalid URL, skipping: {}".format(url))
                 continue
             unique_urls.add(url)

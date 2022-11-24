@@ -315,11 +315,12 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
     ).order_by('-submit_date')
 
     if 'filter_galleries' in get:
-        params = {
+        params: dict[str, str] = {
         }
 
         for k, v in get.items():
-            params[k] = v
+            if isinstance(v, str):
+                params[k] = v
 
         for k in gallery_filter_keys:
             if k not in params:
@@ -377,11 +378,13 @@ def filter_by_marks(archives: QuerySet[Archive], params: QueryDict) -> tuple[Que
     if 'origin' in params and params["origin"]:
         archives = archives.filter(manage_entries__origin=params["origin"])
         mark_filters = True
-    if 'priority_to' in params and params["priority_to"]:
-        archives = archives.filter(manage_entries__mark_priority__lte=float(params["priority_to"]))
+    priority_to = params.get("priority_to")
+    if priority_to is not None:
+        archives = archives.filter(manage_entries__mark_priority__lte=float(priority_to))
         mark_filters = True
-    if 'priority_from' in params and params["priority_from"]:
-        archives = archives.filter(manage_entries__mark_priority__gte=float(params["priority_from"]))
+    priority_from = params.get("priority_from")
+    if priority_from is not None:
+        archives = archives.filter(manage_entries__mark_priority__gte=float(priority_from))
         mark_filters = True
     elif mark_filters:
         # By default, don't filter marks with less than 1 priority (low level priorities)
@@ -431,7 +434,8 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
             }
 
             for k, v in get.items():
-                params[k] = v
+                if isinstance(v, str):
+                    params[k] = v
 
             for k in archive_filter_keys:
                 if k not in params:
@@ -666,7 +670,8 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
     }
 
     for k, v in get.items():
-        params[k] = v
+        if isinstance(v, str):
+            params[k] = v
 
     for k in archive_filter_keys:
         if k not in params:
@@ -807,7 +812,8 @@ def archive_delete_log(request: HttpRequest) -> HttpResponse:
         }
 
         for k, v in get.items():
-            params[k] = v
+            if isinstance(v, str):
+                params[k] = v
 
         for k in gallery_filter_keys:
             if k not in params:
@@ -909,15 +915,16 @@ def user_crawler(request: AuthenticatedHttpRequest) -> HttpResponse:
         current_settings.retry_failed = True
         current_settings.config['allowed']['retry_failed'] = 'yes'
         for k, v in p.items():
-            if k == "downloader":
-                if v == 'no-generic':
-                    continue
-                elif v in generic_downloaders:
-                    current_settings.enable_downloader_only(v)
-            elif k == "urls":
-                url_list = v.split("\n")
-                for item in url_list:
-                    url_set.add(item.rstrip('\r'))
+            if isinstance(v, str):
+                if k == "downloader":
+                    if v == 'no-generic':
+                        continue
+                    elif v in generic_downloaders:
+                        current_settings.enable_downloader_only(v)
+                elif k == "urls":
+                    url_list = v.split("\n")
+                    for item in url_list:
+                        url_set.add(item.rstrip('\r'))
         urls = list(url_set)
 
         if not urls:
@@ -1183,13 +1190,14 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
             )
             messages.success(request, 'Clearing possible matches.')
 
-    params = {
+    params: dict[str, str] = {
         'sort': 'create_date',
         'asc_desc': 'desc',
     }
 
     for k, v in get.items():
-        params[k] = v
+        if isinstance(v, str):
+            params[k] = v
 
     for k in archive_filter_keys:
         if k not in params:
@@ -1234,7 +1242,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
-def archive_update(request: HttpRequest, pk: int, tool: str = None, tool_use_id: str = None) -> HttpResponse:
+def archive_update(request: HttpRequest, pk: int, tool: Optional[str] = None, tool_use_id: Optional[str] = None) -> HttpResponse:
     try:
         archive = Archive.objects.get(pk=pk)
     except Archive.DoesNotExist:
@@ -1720,7 +1728,8 @@ def missing_archives_for_galleries(request: HttpRequest) -> HttpResponse:
     }
 
     for k, v in get.items():
-        params[k] = v
+        if isinstance(v, str):
+            params[k] = v
 
     for k in gallery_filter_keys:
         if k not in params:
@@ -1759,17 +1768,18 @@ def archives_similar_by_fields(request: HttpRequest) -> HttpResponse:
         groups = defaultdict(list)
         group_mains = defaultdict(list)
         for k, v in p.items():
-            if k.startswith("del-"):
-                # k, pk = k.split('-')
-                # results[pk][k] = v
-                _, pk = k.split('-')
-                pks.append(int(pk))
-                groups[int(pk)].append(int(v))
-            if k.startswith("main-"):
-                # k, pk = k.split('-')
-                # results[pk][k] = v
-                _, pk = k.split('-')
-                group_mains[int(v)].append(int(pk))
+            if isinstance(v, str):
+                if k.startswith("del-"):
+                    # k, pk = k.split('-')
+                    # results[pk][k] = v
+                    _, pk = k.split('-')
+                    pks.append(int(pk))
+                    groups[int(pk)].append(int(v))
+                if k.startswith("main-"):
+                    # k, pk = k.split('-')
+                    # results[pk][k] = v
+                    _, pk = k.split('-')
+                    group_mains[int(v)].append(int(pk))
 
         archives = Archive.objects.filter(id__in=pks).order_by('-create_date')
 
@@ -1867,7 +1877,8 @@ def archives_similar_by_fields(request: HttpRequest) -> HttpResponse:
     }
 
     for k, v in get.items():
-        params[k] = v
+        if isinstance(v, str):
+            params[k] = v
 
     for k in archive_filter_keys:
         if k not in params:
@@ -2059,13 +2070,14 @@ def archives_similar_thumbnail(request: HttpRequest) -> HttpResponse:
 
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
 
-    params = {
+    params: dict[str, str] = {
         'sort': 'create_date',
         'asc_desc': 'desc',
     }
 
     for k, v in get.items():
-        params[k] = v
+        if isinstance(v, str):
+            params[k] = v
 
     for k in archive_filter_keys:
         if k not in params:
@@ -2090,7 +2102,7 @@ def archives_similar_thumbnail(request: HttpRequest) -> HttpResponse:
         except (InvalidPage, EmptyPage):
             results_page = paginator.page(paginator.num_pages)
 
-        results_pks = results_page.object_list.values_list('pk', flat=True)
+        results_pks = results_page.object_list.values_list('pk', flat=True)  # type: ignore
 
         similar_pks = list(set([int(similar_id[0]) for similar_ids in score_results.items() if int(similar_ids[0]) in results_pks for similar_id in similar_ids[1]]))
 

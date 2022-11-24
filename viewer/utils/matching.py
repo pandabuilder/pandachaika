@@ -382,10 +382,10 @@ def match_internal(archives: 'QuerySet[Archive]', providers: Iterable[str],
         for gallery in galleries:
             if gallery.title:
                 galleries_title_id_per_provider[provider].append(
-                    (replace_illegal_name(gallery.title), gallery.pk))
+                    (replace_illegal_name(gallery.title), str(gallery.pk)))
             if gallery.title_jpn:
                 galleries_title_id_per_provider[provider].append(
-                    (replace_illegal_name(gallery.title_jpn), gallery.pk))
+                    (replace_illegal_name(gallery.title_jpn), str(gallery.pk)))
 
     image_type = ContentType.objects.get_for_model(Image)
     archive_type = ContentType.objects.get_for_model(Archive)

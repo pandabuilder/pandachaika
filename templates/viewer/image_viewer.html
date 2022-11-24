@@ -48,7 +48,7 @@
     <!-- Image -->
     <div id="img-container">
       <img class="img-fluid mx-auto" id="cent-img" src="{{ image_object.image.url }}"
-           width="{% if image_object.is_horizontal %}{% if image_object.image_width >= horizontal|add:"0" %}{{ horizontal }}{% else %}{{ image_object.image_width }}{% endif %}
+           width="{% if is_horizontal %}{% if image_object.image_width >= horizontal|add:"0" %}{{ horizontal }}{% else %}{{ image_object.image_width }}{% endif %}
              {% else %}{% if image_object.image_width >= vertical|add:"0" %}{{ vertical }}{% else %}{{ image_object.image_width }}{% endif %}{% endif %}"/>
       <div class="overlay"><span id="img-counter">{{ image.number }}</span>/{{ image.paginator.num_pages }}</div>
     </div>

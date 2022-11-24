@@ -120,7 +120,7 @@ class Parser(BaseParser):
         response.encoding = 'utf-8'
         try:
             response_data = response.json()
-        except(ValueError, KeyError):
+        except (ValueError, KeyError):
             logger.error("Could not parse response to JSON: {}".format(api_link))
             return None
 
@@ -306,8 +306,8 @@ class Parser(BaseParser):
         else:
             return None
 
-    def crawl_urls(self, urls: list[str], wanted_filters: QuerySet = None, wanted_only: bool = False,
-                   preselected_wanted_matches: dict[str, list['WantedGallery']] = None) -> None:
+    def crawl_urls(self, urls: list[str], wanted_filters: Optional[QuerySet] = None, wanted_only: bool = False,
+                   preselected_wanted_matches: Optional[dict[str, list['WantedGallery']]] = None) -> None:
 
         unique_urls = set()
         gallery_data_list = []

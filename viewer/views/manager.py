@@ -68,7 +68,8 @@ def repeated_archives_for_galleries(request: HttpRequest) -> HttpResponse:
     }
 
     for k, v in get.items():
-        params[k] = v
+        if isinstance(v, str):
+            params[k] = v
 
     for k in gallery_filter_keys:
         if k not in params:
@@ -134,7 +135,8 @@ def repeated_galleries_by_field(request: HttpRequest) -> HttpResponse:
     }
 
     for k, v in get.items():
-        params[k] = v
+        if isinstance(v, str):
+            params[k] = v
 
     for k in gallery_filter_keys:
         if k not in params:
@@ -235,7 +237,8 @@ def archive_filesize_different_from_gallery(request: HttpRequest) -> HttpRespons
     }
 
     for k, v in get.items():
-        params[k] = v
+        if isinstance(v, str):
+            params[k] = v
 
     for k in gallery_filter_keys:
         if k not in params:
@@ -302,7 +305,8 @@ def archives_not_present_in_filesystem(request: HttpRequest) -> HttpResponse:
     }
 
     for k, v in get.items():
-        params[k] = v
+        if isinstance(v, str):
+            params[k] = v
 
     for k in archive_filter_keys:
         if k not in params:
@@ -443,7 +447,8 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
     }
 
     for k, v in get.items():
-        params[k] = v
+        if isinstance(v, str):
+            params[k] = v
 
     for k in archive_filter_keys:
         if k not in params:

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
 import typing
+from typing import Optional
 from collections import defaultdict
 from collections.abc import Iterable
 
@@ -25,7 +26,7 @@ class GenericParser(BaseParser):
         return list(urls)
 
     def crawl_urls(self, urls: list[str], wanted_filters=None, wanted_only: bool = False,
-                   preselected_wanted_matches: dict[str, list['WantedGallery']] = None) -> None:
+                   preselected_wanted_matches: Optional[dict[str, list['WantedGallery']]] = None) -> None:
 
         unique_urls = set()
         gallery_data_list = []

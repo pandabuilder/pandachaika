@@ -17,7 +17,7 @@ import elasticsearch
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.core.files.storage import FileSystemStorage
-from django.db.backends.sqlite3.base import DatabaseWrapper
+from django.db.backends.base.base import BaseDatabaseWrapper
 from django.templatetags.static import static
 from os.path import join as pjoin, basename
 from tempfile import NamedTemporaryFile
@@ -88,17 +88,17 @@ class SpacedSearch(Lookup):
 
     lookup_name = 'ss'
 
-    def as_sql(self, qn: SQLCompiler, connection: DatabaseWrapper) -> tuple[str, typing.Any]:
+    def as_sql(self, qn: SQLCompiler, connection: BaseDatabaseWrapper) -> tuple[str, typing.Any]:
         lhs, lhs_params = self.process_lhs(qn, connection)
         rhs, rhs_params = self.process_rhs(qn, connection)
         return '%s LIKE %s' % (lhs, rhs), lhs_params + rhs_params
 
-    def as_mysql(self, qn: SQLCompiler, connection: DatabaseWrapper) -> tuple[str, typing.Any]:
+    def as_mysql(self, qn: SQLCompiler, connection: BaseDatabaseWrapper) -> tuple[str, typing.Any]:
         lhs, lhs_params = self.process_lhs(qn, connection)
         rhs, rhs_params = self.process_rhs(qn, connection)
         return '%s LIKE %s' % (lhs, rhs), lhs_params + rhs_params
 
-    def as_postgresql(self, qn: SQLCompiler, connection: DatabaseWrapper) -> tuple[str, typing.Any]:
+    def as_postgresql(self, qn: SQLCompiler, connection: BaseDatabaseWrapper) -> tuple[str, typing.Any]:
         lhs, lhs_params = self.process_lhs(qn, connection)
         rhs, rhs_params = self.process_rhs(qn, connection)
         return '%s ILIKE %s' % (lhs, rhs), lhs_params + rhs_params
@@ -162,7 +162,7 @@ class GalleryQuerySet(models.QuerySet):
         )
 
 
-class GalleryManager(models.Manager):
+class GalleryManager(models.Manager['Gallery']):
     def get_queryset(self) -> GalleryQuerySet:
         return GalleryQuerySet(self.model, using=self._db)
 
@@ -465,7 +465,7 @@ class ArchiveQuerySet(models.QuerySet):
         return [archive for archive in archives if not os.path.isfile(os.path.join(root, archive.zipped.path))]
 
 
-class ArchiveManager(models.Manager):
+class ArchiveManager(models.Manager['Archive']):
     def get_queryset(self) -> ArchiveQuerySet:
         return ArchiveQuerySet(self.model, using=self._db)
 
@@ -732,7 +732,7 @@ class Gallery(models.Model):
             data[field_name] = self.field_es_repr(field_name)
         return data
 
-    def field_es_repr(self, field_name: str) -> T:
+    def field_es_repr(self, field_name: str) -> typing.Any:
         config = self._meta.es_mapping['properties'][field_name]  # type: ignore
         if hasattr(self, 'get_es_%s' % field_name):
             field_es_value = getattr(self, 'get_es_%s' % field_name)()
@@ -925,7 +925,7 @@ class Gallery(models.Model):
                     try:
                         settings.ES_CLIENT.update(
                             index=self._meta.es_index_name,  # type: ignore
-                            id=self.pk,
+                            id=str(self.pk),
                             refresh=True,
                             body={
                                 'doc': payload
@@ -935,7 +935,7 @@ class Gallery(models.Model):
                     except elasticsearch.exceptions.NotFoundError:
                         settings.ES_CLIENT.create(
                             index=self._meta.es_index_name,  # type: ignore
-                            id=self.pk,
+                            id=str(self.pk),
                             refresh=True,
                             body={
                                 'doc': payload
@@ -1022,7 +1022,7 @@ class Gallery(models.Model):
                 try:
                     settings.ES_CLIENT.update(
                         index=self._meta.es_index_name,  # type: ignore
-                        id=self.pk,
+                        id=str(self.pk),
                         refresh=True,
                         body={
                             'doc': payload
@@ -1032,7 +1032,7 @@ class Gallery(models.Model):
                 except elasticsearch.exceptions.NotFoundError:
                     settings.ES_CLIENT.create(
                         index=self._meta.es_index_name,  # type: ignore
-                        id=self.pk,
+                        id=str(self.pk),
                         refresh=True,
                         body={
                             'doc': payload
@@ -1049,7 +1049,7 @@ class Gallery(models.Model):
             try:
                 settings.ES_CLIENT.delete(
                     index=self._meta.es_index_name,  # type: ignore
-                    id=prev_pk,
+                    id=str(prev_pk),
                     refresh=True,
                     request_timeout=30
                 )
@@ -1206,6 +1206,9 @@ class Gallery(models.Model):
         return found_wanted_galleries
 
 
+FetchTypes = typing.Union[str, float, int, datetime, timedelta, bool, None]
+
+
 class GalleryProviderData(models.Model):
     ORIGIN_NATIVE = 1
     ORIGIN_PROCESSED = 2
@@ -1259,10 +1262,10 @@ class GalleryProviderData(models.Model):
 
     gallery = models.ForeignKey(Gallery, blank=True, null=True, on_delete=models.CASCADE)
 
-    def _get_value(self) -> T:
+    def _get_value(self) -> FetchTypes:
         return getattr(self, 'value_%s' % self.data_type)
 
-    def _set_value(self, new_value: str) -> None:
+    def _set_value(self, new_value: FetchTypes) -> None:
         setattr(self, 'value_%s' % self.data_type, new_value)
 
     def clean(self) -> None:
@@ -1288,7 +1291,7 @@ class GallerySubmitEntryQuerySet(models.QuerySet):
         )
 
 
-class GallerySubmitEntryManager(models.Manager):
+class GallerySubmitEntryManager(models.Manager['GallerySubmitEntry']):
     def get_queryset(self) -> GallerySubmitEntryQuerySet:
         return GallerySubmitEntryQuerySet(self.model, using=self._db)
 
@@ -1527,7 +1530,7 @@ class Archive(models.Model):
             data[field_name] = self.field_es_repr(field_name)
         return data
 
-    def field_es_repr(self, field_name: str) -> T:
+    def field_es_repr(self, field_name: str) -> typing.Any:
         config = self._meta.es_mapping['properties'][field_name]  # type: ignore
         if hasattr(self, 'get_es_%s' % field_name):
             field_es_value = getattr(self, 'get_es_%s' % field_name)()
@@ -2107,7 +2110,7 @@ class Archive(models.Model):
             try:
                 settings.ES_CLIENT.delete(
                     index=self._meta.es_index_name,  # type: ignore
-                    id=prev_pk,
+                    id=str(prev_pk),
                     refresh=True,
                     request_timeout=30
                 )
@@ -2126,7 +2129,7 @@ class Archive(models.Model):
                     try:
                         settings.ES_CLIENT.update(
                             index=self._meta.es_index_name,  # type: ignore
-                            id=self.pk,
+                            id=str(self.pk),
                             refresh=True,
                             body={
                                 'doc': payload
@@ -2136,7 +2139,7 @@ class Archive(models.Model):
                     except elasticsearch.exceptions.NotFoundError:
                         settings.ES_CLIENT.create(
                             index=self._meta.es_index_name,  # type: ignore
-                            id=self.pk,
+                            id=str(self.pk),
                             refresh=True,
                             body={
                                 'doc': payload
@@ -2147,7 +2150,7 @@ class Archive(models.Model):
                 else:
                     settings.ES_CLIENT.create(
                         index=self._meta.es_index_name,  # type: ignore
-                        id=self.pk,
+                        id=str(self.pk),
                         refresh=True,
                         body={
                             'doc': payload
@@ -3075,7 +3078,7 @@ class Artist(models.Model):
         return self.name or self.name_jpn or self.twitter_handle or ''
 
 
-class WantedGalleryManager(models.Manager):
+class WantedGalleryManager(models.Manager['WantedGallery']):
     def not_found(self) -> QuerySet:
         return self.filter(found=False)
 
@@ -3485,7 +3488,7 @@ class AttributeQuerySet(models.QuerySet):
             return None
 
 
-class AttributeManager(models.Manager):
+class AttributeManager(models.Manager['Attribute']):
     def get_queryset(self) -> AttributeQuerySet:
         return AttributeQuerySet(self.model, using=self._db)
 
@@ -3539,7 +3542,7 @@ class Attribute(models.Model):
     create_date = models.DateTimeField(auto_now_add=True)
     last_modified = models.DateTimeField(auto_now=True, blank=True, null=True)
 
-    def _get_value(self) -> T:
+    def _get_value(self) -> typing.Any:
         return getattr(self, 'value_%s' % self.data_type)
 
     def _set_value(self, new_value: str) -> None:

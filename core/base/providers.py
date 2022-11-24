@@ -140,7 +140,7 @@ class ProviderContext:
     def register_constants(self, provider_name: str, obj: ModuleType) -> None:
         self.constants.append((provider_name, obj))
 
-    def get_parsers(self, settings: 'setup.Settings', filter_name: str = None, filter_names: list[str] = None) -> list['BaseParser']:
+    def get_parsers(self, settings: 'setup.Settings', filter_name: Optional[str] = None, filter_names: Optional[list[str]] = None) -> list['BaseParser']:
         parsers_list = list()
         for parser in self.parsers:
             parser_name = getattr(parser, 'name')
@@ -168,7 +168,7 @@ class ProviderContext:
 
         return parsers_list
 
-    def get_parsers_classes(self, filter_name: str = None) -> list[type['BaseParser']]:
+    def get_parsers_classes(self, filter_name: Optional[str] = None) -> list[type['BaseParser']]:
         parsers_list = list()
         for parser in self.parsers:
             parser_name = getattr(parser, 'name')
@@ -188,7 +188,7 @@ class ProviderContext:
 
     def get_downloaders(
             self, settings: 'setup.Settings',
-            general_utils: GeneralUtils, filter_name: str = None,
+            general_utils: GeneralUtils, filter_name: Optional[str] = None,
             force: bool = False, priorities: Optional[dict[str, int]] = None) -> list[tuple['BaseDownloader', int]]:
 
         if priorities:
@@ -227,7 +227,7 @@ class ProviderContext:
 
         return sorted(downloaders, key=itemgetter(1))
 
-    def get_downloaders_name_priority(self, settings: 'setup.Settings', filter_name: str = None) -> list[tuple[str, int]]:
+    def get_downloaders_name_priority(self, settings: 'setup.Settings', filter_name: Optional[str] = None) -> list[tuple[str, int]]:
         downloaders = list()
         for downloader in self.downloaders:
             handler_name = str(downloader)
@@ -254,7 +254,7 @@ class ProviderContext:
         return sorted(downloaders, key=itemgetter(1), reverse=True)
 
     def get_matchers(self, settings: 'setup.Settings',
-                     filter_name: str = None, force: bool = False,
+                     filter_name: Optional[str] = None, force: bool = False,
                      matcher_type: str = '') -> list[tuple['Matcher', int]]:
         matchers_list = list()
         if matcher_type:
@@ -284,7 +284,7 @@ class ProviderContext:
         return sorted(matchers_list, key=itemgetter(1))
 
     def get_matchers_name_priority(self, settings: 'setup.Settings',
-                                   filter_name: str = None, matcher_type: str = '') -> list[tuple[str, int]]:
+                                   filter_name: Optional[str] = None, matcher_type: str = '') -> list[tuple[str, int]]:
         matchers_list = list()
         if matcher_type:
             packages_filtered = [x for x in self.matchers if x.type == matcher_type]
@@ -320,7 +320,7 @@ class ProviderContext:
             return method(gallery)
         return "Can't reconstruct URL"
 
-    def get_resolve_methods(self, filter_name: str = None) -> list[Callable]:
+    def get_resolve_methods(self, filter_name: Optional[str] = None) -> list[Callable]:
         method_list = list()
         for method_tuple in self.resolvers:
             method_name = method_tuple[0]
@@ -332,7 +332,7 @@ class ProviderContext:
 
         return method_list
 
-    def get_wanted_generators(self, filter_name: str = None) -> list[Callable]:
+    def get_wanted_generators(self, filter_name: Optional[str] = None) -> list[Callable]:
         method_list = list()
         for method_tuple in self.wanted_generators:
             method_name = method_tuple[0]
@@ -344,7 +344,7 @@ class ProviderContext:
 
         return method_list
 
-    def get_constants(self, filter_name: str = None) -> list[ModuleType]:
+    def get_constants(self, filter_name: Optional[str] = None) -> list[ModuleType]:
         constants_list = list()
         for module_tuple in self.constants:
             module_name = module_tuple[0]

@@ -456,9 +456,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
         p = request.POST
         if p:
             settings_text = p['settings_file']
-            if(os.path.isfile(
-                os.path.join(crawler_settings.default_dir, "settings.ini"))
-               ):
+            if os.path.isfile(os.path.join(crawler_settings.default_dir, "settings.ini")):
                 with open(os.path.join(crawler_settings.default_dir,
                                        "settings.ini"),
                           "w",
@@ -472,9 +470,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
                         'Modified settings file for Panda Backup')
                     return HttpResponseRedirect(request.META["HTTP_REFERER"])
         else:
-            if(os.path.isfile(
-                os.path.join(crawler_settings.default_dir, "settings.ini"))
-               ):
+            if os.path.isfile(os.path.join(crawler_settings.default_dir, "settings.ini")):
                 with open(os.path.join(crawler_settings.default_dir, "settings.ini"), "r", encoding="utf-8") as f:
                     first = f.read(1)
                     if first != '\ufeff':
@@ -718,17 +714,18 @@ def crawler(request: HttpRequest) -> HttpResponse:
         current_settings.replace_metadata = False
         current_settings.config['allowed']['replace_metadata'] = 'no'
         for k, v in p.items():
-            if k.startswith("downloaders"):
-                k, dl = k.split('-')
-                current_settings.config['downloaders'][dl] = v
-                current_settings.downloaders[dl] = int(v)
-            elif k == "replace_metadata":
-                current_settings.config['allowed'][k] = 'yes'
-                current_settings.replace_metadata = True
-            elif k == "urls":
-                url_list = v.split("\n")
-                for item in url_list:
-                    url_set.add(item.rstrip('\r'))
+            if isinstance(v, str):
+                if k.startswith("downloaders"):
+                    k, dl = k.split('-')
+                    current_settings.config['downloaders'][dl] = v
+                    current_settings.downloaders[dl] = int(v)
+                elif k == "replace_metadata":
+                    current_settings.config['allowed'][k] = 'yes'
+                    current_settings.replace_metadata = True
+                elif k == "urls":
+                    url_list = v.split("\n")
+                    for item in url_list:
+                        url_set.add(item.rstrip('\r'))
         urls = list(url_set)
 
         if 'reason' in p and p['reason'] != '':
@@ -785,16 +782,17 @@ def foldercrawler(request: HttpRequest) -> HttpResponse:
         commands = set()
         # create dictionary of properties for each command
         for k, v in p.items():
-            if k.startswith("matchers"):
-                k, matcher = k.split('-')
-                current_settings.config['matchers'][matcher] = v
-                current_settings.matchers[matcher] = int(v)
-            elif k == "commands":
-                command_list = v.split("\n")
-                for item in command_list:
-                    commands.add(item.rstrip('\r'))
-            elif k == "internal_matches":
-                current_settings.internal_matches_for_non_matches = True
+            if isinstance(v, str):
+                if k.startswith("matchers"):
+                    k, matcher = k.split('-')
+                    current_settings.config['matchers'][matcher] = v
+                    current_settings.matchers[matcher] = int(v)
+                elif k == "commands":
+                    command_list = v.split("\n")
+                    for item in command_list:
+                        commands.add(item.rstrip('\r'))
+                elif k == "internal_matches":
+                    current_settings.internal_matches_for_non_matches = True
 
         if 'reason' in p and p['reason'] != '':
             reason = p['reason']

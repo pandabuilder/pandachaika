@@ -73,7 +73,7 @@ class TitleMatcher(Matcher):
         response.encoding = 'utf-8'
         try:
             response_data = response.json()
-        except(ValueError, KeyError):
+        except (ValueError, KeyError):
             return False
 
         matches_links = set()

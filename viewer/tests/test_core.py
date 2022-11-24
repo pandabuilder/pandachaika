@@ -189,7 +189,7 @@ class WantedGalleryTest(TestCase):
             wanted_page_count_upper=0,
         )
 
-    def test_match_gallery(self):
+    def test_match_gallery(self) -> None:
         settings = Settings(load_from_disk=True)
         parser = PandaParser(settings)
 
@@ -233,7 +233,7 @@ class WantedGalleryTest(TestCase):
         incoming_gallery5 = self.test_gallery5.as_gallery_data()
         incoming_gallery6 = self.test_gallery6.as_gallery_data()
 
-        gallery_wanted_lists: dict[str, list['WantedGallery']] = defaultdict(list)
+        gallery_wanted_lists = defaultdict(list)
 
         # 2 are not already found, remaining it is.
         parser.compare_gallery_with_wanted_filters(incoming_gallery1, incoming_gallery1.link, wanted_galleries, gallery_wanted_lists)

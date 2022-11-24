@@ -128,7 +128,7 @@ class PostDownloader(object):
                         "For archive: {} size does not match gallery. Check the file manually.".format(archive)
                     )
 
-    def write_file_update_progress(self, cmd: str, callback: Callable, filesize: int = 0, blocksize: int = 8192, rest: bool = None) -> str:
+    def write_file_update_progress(self, cmd: str, callback: Callable, filesize: int = 0, blocksize: int = 8192, rest: Optional[bool] = None) -> str:
         self.ftps.voidcmd('TYPE I')  # type: ignore
         with self.ftps.transfercmd(cmd, rest) as conn:  # type: ignore
             self.current_download['filesize'] = filesize
@@ -178,7 +178,7 @@ class PostDownloader(object):
             return None
         self.ftps.cwd(self_dir)
 
-    def download_all_missing(self, archives: Iterable[Archive] = None) -> None:
+    def download_all_missing(self, archives: Optional[Iterable[Archive]] = None) -> None:
 
         files_torrent = []
         files_hath = []
@@ -388,7 +388,7 @@ class PostDownloader(object):
 
         self.ftps.close()
 
-    def copy_all_missing(self, mode, archives: Iterable[Archive] = None):
+    def copy_all_missing(self, mode, archives: Optional[Iterable[Archive]] = None):
         files_torrent = []
         files_hath = []
 
@@ -547,7 +547,7 @@ class PostDownloader(object):
 
                 self.process_downloaded_archive(matched_archive)
 
-    def transfer_all_missing(self, archives: Iterable[Archive] = None) -> None:
+    def transfer_all_missing(self, archives: Optional[Iterable[Archive]] = None) -> None:
 
         method_for_torrents = self.settings.download_handler_torrent or self.settings.download_handler
         method_for_hath = self.settings.download_handler_hath or self.settings.download_handler
@@ -564,7 +564,7 @@ class PostDownloader(object):
         else:
             self.do_transfer_by_method(method_for_torrents, archives)
 
-    def do_transfer_by_method(self, method_to_use: str, archives: Iterable[Archive] = None) -> None:
+    def do_transfer_by_method(self, method_to_use: str, archives: Optional[Iterable[Archive]] = None) -> None:
         if method_to_use.startswith('local'):
             self.copy_all_missing(method_to_use, archives)
         else:

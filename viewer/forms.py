@@ -367,9 +367,9 @@ class ArchiveModForm(forms.ModelForm):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super(ArchiveModForm, self).__init__(*args, **kwargs)
-        self.fields["possible_matches"].queryset = self.instance.possible_matches.order_by(
+        self.fields["possible_matches"].queryset = self.instance.possible_matches.order_by(  # type: ignore
             "-archivematches__match_accuracy")
-        self.fields["archive_groups"].queryset = self.instance.archive_groups.all()
+        self.fields["archive_groups"].queryset = self.instance.archive_groups.all()  # type: ignore
 
     possible_matches = MatchesModelChoiceField(
         required=False,

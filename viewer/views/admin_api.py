@@ -257,9 +257,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
                 response['error'] = 'Missing data'
                 return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status_code=401)
             settings_text = data['data']
-            if(os.path.isfile(
-                os.path.join(crawler_settings.default_dir, "settings.ini"))
-               ):
+            if os.path.isfile(os.path.join(crawler_settings.default_dir, "settings.ini")):
                 with open(os.path.join(crawler_settings.default_dir,
                                        "settings.ini"),
                           "w",
@@ -271,9 +269,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
                     response['message'] = 'Modified settings file for Panda Backup'
                     return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
         else:
-            if(os.path.isfile(
-                os.path.join(crawler_settings.default_dir, "settings.ini"))
-               ):
+            if os.path.isfile(os.path.join(crawler_settings.default_dir, "settings.ini")):
                 with open(os.path.join(crawler_settings.default_dir, "settings.ini"), "r", encoding="utf-8") as f:
                     first = f.read(1)
                     if first != '\ufeff':

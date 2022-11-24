@@ -44,6 +44,7 @@ class BaseParser:
     name = ''
     ignore = False
     accepted_urls: list[str] = []
+    empty_list: list[str] = []
 
     def __init__(self, settings: 'Settings') -> None:
         self.settings = settings
@@ -77,7 +78,7 @@ class BaseParser:
     # If it has no archives, to force processing, 'replace_metadata' must be set
     # Skipped galleries are not processed again.
     # We don't log directly here because some methods would spam otherwise (feed crawling)
-    def discard_gallery_by_internal_checks(self, gallery_id: str = None, link: str = '', gallery: 'Gallery' = None) -> tuple[bool, str]:
+    def discard_gallery_by_internal_checks(self, gallery_id: Optional[str] = None, link: str = '', gallery: Optional['Gallery'] = None) -> tuple[bool, str]:
 
         if self.settings.update_metadata_mode:
             return False, 'Gallery link {ext_link} running in update metadata mode, processing.'.format(
@@ -343,10 +344,10 @@ class BaseParser:
         return False
 
     def get_feed_urls(self) -> list[str]:
-        pass
+        return self.empty_list
 
     def crawl_feed(self, feed_url: str = '') -> list[typing.Any]:
-        pass
+        return self.empty_list
 
     def feed_urls_implemented(self) -> bool:
         if type(self).crawl_feed is not BaseParser.crawl_feed and type(self).get_feed_urls is not BaseParser.get_feed_urls:
@@ -355,7 +356,7 @@ class BaseParser:
 
     def crawl_urls_caller(
             self, urls: list[str],
-            wanted_filters: QuerySet = None, wanted_only: bool = False,
+            wanted_filters: Optional[QuerySet] = None, wanted_only: bool = False,
             preselected_wanted_matches: Optional[dict[str, list['WantedGallery']]] = None
     ):
         try:
@@ -369,7 +370,7 @@ class BaseParser:
 
     def crawl_urls(
             self, urls: list[str],
-            wanted_filters: QuerySet = None, wanted_only: bool = False,
+            wanted_filters: Optional[QuerySet] = None, wanted_only: bool = False,
             preselected_wanted_matches: Optional[dict[str, list['WantedGallery']]] = None
     ) -> None:
         pass
@@ -656,7 +657,7 @@ class InternalParser(BaseParser):
     name = ''
     ignore = True
 
-    def crawl_json(self, json_string: str, wanted_filters: QuerySet = None, wanted_only: bool = False) -> None:
+    def crawl_json(self, json_string: str, wanted_filters: Optional[QuerySet] = None, wanted_only: bool = False) -> None:
 
         if not self.settings.gallery_model:
             return

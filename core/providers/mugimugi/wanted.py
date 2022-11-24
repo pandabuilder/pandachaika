@@ -267,6 +267,33 @@ def wanted_generator(settings: 'Settings', attrs: 'AttributeManager'):
                     )
 
                     if not wanted_galleries:
+
+                        if isinstance(wanted_reason, str):
+                            new_wanted_reason = wanted_reason
+                        else:
+                            new_wanted_reason = ''
+
+                        new_public = attrs.fetch_value('wanted_public_{}'.format(query_name))
+
+                        if isinstance(new_public, bool):
+                            new_public = new_public
+                        else:
+                            new_public = False
+
+                        new_should_search = attrs.fetch_value('wanted_should_search_{}'.format(query_name))
+
+                        if isinstance(new_should_search, bool):
+                            new_should_search = new_should_search
+                        else:
+                            new_should_search = True
+
+                        new_keep_searching = attrs.fetch_value('wanted_keep_searching_{}'.format(query_name))
+
+                        if isinstance(new_keep_searching, bool):
+                            new_keep_searching = new_keep_searching
+                        else:
+                            new_keep_searching = True
+
                         wanted_gallery = WantedGallery.objects.create(
                             title=gallery.title or gallery.title_jpn,
                             title_jpn=gallery.title_jpn,
@@ -274,10 +301,10 @@ def wanted_generator(settings: 'Settings', attrs: 'AttributeManager'):
                             book_type=gallery.category,
                             page_count=gallery.filecount,
                             publisher=publisher_name,
-                            reason=attrs.fetch_value('wanted_reason_{}'.format(query_name)) or '',
-                            public=attrs.fetch_value('wanted_public_{}'.format(query_name)) or False,
-                            should_search=attrs.fetch_value('wanted_should_search_{}'.format(query_name)) or True,
-                            keep_searching=attrs.fetch_value('wanted_keep_searching_{}'.format(query_name)) or True,
+                            reason=new_wanted_reason,
+                            public=new_public,
+                            should_search=new_should_search,
+                            keep_searching=new_keep_searching,
                             category='Manga',
                             unwanted_title=own_settings.unwanted_title or settings.auto_wanted.unwanted_title
                         )

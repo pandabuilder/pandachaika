@@ -1,5 +1,4 @@
-﻿from __future__ import annotations
-import json
+﻿import json
 import logging
 import re
 from functools import reduce
@@ -233,11 +232,15 @@ def image_viewer(request: HttpRequest, archive: int, page: int) -> HttpResponse:
 
     image_object = image.object_list[0]
 
-    if image_object.image_width / image_object.image_height > 1:
-        image_object.is_horizontal = True
+    is_horizontal = False
+    if image_object.image_width is not None and image_object.image_height is not None:
+        if image_object.image_width / image_object.image_height > 1:
+            is_horizontal = True
 
-    d = {'image': image, 'backurl': redirect(image.object_list[0].archive).url,
-         'images_range': range(1, images.count() + 1), 'image_object': image_object}
+    d = {
+        'image': image, 'backurl': redirect(image.object_list[0].archive).url,
+        'images_range': range(1, images.count() + 1), 'image_object': image_object, 'is_horizontal': is_horizontal
+    }
 
     return render(request, "viewer/image_viewer.html", d)
 
@@ -260,7 +263,7 @@ def image_url(request: HttpRequest, pk: int) -> HttpResponse:
         return HttpResponseRedirect(image.image.url)
 
 
-def gallery_details(request: HttpRequest, pk: int, tool: str = None) -> HttpResponse:
+def gallery_details(request: HttpRequest, pk: int, tool: Optional[str] = None) -> HttpResponse:
     try:
         gallery = Gallery.objects.get(pk=pk)
     except Gallery.DoesNotExist:
@@ -394,7 +397,7 @@ def gallery_details(request: HttpRequest, pk: int, tool: str = None) -> HttpResp
 
 
 @login_required
-def gallery_enter_reason(request: HttpRequest, pk: int, tool: str = None) -> HttpResponse:
+def gallery_enter_reason(request: HttpRequest, pk: int, tool: Optional[str] = None) -> HttpResponse:
     try:
         gallery = Gallery.objects.get(pk=pk)
     except Gallery.DoesNotExist:
@@ -547,7 +550,7 @@ def gallery_thumb(request: HttpRequest, pk: int) -> HttpResponse:
         return HttpResponseRedirect(gallery.thumbnail.url)
 
 
-def gallery_list(request: HttpRequest, mode: str = 'none', tag: str = None) -> HttpResponse:
+def gallery_list(request: HttpRequest, mode: str = 'none', tag: Optional[str] = None) -> HttpResponse:
     """Search, filter, sort galleries."""
     try:
         page = int(request.GET.get("page", '1'))
@@ -562,7 +565,7 @@ def gallery_list(request: HttpRequest, mode: str = 'none', tag: str = None) -> H
             del cleared_queries[entry]
 
     get = request.GET
-    request.GET = cleared_queries
+    request.GET = cleared_queries  # type: ignore
 
     json_request = 'json' in get
 
@@ -800,7 +803,7 @@ def filter_galleries(request: HttpRequest, session_filters: dict[str, str], requ
     return results
 
 
-def search(request: HttpRequest, mode: str = 'none', tag: str = None) -> HttpResponse:
+def search(request: HttpRequest, mode: str = 'none', tag: Optional[str] = None) -> HttpResponse:
     """Search, filter, sort archives."""
     try:
         page = int(request.GET.get("page", '1'))
@@ -823,7 +826,7 @@ def search(request: HttpRequest, mode: str = 'none', tag: str = None) -> HttpRes
     if 'rss' in get:
         return redirect('viewer:archive-rss')
 
-    request.GET = cleared_queries
+    request.GET = cleared_queries  # type: ignore
 
     display_prms: dict[str, Any] = {}
 
@@ -1271,9 +1274,9 @@ def url_submit(request: HttpRequest) -> HttpResponse:
         current_settings.config['downloaders']['nhentai_submit'] = str(1)
         current_settings.downloaders['panda_submit'] = 1
         current_settings.downloaders['nhentai_submit'] = 1
-        for k, v in p.items():
-            if k == "urls":
-                url_list = v.split("\n")
+        for p_k, p_v in p.items():
+            if isinstance(p_v, str) and p_k == "urls":
+                url_list = p_v.split("\n")
                 for item in url_list:
                     # Don't allow commands.
                     if not item.startswith('-'):

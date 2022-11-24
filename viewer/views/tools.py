@@ -19,7 +19,7 @@ def compare_archives(request: HttpRequest) -> HttpResponse:
     algos = request.GET.getlist("algos", ['phash'])
     thumbs = bool(request.GET.get("thumbs", False))
     no_imgs = request.GET.getlist("no-imgs", False)
-    archive_pks = request.GET.getlist("pk", [])
+    archive_pks: list[str] = request.GET.getlist("pk", [])
     """Archive compare."""
 
     archives = Archive.objects.filter(pk__in=archive_pks)

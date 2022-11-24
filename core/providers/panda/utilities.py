@@ -130,7 +130,7 @@ class SearchHTMLParser(HTMLParser):
     def handle_starttag(self, tag: str, attrs: AttrList) -> None:
         if tag == 'a' and self.stop_at_favorites != 1:
             for attr in attrs:
-                if(attr[0] == 'href'
+                if (attr[0] == 'href'
                         and (constants.ex_page + '/g/' in str(attr[1]) or constants.ge_page + '/g/' in str(attr[1]))):
                     self.galleries.add(str(attr[1]))
         else:
@@ -162,24 +162,16 @@ class GalleryHTMLParser(HTMLParser):
             for attr in attrs:
                 if attr[0] == 'href' and str(attr[1]) == '#':
                     self.found_gallery_link = 1
-                elif(self.found_non_final_gallery == 1
-                     and attr[0] == 'href'
-                     and '/g/' in str(attr[1])):
+                elif self.found_non_final_gallery == 1 and attr[0] == 'href' and '/g/' in str(attr[1]):
                     self.non_final_gallery = str(attr[1])
-                elif(self.found_parent_gallery == 1
-                     and attr[0] == 'href'
-                     and '/g/' in str(attr[1])):
+                elif self.found_parent_gallery == 1 and attr[0] == 'href' and '/g/' in str(attr[1]):
                     self.parent_gallery = str(attr[1])
                     self.found_parent_gallery = 0
-                elif(self.found_gallery_link == 1
-                     and attr[0] == 'onclick'
-                     and 'gallerytorrents.php' in str(attr[1])):
+                elif self.found_gallery_link == 1 and attr[0] == 'onclick' and 'gallerytorrents.php' in str(attr[1]):
                     m = re.search(r'\'(.+)\'', str(attr[1]))
                     if m and m.group(1):
                         self.torrent_link = m.group(1)
-        if(tag == 'textarea'
-                and attrs[0][0] == 'name'
-                and attrs[0][1] == 'commenttext'):
+        if tag == 'textarea' and attrs[0][0] == 'name' and attrs[0][1] == 'commenttext':
             self.stop_at_found = 1
             return
         if tag == 'p' and self.found_non_final_gallery == 1:
@@ -213,9 +205,7 @@ class TorrentHTMLParser(HTMLParser):
     def handle_starttag(self, tag: str, attrs: AttrList) -> None:
         if tag == 'a':
             for attr in attrs:
-                if(attr[0] == 'href'
-                        and self.torrent_root_url in str(attr[1])
-                        and self.seeds > 0):
+                if (attr[0] == 'href' and self.torrent_root_url in str(attr[1]) and self.seeds > 0):
                     self.torrent = str(attr[1])
 
     def handle_data(self, data: str) -> None:

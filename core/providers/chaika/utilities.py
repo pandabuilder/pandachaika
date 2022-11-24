@@ -16,7 +16,7 @@ class ChaikaGalleryData(GalleryData):
                  dl_type: Optional[str] = None, public: Optional[bool] = None, content: Optional[str] = None,
                  archiver_key: Optional[str] = None, root: Optional[str] = None, filename: Optional[str] = None,
                  queries: Optional[int] = None, thumbnail: Optional[str] = None,
-                 archives: Optional[list[dict[str, str]]] = None, temp_archive: dict[str, str] = None,
+                 archives: Optional[list[dict[str, str]]] = None, temp_archive: Optional[dict[str, str]] = None,
                  **kwargs: Any
                  ) -> None:
         super().__init__(

@@ -33,7 +33,7 @@ def get_gid_path_association(archives_to_check, site_page, api_key):
     response_data = {}
     try:
         response_data = r.json()
-    except(ValueError, KeyError):
+    except (ValueError, KeyError):
         pass
 
     return response_data
@@ -63,9 +63,9 @@ def send_urls_from_archive_list(site_page, api_key, reason, details, archive_ids
     )
     try:
         response_data = r.json()
-        yield("Number of new galleries queued: {}".format(response_data['result']))
-    except(ValueError, KeyError):
-        yield("Error parsing the response: {}".format(r.text))
+        yield "Number of new galleries queued: {}".format(response_data['result'])
+    except (ValueError, KeyError):
+        yield "Error parsing the response: {}".format(r.text)
 
 
 def send_urls_from_archives(site_page, api_key, reason, details):
@@ -92,9 +92,9 @@ def send_urls_from_archives(site_page, api_key, reason, details):
     )
     try:
         response_data = r.json()
-        yield("Number of new galleries queued: {}".format(response_data['result']))
-    except(ValueError, KeyError):
-        yield("Error parsing the response: {}".format(r.text))
+        yield "Number of new galleries queued: {}".format(response_data['result'])
+    except (ValueError, KeyError):
+        yield "Error parsing the response: {}".format(r.text)
 
 
 def send_urls_from_gallery_query(site_page, api_key, reason, details, web_page, sessionid):
@@ -107,8 +107,8 @@ def send_urls_from_gallery_query(site_page, api_key, reason, details, web_page, 
 
     try:
         response_data = galleries_request.json()
-    except(ValueError, KeyError):
-        yield("Error parsing the response: {}".format(galleries_request.text))
+    except (ValueError, KeyError):
+        yield "Error parsing the response: {}".format(galleries_request.text)
         return
 
     gid_provider_list = [(x['gid'], x['provider']) for x in response_data['galleries']]
@@ -125,7 +125,7 @@ def send_urls_from_gallery_query(site_page, api_key, reason, details, web_page, 
         url_list.extend([x.get_link() for x in filtered_archives])
         used_archives.extend([x.pk for x in filtered_archives])
 
-    yield("Matched archives IDs with remote galleries: {}".format(used_archives))
+    yield "Matched archives IDs with remote galleries: {}".format(used_archives)
 
     data = {
         'operation': 'force_queue_archives',
@@ -147,13 +147,13 @@ def send_urls_from_gallery_query(site_page, api_key, reason, details, web_page, 
     )
     try:
         response_data = r.json()
-        yield("Number of galleries queued: {}".format(response_data['result']))
+        yield "Number of galleries queued: {}".format(response_data['result'])
 
         with open('tmp_queue.json', 'w') as f:
             json.dump(used_archives, f)
 
-    except(ValueError, KeyError):
-        yield("Error parsing the response: {}".format(r.text))
+    except (ValueError, KeyError):
+        yield "Error parsing the response: {}".format(r.text)
 
 
 def send_urls_from_galleries(site_page, api_key):
@@ -175,9 +175,9 @@ def send_urls_from_galleries(site_page, api_key):
     )
     try:
         response_data = r.json()
-        yield("Number of new galleries queued: {}".format(response_data['result']))
-    except(ValueError, KeyError):
-        yield("Error parsing the response: {}".format(r.text))
+        yield "Number of new galleries queued: {}".format(response_data['result'])
+    except (ValueError, KeyError):
+        yield "Error parsing the response: {}".format(r.text)
 
 
 def send_urls_fakku(site_page, api_key):
@@ -199,9 +199,9 @@ def send_urls_fakku(site_page, api_key):
     )
     try:
         response_data = r.json()
-        yield("Number of new galleries queued: {}".format(response_data['result']))
-    except(ValueError, KeyError):
-        yield("Error parsing the response: {}".format(r.text))
+        yield "Number of new galleries queued: {}".format(response_data['result'])
+    except (ValueError, KeyError):
+        yield "Error parsing the response: {}".format(r.text)
 
 
 class FTPHandler(object):
@@ -214,7 +214,7 @@ class FTPHandler(object):
 
     def upload_archive_file(self, local_filename, remote_filename, target_dir):
 
-        yield("Uploading {} to FTP in directory: {}, filename: {}".format(local_filename, target_dir, remote_filename))
+        yield "Uploading {} to FTP in directory: {}, filename: {}".format(local_filename, target_dir, remote_filename)
 
         local_filesize = os.stat(local_filename).st_size
         self.upload_total = os.stat(local_filename).st_size
@@ -239,9 +239,8 @@ class FTPHandler(object):
         ftps.encoding = 'utf8'
         ftps.prot_p()
         for line in ftps.mlsd(facts=["size"]):
-            if(line[0] == remote_filename
-                    and local_filesize == int(line[1]["size"])):
-                yield("File exists and size is equal.")
+            if line[0] == remote_filename and local_filesize == int(line[1]["size"]):
+                yield "File exists and size is equal."
                 ftps.close()
                 return
         with open(local_filename, "rb") as file:
@@ -253,10 +252,10 @@ class FTPHandler(object):
                         callback=lambda data, args=self.print_method: self.print_progress(data, args)
                     )
                 except (ConnectionResetError, socket.timeout, TimeoutError):
-                    yield("Upload failed, retrying...")
+                    yield "Upload failed, retrying..."
                 else:
                     break
-        yield("\nFile uploaded.")
+        yield "\nFile uploaded."
         ftps.close()
 
     def print_progress(self, data, print_method):
@@ -281,18 +280,18 @@ class FTPHandler(object):
             if local_archives and local_archives.count() == 1:
                 local_archive = local_archives.first()
                 if not os.path.isfile(local_archive.zipped.path):
-                    yield("Found file, {}, but it's not present in the filesystem, skipping.".format(local_archive.title))
+                    yield "Found file, {}, but it's not present in the filesystem, skipping.".format(local_archive.title)
                     continue
-                yield("Found file, {}, size: {}".format(local_archive.title, local_archive.filesize))
+                yield "Found file, {}, size: {}".format(local_archive.title, local_archive.filesize)
                 for message in self.upload_archive_file(
                         local_archive.zipped.path,
                         os.path.split(remote_archive['zipped'])[1],
                         os.path.join(remote_folder, str(remote_archive['id']))):
-                    yield(message)
+                    yield message
             else:
-                yield("Not local match for {}".format(remote_archive['zipped']))
+                yield "Not local match for {}".format(remote_archive['zipped'])
 
-        yield("Remote upload finished.")
+        yield "Remote upload finished."
 
 
 class Command(BaseCommand):

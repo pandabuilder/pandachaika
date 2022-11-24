@@ -3,6 +3,7 @@ import threading
 import logging
 
 import os
+import typing
 from collections import defaultdict
 from collections.abc import Callable
 from typing import Union, Optional, NoReturn
@@ -10,10 +11,12 @@ from typing import Union, Optional, NoReturn
 import requests
 from django.db.models import QuerySet, Q
 
-from core.base.setup import Settings
 from core.downloaders.postdownload import PostDownloader
 from core.base.parsers import InternalParser
 from viewer.models import Gallery, WantedGallery, Archive
+
+if typing.TYPE_CHECKING:
+    from core.base.setup import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +33,7 @@ class YieldingArgumentParser(argparse.ArgumentParser):
 
 class WebCrawler(object):
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: 'Settings') -> None:
         self.settings = settings
         self.parse_error = False
 
@@ -184,9 +187,9 @@ class WebCrawler(object):
     def start_crawling(
             self,
             arg_line: list[str],
-            override_options: Settings = None,
-            archive_callback: Callable[[Optional['Archive'], Optional[str], str], None] = None,
-            gallery_callback: Callable[[Optional['Gallery'], Optional[str], str], None] = None,
+            override_options: 'Optional[Settings]' = None,
+            archive_callback: 'Optional[Callable[[Optional[Archive], Optional[str], str], None]]' = None,
+            gallery_callback: 'Optional[Callable[[Optional[Gallery], Optional[str], str], None]]' = None,
             use_argparser: bool = True,
     ):
 
@@ -219,9 +222,9 @@ class WebCrawler(object):
     def start_crawling_parse_args(
             self,
             arg_line: list[str],
-            override_options: Settings = None,
-            archive_callback: Callable[[Optional['Archive'], Optional[str], str], None] = None,
-            gallery_callback: Callable[[Optional['Gallery'], Optional[str], str], None] = None,
+            override_options: 'Optional[Settings]' = None,
+            archive_callback: 'Optional[Callable[[Optional[Archive], Optional[str], str], None]]' = None,
+            gallery_callback: 'Optional[Callable[[Optional[Gallery], Optional[str], str], None]]' = None,
     ):
 
         args = self.get_args(arg_line)
@@ -389,9 +392,9 @@ class WebCrawler(object):
     def start_crawling_no_argparser(
             self,
             arg_line: list[str],
-            override_options: Settings = None,
-            archive_callback: Callable[[Optional['Archive'], Optional[str], str], None] = None,
-            gallery_callback: Callable[[Optional['Gallery'], Optional[str], str], None] = None,
+            override_options: 'Optional[Settings]' = None,
+            archive_callback: 'Optional[Callable[[Optional[Archive], Optional[str], str], None]]' = None,
+            gallery_callback: 'Optional[Callable[[Optional[Gallery], Optional[str], str], None]]' = None,
     ):
 
         if override_options:

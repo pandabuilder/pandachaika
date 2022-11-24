@@ -17,7 +17,7 @@ from django.conf import settings
 from viewer.models import Archive, Tag, Gallery, WantedGallery, ArchiveGroup, Provider, ArchiveManageEntry
 
 if typing.TYPE_CHECKING:
-    from django.db.models.query import ValuesQuerySet
+    from django_stubs_ext import ValuesQuerySet
 
 
 crawler_settings = settings.CRAWLER_SETTINGS

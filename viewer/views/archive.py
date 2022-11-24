@@ -3,7 +3,7 @@
 
 import logging
 import re
-from os.path import basename, splitext
+from os.path import basename
 from urllib.parse import quote, urlparse, unquote
 import typing
 from typing import Optional
@@ -95,7 +95,7 @@ def archive_details(request: HttpRequest, pk: int, view: str = "cover") -> HttpR
 
         form = ArchiveModForm(instance=archive, initial={'archive_groups': archive.archive_groups.all()})
         image_formset = ImageFormSet(
-            queryset=all_images.object_list,
+            queryset=all_images.object_list,  # type: ignore
             prefix='images'
         )
         d.update({
@@ -216,7 +216,7 @@ def archive_details(request: HttpRequest, pk: int, view: str = "cover") -> HttpR
 
 
 @login_required
-def archive_update(request: HttpRequest, pk: int, tool: str = None, tool_use_id: str = None) -> HttpResponse:
+def archive_update(request: HttpRequest, pk: int, tool: Optional[str] = None, tool_use_id: Optional[str] = None) -> HttpResponse:
     """Update archive title, rating, tags, archives."""
     if not request.user.is_staff:
         messages.error(request, "You need to be an admin to update an archive.")
@@ -318,7 +318,7 @@ def archive_update(request: HttpRequest, pk: int, tool: str = None, tool_use_id:
             current_ages = ArchiveGroupEntry.objects.filter(archive=archive)
 
             for current_age in current_ages:
-                if current_age.pk not in archive_groups_pks:
+                if str(current_age.pk) not in archive_groups_pks:
                     current_age.delete()
 
             for archive_group_pk in archive_groups_pks:
@@ -368,7 +368,7 @@ def archive_auth(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
-def archive_enter_reason(request: HttpRequest, pk: int, tool: str = None) -> HttpResponse:
+def archive_enter_reason(request: HttpRequest, pk: int, tool: Optional[str] = None) -> HttpResponse:
     try:
         archive = Archive.objects.get(pk=pk)
     except Archive.DoesNotExist:

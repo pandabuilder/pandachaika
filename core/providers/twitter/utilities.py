@@ -63,7 +63,7 @@ def match_tweet_with_wanted_galleries(tweet_obj: TweetPost, settings: 'Settings'
 
     match_tweet_type = re.search('【(.+)】(.*)', tweet_obj.text, re.DOTALL)
     if match_tweet_type:
-        yield("Matched pattern (date_type: {}, title, artist: {}),".format(
+        yield ("Matched pattern (date_type: {}, title, artist: {}),".format(
             match_tweet_type.group(1).replace('\n', ''),
             match_tweet_type.group(2).replace('\n', ''))
         )
@@ -98,7 +98,7 @@ def match_tweet_with_wanted_galleries(tweet_obj: TweetPost, settings: 'Settings'
         match_title_artists = re.search('^『(.+?)』は＜(.+)＞', match_tweet_type.group(2), re.DOTALL)
         if match_title_artists and release_type:
 
-            yield("Matched pattern (title: {}, artists: {}), release_type: {}.".format(
+            yield ("Matched pattern (title: {}, artists: {}), release_type: {}.".format(
                 match_title_artists.group(1).replace('\n', ''),
                 match_title_artists.group(2).replace('\n', ''),
                 release_type)
@@ -128,7 +128,7 @@ def match_tweet_with_wanted_galleries(tweet_obj: TweetPost, settings: 'Settings'
                 wanted_gallery.should_search = True
                 wanted_gallery.keep_searching = True
                 wanted_gallery.save()
-                yield(
+                yield (
                     "Created wanted gallery (magazine): {}, search title: {}".format(
                         wanted_gallery.get_absolute_url(),
                         title
@@ -142,7 +142,7 @@ def match_tweet_with_wanted_galleries(tweet_obj: TweetPost, settings: 'Settings'
             )
 
             if mention_created:
-                yield(
+                yield (
                     "Created mention for wanted gallery: {}, mention date: {}".format(
                         wanted_gallery.get_absolute_url(),
                         mention_date
@@ -176,7 +176,7 @@ def match_tweet_with_wanted_galleries(tweet_obj: TweetPost, settings: 'Settings'
         match_artist_title = re.search('^(.+?)『(.+?)』.*', match_tweet_type.group(2), re.DOTALL)
         if match_artist_title and release_type:
 
-            yield("Matched pattern (artist: {}, title: {}), release type: {}.".format(
+            yield ("Matched pattern (artist: {}, title: {}), release type: {}.".format(
                 match_artist_title.group(1).replace('\n', ''),
                 match_artist_title.group(2).replace('\n', ''),
                 release_type)
@@ -233,7 +233,7 @@ def match_tweet_with_wanted_galleries(tweet_obj: TweetPost, settings: 'Settings'
                     wanted_gallery.should_search = True
                     wanted_gallery.keep_searching = True
                     wanted_gallery.save()
-                    yield(
+                    yield (
                         "Created wanted gallery (anthology): {}, search title: {}".format(
                             wanted_gallery.get_absolute_url(),
                             title
@@ -247,7 +247,7 @@ def match_tweet_with_wanted_galleries(tweet_obj: TweetPost, settings: 'Settings'
                 )
 
                 if mention_created:
-                    yield(
+                    yield (
                         "Created mention for wanted gallery: {}, mention date: {}".format(
                             wanted_gallery.get_absolute_url(),
                             mention_date

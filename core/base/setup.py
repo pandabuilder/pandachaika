@@ -191,8 +191,8 @@ class Settings:
     archive_manage_entry_model: Optional['typing.Type[ArchiveManageEntry]'] = None
 
     def __init__(self, load_from_disk: bool = False,
-                 default_dir: str = None,
-                 load_from_config: typing.Union[DataDict, configparser.ConfigParser] = None) -> None:
+                 default_dir: Optional[str] = None,
+                 load_from_config: Optional[typing.Union[DataDict, configparser.ConfigParser]] = None) -> None:
         # INTERNAL USE
         self.gallery_reason: Optional[str] = None
         self.stop_nested = False
@@ -302,7 +302,7 @@ class Settings:
             self.dict_to_settings(self.config)
 
     def load_config_from_file(self,
-                              default_dir: str = None) -> None:
+                              default_dir: Optional[str] = None) -> None:
         if default_dir:
             self.default_dir = default_dir
         else:
@@ -365,7 +365,7 @@ class Settings:
         self.retry_failed = retry_failed
         self.redownload = redownload
 
-    def set_update_metadata_options(self, providers: typing.Iterable[str] = None) -> None:
+    def set_update_metadata_options(self, providers: Optional[typing.Iterable[str]] = None) -> None:
         if not providers:
             for downloader in self.downloaders.keys():
                 if downloader.endswith("info"):

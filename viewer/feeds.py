@@ -28,7 +28,8 @@ class LatestArchivesFeed(Feed):
         }
 
         for k, v in args.items():
-            params[k] = v
+            if isinstance(v, str):
+                params[k] = v
 
         for k in archive_filter_keys:
             if k not in params:

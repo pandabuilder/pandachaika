@@ -30,13 +30,13 @@ class Transmission(TorrentClient):
     def __str__(self) -> str:
         return self.name
 
-    def add_url(self, enc_torrent: str, download_dir: str = None) -> bool:
+    def add_url(self, enc_torrent: str, download_dir: Optional[str] = None) -> bool:
         result = self.add_torrent(enc_torrent, download_dir=download_dir)
         if self.expected_torrent_name and not self.expected_torrent_extension:
             self.expected_torrent_name = os.path.splitext(self.expected_torrent_name)[0]
         return result
 
-    def add_torrent(self, enc_torrent: Union[str, bytes], download_dir: str = None) -> bool:
+    def add_torrent(self, enc_torrent: Union[str, bytes], download_dir: Optional[str] = None) -> bool:
 
         if not self.trans:
             return False
