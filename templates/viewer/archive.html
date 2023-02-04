@@ -17,9 +17,9 @@
         {% if perms.viewer.recycle_archive %}
             <li>
                 {% if archive.is_recycled %}
-                    <a class="open-modal" data-popup-url="{% url 'viewer:archive-tool-reason' archive.pk 'unrecycle' %}" href="{% url 'viewer:archive-tool-reason' archive.pk 'unrecycle' %}">unrecycle</a>
+                    <a class="open-modal" data-popup-url="{% url 'viewer:archive-tool-reason' archive.pk 'unrecycle' %}?inline=1" href="{% url 'viewer:archive-tool-reason' archive.pk 'unrecycle' %}">unrecycle</a>
                 {% else %}
-                    <a class="open-modal" data-popup-url="{% url 'viewer:archive-tool-reason' archive.pk 'recycle' %}" href="{% url 'viewer:archive-tool-reason' archive.pk 'recycle' %}">recycle</a>
+                    <a class="open-modal" data-popup-url="{% url 'viewer:archive-tool-reason' archive.pk 'recycle' %}?inline=1" href="{% url 'viewer:archive-tool-reason' archive.pk 'recycle' %}">recycle</a>
                 {% endif %}
             </li>
         {% endif %}
@@ -34,7 +34,7 @@
             <a
               class="open-modal"
               href="{% url 'viewer:archive-delete' archive.pk %}"
-              data-popup-url="{% url 'viewer:archive-delete' archive.pk %}"
+              data-popup-url="{% url 'viewer:archive-delete' archive.pk %}?inline=1"
               >delete
             </a>
           </li>
@@ -42,17 +42,17 @@
         {% if user.is_staff %}{% if archive.gallery %}<li><a href="{% url 'viewer:gallery-tool' archive.gallery.pk 'toggle-hidden' %}">{% if archive.gallery.hidden %}open{% else %}hidden{% endif %}</a></li>{% endif %}{% endif %}
         {% if perms.viewer.publish_archive %}<li>{% if archive.public %}<a href="{% url 'viewer:archive-private' archive.pk %}">private</a>{% else %}<a href="{% url 'viewer:archive-public' archive.pk %}">public</a>{% endif %}</li>{% endif %}
         {% if user.is_staff %}<li><a href="{% url 'admin:viewer_archive_change' archive.pk %}">admin</a></li>{% endif %}
-        {% if user.is_staff %}<li><a href="{% url 'viewer:archive-details' archive.pk 'edit' %}">edit</a></li>
+        {% if user.is_staff %}<li>{% if mode == 'view' %}<a href="{% url 'viewer:archive-edit' archive.pk 'edit' %}">edit</a>{% else %}<a href="{% url 'viewer:archive' archive.pk %}">view</a>{% endif %}</li>
         {% endif %}
       </ul>
       {% if archive.extracted %}
       <div>
         <ul class="right-tools second-tools">
             <li>View:</li>
-            <li><a href="{% url 'viewer:archive-details' archive.pk 'cover' %}">cover</a></li>
-            <li><a href="{% url 'viewer:archive-details' archive.pk 'thumbnails' %}">thumbnails</a></li>
-            <li><a href="{% url 'viewer:archive-details' archive.pk 'full' %}">full</a></li>
-            <li><a href="{% url 'viewer:archive-details' archive.pk 'single' %}">single</a></li>
+            <li><a href="?{% url_replace 'view' 'cover' %}">cover</a></li>
+            <li><a href="?{% url_replace 'view' 'thumbnails' %}">thumbnails</a></li>
+            <li><a href="?{% url_replace 'view' 'full' %}">full</a></li>
+            <li><a href="?{% url_replace 'view' 'single' %}">single</a></li>
         </ul>
       </div>
       {% endif %}
@@ -234,7 +234,7 @@
     {% if tag_count %}
       <li class="subtitle">
         <ul class="tags">
-          {% for tag_list in archive.tag_lists %}
+          {% for tag_list in archive.gallery_tag_lists %}
             <li>
               {% if tag_list.0 %}
                 <label class="label-extended">{{ tag_list.0 }}:</label>
@@ -279,6 +279,8 @@
           <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}?original=1">Download with original name</a>
           <a class="btn btn-light" href="{% url 'viewer:api' %}?archive={{ archive.pk }}">JSON info</a>
           <a class="btn btn-light hash-preview" tabindex="0" role="button" data-toggle="popover" data-pk="{{ archive.pk }}">Images SHA1</a>
+          <a class="btn btn-light" href="{% url 'viewer:image-data-list' archive.pk %}">Images Data</a>
+          <a class="btn btn-light" href="{% url 'viewer:archive-change-log' archive.pk %}">Change Log</a>
           {% if archive.thumbnail.name %}
             <a class="btn btn-light img-preview" data-image-url="{{ archive.thumbnail.url }}" rel="popover">Hover for cover</a>
           {% endif %}
@@ -305,6 +307,10 @@
         <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}?original=1">Download with original name</a>
         <a class="btn btn-light" href="{% url 'viewer:api' %}?archive={{ archive.pk }}">JSON info</a>
         <a class="btn btn-light hash-preview" tabindex="0" role="button" data-toggle="popover" data-pk="{{ archive.pk }}">Images SHA1</a>
+        <a class="btn btn-light" href="{% url 'viewer:image-data-list' archive.pk %}">Images Data</a>
+        {% if perms.viewer.read_archive_change_log %}
+        <a class="btn btn-light" href="{% url 'viewer:archive-change-log' archive.pk %}">Change Log</a>
+        {% endif %}
         {% if archive.thumbnail.name %}
           <a class="btn btn-light img-preview" data-image-url="{{ archive.thumbnail.url }}" rel="popover">Hover for cover</a>
         {% endif %}
@@ -376,7 +382,7 @@
     {% endif %}
 
     {% if user.is_authenticated %}
-      {% if view == "edit" and user.is_staff %}
+      {% if mode == "edit" and user.is_staff %}
         <!-- EDIT VIEW  -->
         <li class="subtitle">
           <a href="{% url 'viewer:archive-generate-matches' archive.pk %}">generate matches internally</a> >>
@@ -425,26 +431,26 @@
 
             {% endif %}
           </form>
-      <!-- Next/Prev page links  -->
-    <div>
-        <span class="step-links">
-          <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
-          {% if image_queryset.has_previous %}
-            <a href= "?{% url_replace 'page' image_queryset.previous_page_number %}"> previous &lt;&lt; </a>
-          {% else %}
-            <span> previous &lt;&lt; </span>
-          {% endif %}
-          <span class="current">
-                &nbsp;Page {{ image_queryset.number }} of {{ image_queryset.paginator.num_pages }}
-            </span>
-          {% if image_queryset.has_next %}
-            <a href="?{% url_replace 'page' image_queryset.next_page_number %}"> &gt;&gt; next</a>
-          {% else %}
-            <span> &gt;&gt; next</span>
-          {% endif %}
-          <a href="?{% url_replace 'page' image_queryset.paginator.num_pages %}"> &gt;&gt; last</a>
-        </span>
-    </div>
+            <!-- Next/Prev page links  -->
+            <div>
+                <span class="step-links">
+                  <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
+                  {% if image_queryset.has_previous %}
+                    <a href= "?{% url_replace 'page' image_queryset.previous_page_number %}"> previous &lt;&lt; </a>
+                  {% else %}
+                    <span> previous &lt;&lt; </span>
+                  {% endif %}
+                  <span class="current">
+                        &nbsp;Page {{ image_queryset.number }} of {{ image_queryset.paginator.num_pages }}
+                    </span>
+                  {% if image_queryset.has_next %}
+                    <a href="?{% url_replace 'page' image_queryset.next_page_number %}"> &gt;&gt; next</a>
+                  {% else %}
+                    <span> &gt;&gt; next</span>
+                  {% endif %}
+                  <a href="?{% url_replace 'page' image_queryset.paginator.num_pages %}"> &gt;&gt; last</a>
+                </span>
+            </div>
         </li>
       {% else %}
         <!-- COVER VIEW  -->

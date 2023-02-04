@@ -1,0 +1,129 @@
+{% extends "viewer/base.html" %}
+{% block title %}Activity Event Log | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+{% load static %}
+
+{% block content %}
+    {% if messages %}
+        {% for message in messages %}
+        <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+        {% endfor %}
+    {% endif %}
+    <div class="page-header">
+    <h2>Activity Event Log</h2>
+    <p class="lead">Number of events (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
+    </div>
+    {% load viewer_extras %}
+    <form action="{{ request.get_full_path }}" method="GET">
+      {% for field in form %}
+        <div class="page-line">
+          {{ field.errors }}
+          {{ field }}
+        </div>
+      {% endfor %}
+      <div class="form-inline page-line mt-4">
+      {% for field in form_event %}
+        {{ field.label_tag }}{{ field }}
+      {% endfor %}
+        <label for="actions">Actions: </label>
+        <select multiple id="actions" name="actions" class="form-control" title="actions" aria-label="actions">
+        {% with selected_actions=request.GET|get_list:'actions' %}
+          {% for action in actions %}
+            <option value="{{ action }}" {% if action in selected_actions %} selected{% endif %}>{{ action }}</option>
+          {% endfor %}
+        {% endwith %}
+        </select>
+        <input id="checkbox1" class="custom-cb" type="checkbox" name="filter-galleries" value="1" {% if "filter-galleries" in request.GET %}checked{% endif %}><label for="checkbox1"><span><span></span></span>Filter Galleries</label>
+        <input id="checkbox2" class="custom-cb" type="checkbox" name="filter-archives" value="1" {% if "filter-archives" in request.GET %}checked{% endif %}><label for="checkbox2"><span><span></span></span>Filter Archives</label>
+        {% if request.user.is_staff %}<input id="checkbox3" class="custom-cb" type="checkbox" name="show-users" value="1" {% if "show-users" in request.GET %}checked{% endif %}><label for="checkbox3"><span><span></span></span>Show Users</label>{% endif %}
+      </div>
+      <div class="form-inline page-line">
+        <button type="submit" name="apply" class="btn btn-info">Search</button>
+        <a class="btn btn-light" href="{% url 'viewer:activity-event-log' %}">Clear</a>
+      </div>
+    </form>
+    <!-- Next/Prev page links  -->
+    {% if results.object_list and results.paginator.num_pages > 1 %}
+      <div>
+          <span class="step-links">
+              <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
+            {% if results.has_previous %}
+              <a href= "?{% url_replace 'page' results.previous_page_number %}"> previous &lt;&lt; </a>
+            {% endif %}
+            <span class="current">
+                  &nbsp;Page {{ results.number }} of {{ results.paginator.num_pages }}
+              </span>
+            {% if results.has_next %}
+              <a href="?{% url_replace 'page' results.next_page_number %}"> &gt;&gt; next</a>
+            {% endif %}
+            <a href="?{% url_replace 'page' results.paginator.num_pages %}"> &gt;&gt; last</a>
+          </span>
+      </div>
+    {% endif %}
+      <table class="table table-bordered table-sm generic-table">
+        <thead>
+        <tr>
+          {% if show_users %}<th>User</th>{% endif %}<th>Action</th><th>Reason</th><th>Data</th><th>Result</th><th>Object link</th><th>Date</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for event in results %}
+          <tr>
+          {% if show_users %}
+            <td>
+              {{ event.user }}
+            </td>
+          {% endif %}
+            <td>
+              {{ event.action }}
+            </td>
+            <td>
+              {{ event.reason }}
+            </td>
+            <td>
+                {% if event.content_type.model == 'gallery' or event.content_type.model == 'archive' %}
+                    <pre class="code-block">{{ event.data|format_json|default:"None"|urlize_all_rel|convert_special_urls }}</pre>
+                {% else %}
+                    {{ event.data|default:"None" }}
+                {% endif %}
+            </td>
+            <td>
+              {{ event.result }}
+            </td>
+            <td>
+              {% if event.object_id %}
+                {% if event.content_object.get_absolute_url %}
+                  <a href="{{ event.content_object.get_absolute_url }}">{{ event.content_object }}</a>
+                {% else %}
+                  {{ event.content_object }}
+                {% endif %}
+              {% else %}
+                None
+              {% endif %}
+            </td>
+            <td>
+              {{ event.create_date|date:"y-m-d, H:i:s" }}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    <!-- Next/Prev page links  -->
+      {% if results.object_list and results.paginator.num_pages > 1 %}
+        <div>
+            <span class="step-links">
+                <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
+              {% if results.has_previous %}
+                <a href= "?{% url_replace 'page' results.previous_page_number %}"> previous &lt;&lt; </a>
+              {% endif %}
+              <span class="current">
+                    &nbsp;Page {{ results.number }} of {{ results.paginator.num_pages }}
+                </span>
+              {% if results.has_next %}
+                <a href="?{% url_replace 'page' results.next_page_number %}"> &gt;&gt; next</a>
+              {% endif %}
+              <a href="?{% url_replace 'page' results.paginator.num_pages %}"> &gt;&gt; last</a>
+            </span>
+        </div>
+      {% endif %}
+{% endblock %}

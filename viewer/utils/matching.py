@@ -434,7 +434,10 @@ def match_internal(archives: 'QuerySet[Archive]', providers: Iterable[str],
 
         if not match_by_filesize or archive.filesize is None or archive.filesize <= 0:
             continue
-        galleries_same_size = Gallery.objects.filter(filesize=archive.filesize)
+        if providers:
+            galleries_same_size = Gallery.objects.filter(filesize=archive.filesize, provider__in=providers)
+        else:
+            galleries_same_size = Gallery.objects.filter(filesize=archive.filesize)
         if galleries_same_size.exists():
 
             logger.info("{} of {}: Found {} matches (internal search) from filesize for archive: {}".format(
@@ -476,6 +479,9 @@ def match_internal(archives: 'QuerySet[Archive]', providers: Iterable[str],
                 for similar_item in galleries_hashes:
                     gallery_object = similar_item.content_object
 
+                    if providers and gallery_object and gallery_object.provider not in providers:
+                        continue
+
                     ArchiveMatches.objects.update_or_create(
                         archive=archive,
                         gallery=gallery_object,
@@ -509,6 +515,9 @@ def match_internal(archives: 'QuerySet[Archive]', providers: Iterable[str],
                 for similar_item in galleries_hashes:
 
                     gallery_object = similar_item.content_object
+
+                    if providers and gallery_object and gallery_object.provider not in providers:
+                        continue
 
                     ArchiveMatches.objects.update_or_create(
                         archive=archive,

@@ -1,5 +1,7 @@
 import html
+import json
 import re
+from json import JSONDecodeError
 from typing import Any, TypeVar, Union, ItemsView, Optional
 
 from django import template
@@ -7,12 +9,12 @@ from django.template import RequestContext
 from django.template.defaultfilters import stringfilter
 from django.utils.encoding import punycode  # type: ignore
 from django.utils.functional import keep_lazy_text
-from django.utils.html import WRAPPING_PUNCTUATION, TRAILING_PUNCTUATION_CHARS, word_split_re, simple_url_re, \
-    smart_urlquote, simple_url_2_re
-from django.utils.safestring import SafeText, mark_safe, SafeData
+from django.utils.html import smart_urlquote, Urlizer, escape  # type: ignore[attr-defined]
+from django.utils.safestring import SafeText, mark_safe
 
 from core.base.utilities import translate_tag, artist_from_title
-from viewer.models import Archive
+from viewer.models import Archive, Tag
+from viewer.utils.tags import sort_tags
 
 register = template.Library()
 
@@ -118,127 +120,79 @@ def convert_special_urls(value: str) -> str:
     return value
 
 
-@register.filter(is_safe=True, needs_autoescape=True)
-@stringfilter
-def urlize_all_rel(value, autoescape=True):
-    """Convert URLs in plain text into clickable links."""
-    return mark_safe(_urlize_all_text(value, nofollow=True, autoescape=autoescape))
-
-
-@keep_lazy_text
-def _urlize_all_text(text, trim_url_limit=None, nofollow=False, autoescape=False):
+class UrlizerNoRef(Urlizer):
     """
     Convert any URLs in text into clickable links.
 
-    Works on http://, https://, www. links, and also on links ending in one of
+    Work on http://, https://, www. links, and also on links ending in one of
     the original seven gTLDs (.com, .edu, .gov, .int, .mil, .net, and .org).
     Links can have trailing punctuation (periods, commas, close-parens) and
     leading punctuation (opening parens) and it'll still do the right thing.
-
-    If trim_url_limit is not None, truncate the URLs in the link text longer
-    than this limit to trim_url_limit - 1 characters and append an ellipsis.
-
-    If nofollow is True, give the links a rel="nofollow" attribute.
-
-    If autoescape is True, autoescape the link text and URLs.
     """
-    safe_input = isinstance(text, SafeData)
 
-    def trim_url(x, limit=trim_url_limit):
-        if limit is None or len(x) <= limit:
-            return x
-        return '%s…' % x[:max(0, limit - 1)]
-
-    def trim_punctuation(lead, middle, trail):
-        """
-        Trim trailing and wrapping punctuation from `middle`. Return the items
-        of the new state.
-        """
-        # Continue trimming until middle remains unchanged.
-        trimmed_something = True
-        while trimmed_something:
-            trimmed_something = False
-            # Trim wrapping punctuation.
-            for opening, closing in WRAPPING_PUNCTUATION:
-                if middle.startswith(opening):
-                    middle = middle[len(opening):]
-                    lead += opening
-                    trimmed_something = True
-                # Keep parentheses at the end only if they're balanced.
-                if middle.endswith(closing) and middle.count(closing) == middle.count(opening) + 1:
-                    middle = middle[:-len(closing)]
-                    trail = closing + trail
-                    trimmed_something = True
-            # Trim trailing punctuation (after trimming wrapping punctuation,
-            # as encoded entities contain ';'). Unescape entities to avoid
-            # breaking them by removing ';'.
-            middle_unescaped = html.unescape(middle)
-            stripped = middle_unescaped.rstrip(TRAILING_PUNCTUATION_CHARS)
-            if middle_unescaped != stripped:
-                trail = middle[len(stripped):] + trail
-                middle = middle[:len(stripped) - len(middle_unescaped)]
-                trimmed_something = True
-        return lead, middle, trail
-
-    def is_email_simple(value):
-        """Return True if value looks like an email address."""
-        # An @ must be in the middle of the value.
-        if '@' not in value or value.startswith('@') or value.endswith('@'):
-            return False
-        try:
-            p1, p2 = value.split('@')
-        except ValueError:
-            # value contains more than one @.
-            return False
-        # Dot must be in p2 (e.g. example.com)
-        if '.' not in p2 or p2.startswith('.'):
-            return False
-        return True
-
-    words = word_split_re.split(str(text))
-    for i, word in enumerate(words):
-        if '.' in word or '@' in word or ':' in word:
-            # lead: Current punctuation trimmed from the beginning of the word.
-            # middle: Current state of the word.
-            # trail: Current punctuation trimmed from the end of the word.
-            lead, middle, trail = '', word, ''
-            # Deal with punctuation.
-            lead, middle, trail = trim_punctuation(lead, middle, trail)
-
+    def handle_word(
+        self,
+        word,
+        *,
+        safe_input,
+        trim_url_limit=None,
+        nofollow=False,
+        autoescape=False,
+    ):
+        if "." in word or "@" in word or ":" in word:
+            # lead: Punctuation trimmed from the beginning of the word.
+            # middle: State of the word.
+            # trail: Punctuation trimmed from the end of the word.
+            lead, middle, trail = self.trim_punctuation(word)
             # Make URL we want to point to.
             url = None
             nofollow_attr = ' rel="noopener noreferrer nofollow"' if nofollow else ''
-            if simple_url_re.match(middle):
+            if self.simple_url_re.match(middle):
                 url = smart_urlquote(html.unescape(middle))
-            elif simple_url_2_re.match(middle):
-                url = smart_urlquote('http://%s' % html.unescape(middle))
-            elif ':' not in middle and is_email_simple(middle):
-                local, domain = middle.rsplit('@', 1)
+            elif self.simple_url_2_re.match(middle):
+                url = smart_urlquote("http://%s" % html.unescape(middle))
+            elif ":" not in middle and self.is_email_simple(middle):
+                local, domain = middle.rsplit("@", 1)
                 try:
-                    domain = punycode(domain)  # type: ignore
+                    domain = punycode(domain)
                 except UnicodeError:
-                    continue
-                url = 'mailto:%s@%s' % (local, domain)
-                nofollow_attr = ''
-
+                    return word
+                url = self.mailto_template.format(local=local, domain=domain)
+                nofollow_attr = ""
             # Make link.
             if url:
-                trimmed = trim_url(middle)
+                trimmed = self.trim_url(middle, limit=trim_url_limit)
                 if autoescape and not safe_input:
-                    lead, trail = html.escape(lead), html.escape(trail)
-                    trimmed = html.escape(trimmed)
-                middle = '<a href="%s"%s>%s</a>' % (html.escape(url), nofollow_attr, trimmed)
-                words[i] = mark_safe('%s%s%s' % (lead, middle, trail))
+                    lead, trail = escape(lead), escape(trail)
+                    trimmed = escape(trimmed)
+                middle = self.url_template.format(
+                    href=escape(url),
+                    attrs=nofollow_attr,
+                    url=trimmed,
+                )
+                return mark_safe(f"{lead}{middle}{trail}")
             else:
                 if safe_input:
-                    words[i] = mark_safe(word)
+                    return mark_safe(word)
                 elif autoescape:
-                    words[i] = html.escape(word)
+                    return escape(word)
         elif safe_input:
-            words[i] = mark_safe(word)
+            return mark_safe(word)
         elif autoescape:
-            words[i] = html.escape(word)
-    return ''.join(words)
+            return escape(word)
+        return word
+
+
+urlizer_all_rel = UrlizerNoRef()
+
+
+@register.filter(is_safe=True, needs_autoescape=True)
+@stringfilter
+@keep_lazy_text
+def urlize_all_rel(text, trim_url_limit=None, nofollow=True, autoescape=True):
+    return mark_safe(urlizer_all_rel(
+        text, trim_url_limit=trim_url_limit, nofollow=nofollow, autoescape=autoescape
+    ))
 
 
 @register.filter
@@ -263,3 +217,81 @@ def artist_name_from_str(title: Optional[str]) -> str:
         return translate_tag(artist_from_title(title))
     else:
         return ''
+
+
+ARCHIVE_INCLUDED_FIELDS = (
+    'title', 'title_jpn', 'source_type', 'reason', 'public_date', 'public', 'gallery', 'filecount', 'filesize',
+    'extracted', 'details', 'crc32', 'binned'
+)
+
+
+@register.filter
+def changes_archive_delta(new_record):
+    prev_record = new_record.prev_record
+    if prev_record is None:
+        return []
+    delta = new_record.diff_against(
+        prev_record,
+        included_fields=ARCHIVE_INCLUDED_FIELDS
+    )
+    return delta.changes
+
+
+GALLERY_INCLUDED_FIELDS = (
+    'title', 'title_jpn', 'category', 'uploader', 'comment', 'posted', 'filecount', 'filesize',
+    'expunged', 'rating', 'fjord', 'public', 'dl_type', 'reason', 'thumbnail_url', 'status'
+)
+
+@register.filter
+def changes_gallery_delta(new_record):
+    prev_record = new_record.prev_record
+    if prev_record is None:
+        return []
+    delta = new_record.diff_against(
+        prev_record,
+        included_fields=GALLERY_INCLUDED_FIELDS
+    )
+    return delta.changes
+
+
+@register.filter
+def tag_query_to_tag_lists(tag_query) -> list[tuple[str, list[Tag]]]:
+    return sort_tags(tag_query)
+
+
+@register.filter
+def tag_history_to_tag_lists(history) -> list[tuple[str, list[Tag]]]:
+    tag_query = history.historicalgallery_tags_set.all().prefetch_related('tag')
+    return sort_tags([x.tag for x in tag_query])
+
+
+@register.filter
+def gallery_history_fields(new_record):
+
+    history_fields = {gallery_field: getattr(new_record, gallery_field) for gallery_field in GALLERY_INCLUDED_FIELDS}
+
+    history_fields['tags'] = ''
+
+    return history_fields.items()
+
+
+@register.filter
+def format_json(maybe_json: Optional[str]) -> str:
+    if maybe_json is None:
+        return 'None'
+    try:
+        json_data = json.loads(maybe_json)
+
+        json_formatted = json.dumps(
+            json_data,
+            indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+
+        return json_formatted
+
+    except JSONDecodeError:
+        return maybe_json
+
+

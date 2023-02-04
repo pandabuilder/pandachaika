@@ -91,7 +91,7 @@ class BaseDownloader(metaclass=Meta):
             # mark the archive. Do the same for a wanted match.
             wanted_invalidated: list['WantedGallery'] = []
             if self.settings.update_metadata_mode:
-                discarded_tags = self.general_utils.discard_by_tag_list(self.gallery_db_entry.tag_list(), force_check=True)
+                banned_result, banned_reasons = self.general_utils.discard_by_gallery_data(self.gallery_db_entry.tag_list(), force_check=True)
                 if self.settings.recheck_wanted_on_update and self.settings.wanted_gallery_model:
                     wanted_found = self.settings.wanted_gallery_model.objects.filter(foundgallery__gallery=self.gallery_db_entry)
 
@@ -102,7 +102,7 @@ class BaseDownloader(metaclass=Meta):
                             wanted_invalidated.append(single_wanted_found)
 
             else:
-                discarded_tags = None
+                banned_result, banned_reasons = False, []
             for archive in self.gallery_db_entry.archive_set.all():
                 if archive.gallery:
                     archive.title = archive.gallery.title
@@ -112,10 +112,14 @@ class BaseDownloader(metaclass=Meta):
                     if self.settings.recheck_wanted_on_update and self.settings.archive_manage_entry_model:
 
                         for single_wanted_invalidated in wanted_invalidated:
-                            mark_comment = """The refreshed Gallery metadata invalidates the previously accepted WantedGallery: (special-link):({})({})
-                            """.format(single_wanted_invalidated.title, single_wanted_invalidated.get_absolute_url())
+                            mark_comment = (
+                                "The refreshed Gallery metadata invalidates the "
+                                "previously accepted WantedGallery: (special-link):({})({})"
+                            ).format(single_wanted_invalidated.title, single_wanted_invalidated.get_absolute_url())
 
-                            if not self.settings.archive_manage_entry_model.objects.filter(archive=archive, mark_reason="invalidated_wanted", mark_comment=mark_comment).exists():
+                            if not self.settings.archive_manage_entry_model.objects.filter(
+                                    archive=archive, mark_reason="invalidated_wanted", mark_comment=mark_comment
+                            ).exists():
                                 manager_entry, _ = self.settings.archive_manage_entry_model.objects.update_or_create(
                                     archive=archive,
                                     mark_reason="invalidated_wanted",
@@ -126,20 +130,19 @@ class BaseDownloader(metaclass=Meta):
                                     },
                                 )
 
-                    archive_discarded_tags = None
+                    archive_banned_result: bool = False
 
-                    if discarded_tags:
-                        archive_discarded_tags = self.general_utils.discard_by_tag_list(archive.tag_list(), force_check=True)
+                    if banned_result:
+                        archive_banned_result, archive_banned_reasons = self.general_utils.discard_by_gallery_data(archive.tag_list(), force_check=True)
 
                     archive.tags.set(archive.gallery.tags.all())
 
-                    if discarded_tags and not archive_discarded_tags and self.settings.archive_manage_entry_model:
-                        mark_comment = """The refreshed Gallery metadata has added one or more forbidden tags: {}
-                        """.format(discarded_tags)
+                    if banned_result and not archive_banned_result and self.settings.archive_manage_entry_model:
+                        mark_comment = "The refreshed Gallery has added banned data:\n{}".format(banned_reasons)
 
                         manager_entry, _ = self.settings.archive_manage_entry_model.objects.update_or_create(
                             archive=archive,
-                            mark_reason="forbidden_tag",
+                            mark_reason="banned_data",
                             defaults={
                                 'mark_comment': mark_comment, 'mark_priority': 5.0, 'mark_check': True,
                                 'origin': self.settings.archive_manage_entry_model.ORIGIN_SYSTEM

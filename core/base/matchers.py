@@ -66,7 +66,7 @@ class Matcher(metaclass=Meta):
             galleries_data = self.get_metadata_after_matching()
             if not galleries_data:
                 return 0
-            galleries_data = [x for x in galleries_data if not self.general_utils.discard_by_tag_list(x.tags)]
+            galleries_data = [x for x in galleries_data if not self.general_utils.discard_by_gallery_data(x.tags, x.uploader)[0]]
             if not galleries_data:
                 return 0
             result = get_gallery_closer_title_from_gallery_values(
@@ -100,7 +100,7 @@ class Matcher(metaclass=Meta):
             galleries_data = self.get_metadata_after_matching()
             if not galleries_data:
                 return results
-            galleries_data = [x for x in galleries_data if not self.general_utils.discard_by_tag_list(x.tags)]
+            galleries_data = [x for x in galleries_data if not self.general_utils.discard_by_gallery_data(x.tags, x.uploader)[0]]
             logger.info(
                 "For matcher: {}, found {} results before filtering.".format(str(self), len(galleries_data))
             )

@@ -22,7 +22,7 @@ Requirements
 
 Know how to run a Python program and how to install packages.
 
-Python [3.9, 3.10] are the target versions, it won't work on Python 2.
+Python [3.9, 3.10, 3.11] are the target versions, it won't work on Python 2.
 
 See requirements.txt.
 

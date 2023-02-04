@@ -47,7 +47,7 @@
             <th scope="col">Public</th>
             <th scope="col">Posted date</th>
             {% if user.is_authenticated %}<th scope="col">Status</th>{% endif %}
-            <th scope="col">Archives (Associated files)</th>
+            <th scope="col" title="ID, (main or alt), published date{% if user.is_authenticated %}, binned?{% endif %}">Archives (Associated files)</th>
           </tr>
           </thead>
           <tbody>
@@ -77,14 +77,14 @@
               {% for archive in found_entry.1.archive_set.all %}
                 {% if archive.public or user.is_authenticated %}
                 <li>
-                  <a href="{% url 'viewer:archive' archive.pk %}" data-image-url="{% if archive.thumbnail.name %}{{ archive.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover">{{ archive.pk }}</a><span> (main) on: {{ archive.public_date|date:"SHORT_DATE_FORMAT"|default:"not yet" }}</span>
+                  <a href="{% url 'viewer:archive' archive.pk %}" data-image-url="{% if archive.thumbnail.name %}{{ archive.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover">{{ archive.pk }}</a><span> (main) on: {{ archive.public_date|date:"SHORT_DATE_FORMAT"|default:"not yet" }}{% if user.is_authenticated %}, {{ archive.is_recycled|yesno }}{% endif %}</span>
                 </li>
                 {% endif %}
               {% endfor %}
               {% for archive in found_entry.1.alternative_sources.all %}
                 {% if archive.public or user.is_authenticated %}
                 <li>
-                  <a href="{% url 'viewer:archive' archive.pk %}" data-image-url="{% if archive.thumbnail.name %}{{ archive.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover">{{ archive.pk }}</a><span> (alt) on: {{ archive.public_date|date:"SHORT_DATE_FORMAT"|default:"not yet" }}</span>
+                  <a href="{% url 'viewer:archive' archive.pk %}" data-image-url="{% if archive.thumbnail.name %}{{ archive.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover">{{ archive.pk }}</a><span> (alt) on: {{ archive.public_date|date:"SHORT_DATE_FORMAT"|default:"not yet" }}{% if user.is_authenticated %}, {{ archive.is_recycled|yesno }}{% endif %}</span>
                 </li>
                 {% endif %}
               {% endfor %}

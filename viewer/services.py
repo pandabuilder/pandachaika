@@ -3,12 +3,13 @@ from typing import Optional, Union
 
 from PIL import Image as PImage
 from PIL import UnidentifiedImageError
-from django.db.models import QuerySet
+from django.contrib.contenttypes.models import ContentType
+from django.db.models import QuerySet, Model
 
 from core.base import hashing
 
 if typing.TYPE_CHECKING:
-    from viewer.models import Archive
+    from viewer.models import Archive, Image, ItemProperties
 
 
 class CompareObjectsService:
@@ -36,7 +37,11 @@ class CompareObjectsService:
         return inner_function
 
     @classmethod
-    def hash_archives(cls, archives: 'QuerySet[Archive]', algorithms: list[str], thumbnails: bool = True, images: bool = True) -> dict:
+    def hash_archives(
+            cls, archives: 'QuerySet[Archive]', algorithms: list[str], thumbnails: bool = True, images: bool = True,
+            item_model: typing.Optional['typing.Type[ItemProperties]'] = None,
+            image_model: typing.Optional['typing.Type[Image]'] = None
+    ) -> dict:
 
         results_per_algorithm: dict[str, dict] = {
 
@@ -65,8 +70,25 @@ class CompareObjectsService:
                         image_result: dict[int, str] = {int(x.position): str(x.sha1) for x in archive.image_set.all()}
                         results['images'][archive.pk] = image_result
                     else:
-                        archive_img_results = archive.hash_images_with_function(algo_func)
-                        results['images'][archive.pk] = archive_img_results
+
+                        if item_model and image_model:
+
+                            image_type = ContentType.objects.get_for_model(image_model)
+
+                            images_phashes = item_model.objects.filter(
+                                content_type=image_type, object_id__in=archive.image_set.all(), tag='hash-compare',
+                                name=algo_name
+                            )
+
+                            if images_phashes:
+                                archive_img_results = {item.content_object.archive_position: item.value for item in images_phashes if item.content_object}
+                                results['images'][archive.pk] = archive_img_results
+                            else:
+                                archive_img_results = archive.hash_images_with_function(algo_func)
+                                results['images'][archive.pk] = archive_img_results
+                        else:
+                            archive_img_results = archive.hash_images_with_function(algo_func)
+                            results['images'][archive.pk] = archive_img_results
 
             results_per_algorithm[algo_name] = results
 

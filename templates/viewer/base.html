@@ -54,7 +54,7 @@
             <li class="nav-item dropdown">
               <a href="#" class="nav-link dropdown-toggle" id="navbarDropdown" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Help needed<span class="caret"></span></a>
               <div class="dropdown-menu" aria-labelledby="navbarDropdown">
-                <a class="dropdown-item" href="{% url 'viewer:missing-archives' %}">Missing archives</a>
+                <a class="dropdown-item" href="{% url 'viewer:public-missing-archives' %}">Missing archives</a>
                 <a class="dropdown-item" href="{% url 'viewer:wanted-galleries' %}">Wanted galleries</a>
               </div>
             </li>
@@ -85,11 +85,8 @@
                 {% if perms.viewer.manage_missing_archives %}
                   <a class="dropdown-item" href="{% url 'viewer:col-missing-archives' %}?provider=panda">Manage missing archives</a>
                 {% endif %}
-                {% if perms.viewer.read_all_logs %}
-                  <a class="dropdown-item" href="{% url 'viewer:users-event-log' %}">Users' event log</a>
-                {% endif %}
-                {% if perms.viewer.read_delete_logs %}
-                  <a class="dropdown-item" href="{% url 'viewer:archive-delete-log' %}">Archive delete log</a>
+                {% if perms.viewer.read_activity_logs %}
+                  <a class="dropdown-item" href="{% url 'viewer:activity-event-log' %}">Activity log</a>
                 {% endif %}
                 {% if perms.viewer.view_monitored_links %}
                   <a class="dropdown-item" href="{% url 'viewer:monitored-links' %}">Monitored Links</a>
@@ -127,8 +124,7 @@
                 <a class="dropdown-item" href="{% url 'viewer:match-archives' %}">Match archives</a>
                 <a class="dropdown-item" href="{% url 'viewer:col-wanted-galleries' %}">Wanted galleries</a>
                 <a class="dropdown-item" href="{% url 'viewer:col-missing-archives' %}?provider=panda">Manage missing archives</a>
-                <a class="dropdown-item" href="{% url 'viewer:users-event-log' %}">Users' event log</a>
-                <a class="dropdown-item" href="{% url 'viewer:archive-delete-log' %}">Archive delete log</a>
+                <a class="dropdown-item" href="{% url 'viewer:activity-event-log' %}">Activity log</a>
                 <a class="dropdown-item" href="{% url 'viewer:monitored-links' %}">Monitored Links</a>
               </div>
             </li>
@@ -153,7 +149,7 @@
                 <a class="dropdown-item" href="{% url 'viewer:tag-frequency' %}">Tag frequency</a>
                 <a class="dropdown-item" href="{% url 'viewer:gallery-frequency' %}">Gallery frequency</a>
                 <a class="dropdown-item" href="{% url 'viewer:archive-groups' %}">Archive Groups</a>
-                <a class="dropdown-item" href="{% url 'viewer:missing-archives' %}">Public missing galleries</a>
+                <a class="dropdown-item" href="{% url 'viewer:public-missing-archives' %}">Public missing galleries</a>
               </div>
             </li>
           {% else %}

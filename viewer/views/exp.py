@@ -162,7 +162,7 @@ def get_gallery_data(data: QueryDict) -> 'QuerySet[Gallery]':
     if 'uploader' in data:
         results = results.filter(uploader__icontains=data['uploader'])
 
-    results = results.distinct()
+    # results = results.distinct()
 
     return results
 
@@ -318,7 +318,8 @@ def get_archive_data(data: QueryDict) -> 'QuerySet[Archive]':
                     tag_query
                 )
 
-    results = results.distinct().prefetch_related('tags')
+    # results = results.distinct().prefetch_related('tags')
+    results = results.prefetch_related('tags')
 
     return results
 
@@ -525,7 +526,7 @@ def api(request: HttpRequest, model: Optional[str] = None, obj_id: Optional[str]
             if 'extracted' in data:
                 archives_list_filtered = archives_list_filtered.filter(extracted=True)
 
-            response = archives_to_json_response(archives_list_filtered.prefetch_related('tags', 'custom_tags'), request)
+            response = archives_to_json_response(archives_list_filtered.prefetch_related('tags'), request)
         elif model == 'archives_simple':
             q_args = data.get('q', '')
             if request.user.is_authenticated or data.get('api_key', '') == crawler_settings.api_key:

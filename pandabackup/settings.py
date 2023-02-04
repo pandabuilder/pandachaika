@@ -44,6 +44,14 @@ if crawler_settings.urls.behind_proxy:
     USE_X_FORWARDED_HOST = True
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
+if DEBUG:
+    log_level = 'DEBUG'
+elif crawler_settings.log_level in ('CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG', 'NOTSET'):
+    log_level = crawler_settings.log_level
+else:
+    log_level = 'INFO'
+
+
 LOGGING: dict[str, Any] = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -89,11 +97,11 @@ LOGGING: dict[str, Any] = {
     'loggers': {
         'viewer': {
             'handlers': ['viewer', 'console'],
-            'level': 'DEBUG' if DEBUG else 'INFO'
+            'level': log_level
         },
         'core': {
             'handlers': ['viewer', 'console'],
-            'level': 'DEBUG' if DEBUG else 'INFO'
+            'level': log_level
         },
         'django': {
             'handlers': ['viewer', 'console'],
@@ -134,6 +142,9 @@ if module_exists('django_unused_media'):
 
 if DEBUG and module_exists('debug_toolbar'):
     INSTALLED_APPS += ['debug_toolbar']
+
+INSTALLED_APPS += ['simple_history']
+SIMPLE_HISTORY_FILEFIELD_TO_CHARFIELD = True
 
 MIDDLEWARE = [
     'django.contrib.sessions.middleware.SessionMiddleware',

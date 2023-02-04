@@ -50,6 +50,8 @@
         <input id="checkbox9" class="custom-cb" type="checkbox" name="downloading" value="1" {% if request.GET.downloading == '1' %}checked{% endif %}><label for="checkbox9"><span><span></span></span>Downloading</label>
         {% if perms.viewer.view_marks %}<input id="checkbox5" class="custom-cb" type="checkbox" name="marked" value="1" {% if request.GET.marked == '1' %}checked{% endif %}><label for="checkbox5"><span><span></span></span>Marked</label>{% endif %}
         {% if perms.viewer.recycle_archive %}<input id="checkbox8" class="custom-cb indf-check" type="checkbox" name="recycled" value="1" {% if request.GET.recycled == '1' %}checked{% endif %}><label for="checkbox8" title="Unchecked won't show Archives on Recycle Bin"><span><span></span></span>Recycled (only)</label>{% endif %}
+        <input id="checkbox20" class="custom-cb" type="checkbox" name="no-custom-tags" value="1" {% if "no-custom-tags" in request.GET %}checked{% endif %}><label for="checkbox20"><span><span></span></span>No custom tags</label>
+        <input id="checkbox21" class="custom-cb" type="checkbox" name="with-custom-tags" value="1" {% if "with-custom-tags" in request.GET %}checked{% endif %}><label for="checkbox21"><span><span></span></span>Has custom tags</label>
       </div>
       {% if perms.viewer.view_marks %}
       <div class="page-line form-inline">
@@ -192,6 +194,9 @@
     {% endif %}
     {% if perms.viewer.recalc_fileinfo %}
     <button name="recalc_fileinfo" class="btn btn-light">Recalc file info</button>
+    {% endif %}
+    {% if perms.viewer.mark_similar_archive %}
+     <button name="mark_similar" class="btn btn-light">Mark similar</button>
     {% endif %}
     {% if perms.viewer.recycle_archive %}
     <button name="recycle_archives" class="btn btn-light">Move to Recycle Bin</button>

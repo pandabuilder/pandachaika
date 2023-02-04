@@ -12,7 +12,7 @@ def event_log(user, action, reason=None, data=None, result=None, content_object=
 
     if data:
         # Force limit string length (reason field max_length)
-        data = data[:500]
+        data = data[:2000]
 
     event = EventLog.objects.create(
         user=user,

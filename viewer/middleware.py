@@ -15,5 +15,7 @@ class NonHtmlDebugToolbarMiddleware:
             if 'application/json' in response['Content-Type']:
                 content = json.dumps(json.loads(response.content), sort_keys=True, indent=2)
                 response = HttpResponse(u'<html><body><pre>{}</pre></body></html>'.format(content))
+            elif 'application/rss+xml' in response['Content-Type']:
+                response = HttpResponse(u'<html><body><pre>{}</pre></body></html>'.format(response.content))
 
         return response

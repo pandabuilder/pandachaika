@@ -6,7 +6,7 @@ from django.contrib.auth.decorators import permission_required
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render
 
-from viewer.models import Archive
+from viewer.models import Archive, ItemProperties, Image
 from viewer.services import CompareObjectsService
 
 crawler_settings = settings.CRAWLER_SETTINGS
@@ -24,7 +24,9 @@ def compare_archives(request: HttpRequest) -> HttpResponse:
 
     archives = Archive.objects.filter(pk__in=archive_pks)
 
-    results = CompareObjectsService.hash_archives(archives, algos, thumbnails=thumbs, images=not no_imgs)
+    results = CompareObjectsService.hash_archives(
+        archives, algos, thumbnails=thumbs, images=not no_imgs, item_model=ItemProperties, image_model=Image
+    )
 
     response['results'] = results
 

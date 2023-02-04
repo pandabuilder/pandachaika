@@ -10,7 +10,7 @@ from typing import Optional
 import base64
 
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, permission_required
 from django.core.paginator import Paginator, InvalidPage, EmptyPage, Page
 from django.urls import reverse
 from django.db import transaction
@@ -27,7 +27,8 @@ from viewer.forms import (
     ArchiveEditForm, ArchiveManageEditFormSet)
 from viewer.models import (
     Archive, Tag, Gallery, Image,
-    UserArchivePrefs, ArchiveManageEntry, ArchiveRecycleEntry, GalleryProviderData, ArchiveGroup, ArchiveGroupEntry
+    UserArchivePrefs, ArchiveManageEntry, ArchiveRecycleEntry, GalleryProviderData, ArchiveGroup, ArchiveGroupEntry,
+    ArchiveTag
 )
 from viewer.views.head import render_error
 
@@ -38,7 +39,10 @@ crawler_settings = settings.CRAWLER_SETTINGS
 archive_download_regex = re.compile(r"/archive/(\d+)/download/$", re.IGNORECASE)
 
 
-def archive_details(request: HttpRequest, pk: int, view: str = "cover") -> HttpResponse:
+VALID_ARCHIVE_VIEW_MODES = ('cover', 'thumbnails', 'full', 'single')
+
+
+def archive_details(request: HttpRequest, pk: int, mode: str = 'view') -> HttpResponse:
     """Archive listing."""
 
     try:
@@ -48,13 +52,25 @@ def archive_details(request: HttpRequest, pk: int, view: str = "cover") -> HttpR
     if not archive.public and not request.user.is_authenticated:
         raise Http404("Archive does not exist")
 
-    if not request.user.is_authenticated:
+    if mode == "edit" and not request.user.is_staff:
+        raise Http404("Archive does not exist")
+
+    if request.user.is_authenticated:
+        view = request.GET.get("view", None)
+        if view is not None and view in VALID_ARCHIVE_VIEW_MODES:
+            request.session["archive_view"] = view
+        else:
+            if "archive_view" in request.session:
+                view = request.session["archive_view"]
+            else:
+                view = "cover"
+    else:
         view = "cover"
 
-    d: dict[str, typing.Any] = {'archive': archive, 'view': view}
+    d: dict[str, typing.Any] = {'archive': archive, 'view': view, 'mode': mode}
 
     num_images = 30
-    if view in ("full", "edit"):
+    if view == "full":
         num_images = 10
     if view in ("single", "cover"):
         num_images = 1
@@ -80,7 +96,7 @@ def archive_details(request: HttpRequest, pk: int, view: str = "cover") -> HttpR
 
         d.update({'images': images_page})
 
-    if view == "edit" and request.user.is_staff:
+    if mode == "edit" and request.user.is_staff:
 
         paginator = Paginator(archive.image_set.all(), num_images)
         try:
@@ -206,7 +222,12 @@ def archive_details(request: HttpRequest, pk: int, view: str = "cover") -> HttpR
         manage_entries = ArchiveManageEntry.objects.filter(archive=archive)
         d.update({'manage_entries': manage_entries, 'manage_entries_count': manage_entries.count()})
 
-    d.update({'tag_count': archive.tags.all().count(), 'custom_tag_count': archive.custom_tags.all().count()})
+    d.update(
+        {
+            'tag_count': archive.tags.exclude(archivetag__origin=ArchiveTag.ORIGIN_USER).count(),
+            'custom_tag_count': archive.tags.filter(archivetag__origin=ArchiveTag.ORIGIN_USER).count()
+        }
+    )
 
     if archive.gallery:
         gallery_provider_data = GalleryProviderData.objects.filter(gallery=archive.gallery)
@@ -282,14 +303,18 @@ def archive_update(request: HttpRequest, pk: int, tool: Optional[str] = None, to
                 if not result:
                     messages.error(request, "File {} already exists, renaming failed".format(p["zipped"]))
 
-        if "custom_tags" in p:
-            lst = []
-            tags = p.getlist("custom_tags")
+        if "tags" in p:
+            archive_custom_tags = ArchiveTag.objects.filter(archive=archive, origin=ArchiveTag.ORIGIN_USER)
+            archive_custom_tags.delete()
+            tags = p.getlist("tags")
             for t in tags:
-                lst.append(Tag.objects.get(pk=t))
-            archive.custom_tags.set(lst)
+                tag = Tag.objects.get(pk=t)
+                archive_custom_tag = ArchiveTag(archive=archive, tag=tag, origin=ArchiveTag.ORIGIN_USER)
+                archive_custom_tag.save()
+
         else:
-            archive.custom_tags.clear()
+            archive_custom_tags = ArchiveTag.objects.filter(archive=archive, origin=ArchiveTag.ORIGIN_USER)
+            archive_custom_tags.delete()
         if "possible_matches" in p and p["possible_matches"] != "":
 
             matched_gallery = Gallery.objects.get(pk=p["possible_matches"])
@@ -434,7 +459,12 @@ def archive_enter_reason(request: HttpRequest, pk: int, tool: Optional[str] = No
 
     d = {'archive': archive, 'tool': tool}
 
-    return render(request, "viewer/include/modals/archive_tool_reason.html", d)
+    inlined = request.GET.get("inline", None)
+
+    if inlined:
+        return render(request, "viewer/include/modals/archive_tool_reason.html", d)
+    else:
+        return render(request, "viewer/archive_display_tool.html", d)
 
 
 def archive_download(request: HttpRequest, pk: int) -> HttpResponse:
@@ -497,6 +527,59 @@ def archive_thumb(request: HttpRequest, pk: int) -> HttpResponse:
         return response
     else:
         return HttpResponseRedirect(archive.thumbnail.url)
+
+
+def image_data_list(request: HttpRequest, pk: int) -> HttpResponse:
+    try:
+        archive = Archive.objects.get(pk=pk)
+    except Archive.DoesNotExist:
+        raise Http404("Archive does not exist")
+    if not archive.public and not request.user.is_authenticated:
+        raise Http404("Archive does not exist")
+
+    images = archive.image_set.all()
+
+    paginator = Paginator(images, 400)
+    try:
+        page = int(request.GET.get("page", '1'))
+    except ValueError:
+        page = 1
+
+    try:
+        results: typing.Optional[Page] = paginator.page(page)
+    except (InvalidPage, EmptyPage):
+        results = paginator.page(paginator.num_pages)
+
+    d = {'archive': archive, 'results': results}
+
+    return render(request, "viewer/archive_image_data_list.html", d)
+
+
+@permission_required('viewer.read_archive_change_log')
+def change_log(request: HttpRequest, pk: int) -> HttpResponse:
+    try:
+        archive = Archive.objects.get(pk=pk)
+    except Archive.DoesNotExist:
+        raise Http404("Archive does not exist")
+    if not archive.public and not request.user.is_authenticated:
+        raise Http404("Archive does not exist")
+
+    archive_history = archive.history.order_by('-history_date')
+
+    paginator = Paginator(archive_history, 400)
+    try:
+        page = int(request.GET.get("page", '1'))
+    except ValueError:
+        page = 1
+
+    try:
+        results: typing.Optional[Page] = paginator.page(page)
+    except (InvalidPage, EmptyPage):
+        results = paginator.page(paginator.num_pages)
+
+    d = {'archive': archive, 'results': results}
+
+    return render(request, "viewer/archive_change_log.html", d)
 
 
 @login_required
@@ -720,8 +803,7 @@ def calculate_images_sha1(request: HttpRequest, pk: int) -> HttpResponse:
         raise Http404("Archive does not exist")
 
     logger.info('Calculating images SHA1 for Archive: {}'.format(archive.get_absolute_url()))
-    if archive.image_set.filter(sha1__isnull=False).count() == 0:
-        archive.calculate_sha1_for_images()
+    archive.calculate_sha1_and_data_for_images()
 
     return HttpResponseRedirect(request.META["HTTP_REFERER"])
 
@@ -920,6 +1002,15 @@ def delete_archive(request: HttpRequest, pk: int) -> HttpResponse:
             if "mark-gallery-deleted" in p and archive.gallery:
                 archive.gallery.mark_as_deleted()
                 archive.gallery = None
+
+                event_log(
+                    request.user,
+                    'MARK_DELETE_GALLERY',
+                    reason=user_reason,
+                    content_object=gallery,
+                    result='success',
+                )
+
             elif "delete-gallery" in p and archive.gallery:
                 old_gallery_link = archive.gallery.get_link()
                 archive.gallery.delete()
@@ -950,7 +1041,14 @@ def delete_archive(request: HttpRequest, pk: int) -> HttpResponse:
 
     d = {'archive': archive}
 
-    return render(request, "viewer/include/delete_archive.html", d)
+    inlined = request.GET.get("inline", None)
+
+    if inlined:
+        return render(request, "viewer/include/delete_archive.html", d)
+    else:
+        return render(request, "viewer/archive_display_delete.html", d)
+
+
 
 
 @login_required

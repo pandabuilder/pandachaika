@@ -235,9 +235,10 @@
                       </div>
                     {% endif %}
                     <div>
-                      {% if archive.tag_lists %}
+                      {% with both_tag_lists=archive.regular_and_custom_tag_lists %}
+                      {% if both_tag_lists.0 %}
                         <ul class="tags">
-                          {% for tag_list in archive.tag_lists %}
+                          {% for tag_list in both_tag_lists.0 %}
                             <li>
                               {% if tag_list.0 %}
                                 <label class="label-extended">{{ tag_list.0 }}:</label>
@@ -250,9 +251,9 @@
                             </li>{% endfor %}
                         </ul>
                       {% endif %}
-                      {% if archive.custom_tag_lists %}
+                      {% if both_tag_lists.1 %}
                         <ul class="tags">
-                          {% for tag_list in archive.custom_tag_lists %}
+                          {% for tag_list in both_tag_lists.1 %}
                             <li>
                               {% if tag_list.0 %}
                                 <label class="label-extended">{{ tag_list.0 }}:</label>
@@ -265,6 +266,7 @@
                             </li>{% endfor %}
                         </ul>
                       {% endif %}
+                    {% endwith %}
                     </div>
                     {% if archive.gallery %}<div><label class="label-extended">Source URL:</label>{{ archive.gallery.get_link|urlize_all_rel }}
                     </div>{% else %}<div>No associated gallery</div>{% endif %}

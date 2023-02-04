@@ -18,9 +18,10 @@ __pycache__/
 /yarn.lock
 /src/
 /.mypy_cache/
+/.ruff_cache/
 .coverage
 /cover/
-/venv/
+/venv*/
 .dmypy.json
 /.vscode/
 aux_*.py

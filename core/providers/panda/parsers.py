@@ -557,14 +557,14 @@ class Parser(BaseParser):
                 link = link_from_gid_token_fjord(gallery_data['gid'], gallery_data['token'], False)
                 internal_gallery_data.link = link
 
-                discarded_tags = self.general_utils.discard_by_tag_list(internal_gallery_data.tags)
+                banned_result, banned_reasons = self.general_utils.discard_by_gallery_data(internal_gallery_data.tags, internal_gallery_data.uploader)
 
-                if discarded_tags:
+                if banned_result:
                     if not self.settings.silent_processing:
                         logger.info(
-                            "Skipping gallery link {}, because it's tagged with global discarded tags: {}".format(
+                            "Skipping gallery link {}, discarded reasons: {}".format(
                                 link,
-                                discarded_tags
+                                banned_reasons
                             )
                         )
                     continue

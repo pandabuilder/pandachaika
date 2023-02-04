@@ -39,7 +39,7 @@
         <input id="checkbox2" class="custom-cb" type="checkbox" name="non_public" value="1" {% if request.GET.non_public == '1' %}checked{% endif %}><label for="checkbox2"><span><span></span></span>Private</label>
         <input id="checkbox3" class="custom-cb" type="checkbox" name="public" value="1" {% if request.GET.public == '1' %}checked{% endif %}><label for="checkbox3"><span><span></span></span>Public</label>
         <button type="submit" name="apply" class="btn btn-info">Search</button>
-        <a class="btn btn-light" href="{% url 'viewer:missing-archives' %}">Clear</a>
+        <a class="btn btn-light" href="{% url 'viewer:col-missing-archives' %}">Clear</a>
       </div>
     </form>
     <form action="{{ request.get_full_path }}" method="POST">{% csrf_token %}

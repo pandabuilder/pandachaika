@@ -1,13 +1,15 @@
 from collections.abc import Iterable
-from typing import Any
+from typing import Any, Optional
 
 from django.core.mail import get_connection, EmailMultiAlternatives
 from django.http import HttpRequest
 from django.urls import reverse
 
+from core.base.setup import Settings
 from core.base.utilities import timestamp_or_zero, timestamp_or_null
 
 from viewer.models import Gallery, Archive
+from viewer.utils.actions import event_log
 
 
 def send_mass_html_mail(datatuple, fail_silently=False, user=None, password=None,
@@ -162,3 +164,25 @@ def gallery_search_dict_to_json(request: HttpRequest, galleries: dict[Gallery, l
         ],
     } for gallery, archives in galleries.items()
     ]
+
+
+def galleries_update_metadata(gallery_links, gallery_providers, user, reason, cs):
+    current_settings = Settings(load_from_config=cs.config)
+    if current_settings.workers.web_queue:
+        current_settings.set_update_metadata_options(providers=gallery_providers)  # type: ignore
+
+        def gallery_callback(x: Optional['Gallery'], crawled_url: Optional[str], result: str) -> None:
+            event_log(
+                user,
+                'UPDATE_METADATA',
+                reason=reason,
+                content_object=x,
+                result=result,
+                data=crawled_url
+            )
+
+        current_settings.workers.web_queue.enqueue_args_list(
+            gallery_links,
+            override_options=current_settings,
+            gallery_callback=gallery_callback
+        )

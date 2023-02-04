@@ -44,7 +44,7 @@ class ImageMatcher(Matcher):
                 time.sleep(self.time_to_wait_after_compare)
             galleries_data = self.get_metadata_after_matching()
             if galleries_data:
-                galleries_data = [x for x in galleries_data if not self.general_utils.discard_by_tag_list(x.tags)]
+                galleries_data = [x for x in galleries_data if not self.general_utils.discard_by_gallery_data(x.tags, x.uploader)[0]]
                 # We don't call get_list_closer_gallery_titles_from_dict
                 # because we assume that a image match is correct already
                 if galleries_data:

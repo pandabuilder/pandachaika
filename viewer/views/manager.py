@@ -12,7 +12,7 @@ from django.conf import settings
 
 from core.base.utilities import thread_exists, clamp
 from viewer.forms import GallerySearchForm, ArchiveSearchForm, WantedGallerySearchForm
-from viewer.models import Archive, Gallery, ArchiveMatches, Tag, WantedGallery, GalleryMatch, FoundGallery
+from viewer.models import Archive, Gallery, ArchiveMatches, Tag, WantedGallery, GalleryMatch, FoundGallery, ArchiveTag
 from viewer.utils.actions import event_log
 from viewer.utils.matching import generate_possible_matches_for_archives, \
     create_matches_wanted_galleries_from_providers, create_matches_wanted_galleries_from_providers_internal
@@ -258,7 +258,7 @@ def archive_filesize_different_from_gallery(request: HttpRequest) -> HttpRespons
     return render(request, "viewer/archives_different_filesize.html", d)
 
 
-def missing_archives_for_galleries(request: HttpRequest) -> HttpResponse:
+def public_missing_archives_for_galleries(request: HttpRequest) -> HttpResponse:
     results = Gallery.objects.non_used_galleries(public=True, provider__in=['panda', 'fakku'])  # type: ignore
     d = {'results': results}
     return render(request, "viewer/archives_missing_for_galleries.html", d)
@@ -475,7 +475,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
     )
 
     if 'no-custom-tags' in get:
-        results = results.annotate(num_custom_tags=Count('custom_tags')).filter(num_custom_tags=0)
+        results = results.annotate(num_custom_tags=Count('tags', filter=Q(archivetag__origin=ArchiveTag.ORIGIN_USER))).filter(num_custom_tags=0)
     if 'with-possible-matches' in get:
         results = results.annotate(n_possible_matches=Count('possible_matches')).filter(n_possible_matches__gt=0)
 

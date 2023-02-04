@@ -10,6 +10,7 @@ from typing import Optional
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import permission_required, login_required
+from django.contrib.contenttypes.models import ContentType
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
 from django.db.models import Prefetch, Count, Case, When, QuerySet, Q, F
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect, Http404, QueryDict
@@ -18,14 +19,15 @@ from django.urls import reverse
 
 from core.base.setup import Settings
 from core.base.utilities import thread_exists, clamp, get_schedulers_status
-from viewer.utils.functions import archive_manage_results_to_json
+from viewer.utils.functions import archive_manage_results_to_json, galleries_update_metadata
 from viewer.utils.matching import generate_possible_matches_for_archives
 from viewer.utils.actions import event_log
 from viewer.forms import GallerySearchForm, ArchiveSearchForm, WantedGalleryCreateOrEditForm, \
     ArchiveCreateForm, ArchiveGroupSelectForm, GalleryCreateForm, ArchiveManageEntrySimpleForm, \
-    WantedGalleryColSearchForm, ArchiveManageSearchSimpleForm, EventLogSearchForm, DeletedArchiveSearchForm
+    WantedGalleryColSearchForm, ArchiveManageSearchSimpleForm, EventLogSearchForm, AllGalleriesSearchForm, \
+    EventSearchForm
 from viewer.models import Archive, Gallery, EventLog, ArchiveMatches, Tag, WantedGallery, ArchiveGroup, \
-    ArchiveGroupEntry, GallerySubmitEntry, MonitoredLink, ArchiveRecycleEntry
+    ArchiveGroupEntry, GallerySubmitEntry, MonitoredLink, ArchiveRecycleEntry, ArchiveTag
 from viewer.utils.tags import sort_tags
 from viewer.utils.types import AuthenticatedHttpRequest
 from viewer.views.head import gallery_filter_keys, filter_galleries_simple, \
@@ -150,8 +152,9 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
                     logger.info("User {}: {}".format(request.user.username, message))
                     messages.success(request, message)
 
-                    gallery.reason = user_reason
-                    gallery.save()
+                    if user_reason:
+                        gallery.reason = user_reason
+                        gallery.save()
                     gallery_entry.mark_as_approved(reason=entry_reason, comment=entry_comment)
 
                     event_log(
@@ -347,8 +350,15 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
     if 'has_similar' in get:
         submit_entries = submit_entries.annotate(similar_count=Count('similar_galleries')).filter(similar_count__gt=0)
 
+    submit_entries = submit_entries.annotate(archive_count=Count('gallery__archive'))
+
     if 'has_archives' in get:
-        submit_entries = submit_entries.annotate(archive_count=Count('gallery__archive')).filter(archive_count__gt=0)
+        submit_entries = submit_entries.filter(archive_count__gt=0)
+
+    if 'gallery-public' in get:
+        submit_entries = submit_entries.filter(gallery__public=True)
+
+    submit_entries = submit_entries.annotate(archives_recycled=Count('gallery__archive', filter=Q(gallery__archive__binned=True)))
 
     paginator = Paginator(submit_entries, 50)
     try:
@@ -378,12 +388,12 @@ def filter_by_marks(archives: QuerySet[Archive], params: QueryDict) -> tuple[Que
     if 'origin' in params and params["origin"]:
         archives = archives.filter(manage_entries__origin=params["origin"])
         mark_filters = True
-    priority_to = params.get("priority_to")
-    if priority_to is not None:
+    priority_to = params.get("priority_to", None)
+    if priority_to is not None and priority_to != '':
         archives = archives.filter(manage_entries__mark_priority__lte=float(priority_to))
         mark_filters = True
-    priority_from = params.get("priority_from")
-    if priority_from is not None:
+    priority_from = params.get("priority_from", None)
+    if priority_from is not None and priority_from != '':
         archives = archives.filter(manage_entries__mark_priority__gte=float(priority_from))
         mark_filters = True
     elif mark_filters:
@@ -392,6 +402,8 @@ def filter_by_marks(archives: QuerySet[Archive], params: QueryDict) -> tuple[Que
             num_manage_total=Count('manage_entries'),
             num_manage_below_1=Count('manage_entries', filter=Q(manage_entries__mark_priority__lt=1))
         ).exclude(num_manage_below_1=F('num_manage_total'))
+
+    archives = archives.distinct()
 
     return archives, mark_filters
 
@@ -661,6 +673,17 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                         content_object=archive,
                         result='recycled'
                     )
+        elif 'mark_similar' in p and request.user.is_authenticated and request.user.has_perm('viewer.mark_similar_archive'):
+            for archive in archives:
+                message = 'Creating similar info as marks for Archive: {}'.format(archive.get_absolute_url())
+                if 'reason' in p and p['reason'] != '':
+                    message += ', reason: {}'.format(p['reason'])
+                logger.info("User {}: {}".format(request.user.username, message))
+                if not json_request:
+                    messages.success(request, message)
+
+                archive.create_marks_for_similar_archives()
+
         if json_request:
             return HttpResponse('', content_type="application/json; charset=utf-8")
 
@@ -692,10 +715,16 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
     if 'downloading' in get:
         results = results.filter(crc32='')
 
+    if 'no-custom-tags' in get:
+        results = results.annotate(num_custom_tags=Count('tags', filter=Q(archivetag__origin=ArchiveTag.ORIGIN_USER))).filter(num_custom_tags=0)
+
+    if 'with-custom-tags' in get:
+        results = results.annotate(num_custom_tags=Count('tags', filter=Q(archivetag__origin=ArchiveTag.ORIGIN_USER))).filter(num_custom_tags__gt=0)
+
     results = results.select_related('gallery', 'user')
 
     if json_request:
-        results = results.prefetch_related('tags', 'custom_tags')
+        results = results.prefetch_related('tags')
 
     if request.user.has_perm('viewer.view_marks'):
         results = results.prefetch_related('manage_entries')
@@ -784,61 +813,8 @@ def my_event_log(request: AuthenticatedHttpRequest) -> HttpResponse:
     return render(request, "viewer/collaborators/event_log.html", d)
 
 
-@permission_required('viewer.read_delete_logs')
-def archive_delete_log(request: HttpRequest) -> HttpResponse:
-    get = request.GET
-
-    try:
-        page = int(get.get("page", '1'))
-    except ValueError:
-        page = 1
-
-    results = EventLog.objects.filter(action="DELETE_ARCHIVE").select_related('user').prefetch_related('content_object')
-
-    data_field = get.get("data_field", '')
-    title = get.get("title", '')
-    tags = get.get("tags", '')
-
-    if 'clear' in get:
-        form = DeletedArchiveSearchForm()
-    else:
-        form = DeletedArchiveSearchForm(initial={'data_field': data_field, 'title': title, 'tags': tags})
-
-    if data_field:
-        results = results.filter(data__contains=data_field)
-
-    if title or tags:
-        params = {
-        }
-
-        for k, v in get.items():
-            if isinstance(v, str):
-                params[k] = v
-
-        for k in gallery_filter_keys:
-            if k not in params:
-                params[k] = ''
-
-        gallery_results = filter_galleries_simple(params)
-
-        results = results.filter(object_id__in=gallery_results)
-
-    paginator = Paginator(results, 100)
-    try:
-        results_page = paginator.page(page)
-    except (InvalidPage, EmptyPage):
-        results_page = paginator.page(paginator.num_pages)
-
-    d = {
-        'results': results_page,
-        'title': 'Archive Delete Log',
-        'form': form,
-    }
-    return render(request, "viewer/collaborators/archive_delete_logs.html", d)
-
-
-@permission_required('viewer.read_all_logs')
-def users_event_log(request: HttpRequest) -> HttpResponse:
+@permission_required('viewer.read_activity_logs')
+def activity_event_log(request: HttpRequest) -> HttpResponse:
     get = request.GET
 
     try:
@@ -849,27 +825,85 @@ def users_event_log(request: HttpRequest) -> HttpResponse:
     selected_actions = get.getlist("actions")
 
     data_field = get.get("data_field", '')
+    title = get.get("title", '')
+    tags = get.get("tags", '')
+    filter_galleries = get.get("filter-galleries", '')
+    filter_archives = get.get("filter-archives", '')
+    event_date_from = get.get("event_date_from", '')
+    event_date_to = get.get("event_date_to", '')
+    if request.user.is_staff or request.user.has_perm('viewer.read_all_logs'):
+        show_users = get.get("show-users", '')
+    else:
+        show_users = ''
 
     if 'clear' in get:
-        form = EventLogSearchForm()
+        form = AllGalleriesSearchForm()
+        form_event = EventSearchForm()
     else:
-        form = EventLogSearchForm(initial={'data_field': data_field})
+        form = AllGalleriesSearchForm(initial={'title': title, 'tags': tags})
+        form_event = EventSearchForm(
+            initial={'data_field': data_field, 'event_date_from': event_date_from, 'event_date_to': event_date_to}
+        )
 
     if selected_actions:
-        results = EventLog.objects.filter(action__in=selected_actions).select_related('user').prefetch_related('content_object')
+        results = EventLog.objects.filter(action__in=selected_actions).prefetch_related('content_object', 'content_type')
     else:
-        results = EventLog.objects.all().select_related('user').prefetch_related('content_object')
+        results = EventLog.objects.all().prefetch_related('content_object', 'content_type')
+
+    if show_users:
+        results = results.select_related('user')
+
+    if event_date_from:
+        results = results.filter(create_date__gte=event_date_from)
+    if event_date_to:
+        results = results.filter(create_date__lte=event_date_to)
 
     if data_field:
         results = results.filter(data__contains=data_field)
 
-    actions = EventLog.objects.order_by().values_list('action', flat=True).distinct()
+    if title or tags and (filter_galleries or filter_archives):
 
-    # archive_type = ContentType.objects.get_for_model(Archive)
-    # current_archives = EventLog.objects.filter(
-    #     content_type=archive_type, tag='hash-compare',
-    #     name=algorithm
-    # )
+        total_filters = Q()
+
+        if filter_galleries:
+            params = {
+            }
+
+            for k, v in get.items():
+                if isinstance(v, str):
+                    params[k] = v
+
+            for k in gallery_filter_keys:
+                if k not in params:
+                    params[k] = ''
+
+            gallery_results = filter_galleries_simple(params)
+
+            gallery_type = ContentType.objects.get_for_model(Gallery)
+            total_filters.add(Q(object_id__in=gallery_results, content_type=gallery_type), Q.OR)
+
+        if filter_archives:
+            params = {
+                'sort': 'create_date',
+                'asc_desc': 'desc',
+            }
+
+            for k, v in get.items():
+                if isinstance(v, str):
+                    params[k] = v
+
+            for k in archive_filter_keys:
+                if k not in params:
+                    params[k] = ''
+
+            archive_results = filter_archives_simple(params, request.user.is_authenticated, show_binned=True)
+
+            archive_type = ContentType.objects.get_for_model(Archive)
+            total_filters.add(Q(object_id__in=archive_results, content_type=archive_type), Q.OR)
+
+        results = results.filter(total_filters)
+
+    actions = EventLog.objects.order_by('action').values_list('action', flat=True).distinct()
 
     paginator = Paginator(results, 100)
     try:
@@ -881,8 +915,10 @@ def users_event_log(request: HttpRequest) -> HttpResponse:
         'results': results_page,
         'actions': actions,
         'form': form,
+        'form_event': form_event,
+        'show_users': show_users
     }
-    return render(request, "viewer/collaborators/user_event_log.html", d)
+    return render(request, "viewer/collaborators/activity_event_log.html", d)
 
 
 @permission_required('viewer.crawler_adder')
@@ -1701,26 +1737,7 @@ def missing_archives_for_galleries(request: HttpRequest) -> HttpResponse:
             gallery_links = [x.get_link() for x in results_gallery]
             gallery_providers = list(results_gallery.values_list('provider', flat=True).distinct())
 
-            current_settings = Settings(load_from_config=crawler_settings.config)
-
-            if current_settings.workers.web_queue:
-                current_settings.set_update_metadata_options(providers=gallery_providers)  # type: ignore
-
-                def gallery_callback(x: Optional['Gallery'], crawled_url: Optional[str], result: str) -> None:
-                    event_log(
-                        request.user,
-                        'UPDATE_METADATA',
-                        reason=reason,
-                        content_object=x,
-                        result=result,
-                        data=crawled_url
-                    )
-
-                current_settings.workers.web_queue.enqueue_args_list(
-                    gallery_links,
-                    override_options=current_settings,
-                    gallery_callback=gallery_callback
-                )
+            galleries_update_metadata(gallery_links, gallery_providers, request.user, reason, crawler_settings)
 
     providers = Gallery.objects.all().values_list('provider', flat=True).distinct()
 
@@ -1907,7 +1924,7 @@ def archives_similar_by_fields(request: HttpRequest) -> HttpResponse:
     results = filter_archives_simple(params, request.user.is_authenticated)
 
     if 'no-custom-tags' in get:
-        results = results.annotate(num_custom_tags=Count('custom_tags')).filter(num_custom_tags=0)
+        results = results.annotate(num_custom_tags=Count('tags', filter=Q(archivetag__origin=ArchiveTag.ORIGIN_USER))).filter(num_custom_tags=0)
 
     by_size_count = {}
     by_crc32 = {}

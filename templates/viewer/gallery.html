@@ -20,7 +20,13 @@
             {% if user.is_staff %}<li><a href="{% url 'admin:viewer_gallery_change' gallery.pk %}">admin</a></li>{% endif %}
             {% if user.is_staff %}<li><a href="{% url 'viewer:gallery-tool' gallery.pk 'toggle-hidden' %}">toggle hidden</a></li>{% endif %}
             {% if perms.viewer.publish_gallery %}<li><a href="{% url 'viewer:gallery-tool' gallery.pk 'toggle-public' %}">toggle public</a></li>{% endif %}
-            {% if perms.viewer.mark_delete_gallery %}<li><a class="open-modal" href="{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-deleted' %}" data-popup-url="{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-deleted' %}">mark deleted</a></li>{% endif %}
+            {% if perms.viewer.mark_delete_gallery %}
+                {% if gallery.is_normal %}
+                    <li><a class="open-modal" href="{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-deleted' %}" data-popup-url="{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-deleted' %}?inline=1">mark deleted</a></li>
+                {% else %}
+                    <li><a class="open-modal" href="{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-normal' %}" data-popup-url="{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-normal' %}?inline=1">mark normal</a></li>
+                {% endif %}
+            {% endif %}
             {% if perms.viewer.update_metadata %}<li><a href="{% url 'viewer:gallery-tool' gallery.pk 'recall-api' %}">recall api</a></li>{% endif %}
             {% if perms.viewer.update_metadata %}<li><a href="{% url 'viewer:gallery-tool' gallery.pk 'refetch-thumbnail' %}">refetch thumbnail</a></li>{% endif %}
             {% if perms.viewer.download_gallery %}<li><a href="{% url 'viewer:gallery-tool' gallery.pk 'download' %}">default download</a></li>{% endif %}
@@ -156,8 +162,6 @@
           <th>Hidden</th>
           <td>{{ gallery.hidden|yesno }}</td>
         </tr>
-        {% endif %}
-        {% if user.is_staff %}
         <tr>
           <th>Download type</th>
           <td>{{ gallery.dl_type }}</td>
@@ -166,6 +170,9 @@
       </table>
     </li>
     <a class="btn btn-light" href="{% url 'viewer:api' %}?gallery={{ gallery.pk }}">JSON info</a>
+    {% if perms.viewer.read_gallery_change_log %}
+        <a class="btn btn-light" href="{% url 'viewer:gallery-change-log' gallery.pk %}">Change Log</a>
+    {% endif %}
     {% if gallery.thumbnail.name %}
       <a class="btn btn-light img-preview" data-image-url="{{ gallery.thumbnail.url }}" rel="popover">Hover for cover</a>
     {% endif %}

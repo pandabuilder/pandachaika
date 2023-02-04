@@ -16,3 +16,5 @@ TODO: Accept without downloading SubmitEntries that are added outside the submit
 
 TODO: Option to precalculate img hash (perceptual) to compare when matching archives with gallery templates. Could be a generic img hash table, that could link to Archive, or Gallery.
 TODO: Refactor twitter provider, to allow more easily to plugin other handles, like: @wani_kairakuten
+
+TODO: Add warning when binning Archive that is public.

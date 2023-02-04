@@ -1,18 +1,30 @@
 {% load viewer_extras %}
 {% load static %}
-<div class="gallery cover-boder acc-{{ match.match_accuracy|color_percent:1 }}">
-  <a class="cover" href="{% url 'viewer:gallery' match.gallery.pk %}">
-    <div class="cover-title">{{ match.gallery.best_title }}</div>
+<div class="gallery cover-border">
+  <a class="cover" href="{% url 'viewer:gallery' gallery.pk %}">
+    <div class="cover-title">{{ gallery.best_title }}</div>
     {% with thumbnail_details=archive.get_available_thumbnail_plus_size %}
-    <img class="image-container mx-auto" alt="" title="{{ match.gallery.best_title }}"
-        width="{{ thumbnail_details.2 }}" height="{{ thumbnail_details.1 }}" src="{% if match.gallery.thumbnail.name %}{{ match.gallery.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}"/>
+    <img class="image-container mx-auto" alt="" title="{{ gallery.best_title }}"
+        width="{{ thumbnail_details.2 }}" height="{{ thumbnail_details.1 }}" src="{% if gallery.thumbnail.name %}{{ gallery.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}"/>
     {% endwith %}
   </a>
-    <a class="btn btn-info btn-sm" href="{% url 'viewer:archive-update-tool-id' archive.pk 'select-as-match' match.gallery.pk %}">Select as match</a>
-  <div class="caption">
-    {{ match.gallery.filecount }} | {{ match.gallery.filesize|filesizeformat }} | {{ match.match_type }} | <span class="acc-{{ match.match_accuracy|color_percent:1 }}">{{ match.match_accuracy|floatformat:3 }}</span> | {{ match.gallery.archive_set.all|yesno }} | <a class="tag-preview-g" tabindex="0" role="button" data-toggle="popover" data-trigger="focus" data-pk="{{ match.gallery.pk }}">Tags</a> | <a href="{% url 'viewer:api' %}?gallery={{ match.gallery.pk }}">JSON</a>
+    <a class="btn btn-info btn-sm" href="{% url 'viewer:archive-update-tool-id' archive.pk 'select-as-match' gallery.pk %}">Select as match</a>
+  <div>
+      <span title="Image count">{{ gallery.filecount }}</span> | <span title="Total image size">{{ gallery.filesize|filesizeformat }}</span> | <span title="Gallery is linked to another archive directly?">{{ gallery.archive_set.all|yesno }}</span> | <a class="tag-preview-g" tabindex="0" role="button" data-toggle="popover" data-trigger="focus" data-pk="{{ gallery.pk }}" title="Click to display tags">Tags</a> | <a href="{% url 'viewer:api' %}?gallery={{ gallery.pk }}">JSON</a>
+      <div>
+        {% for match in gallery_matches %}
+            <div class="d-flex justify-content-between acc-{{ match.match_accuracy|color_percent:1 }}">
+            <div title="Match type">
+                {{ match.match_type }}
+            </div>
+            <div title="Accuracy">
+                {{ match.match_accuracy|floatformat:3 }}
+            </div>
+            </div>
+        {% endfor %}
+      </div>
   </div>
-    <div>{{ match.gallery.artist_tags.0.name }}</div>
-    <div>{{ match.gallery.get_link|urlize_all_rel }}</div>
-    <div>{{ match.gallery.posted|date:"DATETIME_FORMAT" }}</div>
+    <div>{{ gallery.artist_tags.0.name }}</div>
+    <div>{{ gallery.get_link|urlize_all_rel }}</div>
+    <div>{{ gallery.posted|date:"DATETIME_FORMAT" }}</div>
 </div>

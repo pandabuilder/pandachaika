@@ -271,7 +271,7 @@ def json_search(request: HttpRequest) -> HttpResponse:
             return HttpResponse(response, content_type="application/json; charset=utf-8")
         # Get fields from several archives by one of it's images sha1 value.
         elif 'sha1' in data:
-            archives = Archive.objects.filter(image__sha1=data['sha1']).select_related('gallery').prefetch_related('tags', 'custom_tags')
+            archives = Archive.objects.filter(image__sha1=data['sha1']).select_related('gallery').prefetch_related('tags')
 
             if not request.user.is_authenticated:
                 archives = archives.filter(public=True)
@@ -321,7 +321,7 @@ def json_search(request: HttpRequest) -> HttpResponse:
 
             results = filter_archives_simple(
                 params, authenticated=request.user.is_authenticated
-            ).prefetch_related('tags', 'custom_tags')
+            ).prefetch_related('tags')
 
             if not request.user.is_authenticated:
                 results = results.filter(public=True).order_by('-public_date')
@@ -339,9 +339,9 @@ def json_search(request: HttpRequest) -> HttpResponse:
         elif 'q' in data:
             q_args = data['q']
             if not request.user.is_authenticated:
-                results = simple_archive_filter(q_args, public=True).prefetch_related('tags', 'custom_tags')
+                results = simple_archive_filter(q_args, public=True).prefetch_related('tags')
             else:
-                results = simple_archive_filter(q_args, public=False).prefetch_related('tags', 'custom_tags')
+                results = simple_archive_filter(q_args, public=False).prefetch_related('tags')
             response = json.dumps(
                 [{
                     'id': o.pk,
@@ -787,7 +787,6 @@ def json_parser(request: HttpRequest) -> HttpResponse:
 
                                     # Preserve old archive extra data
                                     old_user_favorites = UserArchivePrefs.objects.filter(archive=parent_archive).values('user', 'favorite_group')
-                                    old_custom_tags = parent_archive.custom_tags.all()
                                     old_extracted = parent_archive.extracted
 
                                     parent_archive.gallery.mark_as_deleted()
@@ -809,9 +808,6 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                                                     user=old_user_favorite['user'],
                                                     favorite_group=old_user_favorite['favorite_group']
                                                 )
-
-                                            if old_custom_tags:
-                                                x.custom_tags.set(old_custom_tags)
 
                                             if old_extracted and not x.extracted and x.crc32:
                                                 x.extract()
@@ -1109,13 +1105,12 @@ def simple_archive_filter(args: str, public: bool = True) -> 'QuerySet[Archive]'
         if tag.startswith("-"):
             if tag_name != '' and tag_scope != '':
                 tag_query = (
-                    (Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope))
-                    | (Q(custom_tags__name__contains=tag_name) & Q(custom_tags__scope__contains=tag_scope))
+                    Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)
                 )
             elif tag_name != '':
-                tag_query = (Q(tags__name__contains=tag_name) | Q(custom_tags__name__contains=tag_name))
+                tag_query = Q(tags__name__contains=tag_name)
             else:
-                tag_query = (Q(tags__scope__contains=tag_scope) | Q(custom_tags__scope__contains=tag_scope))
+                tag_query = Q(tags__scope__contains=tag_scope)
 
             results = results.exclude(
                 tag_query
@@ -1123,13 +1118,12 @@ def simple_archive_filter(args: str, public: bool = True) -> 'QuerySet[Archive]'
         elif tag.startswith("^"):
             if tag_name != '' and tag_scope != '':
                 tag_query = (
-                    (Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope))
-                    | (Q(custom_tags__name__exact=tag_name) & Q(custom_tags__scope__exact=tag_scope))
+                    Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope)
                 )
             elif tag_name != '':
-                tag_query = (Q(tags__name__exact=tag_name) | Q(custom_tags__name__exact=tag_name))
+                tag_query = Q(tags__name__exact=tag_name)
             else:
-                tag_query = (Q(tags__scope__exact=tag_scope) | Q(custom_tags__scope__exact=tag_scope))
+                tag_query = Q(tags__scope__exact=tag_scope)
 
             results = results.filter(
                 tag_query
@@ -1137,13 +1131,12 @@ def simple_archive_filter(args: str, public: bool = True) -> 'QuerySet[Archive]'
         else:
             if tag_name != '' and tag_scope != '':
                 tag_query = (
-                    (Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope))
-                    | (Q(custom_tags__name__contains=tag_name) & Q(custom_tags__scope__contains=tag_scope))
+                    Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)
                 )
             elif tag_name != '':
-                tag_query = (Q(tags__name__contains=tag_name) | Q(custom_tags__name__contains=tag_name))
+                tag_query = Q(tags__name__contains=tag_name)
             else:
-                tag_query = (Q(tags__scope__contains=tag_scope) | Q(custom_tags__scope__contains=tag_scope))
+                tag_query = Q(tags__scope__contains=tag_scope)
 
             results = results.filter(
                 tag_query
@@ -1276,6 +1269,6 @@ def filter_galleries_no_request(filter_args: Union[dict[str, Any], QueryDict]) -
                     tag_query
                 )
 
-    results = results.distinct()
+    # results = results.distinct()
 
     return results

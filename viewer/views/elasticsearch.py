@@ -1,4 +1,5 @@
 import json
+import logging
 from typing import Any
 
 from urllib.parse import urlencode
@@ -6,6 +7,7 @@ from copy import deepcopy
 from datetime import datetime
 
 from django.conf import settings
+from django.contrib import messages
 from django.http import HttpResponse, QueryDict, HttpRequest
 from django.views.generic.base import TemplateView
 from django.views import View
@@ -13,17 +15,19 @@ from django.views import View
 
 from math import ceil
 
-from elasticsearch_dsl.response import AggResponse
-
 from core.base.types import DataDict
+from viewer.utils.functions import galleries_update_metadata
 
 es_client = settings.ES_CLIENT
 max_result_window = settings.MAX_RESULT_WINDOW
 es_index_name = settings.ES_INDEX_NAME
 
+logger = logging.getLogger(__name__)
+
 if es_client:
     import elasticsearch
     from elasticsearch_dsl import Search, Q
+    from elasticsearch_dsl.response import AggResponse
 
 
 ES_SKIP_FIELDS = ('page', 'q', 'order', 'sort', 'metrics', 'show_url', 'count', 'no_agg')
@@ -102,15 +106,7 @@ class ESHomePageView(TemplateView):
         context = super(ESHomePageView, self).get_context_data(**kwargs)
 
         if count_result > 0:
-            es_pagination = self.gen_pagination(self.request, count_result, per_page)
-
-            if es_pagination['search']['to'] > max_result_window:
-                es_pagination['search']['from'] = max_result_window - per_page
-                es_pagination['search']['to'] = max_result_window
-                message = "Refine your search, can't go that far back (limit: {}).".format(max_result_window)
-
             # Sort
-
             sort = self.request.GET.get('sort', '')
             order = self.request.GET.get('order', 'desc')
 
@@ -124,25 +120,53 @@ class ESHomePageView(TemplateView):
 
             s = s.sort(sort)
 
-            # Pagination
-            s = s[es_pagination['search']['from']:es_pagination['search']['to']]
+            if 'recall_api' in self.request.POST and self.request.user.has_perm('viewer.update_metadata'):
 
-            search_result = s.execute()
+                if not self.request.GET.get("q", ''):
+                    return {'message': 'You should use a filter term when queueing galleries for update.', 'page_title': self.page_title}
 
-            context['hits'] = [
-                self.convert_hit_to_template(c) for c in search_result
-            ]
+                s = s[0:max_result_window]
 
-            context['results'] = {
-                'from': es_pagination['search']['from'] + 1,
-                'to': es_pagination['search']['from'] + len(context['hits'])
-            }
+                search_result = s.execute()
 
-            context['aggregations'] = self.prepare_facet_data(
-                search_result.aggregations,
-                self.request.GET
-            )
-            context['paginator'] = es_pagination
+                results_gallery = [
+                    self.convert_hit_to_template(c) for c in search_result
+                ]
+
+                gallery_links = [x['source_url'] for x in results_gallery]
+                gallery_providers = list(set([x['provider'] for x in results_gallery]))
+
+                context['count_result'] = count_result
+                context['gallery_links'] = gallery_links
+                context['gallery_providers'] = gallery_providers
+
+            else:
+                es_pagination = self.gen_pagination(self.request, count_result, per_page)
+
+                if es_pagination['search']['to'] > max_result_window:
+                    es_pagination['search']['from'] = max_result_window - per_page
+                    es_pagination['search']['to'] = max_result_window
+                    message = "Refine your search, can't go that far back (limit: {}).".format(max_result_window)
+
+                # Pagination
+                s = s[es_pagination['search']['from']:es_pagination['search']['to']]
+
+                search_result = s.execute()
+
+                context['hits'] = [
+                    self.convert_hit_to_template(c) for c in search_result
+                ]
+
+                context['results'] = {
+                    'from': es_pagination['search']['from'] + 1,
+                    'to': es_pagination['search']['from'] + len(context['hits'])
+                }
+
+                context['aggregations'] = self.prepare_facet_data(
+                    search_result.aggregations,
+                    self.request.GET
+                )
+                context['paginator'] = es_pagination
 
         context['q'] = self.request.GET.get("q", '')
         context['sort'] = self.request.GET.get("sort", '')
@@ -192,7 +216,7 @@ class ESHomePageView(TemplateView):
             url_args[field_name] = field_value
         return url_args, is_active
 
-    def prepare_facet_data(self, aggregations: AggResponse, get_args: QueryDict) -> dict[str, list[dict[str, str]]]:
+    def prepare_facet_data(self, aggregations: 'AggResponse', get_args: QueryDict) -> dict[str, list[dict[str, str]]]:
         resp: DataDict = {}
         for area, agg in aggregations.to_dict().items():
             resp[area] = []
@@ -312,6 +336,30 @@ class ESHomeGalleryPageView(ESHomePageView):
         else:
             hit.posted_date_c = None
         return hit
+
+    def post(self, request, *args, **kwargs):
+        context = self.get_context_data(**kwargs)
+
+        if 'recall_api' in request.POST and request.user.has_perm('viewer.update_metadata'):
+            if 'count_result' in context:
+                p = request.POST
+
+                message = 'Recalling API for {} galleries'.format(context['count_result'])
+                logger.info(message)
+                messages.success(request, message)
+
+                if 'reason' in p and p['reason'] != '':
+                    reason = p['reason']
+                else:
+                    reason = ''
+
+                galleries_update_metadata(
+                    context['gallery_links'], context['gallery_providers'], request.user, reason, settings.CRAWLER_SETTINGS
+                )
+            else:
+                context['message'] = 'No galleries updated.'
+
+        return self.render_to_response(context)
 
 
 # TODO: This method doesn't seem to be returning (response object)
@@ -596,7 +644,7 @@ class ESArchiveJSONView(View):
             url_args[field_name] = field_value
         return url_args, is_active
 
-    def prepare_facet_data(self, aggregations: AggResponse, get_args: QueryDict) -> dict[str, list[dict[str, str]]]:
+    def prepare_facet_data(self, aggregations: 'AggResponse', get_args: QueryDict) -> dict[str, list[dict[str, str]]]:
         resp: DataDict = {}
         for area, agg in aggregations.to_dict().items():
             resp[area] = []

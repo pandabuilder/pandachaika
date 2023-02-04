@@ -324,6 +324,18 @@ def gallery_details(request: HttpRequest, pk: int, tool: Optional[str] = None) -
 
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
 
+    if request.user.has_perm('viewer.mark_delete_gallery') and tool == "mark-normal":
+        gallery.mark_as_normal()
+
+        event_log(
+            request.user,
+            'MARK_NORMAL_GALLERY',
+            content_object=gallery,
+            result='success'
+        )
+
+        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+
     if request.user.has_perm('viewer.update_metadata') and tool == "recall-api":
 
         current_settings = Settings(load_from_config=crawler_settings.config)
@@ -472,6 +484,24 @@ def gallery_enter_reason(request: HttpRequest, pk: int, tool: Optional[str] = No
 
                 return HttpResponseRedirect(gallery.get_absolute_url())
 
+            if request.user.has_perm('viewer.mark_delete_gallery') and tool == "mark-normal":
+                gallery.mark_as_normal()
+
+                event_log(
+                    request.user,
+                    'MARK_NORMAL_GALLERY',
+                    content_object=gallery,
+                    result='success',
+                    reason=user_reason
+                )
+
+                message = "Gallery: {} will be marked as normal, reason: {}".format(gallery.get_absolute_url(), user_reason)
+
+                logger.info("User {}: {}".format(request.user.username, message))
+                messages.success(request, message)
+
+                return HttpResponseRedirect(gallery.get_absolute_url())
+
             if request.user.has_perm('viewer.update_metadata') and tool == "recall-api":
 
                 current_settings = Settings(load_from_config=crawler_settings.config)
@@ -529,7 +559,12 @@ def gallery_enter_reason(request: HttpRequest, pk: int, tool: Optional[str] = No
 
     d = {'gallery': gallery, 'tool': tool}
 
-    return render(request, "viewer/include/modals/gallery_tool_reason.html", d)
+    inlined = request.GET.get("inline", None)
+
+    if inlined:
+        return render(request, "viewer/include/modals/gallery_tool_reason.html", d)
+    else:
+        return render(request, "viewer/gallery_display_tool.html", d)
 
 
 def gallery_thumb(request: HttpRequest, pk: int) -> HttpResponse:
@@ -689,7 +724,7 @@ def filter_galleries(request: HttpRequest, session_filters: dict[str, str], requ
 
     # sort and filter results by parameters
     order = "posted"
-    needs_distinct = False
+    # needs_distinct = False
     if session_filters["sort"]:
         order = session_filters["sort"]
     if session_filters["asc_desc"] == "desc":
@@ -747,7 +782,7 @@ def filter_galleries(request: HttpRequest, session_filters: dict[str, str], requ
         results = results.eligible_for_use()  # type: ignore
 
     if request_filters["tags"]:
-        needs_distinct = True
+        # needs_distinct = True
         tags = request_filters["tags"].split(',')
         for tag in tags:
             tag = tag.strip().replace(" ", "_")
@@ -793,8 +828,8 @@ def filter_galleries(request: HttpRequest, session_filters: dict[str, str], requ
                     tag_query
                 )
 
-    if needs_distinct:
-        results = results.distinct()
+    # if needs_distinct:
+    #     results = results.distinct()
 
     # Remove fields that are admin related, not public facing
     if not json_request:
@@ -900,9 +935,9 @@ def search(request: HttpRequest, mode: str = 'none', tag: Optional[str] = None) 
         return HttpResponse("\n".join(links), content_type="text/plain; charset=utf-8")
 
     if json_request:
-        results = results.distinct().select_related('gallery'). \
+        results = results.select_related('gallery'). \
             prefetch_related(
-            'tags').prefetch_related('custom_tags').defer('gallery__comment')
+            'tags').defer('gallery__comment')
 
     # make paginator
     if parameters['view'] == 'list' or json_request:
@@ -951,7 +986,6 @@ def filter_archives(request: HttpRequest, session_filters: dict[str, str], reque
     """Filter results through parameters
     and return results list.
     """
-    needs_distinct = False
 
     if not request.user.is_authenticated and not force_private:
         results: QuerySet[Archive] = Archive.objects.filter(public=True)
@@ -989,10 +1023,8 @@ def filter_archives(request: HttpRequest, session_filters: dict[str, str], reque
         results = results.filter(zipped__icontains=request_filters["filename"])
     if request_filters["rating_from"]:
         results = results.filter(gallery__rating__gte=float(request_filters["rating_from"]))
-        needs_distinct = True
     if request_filters["rating_to"]:
         results = results.filter(gallery__rating__lte=float(request_filters["rating_to"]))
-        needs_distinct = True
     if request_filters["filecount_from"]:
         results = results.filter(filecount__gte=int(float(request_filters["filecount_from"])))
     if request_filters["filecount_to"]:
@@ -1013,13 +1045,10 @@ def filter_archives(request: HttpRequest, session_filters: dict[str, str], reque
         results = results.filter(reason__icontains=request_filters["reason"])
     if request_filters["uploader"]:
         results = results.filter(gallery__uploader__icontains=request_filters["uploader"])
-        needs_distinct = True
     if request_filters["category"]:
         results = results.filter(gallery__category__icontains=request_filters["category"])
-        needs_distinct = True
 
     if request_filters["tags"]:
-        needs_distinct = True
         tags = request_filters["tags"].split(',')
         for tag in tags:
             tag = tag.strip().replace(" ", "_")
@@ -1034,13 +1063,16 @@ def filter_archives(request: HttpRequest, session_filters: dict[str, str], reque
             if tag.startswith("-"):
                 if tag_name != '' and tag_scope != '':
                     tag_query = (
-                        (Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope))
-                        | (Q(custom_tags__name__contains=tag_name) & Q(custom_tags__scope__contains=tag_scope))
+                        Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)
                     )
                 elif tag_name != '':
-                    tag_query = (Q(tags__name__contains=tag_name) | Q(custom_tags__name__contains=tag_name))
+                    tag_query = (
+                        Q(tags__name__contains=tag_name)
+                    )
                 else:
-                    tag_query = (Q(tags__scope__contains=tag_scope) | Q(custom_tags__scope__contains=tag_scope))
+                    tag_query = (
+                        Q(tags__scope__contains=tag_scope)
+                    )
 
                 results = results.exclude(
                     tag_query
@@ -1048,13 +1080,16 @@ def filter_archives(request: HttpRequest, session_filters: dict[str, str], reque
             elif tag.startswith("^"):
                 if tag_name != '' and tag_scope != '':
                     tag_query = (
-                        (Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope))
-                        | (Q(custom_tags__name__exact=tag_name) & Q(custom_tags__scope__exact=tag_scope))
+                        Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope)
                     )
                 elif tag_name != '':
-                    tag_query = (Q(tags__name__exact=tag_name) | Q(custom_tags__name__exact=tag_name))
+                    tag_query = (
+                        Q(tags__name__exact=tag_name)
+                    )
                 else:
-                    tag_query = (Q(tags__scope__exact=tag_scope) | Q(custom_tags__scope__exact=tag_scope))
+                    tag_query = (
+                        Q(tags__scope__exact=tag_scope)
+                    )
 
                 results = results.filter(
                     tag_query
@@ -1062,14 +1097,16 @@ def filter_archives(request: HttpRequest, session_filters: dict[str, str], reque
             else:
                 if tag_name != '' and tag_scope != '':
                     tag_query = (
-                        (Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope))
-                        # | (Q(custom_tags__name__contains=tag_name) & Q(custom_tags__scope__contains=tag_scope))
-                        # This filter is disabled for performances reasons, since it's the most used query.
+                        Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)
                     )
                 elif tag_name != '':
-                    tag_query = (Q(tags__name__contains=tag_name) | Q(custom_tags__name__contains=tag_name))
+                    tag_query = (
+                            Q(tags__name__contains=tag_name)
+                    )
                 else:
-                    tag_query = (Q(tags__scope__contains=tag_scope) | Q(custom_tags__scope__contains=tag_scope))
+                    tag_query = (
+                            Q(tags__scope__contains=tag_scope)
+                    )
 
                 results = results.filter(
                     tag_query
@@ -1097,21 +1134,13 @@ def filter_archives(request: HttpRequest, session_filters: dict[str, str], reque
 
     if session_filters["view"] == "list":
         if sorting_field in ('rating', 'posted', 'last_modified'):
-            if needs_distinct:
-                results = results.distinct().select_related('gallery')
-            else:
-                results = results.select_related('gallery')
-        else:
-            if needs_distinct:
-                results = results.distinct()
+            results = results.select_related('gallery')
     elif session_filters["view"] == "cover":
-        results = results.distinct()
+        pass
     elif session_filters["view"] == "extended":
-        results = results.distinct().select_related('gallery').\
-            prefetch_related(
-                'tags').prefetch_related('custom_tags').defer('gallery__comment')
-    else:
-        results = results.distinct()
+        results = results.select_related('gallery')\
+            .prefetch_related('archivetag_set__tag')\
+            .defer('gallery__comment', 'gallery__provider_metadata')
 
     results = results.defer("details", "origin")
 
@@ -1179,15 +1208,12 @@ def quick_search(request: HttpRequest, parameters: DataDict, display_parameters:
         results = results.filter(public=True)
 
     if parameters["view"] == "list":
-        results = results.distinct().select_related('gallery')
+        results = results.select_related('gallery')
     elif parameters["view"] == "cover":
-        results = results.distinct()
+        pass
     elif parameters["view"] == "extended":
-        results = results.distinct().select_related('gallery').\
-            prefetch_related(
-                'tags').prefetch_related('custom_tags')
-    else:
-        results = results.distinct()
+        results = results.select_related('gallery').\
+            prefetch_related('tags')
 
     results = results.defer("details")
 
@@ -1538,11 +1564,11 @@ def public_stats(request: HttpRequest) -> HttpResponse:
             Avg('filesize'), Max('filesize'), Min('filesize'), Sum('filesize'), Avg('filecount'), Sum('filecount')),
         "gallery": Gallery.objects.filter(public=True).filter(filesize__gt=0).aggregate(
             Avg('filesize'), Max('filesize'), Min('filesize'), Sum('filesize'), Avg('filecount'), Sum('filecount')),
-        "n_tags": Tag.objects.filter(gallery_tags__public=True).distinct().count(),
-        "top_10_tags": Tag.objects.filter(gallery_tags__public=True).distinct().annotate(
-            num_archive=Count('gallery_tags')).order_by('-num_archive')[:10],
-        "top_10_artist_tags": Tag.objects.filter(scope='artist', gallery_tags__public=True).distinct().annotate(
-            num_archive=Count('gallery_tags')).order_by('-num_archive')[:10]
+        "n_tags": Tag.objects.filter(archive_tags__public=True).distinct().count(),
+        "top_10_tags": Tag.objects.filter(archive_tags__public=True).distinct().annotate(
+            num_archive=Count('archive_tags')).order_by('-num_archive')[:10],
+        "top_10_artist_tags": Tag.objects.filter(scope='artist', archive_tags__public=True).distinct().annotate(
+            num_archive=Count('archive_tags')).order_by('-num_archive')[:10]
     }
 
     # Per category
@@ -1746,13 +1772,12 @@ def filter_archives_simple(params: dict[str, Any], authenticated=False, show_bin
             if tag.startswith("-"):
                 if tag_name != '' and tag_scope != '':
                     tag_query = (
-                        (Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope))
-                        | (Q(custom_tags__name__contains=tag_name) & Q(custom_tags__scope__contains=tag_scope))
+                        Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)
                     )
                 elif tag_name != '':
-                    tag_query = (Q(tags__name__contains=tag_name) | Q(custom_tags__name__contains=tag_name))
+                    tag_query = Q(tags__name__contains=tag_name)
                 else:
-                    tag_query = (Q(tags__scope__contains=tag_scope) | Q(custom_tags__scope__contains=tag_scope))
+                    tag_query = Q(tags__scope__contains=tag_scope)
 
                 results = results.exclude(
                     tag_query
@@ -1760,13 +1785,12 @@ def filter_archives_simple(params: dict[str, Any], authenticated=False, show_bin
             elif tag.startswith("^"):
                 if tag_name != '' and tag_scope != '':
                     tag_query = (
-                        (Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope))
-                        | (Q(custom_tags__name__exact=tag_name) & Q(custom_tags__scope__exact=tag_scope))
+                        Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope)
                     )
                 elif tag_name != '':
-                    tag_query = (Q(tags__name__exact=tag_name) | Q(custom_tags__name__exact=tag_name))
+                    tag_query = Q(tags__name__exact=tag_name)
                 else:
-                    tag_query = (Q(tags__scope__exact=tag_scope) | Q(custom_tags__scope__exact=tag_scope))
+                    tag_query = Q(tags__scope__exact=tag_scope)
 
                 results = results.filter(
                     tag_query
@@ -1774,13 +1798,12 @@ def filter_archives_simple(params: dict[str, Any], authenticated=False, show_bin
             else:
                 if tag_name != '' and tag_scope != '':
                     tag_query = (
-                        (Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope))
-                        | (Q(custom_tags__name__contains=tag_name) & Q(custom_tags__scope__contains=tag_scope))
+                        Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)
                     )
                 elif tag_name != '':
-                    tag_query = (Q(tags__name__contains=tag_name) | Q(custom_tags__name__contains=tag_name))
+                    tag_query = Q(tags__name__contains=tag_name)
                 else:
-                    tag_query = (Q(tags__scope__contains=tag_scope) | Q(custom_tags__scope__contains=tag_scope))
+                    tag_query = Q(tags__scope__contains=tag_scope)
 
                 results = results.filter(
                     tag_query
@@ -1800,16 +1823,12 @@ def filter_archives_simple(params: dict[str, Any], authenticated=False, show_bin
 
     if 'view' in params:
         if params["view"] == "list":
-            results = results.distinct().select_related('gallery')
+            results = results.select_related('gallery')
         elif params["view"] == "cover":
-            results = results.distinct()
+            pass
         elif params["view"] == "extended":
-            results = results.distinct().select_related('gallery').\
-                prefetch_related('tags').prefetch_related('custom_tags')
-        else:
-            results = results.distinct()
-    else:
-        results = results.distinct()
+            results = results.select_related('gallery').\
+                prefetch_related('tags')
 
     return results
 
@@ -1917,8 +1936,6 @@ def filter_galleries_simple(params: dict[str, str]) -> QuerySet[Gallery]:
     if "public" in params and params["public"]:
         results = results.filter(public=True)
 
-    results = results.distinct()
-
     return results
 
 
@@ -2021,8 +2038,6 @@ def filter_wanted_galleries_simple(params: dict[str, Any]) -> QuerySet[WantedGal
                 results = results.filter(
                     tag_query
                 )
-
-    results = results.distinct()
 
     return results
 

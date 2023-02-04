@@ -70,13 +70,12 @@ class AutoWantedSettings:
 
 
 class AutoUpdaterSettings:
-    __slots__ = ['enable', 'startup', 'cycle_timer', 'buffer_delta', 'buffer_back', 'buffer_after', 'providers']
+    __slots__ = ['enable', 'startup', 'cycle_timer', 'buffer_back', 'buffer_after', 'providers']
 
     def __init__(self) -> None:
         self.enable: bool = False
         self.startup: bool = False
         self.cycle_timer: float = 0
-        self.buffer_delta: int = 0
         self.buffer_back: int = 0
         self.buffer_after: int = 0
         self.providers: list[str] = []
@@ -261,7 +260,8 @@ class Settings:
         self.rematch_file = False
         self.rematch_file_list = ['non-match']
         self.rehash_files = False
-        self.discard_tags: list[str] = []
+        self.banned_tags: list[str] = []
+        self.banned_uploaders: list[str] = []
 
         self.matchers: dict[str, int] = {}
         self.downloaders: dict[str, int] = {}
@@ -272,6 +272,7 @@ class Settings:
         self.archive_dl_folder = ''
         self.torrent_dl_folder = ''
         self.log_location = ''
+        self.log_level: str = 'INFO'
 
         self.convert_rar_to_zip = False
         self.mark_similar_new_archives = False
@@ -451,7 +452,11 @@ class Settings:
             if 'cherrypy_auto_restart' in config['general']:
                 self.cherrypy_auto_restart = config['general'].getboolean('cherrypy_auto_restart')
             if 'discard_tags' in config['general']:
-                self.discard_tags = config['general']['discard_tags'].split(",")
+                self.banned_tags = config['general']['discard_tags'].split(",")
+            if 'banned_tags' in config['general']:
+                self.banned_tags = config['general']['banned_tags'].split(",")
+            if 'banned_uploaders' in config['general']:
+                self.banned_uploaders = config['general']['banned_uploaders'].split(",")
             if 'add_as_public' in config['general']:
                 self.add_as_public = config['general'].getboolean('add_as_public')
             if 'timeout_timer' in config['general']:
@@ -464,6 +469,8 @@ class Settings:
                 self.auto_phash_images = config['general'].getboolean('auto_phash_images')
             if 'recheck_wanted_on_update' in config['general']:
                 self.recheck_wanted_on_update = config['general'].getboolean('recheck_wanted_on_update')
+            if 'force_log_level' in config['general']:
+                self.log_level = config['general']['force_log_level']
         if 'experimental' in config:
             self.experimental.update(config['experimental'])
         if 'matchers' in config:
@@ -558,8 +565,6 @@ class Settings:
                 self.autoupdater.startup = config['autoupdater'].getboolean('startup')
             if 'cycle_timer' in config['autoupdater']:
                 self.autoupdater.cycle_timer = int(config['autoupdater']['cycle_timer'])
-            if 'buffer_delta' in config['autoupdater']:
-                self.autoupdater.buffer_delta = int(config['autoupdater']['buffer_delta'])
             if 'buffer_back' in config['autoupdater']:
                 self.autoupdater.buffer_back = int(config['autoupdater']['buffer_back'])
             if 'buffer_after' in config['autoupdater']:

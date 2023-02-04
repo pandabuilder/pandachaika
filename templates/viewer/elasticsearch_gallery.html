@@ -6,7 +6,6 @@
   <link href="{% static "css/dashboard.css" %}" rel="stylesheet">
 {% endblock %}
 {% block content %}
-
   <div class="container-fluid">
     <div class="row">
       <div class="col-sm-3 col-md-2 sidebar">
@@ -33,6 +32,11 @@
         </ul>
       </div>
       <div class="col-sm-9 offset-sm-3 col-md-10 offset-md-2 main">
+        {% if messages %}
+            {% for message in messages %}
+            <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
         <h2>{{ page_title }}: Powered by <a href="https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-query-string-query.html#query-string-syntax">Elasticsearch</a></h2>
         <h5>Default fields: title, title_jpn, tags.full. Available fields: gid, title, title_jpn, tags.full, tags.name, tags.scope, size, image_count, posted_date, create_date, provider, reason, category, uploader, expunged</h5>
         <div class="row">
@@ -183,12 +187,20 @@
             {% endfor %}
             </tbody>
           </table>
-
           {% endif %}
+        <div>
+          {% if perms.viewer.update_metadata %}
+          <form action="{{ request.get_full_path }}" method="POST">{% csrf_token %}
+          <div class="form-group">
+            <input size="10" class="form-control" name="reason" value="" placeholder="Reason" maxlength="200"/>
+          </div>
+          <button name="recall_api" class="btn btn-light">Recall API to Search Results</button>
+          </form>
+          {% endif %}
+        </div>
       </div>
     </div>
-  </div>
-
+    </div>
 {% endblock content %}
 
 {% block afterJQ %}

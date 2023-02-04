@@ -132,7 +132,7 @@ class Parser(BaseParser):
 
         for url in urls:
 
-            if not (constants.gallery_container_url in url):
+            if constants.gallery_container_url not in url:
                 logger.warning("Invalid URL, skipping: {}".format(url))
                 continue
             unique_urls.add(url)
@@ -162,14 +162,14 @@ class Parser(BaseParser):
             if not internal_gallery_data.link:
                 continue
 
-            discarded_tags = self.general_utils.discard_by_tag_list(internal_gallery_data.tags)
+            banned_result, banned_reasons = self.general_utils.discard_by_gallery_data(internal_gallery_data.tags, internal_gallery_data.uploader)
 
-            if discarded_tags:
+            if banned_result:
                 if not self.settings.silent_processing:
                     logger.info(
-                        "Skipping gallery link {}, because it's tagged with global discarded tags: {}".format(
+                        "Skipping gallery link {}, discarded reasons: {}".format(
                             internal_gallery_data.link,
-                            discarded_tags
+                            banned_reasons
                         )
                     )
                 continue

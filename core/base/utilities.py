@@ -52,16 +52,24 @@ class GeneralUtils:
     def __init__(self, global_settings: 'setup.Settings') -> None:
         self.settings = global_settings
 
-    def discard_by_tag_list(self, tag_list: Optional[list[str]], force_check: bool = False) -> Optional[list[str]]:
+    def discard_by_gallery_data(self, tag_list: Optional[list[str]], uploader: Optional[str] = None, force_check: bool = False) -> tuple[bool, list[str]]:
+
+        discarded = False
+        reasons: list[str] = []
 
         if not force_check and self.settings.update_metadata_mode:
-            return None
-        if tag_list is None:
-            return None
-        found_tags = set(self.settings.discard_tags).intersection(tag_list)
-        if found_tags:
-            return list(found_tags)
-        return None
+            return discarded, reasons
+        if tag_list is not None:
+            found_tags = set(self.settings.banned_tags).intersection(tag_list)
+            if found_tags:
+                discarded = True
+                reasons.append("Banned tags: {}".format(", ".join(found_tags)))
+        if uploader is not None and uploader != '' and self.settings.banned_uploaders:
+            found_uploader = uploader in set(self.settings.banned_uploaders)
+            if found_uploader:
+                discarded = True
+                reasons.append("Banned uploader: {}".format(uploader))
+        return discarded, reasons
 
     def get_torrent(self, torrent_url: str, cookies: dict[str, Any], convert_to_base64: bool = False) -> Union[str, bytes]:
 
@@ -84,12 +92,6 @@ def discard_string_by_cutoff(base: str, compare: str, cutoff: float) -> bool:
     s.set_seq2(base)
     s.set_seq1(compare)
     if s.real_quick_ratio() >= cutoff and s.quick_ratio() >= cutoff and s.ratio() >= cutoff:
-        return True
-    return False
-
-
-def discard_by_tag_list(tag_list: list[str], discard_tags: list[str]):
-    if any(x in discard_tags for x in tag_list):
         return True
     return False
 

@@ -549,7 +549,7 @@ class TagAutocomplete(autocomplete.JalQuerySetView):
                 Q(name__contains=tag_clean)
                 | Q(scope__contains=tag_clean))
 
-        return results.distinct().order_by('pk')[0:self.limit_choices]
+        return results.order_by('pk')[0:self.limit_choices]
 
 
 class Select2ViewMixinNoCreate(Select2ViewMixin):
@@ -611,7 +611,7 @@ class NonCustomTagAutocomplete(autocomplete.Select2QuerySetView):
                 Q(name__contains=tag_clean)
                 | Q(scope__contains=tag_clean))
 
-        return results.distinct().order_by('pk')
+        return results.order_by('pk')
 
 
 class CustomTagAutocomplete(autocomplete.Select2QuerySetView):
@@ -657,7 +657,7 @@ class CustomTagAutocomplete(autocomplete.Select2QuerySetView):
                 Q(name__contains=tag_clean)
                 | Q(scope__contains=tag_clean))
 
-        return results.distinct().order_by('source')
+        return results.order_by('source')
 
 
 class GallerySelectAutocomplete(autocomplete.Select2QuerySetView):

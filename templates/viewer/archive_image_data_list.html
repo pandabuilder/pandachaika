@@ -1,0 +1,90 @@
+{% extends "viewer/base.html" %}
+{% block title %}{{ archive.best_title }} | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+{% load static %}
+
+{% block content %}
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <!-- Wanted galleries  -->
+  <div class="page-header">
+    <h2>Image Data List for Archive: <a href="{% url 'viewer:archive' archive.pk %}">{{ archive.best_title }}</a></h2>
+    <p class="lead">Number of images (in page, total): {{ results|length }}, {{ results.paginator.count|default:"0" }}</p>
+  </div>
+  {% load viewer_extras %}
+  <!-- Next/Prev page links  -->
+    {% if results.object_list and results.paginator.num_pages > 1 %}
+      <div>
+          <span class="step-links">
+              <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
+            {% if results.has_previous %}
+              <a href= "?{% url_replace 'page' results.previous_page_number %}"> previous &lt;&lt; </a>
+            {% endif %}
+            <span class="current">
+                  &nbsp;Page {{ results.number }} of {{ results.paginator.num_pages }}
+              </span>
+            {% if results.has_next %}
+              <a href="?{% url_replace 'page' results.next_page_number %}"> &gt;&gt; next</a>
+            {% endif %}
+            <a href="?{% url_replace 'page' results.paginator.num_pages %}"> &gt;&gt; last</a>
+          </span>
+      </div>
+    {% endif %}
+      <table class="table table-bordered table-sm generic-table">
+        <thead>
+        <tr>
+          <th style="width:4%">#</th><th style="width:7%">Archive Position</th><th>File Name</th><th style="width:7%">File Size</th><th style="width:4%">Height</th><th style="width:4%">Width</th><th style="width:4%">Format</th><th style="width:4%">Mode</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for image in results %}
+          <tr>
+            <td>
+              {{ image.position }}
+            </td>
+            <td>
+              {{ image.archive_position }}
+            </td>
+            <td>
+              {{ image.image_name }}
+            </td>
+            <td>
+              {{ image.image_size|filesizeformat }}
+            </td>
+            <td>
+              {{ image.image_height }}
+            </td>
+            <td>
+              {{ image.image_width }}
+            </td>
+            <td>
+              {{ image.image_format }}
+            </td>
+            <td>
+              {{ image.image_mode }}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+  <!-- Next/Prev page links  -->
+    {% if results.object_list and results.paginator.num_pages > 1 %}
+      <div>
+          <span class="step-links">
+              {% if results.has_previous %}
+                <a href= "?page={{ results.previous_page_number }}">previous &lt;&lt; </a>
+              {% endif %}
+            <span class="current">
+                  &nbsp;Page {{ results.number }} of {{ results.paginator.num_pages }}
+              </span>
+            {% if results.has_next %}
+              <a href="?page={{ results.next_page_number }}"> &gt;&gt; next</a>
+            {% endif %}
+          </span>
+      </div>
+    {% endif %}
+{% endblock %}

@@ -35,12 +35,12 @@ class MegaArchiveDownloader(BaseDownloader):
 
         if not exe_path_to_use:
             self.return_code = 0
-            logger.error("The megadl tools was not found")
+            logger.error("The megadl executable was not found")
             return
 
         directory_path = mkdtemp()
 
-        arguments = ["dl", "--no-progress", "--print-names", "--path", "{}".format(
+        arguments = ["--no-progress", "--print-names", "--path", "{}".format(
             directory_path
         )]
 
@@ -53,7 +53,7 @@ class MegaArchiveDownloader(BaseDownloader):
 
         arguments.append("{}".format(self.gallery.link))
 
-        logger.info("Calling megatools: {}.".format(" ".join([exe_path_to_use, *arguments])))
+        logger.info("Calling megadl: {}.".format(" ".join([exe_path_to_use, *arguments])))
 
         process_result = subprocess.run(
             [exe_path_to_use, *arguments],

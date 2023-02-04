@@ -104,11 +104,11 @@ def stats_collection(request: HttpRequest) -> HttpResponse:
         "n_tags": Tag.objects.count(),
         "n_tag_scopes": Tag.objects.values('scope').distinct().count(),
         "n_custom_tags": Tag.objects.are_custom().count(),  # type: ignore
-        "top_10_tags": Tag.objects.annotate(num_archive=Count('gallery_tags')).order_by('-num_archive')[:10],
+        "top_10_tags": Tag.objects.annotate(num_archive=Count('archive_tags')).order_by('-num_archive')[:10],
         "top_10_parody_tags": Tag.objects.filter(scope='parody').annotate(
-            num_archive=Count('gallery_tags')).order_by('-num_archive')[:10],
+            num_archive=Count('archive_tags')).order_by('-num_archive')[:10],
         "top_10_artist_tags": Tag.objects.filter(scope='artist').annotate(
-            num_archive=Count('gallery_tags')).order_by('-num_archive')[:10],
+            num_archive=Count('archive_tags')).order_by('-num_archive')[:10],
         "wanted_galleries": {
             "total": WantedGallery.objects.all().count(),
             "found": WantedGallery.objects.filter(found=True).count(),

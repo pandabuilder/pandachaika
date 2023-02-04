@@ -697,15 +697,15 @@ class InternalParser(BaseParser):
             if gallery_data.gid in found_galleries:
                 continue
 
-            discarded_tags = self.general_utils.discard_by_tag_list(gallery_data.tags)
+            banned_result, banned_reasons = self.general_utils.discard_by_gallery_data(gallery_data.tags, gallery_data.uploader)
 
-            if discarded_tags:
+            if banned_result:
                 logger.info(
-                    "Gallery {} of {}: Skipping gallery link {}, because it's tagged with global discarded tags: {}".format(
+                    "Gallery {} of {}: Skipping gallery link {}, discarded reasons: {}".format(
                         count,
                         len(total_galleries_filtered),
                         gallery_data.title,
-                        discarded_tags
+                        banned_reasons
                     )
                 )
                 continue

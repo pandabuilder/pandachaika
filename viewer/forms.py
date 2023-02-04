@@ -348,10 +348,10 @@ class ArchiveModForm(forms.ModelForm):
 
     class Meta:
         model = Archive
-        fields = ['title', 'title_jpn', 'source_type', 'reason', 'possible_matches', 'custom_tags', 'zipped',
+        fields = ['title', 'title_jpn', 'source_type', 'reason', 'possible_matches', 'tags', 'zipped',
                   'alternative_sources', 'archive_groups', 'details']
         widgets = {
-            'custom_tags': autocomplete.ModelSelect2Multiple(
+            'tags': autocomplete.ModelSelect2Multiple(
                 url='customtag-autocomplete',
                 attrs={'size': 1, 'data-placeholder': 'Custom tag name', 'class': 'form-control'}),
             'alternative_sources': autocomplete.ModelSelect2Multiple(
@@ -370,6 +370,8 @@ class ArchiveModForm(forms.ModelForm):
         self.fields["possible_matches"].queryset = self.instance.possible_matches.order_by(  # type: ignore
             "-archivematches__match_accuracy")
         self.fields["archive_groups"].queryset = self.instance.archive_groups.all()  # type: ignore
+        self.fields["tags"].label = 'Custom Tags'
+        self.fields["tags"].queryset = self.instance.custom_tags()  # type: ignore
 
     possible_matches = MatchesModelChoiceField(
         required=False,
@@ -977,7 +979,7 @@ class EventLogSearchForm(forms.Form):
     )
 
 
-class DeletedArchiveSearchForm(forms.Form):
+class AllGalleriesSearchForm(forms.Form):
 
     title = forms.CharField(
         required=False,
@@ -1007,8 +1009,25 @@ class DeletedArchiveSearchForm(forms.Form):
         ),
     )
 
+
+class EventSearchForm(forms.Form):
+
     data_field = forms.CharField(
         required=False,
         label='',
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Data', 'autocomplete': 'off'})
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Data', 'autocomplete': 'off', 'size': 45})
+    )
+
+    event_date_from = forms.DateTimeField(
+        required=False,
+        label='When',
+        widget=forms.DateInput(
+            attrs={'class': 'form-control mr-sm-1', 'placeholder': 'from', 'type': 'date', 'size': 9}),
+        input_formats=['%Y-%m-%d']
+    )
+    event_date_to = forms.DateTimeField(
+        required=False,
+        label='',
+        widget=forms.DateInput(attrs={'class': 'form-control mr-sm-1', 'placeholder': 'to', 'type': 'date', 'size': 9}),
+        input_formats=['%Y-%m-%d']
     )

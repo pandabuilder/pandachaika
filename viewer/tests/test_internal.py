@@ -8,7 +8,7 @@ from django.test import TestCase, Client
 from django.contrib.auth.models import User
 from django.urls import reverse
 
-from viewer.models import Tag, Archive, Gallery, WantedGallery
+from viewer.models import Tag, Archive, Gallery, WantedGallery, ArchiveTag
 
 
 class TagTestCase(TestCase):
@@ -39,10 +39,48 @@ class PrivateURLsTest(TestCase):
         test_user1 = User.objects.create_user(username='testuser1', password='12345')
         test_user1.save()
 
+        # Tags
+        self.tag1 = Tag.objects.create(name="sister", scope="female")
+        self.tag2 = Tag.objects.create(name="hisasi", scope="artist")
+        self.tag3 = Tag.objects.create(name="fue", scope="artist")
+        self.tag4 = Tag.objects.create(name="anzuame", scope="artist")
+        self.tag_english = Tag.objects.create(name="english", scope="language")
+
+        self.tag_custom1 = Tag.objects.create(name="special_edition", scope="")
+        self.tag_custom2 = Tag.objects.create(name="limited_edition", scope="")
+
+        # Galleries
+        self.test_gallery1 = Gallery.objects.create(title='sample non public gallery 1', gid='344', provider='panda', category='Manga')
+        self.test_gallery1.tags.add(self.tag1, self.tag2, self.tag_english)
+        self.test_gallery2 = Gallery.objects.create(title='sample non public gallery 2', gid='342', provider='test', category='Doujinshi')
+        self.test_gallery2.tags.add(self.tag1, self.tag3, self.tag_english)
+        self.test_gallery3 = Gallery.objects.create(title='sample non public gallery 3', gid='897', provider='test', category='Manga', public=True)
+        self.test_gallery3.tags.add(self.tag1, self.tag4)
+
         # Archives
         self.test_book1 = Archive.objects.create(title='sample non public archive', user=test_admin1)
-        self.test_book2 = Archive.objects.create(title='sample public archive', user=test_admin1, public=True)
-        self.test_book3 = Archive.objects.create(title='new public archive sample', user=test_admin1, public=True)
+        self.test_book2 = Archive.objects.create(title='sample public archive', user=test_admin1, public=True, gallery=self.test_gallery2)
+        self.test_book3 = Archive.objects.create(title='new public archive sample', user=test_admin1, public=True, gallery=self.test_gallery3)
+        self.test_book4 = Archive.objects.create(title='new private archive sample', user=test_admin1, public=False, gallery=self.test_gallery1)
+
+        archive_tag1 = ArchiveTag(archive=self.test_book4, tag=self.tag_custom1, origin=ArchiveTag.ORIGIN_USER)
+        archive_tag2 = ArchiveTag(archive=self.test_book4, tag=self.tag_custom2, origin=ArchiveTag.ORIGIN_USER)
+        archive_tag1.save()
+        archive_tag2.save()
+
+        self.test_books = []
+
+        for i in range(3):
+            self.test_books.append(Archive.objects.create(title='new private archive sample {}'.format(i+1), user=test_admin1, public=False, gallery=self.test_gallery3))
+
+        for i in range(3):
+            self.test_books.append(Archive.objects.create(title='new private archive sample {}'.format(i+1), user=test_admin1, public=False, gallery=self.test_gallery1))
+
+        for i in range(50):
+            self.test_books.append(Archive.objects.create(title='new public archive sample {}'.format(i+1), user=test_admin1, public=True))
+
+        for i in range(10):
+            self.test_books.append(Archive.objects.create(title='new private file sample {}'.format(i+1), user=test_admin1, public=False))
 
     def test_redirect_if_not_logged_in(self):
         """Test to deny access to log page"""
@@ -72,16 +110,33 @@ class PrivateURLsTest(TestCase):
         # Check that pagination works (only 1 page)
         self.assertFalse(response.context['results'].has_next())
         self.assertFalse(response.context['results'].has_previous())
-        # Check that the rendered context contains 2 archives.
-        self.assertEqual(len(response.context['results']), 2)
+        # Check that the rendered context contains 52 archives.
+        self.assertEqual(len(response.context['results']), 52)
 
     def test_logged_in_archive_search(self):
         # Login, and get the 3 archives.
         c = Client()
         c.login(username='testuser1', password='12345')
-        response = c.get(reverse('viewer:archive-search'), {'title': 'archive'})
+        # List view
+        response = c.get(reverse('viewer:archive-search'), {'title': 'archive', 'view': 'list'})
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.context['results']), 3)
+        self.assertEqual(len(response.context['results']), 60)
+        self.assertFalse(response.context['results'].has_next())
+        self.assertFalse(response.context['results'].has_previous())
+        # Cover view
+        response = c.get(reverse('viewer:archive-search'), {'title': 'archive', 'view': 'cover'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context['results']), 24)
+        self.assertTrue(response.context['results'].has_next())
+        self.assertFalse(response.context['results'].has_previous())
+        self.assertEqual(response.context['results'].paginator.count, 60)
+        # Extended view
+        response = c.get(reverse('viewer:archive-search'), {'title': 'archive', 'view': 'extended'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context['results']), 24)
+        self.assertTrue(response.context['results'].has_next())
+        self.assertFalse(response.context['results'].has_previous())
+        self.assertEqual(response.context['results'].paginator.count, 60)
 
     def test_quick_search(self):
         # c.login(username='fred', password='secret')
@@ -91,7 +146,7 @@ class PrivateURLsTest(TestCase):
         self.assertFalse(response.context['results'].has_next())
         self.assertFalse(response.context['results'].has_previous())
         # Check that the rendered context contains 2 archives.
-        self.assertEqual(len(response.context['results']), 2)
+        self.assertEqual(len(response.context['results']), 52)
 
 
 class GeneralPagesTest(TestCase):
@@ -196,7 +251,7 @@ class GeneralPagesTest(TestCase):
         response = c.get(reverse('viewer:gallery-list'))
         self.assertEqual(response.status_code, 200)
 
-        response = c.get(reverse('viewer:missing-archives'))
+        response = c.get(reverse('viewer:public-missing-archives'))
         self.assertEqual(response.status_code, 200)
 
         response = c.get(reverse('viewer:wanted-galleries'))

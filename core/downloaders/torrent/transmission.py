@@ -87,7 +87,8 @@ class Transmission(TorrentClient):
                 password=self.password,
                 http_handler=http_handler
             )
-        except transmissionrpc.TransmissionError:
+        except transmissionrpc.TransmissionError as e:
+            self.error = e.message
             return False
         return True
 

@@ -102,7 +102,7 @@ class NyaaTorrentDownloader(GenericTorrentDownloader):
                 self.original_gallery.filesize = self.gallery.filesize
         else:
             self.return_code = 0
-            logger.error("There was an error adding the torrent to the client")
+            logger.error("There was an error adding the torrent to the client, torrent link: {}, error in client {}:".format(torrent_link, client.error))
 
 
 API = (

@@ -1,4 +1,3 @@
-from abc import ABC, abstractmethod
 from datetime import datetime
 import typing
 from typing import Optional, Union, Any
@@ -104,7 +103,6 @@ class ProviderSettings:
         # Auto updater
         self.autoupdater_enable: bool = global_settings.autoupdater.enable
         self.autoupdater_timer: float = global_settings.autoupdater.cycle_timer
-        self.autoupdater_buffer_delta: int = global_settings.autoupdater.buffer_delta
         self.autoupdater_buffer_back: int = global_settings.autoupdater.buffer_back
         self.autoupdater_buffer_after: int = global_settings.autoupdater.buffer_after
 
@@ -126,8 +124,6 @@ class ProviderSettings:
                 self.autoupdater_timer = float(config['general']['autoupdater_timer'])
             if 'autoupdater_enable' in config['general']:
                 self.autoupdater_enable = config['general'].getboolean('autoupdater_enable')
-            if 'autoupdater_buffer_delta' in config['general']:
-                self.autoupdater_buffer_delta = int(config['general']['autoupdater_buffer_delta'])
             if 'autoupdater_buffer_back' in config['general']:
                 self.autoupdater_buffer_back = int(config['general']['autoupdater_buffer_back'])
             if 'autoupdater_buffer_after' in config['general']:
@@ -138,7 +134,7 @@ class ProviderSettings:
             self.proxies.update(config['proxies'])
 
 
-class TorrentClient(ABC):
+class TorrentClient:
 
     name = 'torrent'
     convert_to_base64 = False
@@ -155,18 +151,16 @@ class TorrentClient(ABC):
         self.expected_torrent_name = ''
         self.expected_torrent_extension = ''
         self.set_expected = True
+        self.error = ''
 
-    @abstractmethod
     def add_torrent(self, torrent_data: Union[str, bytes], download_dir: Optional[str] = None) -> bool:
-        pass
+        return False
 
-    @abstractmethod
     def add_url(self, url: str, download_dir: Optional[str] = None) -> bool:
-        pass
+        return False
 
-    @abstractmethod
     def connect(self) -> bool:
-        pass
+        return False
 
 
 QueueItem = dict[str, Any]

@@ -91,10 +91,11 @@ class PostDownloader(object):
                 archive.create_marks_for_similar_archives()
 
             if archive.gallery and archive.filesize != archive.gallery.filesize:
-                mark_comment = """Torrent downloaded is not the same file as the gallery reports \
-                (different filesize or filecount). This file must be replaced if the correct one \
-                is found.\n\nDo not publish until then.
-                """
+                mark_comment = (
+                    "Torrent downloaded is not the same file as the gallery reports" 
+                    " (different filesize or filecount). This file must be replaced if the correct one" 
+                    " is found."
+                )
                 manager_entry, _ = ArchiveManageEntry.objects.update_or_create(
                     archive=archive,
                     mark_reason="wrong_file",
@@ -397,6 +398,8 @@ class PostDownloader(object):
         else:
             found_archives = archives
 
+        logger.debug("Processing {} found archives to download.".format(len(list(found_archives))))
+
         if not found_archives:
             return
 
@@ -406,6 +409,8 @@ class PostDownloader(object):
                     files_torrent.append(archive)
                 elif 'hath' in archive.match_type:
                     files_hath.append(archive)
+
+        logger.debug("{} torrent-based, {} hath-based.".format(len(files_torrent), len(files_hath)))
 
         if len(files_torrent) + len(files_hath) == 0:
             return
@@ -477,13 +482,23 @@ class PostDownloader(object):
         # Torrent downloads
         if len(files_torrent) > 0:
             files_matched_torrent = []
+            logger.debug("Looking for {} torrent downloaded files on folder {}.".format(files_torrent, self.settings.torrent['download_dir']))
             for filename in os.listdir(self.settings.torrent['download_dir']):
                 for archive in files_torrent:
                     if archive.gallery:
                         cleaned_torrent_name = os.path.splitext(
                             os.path.basename(archive.zipped.path))[0].replace(' [' + archive.gallery.gid + ']', '')
+
                     else:
                         cleaned_torrent_name = os.path.splitext(os.path.basename(archive.zipped.path))[0]
+                    logger.debug(
+                        "Checking if cleaned expected file name {0} is equal to found "
+                        "torrent name, with replaced illegal characters (original name: {1}): {2}.".format(
+                            cleaned_torrent_name,
+                            filename,
+                            replace_illegal_name(os.path.splitext(filename)[0])
+                        )
+                    )
                     if replace_illegal_name(os.path.splitext(filename)[0]) == cleaned_torrent_name:
                         files_matched_torrent.append((filename, not os.path.isfile(
                             os.path.join(self.settings.torrent['download_dir'], filename)), archive))

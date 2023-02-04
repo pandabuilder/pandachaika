@@ -6,6 +6,7 @@ from django.http import HttpRequest
 from django.utils.dateparse import parse_duration
 from django.utils.translation import gettext_lazy as _
 from django.conf import settings
+from simple_history.admin import SimpleHistoryAdmin
 
 
 from viewer.utils.actions import event_log
@@ -44,8 +45,14 @@ class UpdateActionForm(ActionForm):
     extra_field = forms.CharField(required=False)
 
 
-class ArchiveAdmin(admin.ModelAdmin):
-    raw_id_fields = ("gallery", "custom_tags", "tags", "alternative_sources")
+class ArchiveImageInline(admin.TabularInline):
+    model = Image
+    extra = 0
+    # raw_id_fields = ("archive_group", "archive",)
+
+
+class ArchiveAdmin(SimpleHistoryAdmin):
+    raw_id_fields = ("gallery", "tags", "alternative_sources")
     search_fields = ["title", "title_jpn", "zipped"]
     list_display = ["title", "zipped", "gallery_id", "filesize",
                     "filecount", "create_date"]
@@ -55,6 +62,8 @@ class ArchiveAdmin(admin.ModelAdmin):
                'mark_source_custom', 'set_reason', "mark_origin"]
     action_form = UpdateActionForm
     list_select_related = ('gallery',)
+    inlines = (ArchiveImageInline,)
+
 
     def make_public(self, request: HttpRequest, queryset: ArchiveQuerySet) -> None:
         rows_updated = queryset.count()
@@ -198,7 +207,7 @@ class GalleryProviderDataInline(admin.TabularInline):
     extra = 1
 
 
-class GalleryAdmin(admin.ModelAdmin):
+class GalleryAdmin(SimpleHistoryAdmin):
     search_fields = ["title", "title_jpn", "gid"]
     raw_id_fields = ("tags", "gallery_container", "magazine", "first_gallery", "parent_gallery")
     list_display = [
@@ -544,8 +553,8 @@ class EventLogAdmin(admin.ModelAdmin):
 
     raw_id_fields = ["user"]
     list_filter = ["action", "create_date"]
-    list_display = ["create_date", "user", "action", "reason", "data", "result"]
-    search_fields = ["user__username", "user__email", "reason", "result"]
+    list_display = ["create_date", "user", "action", "reason", "data", "result", "content_type", "object_id"]
+    search_fields = ["user__username", "user__email", "reason", "result", "object_id"]
 
 
 class ItemPropertiesAdmin(admin.ModelAdmin):

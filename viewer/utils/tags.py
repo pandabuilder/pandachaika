@@ -12,7 +12,7 @@ scope_priorities = [
 ]
 
 
-def sort_tags(tag_list: QuerySet) -> list[tuple[str, list['Tag']]]:
+def sort_tags(tag_list: Iterable) -> list[tuple[str, list['Tag']]]:
 
     prioritized_tag_list = list()
 

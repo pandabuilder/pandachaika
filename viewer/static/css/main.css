@@ -39,6 +39,12 @@ body a {
   width: 90px !important;
 }
 
+.code-block {
+  color: lightgrey;
+  margin-bottom: 0;
+  max-width: 950px;
+}
+
 .thumbnail {
   background-color: #29527a;
 }
@@ -512,7 +518,7 @@ img {
   background-color: #122963;
 }
 
-.cover-boder {
+.cover-border {
   border-radius: 2px;
   border-style: solid;
   border-width: thin;
