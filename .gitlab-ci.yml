@@ -1,26 +1,79 @@
-before_script:
-  - python3.9 --version
-  - pip3.9 -V
-  - python3.9 -m venv ENV
-  - source ENV/bin/activate
-
 stages:
   - test
   - deploy
 
-test:
+test3.9:
   stage: test
   script:
+  - python3.9 --version
+  - pip3.9 -V
+  - python3.9 -m venv ENV3.9
+  - source ENV3.9/bin/activate
   - pip3.9 install -r requirements.txt
-  - pip3.9 install mypy==0.812
-  - pip3.9 install django-stubs==1.8.0
-  - pip3.9 install flake8==3.9.2
-  - flake8 --ignore="E501,E402,F401,W503,F811" --exclude="migrations,ENV,venv,src,.mypy_cache" .
-  - mypy core pandabackup viewer
+  - pip3.9 install mypy==0.991
+  - pip3.9 install django-stubs==1.14.0
+  - pip3.9 install ruff==0.0.240
+  - pip3.9 install types-requests
+  - pip3.9 install types-python-dateutil
+  - ruff --ignore="E501,E402,F401,F811" --exclude="migrations,ENV3.9,venv,src,.mypy_cache" .
+  - mypy core pandabackup viewer --exclude viewer/migrations
+  - bash ./set_db_engine.sh
+  - python3.9 manage.py migrate
   - python3.9 manage.py test viewer.tests.test_internal viewer.tests.test_core
   cache:
     paths:
     - .mypy_cache
+    - .ruff_cache
+  tags:
+    - django
+
+test3.10:
+  stage: test
+  script:
+  - python3.10 --version
+  - pip3.10 -V
+  - python3.10 -m venv ENV3.10
+  - source ENV3.10/bin/activate
+  - pip3.10 install -r requirements.txt
+  - pip3.10 install mypy==0.991
+  - pip3.10 install django-stubs==1.14.0
+  - pip3.10 install ruff==0.0.240
+  - pip3.10 install types-requests
+  - pip3.10 install types-python-dateutil
+  - ruff --ignore="E501,E402,F401,F811" --exclude="migrations,ENV3.10,venv,src,.mypy_cache" .
+  - mypy core pandabackup viewer --exclude viewer/migrations
+  - bash ./set_db_engine.sh
+  - python3.10 manage.py migrate
+  - python3.10 manage.py test viewer.tests.test_internal viewer.tests.test_core
+  cache:
+    paths:
+    - .mypy_cache
+    - .ruff_cache
+  tags:
+    - django
+
+test3.11:
+  stage: test
+  script:
+  - python3.11 --version
+  - pip3.11 -V
+  - python3.11 -m venv ENV3.11
+  - source ENV3.11/bin/activate
+  - pip3.11 install -r requirements.txt
+  - pip3.11 install mypy==0.991
+  - pip3.11 install django-stubs==1.14.0
+  - pip3.11 install ruff==0.0.240
+  - pip3.11 install types-requests
+  - pip3.11 install types-python-dateutil
+  - ruff --ignore="E501,E402,F401,F811" --exclude="migrations,ENV3.11,venv,src,.mypy_cache" .
+  - mypy core pandabackup viewer --exclude viewer/migrations
+  - bash ./set_db_engine.sh
+  - python3.11 manage.py migrate
+  - python3.11 manage.py test viewer.tests.test_internal viewer.tests.test_core
+  cache:
+    paths:
+    - .mypy_cache
+    - .ruff_cache
   tags:
     - django
 
