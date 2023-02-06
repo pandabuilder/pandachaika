@@ -137,6 +137,8 @@ def get_gallery_data(data: QueryDict) -> 'QuerySet[Gallery]':
                     tag_query
                 )
 
+        results = results.distinct()
+
     filecount_from = data.get("filecount_from")
     if filecount_from is not None:
         results = results.filter(filecount__gte=int(float(filecount_from)))
@@ -318,7 +320,8 @@ def get_archive_data(data: QueryDict) -> 'QuerySet[Archive]':
                     tag_query
                 )
 
-    # results = results.distinct().prefetch_related('tags')
+        results = results.distinct()
+
     results = results.prefetch_related('tags')
 
     return results

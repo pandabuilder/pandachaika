@@ -1269,6 +1269,6 @@ def filter_galleries_no_request(filter_args: Union[dict[str, Any], QueryDict]) -
                     tag_query
                 )
 
-    # results = results.distinct()
+        results = results.distinct()
 
     return results

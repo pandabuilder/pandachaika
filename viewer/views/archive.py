@@ -1049,8 +1049,6 @@ def delete_archive(request: HttpRequest, pk: int) -> HttpResponse:
         return render(request, "viewer/archive_display_delete.html", d)
 
 
-
-
 @login_required
 def delete_manage_archive(request: HttpRequest, pk: int) -> HttpResponse:
     """Recalculate archive info."""

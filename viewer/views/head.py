@@ -724,7 +724,6 @@ def filter_galleries(request: HttpRequest, session_filters: dict[str, str], requ
 
     # sort and filter results by parameters
     order = "posted"
-    # needs_distinct = False
     if session_filters["sort"]:
         order = session_filters["sort"]
     if session_filters["asc_desc"] == "desc":
@@ -782,7 +781,6 @@ def filter_galleries(request: HttpRequest, session_filters: dict[str, str], requ
         results = results.eligible_for_use()  # type: ignore
 
     if request_filters["tags"]:
-        # needs_distinct = True
         tags = request_filters["tags"].split(',')
         for tag in tags:
             tag = tag.strip().replace(" ", "_")
@@ -828,8 +826,7 @@ def filter_galleries(request: HttpRequest, session_filters: dict[str, str], requ
                     tag_query
                 )
 
-    # if needs_distinct:
-    #     results = results.distinct()
+        results = results.distinct()
 
     # Remove fields that are admin related, not public facing
     if not json_request:
@@ -1111,6 +1108,11 @@ def filter_archives(request: HttpRequest, session_filters: dict[str, str], reque
                 results = results.filter(
                     tag_query
                 )
+
+        # Examples where distinct is needed:
+        # Same name for a tag with 2 different scopes: artist:syukurin, group:syukurin
+        results = results.distinct()
+
     if "only_favorites" in request_filters and request_filters["only_favorites"] and request.user.is_authenticated:
         user_arch_ids = UserArchivePrefs.objects.filter(
             user=request.user.id, favorite_group__gt=0).values_list('archive')
@@ -1809,6 +1811,8 @@ def filter_archives_simple(params: dict[str, Any], authenticated=False, show_bin
                     tag_query
                 )
 
+        results = results.distinct()
+
     if "non_public" in params and params["non_public"]:
         results = results.filter(public=False)
 
@@ -1930,6 +1934,8 @@ def filter_galleries_simple(params: dict[str, str]) -> QuerySet[Gallery]:
                     tag_query
                 )
 
+        results = results.distinct()
+
     if "non_public" in params and params["non_public"]:
         results = results.filter(public=False)
 
@@ -2038,6 +2044,8 @@ def filter_wanted_galleries_simple(params: dict[str, Any]) -> QuerySet[WantedGal
                 results = results.filter(
                     tag_query
                 )
+
+        results = results.distinct()
 
     return results
 
