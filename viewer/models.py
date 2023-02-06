@@ -1036,9 +1036,12 @@ class Gallery(models.Model):
 
             hash_result = CompareObjectsService.hash_thumbnail(self.thumbnail.path, algorithm)
             if hash_result:
-                hash_object, _ = ItemProperties.objects.get_or_create(
+                hash_object, _ = ItemProperties.objects.update_or_create(
                     content_type=gallery_type, object_id=self.pk, tag='hash-compare',
-                    name=algorithm, value=hash_result
+                    name=algorithm,
+                    defaults = {
+                        'value': hash_result
+                    }
                 )
 
     def update_index(self) -> None:
@@ -1856,8 +1859,7 @@ class Archive(models.Model):
         image_set = self.image_set.all()
 
         try:
-            my_zip = zipfile.ZipFile(
-                self.zipped.path, 'r')
+            my_zip = zipfile.ZipFile(self.zipped.path, 'r')
         except (zipfile.BadZipFile, NotImplementedError):
             return False
 
@@ -1870,42 +1872,36 @@ class Archive(models.Model):
 
         for count, filename_tuple in enumerate(filtered_files, start=1):
             image = image_set.get(archive_position=count)
-            if image.extracted:
-                with open(image.image.path, 'rb') as current_img:
-                    image.sha1 = sha1_from_file_object(current_img)
-                    image.set_attributes_from_image(current_img, os.path.getsize(image.image.path), os.path.basename(image.image.path))
+            if filename_tuple[1] is None:
+                with my_zip.open(filename_tuple[0]) as current_zip_img:
+                    image.sha1 = sha1_from_file_object(current_zip_img)
+                    image.set_attributes_from_image(current_zip_img, my_zip.getinfo(filename_tuple[0]).file_size, os.path.basename(filename_tuple[0]))
                     if settings.CRAWLER_SETTINGS.auto_phash_images:
-                        hash_result = CompareObjectsService.hash_thumbnail(current_img, 'phash')
+                        hash_result = CompareObjectsService.hash_thumbnail(current_zip_img, 'phash')
                         if hash_result:
-                            hash_object, _ = ItemProperties.objects.get_or_create(
+                            hash_object, _ = ItemProperties.objects.update_or_create(
                                 content_type=image_type, object_id=image.pk, tag='hash-compare',
-                                name='phash', value=hash_result
+                                name='phash',
+                                defaults={
+                                    'value': hash_result
+                                }
                             )
             else:
-                if filename_tuple[1] is None:
-                    with my_zip.open(filename_tuple[0]) as current_zip_img:
-                        image.sha1 = sha1_from_file_object(current_zip_img)
-                        image.set_attributes_from_image(current_zip_img, my_zip.getinfo(filename_tuple[0]).file_size, os.path.basename(filename_tuple[0]))
-                        if settings.CRAWLER_SETTINGS.auto_phash_images:
-                            hash_result = CompareObjectsService.hash_thumbnail(current_zip_img, 'phash')
-                            if hash_result:
-                                hash_object, _ = ItemProperties.objects.get_or_create(
-                                    content_type=image_type, object_id=image.pk, tag='hash-compare',
-                                    name='phash', value=hash_result
-                                )
-                else:
-                    with my_zip.open(filename_tuple[1]) as current_zip:
-                        with zipfile.ZipFile(current_zip) as my_nested_zip:
-                            with my_nested_zip.open(filename_tuple[0]) as current_zip_img:
-                                image.sha1 = sha1_from_file_object(current_zip_img)
-                                image.set_attributes_from_image(current_zip_img, my_nested_zip.getinfo(filename_tuple[0]).file_size, os.path.basename(filename_tuple[0]))
-                                if settings.CRAWLER_SETTINGS.auto_phash_images:
-                                    hash_result = CompareObjectsService.hash_thumbnail(current_zip_img, 'phash')
-                                    if hash_result:
-                                        hash_object, _ = ItemProperties.objects.get_or_create(
-                                            content_type=image_type, object_id=image.pk, tag='hash-compare',
-                                            name='phash', value=hash_result
-                                        )
+                with my_zip.open(filename_tuple[1]) as current_zip:
+                    with zipfile.ZipFile(current_zip) as my_nested_zip:
+                        with my_nested_zip.open(filename_tuple[0]) as current_zip_img:
+                            image.sha1 = sha1_from_file_object(current_zip_img)
+                            image.set_attributes_from_image(current_zip_img, my_nested_zip.getinfo(filename_tuple[0]).file_size, os.path.basename(filename_tuple[0]))
+                            if settings.CRAWLER_SETTINGS.auto_phash_images:
+                                hash_result = CompareObjectsService.hash_thumbnail(current_zip_img, 'phash')
+                                if hash_result:
+                                    hash_object, _ = ItemProperties.objects.update_or_create(
+                                        content_type=image_type, object_id=image.pk, tag='hash-compare',
+                                        name='phash',
+                                        defaults={
+                                            'value': hash_result
+                                        }
+                                    )
             image.save()
 
         my_zip.close()
@@ -2050,26 +2046,12 @@ class Archive(models.Model):
 
         for img in extracted_images:
 
-            image_height = None
-            image_width = None
-            if img.image_height:
-                image_height = img.image_height
-            if img.image_width:
-                image_width = img.image_width
-
             img.image.delete(save=False)
             img.image = None
             img.thumbnail.delete(save=False)
             img.thumbnail = None
             img.extracted = False
             img.save()
-
-            if image_height or image_width:
-                if image_height:
-                    img.image_height = image_height
-                if image_width:
-                    img.image_width = image_width
-                img.simple_save()
 
         self.extracted = False
         self.simple_save()
@@ -2301,9 +2283,12 @@ class Archive(models.Model):
                             if settings.CRAWLER_SETTINGS.auto_phash_images:
                                 hash_result = CompareObjectsService.hash_thumbnail(current_zip_img, 'phash')
                                 if hash_result:
-                                    hash_object, _ = ItemProperties.objects.get_or_create(
+                                    hash_object, _ = ItemProperties.objects.update_or_create(
                                         content_type=image_type, object_id=image.pk, tag='hash-compare',
-                                        name='phash', value=hash_result
+                                        name='phash',
+                                        defaults={
+                                            'value': hash_result
+                                        }
                                     )
                     else:
                         with my_zip.open(filename_tuple[1]) as current_zip:
@@ -2314,9 +2299,12 @@ class Archive(models.Model):
                                     if settings.CRAWLER_SETTINGS.auto_phash_images:
                                         hash_result = CompareObjectsService.hash_thumbnail(current_zip_img, 'phash')
                                         if hash_result:
-                                            hash_object, _ = ItemProperties.objects.get_or_create(
+                                            hash_object, _ = ItemProperties.objects.update_or_create(
                                                 content_type=image_type, object_id=image.pk, tag='hash-compare',
-                                                name='phash', value=hash_result
+                                                name='phash',
+                                                defaults={
+                                                    'value': hash_result
+                                                }
                                             )
 
                     image.save()
@@ -2382,9 +2370,12 @@ class Archive(models.Model):
 
             hash_result = CompareObjectsService.hash_thumbnail(self.thumbnail.path, algorithm)
             if hash_result:
-                hash_object, _ = ItemProperties.objects.get_or_create(
+                hash_object, _ = ItemProperties.objects.update_or_create(
                     content_type=archive_type, object_id=self.pk, tag='hash-compare',
-                    name=algorithm, value=hash_result
+                    name=algorithm,
+                    defaults={
+                        'value': hash_result
+                    }
                 )
 
     def create_thumbnail_from_io_image(self, current_img):
@@ -3022,6 +3013,8 @@ class Image(models.Model):
     image_name = models.CharField(max_length=500, blank=True, null=True)
     image_height = models.PositiveIntegerField(null=True)
     image_width = models.PositiveIntegerField(null=True)
+    original_height = models.PositiveIntegerField(null=True)
+    original_width = models.PositiveIntegerField(null=True)
     image_format = models.CharField(max_length=50, blank=True, null=True)
     image_mode = models.CharField(max_length=50, blank=True, null=True)
     image_size = models.PositiveIntegerField(null=True)
@@ -3099,9 +3092,12 @@ class Image(models.Model):
 
             hash_result = CompareObjectsService.hash_thumbnail(io.BytesIO(image_data), algorithm)
             if hash_result:
-                hash_object, _ = ItemProperties.objects.get_or_create(
+                hash_object, _ = ItemProperties.objects.update_or_create(
                     content_type=image_type, object_id=self.pk, tag='hash-compare',
-                    name=algorithm, value=hash_result
+                    name=algorithm,
+                    defaults={
+                        'value': hash_result
+                    }
                 )
 
     def get_absolute_url(self) -> str:
@@ -3113,8 +3109,8 @@ class Image(models.Model):
     def set_attributes_from_image(self, image_object: typing.IO[bytes], image_size: Optional[int] = None, image_name: Optional[str] = None) -> None:
         im = PImage.open(image_object)
         size = im.size
-        self.image_width = size[0]
-        self.image_height = size[1]
+        self.original_width = size[0]
+        self.original_height = size[1]
         self.image_format = im.format
         self.image_mode = im.mode
         self.image_size = image_size
