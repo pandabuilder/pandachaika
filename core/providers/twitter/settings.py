@@ -32,7 +32,7 @@ def parse_config(global_settings: 'Settings', config: dict[str, typing.Any]) -> 
             settings.consumer_secret = config['general']['consumer_secret']
     if 'wanted' in config:
         if 'add_as_public' in config['wanted']:
-            settings.add_as_public = config['wanted'].getboolean('add_as_public')
+            settings.add_as_public = config['wanted']['add_as_public']
         if 'unwanted_title' in config['wanted']:
             settings.unwanted_title = config['wanted']['unwanted_title']
     return settings

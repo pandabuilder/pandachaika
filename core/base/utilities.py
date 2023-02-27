@@ -45,6 +45,18 @@ ZIP_CONTAINER_REGEX = re.compile(r'(\.zip|\.cbz)$', re.IGNORECASE)
 IMAGES_REGEX = re.compile(r'(\.jpeg|\.jpg|\.png|\.gif)$', re.IGNORECASE)
 ZIP_CONTAINER_EXTENSIONS = [".zip", ".cbz"]
 
+REPLACE_CHARS = (
+    ('\\', '＼'),
+    ('/', '／'),
+    (':', '：'),
+    ('*', '＊'),
+    ('?', '？'),
+    ('"', '＂'),
+    ('<', '＜'),
+    ('>', '＞'),
+    ('|', '｜')
+)
+
 
 # The idea of this class is to contain certain methods, to not have to pass arguments that are global.
 class GeneralUtils:
@@ -116,19 +128,7 @@ def replace_illegal_name(filepath: str) -> str:
 
 
 def replace_illegal_win32_with_unicode_full_width(filepath: str) -> str:
-    replace_chars = (
-        ('\\', '＼'),
-        ('/', '／'),
-        (':', '：'),
-        ('*', '＊'),
-        ('?', '？'),
-        ('"', '＂'),
-        ('<', '＜'),
-        ('>', '＞'),
-        ('|', '｜')
-    )
-
-    for c in replace_chars:
+    for c in REPLACE_CHARS:
         filepath = filepath.replace(c[0], c[1])
 
     # Don't end with dot, might confuse some languages/OS.
@@ -140,19 +140,7 @@ def replace_illegal_win32_with_unicode_full_width(filepath: str) -> str:
 
 
 def to_full_width(title: str) -> str:
-    replace_chars = (
-        ('\\', '＼'),
-        ('/', '／'),
-        (':', '：'),
-        ('*', '＊'),
-        ('?', '？'),
-        ('"', '＂'),
-        ('<', '＜'),
-        ('>', '＞'),
-        ('|', '｜')
-    )
-
-    for c in replace_chars:
+    for c in REPLACE_CHARS:
         title = title.replace(c[0], c[1])
     return title
 
@@ -192,14 +180,14 @@ def chunks(sequence: typing.Sequence[T], n: int):
         yield sequence[i:i + n]
 
 
-def zfillrepl(matchobj: typing.Match):
-    return matchobj.group(0).zfill(3)
+def zfill_repl(match_obj: typing.Match):
+    return match_obj.group(0).zfill(4)
 
 
-def zfill_to_three(namefile: str) -> str:
+def zfill_to_four(namefile: str) -> str:
     filename = os.path.splitext(os.path.basename(namefile))[0]
 
-    filename = re.sub(r'\d+', zfillrepl, filename)
+    filename = re.sub(r'\d+', zfill_repl, filename)
 
     return filename.lower()
 
@@ -236,7 +224,7 @@ def discard_zipfile_extra_files_info(fileinfo: zipfile.ZipInfo) -> Optional[zipf
 
 # Allows 1 nested zip level, returns tuple: filename, containing zip(nested), extracted_name (adds nested zipfile)
 def get_images_from_zip(current_zip: zipfile.ZipFile) -> list[tuple[str, Optional[str], str]]:
-    filtered_files = list(filter(discard_zipfile_extra_files, sorted(current_zip.namelist(), key=zfill_to_three)))
+    filtered_files = list(filter(discard_zipfile_extra_files, sorted(current_zip.namelist(), key=zfill_to_four)))
 
     nested_files: list[tuple[str, Optional[str], str]] = []
 
@@ -249,7 +237,7 @@ def get_images_from_zip(current_zip: zipfile.ZipFile) -> list[tuple[str, Optiona
                     nested_zip = zipfile.ZipFile(current_nested_zip_file, 'r')
                 except zipfile.BadZipFile:
                     continue
-                nested_filtered_files = list(filter(accept_images_only, sorted(nested_zip.namelist(), key=zfill_to_three)))
+                nested_filtered_files = list(filter(accept_images_only, sorted(nested_zip.namelist(), key=zfill_to_four)))
                 found_files = [
                     (x, current_file, "{}_{}".format(os.path.splitext(current_file)[0], x)) for x in nested_filtered_files
                 ]

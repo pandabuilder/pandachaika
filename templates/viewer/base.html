@@ -94,6 +94,9 @@
                 {% if perms.viewer.read_private_stats %}
                   <a class="dropdown-item" href="{% url 'viewer:stats-collection' %}">General Stats</a>
                 {% endif %}
+                {% if perms.viewer.compare_archives %}
+                  <a class="dropdown-item" href="{% url 'viewer:compare-archives-viewer' %}">Compare archives</a>
+                {% endif %}
                   <div class="dropdown-divider"></div>
                   <a class="dropdown-item" href="{% url 'viewer:archive-groups' %}">Archive Groups</a>
               </div>
@@ -149,6 +152,7 @@
                 <a class="dropdown-item" href="{% url 'viewer:tag-frequency' %}">Tag frequency</a>
                 <a class="dropdown-item" href="{% url 'viewer:gallery-frequency' %}">Gallery frequency</a>
                 <a class="dropdown-item" href="{% url 'viewer:archive-groups' %}">Archive Groups</a>
+                <a class="dropdown-item" href="{% url 'viewer:compare-archives-viewer' %}">Compare archives</a>
                 <a class="dropdown-item" href="{% url 'viewer:public-missing-archives' %}">Public missing galleries</a>
               </div>
             </li>

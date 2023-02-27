@@ -738,6 +738,112 @@ def check_and_convert_filetype(request: HttpRequest, pk: int) -> HttpResponse:
 
 
 @login_required
+def clone_plus(request: HttpRequest, pk: int) -> HttpResponse:
+    """CLone and apply other tools (reorder by sha1 list, etc)."""
+
+    if not request.user.has_perm('viewer.modify_archive_tools'):
+        return render_error(request, "You don't have the permission to modify the underlying file.")
+
+    p = request.POST
+
+    if p and "submit" in p:
+
+        reorder_by_sha1 = p.get("reorder-by-sha1", "")
+        run_image_tool = p.get("run-image-tool", "")
+        
+        tools_used = []
+        
+        if run_image_tool and not crawler_settings.cloning_image_tool:
+            messages.error(
+                request, 'Clone image tool is not setup.'
+            )
+            return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        
+        if reorder_by_sha1:
+            sha1_text = p.get("sha1s", "")
+            sha1_list = sha1_text.splitlines()
+            tools_used.append("Reordering based on SHA1 list")
+        else:
+            sha1_list = None
+            
+        if run_image_tool:
+            tools_used.append("Running Image Tool")
+
+        user_reason = p.get('reason', '')
+
+        try:
+            with transaction.atomic():
+                archive = Archive.objects.select_for_update().get(pk=pk)
+
+                original_archive_url = request.build_absolute_uri(archive.get_absolute_url())
+
+                logger.info('Cloning Archive: {} and {}.'.format(archive.get_absolute_url(), tools_used))
+                
+                if run_image_tool:
+                    image_tool = crawler_settings.cloning_image_tool
+                    image_filter = crawler_settings.cloning_image_filter
+                    new_archive, error_message = archive.clone_archive_plus(sha1_list, (image_tool, image_filter))
+                elif sha1_list:
+                    new_archive, error_message = archive.create_new_archive_ordered_by_sha1(sha1_list)
+                else:
+                    new_archive, error_message = archive.clone_archive_plus(sha1_list)
+
+                if new_archive:
+                    result_message = 'success'
+                    event_log(
+                        request.user,
+                        'CLONE_ARCHIVE',
+                        reason=user_reason,
+                        content_object=new_archive,
+                        result=result_message,
+                        data=original_archive_url
+                    )
+                    messages.success(
+                        request, 'Cloned new Archive: {}'.format(
+                            request.build_absolute_uri(new_archive.get_absolute_url())
+                        )
+                    )
+                else:
+                    result_message = 'failed'
+                    event_log(
+                        request.user,
+                        'CLONE_ARCHIVE',
+                        reason=user_reason,
+                        content_object=archive,
+                        result=result_message,
+                        data=error_message,
+                    )
+                    messages.error(
+                        request, 'Could not clone Archive: {}, error: {}.'.format(
+                            request.build_absolute_uri(archive.get_absolute_url()), error_message
+                        )
+                    )
+
+        except Archive.DoesNotExist:
+            raise Http404("Archive does not exist")
+
+        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+    else:
+
+        try:
+            archive = Archive.objects.get(pk=pk)
+        except Archive.DoesNotExist:
+            raise Http404("Archive does not exist")
+
+        d = {
+            'archive': archive,
+            'image_tool_setup': bool(crawler_settings.cloning_image_tool),
+        }
+
+        inlined = request.GET.get("inline", None)
+
+        if inlined:
+            return render(request, "viewer/include/archive_clone_plus.html", d)
+        else:
+            return render(request, "viewer/archive_display_clone_plus.html", d)
+
+
+@login_required
 def public(request: HttpRequest, pk: int) -> HttpResponse:
     """Public archive."""
 

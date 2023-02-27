@@ -28,6 +28,7 @@ urlpatterns = [
     re_path(r"^archive/(\d+)/private/$", archive.private, name='archive-private'),
     re_path(r"^archive/(\d+)/calc-imgs-sha1/$", archive.calculate_images_sha1, name='archive-calc-imgs-sha1'),
     re_path(r"^archive/(\d+)/check-convert-type/$", archive.check_and_convert_filetype, name='check-convert-type'),
+    re_path(r"^archive/(\d+)/clone-plus/$", archive.clone_plus, name='archive-clone-plus'),
     re_path(r"^archive/(\d+)/recalc-info/$", archive.recalc_info, name='archive-recalc-info'),
     re_path(r"^archive/(\d+)/mark-similar-archives/$", archive.mark_similar_archives, name='archive-mark-similar'),
     re_path(r"^archive/(\d+)/recall-api/$", archive.recall_api, name='archive-recall-api'),

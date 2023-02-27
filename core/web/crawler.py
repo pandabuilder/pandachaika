@@ -323,9 +323,8 @@ class WebCrawler(object):
 
         if args.crawl_from_feed:
             for parser in parsers:
-                if parser.name in current_settings.autochecker.providers:
-                    if parser.feed_urls_implemented():
-                        args.url.extend(parser.get_feed_urls())
+                if parser.feed_urls_implemented():
+                    args.url.extend(parser.get_feed_urls())
 
         if len(args.url) == 0 and not args.json_source:
             logger.info('No urls to crawl, Web Crawler done.')

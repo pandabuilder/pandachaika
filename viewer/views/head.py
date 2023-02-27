@@ -58,7 +58,7 @@ archive_filter_keys = (
     "posted_to", "source_type", "tags", "only_favorites",
     "non_public", "public", "reason",
     "uploader", "category", "hidden",
-    "qsearch"
+    "qsearch", "extracted"
 )
 
 archive_order_fields = [
@@ -1192,8 +1192,10 @@ def quick_search(request: HttpRequest, parameters: DataDict, display_parameters:
         results_url: Optional[QuerySet[Archive]] = results.filter(query)
     else:
         results_url = None
+        
+    clean_up_qsearch = display_parameters["qsearch"].replace("	", " ")
 
-    q_formatted = '%' + display_parameters["qsearch"].replace(' ', '%') + '%'
+    q_formatted = '%' + clean_up_qsearch.replace(' ', '%') + '%'
     results = results.filter(
         Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted)
     )
@@ -1719,6 +1721,9 @@ def filter_archives_simple(params: dict[str, Any], authenticated=False, show_bin
         results = results.filter(gallery__posted__lte=params["posted_to"])
 
     if authenticated:
+        
+        if "extracted" in params and params["extracted"]:
+            results = results.filter(extracted=True)
         if "created_from" in params and params["created_from"]:
             results = results.filter(create_date__gte=params["created_from"])
         if "created_to" in params and params["created_to"]:

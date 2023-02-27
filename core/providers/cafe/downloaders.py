@@ -54,7 +54,7 @@ class ArchiveDownloader(BaseDownloader):
 
         gallery_read = soup_1.find("a", {"class": "x-btn-rounded"})['href']
 
-        # Some URLs are really bad formatted
+        # Some URLs are really badly formatted
         gallery_read = re.sub(
             r'.*(' + re.escape(constants.main_page) + r'/manga/read/.+/0/1/).*', r'\1',
             gallery_read,

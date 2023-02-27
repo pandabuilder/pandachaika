@@ -125,6 +125,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'webpack_loader',
+    'django_vite',
 ]
 
 if DEBUG and module_exists('corsheaders'):
@@ -161,15 +162,15 @@ STATICFILES_FINDERS = [
     'django.contrib.staticfiles.finders.AppDirectoriesFinder'
 ]
 
+DJANGO_VITE_ASSETS_PATH = os.path.join(BASE_DIR, 'viewer/assets/image-viewer')
+DJANGO_VITE_MANIFEST_PATH = os.path.join(BASE_DIR, 'viewer/assets/image-viewer/manifest.json')
+
 STATICFILES_DIRS = (
     os.path.join(BASE_DIR, 'viewer/assets'),
+    os.path.join(BASE_DIR, 'viewer/assets/image-viewer'),
 )
 
 WEBPACK_LOADER = {
-    'DEFAULT': {
-        'BUNDLE_DIR_NAME': '',
-        'STATS_FILE': os.path.join(BASE_DIR, 'webpack-stats.json'),
-    },
     'MANAGE': {
         'BUNDLE_DIR_NAME': '',
         'STATS_FILE': os.path.join(BASE_DIR, 'webpack-stats-manage.json'),

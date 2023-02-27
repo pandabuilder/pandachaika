@@ -11,6 +11,7 @@
     {% endif %}
     <div class="page-header">
     <h2>Activity Event Log</h2>
+    <h4>Current server time: {% now "y-m-d, H:i:s" %}</h4>
     <p class="lead">Number of events (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
     </div>
     {% load viewer_extras %}

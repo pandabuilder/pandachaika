@@ -23,6 +23,11 @@
                 {% endif %}
             </li>
         {% endif %}
+        {% if perms.viewer.modify_archive_tools %}
+            <li>
+                <a class="open-modal" data-popup-url="{% url 'viewer:archive-clone-plus' archive.pk %}?inline=1" href="{% url 'viewer:archive-clone-plus' archive.pk %}">clone +</a>
+            </li>
+        {% endif %}
         {% if user.is_staff %}<li><a href="{% url 'viewer:archive-recalc-info' archive.pk %}">recalc</a></li>{% endif %}
         {% if perms.viewer.mark_similar_archive %}<li><a href="{% url 'viewer:archive-mark-similar' archive.pk %}">mark similar</a></li>{% endif %}
         {% if user.is_staff %}<li><a href="{% url 'viewer:check-convert-type' archive.pk %}">convert zip</a></li>{% endif %}
@@ -281,6 +286,7 @@
           <a class="btn btn-light hash-preview" tabindex="0" role="button" data-toggle="popover" data-pk="{{ archive.pk }}">Images SHA1</a>
           <a class="btn btn-light" href="{% url 'viewer:image-data-list' archive.pk %}">Images Data</a>
           <a class="btn btn-light" href="{% url 'viewer:archive-change-log' archive.pk %}">Change Log</a>
+          <a class="btn btn-light" href="{% url 'viewer:activity-event-log' %}?content-type=archive&content-id={{ archive.pk }}">Activity Log</a>
           {% if archive.thumbnail.name %}
             <a class="btn btn-light img-preview" data-image-url="{{ archive.thumbnail.url }}" rel="popover">Hover for cover</a>
           {% endif %}
@@ -310,6 +316,9 @@
         <a class="btn btn-light" href="{% url 'viewer:image-data-list' archive.pk %}">Images Data</a>
         {% if perms.viewer.read_archive_change_log %}
         <a class="btn btn-light" href="{% url 'viewer:archive-change-log' archive.pk %}">Change Log</a>
+        {% endif %}
+        {% if perms.viewer.read_activity_logs %}
+        <a class="btn btn-light" href="{% url 'viewer:activity-event-log' %}?content-type=archive&content-id={{ archive.pk }}">Activity Log</a>
         {% endif %}
         {% if archive.thumbnail.name %}
           <a class="btn btn-light img-preview" data-image-url="{{ archive.thumbnail.url }}" rel="popover">Hover for cover</a>

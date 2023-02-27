@@ -7,7 +7,6 @@ from core.base.utilities import check_for_running_threads
 
 if typing.TYPE_CHECKING:
     from core.downloaders.postdownload import TimedPostDownloader
-    from core.workers.autosearch import ProviderTimedAutoCrawler
     from core.workers.autoupdate import ProviderTimedAutoUpdater
     from core.workers.auto_wanted import TimedAutoWanted
     from core.workers.webqueue import WebQueue
@@ -19,7 +18,6 @@ class WorkerContext:
     web_queue: Optional['WebQueue'] = None
     timed_auto_wanted: Optional['TimedAutoWanted'] = None
     timed_downloader: Optional['TimedPostDownloader'] = None
-    timed_auto_crawlers: list['ProviderTimedAutoCrawler'] = []
     timed_auto_updaters: list['ProviderTimedAutoUpdater'] = []
     timed_link_monitors: list['LinkMonitor'] = []
 
@@ -29,7 +27,6 @@ class WorkerContext:
             workers.append(self.timed_auto_wanted)
         if self.timed_downloader:
             workers.append(self.timed_downloader)
-        workers.extend(self.timed_auto_crawlers)
         workers.extend(self.timed_auto_updaters)
         workers.extend(self.timed_link_monitors)
         return workers
@@ -66,7 +63,6 @@ class WorkerContext:
     def start_workers(self, crawler_settings: 'setup.Settings') -> None:
 
         from core.downloaders.postdownload import TimedPostDownloader
-        from core.workers.autosearch import ProviderTimedAutoCrawler
         from core.workers.autoupdate import ProviderTimedAutoUpdater
         from core.workers.auto_wanted import TimedAutoWanted
         from core.workers.link_monitor import LinkMonitor
@@ -80,22 +76,6 @@ class WorkerContext:
             timer=5,
             parallel_post_downloaders=crawler_settings.parallel_post_downloaders,
         )
-
-        for provider_name in crawler_settings.autochecker.providers:
-            setup.GlobalInfo.worker_threads.append(
-                (
-                    'auto_search_' + provider_name,
-                    'Searches for new galleries that matches wanted galleries (provider: {})'.format(provider_name),
-                    'scheduler'
-                ),
-            )
-            provider_auto_crawler = ProviderTimedAutoCrawler(
-                crawler_settings,
-                provider_name,
-                web_queue=self.web_queue,
-                timer=crawler_settings.providers[provider_name].autochecker_timer
-            )
-            self.timed_auto_crawlers.append(provider_auto_crawler)
 
         self.timed_auto_wanted = TimedAutoWanted(
             crawler_settings,
@@ -147,15 +127,6 @@ class WorkerContext:
                 )
                 self.timed_link_monitors.append(link_monitor)
 
-        for provider_auto_crawler in self.timed_auto_crawlers:
-            obj = Scheduler.objects.get_or_create(
-                name=provider_auto_crawler.thread_name,
-            )
-            provider_auto_crawler.last_run = obj[0].last_run
-            provider_auto_crawler.pk = obj[0].pk
-            if crawler_settings.autochecker.startup:
-                provider_auto_crawler.start_running(timer=provider_auto_crawler.original_timer)
-
         obj = Scheduler.objects.get_or_create(
             name=self.timed_auto_wanted.thread_name,
         )
@@ -188,8 +159,6 @@ class WorkerContext:
             self.timed_downloader.stop_running()
         if self.timed_auto_wanted:
             self.timed_auto_wanted.stop_running()
-        for provider_auto_crawler in self.timed_auto_crawlers:
-            provider_auto_crawler.stop_running()
         for provider_auto_updater in self.timed_auto_updaters:
             provider_auto_updater.stop_running()
         for link_monitor in self.timed_link_monitors:

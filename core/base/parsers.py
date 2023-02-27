@@ -466,7 +466,7 @@ class BaseParser:
                 )
 
         for cnt, downloader in enumerate(to_use_downloaders):
-            downloader[0].init_download(copy.deepcopy(gallery))
+            downloader[0].init_download(copy.deepcopy(gallery), wanted_gallery_list=gallery_wanted_lists[gallery.gid])
 
             if downloader[0].return_code == 1:
 
@@ -482,9 +482,6 @@ class BaseParser:
                             wanted_gallery=wanted_gallery,
                             gallery=downloader[0].gallery_db_entry
                         )
-                        if downloader[0].archive_db_entry and wanted_gallery.reason:
-                            downloader[0].archive_db_entry.reason = wanted_gallery.reason
-                            downloader[0].archive_db_entry.simple_save()
 
                     if len(gallery_wanted_lists[gallery.gid]) > 0:
                         wanted_gallery_found.send(

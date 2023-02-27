@@ -552,7 +552,7 @@ class ProviderAdmin(admin.ModelAdmin):
 class EventLogAdmin(admin.ModelAdmin):
 
     raw_id_fields = ["user"]
-    list_filter = ["action", "create_date"]
+    list_filter = ["action", "create_date", "content_type"]
     list_display = ["create_date", "user", "action", "reason", "data", "result", "content_type", "object_id"]
     search_fields = ["user__username", "user__email", "reason", "result", "object_id"]
 

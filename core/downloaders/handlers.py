@@ -149,7 +149,7 @@ class BaseDownloader(metaclass=Meta):
                             },
                         )
 
-    def init_download(self, gallery: GalleryData) -> None:
+    def init_download(self, gallery: GalleryData, wanted_gallery_list: Optional[list['WantedGallery']] = None) -> None:
 
         self.original_gallery = copy.deepcopy(gallery)
         self.gallery = gallery
@@ -180,6 +180,11 @@ class BaseDownloader(metaclass=Meta):
                 default_values['user'] = self.settings.archive_user
             if self.settings.archive_origin:
                 default_values['origin'] = self.settings.archive_origin
+
+            if wanted_gallery_list:
+                for wanted_gallery in wanted_gallery_list:
+                    if wanted_gallery.reason:
+                        default_values['reason'] = wanted_gallery.reason
 
             self.archive_db_entry = self.update_archive_db(default_values)
 

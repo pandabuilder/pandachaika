@@ -2,13 +2,12 @@
 {% block title %}Loading... | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
 {% load static %}
-{% load render_bundle from webpack_loader %}
+{% load django_vite %}
 {% block extrahead %}
-  {% render_bundle 'main' 'css' 'DEFAULT' %}
+{% vite_asset 'src/main.tsx' %}
 {% endblock %}
 
 {% block content %}
 <noscript>You need to enable JavaScript to run this app.</noscript>
   <div id="root"></div>
-  {% render_bundle 'main' 'js' 'DEFAULT' %}
 {% endblock %}

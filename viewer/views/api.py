@@ -269,7 +269,7 @@ def json_search(request: HttpRequest) -> HttpResponse:
                 ensure_ascii=False,
             )
             return HttpResponse(response, content_type="application/json; charset=utf-8")
-        # Get fields from several archives by one of it's images sha1 value.
+        # Get fields from several archives by one of its images sha1 value.
         elif 'sha1' in data:
             archives = Archive.objects.filter(image__sha1=data['sha1']).select_related('gallery').prefetch_related('tags')
 

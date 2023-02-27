@@ -1,0 +1,15 @@
+{% extends "viewer/base.html" %}
+{% block title %}{{ archive.best_title }} | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+
+{% block content %}
+{% load viewer_extras %}
+  {% if messages %}
+    <ul class="messages">
+      {% for message in messages %}
+        <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+   {% include 'viewer/include/clone_reorder_archive.html' %}
+{% endblock %}

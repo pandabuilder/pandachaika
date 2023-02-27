@@ -1,0 +1,6 @@
+-r requirements.txt
+mypy==1.0.1
+ruff==0.0.252
+django-stubs==1.15.0
+types-requests==2.28.11.15
+types-python-dateutil==2.8.19.8

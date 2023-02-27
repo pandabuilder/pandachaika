@@ -95,8 +95,6 @@ class ProviderSettings:
         self.proxy: str = ""
         self.proxies: DataDict = {}
         self.timeout_timer: int = global_settings.timeout_timer
-        self.autochecker_timer: float = global_settings.autochecker.cycle_timer
-        self.autochecker_enable: bool = global_settings.autochecker.enable
         self.wait_timer: int = global_settings.wait_timer
         self.stop_page_number: Optional[int] = None
 
@@ -114,16 +112,12 @@ class ProviderSettings:
                 self.proxies = {'http': config['general']['proxy'], 'https': config['general']['proxy']}
             if 'timeout_timer' in config['general']:
                 self.timeout_timer = int(config['general']['timeout_timer'])
-            if 'autochecker_timer' in config['general']:
-                self.autochecker_timer = float(config['general']['autochecker_timer'])
-            if 'autochecker_enable' in config['general']:
-                self.autochecker_enable = config['general'].getboolean('autochecker_enable')
             if 'wait_timer' in config['general']:
                 self.wait_timer = int(config['general']['wait_timer'])
             if 'autoupdater_timer' in config['general']:
                 self.autoupdater_timer = float(config['general']['autoupdater_timer'])
             if 'autoupdater_enable' in config['general']:
-                self.autoupdater_enable = config['general'].getboolean('autoupdater_enable')
+                self.autoupdater_enable = config['general']['autoupdater_enable']
             if 'autoupdater_buffer_back' in config['general']:
                 self.autoupdater_buffer_back = int(config['general']['autoupdater_buffer_back'])
             if 'autoupdater_buffer_after' in config['general']:

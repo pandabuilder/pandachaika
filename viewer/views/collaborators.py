@@ -24,7 +24,7 @@ from viewer.utils.matching import generate_possible_matches_for_archives
 from viewer.utils.actions import event_log
 from viewer.forms import GallerySearchForm, ArchiveSearchForm, WantedGalleryCreateOrEditForm, \
     ArchiveCreateForm, ArchiveGroupSelectForm, GalleryCreateForm, ArchiveManageEntrySimpleForm, \
-    WantedGalleryColSearchForm, ArchiveManageSearchSimpleForm, EventLogSearchForm, AllGalleriesSearchForm, \
+    WantedGalleryColSearchForm, ArchiveManageSearchSimpleForm, AllGalleriesSearchForm, \
     EventSearchForm
 from viewer.models import Archive, Gallery, EventLog, ArchiveMatches, Tag, WantedGallery, ArchiveGroup, \
     ArchiveGroupEntry, GallerySubmitEntry, MonitoredLink, ArchiveRecycleEntry, ArchiveTag
@@ -673,6 +673,26 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                         content_object=archive,
                         result='recycled'
                     )
+        elif 'reduce_archives' in p and request.user.is_authenticated and request.user.has_perm('viewer.expand_archive'):
+            for archive in archives:
+                if archive.extracted:
+                    message = 'Reducing Archive: {}, link: {}'.format(
+                        archive.title, archive.get_absolute_url()
+                    )
+                    if 'reason' in p and p['reason'] != '':
+                        message += ', reason: {}'.format(p['reason'])
+                    logger.info("User {}: {}".format(request.user.username, message))
+                    if not json_request:
+                        messages.success(request, message)
+                    
+                    archive.reduce()
+                    event_log(
+                        request.user,
+                        'REDUCE_ARCHIVE',
+                        reason=user_reason,
+                        content_object=archive,
+                        result='success'
+                    )
         elif 'mark_similar' in p and request.user.is_authenticated and request.user.has_perm('viewer.mark_similar_archive'):
             for archive in archives:
                 message = 'Creating similar info as marks for Archive: {}'.format(archive.get_absolute_url())
@@ -860,6 +880,20 @@ def activity_event_log(request: HttpRequest) -> HttpResponse:
 
     if data_field:
         results = results.filter(data__contains=data_field)
+        
+    event_content_type = get.get("content-type", '')
+    event_content_id = get.get("content-id", '')
+    
+    if event_content_type in ('archive', 'gallery'):
+        if event_content_type == 'archive':
+            event_type = ContentType.objects.get_for_model(Archive)
+            results = results.filter(content_type=event_type)
+        elif event_content_type == 'gallery':
+            event_type = ContentType.objects.get_for_model(Gallery)
+            results = results.filter(content_type=event_type)
+            
+    if event_content_id:
+        results = results.filter(object_id=event_content_id)
 
     if title or tags and (filter_galleries or filter_archives):
 

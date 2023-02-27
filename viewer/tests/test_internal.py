@@ -257,7 +257,7 @@ class GeneralPagesTest(TestCase):
         response = c.get(reverse('viewer:wanted-galleries'))
         self.assertEqual(response.status_code, 200)
 
-        # Depends on settings.ini
+        # Depends on settings.yaml
         # response = c.get(reverse('viewer:url-submit'))
         # self.assertEqual(response.status_code, 200)
 

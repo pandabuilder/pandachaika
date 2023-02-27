@@ -4,6 +4,7 @@ import logging
 import signal
 import threading
 
+import yaml
 from django.http import HttpResponse, HttpRequest
 from django.conf import settings
 from django.utils.dateparse import parse_date
@@ -257,9 +258,8 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
                 response['error'] = 'Missing data'
                 return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status_code=401)
             settings_text = data['data']
-            if os.path.isfile(os.path.join(crawler_settings.default_dir, "settings.ini")):
-                with open(os.path.join(crawler_settings.default_dir,
-                                       "settings.ini"),
+            if os.path.isfile(os.path.join(crawler_settings.default_dir, "settings.yaml")):
+                with open(os.path.join(crawler_settings.default_dir, "settings.yaml"),
                           "w",
                           encoding="utf-8"
                           ) as f:
@@ -269,8 +269,8 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
                     response['message'] = 'Modified settings file for Panda Backup'
                     return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
         else:
-            if os.path.isfile(os.path.join(crawler_settings.default_dir, "settings.ini")):
-                with open(os.path.join(crawler_settings.default_dir, "settings.ini"), "r", encoding="utf-8") as f:
+            if os.path.isfile(os.path.join(crawler_settings.default_dir, "settings.yaml")):
+                with open(os.path.join(crawler_settings.default_dir, "settings.yaml"), "r", encoding="utf-8") as f:
                     first = f.read(1)
                     if first != '\ufeff':
                         # not a BOM, rewind
@@ -297,48 +297,6 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
             crawler_settings.workers.timed_downloader.stop_running()
             crawler_settings.workers.timed_downloader.force_run_once = True
             crawler_settings.workers.timed_downloader.start_running(timer=crawler_settings.timed_downloader_cycle_timer)
-        return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
-    elif tool == "start_timed_crawler":
-        if tool_arg:
-            for provider_auto_crawler in crawler_settings.workers.timed_auto_crawlers:
-                if provider_auto_crawler.provider_name == tool_arg:
-                    provider_auto_crawler.start_running(
-                        timer=crawler_settings.providers[provider_auto_crawler.provider_name].autochecker_timer
-                    )
-                    break
-        else:
-            for provider_auto_crawler in crawler_settings.workers.timed_auto_crawlers:
-                provider_auto_crawler.start_running(
-                    timer=crawler_settings.providers[provider_auto_crawler.provider_name].autochecker_timer
-                )
-        return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
-    elif tool == "stop_timed_crawler":
-        if tool_arg:
-            for provider_auto_crawler in crawler_settings.workers.timed_auto_crawlers:
-                if provider_auto_crawler.provider_name == tool_arg:
-                    provider_auto_crawler.stop_running()
-                    break
-        else:
-            for provider_auto_crawler in crawler_settings.workers.timed_auto_crawlers:
-                provider_auto_crawler.stop_running()
-        return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
-    elif tool == "force_run_timed_crawler":
-        if tool_arg:
-            for provider_auto_crawler in crawler_settings.workers.timed_auto_crawlers:
-                if provider_auto_crawler.provider_name == tool_arg:
-                    provider_auto_crawler.stop_running()
-                    provider_auto_crawler.force_run_once = True
-                    provider_auto_crawler.start_running(
-                        timer=crawler_settings.providers[provider_auto_crawler.provider_name].autochecker_timer
-                    )
-                    break
-        else:
-            for provider_auto_crawler in crawler_settings.workers.timed_auto_crawlers:
-                provider_auto_crawler.stop_running()
-                provider_auto_crawler.force_run_once = True
-                provider_auto_crawler.start_running(
-                    timer=crawler_settings.providers[provider_auto_crawler.provider_name].autochecker_timer
-                )
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
     elif tool == "start_timed_updater":
         if tool_arg:
@@ -403,13 +361,6 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
     elif tool == "threads_status":
         threads_status = get_thread_status_bool()
         return HttpResponse(json.dumps({'data': threads_status}), content_type="application/json; charset=utf-8")
-    elif tool == "autochecker_providers":
-        threads_status = get_thread_status_bool()
-        autochecker_providers = (
-            (provider_name, threads_status['auto_search_' + provider_name]) for provider_name in
-            crawler_settings.autochecker.providers if 'auto_search_' + provider_name in threads_status
-        )
-        return HttpResponse(json.dumps({'data': autochecker_providers}), content_type="application/json; charset=utf-8")
 
     response['error'] = 'Missing parameters'
     return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")

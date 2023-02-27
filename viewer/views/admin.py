@@ -7,6 +7,7 @@ import typing
 from collections import defaultdict
 from functools import reduce
 
+import yaml
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
@@ -456,9 +457,8 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
         p = request.POST
         if p:
             settings_text = p['settings_file']
-            if os.path.isfile(os.path.join(crawler_settings.default_dir, "settings.ini")):
-                with open(os.path.join(crawler_settings.default_dir,
-                                       "settings.ini"),
+            if os.path.isfile(os.path.join(crawler_settings.default_dir, "settings.yaml")):
+                with open(os.path.join(crawler_settings.default_dir, "settings.yaml"),
                           "w",
                           encoding="utf-8"
                           ) as f:
@@ -470,8 +470,8 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
                         'Modified settings file for Panda Backup')
                     return HttpResponseRedirect(request.META["HTTP_REFERER"])
         else:
-            if os.path.isfile(os.path.join(crawler_settings.default_dir, "settings.ini")):
-                with open(os.path.join(crawler_settings.default_dir, "settings.ini"), "r", encoding="utf-8") as f:
+            if os.path.isfile(os.path.join(crawler_settings.default_dir, "settings.yaml")):
+                with open(os.path.join(crawler_settings.default_dir, "settings.yaml"), "r", encoding="utf-8") as f:
                     first = f.read(1)
                     if first != '\ufeff':
                         # not a BOM, rewind
@@ -502,48 +502,6 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
             crawler_settings.workers.timed_downloader.stop_running()
             crawler_settings.workers.timed_downloader.force_run_once = True
             crawler_settings.workers.timed_downloader.start_running(timer=crawler_settings.timed_downloader_cycle_timer)
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
-    elif tool == "start_timed_crawler":
-        if tool_arg:
-            for provider_auto_crawler in crawler_settings.workers.timed_auto_crawlers:
-                if provider_auto_crawler.provider_name == tool_arg:
-                    provider_auto_crawler.start_running(
-                        timer=crawler_settings.providers[provider_auto_crawler.provider_name].autochecker_timer
-                    )
-                    break
-        else:
-            for provider_auto_crawler in crawler_settings.workers.timed_auto_crawlers:
-                provider_auto_crawler.start_running(
-                    timer=crawler_settings.providers[provider_auto_crawler.provider_name].autochecker_timer
-                )
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
-    elif tool == "stop_timed_crawler":
-        if tool_arg:
-            for provider_auto_crawler in crawler_settings.workers.timed_auto_crawlers:
-                if provider_auto_crawler.provider_name == tool_arg:
-                    provider_auto_crawler.stop_running()
-                    break
-        else:
-            for provider_auto_crawler in crawler_settings.workers.timed_auto_crawlers:
-                provider_auto_crawler.stop_running()
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
-    elif tool == "force_run_timed_crawler":
-        if tool_arg:
-            for provider_auto_crawler in crawler_settings.workers.timed_auto_crawlers:
-                if provider_auto_crawler.provider_name == tool_arg:
-                    provider_auto_crawler.stop_running()
-                    provider_auto_crawler.force_run_once = True
-                    provider_auto_crawler.start_running(
-                        timer=crawler_settings.providers[provider_auto_crawler.provider_name].autochecker_timer
-                    )
-                    break
-        else:
-            for provider_auto_crawler in crawler_settings.workers.timed_auto_crawlers:
-                provider_auto_crawler.stop_running()
-                provider_auto_crawler.force_run_once = True
-                provider_auto_crawler.start_running(
-                    timer=crawler_settings.providers[provider_auto_crawler.provider_name].autochecker_timer
-                )
         return HttpResponseRedirect(request.META["HTTP_REFERER"])
     elif tool == "start_timed_updater":
         if tool_arg:
@@ -608,17 +566,12 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
 
     threads_status = get_thread_status_bool()
 
-    autochecker_providers = (
-        (provider_name, threads_status['auto_search_' + provider_name]) for provider_name in crawler_settings.autochecker.providers if 'auto_search_' + provider_name in threads_status
-    )
-
     autoupdater_providers = (
         (provider_name, threads_status['auto_updater_' + provider_name]) for provider_name in crawler_settings.autoupdater.providers if 'auto_updater_' + provider_name in threads_status
     )
 
     d = {
         'tool': tool, 'settings_text': settings_text, 'threads_status': threads_status,
-        'autochecker_providers': autochecker_providers,
         'autoupdater_providers': autoupdater_providers
     }
 

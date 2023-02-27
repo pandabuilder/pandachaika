@@ -4,6 +4,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import time
 import typing
 import uuid
@@ -19,7 +20,7 @@ from django.core.files.storage import FileSystemStorage
 from django.db.backends.base.base import BaseDatabaseWrapper
 from django.templatetags.static import static
 from os.path import join as pjoin, basename
-from tempfile import NamedTemporaryFile
+from tempfile import NamedTemporaryFile, mkdtemp
 from typing import Optional
 from urllib.parse import quote, urlparse
 
@@ -54,7 +55,8 @@ from core.base.utilities import (
     get_zip_fileinfo,
     sha1_from_file_object,
     clean_title,
-    request_with_retries, get_images_from_zip, get_title_from_path, check_and_convert_to_zip)
+    request_with_retries, get_images_from_zip, get_title_from_path, check_and_convert_to_zip, available_filename,
+    file_matches_any_filter)
 from core.base.types import GalleryData, DataDict
 from core.base.utilities import (
     get_dict_allowed_fields, replace_illegal_name
@@ -1549,6 +1551,7 @@ class Archive(models.Model):
             ("archive_internal_info", "Can see selected internal Archive information"),
             ("mark_similar_archive", "Can run the similar Archives process"),
             ("read_archive_change_log", "Can read the Archive change log"),
+            ("modify_archive_tools", "Can use tools that modify the underlying file"),
         )
 
         indexes = [
@@ -1800,6 +1803,7 @@ class Archive(models.Model):
         if not os.path.isfile(self.zipped.path) or not self.crc32:
             return
         self.public = False
+        self.public_date = None
         if reason:
             self.reason = reason
         self.simple_save()
@@ -1845,6 +1849,237 @@ class Archive(models.Model):
             return self.gallery.get_link()
         else:
             return ""
+
+    def create_new_archive_ordered_by_sha1(self, sha1s: list[str]) -> 'tuple[Optional[Archive], str]':
+        images = self.image_set.filter(sha1__isnull=False)
+        if images.count() != self.filecount:
+            return None, 'Image count different from filecount'
+
+        if images.count() != len(sha1s):
+            return None, 'Image count different from SHA1 values'
+
+        try:
+            my_zip = zipfile.ZipFile(self.zipped.path, 'r')
+        except (zipfile.BadZipFile, NotImplementedError):
+            return None, 'Bad original zip file'
+
+        if my_zip.testzip():
+            return None, 'Bad original zip file'
+
+        filtered_files = get_images_from_zip(my_zip)
+
+        if len(sha1s) != len(filtered_files):
+            return None, 'SHA1 values count different from filtered files from zip file'
+
+        new_file_name = available_filename(settings.MEDIA_ROOT, self.zipped.name)
+
+        new_file_path = os.path.join(settings.MEDIA_ROOT, new_file_name)
+
+        new_zipfile = zipfile.ZipFile(new_file_path, 'w')
+
+        for count, sha1 in enumerate(sha1s, start=1):
+
+            try:
+                current_image = images.get(sha1=sha1)
+            except Image.DoesNotExist:
+                return None, 'Image from SHA1 value: {} does not exist'.format(sha1)
+
+            archive_position = current_image.archive_position
+            current_file_tuple = filtered_files[archive_position - 1]
+            if current_file_tuple[1] is None:
+                with my_zip.open(current_file_tuple[0]) as current_zip_img:
+                    current_basename = os.path.basename(current_file_tuple[0])
+                    new_zipfile.writestr(
+                        "{}_{}".format(str(count).zfill(4), current_basename),
+                        current_zip_img.read()
+                    )
+            else:
+                with my_zip.open(current_file_tuple[1]) as current_zip:
+                    with zipfile.ZipFile(current_zip) as my_nested_zip:
+                        with my_nested_zip.open(current_file_tuple[0]) as current_zip_img:
+                            current_basename = os.path.basename(current_file_tuple[0])
+                            new_zipfile.writestr(
+                                "{}_{}".format(str(count).zfill(4), current_basename),
+                                current_zip_img.read()
+                            )
+
+        new_zipfile.close()
+        my_zip.close()
+
+        new_archive = self
+
+        possible_matches = self.possible_matches.all()
+        tags = self.tags.all()
+        alternative_sources = self.alternative_sources.all()
+
+        new_archive.pk = None
+        new_archive._state.adding = True
+        new_archive.public = False
+        new_archive.public_date = None
+        new_archive.crc32 = ''
+        new_archive.thumbnail = ''
+        new_archive.zipped = new_file_name
+        new_archive.save()
+        new_archive.possible_matches.set(possible_matches)
+        new_archive.tags.set(tags)
+        new_archive.alternative_sources.set(alternative_sources)
+
+        return new_archive, ''
+    
+    def clone_archive_plus(self, sha1s: Optional[list[str]] = None, image_tool: Optional[tuple[str, list[str]]] = None) -> 'tuple[Optional[Archive], str]':
+        
+        images = self.image_set.filter(sha1__isnull=False)
+        if images.count() != self.filecount:
+            return None, 'Image count different from filecount'
+
+        if sha1s:
+            local_sha1s = sha1s
+        else:
+            local_sha1s = list(images.values_list('sha1', flat=True))  # type: ignore
+
+        if images.count() != len(local_sha1s):
+            return None, 'Image count different from SHA1 values'
+
+        try:
+            my_zip = zipfile.ZipFile(self.zipped.path, 'r')
+        except (zipfile.BadZipFile, NotImplementedError):
+            return None, 'Bad original zip file'
+
+        if my_zip.testzip():
+            return None, 'Bad original zip file'
+
+        filtered_files = get_images_from_zip(my_zip)
+
+        if len(local_sha1s) != len(filtered_files):
+            return None, 'SHA1 values count different from filtered files from zip file'
+
+        new_file_name = available_filename(settings.MEDIA_ROOT, self.zipped.name)
+
+        new_file_path = os.path.join(settings.MEDIA_ROOT, new_file_name)
+
+        new_zipfile = zipfile.ZipFile(new_file_path, 'w')
+        dir_path = mkdtemp()
+
+        for count, sha1 in enumerate(local_sha1s, start=1):
+
+            try:
+                current_image = images.get(sha1=sha1)
+            except Image.DoesNotExist:
+                shutil.rmtree(dir_path, ignore_errors=True)
+                return None, 'Image from SHA1 value: {} does not exist'.format(sha1)
+
+            archive_position = current_image.archive_position
+            current_file_tuple = filtered_files[archive_position - 1]
+            if current_file_tuple[1] is None:
+                my_zip.extract(current_file_tuple[0], path=dir_path)
+
+                extracted_file = os.path.join(dir_path, current_file_tuple[0].replace('\\', '/'))
+                
+                if image_tool and file_matches_any_filter(current_file_tuple[0], image_tool[1]):
+                    mod_file = os.path.join(dir_path, "mod_file_{}.tmp".format(count))
+                    
+                    final_command = image_tool[0].format(input=extracted_file, output=mod_file)
+                    
+                    try:
+                    
+                        process_result = subprocess.run(
+                            final_command,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            universal_newlines=True,
+                            shell=True
+                        )
+                    except FileNotFoundError:
+                        shutil.rmtree(dir_path, ignore_errors=True)
+                        return None, "The following command could not run: {}".format(image_tool[0])
+
+                    if process_result.returncode != 0:
+                        shutil.rmtree(dir_path, ignore_errors=True)
+                        return None, "An error was captured when running {}: {}".format(image_tool[0], process_result.stderr)
+                    out_file = mod_file
+                else:
+                    out_file = extracted_file
+                
+                current_basename = os.path.basename(current_file_tuple[0])
+                
+                if sha1s:
+                    out_name = "{}_{}".format(str(count).zfill(4), current_basename) 
+                else:
+                    out_name = current_basename
+                
+                new_zipfile.write(
+                    out_file,
+                    arcname=out_name,
+                )
+            else:
+                with my_zip.open(current_file_tuple[1]) as current_zip:
+                    with zipfile.ZipFile(current_zip) as my_nested_zip:
+                        my_nested_zip.extract(current_file_tuple[0], path=dir_path)
+
+                        extracted_file = os.path.join(dir_path, current_file_tuple[0].replace('\\', '/'))
+
+                        if image_tool and file_matches_any_filter(current_file_tuple[0], image_tool[1]):
+                            mod_file = os.path.join(dir_path, "mod_file_{}.tmp".format(count))
+
+                            final_command = image_tool[0].format(input=extracted_file, output=mod_file)
+                            
+                            try:
+                                process_result = subprocess.run(
+                                    final_command,
+                                    stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE,
+                                    universal_newlines=True,
+                                    shell=True
+                                )
+                            except FileNotFoundError:
+                                shutil.rmtree(dir_path, ignore_errors=True)
+                                return None, "The following command could not run: {}".format(image_tool[0])
+
+                            if process_result.returncode != 0:
+                                shutil.rmtree(dir_path, ignore_errors=True)
+                                return None, "An error was captured when running {}: {}".format(image_tool[0],
+                                                                                                process_result.stderr)
+                            out_file = mod_file
+                        else:
+                            out_file = extracted_file
+
+                        current_basename = os.path.basename(current_file_tuple[0])
+
+                        if sha1s:
+                            out_name = "{}_{}".format(str(count).zfill(4), current_basename)
+                        else:
+                            out_name = current_basename
+
+                        new_zipfile.write(
+                            out_file,
+                            arcname=out_name,
+                        )
+
+        new_zipfile.close()
+        my_zip.close()
+        shutil.rmtree(dir_path, ignore_errors=True)
+
+        new_archive = self
+
+        possible_matches = self.possible_matches.all()
+        tags = self.tags.all()
+        alternative_sources = self.alternative_sources.all()
+
+        new_archive.pk = None
+        new_archive._state.adding = True
+        new_archive.public = False
+        new_archive.public_date = None
+        new_archive.crc32 = ''
+        new_archive.thumbnail = ''
+        if image_tool:
+            new_archive.filesize = None
+        new_archive.zipped = new_file_name
+        new_archive.save()
+        new_archive.possible_matches.set(possible_matches)
+        new_archive.tags.set(tags)
+        new_archive.alternative_sources.set(alternative_sources)
+
+        return new_archive, ''
 
     def get_available_thumbnail_plus_size(self) -> tuple[str, Optional[int], Optional[int]]:
         if self.thumbnail.name and self.thumbnail.url:

@@ -161,12 +161,22 @@ class PostDownloader(object):
             context.check_hostname = False
         else:
             context = ssl.create_default_context()
+
+        if 'bind_host' in self.settings.ftps and self.settings.ftps['bind_host']:
+            if self.settings.ftps['bind_port'] is None:
+                bind_port = 0
+            else:
+                bind_port = self.settings.ftps['bind_port']
+            source_address = (self.settings.ftps['bind_host'], bind_port)
+        else:
+            source_address = None
+
         self.ftps = FTP_TLS(
             host=self.settings.ftps['address'],
             user=self.settings.ftps['user'],
             passwd=self.settings.ftps['passwd'],
             context=context,
-            source_address=self.settings.ftps['source_address'],
+            source_address=source_address,
             timeout=self.settings.timeout_timer
         )
 
@@ -367,7 +377,7 @@ class PostDownloader(object):
                             self.set_current_dir(self.settings.ftps['remote_torrent_dir'])
                         else:
                             break
-                    if self.settings.convert_rar_to_zip:
+                    if self.settings.convert_others_to_zip:
                         if os.path.splitext(matched_file_torrent[0])[1].lower() == ".rar":
                             logger.info(
                                 "For archive: {}, converting rar: {} to zip".format(
@@ -542,7 +552,7 @@ class PostDownloader(object):
                         os.link(target, matched_archive.zipped.path)
                     else:
                         shutil.copy(target, matched_archive.zipped.path)
-                    if self.settings.convert_rar_to_zip:
+                    if self.settings.convert_others_to_zip:
                         if os.path.splitext(matched_name)[1].lower() == ".rar":
                             logger.info(
                                 "For archive: {}, converting rar: {} to zip".format(

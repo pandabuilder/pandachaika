@@ -18,6 +18,6 @@ def parse_config(global_settings: 'Settings', config: dict[str, typing.Any]) -> 
 
     if 'general' in config:
         if 'get_posted_date_from_feed' in config['general']:
-            settings.get_posted_date_from_feed = config['general'].getboolean('get_posted_date_from_feed')
+            settings.get_posted_date_from_feed = config['general']['get_posted_date_from_feed']
 
     return settings

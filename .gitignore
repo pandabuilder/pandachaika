@@ -2,6 +2,7 @@
 *.db
 *.pid
 settings.ini
+settings.yaml
 
 __pycache__/
 *.py[cod]
