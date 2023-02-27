@@ -10,11 +10,14 @@
       <textarea name="sha1s" class="form-control" id="sha1s" rows="10">{{ request.POST.sha1s }}</textarea>
     </div>
     <div class="form-group">
-        {% if image_tool_setup %}
-        <input id="checkbox-f2" class="custom-cb" type="checkbox" name="run-image-tool" value="1" {% if "run-image-tool" in request.POST %}checked{% endif %}><label for="checkbox-f2"><span><span></span></span>Run Cloning Image Tool for every Image</label>
+        {% if image_tool.enable %}
+        <input id="checkbox-f2" class="custom-cb" type="checkbox" name="run-image-tool" value="1" {% if "run-image-tool" in request.POST %}checked{% endif %}><label for="checkbox-f2"><span><span></span></span>Run the following program on every Image in Archive (name, description): {{ image_tool.name }}, {{ image_tool.description }}</label>
         {% else %}
-        <div>Note: Cloning Image Tool is not setup, can't be selected</div>
+        <div>Note: Image Tool is not setup, can't be selected</div>
         {% endif %}
+    </div>
+    <div class="form-group">
+        <input id="checkbox-f3" class="custom-cb" type="checkbox" name="bin-original" value="1" {% if "bin-original" in request.POST %}checked{% endif %}><label for="checkbox-f3"><span><span></span></span>Bin the original Archive after correctly cloning</label>
     </div>
     <div class="form-group">
         <input size="10" class="form-control" name="reason" value="" placeholder="Reason" maxlength="200"/>

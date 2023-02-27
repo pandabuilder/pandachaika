@@ -743,6 +743,8 @@ def clone_plus(request: HttpRequest, pk: int) -> HttpResponse:
 
     if not request.user.has_perm('viewer.modify_archive_tools'):
         return render_error(request, "You don't have the permission to modify the underlying file.")
+    if not request.user.is_authenticated:
+        raise Http404("Archive does not exist")
 
     p = request.POST
 
@@ -750,10 +752,11 @@ def clone_plus(request: HttpRequest, pk: int) -> HttpResponse:
 
         reorder_by_sha1 = p.get("reorder-by-sha1", "")
         run_image_tool = p.get("run-image-tool", "")
-        
+        bin_original = p.get("bin-original", "")
+
         tools_used = []
         
-        if run_image_tool and not crawler_settings.cloning_image_tool:
+        if run_image_tool and not crawler_settings.cloning_image_tool.enable:
             messages.error(
                 request, 'Clone image tool is not setup.'
             )
@@ -780,9 +783,10 @@ def clone_plus(request: HttpRequest, pk: int) -> HttpResponse:
                 logger.info('Cloning Archive: {} and {}.'.format(archive.get_absolute_url(), tools_used))
                 
                 if run_image_tool:
-                    image_tool = crawler_settings.cloning_image_tool
-                    image_filter = crawler_settings.cloning_image_filter
-                    new_archive, error_message = archive.clone_archive_plus(sha1_list, (image_tool, image_filter))
+
+                    image_tool = crawler_settings.cloning_image_tool if crawler_settings.cloning_image_tool.enable else None
+
+                    new_archive, error_message = archive.clone_archive_plus(sha1_list, image_tool)
                 elif sha1_list:
                     new_archive, error_message = archive.create_new_archive_ordered_by_sha1(sha1_list)
                 else:
@@ -798,6 +802,34 @@ def clone_plus(request: HttpRequest, pk: int) -> HttpResponse:
                         result=result_message,
                         data=original_archive_url
                     )
+
+                    if bin_original and not archive.is_recycled():
+                        r = ArchiveRecycleEntry(
+                            archive=archive,
+                            reason=user_reason,
+                            user=request.user,
+                            origin=ArchiveRecycleEntry.ORIGIN_USER,
+                        )
+
+                        r.save()
+                        archive.binned = True
+                        archive.simple_save()
+                        event_log(
+                            request.user,
+                            'MOVE_TO_RECYCLE_BIN',
+                            content_object=archive,
+                            result='recycled',
+                            reason=user_reason
+                        )
+                        if archive.public:
+                            archive.set_private()
+                            event_log(
+                                request.user,
+                                'UNPUBLISH_ARCHIVE',
+                                content_object=archive,
+                                result='unpublished'
+                            )
+
                     messages.success(
                         request, 'Cloned new Archive: {}'.format(
                             request.build_absolute_uri(new_archive.get_absolute_url())
@@ -832,7 +864,7 @@ def clone_plus(request: HttpRequest, pk: int) -> HttpResponse:
 
         d = {
             'archive': archive,
-            'image_tool_setup': bool(crawler_settings.cloning_image_tool),
+            'image_tool': crawler_settings.cloning_image_tool,
         }
 
         inlined = request.GET.get("inline", None)

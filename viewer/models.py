@@ -64,6 +64,9 @@ from core.base.utilities import (
 from viewer.services import CompareObjectsService
 from viewer.utils.tags import sort_tags, sort_tags_str
 
+if typing.TYPE_CHECKING:
+    from core.base.setup import CloningImageToolSettings
+
 
 T = typing.TypeVar('T')
 
@@ -1926,7 +1929,7 @@ class Archive(models.Model):
 
         return new_archive, ''
     
-    def clone_archive_plus(self, sha1s: Optional[list[str]] = None, image_tool: Optional[tuple[str, list[str]]] = None) -> 'tuple[Optional[Archive], str]':
+    def clone_archive_plus(self, sha1s: Optional[list[str]] = None, image_tool: Optional['CloningImageToolSettings'] = None) -> 'tuple[Optional[Archive], str]':
         
         images = self.image_set.filter(sha1__isnull=False)
         if images.count() != self.filecount:
@@ -1975,13 +1978,12 @@ class Archive(models.Model):
 
                 extracted_file = os.path.join(dir_path, current_file_tuple[0].replace('\\', '/'))
                 
-                if image_tool and file_matches_any_filter(current_file_tuple[0], image_tool[1]):
+                if image_tool and file_matches_any_filter(current_file_tuple[0], image_tool.file_filters):
                     mod_file = os.path.join(dir_path, "mod_file_{}.tmp".format(count))
                     
-                    final_command = image_tool[0].format(input=extracted_file, output=mod_file)
+                    final_command = image_tool.executable_path.format(input=extracted_file, output=mod_file)
                     
                     try:
-                    
                         process_result = subprocess.run(
                             final_command,
                             stdout=subprocess.PIPE,
@@ -1991,11 +1993,11 @@ class Archive(models.Model):
                         )
                     except FileNotFoundError:
                         shutil.rmtree(dir_path, ignore_errors=True)
-                        return None, "The following command could not run: {}".format(image_tool[0])
+                        return None, "The following command could not run: {}".format(image_tool.name)
 
                     if process_result.returncode != 0:
                         shutil.rmtree(dir_path, ignore_errors=True)
-                        return None, "An error was captured when running {}: {}".format(image_tool[0], process_result.stderr)
+                        return None, "An error was captured when running {}: {}".format(image_tool.name, process_result.stderr)
                     out_file = mod_file
                 else:
                     out_file = extracted_file
@@ -2018,10 +2020,10 @@ class Archive(models.Model):
 
                         extracted_file = os.path.join(dir_path, current_file_tuple[0].replace('\\', '/'))
 
-                        if image_tool and file_matches_any_filter(current_file_tuple[0], image_tool[1]):
+                        if image_tool and file_matches_any_filter(current_file_tuple[0], image_tool.file_filters):
                             mod_file = os.path.join(dir_path, "mod_file_{}.tmp".format(count))
 
-                            final_command = image_tool[0].format(input=extracted_file, output=mod_file)
+                            final_command = image_tool.executable_path.format(input=extracted_file, output=mod_file)
                             
                             try:
                                 process_result = subprocess.run(
@@ -2033,11 +2035,11 @@ class Archive(models.Model):
                                 )
                             except FileNotFoundError:
                                 shutil.rmtree(dir_path, ignore_errors=True)
-                                return None, "The following command could not run: {}".format(image_tool[0])
+                                return None, "The following command could not run: {}".format(image_tool.name)
 
                             if process_result.returncode != 0:
                                 shutil.rmtree(dir_path, ignore_errors=True)
-                                return None, "An error was captured when running {}: {}".format(image_tool[0],
+                                return None, "An error was captured when running {}: {}".format(image_tool.name,
                                                                                                 process_result.stderr)
                             out_file = mod_file
                         else:

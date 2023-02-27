@@ -58,10 +58,15 @@ general:
   auto_phash_images: false
   # Create marks for archives that when their metadata change, the accepted WantedGallery is no longer valid
   recheck_wanted_on_update: false
-  # Extra tool to apply to images when using the cloning tool
-  cloning_image_tool:
-  cloning_image_filter:
-  - '*.png'
+# Extra tool to apply to images when using the cloning tool, use 'input' and 'output' kwargs on executable_path to replace on runtime
+cloning_image_tool:
+  enable: false
+  name: ''
+  executable_path: ''
+  description: ''
+  file_filters:
+    - '*.png'
+  extra_arguments: ''
 allowed:
   # If set to yes, galleries that were already added will be processed if added again.
   replace_metadata: false
