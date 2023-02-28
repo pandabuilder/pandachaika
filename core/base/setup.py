@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+from copy import deepcopy
+
 import yaml
 import os
 import shutil
@@ -302,7 +304,7 @@ class Settings:
         if load_from_disk:
             self.load_config_from_file(default_dir=default_dir)
         if load_from_config:
-            self.config = load_from_config
+            self.config = deepcopy(load_from_config)
             self.dict_to_settings(self.config)
 
     def load_config_from_file(self,
