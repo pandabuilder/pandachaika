@@ -6,7 +6,7 @@ import ssl
 import time
 import traceback
 from collections.abc import Iterable, Callable
-from ftplib import FTP_TLS, _SSLSocket  # type: ignore
+from ftplib import FTP_TLS
 from tempfile import mkdtemp
 from typing import Any, Optional
 from zipfile import ZipFile, BadZipFile
@@ -130,8 +130,10 @@ class PostDownloader(object):
                     )
 
     def write_file_update_progress(self, cmd: str, callback: Callable, filesize: int = 0, blocksize: int = 8192, rest: Optional[bool] = None) -> str:
-        self.ftps.voidcmd('TYPE I')  # type: ignore
-        with self.ftps.transfercmd(cmd, rest) as conn:  # type: ignore
+        if self.ftps is None:
+            raise ConnectionError
+        self.ftps.voidcmd('TYPE I')
+        with self.ftps.transfercmd(cmd, rest) as conn:
             self.current_download['filesize'] = filesize
             self.current_download['downloaded'] = 0
             self.current_download['filename'] = cmd.replace('RETR ', '')
@@ -150,9 +152,9 @@ class PostDownloader(object):
             self.current_download['speed'] = 0
             self.current_download['filesize'] = 0
             # shutdown ssl layer
-            if _SSLSocket is not None and isinstance(conn, _SSLSocket):
+            if isinstance(conn, ssl.SSLSocket):
                 conn.unwrap()
-        return self.ftps.voidresp()  # type: ignore
+        return self.ftps.voidresp()
 
     def start_connection(self) -> None:
         if self.settings.ftps['no_certificate_check']:

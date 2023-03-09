@@ -3,7 +3,7 @@ import time
 from django.core.management.base import BaseCommand
 from django.conf import settings
 
-from core.providers.twitter.utilities import match_tweet_with_wanted_galleries
+from core.providers.twitter.utilities import HANDLES_MODULES
 from core.providers.twitter import constants
 from viewer.models import TweetPost
 
@@ -49,9 +49,11 @@ class Command(BaseCommand):
 
         if options['wanted']:
             own_settings = crawler_settings.providers[constants.provider_name]
+
             for tweet_obj in tweets:
-                for message in match_tweet_with_wanted_galleries(tweet_obj, crawler_settings, own_settings):
-                    self.stdout.write(message)
+                if tweet_obj.user in HANDLES_MODULES:
+                    for message in HANDLES_MODULES[tweet_obj.user].match_tweet_with_wanted_galleries(tweet_obj, crawler_settings, own_settings):
+                        self.stdout.write(message)
 
         end = time.perf_counter()
 

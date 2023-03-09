@@ -120,12 +120,9 @@ class TransmissionHTTPSHandler(transmissionrpc.HTTPHandler):
         headers = {**self.auth, **headers}
         request = Request(url, query.encode('utf-8'), headers)
         try:
-            if (sys.version_info[0] == 2 and sys.version_info[1] > 5) or sys.version_info[0] > 2:
-                response = self.http_opener.open(request, timeout=timeout)
-            else:
-                response = self.http_opener.open(request)
+            response = self.http_opener.open(request, timeout=timeout)
         except HTTPError as http_error:
-            if http_error.fp is None:  # type: ignore
+            if http_error.fp is None:
                 raise HTTPHandlerError(
                     http_error.filename, http_error.code, http_error.msg, dict(http_error.hdrs))  # type: ignore
             else:
@@ -135,12 +132,12 @@ class TransmissionHTTPSHandler(transmissionrpc.HTTPHandler):
         except URLError as url_error:
             # urllib2.URLError documentation is horrendous!
             # Try to get the tuple arguments of URLError
-            if hasattr(url_error.reason, 'args') and isinstance(url_error.reason.args, tuple) and len(url_error.reason.args) == 2:  # type: ignore
+            if hasattr(url_error.reason, 'args') and isinstance(url_error.reason.args, tuple) and len(url_error.reason.args) == 2:
                 raise HTTPHandlerError(
-                    httpcode=url_error.reason.args[0], httpmsg=url_error.reason.args[1])  # type: ignore
+                    httpcode=url_error.reason.args[0], httpmsg=url_error.reason.args[1])
             else:
                 raise HTTPHandlerError(
-                    httpmsg='urllib2.URLError: %s' % url_error.reason)  # type: ignore
+                    httpmsg='urllib2.URLError: %s' % url_error.reason)
         except BadStatusLine as line_error:
             raise HTTPHandlerError(
                 httpmsg='httplib.BadStatusLine: %s' % line_error.line)  # type: ignore

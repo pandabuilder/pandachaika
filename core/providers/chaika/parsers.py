@@ -149,7 +149,7 @@ class Parser(BaseParser):
 
     def crawl_elastic_json(self, feed_url: str = '') -> list[ChaikaGalleryData]:
 
-        # Since this source only has metadata, we reeable other downloaders
+        # Since this source only has metadata, we re-enable other downloaders
 
         request_dict = construct_request_dict(self.settings, self.own_settings)
 

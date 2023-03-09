@@ -7,15 +7,19 @@ import os
 import re
 import shutil
 import threading
+import time
 import typing
 import zipfile
 import zlib
 import fnmatch
 from datetime import timedelta, datetime
 from difflib import SequenceMatcher
+from functools import wraps
 from itertools import tee, islice, chain
 from tempfile import mkdtemp
 from typing import Union, Optional, Any
+
+from ratelimit import limits, RateLimitException
 
 from core.base.types import GalleryData
 
@@ -752,12 +756,46 @@ def request_with_retries(
     return None
 
 
-def construct_request_dict(settings: 'setup.Settings', own_settings: 'ProviderSettings') -> dict[str, Any]:
+REQUESTER_BY_PROVIDER: dict[str, typing.Callable[[str, dict[str, Any], bool, int], Optional[requests.models.Response]]] = {}
+
+
+# Modified ratelimit function
+def sleep_log_and_retry(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        while True:
+            try:
+                return func(*args, **kwargs)
+            except RateLimitException as exception:
+                logger.warning("Request limited, sleeping for {} seconds".format(exception.period_remaining))
+                time.sleep(exception.period_remaining)
+
+    return wrapper
+
+
+def request_by_provider(provider_name: str, provider_calls: int, provider_limit: float):
+    if provider_name not in REQUESTER_BY_PROVIDER:
+
+        def call_requests():
+            @sleep_log_and_retry
+            @limits(calls=provider_calls, period=provider_limit, name=provider_name)
+            def inner_function(*args, **kwargs):
+                return request_with_retries(*args, **kwargs)
+            return inner_function
+        REQUESTER_BY_PROVIDER[provider_name] = call_requests()
+
+    return REQUESTER_BY_PROVIDER[provider_name]
+
+
+def construct_request_dict(settings: 'setup.Settings', own_settings: 'ProviderSettings', no_cookies: bool = False) -> dict[str, Any]:
     request_dict = {
         'headers': settings.requests_headers,
-        'cookies': own_settings.cookies,
         'timeout': own_settings.timeout_timer,
     }
+
+    if not no_cookies:
+        request_dict['cookies'] = own_settings.cookies
+
     if own_settings.proxies:
         request_dict['proxies'] = own_settings.proxies
     return request_dict

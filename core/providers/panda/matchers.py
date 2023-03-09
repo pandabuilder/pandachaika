@@ -12,8 +12,7 @@ from core.base.utilities import (
     filecount_in_zip,
     get_zip_filesize,
     sha1_from_file_object, clean_title, construct_request_dict, get_images_from_zip, file_matches_any_filter)
-from core.providers.panda.utilities import link_from_gid_token_fjord, get_gid_token_from_link, SearchHTMLParser, \
-    GalleryHTMLParser
+from core.providers.panda.utilities import link_from_gid_token_fjord, SearchHTMLParser
 from . import constants
 
 
@@ -224,9 +223,7 @@ class TitleGoogleMatcher(TitleMatcher):
         if m:
             for match in m:
                 matches_links.add(
-                    self.get_final_link_from_link(
-                        link_from_gid_token_fjord(match.group(2), match.group(3), False)
-                    )
+                    link_from_gid_token_fjord(match.group(2), match.group(3), False)
                 )
 
         m2 = re.finditer(
@@ -235,9 +232,7 @@ class TitleGoogleMatcher(TitleMatcher):
         if m2:
             for match in m2:
                 matches_links.add(
-                    self.get_final_link_from_link(
-                        link_from_gid_token_fjord(match.group(2), match.group(3), False)
-                    )
+                    link_from_gid_token_fjord(match.group(2), match.group(3), False)
                 )
 
         self.gallery_links = list(matches_links)
@@ -247,28 +242,6 @@ class TitleGoogleMatcher(TitleMatcher):
 
         else:
             return False
-
-    def get_final_link_from_link(self, link: str) -> str:
-
-        time.sleep(self.own_settings.wait_timer)
-        gallery_gid, gallery_token = get_gid_token_from_link(link)
-        gallery_link = link_from_gid_token_fjord(gallery_gid, gallery_token, True)
-
-        request_dict = construct_request_dict(self.settings, self.own_settings)
-
-        gallery_page_text = requests.get(
-            gallery_link,
-            **request_dict
-        ).text
-
-        if 'Gallery Not Available' in gallery_page_text:
-            return gallery_link
-        else:
-            gallery_parser = GalleryHTMLParser()
-            gallery_parser.feed(gallery_page_text)
-            if gallery_parser.found_non_final_gallery == 2 and gallery_parser.non_final_gallery:
-                return self.get_final_link_from_link(gallery_parser.non_final_gallery)
-        return gallery_link
 
 
 API = (

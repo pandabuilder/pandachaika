@@ -141,52 +141,6 @@ class SearchHTMLParser(HTMLParser):
             self.stop_at_favorites = 1
 
 
-class GalleryHTMLParser(HTMLParser):
-
-    def __init__(self) -> None:
-        HTMLParser.__init__(self, convert_charrefs=True)
-        self.torrent_link = ''
-        self.stop_at_found: int = 0
-        self.found_non_final_gallery: int = 0
-        self.parent_gallery: str = ''
-        self.found_parent_gallery: int = 0
-        self.found_gallery_link: int = 0
-        self.non_final_gallery: str = ''
-
-    def error(self, message: str) -> None:
-        pass
-
-    def handle_starttag(self, tag: str, attrs: AttrList) -> None:
-        if tag == 'a' and self.stop_at_found != 1:
-            self.found_gallery_link = 0
-            for attr in attrs:
-                if attr[0] == 'href' and str(attr[1]) == '#':
-                    self.found_gallery_link = 1
-                elif self.found_non_final_gallery == 1 and attr[0] == 'href' and '/g/' in str(attr[1]):
-                    self.non_final_gallery = str(attr[1])
-                elif self.found_parent_gallery == 1 and attr[0] == 'href' and '/g/' in str(attr[1]):
-                    self.parent_gallery = str(attr[1])
-                    self.found_parent_gallery = 0
-                elif self.found_gallery_link == 1 and attr[0] == 'onclick' and 'gallerytorrents.php' in str(attr[1]):
-                    m = re.search(r'\'(.+)\'', str(attr[1]))
-                    if m and m.group(1):
-                        self.torrent_link = m.group(1)
-        if tag == 'textarea' and attrs[0][0] == 'name' and attrs[0][1] == 'commenttext':
-            self.stop_at_found = 1
-            return
-        if tag == 'p' and self.found_non_final_gallery == 1:
-            for attr in attrs:
-                if attr[0] == 'class' and attr[1] == 'ip':
-                    self.found_non_final_gallery = 2
-
-    def handle_data(self, data: str) -> None:
-        if 'The uploader has made available \
-        newer versions of this gallery:' in data:
-            self.found_non_final_gallery = 1
-        elif 'Parent:' == data:
-            self.found_parent_gallery = 1
-
-
 class TorrentHTMLParser(HTMLParser):
 
     def __init__(self) -> None:

@@ -46,6 +46,8 @@ class BaseParser:
     accepted_urls: list[str] = []
     empty_list: list[str] = []
 
+    __SKIP_WAIT_TIME_DOWNLOADER_TYPES = ('info', 'submit')
+
     def __init__(self, settings: 'Settings') -> None:
         self.settings = settings
         if self.name in settings.providers:
@@ -402,7 +404,7 @@ class BaseParser:
             logger.info(downloaders_msg)
 
         for i, gallery in enumerate(gallery_data_list, start=1):
-            if self.last_used_downloader is not None and self.last_used_downloader.type != 'info':
+            if self.last_used_downloader is not None and self.last_used_downloader.type not in self.__SKIP_WAIT_TIME_DOWNLOADER_TYPES:
                 # We can't assume that every parser has its own downloader,
                 # could be from another provider, so we can't directly use self.own_settings
                 last_used_provider = self.last_used_downloader.provider

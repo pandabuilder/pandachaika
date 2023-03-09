@@ -152,7 +152,7 @@ class Parser(BaseParser):
             gallery.tags = []
             if self.own_settings.get_posted_date_from_feed:
                 gallery.posted = self.parse_posted_date_from_feed(constants.aux_feed_url, gallery.gid)
-            gallery.title = gallery_container.find("h1", class_="block col-span-full text-3xl py-2 font-bold text-brand-light text-left dark:text-white dark:link:text-white").get_text()
+            gallery.title = gallery_container.find("h1", class_="block col-span-full text-2xl pt-2 font-semibold text-brand-light text-left dark:text-white dark:link:text-white pt-0").get_text()
 
             description_container = soup.find("meta", property="og:description")
             if description_container:

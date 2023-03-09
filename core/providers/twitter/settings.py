@@ -16,6 +16,7 @@ class OwnSettings(ProviderSettings):
         self.add_as_public = False
         # Automatically add this text to "unwanted_title" field on generated wanted galleries
         self.unwanted_title = ''
+        self.enabled_handles: list[str] = []
 
 
 def parse_config(global_settings: 'Settings', config: dict[str, typing.Any]) -> 'OwnSettings':
@@ -35,4 +36,6 @@ def parse_config(global_settings: 'Settings', config: dict[str, typing.Any]) -> 
             settings.add_as_public = config['wanted']['add_as_public']
         if 'unwanted_title' in config['wanted']:
             settings.unwanted_title = config['wanted']['unwanted_title']
+    if 'enabled_handles' in config:
+        settings.enabled_handles = config['enabled_handles']
     return settings

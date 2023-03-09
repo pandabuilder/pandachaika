@@ -104,7 +104,7 @@ def stats_collection(request: HttpRequest) -> HttpResponse:
         "expunged_galleries": Gallery.objects.filter(expunged=True).count(),
         "n_tags": Tag.objects.count(),
         "n_tag_scopes": Tag.objects.values('scope').distinct().count(),
-        "n_custom_tags": Tag.objects.are_custom().count(),  # type: ignore
+        "n_custom_tags": Tag.objects.are_custom().count(),
         "top_10_tags": Tag.objects.annotate(num_archive=Count('archive_tags')).order_by('-num_archive')[:10],
         "top_10_parody_tags": Tag.objects.filter(scope='parody').annotate(
             num_archive=Count('archive_tags')).order_by('-num_archive')[:10],
@@ -449,7 +449,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
     elif tool == "restart_viewer":
         crawler_settings.workers.stop_workers_and_wait()
         if hasattr(signal, 'SIGUSR2'):
-            os.kill(os.getpid(), signal.SIGUSR2)  # type: ignore
+            os.kill(os.getpid(), signal.SIGUSR2)
         else:
             return render_error(request, "This OS does not support signal SIGUSR2.")
         return HttpResponseRedirect(request.META["HTTP_REFERER"])

@@ -111,7 +111,7 @@ def viewer_login(request: HttpRequest) -> HttpResponse:
         password = request.POST['password']
         user = authenticate(username=username, password=password)
         if user is not None:
-            if user.is_active:  # type: ignore
+            if user.is_active:
                 login(request, user)
                 next_url = request.POST.get('next', 'viewer:main-page')
                 return redirect(next_url)
@@ -137,7 +137,7 @@ def change_password(request: HttpRequest) -> HttpResponse:
         form = BootstrapPasswordChangeForm(request.user, request.POST, error_class=SpanErrorList)
         if form.is_valid():
             user = form.save()
-            update_session_auth_hash(request, user)   # type: ignore
+            update_session_auth_hash(request, user) 
             messages.success(request, 'Your password was successfully updated!')
             return redirect('viewer:change-password')
         else:

@@ -243,7 +243,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
     elif tool == "restart_viewer":
         crawler_settings.workers.stop_workers_and_wait()
         if hasattr(signal, 'SIGUSR2'):
-            os.kill(os.getpid(), signal.SIGUSR2)  # type: ignore
+            os.kill(os.getpid(), signal.SIGUSR2)
         else:
             response['error'] = "This OS does not support signal SIGUSR2"
             return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status_code=401)

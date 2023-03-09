@@ -41,7 +41,7 @@ def api_login(request: HttpRequest) -> HttpResponse:
             )
         user = authenticate(username=username, password=password)
         if user is not None:
-            if user.is_active:  # type: ignore
+            if user.is_active:
                 login(request, user)
                 data: dict[str, Any] = {'success': True}
             else:

@@ -7,7 +7,7 @@ from typing import Any, TypeVar, Union, ItemsView, Optional
 from django import template
 from django.template import RequestContext
 from django.template.defaultfilters import stringfilter
-from django.utils.encoding import punycode  # type: ignore
+from django.utils.encoding import punycode
 from django.utils.functional import keep_lazy_text
 from django.utils.html import smart_urlquote, Urlizer, escape  # type: ignore[attr-defined]
 from django.utils.safestring import SafeText, mark_safe
@@ -100,7 +100,7 @@ def format_setting_value(value: T) -> Union[T, ItemsView[str, Any]]:
     if hasattr(value, '__dict__'):
         return vars(value).items()
     elif hasattr(value, '__slots__'):
-        return {k: getattr(value, k) for k in value.__slots__}.items()  # type: ignore
+        return {k: getattr(value, k) for k in value.__slots__}.items()
     else:
         return value
 

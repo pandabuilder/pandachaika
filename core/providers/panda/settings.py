@@ -33,6 +33,8 @@ class OwnSettings(ProviderSettings):
         self.auto_process_first = False
         self.auto_process_parent = False
         self.mark_relationships = False
+        self.api_concurrent_limit = 4  # Wiki says between 4-5
+        self.api_wait_limit = 5.5  # Wiki says 5 seconds
 
 
 def parse_config(global_settings: 'Settings', config: dict[str, typing.Any]) -> 'OwnSettings':
@@ -56,6 +58,11 @@ def parse_config(global_settings: 'Settings', config: dict[str, typing.Any]) -> 
         # TODO: Mark galleries when a new gallery in chain is detected
         if 'mark_relationships' in config['general']:
             settings.mark_relationships = config['general']['mark_relationships']
+    if 'api' in config:
+        if 'concurrent_limit' in config['api']:
+            settings.api_concurrent_limit = config['api']['concurrent_limit']
+        if 'wait_limit' in config['api']:
+            settings.api_wait_limit = config['api']['wait_limit']
     if 'locations' in config:
         if 'archive_dl_folder' in config['locations']:
             settings.archive_dl_folder = config['locations']['archive_dl_folder']

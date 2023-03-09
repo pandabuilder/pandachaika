@@ -13,7 +13,7 @@
   <!-- Stats  -->
   <div class="page-header">
     <h2>Stats</h2>
-    <p class="lead">Several statistics of the workers. Current server time: {% now "DATETIME_FORMAT" %}</p>
+    <p class="lead">Several statistics of the workers. Current server time: {% now "y-m-d, H:i:s" %}</p>
     <a class="btn btn-light" href="{% url 'viewer:tools-id' 'restart_viewer' %}">Restart Viewer (for code changes)</a>
   </div>
   <h3>Queues</h3>

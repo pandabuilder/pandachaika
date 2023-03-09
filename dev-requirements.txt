@@ -2,7 +2,7 @@
 django-debug-toolbar==3.8.1
 django-unused-media==0.2.2
 mypy==1.0.1
-ruff==0.0.252
+ruff==0.0.253
 django-stubs==1.15.0
 django-cors-headers==3.14.0
 # django-cprofile-middleware

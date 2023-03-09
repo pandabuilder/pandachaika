@@ -41,7 +41,7 @@ class HTTPLogger(_cplogging.LogManager):
             self.access_log.addHandler(h)
 
         if crawler_settings.mail_logging.enable:
-            s = SMTPHandler(  # type: ignore
+            s = SMTPHandler(
                 crawler_settings.mail_logging.mailhost,
                 crawler_settings.mail_logging.from_,
                 [crawler_settings.mail_logging.to, ],

@@ -15,7 +15,7 @@ from django.db.models import QuerySet
 
 from core.base.parsers import BaseParser
 from core.base.utilities import (
-    chunks, request_with_retries, construct_request_dict)
+    chunks, request_with_retries, construct_request_dict, request_by_provider)
 from core.base.types import GalleryData, DataDict
 from viewer.models import Gallery
 from .utilities import link_from_gid_token_fjord, map_external_gallery_data_to_internal, \
@@ -25,6 +25,7 @@ from . import utilities
 
 if typing.TYPE_CHECKING:
     from viewer.models import WantedGallery
+    from core.base.setup import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,14 @@ logger = logging.getLogger(__name__)
 class Parser(BaseParser):
     name = constants.provider_name
     accepted_urls = [constants.ex_page_short, constants.ge_page_short, constants.rss_url]
+
+    def __init__(self, settings: 'Settings'):
+
+        super().__init__(settings)
+
+        self.api_request_function = request_by_provider(
+            self.name, self.own_settings.api_concurrent_limit, self.own_settings.api_wait_limit
+        )
 
     # Panda only methods
     def get_galleries_from_page_links(self, page_links: Iterable[str], page_links_results: list[DataDict]) -> None:
@@ -50,9 +59,6 @@ class Parser(BaseParser):
 
         for i, group in enumerate(api_page_links_chunks):
 
-            if i % 3 == 2:
-                time.sleep(self.own_settings.wait_timer)
-
             data = {
                 'method': 'gtoken',
                 'pagelist': [x['data'] for x in group]}
@@ -63,7 +69,7 @@ class Parser(BaseParser):
             request_dict['headers'] = {**headers, **self.settings.requests_headers}
             request_dict['data'] = json.dumps(data)
 
-            response = request_with_retries(
+            response = self.api_request_function(
                 constants.ge_api_url,
                 request_dict,
                 post=True,
@@ -243,8 +249,6 @@ class Parser(BaseParser):
 
         for i, group in enumerate(gid_token_chunks):
 
-            if i % 3 == 2:
-                time.sleep(self.own_settings.wait_timer)
             if not self.settings.silent_processing:
                 logger.info(
                     "Calling API ({}), URL: {}. "
@@ -265,7 +269,7 @@ class Parser(BaseParser):
             request_dict['headers'] = {**headers, **self.settings.requests_headers}
             request_dict['data'] = json.dumps(data)
 
-            response = request_with_retries(
+            response = self.api_request_function(
                 api_page,
                 request_dict,
                 post=True,
@@ -322,7 +326,7 @@ class Parser(BaseParser):
         request_dict['headers'] = {**headers, **self.settings.requests_headers}
         request_dict['data'] = json.dumps(data)
 
-        response = request_with_retries(
+        response = self.api_request_function(
             api_page,
             request_dict,
             post=True,
@@ -509,9 +513,6 @@ class Parser(BaseParser):
         fetch_format_galleries_chunks = list(chunks(fetch_format_galleries, 25))
         fjord_galleries: list[str] = []
         for i, group in enumerate(fetch_format_galleries_chunks):
-            # Set based on recommendation in official documentation
-            if i % 3 == 2:
-                time.sleep(self.own_settings.wait_timer)
             if not self.settings.silent_processing:
                 logger.info(
                     "Calling non-fjord API ({}). "
@@ -531,7 +532,7 @@ class Parser(BaseParser):
             request_dict['headers'] = {**headers, **self.settings.requests_headers}
             request_dict['data'] = json.dumps(data)
 
-            response = request_with_retries(
+            response = self.api_request_function(
                 constants.ge_api_url,
                 request_dict,
                 post=True,

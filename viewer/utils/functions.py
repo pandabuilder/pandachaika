@@ -169,7 +169,7 @@ def gallery_search_dict_to_json(request: HttpRequest, galleries: dict[Gallery, l
 def galleries_update_metadata(gallery_links, gallery_providers, user, reason, cs):
     current_settings = Settings(load_from_config=cs.config)
     if current_settings.workers.web_queue:
-        current_settings.set_update_metadata_options(providers=gallery_providers)  # type: ignore
+        current_settings.set_update_metadata_options(providers=gallery_providers)
 
         def gallery_callback(x: Optional['Gallery'], crawled_url: Optional[str], result: str) -> None:
             event_log(

@@ -1559,26 +1559,26 @@ class Archive(models.Model):
 
         indexes = [
             models.Index(
-                F('create_date').desc(nulls_last=True),  # type: ignore
-                F('public').asc(nulls_last=True),  # type: ignore
-                'binned',  # type: ignore
+                F('create_date').desc(nulls_last=True),
+                F('public').asc(nulls_last=True),
+                'binned',
                 name='archive_pub_binned'
-            ),  # type: ignore
+            ),
             models.Index(
-                F('create_date').desc(nulls_last=True),  # type: ignore
-                'binned',  # type: ignore
+                F('create_date').desc(nulls_last=True),
+                'binned',
                 name='archive_binned'
-            ),  # type: ignore
+            ),
             models.Index(
-                'binned',  # type: ignore
+                'binned',
                 name='archive_binned_only'
-            ),  # type: ignore
+            ),
             models.Index(
-                F('public_date').desc(nulls_last=True),  # type: ignore
-                F('public').asc(nulls_last=True),  # type: ignore
-                'binned',  # type: ignore
+                F('public_date').desc(nulls_last=True),
+                F('public').asc(nulls_last=True),
+                'binned',
                 name='archive_pub2_binned'
-            ),  # type: ignore
+            ),
         ]
 
     def es_repr(self) -> DataDict:
@@ -1938,7 +1938,8 @@ class Archive(models.Model):
         if sha1s:
             local_sha1s = sha1s
         else:
-            local_sha1s = list(images.values_list('sha1', flat=True))  # type: ignore
+            # Technically we shouldn't need to check for null, mostly to follow type checking.
+            local_sha1s = [x for x in images.values_list('sha1', flat=True) if x is not None]
 
         if images.count() != len(local_sha1s):
             return None, 'Image count different from SHA1 values'
@@ -2250,9 +2251,9 @@ class Archive(models.Model):
                     if filename_tuple[1]:
                         with zipfile.ZipFile(current_file) as my_nested_zip:
                             with my_nested_zip.open(filename_tuple[0]) as current_img:
-                                shutil.copyfileobj(current_img, current_new_img)  # type: ignore
+                                shutil.copyfileobj(current_img, current_new_img)
                     else:
-                        shutil.copyfileobj(current_file, current_new_img)  # type: ignore
+                        shutil.copyfileobj(current_file, current_new_img)
                 image.image.name = img_path
 
                 # Thumbnail
@@ -2350,7 +2351,7 @@ class Archive(models.Model):
                                     im_resized.thumbnail((900, 9999), PImage.ANTIALIAS)
                                 im_resized.save(current_new_img, "JPEG")
                             else:
-                                shutil.copyfileobj(current_img, current_new_img)  # type: ignore
+                                shutil.copyfileobj(current_img, current_new_img)
                 else:
                     if resized:
                         im_resized = PImage.open(current_file)
@@ -2363,7 +2364,7 @@ class Archive(models.Model):
                             im_resized.thumbnail((900, 9999), PImage.ANTIALIAS)
                         im_resized.save(current_new_img, "JPEG")
                     else:
-                        shutil.copyfileobj(current_file, current_new_img)  # type: ignore
+                        shutil.copyfileobj(current_file, current_new_img)
             image.image.name = img_path
 
             # Thumbnail

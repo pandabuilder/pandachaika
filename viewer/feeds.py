@@ -15,7 +15,7 @@ class LatestArchivesFeed(Feed):
     link = "/"
     description = "Latest added archives to the Backup."
 
-    def get_object(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpRequest:  # type: ignore[override]
+    def get_object(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpRequest:
         return request
 
     def items(self, request: HttpRequest) -> Iterable[Archive]:
@@ -53,10 +53,10 @@ class LatestArchivesFeed(Feed):
 
         return archives
 
-    def item_title(self, item: Archive) -> str:  # type: ignore
+    def item_title(self, item: Archive) -> str:
         return item.title or item.title_jpn or ''
 
-    def item_description(self, item: Archive) -> str:  # type: ignore
+    def item_description(self, item: Archive) -> str:
         return item.tags_str()
 
     def item_pubdate(self, item: Archive) -> Optional[datetime]:

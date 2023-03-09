@@ -11,7 +11,7 @@
   {% endif %}
   <div class="page-header">
     <h2>Server logs</h2>
-    <p class="lead">Current server time: {% now "DATETIME_FORMAT" %}</p>
+    <p class="lead">Current server time: {% now "y-m-d, H:i:s" %}</p>
   </div>
   <form action="{% url 'viewer:logs' %}" class="form-inline" method="GET">
     <div class="form-group">
