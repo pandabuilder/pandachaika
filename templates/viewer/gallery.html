@@ -15,7 +15,7 @@
   <ul class="info">
     {% if user.is_authenticated %}
       <li class="right-container">
-        <ul class="right-tools">
+        <ul class="right-tools align-items-center">
             <li>Tools:</li>
             {% if user.is_staff %}<li><a href="{% url 'admin:viewer_gallery_change' gallery.pk %}">admin</a></li>{% endif %}
             {% if user.is_staff %}<li><a href="{% url 'viewer:gallery-tool' gallery.pk 'toggle-hidden' %}">toggle hidden</a></li>{% endif %}
@@ -32,14 +32,14 @@
             {% if perms.viewer.download_gallery %}<li><a href="{% url 'viewer:gallery-tool' gallery.pk 'download' %}">default download</a></li>{% endif %}
             {% if user.is_staff %}
                 <li>
-                <span class="dropdown">
-                  <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-toggle="dropdown">force download<span class="caret"></span></button>
-                  <div class="dropdown-menu dropdown-menu-right">
+                <div class="dropdown">
+                  <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">force download<span class="caret"></span></button>
+                  <ul class="dropdown-menu dropdown-menu-end">
                   {% for downloader, priority in settings.downloaders.items %}
                     <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ settings.api_key }}', '{% static 'favicon-160.png' %}', 'webcrawler', {link: '{{ gallery.get_link }}', downloader: '{{ downloader }}'}); return false;">{{ downloader }}</a>
                   {% endfor %}
-                  </div>
-                </span>
+                  </ul>
+                </div>
                 </li>
           {% endif %}
           {% if perms.viewer.upload_with_metadata_archive %}<li><a href="{% url 'viewer:upload-archive' %}?gallery={{ gallery.id }}">upload archive</a></li>{% endif %}

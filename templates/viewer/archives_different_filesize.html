@@ -22,15 +22,21 @@
         {{ field }}
       </div>
     {% endfor %}
-    <div class="page-line form-inline">
+    <div class="page-line row g-1">
+    <div class="col-md-auto">
       <select id="provider" name="provider" class="form-control" title="provider" aria-label="provider">
         <option value="">all</option>
         {% for provider in providers %}
           <option value="{{ provider }}" {% if request.GET.provider == provider %} selected{% endif %}>{{ provider }}</option>
         {% endfor %}
       </select>
+    </div>
+    <div class="col-md-auto">
+    <div class="btn-group" role="group" aria-label="Form buttons">
       <button type="submit" name="apply" class="btn btn-info">Search</button>
       <a class="btn btn-light" href="{% url 'viewer:archive-filesize-different' %}">Clear</a>
+    </div>
+    </div>
     </div>
   </form>
   <form action="{% url 'viewer:archive-filesize-different' %}{% if request.GET.provider %}?provider={{ request.GET.provider }}{% endif %}" method="POST">{% csrf_token %}
@@ -93,8 +99,8 @@
           {% with archives=gallery.archive_set %}
             {% for archive in archives.all %}
               <tr {% if archive.filesize == gallery.filesize %}class="highlight-row"{% endif %}>
-                <td>
-                  <input id="checkbox-{{ archive.id }}" class="toggle-list custom-cb" type="checkbox" name="del-{{ archive.id }}" value="{{ archive.id }}"><label for="checkbox-{{ archive.id }}"><span><span></span></span></label>
+                <td class="text-center">
+                    <input id="checkbox-{{ archive.id }}" class="toggle-list form-check-input" type="checkbox" name="del-{{ archive.id }}" value="{{ archive.id }}"><label for="checkbox-{{ archive.id }}"></label>
                 </td>
                 <td>
                   {{ archive.filesize }} ({{ archive.filesize|filesizeformat }})
@@ -154,13 +160,9 @@
 {% block afterJQ %}
   {% load compress %}
   {% compress css %}
-    <link href="{% static 'autocomplete_light/vendor/jal/src/style.css' %}" type="text/css" media="all" rel="stylesheet" />
+    <link href="{% static 'css/vendor/jal/style.css' %}" type="text/css" media="all" rel="stylesheet" />
   {% endcompress %}
   {% compress js %}
-    <script type="text/javascript" src="{% static 'autocomplete_light/jquery.init.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/autocomplete.init.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/autocomplete.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/text_widget.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/jal.js' %}"></script>
+    <script src="{% static 'js/vendor/jquery.autocomplete-light.min.js' %}"></script>
   {% endcompress %}
 {% endblock %}

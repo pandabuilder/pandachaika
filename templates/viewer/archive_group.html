@@ -20,8 +20,8 @@
     </div>
       {% if perms.viewer.change_archivegroup %}
       <div class="col-md-2 col-sm-12">
-        {% if perms.viewer.expand_archive %}<a class="btn btn-secondary float-right" href="{% url 'viewer:archive-group-edit' archive_group.title_slug %}?extract_all=" role="button">Extract all</a>{% endif %}
-        <a class="btn btn-secondary float-right" href="{% url 'viewer:archive-group-edit' archive_group.title_slug %}" role="button">Edit</a>
+        {% if perms.viewer.expand_archive %}<a class="btn btn-secondary float-end" href="{% url 'viewer:archive-group-edit' archive_group.title_slug %}?extract_all=" role="button">Extract all</a>{% endif %}
+        <a class="btn btn-secondary float-end" href="{% url 'viewer:archive-group-edit' archive_group.title_slug %}" role="button">Edit</a>
       </div>
       {% endif %}
     </div>
@@ -82,7 +82,7 @@
     $(document).ready(function() {
         $(".tag-preview").click(function() {
             var el = $(this);
-            var pk = $(this).data('pk');
+            var pk = $(this).data('bs-pk');
             if (tagData[pk]) {
                 return tagData[pk];
             }
@@ -101,7 +101,6 @@
             }
         });
     });
-
     </script>
   {% endcompress %}
 {% endblock %}

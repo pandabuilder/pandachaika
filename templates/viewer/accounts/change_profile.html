@@ -11,9 +11,27 @@
   <div class="container">
     <form class="form-signin" action="{% url 'viewer:change-profile' %}" method="POST">
       {% csrf_token %}
-      {{ user_form.as_p }}
-      {{ profile_form.as_p }}
-      <button class="btn btn-lg btn-primary btn-block" type="submit">Change profile</button>
+        <div class="row g-1">
+            {% for field in user_form %}
+               <div class="col-md-12">
+                    {{ field.errors }}
+                  {{ field.label_tag }}{{ field }}
+               </div>
+            {% endfor %}
+        </div>
+        <div class="row g-1">
+            {% for field in profile_form %}
+               <div class="col-md-12">
+               <div class="form-check">
+                    {{ field.errors }}
+                  {{ field.label_tag }}{{ field }}
+               </div>
+               </div>
+            {% endfor %}
+        </div>
+    <div class="d-grid">
+      <button class="btn btn-lg btn-primary" type="submit">Change profile</button>
+    </div>
     </form>
   </div>
 {% endblock %}

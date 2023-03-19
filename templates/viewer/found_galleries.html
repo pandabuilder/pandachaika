@@ -24,19 +24,55 @@
           {{ field }}
         </div>
       {% endfor %}
-      <div class="page-line form-inline">
-        <button name="apply" class="btn btn-info">Search</button>
-        <a class="btn btn-light" href="{% url 'viewer:found-galleries' %}">Clear</a>
-        <input id="checkbox-f2" class="custom-cb" type="checkbox" name="wanted-should-search" value="1" {% if "wanted-should-search" in request.GET %}checked{% endif %}><label for="checkbox-f2"><span><span></span></span>Should search</label>
-        <input id="checkbox-f3" class="custom-cb" type="checkbox" name="wanted-should-search-not" value="1" {% if "wanted-should-search-not" in request.GET %}checked{% endif %}><label for="checkbox-f3"><span><span></span></span>Should not search</label>
-        <input id="checkbox-f4" class="custom-cb" type="checkbox" name="with-possible-matches" value="1" {% if "with-possible-matches" in request.GET %}checked{% endif %}><label for="checkbox-f4"><span><span></span></span>With possible matches</label>
-        <input title="Book type" class="form-control" name="book_type" placeholder="Book type" value="{{ request.GET.book_type }}">
-        <input title="Publisher" class="form-control" name="publisher" placeholder="Publisher" value="{{ request.GET.publisher }}">
-        <input title="Reason" class="form-control" name="reason" placeholder="Reason" value="{{ request.GET.reason }}">
-        <input id="checkbox-f6" class="custom-cb" type="checkbox" name="wanted-found" value="1" {% if "wanted-found" in request.GET %}checked{% endif %}><label for="checkbox-f6"><span><span></span></span>Found</label>
-        <input id="checkbox-f7" class="custom-cb" type="checkbox" name="wanted-not-found" value="1" {% if "wanted-not-found" in request.GET %}checked{% endif %}><label for="checkbox-f7"><span><span></span></span>Not found</label>
-        <input id="checkbox-f8" class="custom-cb" type="checkbox" name="wanted-no-found-galleries" value="1" {% if "wanted-no-found-galleries" in request.GET %}checked{% endif %}><label for="checkbox-f8"><span><span></span></span>No found galleries</label>
+      <div class="page-line row g-0 align-items-center">
+      <div class="col-md-auto g-1">
+      <div class="form-check">
+        <input id="checkbox-f2" class="form-check-input" type="checkbox" name="wanted-should-search" value="1" {% if "wanted-should-search" in request.GET %}checked{% endif %}><label for="checkbox-f2">Should search</label>
       </div>
+      </div>
+      <div class="col-md-auto g-1">
+      <div class="form-check">
+        <input id="checkbox-f3" class="form-check-input" type="checkbox" name="wanted-should-search-not" value="1" {% if "wanted-should-search-not" in request.GET %}checked{% endif %}><label for="checkbox-f3">Should not search</label>
+      </div>
+      </div>
+      <div class="col-md-auto g-1">
+      <div class="form-check">
+        <input id="checkbox-f4" class="form-check-input" type="checkbox" name="with-possible-matches" value="1" {% if "with-possible-matches" in request.GET %}checked{% endif %}><label for="checkbox-f4">With possible matches</label>
+      </div>
+      </div>
+      <div class="col-md-auto">
+        <input title="Book type" class="form-control" name="book_type" placeholder="Book type" value="{{ request.GET.book_type }}">
+      </div>
+      <div class="col-md-auto">
+        <input title="Publisher" class="form-control" name="publisher" placeholder="Publisher" value="{{ request.GET.publisher }}">
+      </div>
+      <div class="col-md-auto">
+        <input title="Reason" class="form-control" name="reason" placeholder="Reason" value="{{ request.GET.reason }}">
+      </div>
+      <div class="col-md-auto g-1">
+      <div class="form-check">
+        <input id="checkbox-f6" class="form-check-input" type="checkbox" name="wanted-found" value="1" {% if "wanted-found" in request.GET %}checked{% endif %}><label for="checkbox-f6">Found</label>
+      </div>
+      </div>
+      <div class="col-md-auto g-1">
+      <div class="form-check">
+        <input id="checkbox-f7" class="form-check-input" type="checkbox" name="wanted-not-found" value="1" {% if "wanted-not-found" in request.GET %}checked{% endif %}><label for="checkbox-f7">Not found</label>
+      </div>
+      </div>
+      <div class="col-md-auto g-1">
+      <div class="form-check">
+        <input id="checkbox-f8" class="form-check-input" type="checkbox" name="wanted-no-found-galleries" value="1" {% if "wanted-no-found-galleries" in request.GET %}checked{% endif %}><label for="checkbox-f8">No found galleries</label>
+      </div>
+      </div>
+      </div>
+    <div class="page-line row g-1">
+        <div class="col-md-auto">
+            <div class="btn-group">
+                <button name="apply" class="btn btn-info">Search</button>
+                <a class="btn btn-light" href="{% url 'viewer:found-galleries' %}">Clear</a>
+             </div>
+        </div>
+    </div>
     </form>
   <!-- Next/Prev page links  -->
     {% if results.object_list and results.paginator.num_pages > 1 %}
@@ -173,14 +209,10 @@
 {% endblock %}
 {% block afterJQ %}
 {% load compress %}
-{% compress css %}
-  <link href="{% static 'autocomplete_light/vendor/jal/src/style.css' %}" type="text/css" media="all" rel="stylesheet" />
-{% endcompress %}
-{% compress js %}
-  <script type="text/javascript" src="{% static 'autocomplete_light/jquery.init.js' %}"></script>
-  <script type="text/javascript" src="{% static 'autocomplete_light/autocomplete.init.js' %}"></script>
-  <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/autocomplete.js' %}"></script>
-  <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/text_widget.js' %}"></script>
-  <script type="text/javascript" src="{% static 'autocomplete_light/jal.js' %}"></script>
-{% endcompress %}
+  {% compress css %}
+    <link href="{% static 'css/vendor/jal/style.css' %}" type="text/css" media="all" rel="stylesheet" />
+  {% endcompress %}
+  {% compress js %}
+    <script src="{% static 'js/vendor/jquery.autocomplete-light.min.js' %}"></script>
+  {% endcompress %}
 {% endblock %}

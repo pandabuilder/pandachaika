@@ -107,7 +107,6 @@ urlpatterns += [
 
 # Image viewer.
 urlpatterns += [
-    re_path(r"^archive/(\d+)/img/(\d+)/$", head.image_viewer, name='image-viewer'),
     re_path(r"^new-image-viewer/(\d+)/img/(\d+)/$", exp.new_image_viewer, name='new-image-viewer'),
 ]
 
@@ -135,7 +134,6 @@ urlpatterns += [
     re_path(r"^upload-archive/$", collaborators.upload_archive, name='upload-archive'),
     re_path(r"^upload-gallery/$", collaborators.upload_gallery, name='upload-gallery'),
     re_path(r"^manage-archives/$", collaborators.manage_archives, name='manage-archives'),
-    re_path(r"^new-manage-archives/$", collaborators.new_manage_archives, name='new-manage-archives'),
     re_path(r"^col-wanted-galleries/$", collaborators.wanted_galleries, name='col-wanted-galleries'),
     re_path(r"^col-wanted-gallery/(\d+)/$", collaborators.wanted_gallery, name='col-wanted-gallery'),
     re_path(r"^col-create-wanted-gallery/$", collaborators.create_wanted_gallery, name='col-create-wanted-gallery'),
@@ -149,8 +147,6 @@ urlpatterns += [
     re_path(r"^activity-event-log/$", collaborators.activity_event_log, name='activity-event-log'),
     re_path(r"^monitored-links$", collaborators.monitored_links, name='monitored-links'),
     re_path(r"^archives-by-field/$", collaborators.archives_similar_by_fields, name='archives-by-field'),
-    re_path(r"^archives-by-thumbnail/$", collaborators.archives_similar_thumbnail, name='archives-by-thumbnail'),
-
 ]
 
 # Archive groups.

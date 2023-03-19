@@ -15,7 +15,9 @@
       <input type="text" id="inputUser" name="username" class="form-control" value="{{ username }}" placeholder="Username" required autofocus>
       <label for="inputPassword" class="sr-only">Password</label>
       <input type="password" id="inputPassword" name="password" class="form-control" value="{{ password }}" placeholder="Password" required>
-      <button class="btn btn-lg btn-primary btn-block" name="login" type="submit">Login</button>
+      <div class="d-grid">
+        <button class="btn btn-lg btn-primary" name="login" type="submit">Login</button>
+      </div>
       <input type="hidden" name="next" value="{{ next }}" />
     </form>
   </div>

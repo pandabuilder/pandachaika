@@ -15,15 +15,15 @@
     <h5>One per line, an admin will review them later.</h5>
   </div>
   <form action="{% url 'viewer:url-submit' %}" method="POST">{% csrf_token %}
-    <div class="form-group">
+    <div class="mb-3">
       <label for="urls">Urls</label>
       <textarea name="urls" class="form-control" id="urls" rows="10">{{ request.POST.urls }}</textarea>
     </div>
-    <div class="form-group">
+    <div class="mb-3">
       <label for="reason">Reason (wani, bavel, etc.). Optional but recommended.</label>
       <input class="form-control" id="reason" name="reason" maxlength="93">
     </div>
-    <div class="form-group">
+    <div class="mb-3">
       <button class="btn btn-light" name="submit">Submit URLs</button>
       <button class="btn btn-info" name="check">Check URLs only</button>
       <a class="btn btn-light" href="{% url 'viewer:url-submit' %}">Clear</a>

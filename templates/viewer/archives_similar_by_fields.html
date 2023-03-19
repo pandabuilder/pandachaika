@@ -21,20 +21,62 @@
         {{ field }}
       </div>
     {% endfor %}
-    <div class="page-line form-inline">
-      <button data-role="toggle-field" data-field="source_type" class="btn btn-info" type="button" title="Select or deselect all the Archives with the same source as the filter">Toggle Source</button>
+    <div class="page-line row g-1 align-items-center">
+    <div class="col-md-auto">
+        <button data-role="toggle-field" data-field="source_type" class="btn btn-info" type="button" title="Select or deselect all the Archives with the same source as the filter">Toggle Source</button>
+    </div>
+    <div class="col-md-auto">
       <button data-role="toggle-field" data-field="reason" class="btn btn-info" type="button" title="Select or deselect all the Archives with the same reason as the filter">Toggle Reason</button>
+    </div>
+    <div class="col-md-auto">
       <input title="Source type" class="form-control" name="source_type" placeholder="Source type" value="{{ request.GET.source_type }}">
+    </div>
+    <div class="col-md-auto">
       <input title="Reason" class="form-control" name="reason" placeholder="Reason" value="{{ request.GET.reason }}">
-      <button type="submit" name="apply" class="btn btn-info">Search</button>
-      <a class="btn btn-light" href="{% url 'viewer:archives-by-field' %}">Clear</a>
-      <input id="checkbox-f1" class="custom-cb" type="checkbox" name="filter-fileinfo" value="1" {% if "filter-fileinfo" in request.GET %}checked{% endif %}><label for="checkbox-f1"><span><span></span></span>By file info</label>
-      <input id="checkbox-f2" class="custom-cb" type="checkbox" name="filter-crc32" value="1" {% if "filter-crc32" in request.GET %}checked{% endif %}><label for="checkbox-f2"><span><span></span></span>By crc32</label>
-      <input id="checkbox-f3" class="custom-cb" type="checkbox" name="filter-title" value="1" {% if "filter-title" in request.GET %}checked{% endif %}><label for="checkbox-f3"><span><span></span></span>By title</label>
-      <input id="checkbox-f5" class="custom-cb" type="checkbox" name="filter-after" value="1" {% if "filter-after" in request.GET %}checked{% endif %}><label for="checkbox-f5" title="Filter source, reason at group-level (at least 1 Archive must match)"><span><span></span></span>Post-filter</label>
-      <input id="checkbox-f6" class="custom-cb" type="checkbox" name="limit-groups" title="Hard limit the number of groups to 400" value="1" {% if "limit-groups" in request.GET %}checked{% endif %}><label for="checkbox-f6"><span><span></span></span>Limit groups</label>
-      <input id="checkbox-f7" class="custom-cb" type="checkbox" name="clear-title" value="1" {% if "clear-title" in request.GET %}checked{% endif %}><label for="checkbox-f7"><span><span></span></span>Clear title</label>
-      <input id="checkbox-f4" class="custom-cb" type="checkbox" name="no-custom-tags" value="1" {% if "no-custom-tags" in request.GET %}checked{% endif %}><label for="checkbox-f4"><span><span></span></span>No custom tags</label>
+    </div>
+    <div class="col-md-auto">
+      <div class="form-check">
+      <input id="checkbox-f1" class="form-check-input" type="checkbox" name="filter-fileinfo" value="1" {% if "filter-fileinfo" in request.GET %}checked{% endif %}><label for="checkbox-f1">By file info</label>
+      </div>
+    </div>
+    <div class="col-md-auto">
+      <div class="form-check">
+      <input id="checkbox-f2" class="form-check-input" type="checkbox" name="filter-crc32" value="1" {% if "filter-crc32" in request.GET %}checked{% endif %}><label for="checkbox-f2">By crc32</label>
+      </div>
+      </div>
+      <div class="col-md-auto">
+      <div class="form-check">
+      <input id="checkbox-f3" class="form-check-input" type="checkbox" name="filter-title" value="1" {% if "filter-title" in request.GET %}checked{% endif %}><label for="checkbox-f3">By title</label>
+      </div>
+      </div>
+      <div class="col-md-auto">
+      <div class="form-check">
+      <input id="checkbox-f5" class="form-check-input" type="checkbox" name="filter-after" value="1" {% if "filter-after" in request.GET %}checked{% endif %}><label for="checkbox-f5" title="Filter source, reason at group-level (at least 1 Archive must match)">Post-filter</label>
+      </div>
+      </div>
+      <div class="col-md-auto">
+      <div class="form-check">
+      <input id="checkbox-f6" class="form-check-input" type="checkbox" name="limit-groups" title="Hard limit the number of groups to 400" value="1" {% if "limit-groups" in request.GET %}checked{% endif %}><label for="checkbox-f6">Limit groups</label>
+      </div>
+      </div>
+      <div class="col-md-auto">
+      <div class="form-check">
+      <input id="checkbox-f7" class="form-check-input" type="checkbox" name="clear-title" value="1" {% if "clear-title" in request.GET %}checked{% endif %}><label for="checkbox-f7">Clear title</label>
+      </div>
+      </div>
+      <div class="col-md-auto">
+      <div class="form-check">
+      <input id="checkbox-f4" class="form-check-input" type="checkbox" name="no-custom-tags" value="1" {% if "no-custom-tags" in request.GET %}checked{% endif %}><label for="checkbox-f4">No custom tags</label>
+      </div>
+      </div>
+    </div>
+    <div class="page-line row g-1">
+      <div class="col-md-auto">
+        <div class="btn-group">
+          <button type="submit" name="apply" class="btn btn-info">Search</button>
+          <a class="btn btn-light" href="{% url 'viewer:archives-by-field' %}">Clear</a>
+        </div>
+      </div>
     </div>
   </form>
   <form action="{% url 'viewer:archives-by-field' %}" method="POST">{% csrf_token %}
@@ -50,11 +92,11 @@
           <tbody>
           {% for archive in archive_group_value %}
             <tr>
-              <td>
-                <input id="del-{{ archive.id }}" class="toggle-list custom-cb" data-source_type="{{ archive.source_type }}" data-reason="{{ archive.reason }}" type="checkbox" name="del-{{ archive.id }}" value="{{ archive_group_key }}"><label for="del-{{ archive.id }}"><span><span></span></span></label>
+              <td class="text-center">
+                <input id="del-{{ archive.id }}" class="toggle-list form-check-input" data-source_type="{{ archive.source_type }}" data-reason="{{ archive.reason }}" type="checkbox" name="del-{{ archive.id }}" value="{{ archive_group_key }}"><label for="del-{{ archive.id }}"></label>
               </td>
-              <td>
-                <input id="main-{{ archive.id }}" class="custom-cb" type="checkbox" name="main-{{ archive.id }}" value="{{ archive_group_key }}"><label for="main-{{ archive.id }}"><span><span></span></span></label>
+              <td class="text-center">
+                <input id="main-{{ archive.id }}" class="form-check-input" type="checkbox" name="main-{{ archive.id }}" value="{{ archive_group_key }}"><label for="main-{{ archive.id }}"></label>
               </td>
               <td>
               {% if archive.thumbnail.name %}
@@ -102,11 +144,11 @@
           <tbody>
           {% for archive in archive_group_value %}
             <tr>
-              <td>
-                <input id="del-{{ archive.id }}" class="toggle-list custom-cb" data-source_type="{{ archive.source_type }}" data-reason="{{ archive.reason }}" type="checkbox" name="del-{{ archive.id }}" value="{{ archive_group_key }}"><label for="del-{{ archive.id }}"><span><span></span></span></label>
+              <td class="text-center">
+                <input id="del-{{ archive.id }}" class="toggle-list form-check-input" data-source_type="{{ archive.source_type }}" data-reason="{{ archive.reason }}" type="checkbox" name="del-{{ archive.id }}" value="{{ archive_group_key }}"><label for="del-{{ archive.id }}"></label>
               </td>
-              <td>
-                <input id="main-{{ archive.id }}" class="toggle-list custom-cb" type="checkbox" name="main-{{ archive.id }}" value="{{ archive_group_key }}"><label for="main-{{ archive.id }}"><span><span></span></span></label>
+              <td class="text-center">
+                <input id="main-{{ archive.id }}" class="toggle-list form-check-input" type="checkbox" name="main-{{ archive.id }}" value="{{ archive_group_key }}"><label for="main-{{ archive.id }}"></label>
               </td>
               <td>
               {% if archive.thumbnail.name %}
@@ -154,11 +196,11 @@
           <tbody>
           {% for archive in archive_group_value %}
             <tr>
-              <td>
-                <input id="del-{{ archive.id }}" class="toggle-list custom-cb" data-source_type="{{ archive.source_type }}" data-reason="{{ archive.reason }}" type="checkbox" name="del-{{ archive.id }}" value="{{ archive_group_key }}"><label for="del-{{ archive.id }}"><span><span></span></span></label>
+              <td class="text-center">
+                <input id="del-{{ archive.id }}" class="toggle-list form-check-input" data-source_type="{{ archive.source_type }}" data-reason="{{ archive.reason }}" type="checkbox" name="del-{{ archive.id }}" value="{{ archive_group_key }}"><label for="del-{{ archive.id }}"></label>
               </td>
-              <td>
-                <input id="main-{{ archive.id }}" class="toggle-list custom-cb" type="checkbox" name="main-{{ archive.id }}" value="{{ archive_group_key }}"><label for="main-{{ archive.id }}"><span><span></span></span></label>
+              <td class="text-center">
+                <input id="main-{{ archive.id }}" class="toggle-list form-check-input" type="checkbox" name="main-{{ archive.id }}" value="{{ archive_group_key }}"><label for="main-{{ archive.id }}"></label>
               </td>
               <td>
               {% if archive.thumbnail.name %}
@@ -194,7 +236,7 @@
         </table>
       {% endfor %}
     </ul>
-    <div class="form-group">
+    <div class="mb-3">
       <input size="10" class="form-control" name="reason" value="" placeholder="Reason" maxlength="200"/>
     </div>
     {% if perms.viewer.delete_archive %}
@@ -208,14 +250,10 @@
 {% block afterJQ %}
   {% load compress %}
   {% compress css %}
-    <link href="{% static 'autocomplete_light/vendor/jal/src/style.css' %}" type="text/css" media="all" rel="stylesheet" />
+    <link href="{% static 'css/vendor/jal/style.css' %}" type="text/css" media="all" rel="stylesheet" />
   {% endcompress %}
   {% compress js %}
-    <script type="text/javascript" src="{% static 'autocomplete_light/jquery.init.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/autocomplete.init.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/autocomplete.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/text_widget.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/jal.js' %}"></script>
+    <script src="{% static 'js/vendor/jquery.autocomplete-light.min.js' %}"></script>
   {% endcompress %}
   <script type="text/javascript">
   $('button[data-role="toggle-field"]').click(function() {

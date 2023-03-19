@@ -22,25 +22,49 @@
           {{ field }}
         </div>
       {% endfor %}
-      <div class="form-inline page-line mt-4">
+      <div class="row page-line mt-4 g-1 align-items-center">
       {% for field in form_event %}
-        {{ field.label_tag }}{{ field }}
+        <div class="col-md-auto">
+            <div class="input-group align-items-center">
+                {{ field.label_tag }}{{ field }}
+            </div>
+        </div>
       {% endfor %}
-        <label for="actions">Actions: </label>
-        <select multiple id="actions" name="actions" class="form-control" title="actions" aria-label="actions">
-        {% with selected_actions=request.GET|get_list:'actions' %}
-          {% for action in actions %}
-            <option value="{{ action }}" {% if action in selected_actions %} selected{% endif %}>{{ action }}</option>
-          {% endfor %}
-        {% endwith %}
-        </select>
-        <input id="checkbox1" class="custom-cb" type="checkbox" name="filter-galleries" value="1" {% if "filter-galleries" in request.GET %}checked{% endif %}><label for="checkbox1"><span><span></span></span>Filter Galleries</label>
-        <input id="checkbox2" class="custom-cb" type="checkbox" name="filter-archives" value="1" {% if "filter-archives" in request.GET %}checked{% endif %}><label for="checkbox2"><span><span></span></span>Filter Archives</label>
-        {% if request.user.is_staff %}<input id="checkbox3" class="custom-cb" type="checkbox" name="show-users" value="1" {% if "show-users" in request.GET %}checked{% endif %}><label for="checkbox3"><span><span></span></span>Show Users</label>{% endif %}
+        <div class="col-md-auto">
+            <div class="input-group align-items-center">
+            <label for="actions">Actions: </label>
+            <select multiple id="actions" name="actions" class="form-control" title="actions" aria-label="actions">
+            {% with selected_actions=request.GET|get_list:'actions' %}
+              {% for action in actions %}
+                <option value="{{ action }}" {% if action in selected_actions %} selected{% endif %}>{{ action }}</option>
+              {% endfor %}
+            {% endwith %}
+            </select>
+            </div>
+        </div>
+        <div class="col-md-auto">
+            <div class="form-check">
+                <input id="checkbox1" class="form-check-input" type="checkbox" name="filter-galleries" value="1" {% if "filter-galleries" in request.GET %}checked{% endif %}><label for="checkbox1">Filter Galleries</label>
+            </div>
+        </div>
+        <div class="col-md-auto">
+            <div class="form-check">
+                <input id="checkbox2" class="form-check-input" type="checkbox" name="filter-archives" value="1" {% if "filter-archives" in request.GET %}checked{% endif %}><label for="checkbox2">Filter Archives</label>
+            </div>
+        </div>
+        {% if request.user.is_staff %}
+            <div class="col-md-auto">
+                <div class="form-check">
+                    <input id="checkbox3" class="form-check-input" type="checkbox" name="show-users" value="1" {% if "show-users" in request.GET %}checked{% endif %}><label for="checkbox3">Show Users</label>
+                </div>
+            </div>
+        {% endif %}
       </div>
-      <div class="form-inline page-line">
-        <button type="submit" name="apply" class="btn btn-info">Search</button>
-        <a class="btn btn-light" href="{% url 'viewer:activity-event-log' %}">Clear</a>
+      <div class="row page-line g-1">
+          <div class="col-md-auto">
+            <button type="submit" name="apply" class="btn btn-info">Search</button>
+            <a class="btn btn-light" href="{% url 'viewer:activity-event-log' %}">Clear</a>
+          </div>
       </div>
     </form>
     <!-- Next/Prev page links  -->

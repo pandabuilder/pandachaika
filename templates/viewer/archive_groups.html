@@ -12,7 +12,7 @@
   {% endif %}
   <!-- Archive groups  -->
   {% if perms.viewer.add_archivegroup %}
-  <button class="btn btn-secondary" id="add-archive-group" data-toggle="collapse" data-target="#add-change-archive-group-form" name="add-archive-group" type="button" aria-label="toggle add wanted">Add Archive Group <i class="fas fa-chevron-down"></i></button>
+  <button class="btn btn-secondary" id="add-archive-group" data-bs-toggle="collapse" data-bs-target="#add-change-archive-group-form" name="add-archive-group" type="button" aria-label="toggle add wanted">Add Archive Group <i class="fas fa-chevron-down"></i></button>
   {% include 'viewer/include/archive_group_edit.html' %}
   {% endif %}
   <div class="page-header">
@@ -26,9 +26,13 @@
         {{ field }}
       </div>
     {% endfor %}
-    <div class="page-line form-inline">
+    <div class="page-line row g-1">
+    <div class="col-md-auto">
       <button type="submit" name="apply" class="btn btn-info">Search</button>
+    </div>
+    <div class="col-md-auto">
       <a class="btn btn-light" href="{% url 'viewer:archive-groups' %}">Clear</a>
+    </div>
     </div>
   </form>
   <!-- Next/Prev page links  -->
@@ -51,7 +55,7 @@
   {% endif %}
   <ul class="list-group">
     {% for archive_group in results %}
-      <hr class="mt-2 mb-5">
+      <hr class="mt-2 mb-2">
         <div class="arch-cont">
         <h4><a href="{% url 'viewer:archive-group' archive_group.title_slug %}">{{ archive_group.title }}</a></h4>
         {% for archive_entry in archive_group.archivegroup_entries|slice:":6" %}
@@ -93,12 +97,11 @@
         $('#add-archive-group').html('Add Archive Group <i class="fas fa-chevron-down"></i>');
     }
     });
-     document.getElementById("id_archives").nextSibling.style.width = "100%";
     </script>
   {% endcompress %}
   {% endif %}
   {% compress css %}
-    <link href="{% static 'autocomplete_light/vendor/jal/src/style.css' %}" type="text/css" media="all" rel="stylesheet" />
+    <link href="{% static 'css/vendor/jal/style.css' %}" type="text/css" media="all" rel="stylesheet" />
   {% endcompress %}
   {% compress js %}
     <script>
@@ -110,7 +113,7 @@
     $(document).ready(function() {
         $(".tag-preview").click(function() {
             var el = $(this);
-            var pk = $(this).data('pk');
+            var pk = $(this).data('bs-pk');
             if (tagData[pk]) {
                 return tagData[pk];
             }
@@ -129,12 +132,7 @@
             }
         });
     });
-
     </script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/jquery.init.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/autocomplete.init.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/autocomplete.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/text_widget.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/jal.js' %}"></script>
+    {{ form.media }}
   {% endcompress %}
 {% endblock %}

@@ -15,7 +15,9 @@
     </div>
     {% load viewer_extras %}
     <form action="{{ request.get_full_path }}" method="GET">
-      <div class="form-inline page-line">
+      <div class="page-line row g-1 align-items-center">
+      <div class="col-md-auto">
+          <div class="input-group align-items-center">
         <label for="actions">Actions: </label>
         <select multiple id="actions" name="actions" class="form-control" title="actions" aria-label="actions">
         {% with selected_actions=request.GET|get_list:'actions' %}
@@ -24,8 +26,12 @@
           {% endfor %}
         {% endwith %}
         </select>
+          </div>
+      </div>
+      <div class="col-md-auto">
         <button type="submit" name="apply" class="btn btn-info">Search</button>
         <a class="btn btn-light" href="{% url 'viewer:my-event-log' %}">Clear</a>
+      </div>
       </div>
     </form>
     <!-- Next/Prev page links  -->

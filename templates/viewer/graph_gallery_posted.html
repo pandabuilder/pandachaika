@@ -58,14 +58,20 @@
             {{ field }}
           </div>
         {% endfor %}
-      <div class="form-inline page-line">
+      <div class="row g-1 align-items-center page-line">
         {% for field in form_simple %}
-          {{ field.label_tag }}{{ field }}
+        <div class="col-md-auto">
+            <div class="input-group align-items-center">
+                {{ field.label_tag }}{{ field }}
+            </div>
+        </div>
         {% endfor %}
       </div>
-        <div class="page-line form-inline">
-          <button id="search-button" class="btn btn-info" data-loading-text="Loading..." type="submit">Search</button>
-          <button id="search-button" class="btn btn-light" type="reset">Reset</button>
+        <div class="page-line row">
+            <div class="col-md-auto">
+              <button id="search-button" class="btn btn-info" data-loading-text="Loading..." type="submit">Search</button>
+              <button id="reset-button" class="btn btn-light" type="reset">Reset</button>
+            </div>
         </div>
       </form>
     </div>
@@ -92,14 +98,10 @@
 {% block afterJQ %}
   {% load compress %}
   {% compress css %}
-    <link href="{% static 'autocomplete_light/vendor/jal/src/style.css' %}" type="text/css" media="all" rel="stylesheet" />
+    <link href="{% static 'css/vendor/jal/style.css' %}" type="text/css" media="all" rel="stylesheet" />
   {% endcompress %}
   {% compress js %}
-    <script type="text/javascript" src="{% static 'autocomplete_light/jquery.init.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/autocomplete.init.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/autocomplete.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/text_widget.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/jal.js' %}"></script>
+    <script src="{% static 'js/vendor/jquery.autocomplete-light.min.js' %}"></script>
   {% endcompress %}
   <script src="{% static 'js/gallery_freq.js' %}"></script>
 {% endblock %}

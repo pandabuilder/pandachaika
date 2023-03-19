@@ -1,18 +1,15 @@
-import json
 import re
 from collections.abc import Iterable
 from typing import Any, Optional
 
 import typing
 from dal import autocomplete
-from dal.views import BaseQuerySetView
-from dal_select2.views import Select2ViewMixin
 from django import http
 from django.db.models import Q, QuerySet
 from django.http import HttpResponse, HttpRequest
-from django.template import Context
 from django.utils.html import format_html
 from django.conf import settings
+from django.views.generic import ListView
 
 from viewer.models import Archive, Tag, Gallery, WantedGallery, ArchiveGroup, Provider, ArchiveManageEntry
 
@@ -23,7 +20,7 @@ if typing.TYPE_CHECKING:
 crawler_settings = settings.CRAWLER_SETTINGS
 
 
-class ArchiveAutocomplete(autocomplete.JalQuerySetView):
+class ArchiveAutocomplete(ListView):
     model = Archive
 
     choice_html_format = u'''
@@ -38,7 +35,7 @@ class ArchiveAutocomplete(autocomplete.JalQuerySetView):
                                           choice.get_absolute_url(),
                                           choice.title)
 
-    def render_to_response(self, context: Context) -> HttpResponse:
+    def render_to_response(self, context: dict[str, Any], **response_kwargs: Any) -> HttpResponse:
 
         html = ''.join(
             [self.choice_html(c) for c in self.choices_for_request()])
@@ -65,7 +62,7 @@ class ArchiveAutocomplete(autocomplete.JalQuerySetView):
         return qs[0:self.limit_choices]
 
 
-class GalleryAutocomplete(autocomplete.JalQuerySetView):
+class GalleryAutocomplete(ListView):
 
     model = Gallery
 
@@ -81,7 +78,7 @@ class GalleryAutocomplete(autocomplete.JalQuerySetView):
                                           choice.get_absolute_url(),
                                           choice.title)
 
-    def render_to_response(self, context: Context) -> HttpResponse:
+    def render_to_response(self, context: dict[str, Any], **response_kwargs: Any) -> HttpResponse:
 
         html = ''.join(
             [self.choice_html(c) for c in self.choices_for_request()])
@@ -137,7 +134,7 @@ class GalleryAllAutocomplete(GalleryAutocomplete):
         return qs[0:self.limit_choices]
 
 
-class WantedGalleryAutocomplete(autocomplete.JalQuerySetView):
+class WantedGalleryAutocomplete(ListView):
 
     model = WantedGallery
 
@@ -153,7 +150,7 @@ class WantedGalleryAutocomplete(autocomplete.JalQuerySetView):
                                           choice.get_absolute_url(),
                                           choice.title)
 
-    def render_to_response(self, context: Context) -> HttpResponse:
+    def render_to_response(self, context: dict[str, Any], **response_kwargs: Any) -> HttpResponse:
 
         html = ''.join(
             [self.choice_html(c) for c in self.choices_for_request()])
@@ -186,7 +183,7 @@ class WantedGalleryColAutocomplete(WantedGalleryAutocomplete):
                                           choice.title)
 
 
-class ArchiveGroupAutocomplete(autocomplete.JalQuerySetView):
+class ArchiveGroupAutocomplete(ListView):
     model = ArchiveGroup
 
     choice_html_format = u'''
@@ -201,7 +198,7 @@ class ArchiveGroupAutocomplete(autocomplete.JalQuerySetView):
                                           choice.get_absolute_url(),
                                           choice.title)
 
-    def render_to_response(self, context: Context) -> HttpResponse:
+    def render_to_response(self, context: dict[str, Any], **response_kwargs: Any) -> HttpResponse:
 
         html = ''.join(
             [self.choice_html(c) for c in self.choices_for_request()])
@@ -228,7 +225,7 @@ class ArchiveGroupAutocomplete(autocomplete.JalQuerySetView):
         return qs[0:self.limit_choices]
 
 
-class ArchiveManageEntryFieldAutocomplete(autocomplete.JalQuerySetView):
+class ArchiveManageEntryFieldAutocomplete(ListView):
     model = ArchiveManageEntry
 
     choice_html_format = u'''
@@ -238,7 +235,7 @@ class ArchiveManageEntryFieldAutocomplete(autocomplete.JalQuerySetView):
     autocomplete_html_format = '%s'
     limit_choices = 10
 
-    def render_to_response(self, context: Context) -> HttpResponse:
+    def render_to_response(self, context: dict[str, Any], **response_kwargs: Any) -> HttpResponse:
 
         html = ''.join(
             [self.choice_html(c) for c in self.choices_for_request()])
@@ -281,7 +278,7 @@ class ArchiveManageEntryMarkReasonAutocomplete(ArchiveManageEntryFieldAutocomple
         return []
 
 
-class ArchiveFieldAutocomplete(autocomplete.JalQuerySetView):
+class ArchiveFieldAutocomplete(ListView):
 
     model = Archive
 
@@ -292,7 +289,7 @@ class ArchiveFieldAutocomplete(autocomplete.JalQuerySetView):
     autocomplete_html_format = '%s'
     limit_choices = 10
 
-    def render_to_response(self, context: Context) -> HttpResponse:
+    def render_to_response(self, context: dict[str, Any], **response_kwargs: Any) -> HttpResponse:
 
         html = ''.join(
             [self.choice_html(c) for c in self.choices_for_request()])
@@ -324,7 +321,7 @@ class ArchiveFieldAutocomplete(autocomplete.JalQuerySetView):
         raise NotImplementedError
 
 
-class GalleryFieldAutocomplete(autocomplete.JalQuerySetView):
+class GalleryFieldAutocomplete(ListView):
 
     model = Gallery
 
@@ -335,7 +332,7 @@ class GalleryFieldAutocomplete(autocomplete.JalQuerySetView):
     autocomplete_html_format = '%s'
     limit_choices = 10
 
-    def render_to_response(self, context: Context) -> HttpResponse:
+    def render_to_response(self, context: dict[str, Any], **response_kwargs: Any) -> HttpResponse:
 
         html = ''.join(
             [self.choice_html(c) for c in self.choices_for_request()])
@@ -494,7 +491,7 @@ class GalleryReasonAutocomplete(GalleryFieldAutocomplete):
         return reasons[0:self.limit_choices]
 
 
-class TagAutocomplete(autocomplete.JalQuerySetView):
+class TagAutocomplete(ListView):
 
     model = Tag
 
@@ -509,7 +506,7 @@ class TagAutocomplete(autocomplete.JalQuerySetView):
         super().__init__(**kwargs)
         self.modifier = ''
 
-    def render_to_response(self, context: Context) -> HttpResponse:
+    def render_to_response(self, context: dict[str, Any], **response_kwargs: Any) -> HttpResponse:
 
         html = ''.join(
             [self.choice_html(c) for c in self.choices_for_request()])
@@ -552,29 +549,11 @@ class TagAutocomplete(autocomplete.JalQuerySetView):
         return results.order_by('pk')[0:self.limit_choices]
 
 
-class Select2ViewMixinNoCreate(Select2ViewMixin):
-    def render_to_response(self, context):
-        """Return a JSON response in Select2 format."""
-        return http.HttpResponse(
-            json.dumps({
-                'results': self.get_results(context),
-                'pagination': {
-                    'more': self.has_more(context)
-                }
-            }),
-            content_type='application/json',
-        )
-
-
-class Select2QuerySetViewNoCreate(Select2ViewMixinNoCreate, BaseQuerySetView):
-    """List options for a Select2 widget."""
-
-
-class TagPkAutocomplete(Select2QuerySetViewNoCreate):
+class TagPkAutocomplete(autocomplete.Select2QuerySetView):
     model = Tag
 
 
-class ProviderPkAutocomplete(Select2QuerySetViewNoCreate):
+class ProviderPkAutocomplete(autocomplete.Select2QuerySetView):
     model = Provider
 
 
@@ -617,7 +596,7 @@ class NonCustomTagAutocomplete(autocomplete.Select2QuerySetView):
 class CustomTagAutocomplete(autocomplete.Select2QuerySetView):
     model = Tag
 
-    def post(self, request: HttpRequest) -> HttpResponse:
+    def post(self, request: HttpRequest, *args, **kwargs) -> HttpResponse:
 
         if not self.has_add_permission(request):
             return http.HttpResponseForbidden()

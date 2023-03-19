@@ -21,15 +21,32 @@
         {{ field }}
       </div>
     {% endfor %}
-    <div class="page-line form-inline">
+    <div class="page-line row g-1 align-items-center">
+    <div class="col-md-auto">
       <button id="toggle-all" class="btn btn-secondary" type="button">Toggle All</button>
+    </div>
+    <div class="col-md-auto">
       <button type="submit" name="apply" class="btn btn-info">Search</button>
       <a class="btn btn-light" href="{% url 'viewer:match-archives' %}">Clear</a>
-{#      <input id="checkbox-f1" type="checkbox" name="no-custom-tags" value="1" {% if "no-custom-tags" in request.GET %}checked{% endif %}><label for="checkbox-f1"><span><span></span></span>No custom tags</label>#}
-      <input id="checkbox-f2" class="custom-cb" type="checkbox" name="with-possible-matches" value="1" {% if "with-possible-matches" in request.GET %}checked{% endif %}><label for="checkbox-f2"><span><span></span></span>With possible matches</label>
-      <input id="checkbox-f3" class="custom-cb" type="checkbox" name="show-matched" value="1" {% if "show-matched" in request.GET %}checked{% endif %}><label for="checkbox-f3"><span><span></span></span>Show matched</label>
-      <input id="checkbox-f4" class="custom-cb" type="checkbox" name="inline-thumbnails" value="1" {% if "inline-thumbnails" in request.GET %}checked{% endif %}><label for="checkbox-f4"><span><span></span></span>Inline thumbnails</label>
+    </div>
+    <div class="col-md-auto">
+        <div class="form-check">
+      <input id="checkbox-f2" class="form-check-input" type="checkbox" name="with-possible-matches" value="1" {% if "with-possible-matches" in request.GET %}checked{% endif %}><label for="checkbox-f2">With possible matches</label>
+        </div>
+    </div>
+    <div class="col-md-auto">
+        <div class="form-check">
+      <input id="checkbox-f3" class="form-check-input" type="checkbox" name="show-matched" value="1" {% if "show-matched" in request.GET %}checked{% endif %}><label for="checkbox-f3">Show matched</label>
+        </div>
+    </div>
+    <div class="col-md-auto">
+        <div class="form-check">
+      <input id="checkbox-f4" class="form-check-input" type="checkbox" name="inline-thumbnails" value="1" {% if "inline-thumbnails" in request.GET %}checked{% endif %}><label for="checkbox-f4">Inline thumbnails</label>
+        </div>
+    </div>
+    <div class="col-md-auto">
       <input title="Limit" size="18" type="number" step="1" class="form-control" name="limit" value="{{ request.GET.limit }}" placeholder="Archives per page"/>
+    </div>
     </div>
   </form>
   <!-- Next/Prev page links  -->
@@ -54,7 +71,10 @@
     <ul class="list-group">
       {% for archive in results %}
         <li class="list-group-item">
-          <input id="sel-{{ archive.id }}" class="toggle-list custom-cb" type="checkbox" name="sel-{{ archive.id }}" value="{{ archive.pk }}"><label for="sel-{{ archive.id }}"><span><span></span></span></label><a href="{{ archive.get_absolute_url }}">{{ archive.pk }}</a> >>
+        <span class="me-1">
+          <input id="sel-{{ archive.id }}" class="toggle-list form-check-input" type="checkbox" name="sel-{{ archive.id }}" value="{{ archive.pk }}"><label class="form-check-label" for="sel-{{ archive.id }}"></label>
+        </span>
+            <a href="{{ archive.get_absolute_url }}">{{ archive.pk }}</a> >>
           {{ archive.best_title }} >>
           <a href="{% url 'viewer:col-archive-update-tool' archive.pk 'clear-possible-matches' %}">Clear possible matches</a>
           <p>{{ archive.filename }} >>
@@ -145,19 +165,27 @@
         </li>
       {% endfor %}
     </ul>
-    <div class="form-inline">
+    <div class="row g-1">
+    <div class="col-md-auto">
       <input title="Cutoff" size="10" type="number" step="0.01" class="form-control" name="cutoff" value="" placeholder="Cutoff"/>
+    </div>
+    <div class="col-md-auto">
       <input title="Max matches" size="10" type="number" step="1" class="form-control" name="max-matches" value="10" placeholder="Max Matches"/>
-    <span class="dropup">
-        <button class="btn btn-primary dropdown-toggle" type="button" data-toggle="dropdown">Create internal matches for selected archives<span class="caret"></span></button>
-        <ul class="dropdown-menu dropdown-menu-right">
+    </div>
+    <div class="col-md-auto">
+    <div class="dropup">
+        <button class="btn btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown">Create internal matches for selected archives</button>
+        <ul class="dropdown-menu dropdown-menu-end">
         <li><button type="submit" name="create_possible_matches" class="btn btn-light" value="">All</button></li>
           {% for provider in providers %}
             <li><button type="submit" name="create_possible_matches" class="btn btn-light" value="{{ provider }}">{{ provider }}</button></li>
           {% endfor %}
         </ul>
-    </span>
+    </div>
+    </div>
+    <div class="col-md-auto">
     <button type="submit" name="clear_possible_matches" class="btn btn-light" value="">Clear possible matches</button>
+    </div>
     </div>
   </form>
   <!-- Next/Prev page links  -->
@@ -180,14 +208,10 @@
 {% block afterJQ %}
   {% load compress %}
   {% compress css %}
-    <link href="{% static 'autocomplete_light/vendor/jal/src/style.css' %}" type="text/css" media="all" rel="stylesheet" />
+    <link href="{% static 'css/vendor/jal/style.css' %}" type="text/css" media="all" rel="stylesheet" />
   {% endcompress %}
   {% compress js %}
-    <script type="text/javascript" src="{% static 'autocomplete_light/jquery.init.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/autocomplete.init.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/autocomplete.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/text_widget.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/jal.js' %}"></script>
+    <script src="{% static 'js/vendor/jquery.autocomplete-light.min.js' %}"></script>
   {% endcompress %}
   <script type="text/javascript" src="{% static 'js/list_operations.js' %}"></script>
   <script>
@@ -199,7 +223,7 @@
     $(document).ready(function() {
         $(".tag-preview").click(function() {
             var el = $(this);
-            var pk = $(this).data('pk');
+            var pk = $(this).data('bs-pk');
             if (tagData[pk]) {
                 return tagData[pk];
             }
@@ -228,7 +252,7 @@
     $(document).ready(function() {
         $(".tag-preview-g").click(function() {
             var el = $(this);
-            var pk = $(this).data('pk');
+            var pk = $(this).data('bs-pk');
             if (tagDataGallery[pk]) {
                 return tagDataGallery[pk];
             }

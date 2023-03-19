@@ -117,14 +117,12 @@ LOGGING: dict[str, Any] = {
 INSTALLED_APPS = [
     'dal',
     'dal_select2',
-    'dal_jal',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'webpack_loader',
     'django_vite',
 ]
 
@@ -162,24 +160,23 @@ STATICFILES_FINDERS = [
     'django.contrib.staticfiles.finders.AppDirectoriesFinder'
 ]
 
-DJANGO_VITE_ASSETS_PATH = os.path.join(BASE_DIR, 'viewer/assets/image-viewer')
-DJANGO_VITE_MANIFEST_PATH = os.path.join(BASE_DIR, 'viewer/assets/image-viewer/manifest.json')
+DJANGO_VITE = {
+    'image_viewer': {
+        'manifest_path': os.path.join(BASE_DIR, 'viewer/assets/image-viewer/manifest.json'),
+        'assets_path': os.path.join(BASE_DIR, 'viewer/assets/image-viewer'),
+        'static_url_prefix': 'image-viewer'
+    },
+    'compare_archives': {
+        'manifest_path': os.path.join(BASE_DIR, 'viewer/assets/compare-archives/manifest.json'),
+        'assets_path': os.path.join(BASE_DIR, 'viewer/assets/compare-archives'),
+        'static_url_prefix': 'compare-archives'
+    }
+}
+
 
 STATICFILES_DIRS = (
     os.path.join(BASE_DIR, 'viewer/assets'),
-    os.path.join(BASE_DIR, 'viewer/assets/image-viewer'),
 )
-
-WEBPACK_LOADER = {
-    'MANAGE': {
-        'BUNDLE_DIR_NAME': '',
-        'STATS_FILE': os.path.join(BASE_DIR, 'webpack-stats-manage.json'),
-    },
-    'COMPARE': {
-        'BUNDLE_DIR_NAME': '',
-        'STATS_FILE': os.path.join(BASE_DIR, 'webpack-stats-compare.json'),
-    }
-}
 
 if module_exists('compressor'):
     STATICFILES_FINDERS += ['compressor.finders.CompressorFinder']

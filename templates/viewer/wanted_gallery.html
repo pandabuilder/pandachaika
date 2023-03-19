@@ -15,16 +15,17 @@
     {{ wanted_gallery.title }}
     {% if user.is_staff %}
     <div class="dropdown">
-      <a class="btn btn-primary float-right dropdown-toggle" data-toggle="dropdown" role="button" id="dropdownTools" aria-haspopup="true" aria-expanded="false"><i class="fas fa-tools"></i></a>
-      <div class="dropdown-menu py-0" aria-labelledby="dropdownTools">
+      <a class="btn btn-primary float-end dropdown-toggle" data-bs-toggle="dropdown" role="button" id="dropdownTools" aria-haspopup="true" aria-expanded="false"><i class="fas fa-tools"></i></a>
+      <ul class="dropdown-menu py-0" aria-labelledby="dropdownTools">
             <div class="card bg-dark border-info dropdown-item">
             <div class="card-header bg-light">
               Match tools
             </div>
-              <form class="form-inline" action="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}" method="GET">
+              <form action="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}" method="GET">
                 <ul class="list-group w-100">
-                  <li class="list-group-item"><input size="10" class="form-control" name="provider" value=""
-                                                     placeholder="Provider filter"/></li>
+                  <li class="list-group-item">
+                      <input size="10" class="form-control" name="provider" value="" placeholder="Provider filter"/>
+                  </li>
                   <li class="list-group-item">
                     <button class="btn btn-light" name="tool" value="create-possible-matches-internally">
                       Create possible matches locally
@@ -42,7 +43,7 @@
             <div class="card-header bg-light">
               Change state
             </div>
-            <form class="form-inline" action="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}" method="GET">
+            <form action="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}" method="GET">
               <ul class="list-group w-100">
                 <li class="list-group-item"><button class="btn btn-light" name="tool" value="stop-searching">stop searching</button></li>
                 <li class="list-group-item"><button class="btn btn-light" name="tool" value="toggle-public">Set {% if wanted_gallery.public %}private{% else %}public{% endif %}</button></li>
@@ -54,10 +55,10 @@
             <div class="card-header bg-light">
               Extra tools
             </div>
-            <a class="btn btn-secondary float-right" href="{% url 'viewer:col-create-wanted-gallery' %}?wanted-gallery={{ wanted_gallery.id }}" role="button">Use as template to create another</a>
+            <a class="btn btn-secondary float-end" href="{% url 'viewer:col-create-wanted-gallery' %}?wanted-gallery={{ wanted_gallery.id }}" role="button">Use as template to create another</a>
             </div>
             <a class="border-info dropdown-item my-1" href="{% url 'admin:viewer_wantedgallery_change' wanted_gallery.pk %}" role="button">Admin page</a>
-      </div>
+      </ul>
     </div>
     {% endif %}
   </h1>

@@ -13,15 +13,19 @@
     <h2>Server logs</h2>
     <p class="lead">Current server time: {% now "y-m-d, H:i:s" %}</p>
   </div>
-  <form action="{% url 'viewer:logs' %}" class="form-inline" method="GET">
-    <div class="form-group">
-      <label for="filter">Filter</label>
-      <input type="search" class="form-control" id="filter" name="filter" value="{{ request.GET.filter }}" size="50">
+  <form action="{% url 'viewer:logs' %}" method="GET">
+  <div class="row g-1">
+    <div class="col-md-3">
+        <div class="input-group align-items-center">
+            <label for="filter">Filter</label>
+            <input type="search" class="form-control" id="filter" name="filter" value="{{ request.GET.filter }}">
+        </div>
     </div>
-    <div class="form-group">
-      <button type="submit" class="btn btn-light">Apply filter</button>
+    <div class="col-md-4">
+      <button type="submit" class="btn btn-info">Apply filter</button>
       <a class="btn btn-light" href="{% url 'viewer:logs' %}" role="button">Clear</a>
     </div>
+  </div>
   </form>
   <!-- Next/Prev page links  -->
   {% if log_lines.object_list and log_lines.paginator.num_pages > 1 %}

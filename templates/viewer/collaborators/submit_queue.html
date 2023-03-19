@@ -22,29 +22,75 @@
           {{ field }}
         </div>
       {% endfor %}
-      <div class="page-line form-inline">
+      <div class="page-line row g-1 align-items-center">
+      <div class="col-md-auto">
         <button id="toggle-all" class="btn btn-secondary" type="button">Toggle All</button>
+      </div>
+      <div class="col-md-auto">
         <select id="provider" name="provider" class="form-control" title="provider" aria-label="provider">
           <option value="">all</option>
           {% for provider in providers %}
             <option value="{{ provider }}" {% if request.GET.provider == provider %} selected{% endif %}>{{ provider }}</option>
           {% endfor %}
         </select>
-        <label>Filecount</label>
-        <input size="2" type="text" class="form-control mr-sm-1" name="filecount_from" value="{{ request.GET.filecount_from }}" placeholder="from"/>
-        <input size="2" type="text" class="form-control mr-sm-1" name="filecount_to" value="{{ request.GET.filecount_to }}" placeholder="to"/>
+      </div>
+      <div class="col-md-auto">
+          <div class="input-group align-items-center">
+            <label for="filecount-from">Filecount</label>
+            <input id="filecount-from" size="2" type="text" class="form-control me-sm-1" name="filecount_from" value="{{ request.GET.filecount_from }}" placeholder="from"/>
+          </div>
+      </div>
+      <div class="col-md-auto">
+        <input size="2" type="text" class="form-control me-sm-1" name="filecount_to" value="{{ request.GET.filecount_to }}" placeholder="to"/>
+      </div>
+      <div class="col-md-auto">
         <input size="10" title="Category" class="form-control" name="category" placeholder="Category" value="{{ request.GET.category }}">
+      </div>
+      <div class="col-md-auto">
         <input title="Reason" class="form-control" name="reason" placeholder="Reason" value="{{ request.GET.reason }}">
-        <input title="Submit Reason" class="form-control" name="submit_reason" placeholder="Submit Reason" value="{{ request.GET.submit_reason }}">
-        <input id="checkbox-f1" class="custom-cb" type="checkbox" name="denied" value="1" {% if "denied" in request.GET %}checked{% endif %}><label for="checkbox-f1"><span><span></span></span>Show denied</label>
-        <input id="checkbox-f2" class="custom-cb" type="checkbox" name="approved" value="1" {% if "approved" in request.GET %}checked{% endif %}><label for="checkbox-f2"><span><span></span></span>Show approved</label>
-        <input id="checkbox-f4" class="custom-cb" type="checkbox" name="already_present" value="1" {% if "already_present" in request.GET %}checked{% endif %}><label for="checkbox-f4"><span><span></span></span>Show present</label>
-        <input id="checkbox-f3" class="custom-cb" type="checkbox" name="filter_galleries" value="1" {% if "filter_galleries" in request.GET %}checked{% endif %}><label for="checkbox-f3"><span><span></span></span>Filter galleries</label>
-        <input id="checkbox-f5" class="custom-cb" type="checkbox" name="has_similar" value="1" {% if "has_similar" in request.GET %}checked{% endif %}><label for="checkbox-f5"><span><span></span></span>With similar</label>
-        <input id="checkbox-f6" class="custom-cb" type="checkbox" name="has_archives" value="1" {% if "has_archives" in request.GET %}checked{% endif %}><label for="checkbox-f6"><span><span></span></span>With archives</label>
-        <input id="checkbox-f10" class="custom-cb" type="checkbox" name="gallery-public" value="1" {% if "gallery-public" in request.GET %}checked{% endif %}><label for="checkbox-f10"><span><span></span></span>Public Gallery</label>
+      </div>
+        <div class="col-md-auto">
+            <input title="Submit Reason" class="form-control" name="submit_reason" placeholder="Submit Reason" value="{{ request.GET.submit_reason }}">
+        </div>
+      <div class="col-md-auto">
+        <div class="form-check">
+        <input id="checkbox-f1" class="form-check-input" type="checkbox" name="denied" value="1" {% if "denied" in request.GET %}checked{% endif %}><label for="checkbox-f1">Show denied</label>
+        </div>
+      </div>
+      <div class="col-md-auto">
+        <div class="form-check">
+        <input id="checkbox-f2" class="form-check-input" type="checkbox" name="approved" value="1" {% if "approved" in request.GET %}checked{% endif %}><label for="checkbox-f2">Show approved</label>
+        </div>
+      </div>
+      <div class="col-md-auto">
+        <div class="form-check">
+        <input id="checkbox-f4" class="form-check-input" type="checkbox" name="already_present" value="1" {% if "already_present" in request.GET %}checked{% endif %}><label for="checkbox-f4">Show present</label>
+        </div>
+      </div>
+      <div class="col-md-auto">
+        <div class="form-check">
+        <input id="checkbox-f3" class="form-check-input" type="checkbox" name="filter_galleries" value="1" {% if "filter_galleries" in request.GET %}checked{% endif %}><label for="checkbox-f3">Filter galleries</label>
+        </div>
+      </div>
+      <div class="col-md-auto">
+        <div class="form-check">
+        <input id="checkbox-f5" class="form-check-input" type="checkbox" name="has_similar" value="1" {% if "has_similar" in request.GET %}checked{% endif %}><label for="checkbox-f5">With similar</label>
+        </div>
+      </div>
+      <div class="col-md-auto">
+        <div class="form-check">
+        <input id="checkbox-f6" class="form-check-input" type="checkbox" name="has_archives" value="1" {% if "has_archives" in request.GET %}checked{% endif %}><label for="checkbox-f6">With archives</label>
+        </div>
+      </div>
+      <div class="col-md-auto">
+        <div class="form-check">
+        <input id="checkbox-f10" class="form-check-input" type="checkbox" name="gallery-public" value="1" {% if "gallery-public" in request.GET %}checked{% endif %}><label for="checkbox-f10">Public Gallery</label>
+        </div>
+      </div>
+      <div class="col-md-auto">
         <button type="submit" name="apply" class="btn btn-info">Search</button>
         <a class="btn btn-light" href="{% url 'viewer:submit-queue' %}">Clear</a>
+      </div>
       </div>
     </form>
     <div id="contained-data">
@@ -89,8 +135,8 @@
             <tbody>
             {% for entry in results %}
               <tr>
-                <td>
-                  <input id="checkbox-{{ entry.id }}" class="toggle-list custom-cb" type="checkbox" name="sel-{{ entry.id }}" value="{{ entry.pk }}"><label for="checkbox-{{ entry.id }}"><span><span></span></span></label>
+                <td class="text-center">
+                  <input id="checkbox-{{ entry.id }}" class="toggle-list form-check-input" type="checkbox" name="sel-{{ entry.id }}" value="{{ entry.pk }}"><label for="checkbox-{{ entry.id }}"></label>
                 </td>
                 <td>
                   {{ entry.submit_url|urlize_all_rel }}
@@ -186,13 +232,13 @@
               </nav>
           </div>
         {% if perms.viewer.approve_gallery %}
-        <div class="form-group">
+        <div class="mb-3">
           <input size="10" class="form-control" name="reason" value="" placeholder="Gallery & Archive Reason" maxlength="200"/>
         </div>
-        <div class="form-group">
+        <div class="mb-3">
           <input size="10" class="form-control" name="entry_reason" value="" placeholder="Entry Reason" maxlength="200"/>
         </div>
-        <div class="form-group">
+        <div class="mb-3">
           <label for="entry_comment">Comment</label>
           <textarea name="entry_comment" class="form-control" id="entry_comment" rows="5"></textarea>
         </div>
@@ -210,14 +256,10 @@
 {% block afterJQ %}
   {% load compress %}
   {% compress css %}
-    <link href="{% static 'autocomplete_light/vendor/jal/src/style.css' %}" type="text/css" media="all" rel="stylesheet" />
+    <link href="{% static 'css/vendor/jal/style.css' %}" type="text/css" media="all" rel="stylesheet" />
   {% endcompress %}
   {% compress js %}
-    <script type="text/javascript" src="{% static 'autocomplete_light/jquery.init.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/autocomplete.init.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/autocomplete.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/text_widget.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/jal.js' %}"></script>
+    <script src="{% static 'js/vendor/jquery.autocomplete-light.min.js' %}"></script>
   {% endcompress %}
   <script type="text/javascript" src="{% static 'js/list_operations.js' %}"></script>
 {% endblock %}

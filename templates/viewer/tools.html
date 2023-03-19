@@ -24,40 +24,88 @@
         <a class="list-group-item" href="{% url 'viewer:tools-id' 'set_all_hidden_as_public' %}">Set all hidden as public</a>
         <a class="list-group-item" href="{% url 'viewer:tools-id' 'regenerate_all_thumbs' %}">Regenerate all thumbnails (might be slow)</a>
         <form action="{% url 'viewer:tools-id' 'search_wanted_galleries_provider_titles' %}" method="GET" role="form">
-          <div class="list-group-item form-inline">
-            <input size="10" class="form-control" name="provider" value="" placeholder="Provider filter"/>
-            <button class="btn btn-light">Search wanted galleries by provider titles</button>
+          <div class="list-group-item">
+              <div class="row g-1">
+                <div class="col-md-auto">
+                    <input size="10" class="form-control" name="provider" value="" placeholder="Provider filter"/>
+                </div>
+                <div class="col-md-auto">
+                    <button class="btn btn-light">Search wanted galleries by provider titles</button>
+                </div>
+              </div>
           </div>
         </form>
         <form action="{% url 'viewer:tools-id' 'wanted_galleries_possible_matches' %}" method="GET" role="form">
-          <div class="list-group-item form-inline">
+          <div class="list-group-item">
+              <div class="row g-1">
+                  <div class="col-md-auto">
             <input title="Cutoff" size="10" type="number" step="0.01" class="form-control" name="cutoff" value="" placeholder="Cutoff"/>
+                  </div>
+                  <div class="col-md-auto">
             <input title="Max matches" size="10" type="number" step="1" class="form-control" name="max-matches" value="10" placeholder="Max Matches"/>
+                  </div>
+                  <div class="col-md-auto">
             <input size="10" class="form-control" name="provider" value="" placeholder="Provider filter"/>
+                  </div>
+                  <div class="col-md-auto">
             <button class="btn btn-light">Search wanted galleries by internal galleries</button>
+                  </div>
+              </div>
           </div>
         </form>
         <a class="list-group-item" href="{% url 'viewer:tools-id' 'transfer_missing_downloads' %}">Transfer missing downloads</a>
         <a class="list-group-item" href="{% url 'viewer:tools-id' 'retry_failed' %}">Retry failed downloads</a>
         <form action="{% url 'viewer:tools-id' 'update_newer_than' %}" method="GET" role="form">
-          <div class="list-group-item form-inline">Update gallery metadata newer than date <input size="20" type="text" class="form-control" name="newer_than" value="" placeholder="Newer than date"/><button type="submit" name="apply" class="btn btn-light">Start</button></div>
+            <div class="list-group-item">
+                <div class="row g-1">
+                    <div class="col-md-auto">
+                        <label for="newer-than">Update gallery metadata newer than date</label>
+                    </div>
+                    <div class="col-md-auto">
+                        <input id="newer-than" size="20" type="text" class="form-control" name="newer_than" value="" placeholder="Newer than date"/>
+                    </div>
+                    <div class="col-md-auto">
+                        <button type="submit" name="apply" class="btn btn-light">Start</button>
+                    </div>
+                </div>
+            </div>
         </form>
         <form action="{% url 'viewer:tools-id' 'update_missing_thumbnails' %}" method="GET" role="form">
-          <div class="list-group-item form-inline">
-            Update gallery with missing thumbnails
-            <input size="10" type="number" step="1" class="form-control"  name="limit_number" value="0" placeholder="Limit galleries"/>
-            <input size="10" class="form-control" name="provider" value="" placeholder="Provider filter"/>
-            <button type="submit" name="apply" class="btn btn-light">Start</button>
-          </div>
+            <div class="list-group-item">
+                <div class="row g-1">
+                    <div class="col-md-auto">
+                        <label for="limit-number">Update gallery with missing thumbnails</label>
+                    </div>
+                    <div class="col-md-auto">
+                        <input size="10" id="limit-number" type="number" step="1" class="form-control"  name="limit_number" value="0" placeholder="Limit galleries"/>
+                    </div>
+                    <div class="col-md-auto">
+                        <input size="10" class="form-control" name="provider" value="" placeholder="Provider filter"/>
+                    </div>
+                    <div class="col-md-auto">
+                        <button type="submit" name="apply" class="btn btn-light">Start</button>
+                    </div>
+                </div>
+            </div>
         </form>
         <a class="list-group-item" href="{% url 'viewer:tools-id' 'generate_possible_matches_internally' %}">Generate possible matches for non-matches (all providers)</a>
         <form action="{% url 'viewer:tools-id' 'generate_possible_matches_internally' %}" method="GET" role="form">
-          <div class="list-group-item form-inline">
-            <input size="10" type="text" class="form-control" name="provider" value="" placeholder="Provider filter"/>
-            <input title="Cutoff" size="10" type="number" step="0.01" class="form-control" name="cutoff" value="" placeholder="Cutoff"/>
-            <input title="Max matches" size="10" type="number" step="1" class="form-control" name="max-matches" value="10" placeholder="Max Matches"/>
-            <button type="submit" class="btn btn-light">Generate possible matches for non-matches (filter providers)</button>
-          </div>
+            <div class="list-group-item">
+                <div class="row g-1">
+                    <div class="col-md-auto">
+                        <input size="10" type="text" class="form-control" name="provider" value="" placeholder="Provider filter"/>
+                    </div>
+                    <div class="col-md-auto">
+                        <input title="Cutoff" size="10" type="number" step="0.01" class="form-control" name="cutoff" value="" placeholder="Cutoff"/>
+                    </div>
+                    <div class="col-md-auto">
+                        <input title="Max matches" size="10" type="number" step="1" class="form-control" name="max-matches" value="10" placeholder="Max Matches"/>
+                    </div>
+                    <div class="col-md-auto">
+                        <button type="submit" class="btn btn-light">Generate possible matches for non-matches (filter providers)</button>
+                    </div>
+                </div>
+            </div>
         </form>
         <a class="list-group-item" href="{% url 'viewer:tools-id' 'clear_all_archive_possible_matches' %}">Clear all archive possible matches</a>
       </div>
@@ -69,16 +117,16 @@
       </div>
       <div class="list-group col-lg-3 col-md-4 col-sm-6 col-xs-12">
         <div class="list-group-item active">Workers</div>
-        {% if not threads_status.post_downloader %}<a class="list-group-item off-text" href="{% url 'viewer:tools-id' 'start_timed_dl' %}">Start Post downloader</a>{% else %}<a class="list-group-item on-text" href="{% url 'viewer:tools-id' 'stop_timed_dl' %}">Stop Post downloader</a>{% endif %}
-        <a class="list-group-item off-text" href="{% url 'viewer:tools-id' 'force_run_timed_dl' %}">Force run Post downloader</a>
-        {% if not threads_status.auto_wanted %}<a class="list-group-item off-text" href="{% url 'viewer:tools-id' 'start_timed_auto_wanted' %}">Start Auto wanted</a>{% else %}<a class="list-group-item on-text" href="{% url 'viewer:tools-id' 'stop_timed_auto_wanted' %}">Stop Auto Wanted</a>{% endif %}
-        <a class="list-group-item off-text" href="{% url 'viewer:tools-id' 'force_run_timed_auto_wanted' %}">Force run Auto wanted</a>
-        {% if not threads_status.web_queue %}<a class="list-group-item off-text" href="{% url 'viewer:tools-id' 'start_web_queue' %}">Start Web queue</a>{% else %}<a class=" list-group-item on-text" href="#">Stop Web queue</a>{% endif %}
-        {% if not threads_status.auto_updater %}<a class="list-group-item off-text" href="{% url 'viewer:tools-id' 'start_timed_updater' %}">Start Auto updater (all)</a>{% else %}<a class="list-group-item on-text" href="{% url 'viewer:tools-id' 'stop_timed_updater' %}">Stop Auto updater (all)</a>{% endif %}
-        <a class="list-group-item off-text" href="{% url 'viewer:tools-id' 'force_run_timed_updater' %}">Force run Auto updater (all)</a>
+        {% if not threads_status.post_downloader %}<a class="list-group-item" href="{% url 'viewer:tools-id' 'start_timed_dl' %}">Start Post downloader</a>{% else %}<a class="list-group-item" href="{% url 'viewer:tools-id' 'stop_timed_dl' %}">Stop Post downloader</a>{% endif %}
+        <a class="list-group-item" href="{% url 'viewer:tools-id' 'force_run_timed_dl' %}">Force run Post downloader</a>
+        {% if not threads_status.auto_wanted %}<a class="list-group-item" href="{% url 'viewer:tools-id' 'start_timed_auto_wanted' %}">Start Auto wanted</a>{% else %}<a class="list-group-item" href="{% url 'viewer:tools-id' 'stop_timed_auto_wanted' %}">Stop Auto Wanted</a>{% endif %}
+        <a class="list-group-item" href="{% url 'viewer:tools-id' 'force_run_timed_auto_wanted' %}">Force run Auto wanted</a>
+        {% if not threads_status.web_queue %}<a class="list-group-item" href="{% url 'viewer:tools-id' 'start_web_queue' %}">Start Web queue</a>{% else %}<a class=" list-group-item" href="#">Stop Web queue</a>{% endif %}
+        {% if not threads_status.auto_updater %}<a class="list-group-item" href="{% url 'viewer:tools-id' 'start_timed_updater' %}">Start Auto updater (all)</a>{% else %}<a class="list-group-item" href="{% url 'viewer:tools-id' 'stop_timed_updater' %}">Stop Auto updater (all)</a>{% endif %}
+        <a class="list-group-item" href="{% url 'viewer:tools-id' 'force_run_timed_updater' %}">Force run Auto updater (all)</a>
         {% for provider_name, provider_thread_status in autoupdater_providers %}
-          {% if not provider_thread_status %}<a class="list-group-item off-text" href="{% url 'viewer:tools-id-arg' 'start_timed_updater' provider_name %}">Start Auto updater ({{ provider_name }})</a>{% else %}<a class="list-group-item on-text" href="{% url 'viewer:tools-id-arg' 'stop_timed_updater' provider_name %}">Stop Auto updater ({{ provider_name }})</a>{% endif %}
-          <a class="list-group-item off-text" href="{% url 'viewer:tools-id-arg' 'force_run_timed_updater' provider_name %}">Force run Auto updater ({{ provider_name }})</a>
+          {% if not provider_thread_status %}<a class="list-group-item" href="{% url 'viewer:tools-id-arg' 'start_timed_updater' provider_name %}">Start Auto updater ({{ provider_name }})</a>{% else %}<a class="list-group-item" href="{% url 'viewer:tools-id-arg' 'stop_timed_updater' provider_name %}">Stop Auto updater ({{ provider_name }})</a>{% endif %}
+          <a class="list-group-item" href="{% url 'viewer:tools-id-arg' 'force_run_timed_updater' provider_name %}">Force run Auto updater ({{ provider_name }})</a>
         {% endfor %}
       </div>
       <div class="list-group col-lg-3 col-md-4 col-sm-6 col-xs-12">

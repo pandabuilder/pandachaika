@@ -4,22 +4,28 @@
 </div>
 
 <form action="{% url 'viewer:archive-clone-plus' archive.pk %}" method="POST">{% csrf_token %}
-    <input id="checkbox-f1" class="custom-cb" type="checkbox" name="reorder-by-sha1" value="1" {% if "reorder-by-sha1" in request.POST %}checked{% endif %}><label for="checkbox-f1"><span><span></span></span>Reorder Images by SHA1 list</label>
-    <div class="form-group">
+    <div class="form-check">
+        <input id="checkbox-f1" class="form-check-input" type="checkbox" name="reorder-by-sha1" value="1" {% if "reorder-by-sha1" in request.POST %}checked{% endif %}><label class="form-check-label" for="checkbox-f1">Reorder Images by SHA1 list</label>
+    </div>
+    <div class="mb-3">
       <label for="sha1s">SHA1 Values (one per line)</label>
       <textarea name="sha1s" class="form-control" id="sha1s" rows="10">{{ request.POST.sha1s }}</textarea>
     </div>
-    <div class="form-group">
+    <div class="mb-3">
         {% if image_tool.enable %}
-        <input id="checkbox-f2" class="custom-cb" type="checkbox" name="run-image-tool" value="1" {% if "run-image-tool" in request.POST %}checked{% endif %}><label for="checkbox-f2"><span><span></span></span>Run the following program on every Image in Archive (name, description): {{ image_tool.name }}, {{ image_tool.description }}</label>
+            <div class="form-check">
+                <input id="checkbox-f2" class="form-check-input" type="checkbox" name="run-image-tool" value="1" {% if "run-image-tool" in request.POST %}checked{% endif %}><label class="form-check-label" for="checkbox-f2">Run the following program on every Image in Archive (name, description): {{ image_tool.name }}, {{ image_tool.description }}</label>
+            </div>
         {% else %}
         <div>Note: Image Tool is not setup, can't be selected</div>
         {% endif %}
     </div>
-    <div class="form-group">
-        <input id="checkbox-f3" class="custom-cb" type="checkbox" name="bin-original" value="1" {% if "bin-original" in request.POST %}checked{% endif %}><label for="checkbox-f3"><span><span></span></span>Bin the original Archive after correctly cloning</label>
+    <div class="mb-3">
+        <div class="form-check">
+            <input id="checkbox-f3" class="form-check-input" type="checkbox" name="bin-original" value="1" {% if "bin-original" in request.POST %}checked{% endif %}><label class="form-check-label" for="checkbox-f3">Bin the original Archive after correctly cloning</label>
+        </div>
     </div>
-    <div class="form-group">
+    <div class="mb-3">
         <input size="10" class="form-control" name="reason" value="" placeholder="Reason" maxlength="200"/>
     </div>
     <button type="submit" name="submit" class="btn btn-light">Confirm clone</button>

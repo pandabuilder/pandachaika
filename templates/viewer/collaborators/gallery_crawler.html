@@ -12,15 +12,15 @@
     <h2>URL Crawler, one URL per line</h2>
   </div>
   <form action="{% url 'viewer:user-crawler' %}" method="POST">{% csrf_token %}
-    <div class="form-group">
+    <div class="mb-3">
       <label for="urls"></label>
       <textarea name="urls" class="form-control" id="urls" rows="5"></textarea>
     </div>
-  <div class="form-group">
-    <button type="button" class="btn btn-info" data-toggle="collapse" data-target="#downloaders">Select generic downloaders (careful!)</button>
+  <div class="mb-3">
+    <button type="button" class="btn btn-info" data-bs-toggle="collapse" data-bs-target="#downloaders">Select generic downloaders (careful!)</button>
   </div>
   <div id="downloaders" class="collapse">
-  <div class="form-group">
+  <div class="mb-3">
     <select id="downloader" name="downloader" class="form-control" title="downloader" aria-label="choose_downloader">
     <option value="no-generic" selected>Auto select downloader (provider-based)</option>
     {% for name in downloaders %}
@@ -29,29 +29,25 @@
     </select>
   </div>
   </div>
-  <div class="form-group">
+  <div class="mb-3">
     <input size="10" class="form-control" name="reason" value="" placeholder="Reason" maxlength="200"/>
   </div>
-  <div class="form-group">
+  <div class="mb-3">
     <input size="10" class="form-control" name="source" value="" placeholder="Override Source type" maxlength="200"/>
   </div>
   {% if perms.viewer.add_deleted_gallery %}
-  <div class="form-check ml-sm-2 mb-sm-4">
-    <input id="checkbox4" type="checkbox" class="form-check-input custom-cb" name="as-deleted" value="1">
-    <label class="form-check-label" for="checkbox4"><span><span></span></span>
-      Add as deleted
-    </label>
+  <div class="form-check ms-sm-2 mb-sm-3">
+    <input id="checkbox4" type="checkbox" class="form-check-input" name="as-deleted" value="1">
+    <label class="form-check-label" for="checkbox4">Add as deleted</label>
     <small id="asDeletedHelp" class="form-text text-muted">Useful for adding chain updated galleries, or replaced. This will skip any file download and only create a Gallery (metadata) marked as deleted.</small>
   </div>
-  <div class="form-check ml-sm-2 mb-sm-4">
-    <input id="checkbox5" type="checkbox" class="form-check-input custom-cb" name="skip-non-current" value="1">
-    <label class="form-check-label" for="checkbox5"><span><span></span></span>
-      Add non-current galleries as deleted
-    </label>
+  <div class="form-check ms-sm-2 mb-sm-3">
+    <input id="checkbox5" type="checkbox" class="form-check-input" name="skip-non-current" value="1">
+    <label class="form-check-label" for="checkbox5">Add non-current galleries as deleted</label>
     <small id="skipNonCurrentHelp" class="form-text text-muted">For panda links, when a gallery is detected as part of a chain and it's not the final one, it will be marked as deleted.</small>
   </div>
   {% endif %}
-  <div class="form-group">
+  <div class="mb-3">
     <button class="btn btn-light">Submit URLs to Web Crawler</button>
   </div>
 

@@ -283,7 +283,7 @@
           <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}">Download archive</a>
           <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}?original=1">Download with original name</a>
           <a class="btn btn-light" href="{% url 'viewer:api' %}?archive={{ archive.pk }}">JSON info</a>
-          <a class="btn btn-light hash-preview" tabindex="0" role="button" data-toggle="popover" data-pk="{{ archive.pk }}">Images SHA1</a>
+          <a class="btn btn-light hash-preview" tabindex="0" role="button" data-bs-toggle="popover" data-bs-pk="{{ archive.pk }}">Images SHA1</a>
           <a class="btn btn-light" href="{% url 'viewer:image-data-list' archive.pk %}">Images Data</a>
           <a class="btn btn-light" href="{% url 'viewer:archive-change-log' archive.pk %}">Change Log</a>
           <a class="btn btn-light" href="{% url 'viewer:activity-event-log' %}?content-type=archive&content-id={{ archive.pk }}">Activity Log</a>
@@ -296,8 +296,8 @@
               <a class="btn btn-light" href="{% url 'viewer:user-archive-preferences' archive.pk 'unfavorite' %}">Unfavorite</a>
           {% endif %}
       {% endif %}
-      <button class="btn btn-secondary" id="edit-archive" data-toggle="collapse" data-target="#change-archive-form" name="edit-archive" type="button" aria-label="toggle edit archive">Edit <i class="fas fa-chevron-down"></i></button>
-      <button class="btn {% if manage_entries_count %}btn-success{% else %}btn-secondary{% endif %}" id="manage-archive" data-toggle="collapse" data-target="#manage-archive-form" name="manage-archive" type="button" aria-label="toggle edit archive">Manage <i class="fas fa-chevron-down"></i></button>
+      <button class="btn btn-secondary" id="edit-archive" data-bs-toggle="collapse" data-bs-target="#change-archive-form" name="edit-archive" type="button" aria-label="toggle edit archive">Edit <i class="fas fa-chevron-down"></i></button>
+      <button class="btn {% if manage_entries_count %}btn-success{% else %}btn-secondary{% endif %}" id="manage-archive" data-bs-toggle="collapse" data-bs-target="#manage-archive-form" name="manage-archive" type="button" aria-label="toggle edit archive">Manage <i class="fas fa-chevron-down"></i></button>
 
     {% elif archive.crc32 %}
         {% if perms.viewer.expand_archive %}
@@ -312,7 +312,7 @@
         <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}">Download archive</a>
         <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}?original=1">Download with original name</a>
         <a class="btn btn-light" href="{% url 'viewer:api' %}?archive={{ archive.pk }}">JSON info</a>
-        <a class="btn btn-light hash-preview" tabindex="0" role="button" data-toggle="popover" data-pk="{{ archive.pk }}">Images SHA1</a>
+        <a class="btn btn-light hash-preview" tabindex="0" role="button" data-bs-toggle="popover" data-bs-pk="{{ archive.pk }}">Images SHA1</a>
         <a class="btn btn-light" href="{% url 'viewer:image-data-list' archive.pk %}">Images Data</a>
         {% if perms.viewer.read_archive_change_log %}
         <a class="btn btn-light" href="{% url 'viewer:archive-change-log' archive.pk %}">Change Log</a>
@@ -331,17 +331,17 @@
             {% endif %}
         {% endif %}
         {% if perms.viewer.change_archive %}
-        <button class="btn btn-secondary" id="edit-archive" data-toggle="collapse" data-target="#change-archive-form" name="edit-archive" type="button" aria-label="toggle edit archive">Edit <i class="fas fa-chevron-down"></i></button>
+        <button class="btn btn-secondary" id="edit-archive" data-bs-toggle="collapse" data-bs-target="#change-archive-form" name="edit-archive" type="button" aria-label="toggle edit archive">Edit <i class="fas fa-chevron-down"></i></button>
         {% endif %}
         {% if perms.viewer.mark_archive %}
-        <button class="btn {% if manage_entries_count %}btn-success{% else %}btn-secondary{% endif %}" id="manage-archive" data-toggle="collapse" data-target="#manage-archive-form" name="manage-archive" type="button" aria-label="toggle edit archive">Manage <i class="fas fa-chevron-down"></i></button>
+        <button class="btn {% if manage_entries_count %}btn-success{% else %}btn-secondary{% endif %}" id="manage-archive" data-bs-toggle="collapse" data-bs-target="#manage-archive-form" name="manage-archive" type="button" aria-label="toggle edit archive">Manage <i class="fas fa-chevron-down"></i></button>
         {% endif %}
     {% else %}
         {% if perms.viewer.change_archive %}
-        <button class="btn btn-secondary" id="edit-archive" data-toggle="collapse" data-target="#change-archive-form" name="edit-archive" type="button" aria-label="toggle edit archive">Edit <i class="fas fa-chevron-down"></i></button>
+        <button class="btn btn-secondary" id="edit-archive" data-bs-toggle="collapse" data-bs-target="#change-archive-form" name="edit-archive" type="button" aria-label="toggle edit archive">Edit <i class="fas fa-chevron-down"></i></button>
         {% endif %}
         {% if perms.viewer.mark_archive %}
-        <button class="btn {% if manage_entries_count %}btn-success{% else %}btn-secondary{% endif %}" id="manage-archive" data-toggle="collapse" data-target="#manage-archive-form" name="manage-archive" type="button" aria-label="toggle edit archive">Manage <i class="fas fa-chevron-down"></i></button>
+        <button class="btn {% if manage_entries_count %}btn-success{% else %}btn-secondary{% endif %}" id="manage-archive" data-bs-toggle="collapse" data-bs-target="#manage-archive-form" name="manage-archive" type="button" aria-label="toggle edit archive">Manage <i class="fas fa-chevron-down"></i></button>
         {% endif %}
     {% endif %}
     </li>
@@ -397,15 +397,14 @@
           <a href="{% url 'viewer:archive-generate-matches' archive.pk %}">generate matches internally</a> >>
           <a href="{% url 'viewer:archive-generate-matches' archive.pk %}?clear">generate matches internally with cleared title</a> >>
           <span class="dropdown">
-                        <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-toggle="dropdown">match
-                        <span class="caret"></span></button>
-                        <div class="dropdown-menu dropdown-menu-right">
-                        <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ api_key }}', '{% static 'favicon-160.png' %}', 'match_archive', {archive: {{ archive.pk }}, match_filter: ''}); return false;">All</a>
-                          {% for matcher, priority in matchers %}
-                            <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ api_key }}', '{% static 'favicon-160.png' %}', 'match_archive', {archive: {{ archive.pk }}, match_filter: '{{ matcher }}'}); return false;">{{ matcher }}</a>
-                          {% endfor %}
-                        </div>
-                    </span> >>
+            <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">match</button>
+            <div class="dropdown-menu">
+            <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ api_key }}', '{% static 'favicon-160.png' %}', 'match_archive', {archive: {{ archive.pk }}, match_filter: ''}); return false;">All</a>
+              {% for matcher, priority in matchers %}
+                <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ api_key }}', '{% static 'favicon-160.png' %}', 'match_archive', {archive: {{ archive.pk }}, match_filter: '{{ matcher }}'}); return false;">{{ matcher }}</a>
+              {% endfor %}
+            </div>
+            </span> >>
           <a href="{% url 'viewer:archive-update-tool' archive.pk 'clear-possible-matches' %}">Clear possible matches</a>
         </li>
         <li class="subtitle">
@@ -428,7 +427,7 @@
                       <p>{{ form.position.label }}</p>
                       <p>{{ form.position }}</p>
                       {% if image_formset.can_delete %}
-                        <p>{{ form.DELETE }}<label for="{{ form.DELETE.input }}"><span><span></span></span>Delete</label></p>
+                        <p>{{ form.DELETE }}<label for="{{ form.DELETE.input }}">Delete</label></p>
                       {% endif %}
                     </div>
                   {% endfor %}
@@ -543,7 +542,7 @@
         $(document).ready(function() {
             $(".hash-preview").click(function() {
                 var el = $(this);
-                var pk = $(this).data('pk');
+                var pk = $(this).data('bs-pk');
                 if (hashData[pk]) {
                     return hashData[pk];
                 }
@@ -560,23 +559,20 @@
                             el.unbind('click').popover({
                                 content: textareaHashes,
                                 html: true,
+                                customClass: 'popover-custom-length',
                             }).popover('show');
                         }
                     });
                 }
-            }).on("show.bs.popover", function() {
-                $($(this).data("bs.popover").getTipElement()).css("max-width", "600px");
+            }).on("show.bs.popover", function(el) {
+               {#document.querySelectorAll('.hash-preview').forEach(#}
+               {# el => el.style.maxWidth = "600px"#}
+               {#)#}
             });
         });
     </script>
   {% endcompress %}
   {% if user.is_staff %}
-    {{ form.media }}
-    <script type="text/javascript">
-        var numImages = {{ images|length }};
-    </script>
-    <script type="text/javascript" src="{% static 'js/vendor/keys.min.js' %}"></script>
-    <script type="text/javascript" src="{% static 'js/archnav.js' %}"></script>
     <script type="text/javascript" src="{% static 'js/admin.js' %}"></script>
     {% include "viewer/include/viewer_modal.html" %}
   {% endif %}

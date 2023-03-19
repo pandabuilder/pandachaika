@@ -12,7 +12,7 @@
     "src": "src/assets/no_cover.png"
   },
   "src/main.css": {
-    "file": "assets/main-6e405b9a.css",
+    "file": "assets/main-63f3de47.css",
     "src": "src/main.css"
   },
   "src/main.tsx": {
@@ -22,9 +22,9 @@
       "assets/slick-12459f22.svg"
     ],
     "css": [
-      "assets/main-6e405b9a.css"
+      "assets/main-63f3de47.css"
     ],
-    "file": "assets/main-103b5487.js",
+    "file": "assets/main-9a71f271.js",
     "isEntry": true,
     "src": "src/main.tsx"
   }

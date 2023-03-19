@@ -6,9 +6,11 @@
       {{ field }}
     </div>
   {% endfor %}
-  <div class="page-line form-inline">
+  <div class="page-line row g-1 align-items-center">
+  <div class="col-md-auto">
+      <div class="input-group align-items-center">
     <label for="sort">Sort</label>
-    <select id="sort" name="sort" class="form-control mx-sm-1">
+    <select id="sort" name="sort" class="form-control">
       <option value="posted" {% if request.GET.sort == "posted" %} selected{% endif %}>posted date</option>
       {% if user.is_staff %}
         <option value="create_date" {% if request.GET.sort == "create_date" %} selected{% endif %}>create date</option>
@@ -22,24 +24,56 @@
       <option value="filecount" {% if request.GET.sort == "filecount" %} selected{% endif %}>images</option>
       <option value="filesize" {% if request.GET.sort == "filesize" %} selected{% endif %}>size</option>
     </select>
-    <select id="asc_desc" name="asc_desc" class="form-control mr-sm-1" title="sort_order" aria-label="sort_order">
+      </div>
+  </div>
+  <div class="col-md-auto">
+    <select id="asc_desc" name="asc_desc" class="form-control me-sm-1" title="sort_order" aria-label="sort_order">
       <option value="asc" {% if request.GET.asc_desc == "asc" %} selected{% endif %}>ascending</option>
       <option value="desc" {% if request.GET.asc_desc == "desc" %} selected{% endif %}>descending</option>
     </select>
-    <label>Filecount</label>
-    <input size="2" type="text" class="form-control mr-sm-1" name="filecount_from" value="{{ request.GET.filecount_from }}" placeholder="from"/>
-    <input size="2" type="text" class="form-control mr-sm-1" name="filecount_to" value="{{ request.GET.filecount_to }}" placeholder="to"/>
-    <input title="Category" class="form-control" name="category" placeholder="Category" value="{{ request.GET.category }}">
-    <input title="Source type" class="form-control" name="source_type" placeholder="Source type" value="{{ request.GET.source_type }}">
-    <input title="Reason" class="form-control" name="reason" placeholder="Reason" value="{{ request.GET.reason }}">
-    <input id="checkbox2" class="custom-cb" type="checkbox" name="non_public" value="1" {% if request.GET.non_public == '1' %}checked{% endif %}><label for="checkbox2"><span><span></span></span>Private</label>
-    <input id="checkbox3" class="custom-cb" type="checkbox" name="public" value="1" {% if request.GET.public == '1' %}checked{% endif %}><label for="checkbox3"><span><span></span></span>Public</label>
-    <input id="checkbox4" class="custom-cb" type="checkbox" name="groupless" value="1" {% if request.GET.groupless == '1' %}checked{% endif %}><label for="checkbox4"><span><span></span></span>Groupless</label>
   </div>
-  <div class="page-line form-inline">
-    <button id="toggle-all" class="btn btn-secondary" type="button">Toggle All</button>
-    <button type="submit" name="apply" class="btn btn-info">Search</button>
-    <a class="btn btn-light" href="{{ request.path }}?add_multiple=">Clear</a>
+  <div class="col-md-auto">
+      <div class="input-group align-items-center">
+    <label>Filecount</label>
+    <input size="2" type="text" class="form-control me-sm-1" name="filecount_from" value="{{ request.GET.filecount_from }}" placeholder="from"/>
+      </div>
+  </div>
+  <div class="col-md-auto">
+    <input size="2" type="text" class="form-control me-sm-1" name="filecount_to" value="{{ request.GET.filecount_to }}" placeholder="to"/>
+  </div>
+  <div class="col-md-auto">
+    <input title="Category" class="form-control" name="category" placeholder="Category" value="{{ request.GET.category }}">
+  </div>
+  <div class="col-md-auto">
+    <input title="Source type" class="form-control" name="source_type" placeholder="Source type" value="{{ request.GET.source_type }}">
+  </div>
+  <div class="col-md-auto">
+    <input title="Reason" class="form-control" name="reason" placeholder="Reason" value="{{ request.GET.reason }}">
+  </div>
+  <div class="col-md-auto">
+    <div class="form-check">
+        <input id="checkbox2" class="form-check-input" type="checkbox" name="non_public" value="1" {% if request.GET.non_public == '1' %}checked{% endif %}><label for="checkbox2">Private</label>
+    </div>
+  </div>
+  <div class="col-md-auto">
+    <div class="form-check">
+        <input id="checkbox3" class="form-check-input" type="checkbox" name="public" value="1" {% if request.GET.public == '1' %}checked{% endif %}><label for="checkbox3">Public</label>
+    </div>
+  </div>
+  <div class="col-md-auto">
+    <div class="form-check">
+        <input id="checkbox4" class="form-check-input" type="checkbox" name="groupless" value="1" {% if request.GET.groupless == '1' %}checked{% endif %}><label for="checkbox4">Groupless</label>
+    </div>
+  </div>
+  </div>
+  <div class="page-line g-1 row">
+    <div class="col-md-auto">
+        <button id="toggle-all" class="btn btn-secondary" type="button">Toggle All</button>
+    </div>
+    <div class="col-md-auto">
+        <button type="submit" name="apply" class="btn btn-info">Search</button>
+        <a class="btn btn-light" href="{{ request.path }}?add_multiple=">Clear</a>
+    </div>
   </div>
   <input id="add_multiple" name="add_multiple" type="hidden" value="">
 </form>
@@ -72,8 +106,8 @@
     <tbody>
     {% for archive in search_results %}
       <tr>
-        <td>
-          <input id="checkbox-{{ archive.id }}" class="toggle-list custom-cb" type="checkbox" name="sel-{{ archive.id }}" value="{{ archive.pk }}"><label for="checkbox-{{ archive.id }}"><span><span></span></span></label>
+        <td class="text-center">
+          <input id="checkbox-{{ archive.id }}" class="toggle-list form-check-input" type="checkbox" name="sel-{{ archive.id }}" value="{{ archive.pk }}"><label for="checkbox-{{ archive.id }}"></label>
         </td>
         <td class="{{ archive|archive_title_class }}">
           {{ archive.title }}
@@ -130,7 +164,7 @@
         </span>
     </div>
   {% endif %}
-<div class="form-group">
+<div class="mb-3">
   <input size="10" class="form-control" name="reason" value="" placeholder="Reason" maxlength="200"/>
 </div>
 <input id="add_multiple" name="add_multiple" type="hidden" value="">

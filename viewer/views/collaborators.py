@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 import re
 import threading
 from collections import defaultdict
@@ -792,12 +791,6 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
         d.update(group_form=group_form)
 
     return render(request, "viewer/collaborators/manage_archives.html", d)
-
-
-@permission_required('viewer.manage_archive')
-def new_manage_archives(request: HttpRequest) -> HttpResponse:
-
-    return render(request, "viewer/collaborators/new_manage_archives.html")
 
 
 @login_required
@@ -2017,166 +2010,6 @@ def archives_similar_by_fields(request: HttpRequest) -> HttpResponse:
         'form': form
     }
     return render(request, "viewer/archives_similar_by_fields.html", d)
-
-
-SimilarResult = dict[str, list[tuple[str, int]]]
-
-
-@permission_required('viewer.manage_archive')
-def archives_similar_thumbnail(request: HttpRequest) -> HttpResponse:
-
-    if 'results_file' in crawler_settings.experimental:
-        if os.path.isfile(crawler_settings.experimental['results_file']):
-            input_json = crawler_settings.experimental['results_file']
-        else:
-            messages.error(request, 'The required results JSON file does not exist.', extra_tags='danger')
-            return HttpResponseRedirect(request.META["HTTP_REFERER"])
-    else:
-        messages.error(request, 'The required results JSON file does not exist.', extra_tags='danger')
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
-
-    get = request.GET
-    p = request.POST
-
-    title = get.get("title", '')
-    tags = get.get("tags", '')
-
-    try:
-        score = int(get.get("score", '-1'))
-    except ValueError:
-        score = -1
-
-    try:
-        page = int(get.get("page", '1'))
-    except ValueError:
-        page = 1
-
-    if 'clear' in get:
-        form = ArchiveSearchForm()
-    else:
-        form = ArchiveSearchForm(initial={'title': title, 'tags': tags})
-
-    if p:
-        pks = []
-        for k, v in p.items():
-            if k.startswith("sel-"):
-                # k, pk = k.split('-')
-                # results[pk][k] = v
-                _, pk = k.split('-')
-                pks.append(int(pk))
-
-        archives = Archive.objects.filter(id__in=pks).order_by('-create_date')
-
-        user_reason = p.get('reason', '')
-
-        if 'delete_archives' in p and request.user.has_perm('viewer.delete_archive'):
-            for archive in archives:
-                message = 'Removing archive: {} and deleting file: {}'.format(
-                    archive.get_absolute_url(), archive.zipped.path
-                )
-                logger.info(message)
-                messages.success(request, message)
-
-                gallery = archive.gallery
-                archive_report = archive.delete_text_report()
-
-                if gallery and gallery.archive_set.count() <= 1 and gallery.alternative_sources.count() < 1:
-                    gallery.mark_as_deleted()
-                archive.delete_all_files()
-                archive.delete()
-
-                event_log(
-                    request.user,
-                    'DELETE_ARCHIVE',
-                    reason=user_reason,
-                    content_object=gallery,
-                    result='deleted',
-                    data=archive_report
-                )
-
-        elif 'delete_objects' in p and request.user.has_perm('viewer.delete_archive'):
-            for archive in archives:
-                message = 'Removing archive: {}, keeping file: {}'.format(
-                    archive.get_absolute_url(), archive.zipped.path
-                )
-                logger.info(message)
-                messages.success(request, message)
-
-                gallery = archive.gallery
-                archive_report = archive.delete_text_report()
-
-                if gallery and gallery.archive_set.count() <= 1 and gallery.alternative_sources.count() < 1:
-                    gallery.mark_as_deleted()
-                archive.delete_files_but_archive()
-                archive.delete()
-
-                event_log(
-                    request.user,
-                    'DELETE_ARCHIVE',
-                    reason=user_reason,
-                    content_object=gallery,
-                    result='deleted',
-                    data=archive_report
-                )
-
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
-
-    params: dict[str, str] = {
-        'sort': 'create_date',
-        'asc_desc': 'desc',
-    }
-
-    for k, v in get.items():
-        if isinstance(v, str):
-            params[k] = v
-
-    for k in archive_filter_keys:
-        if k not in params:
-            params[k] = ''
-
-    is_authenticated = request.user.is_authenticated
-
-    results = filter_archives_simple(params, is_authenticated)
-
-    with open(input_json, 'r') as f:
-        score_results: SimilarResult = json.load(f)
-
-        if score != -1:
-            score_results = {x[0]: [y for y in x[1] if y[1] <= score] for x in score_results.items()}
-            score_results = {x[0]: x[1] for x in score_results.items() if len(x[1]) > 0}
-
-        results = results.filter(pk__in=score_results.keys())
-
-        paginator = Paginator(results, 100)
-        try:
-            results_page = paginator.page(page)
-        except (InvalidPage, EmptyPage):
-            results_page = paginator.page(paginator.num_pages)
-
-        results_pks = results_page.object_list.values_list('pk', flat=True)  # type: ignore
-
-        similar_pks = list(set([int(similar_id[0]) for similar_ids in score_results.items() if int(similar_ids[0]) in results_pks for similar_id in similar_ids[1]]))
-
-        if 'filter-similar' in get:
-            similar_archives = {
-                str(x.pk): x for x in filter_archives_simple(params, is_authenticated).filter(pk__in=similar_pks)
-            }
-        else:
-            similar_archives = {str(x.pk): x for x in Archive.objects.filter(pk__in=similar_pks)}
-
-        similar_archives_pks = similar_archives.keys()
-
-        # TODO: We are passing empty Achives to the template, filtering needs rework
-        filtered_scores_temp = {x[0]: [y for y in x[1] if y[0] in similar_archives_pks] for x in score_results.items() if int(x[0]) in results_pks}
-        filtered_scores = {int(x[0]): x[1] for x in filtered_scores_temp.items()}
-
-        d = {
-            'filtered_scores': filtered_scores,
-            'results': results_page,
-            'similar_archives': similar_archives,
-            'form': form
-        }
-        return render(request, "viewer/archives_similar_thumbnail.html", d)
 
 
 @permission_required('viewer.view_monitored_links')

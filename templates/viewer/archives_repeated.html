@@ -22,11 +22,17 @@
         {{ field }}
       </div>
     {% endfor %}
-    <div class="page-line form-inline">
-      <button type="submit" name="apply" class="btn btn-info">Search</button>
-      <a class="btn btn-light" href="{% url 'viewer:repeated-archives' %}">Clear</a>
-      <input id="checkbox-f1" class="custom-cb" type="checkbox" name="no-custom-tags" value="1" {% if "no-custom-tags" in request.GET %}checked{% endif %}><label for="checkbox-f1"><span><span></span></span>No custom tags</label>
-      <input id="checkbox-f2" class="custom-cb" type="checkbox" name="with-possible-matches" value="1" {% if "with-possible-matches" in request.GET %}checked{% endif %}><label for="checkbox-f2"><span><span></span></span>With possible matches</label>
+    <div class="page-line g-1">
+        <div class="btn-group">
+          <button type="submit" name="apply" class="btn btn-info">Search</button>
+          <a class="btn btn-light" href="{% url 'viewer:repeated-archives' %}">Clear</a>
+        </div>
+        <div class="form-check form-check-inline">
+          <input id="checkbox-f1" class="form-check-input" type="checkbox" name="no-custom-tags" value="1" {% if "no-custom-tags" in request.GET %}checked{% endif %}><label for="checkbox-f1">No custom tags</label>
+        </div>
+        <div class="form-check form-check-inline">
+          <input id="checkbox-f2" class="form-check-input" type="checkbox" name="with-possible-matches" value="1" {% if "with-possible-matches" in request.GET %}checked{% endif %}><label for="checkbox-f2">With possible matches</label>
+        </div>
     </div>
   </form>
     <!-- Next/Prev page links  -->
@@ -87,8 +93,8 @@
           {% with archives=gallery.archive_set %}
             {% for archive in archives.all %}
               <tr {% if archive.filesize == gallery.filesize %}class="highlight-row"{% endif %}>
-                <td>
-                  <input id="checkbox-{{ archive.id }}" class="toggle-list custom-cb" type="checkbox" name="del-{{ archive.id }}" value="{{ archive.id }}"><label for="checkbox-{{ archive.id }}"><span><span></span></span></label>
+                <td class="text-center">
+                  <input id="checkbox-{{ archive.id }}" class="toggle-list form-check-input" type="checkbox" name="del-{{ archive.id }}" value="{{ archive.id }}"><label for="checkbox-{{ archive.id }}"></label>
                 </td>
                 <td>
                   {{ archive.filesize }} ({{ archive.filesize|filesizeformat }})
@@ -146,13 +152,9 @@
 {% block afterJQ %}
   {% load compress %}
   {% compress css %}
-    <link href="{% static 'autocomplete_light/vendor/jal/src/style.css' %}" type="text/css" media="all" rel="stylesheet" />
+    <link href="{% static 'css/vendor/jal/style.css' %}" type="text/css" media="all" rel="stylesheet" />
   {% endcompress %}
   {% compress js %}
-    <script type="text/javascript" src="{% static 'autocomplete_light/jquery.init.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/autocomplete.init.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/autocomplete.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/text_widget.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/jal.js' %}"></script>
+    <script src="{% static 'js/vendor/jquery.autocomplete-light.min.js' %}"></script>
   {% endcompress %}
 {% endblock %}

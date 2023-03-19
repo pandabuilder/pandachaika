@@ -56,14 +56,14 @@ body a {
   color: lightgrey;
 }
 
-.text-right > a {
+.text-end > a {
   padding: 1px 14px;
   background: #29527a;
   border: 1px solid lightgrey;
   color: lightgrey;
 }
 
-.text-right > a {
+.text-end > a {
   float: right;
 }
 
@@ -169,14 +169,6 @@ ul.result-container {
   background-color: #13666e !important;
 }
 
-.on-text {
-  color: rgb(103, 207, 0);
-}
-
-.off-text {
-  color: #de0707;
-}
-
 .result-table {
   border: 1px solid lightgrey;
 }
@@ -191,6 +183,7 @@ ul.result-container {
 
 .list-group-item {
   border-color: #dddddd;
+  color: lightgrey;
 }
 
 .list-group-item.active {
@@ -348,10 +341,6 @@ img {
   padding-bottom: 2px;
 }
 
-#extra_filters {
-  line-height: 30px;
-}
-
 .arch-cont {
   margin-left: auto;
   margin-right: auto;
@@ -459,6 +448,7 @@ img {
   text-align: right;
   float: right;
   position: relative;
+  display: flex;
 }
 
 .right-tools.second-tools {
@@ -482,8 +472,8 @@ img {
 }
 
 .private-info-table tr th {
-  margin: 0px 5px 0px 0px;
-  padding: 0px;
+  margin: 0 5px 0 0;
+  padding: 0;
   display: inline;
 }
 
@@ -571,14 +561,6 @@ img {
   margin-right: 0.2em;
 }
 
-.text-right-new {
-  text-align: right !important;
-}
-
-.text-left-new {
-  text-align: left !important;
-}
-
 /* Imported from a twitter form example */
 
 .form-signin {
@@ -599,8 +581,6 @@ img {
 .form-signin .form-control {
   position: relative;
   height: auto;
-  -webkit-box-sizing: border-box;
-  -moz-box-sizing: border-box;
   box-sizing: border-box;
   padding: 10px;
   font-size: 16px;
@@ -639,6 +619,7 @@ img {
 .table-striped > tbody > tr:nth-child(odd) > td,
 .table-striped > tbody > tr:nth-child(odd) > th {
   background-color: #272727;
+  color: lightgrey;
 }
 
 .table-striped > tbody > tr:nth-child(even) > td,
@@ -656,55 +637,17 @@ img {
   padding-left: 100px;
 }
 
-/* custom checkbox */
-input.custom-cb[type=checkbox]:not(old) {
-  width: 2em;
-  margin: 0;
-  padding: 0;
-  font-size: 1em;
-  opacity: 0;
-}
-
-input.custom-cb[type=checkbox]:not(old) + label {
-  display: inline-block;
-  margin-left: -2em;
-  line-height: 0.5em;
-}
-
-input.custom-cb[type=checkbox]:not(old) + label > span {
-  display: inline-block;
-  width: 0.875em;
-  height: 0.875em;
-  margin: 0 0.5em -0.25em 0.25em;
+.form-check-input {
+  background-color: #29527a;
   border: 0.0625em solid lightgrey;
-  border-radius: 0.25em;
-  background: rgb(224, 224, 224);
-  background-image: -moz-linear-gradient(#29527a, #006677);
-  background-image: -ms-linear-gradient(#29527a, #006677);
-  background-image: -o-linear-gradient(#29527a, #006677);
-  background-image: -webkit-linear-gradient(#29527a, #006677);
-  background-image: linear-gradient(#29527a, #006677);
-  vertical-align: bottom;
 }
 
-input.custom-cb[type=checkbox]:not(old):checked + label > span {
-  background-image: -moz-linear-gradient(#006677, #29527a);
-  background-image: -ms-linear-gradient(#006677, #29527a);
-  background-image: -o-linear-gradient(#006677, #29527a);
-  background-image: -webkit-linear-gradient(#006677, #29527a);
-  background-image: linear-gradient(#006677, #29527a);
+.form-switch > .form-check-input {
+  background-color: #fff;
 }
 
-input.custom-cb[type=checkbox]:not(old):checked + label > span::before {
-  content: '✓';
-  display: block;
-  width: 1em;
-  color: rgb(153, 204, 102);
-  font-size: 0.875em;
-  line-height: 1em;
-  text-align: center;
-  text-shadow: 0 0 0.0714em rgb(115, 153, 77);
-  font-weight: bold;
+.form-switch > .form-check-input:checked {
+  background-color: rgb(13, 110, 253);
 }
 
 /* Page number overlay */
@@ -786,10 +729,24 @@ input.custom-cb[type=checkbox]:not(old):checked + label > span::before {
   color: black !important;
 }
 
+.select2-container .select2-selection--single {
+    /*height: 35px !important;*/
+  padding: 0 !important;
+}
+
+.select2-container .select2-selection--multiple {
+    /*height: 35px !important;*/
+  padding: 0 !important;
+}
+
 .autocomplete-light-text-widget > .choice {
   color: black !important;
 }
 
 .modal-background {
    background-color: #122963 !important;
+}
+
+.popover-custom-length {
+  max-width: 600px;
 }

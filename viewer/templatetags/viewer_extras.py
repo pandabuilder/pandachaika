@@ -242,6 +242,7 @@ GALLERY_INCLUDED_FIELDS = (
     'expunged', 'rating', 'fjord', 'public', 'dl_type', 'reason', 'thumbnail_url', 'status'
 )
 
+
 @register.filter
 def changes_gallery_delta(new_record):
     prev_record = new_record.prev_record

@@ -34,8 +34,11 @@
         <div class="row">
           <div class="col-sm-12 text-center sub-header">
             <form>
-              <div class="form-inline">
-                <input type="search" name="q" id="search" value="{{ q }}" class="form-control my-group" autocomplete="off" placeholder="Try your luck!">
+              <div class="row g-0">
+              <div class="col">
+                  <input type="search" name="q" id="search" value="{{ q }}" class="form-control" autocomplete="off" placeholder="Try your luck!">
+              </div>
+                <div class="col-md-auto">
                 <select id="sort" name="sort" class="form-control" title="sort">
                   {% if user.is_authenticated %}
                     <option value="create_date" {% if sort == "create_date" %} selected{% endif %}>create_date</option>
@@ -45,16 +48,25 @@
                   <option value="size" {% if sort == "size" %} selected{% endif %}>size</option>
                   <option value="image_count" {% if sort == "image_count" %} selected{% endif %}>image_count</option>
                 </select>
+                </div>
+              <div class="col-md-auto">
                 <select id="order" name="order" class="form-control" title="order" aria-label="sort_order">
                   <option value="desc" {% if order == "desc" %} selected{% endif %}>descending</option>
                   <option value="asc" {% if order == "asc" %} selected{% endif %}>ascending</option>
                 </select>
-                <button type="submit" class="btn btn-info">Search</button>
-                <button type="submit" name="clear" class="btn btn-light">Clear</button>
               </div>
-              <div class="form-inline">
-              <div>
-                <input id="checkbox2" class="custom-cb" type="checkbox" name="metrics" value="1" {% if request.GET.metrics == '1' %}checked{% endif %}><label for="checkbox2"><span><span></span></span>Calculate metrics</label>
+              <div class="col-md-auto">
+                <div class="btn-group">
+                    <button type="submit" class="btn btn-info">Search</button>
+                    <button type="submit" name="clear" class="btn btn-light">Clear</button>
+                </div>
+              </div>
+              </div>
+              <div class="row">
+              <div class="col-md-auto">
+              <div class="form-check">
+                <input id="checkbox2" class="form-check-input" type="checkbox" name="metrics" value="1" {% if request.GET.metrics == '1' %}checked{% endif %}><label for="checkbox2">Calculate metrics</label>
+              </div>
               </div>
               </div>
             </form>

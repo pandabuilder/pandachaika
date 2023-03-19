@@ -8,31 +8,39 @@
 <form action="{% url 'viewer:archive-delete' archive.pk %}" method="POST">{% csrf_token %}
   <ul class="list-group">
     <li class="list-group-item">
-      <p><input id="checkbox1" class="custom-cb" type="checkbox" name="delete-archive" value="1" checked><label for="checkbox1"><span><span></span></span></label>Delete archive entry</p>
+        <div class="form-check">
+            <input id="checkbox1" class="form-check-input" type="checkbox" name="delete-archive" value="1" checked><label class="form-check-label" for="checkbox1">Delete archive entry</label>
+        </div>
       <p>{{ archive.title }} >> {{ archive.filesize|filesizeformat }} >> {{ archive.filesize }} >> {{ archive.filecount }} >> {{ archive.source_type }}</p>
     </li>
     <li class="list-group-item">
-      <p><input id="checkbox2" class="custom-cb" type="checkbox" name="delete-file" value="1"><label for="checkbox2"><span><span></span></span></label>Delete associated file</p>
+        <div class="form-check">
+          <input id="checkbox2" class="form-check-input" type="checkbox" name="delete-file" value="1"><label class="form-check-label" for="checkbox2">Delete associated file</label>
+        </div>
       <p>{{ archive.zipped.path }} >> {{ archive.filesize|filesizeformat }} >> {{ archive.filesize }} >> {{ archive.filecount }} >> {{ archive.source_type }}</p>
     </li>
     {% if archive.gallery %}
       <li class="list-group-item">
-        <p><input id="checkbox3" class="custom-cb" type="checkbox" name="mark-gallery-deleted" value="1"><label for="checkbox3"><span><span></span></span></label>Mark associated gallery as deleted</p>
+            <div class="form-check">
+                <input id="checkbox3" class="form-check-input" type="checkbox" name="mark-gallery-deleted" value="1"><label class="form-check-label" for="checkbox3">Mark associated gallery as deleted</label>
+            </div>
         <p>{{ archive.gallery.filesize }} >> {{ archive.gallery.filecount }} >> {{ archive.gallery.title }} >> {{ archive.gallery.get_link|urlize_all_rel }}</p>
       </li>
       <li class="list-group-item">
-        <p><input id="checkbox4" class="custom-cb" type="checkbox" name="delete-gallery" value="1"><label for="checkbox4"><span><span></span></span></label>Delete gallery</p>
+            <div class="form-check">
+                <input id="checkbox4" class="form-check-input" type="checkbox" name="delete-gallery" value="1"><label class="form-check-label" for="checkbox4">Delete gallery</label>
+            </div>
         <p>{{ archive.gallery.filesize }} >> {{ archive.gallery.filecount }} >> {{ archive.gallery.title }} >> {{ archive.gallery.get_link|urlize_all_rel }}</p>
       </li>
     {% endif %}
   </ul>
-  <div class="form-group">
+  <div class="mb-3">
     <input size="10" class="form-control" name="reason" value="" placeholder="Reason" maxlength="200"/>
   </div>
   <button type="submit" name="delete_confirm" class="btn btn-light">Confirm delete</button>
 </form>
 <script>
 $('#select-all').click(function() {
-    $('p input[type="checkbox"]').prop('checked', true);
+    $('div input[type="checkbox"]').prop('checked', true);
 });
 </script>

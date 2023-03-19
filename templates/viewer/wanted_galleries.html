@@ -1,4 +1,5 @@
 {% extends "viewer/base.html" %}
+{% load dict_key %}
 {% block title %}Wanted galleries | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
 {% load static %}
@@ -40,32 +41,77 @@
           {{ field }}
         </div>
       {% endfor %}
-      <div class="page-line form-inline">
+      <div class="page-line row g-1 align-items-center">
+      <div class="col-md-auto">
         <button id="toggle-all" class="btn btn-secondary" type="button">Toggle All</button>
-        <label for="sort">Sort</label>
-        <select id="sort" name="sort" class="form-control mx-sm-1">
-          <option value="release_date" {% if request.GET.sort == "release_date" %} selected{% endif %}>release date</option>
-          <option value="create_date" {% if request.GET.sort == "create_date" %} selected{% endif %}>create date</option>
-          <option value="last_modified" {% if request.GET.sort == "last_modified" %} selected{% endif %}>last modified</option>
-          <option value="date_found" {% if request.GET.sort == "date_found" %} selected{% endif %}>date found</option>
-          <option value="title" {% if request.GET.sort == "title" %} selected{% endif %}>title</option>
-        </select>
-        <select id="asc_desc" name="asc_desc" class="form-control mr-sm-1" title="sort_order" aria-label="sort_order">
+      </div>
+      <div class="col-md-auto">
+          <div class="input-group align-items-center">
+            <label for="sort">Sort</label>
+            <select id="sort" name="sort" class="form-control">
+              <option value="release_date" {% if request.GET.sort == "release_date" %} selected{% endif %}>release date</option>
+              <option value="create_date" {% if request.GET.sort == "create_date" %} selected{% endif %}>create date</option>
+              <option value="last_modified" {% if request.GET.sort == "last_modified" %} selected{% endif %}>last modified</option>
+              <option value="date_found" {% if request.GET.sort == "date_found" %} selected{% endif %}>date found</option>
+              <option value="title" {% if request.GET.sort == "title" %} selected{% endif %}>title</option>
+            </select>
+          </div>
+      </div>
+      <div class="col-md-auto">
+        <select id="asc_desc" name="asc_desc" class="form-control" title="sort_order" aria-label="sort_order">
           <option value="desc" {% if request.GET.asc_desc == "desc" %} selected{% endif %}>descending</option>
           <option value="asc" {% if request.GET.asc_desc == "asc" %} selected{% endif %}>ascending</option>
         </select>
+      </div>
+      <div class="col-md-auto">
         <button name="apply" class="btn btn-info">Search</button>
         <a class="btn btn-light" href="{% url 'viewer:wanted-galleries' %}">Clear</a>
-        <input id="checkbox-f2" class="custom-cb" type="checkbox" name="wanted-should-search" value="1" {% if "wanted-should-search" in request.GET %}checked{% endif %}><label for="checkbox-f2"><span><span></span></span>Should search</label>
-        <input id="checkbox-f3" class="custom-cb" type="checkbox" name="wanted-should-search-not" value="1" {% if "wanted-should-search-not" in request.GET %}checked{% endif %}><label for="checkbox-f3"><span><span></span></span>Should not search</label>
-        <input id="checkbox-f4" class="custom-cb" type="checkbox" name="with-possible-matches" value="1" {% if "with-possible-matches" in request.GET %}checked{% endif %}><label for="checkbox-f4"><span><span></span></span>With possible matches</label>
+      </div>
+      <div class="col-md-auto">
+        <div class="form-check">
+        <input id="checkbox-f2" class="form-check-input" type="checkbox" name="wanted-should-search" value="1" {% if "wanted-should-search" in request.GET %}checked{% endif %}><label for="checkbox-f2">Should search</label>
+        </div>
+      </div>
+      <div class="col-md-auto">
+        <div class="form-check">
+        <input id="checkbox-f3" class="form-check-input" type="checkbox" name="wanted-should-search-not" value="1" {% if "wanted-should-search-not" in request.GET %}checked{% endif %}><label for="checkbox-f3">Should not search</label>
+        </div>
+      </div>
+      <div class="col-md-auto">
+        <div class="form-check">
+        <input id="checkbox-f4" class="form-check-input" type="checkbox" name="with-possible-matches" value="1" {% if "with-possible-matches" in request.GET %}checked{% endif %}><label for="checkbox-f4">With possible matches</label>
+        </div>
+      </div>
+      <div class="col-md-auto">
         <input title="Book type" class="form-control" name="book_type" placeholder="Book type" value="{{ request.GET.book_type }}">
+      </div>
+      <div class="col-md-auto">
         <input title="Publisher" class="form-control" name="publisher" placeholder="Publisher" value="{{ request.GET.publisher }}">
+      </div>
+      <div class="col-md-auto">
         <input title="Reason" class="form-control" name="reason" placeholder="Reason" value="{{ request.GET.reason }}">
+      </div>
+      <div class="col-md-auto">
         <input title="Provider" class="form-control" name="provider" placeholder="Provider" value="{{ request.GET.provider }}">
-        <input id="checkbox-f6" class="custom-cb" type="checkbox" name="wanted-found" value="1" {% if "wanted-found" in request.GET %}checked{% endif %}><label for="checkbox-f6"><span><span></span></span>Found</label>
-        <input id="checkbox-f7" class="custom-cb" type="checkbox" name="wanted-not-found" value="1" {% if "wanted-not-found" in request.GET %}checked{% endif %}><label for="checkbox-f7"><span><span></span></span>Not found</label>
-        <input id="checkbox-f8" class="custom-cb" type="checkbox" name="wanted-no-found-galleries" value="1" {% if "wanted-no-found-galleries" in request.GET %}checked{% endif %}><label for="checkbox-f8"><span><span></span></span>No found galleries</label>
+      </div>
+      <div class="col-md-auto">
+        <input title="Mention source" class="form-control" name="mention-source" placeholder="Mention source" value="{{ request.GET|dict_key:"mention-source" }}">
+      </div>
+      <div class="col-md-auto">
+        <div class="form-check">
+        <input id="checkbox-f6" class="form-check-input" type="checkbox" name="wanted-found" value="1" {% if "wanted-found" in request.GET %}checked{% endif %}><label for="checkbox-f6">Found</label>
+        </div>
+      </div>
+      <div class="col-md-auto">
+        <div class="form-check">
+        <input id="checkbox-f7" class="form-check-input" type="checkbox" name="wanted-not-found" value="1" {% if "wanted-not-found" in request.GET %}checked{% endif %}><label for="checkbox-f7">Not found</label>
+        </div>
+      </div>
+      <div class="col-md-auto">
+        <div class="form-check">
+        <input id="checkbox-f8" class="form-check-input" type="checkbox" name="wanted-no-found-galleries" value="1" {% if "wanted-no-found-galleries" in request.GET %}checked{% endif %}><label for="checkbox-f8">No found galleries</label>
+        </div>
+      </div>
       </div>
     </form>
     <form action="{{ request.get_full_path }}" method="POST">{% csrf_token %}
@@ -90,7 +136,10 @@
     <ul class="list-group marked">
       {% for gallery in results %}
         <li class="list-group-item">
-          <input id="sel-{{ gallery.id }}" class="toggle-list custom-cb" type="checkbox" name="sel-{{ gallery.id }}" value="{{ gallery.pk }}"><label for="sel-{{ gallery.id }}"><span><span></span></span></label><a href="{{ gallery.get_absolute_url }}">{{ gallery.id }}</a>: Title: {{ gallery.title }} >> Artists: {{ gallery.artists.all|join:", " }} >> Release date: {{ gallery.release_date|date }} >> Reason: {{ gallery.reason }} >> Pages: {{ gallery.page_count }} >> Should search: {{ gallery.should_search|yesno }} >> Keep searching: {{ gallery.keep_searching|yesno }} >> Found: {{ gallery.found|yesno }}
+        <span class="me-1">
+          <input id="sel-{{ gallery.id }}" class="toggle-list form-check-input" type="checkbox" name="sel-{{ gallery.id }}" value="{{ gallery.pk }}"><label for="sel-{{ gallery.id }}"></label>
+        </span>
+            <a href="{{ gallery.get_absolute_url }}">{{ gallery.id }}</a>: Title: {{ gallery.title }} >> Artists: {{ gallery.artists.all|join:", " }} >> Release date: {{ gallery.release_date|date }} >> Reason: {{ gallery.reason }} >> Pages: {{ gallery.page_count }} >> Should search: {{ gallery.should_search|yesno }} >> Keep searching: {{ gallery.keep_searching|yesno }} >> Found: {{ gallery.found|yesno }}
           {% with matches=gallery.possible_galleries mentions=gallery.mentions.all %}
             {% if matches|length > 0 %}
               <h5>Possible matches >> <a href="{% url 'viewer:wanted-gallery' gallery.pk %}?tool=clear-possible-matches">clear possible matches</a></h5>
@@ -185,18 +234,38 @@
           </span>
       </div>
     {% endif %}
-    <div class="form-group form-inline">
-      <input size="10" class="form-control" name="provider" value="" placeholder="Provider filter"/>
-      <input title="Cutoff" size="10" type="number" step="0.01" class="form-control" name="cutoff" value="" placeholder="Cutoff"/>
-      <input title="Max matches" size="10" type="number" step="1" class="form-control" name="max-matches" value="10" placeholder="Max Matches"/>
-      <input id="checkbox-p1" class="custom-cb" type="checkbox" name="must-be-used" value="1"><label for="checkbox-p1"><span><span></span></span>Must be used</label>
-      <button name="search_provider_galleries" class="btn btn-light">Search selected by title on providers</button>
-      <button name="search_provider_galleries_internal" class="btn btn-light">Search selected by title on providers internally</button>
+    <div class="row g-1 align-items-center">
+        <div class="col-md-auto">
+            <input size="10" class="form-control" name="provider" value="" placeholder="Provider filter"/>
+        </div>
+        <div class="col-md-auto">
+             <input title="Cutoff" size="10" type="number" step="0.01" class="form-control" name="cutoff" value="" placeholder="Cutoff"/>
+        </div>
+        <div class="col-md-auto">
+             <input title="Max matches" size="10" type="number" step="1" class="form-control" name="max-matches" value="10" placeholder="Max Matches"/>
+        </div>
+        <div class="col-md-auto">
+            <div class="form-check">
+              <input id="checkbox-p1" class="form-check-input" type="checkbox" name="must-be-used" value="1"><label for="checkbox-p1">Must be used</label>
+            </div>
+        </div>
+        <div class="col-md-auto">
+             <button name="search_provider_galleries" class="btn btn-light">Search selected by title on providers</button>
+        </div>
+        <div class="col-md-auto">
+             <button name="search_provider_galleries_internal" class="btn btn-light">Search selected by title on providers internally</button>
+        </div>
     </div>
-    <div class="form-group">
-    <button name="search_for_galleries" class="btn btn-light">Mark selected as search for</button>
-    <button name="set-public" class="btn btn-light">Mark selected as public</button>
-    <button name="delete_galleries" class="btn btn-light">Delete (WARNING!) selected wanted galleries</button>
+    <div class="row g-1 mt-2">
+        <div class="col-md-auto">
+            <button name="search_for_galleries" class="btn btn-light">Mark selected as search for</button>
+        </div>
+        <div class="col-md-auto">
+            <button name="set-public" class="btn btn-light">Mark selected as public</button>
+        </div>
+        <div class="col-md-auto">
+            <button name="delete_galleries" class="btn btn-light">Delete (WARNING!) selected wanted galleries</button>
+        </div>
     </div>
   </form>
   {% else %}
@@ -239,14 +308,10 @@
   {% block afterJQ %}
   {% load compress %}
   {% compress css %}
-    <link href="{% static 'autocomplete_light/vendor/jal/src/style.css' %}" type="text/css" media="all" rel="stylesheet" />
+    <link href="{% static 'css/vendor/jal/style.css' %}" type="text/css" media="all" rel="stylesheet" />
   {% endcompress %}
   {% compress js %}
-    <script type="text/javascript" src="{% static 'autocomplete_light/jquery.init.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/autocomplete.init.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/autocomplete.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/text_widget.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/jal.js' %}"></script>
+    <script src="{% static 'js/vendor/jquery.autocomplete-light.min.js' %}"></script>
   {% endcompress %}
     <script type="text/javascript" src="{% static 'js/list_operations.js' %}"></script>
   {% endblock %}

@@ -19,54 +19,115 @@
           {{ field }}
         </div>
       {% endfor %}
-
       <div id="extra_filters" class="page-line collapse{% if prm.extra_filters %} show{% endif %}">
-      <div class="form-inline">
-        <input type="text" class="form-control mr-sm-1" name="category" size="15" value="{{ display_prms.category }}" placeholder="Category"/>
-        <input type="text" class="form-control mr-sm-1" name="provider" size="10" value="{{ display_prms.provider }}" placeholder="Provider"/>
-        <input type="text" class="form-control mr-sm-1" name="uploader" size="15" value="{{ display_prms.uploader }}" placeholder="Uploader"/>
+      <div class="row g-1 align-items-center">
+      <div class="col-md-auto">
+        <input type="text" class="form-control me-sm-1" name="category" size="15" value="{{ display_prms.category }}" placeholder="Category"/>
+      </div>
+      <div class="col-md-auto">
+        <input type="text" class="form-control me-sm-1" name="provider" size="10" value="{{ display_prms.provider }}" placeholder="Provider"/>
+      </div>
+      <div class="col-md-auto">
+        <input type="text" class="form-control me-sm-1" name="uploader" size="15" value="{{ display_prms.uploader }}" placeholder="Uploader"/>
+      </div>
+      <div class="col-md-auto">
         <label>Rating</label>
-        <input size="3" type="text" class="form-control mr-sm-1" name="rating_from" value="{{ display_prms.rating_from }}" placeholder="from"/>
-        <input size="3" type="text" class="form-control mr-sm-1" name="rating_to" value="{{ display_prms.rating_to }}" placeholder="to"/>
+      </div>
+      <div class="col-md-auto">
+        <input size="3" type="text" class="form-control me-sm-1" name="rating_from" value="{{ display_prms.rating_from }}" placeholder="from"/>
+      </div>
+      <div class="col-md-auto">
+        <input size="3" type="text" class="form-control me-sm-1" name="rating_to" value="{{ display_prms.rating_to }}" placeholder="to"/>
+      </div>
+      <div class="col-md-auto">
         <label>Filesize</label>
-        <input size="3" type="text" class="form-control mr-sm-1" name="filesize_from" value="{{ display_prms.filesize_from }}" placeholder="from"/>
-        <input size="3" type="text" class="form-control mr-sm-1" name="filesize_to" value="{{ display_prms.filesize_to }}" placeholder="to"/>
+      </div>
+      <div class="col-md-auto">
+        <input size="3" type="text" class="form-control me-sm-1" name="filesize_from" value="{{ display_prms.filesize_from }}" placeholder="from"/>
+      </div>
+      <div class="col-md-auto">
+        <input size="3" type="text" class="form-control me-sm-1" name="filesize_to" value="{{ display_prms.filesize_to }}" placeholder="to"/>
+      </div>
+      <div class="col-md-auto">
         <label>Filecount</label>
-        <input size="2" type="text" class="form-control mr-sm-1" name="filecount_from" value="{{ display_prms.filecount_from }}" placeholder="from"/>
-        <input size="2" type="text" class="form-control mr-sm-1" name="filecount_to" value="{{ display_prms.filecount_to }}" placeholder="to"/>
-        <input id="checkbox1" class="custom-cb" type="checkbox" name="expunged" value="1" {% if display_prms.expunged == '1' %}checked{% endif %}><label for="checkbox1"><span><span></span></span>Expunged</label>
+      </div>
+      <div class="col-md-auto">
+        <input size="2" type="text" class="form-control me-sm-1" name="filecount_from" value="{{ display_prms.filecount_from }}" placeholder="from"/>
+      </div>
+      <div class="col-md-auto">
+        <input size="2" type="text" class="form-control me-sm-1" name="filecount_to" value="{{ display_prms.filecount_to }}" placeholder="to"/>
+      </div>
+      <div class="col-md-auto">
+          <div class="form-check">
+            <input id="checkbox1" class="form-check-input" type="checkbox" name="expunged" value="1" {% if display_prms.expunged == '1' %}checked{% endif %}><label for="checkbox1">Expunged</label>
+          </div>
+      </div>
         {% if user.is_authenticated %}
-          <input id="checkbox2" class="custom-cb" type="checkbox" name="hidden" value="1" {% if display_prms.hidden == '1' %}checked{% endif %}><label for="checkbox2"><span><span></span></span>Hidden</label>
-          <input id="checkbox4" class="custom-cb" type="checkbox" name="not_used" value="1" {% if display_prms.not_used == '1' %}checked{% endif %}><label for="checkbox4"><span><span></span></span>Not used</label>
-          <input id="checkbox7" class="custom-cb" type="checkbox" name="not_normal" value="1" {% if display_prms.not_normal == '1' %}checked{% endif %}><label for="checkbox7"><span><span></span></span>Show not normal</label>
+          <div class="col-md-auto">
+              <div class="form-check">
+                  <input id="checkbox2" class="form-check-input" type="checkbox" name="hidden" value="1" {% if display_prms.hidden == '1' %}checked{% endif %}><label for="checkbox2">Hidden</label>
+              </div>
+          </div>
+          <div class="col-md-auto">
+              <div class="form-check">
+                  <input id="checkbox4" class="form-check-input" type="checkbox" name="not_used" value="1" {% if display_prms.not_used == '1' %}checked{% endif %}><label for="checkbox4">Not used</label>
+              </div>
+          </div>
+          <div class="col-md-auto">
+              <div class="form-check">
+                  <input id="checkbox7" class="form-check-input" type="checkbox" name="not_normal" value="1" {% if display_prms.not_normal == '1' %}checked{% endif %}><label for="checkbox7">Show not normal</label>
+              </div>
+          </div>
         {% endif %}
-        <input id="checkbox3" class="custom-cb" type="checkbox" name="fjord" value="1" {% if display_prms.fjord == '1' %}checked{% endif %}><label for="checkbox3"><span><span></span></span>Fjord</label>
-        <input id="checkbox5" class="custom-cb" type="checkbox" name="contained" value="1" {% if display_prms.contained == '1' %}checked{% endif %}><label for="checkbox5"><span><span></span></span>Contained</label>
-        <input id="checkbox6" class="custom-cb" type="checkbox" name="contains" value="1" {% if display_prms.contains == '1' %}checked{% endif %}><label for="checkbox6"><span><span></span></span>Contains</label>
+            <div class="col-md-auto">
+              <div class="form-check">
+                <input id="checkbox3" class="form-check-input" type="checkbox" name="fjord" value="1" {% if display_prms.fjord == '1' %}checked{% endif %}><label for="checkbox3">Fjord</label>
+              </div>
+            </div>
+            <div class="col-md-auto">
+              <div class="form-check">
+                <input id="checkbox5" class="form-check-input" type="checkbox" name="contained" value="1" {% if display_prms.contained == '1' %}checked{% endif %}><label for="checkbox5">Contained</label>
+              </div>
+            </div>
+            <div class="col-md-auto">
+              <div class="form-check">
+                <input id="checkbox6" class="form-check-input" type="checkbox" name="contains" value="1" {% if display_prms.contains == '1' %}checked{% endif %}><label for="checkbox6">Contains</label>
+              </div>
+            </div>
       </div>
       </div>
-      <div class="page-line form-inline">
-
-        <label for="sort">Sort </label>
-        <select id="sort" name="sort" class="form-control mx-sm-1">
-          <option value="title" {% if prm.sort == "title" %}selected{% endif %}>title</option>
-          <option value="title_jpn" {% if prm.sort == "title_jpn" %}selected{% endif %}>title_jpn</option>
-          <option value="posted" {% if prm.sort == "posted" %}selected{% endif %}>posted date</option>
-          <option value="create_date" {% if prm.sort == "create_date" %}selected{% endif %}>create date</option>
-          <option value="rating" {% if prm.sort == "rating" %}selected{% endif %}>rating</option>
-          <option value="filecount" {% if prm.sort == "filecount" %}selected{% endif %}>filecount</option>
-          <option value="filesize" {% if prm.sort == "filesize" %}selected{% endif %}>filesize</option>
-        </select>
-
-        <select name="asc_desc" class="form-control mr-sm-1" title="sort_order" aria-label="sort_order">
-          <option value="asc" {% if prm.asc_desc == "asc" %}selected{% endif %}>ascending</option>
-          <option value="desc" {% if prm.asc_desc == "desc" %}selected{% endif %}>descending</option>
-        </select>
-        <button type="submit" name="apply" class="btn btn-info mr-sm-1">Search</button>
-        <button type="submit" name="clear" class="btn btn-light mr-sm-1">Clear</button>
-        <button type="submit" name="json" class="btn btn-light mr-sm-1">As JSON</button>
-        <button type="button" class="btn btn-secondary" data-toggle="collapse" data-target="#extra_filters">More filters</button>
-      <input id="checkbox8" class="custom-cb" type="checkbox" name="show_source" value="1" {% if prm.show_source == '1' %}checked{% endif %}><label for="checkbox8"><span><span></span></span>Show source</label>
+      <div class="page-line row g-1 align-items-center">
+        <div class="col-md-auto">
+            <div class="input-group align-items-center">
+                <label for="sort">Sort </label>
+                <select id="sort" name="sort" class="form-control">
+                  <option value="title" {% if prm.sort == "title" %}selected{% endif %}>title</option>
+                  <option value="title_jpn" {% if prm.sort == "title_jpn" %}selected{% endif %}>title_jpn</option>
+                  <option value="posted" {% if prm.sort == "posted" %}selected{% endif %}>posted date</option>
+                  <option value="create_date" {% if prm.sort == "create_date" %}selected{% endif %}>create date</option>
+                  <option value="rating" {% if prm.sort == "rating" %}selected{% endif %}>rating</option>
+                  <option value="filecount" {% if prm.sort == "filecount" %}selected{% endif %}>filecount</option>
+                  <option value="filesize" {% if prm.sort == "filesize" %}selected{% endif %}>filesize</option>
+                </select>
+            </div>
+        </div>
+        <div class="col-md-auto">
+            <select name="asc_desc" class="form-control" title="sort_order" aria-label="sort_order">
+              <option value="asc" {% if prm.asc_desc == "asc" %}selected{% endif %}>ascending</option>
+              <option value="desc" {% if prm.asc_desc == "desc" %}selected{% endif %}>descending</option>
+            </select>
+        </div>
+      <div class="col-md-auto">
+        <button type="submit" name="apply" class="btn btn-info">Search</button>
+        <button type="submit" name="clear" class="btn btn-light">Clear</button>
+        <button type="button" class="btn btn-secondary" data-bs-toggle="collapse" data-bs-target="#extra_filters">More filters</button>
+        <button type="submit" name="json" class="btn btn-light">As JSON</button>
+      </div>
+      <div class="col-md-auto">
+        <div class="form-check">
+            <input id="checkbox8" class="form-check-input" type="checkbox" name="show_source" value="1" {% if prm.show_source == '1' %}checked{% endif %}><label for="checkbox8">Show source</label>
+        </div>
+      </div>
       </div>
     </div>
   </form>
@@ -200,13 +261,9 @@
 {% block afterJQ %}
   {% load compress %}
   {% compress css %}
-    <link href="{% static 'autocomplete_light/vendor/jal/src/style.css' %}" type="text/css" media="all" rel="stylesheet" />
+    <link href="{% static 'css/vendor/jal/style.css' %}" type="text/css" media="all" rel="stylesheet" />
   {% endcompress %}
   {% compress js %}
-    <script type="text/javascript" src="{% static 'autocomplete_light/jquery.init.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/autocomplete.init.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/autocomplete.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/text_widget.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/jal.js' %}"></script>
+    <script src="{% static 'js/vendor/jquery.autocomplete-light.min.js' %}"></script>
   {% endcompress %}
 {% endblock %}

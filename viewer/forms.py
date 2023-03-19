@@ -16,7 +16,6 @@ from django.conf import settings
 
 
 from dal import autocomplete
-from dal_jal.widgets import JalWidgetMixin
 from viewer.models import Archive, ArchiveMatches, Image, Gallery, Profile, WantedGallery, ArchiveGroup, \
     ArchiveGroupEntry, Tag, ArchiveManageEntry
 
@@ -29,23 +28,14 @@ from django.utils.translation import gettext_lazy
 crawler_settings = settings.CRAWLER_SETTINGS
 
 
-class JalTextWidget(JalWidgetMixin, WidgetMixin, forms.TextInput):
+class JalTextWidget(WidgetMixin, forms.TextInput):
 
     class Media:
-        css = {
-            'all': (
-                'autocomplete_light/vendor/jal/src/style.css',
-            ),
-        }
         js = (
-            'autocomplete_light/jquery.init.js',
-            'autocomplete_light/autocomplete.init.js',
-            'autocomplete_light/vendor/jal/src/autocomplete.js',
-            # 'autocomplete_light/vendor/jal/src/widget.js',
-            'autocomplete_light/vendor/jal/src/text_widget.js',
-            # 'autocomplete_light/forward.js',
-            'autocomplete_light/jal.js',
+            'js/vendor/jquery.autocomplete-light.min.js',
         )
+
+    autocomplete_function = 'jal'
 
     def __init__(self, url=None, forward=None, attrs=None, *args,
                  **kwargs):
@@ -59,7 +49,7 @@ class JalTextWidget(JalWidgetMixin, WidgetMixin, forms.TextInput):
 
         self.attrs.update(attrs)
 
-    def render(self, name, value, attrs=None, renderer=None):
+    def render(self, name, value, attrs=None, renderer=None, **kwargs):
         """ Proxy Django's TextInput.render() """
         html = '''
             <input id="{id}" {attrs} type="search" name="{name}" value="{value}" />
@@ -353,10 +343,10 @@ class ArchiveModForm(forms.ModelForm):
         widgets = {
             'tags': autocomplete.ModelSelect2Multiple(
                 url='customtag-autocomplete',
-                attrs={'size': 1, 'data-placeholder': 'Custom tag name', 'class': 'form-control'}),
+                attrs={'size': 1, 'data-placeholder': 'Custom tag name', 'class': 'form-control', 'data-width': '100%'}),
             'alternative_sources': autocomplete.ModelSelect2Multiple(
                 url='gallery-select-autocomplete',
-                attrs={'size': 1, 'data-placeholder': 'Alternative source', 'class': 'form-control'}),
+                attrs={'size': 1, 'data-placeholder': 'Alternative source', 'class': 'form-control', 'data-width': '100%'}),
             'title': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'title_jpn': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'source_type': forms.widgets.TextInput(attrs={'class': 'form-control'}),
@@ -384,7 +374,7 @@ class ArchiveModForm(forms.ModelForm):
         queryset=ArchiveGroup.objects.none(),
         widget=autocomplete.ModelSelect2Multiple(
             url='archive-group-select-autocomplete',
-            attrs={'size': 1, 'data-placeholder': 'Archive groups', 'class': 'form-control'}
+            attrs={'size': 1, 'data-placeholder': 'Archive groups', 'class': 'form-control', 'data-width': '100%'}
         ),
     )
 
@@ -636,7 +626,7 @@ class WantedGalleryCreateOrEditForm(ModelForm):
             'regexp_search_title_icase': 'Case-insensitive use of regexp Search Title',
             'unwanted_title': 'Text in Gallery title to exclude',
             'regexp_unwanted_title': 'Use Unwanted Title as a regexp match',
-            'regexp_unwanted_title_icase': 'ase-insensitive use of regexp Unwanted Title',
+            'regexp_unwanted_title_icase': 'Case-insensitive use of regexp Unwanted Title',
             'wanted_tags': 'Tags in Gallery that must exist (AND logic)',
             'unwanted_tags': 'Tags in Gallery that must not exist (OR logic)',
             'wanted_tags_exclusive_scope': 'Do not accept Galleries that have '
@@ -664,20 +654,20 @@ class WantedGalleryCreateOrEditForm(ModelForm):
             'title': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'title_jpn': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'search_title': forms.widgets.TextInput(attrs={'class': 'form-control'}),
-            'regexp_search_title': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
-            'regexp_search_title_icase': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
+            'regexp_search_title': forms.widgets.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'regexp_search_title_icase': forms.widgets.CheckboxInput(attrs={'class': 'form-check-input'}),
             'unwanted_title': forms.widgets.TextInput(attrs={'class': 'form-control'}),
-            'regexp_unwanted_title': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
-            'regexp_unwanted_title_icase': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
+            'regexp_unwanted_title': forms.widgets.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'regexp_unwanted_title_icase': forms.widgets.CheckboxInput(attrs={'class': 'form-check-input'}),
             'wanted_tags': autocomplete.ModelSelect2Multiple(
                 url='tag-pk-autocomplete',
-                attrs={'data-placeholder': 'Tag name', 'class': 'form-control'}
+                attrs={'data-placeholder': 'Tag name', 'class': 'form-control', 'data-width': '100%'}
             ),
             'unwanted_tags': autocomplete.ModelSelect2Multiple(
                 url='tag-pk-autocomplete',
-                attrs={'data-placeholder': 'Tag name', 'class': 'form-control'}
+                attrs={'data-placeholder': 'Tag name', 'class': 'form-control', 'data-width': '100%'}
             ),
-            'wanted_tags_exclusive_scope': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
+            'wanted_tags_exclusive_scope': forms.widgets.CheckboxInput(attrs={'class': 'form-check-input'}),
             'exclusive_scope_name': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'wanted_tags_accept_if_none_scope': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'category': forms.widgets.TextInput(attrs={'class': 'form-control'}),
@@ -685,16 +675,16 @@ class WantedGalleryCreateOrEditForm(ModelForm):
             'wanted_page_count_upper': forms.widgets.NumberInput(attrs={'min': 0, 'class': 'form-control'}),
             'wanted_providers': autocomplete.ModelSelect2Multiple(
                 url='provider-pk-autocomplete',
-                attrs={'data-placeholder': 'Provider name', 'class': 'form-control'}
+                attrs={'data-placeholder': 'Provider name', 'class': 'form-control', 'data-width': '100%'}
             ),
             'unwanted_providers': autocomplete.ModelSelect2Multiple(
                 url='provider-pk-autocomplete',
-                attrs={'data-placeholder': 'Provider name', 'class': 'form-control'}
+                attrs={'data-placeholder': 'Provider name', 'class': 'form-control', 'data-width': '100%'}
             ),
             'wait_for_time': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'release_date': Html5DateInput(attrs={'class': 'form-control'}),
-            'should_search': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
-            'keep_searching': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
+            'should_search': forms.widgets.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'keep_searching': forms.widgets.CheckboxInput(attrs={'class': 'form-check-input'}),
             'reason': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'book_type': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'publisher': forms.widgets.TextInput(attrs={'class': 'form-control'}),
@@ -718,7 +708,7 @@ class ArchiveGroupCreateOrEditForm(ModelForm):
             'title': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'details': forms.widgets.Textarea(attrs={'class': 'form-control'}),
             'position': forms.widgets.NumberInput(attrs={'min': 0, 'class': 'form-control'}),
-            'public': forms.widgets.CheckboxInput(attrs={'class': 'form-control'})
+            'public': forms.widgets.CheckboxInput(attrs={'class': 'form-check-input'})
         }
 
     def save(self, commit=True):
@@ -830,7 +820,7 @@ class ArchiveManageEditForm(ModelForm):
             # 'resolve_check', 'resolve_comment'
         ]
         widgets = {
-            # 'mark_check': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
+            # 'mark_check': forms.widgets.CheckboxInput(attrs={'class': 'form-check-input'}),
             'mark_priority': forms.widgets.NumberInput(attrs={'class': 'form-control'}),
             'mark_reason': JalTextWidget(
                 url='archive-manager-reason-autocomplete',
@@ -843,7 +833,7 @@ class ArchiveManageEditForm(ModelForm):
             ),
             'mark_comment': forms.widgets.Textarea(attrs={'class': 'form-control'}),
             'mark_extra': forms.widgets.TextInput(attrs={'class': 'form-control'}),
-            # 'resolve_check': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
+            # 'resolve_check': forms.widgets.CheckboxInput(attrs={'class': 'form-check-input'}),
             # 'resolve_comment': forms.widgets.Textarea(attrs={'class': 'form-control'})
         }
         help_texts = {
@@ -912,13 +902,17 @@ class UserChangeForm(forms.ModelForm):
 
 class ProfileChangeForm(forms.ModelForm):
 
+    def __init__(self, *args, **kwargs):
+        super(ProfileChangeForm, self).__init__(*args, **kwargs)
+        self.label_suffix = ''
+
     class Meta:
         model = Profile
         fields = ['notify_new_submissions', 'notify_new_private_archive', 'notify_wanted_gallery_found']
         widgets = {
-            'notify_new_submissions': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
-            'notify_new_private_archive': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
-            'notify_wanted_gallery_found': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
+            'notify_new_submissions': forms.widgets.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'notify_new_private_archive': forms.widgets.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'notify_wanted_gallery_found': forms.widgets.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
 
 
@@ -945,7 +939,7 @@ class GalleryCreateForm(ModelForm):
                 attrs={'size': 1, 'data-placeholder': 'Gallery', 'class': 'form-control', 'data-width': '100%'}),
             'tags': autocomplete.ModelSelect2Multiple(
                 url='tag-pk-autocomplete',
-                attrs={'data-placeholder': 'Tag name', 'class': 'form-control'}
+                attrs={'data-placeholder': 'Tag name', 'class': 'form-control', 'data-width': '100%'}
             ),
             'category': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'uploader': forms.widgets.TextInput(attrs={'class': 'form-control'}),
@@ -953,9 +947,9 @@ class GalleryCreateForm(ModelForm):
             'posted': forms.DateInput(attrs={'class': 'form-control mr-sm-1', 'type': 'date', 'size': 9}),
             'filecount': forms.widgets.NumberInput(attrs={'class': 'form-control'}),
             'filesize': forms.widgets.NumberInput(attrs={'class': 'form-control'}),
-            'expunged': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
-            'hidden': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
-            'fjord': forms.widgets.CheckboxInput(attrs={'class': 'form-control'}),
+            'expunged': forms.widgets.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'hidden': forms.widgets.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'fjord': forms.widgets.CheckboxInput(attrs={'class': 'form-check-input'}),
             'reason': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'thumbnail_url': forms.widgets.URLInput(attrs={'class': 'form-control'}),
             'thumbnail': forms.widgets.ClearableFileInput(attrs={'class': 'form-control'}),

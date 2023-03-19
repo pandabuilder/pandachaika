@@ -9,7 +9,7 @@
     {% endwith %}
   </a>
   <div class="caption">
-    {{ archive.filecount }} | {{ archive.filesize|filesizeformat }} | {% if archive.crc32 %}<a href="{% url 'viewer:archive-download' archive.pk %}">DL</a>{% else %}DL{% endif %} | <a class="tag-preview" tabindex="0" role="button" data-toggle="popover" data-trigger="focus" data-pk="{{ archive.pk }}">Tags</a>
+    {{ archive.filecount }} | {{ archive.filesize|filesizeformat }} | {% if archive.crc32 %}<a href="{% url 'viewer:archive-download' archive.pk %}">DL</a>{% else %}DL{% endif %} | <a class="tag-preview" tabindex="0" role="button" data-bs-toggle="popover" data-bs-trigger="focus" data-bs-pk="{{ archive.pk }}">Tags</a>
     {% if user.is_authenticated and archive.extracted %}| <a href="{% url 'viewer:new-image-viewer' archive.pk '1' %}?archive-group={{ archive_group.title_slug }}&group-order=1">View</a>{% endif %}
   </div>
 </div>

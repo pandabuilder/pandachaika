@@ -126,21 +126,24 @@ function GalleryRetrieve() {
     xmlhttp.onreadystatechange = function () {
         if (xmlhttp.readyState === 4 && xmlhttp.status === 200) {
             response = JSON.parse(xmlhttp.responseText);
+            const element = $('#search-button');
             if(response.error) {
-                $('#search-button').button('reset');
+                element.html(element.data('original-text')).prop('disabled', false);
                 return
             }
             currentDiagram = new Diagram1();
             currentDiagram.boot(response);
-            $('#search-button').button('reset');
+            element.html(element.data('original-text')).prop('disabled', false);
             history.replaceState({
             }, document.title, window.location.pathname.split("/gallery-frequency/")[0] + "/gallery-frequency/?" + queryString);
         }
     };
     xmlhttp.open("GET", url, true);
     xmlhttp.send();
-    if($('#search-button').button)
-        $('#search-button').button('loading');
+    const element = $('#search-button');
+
+    element.data('original-text', element.html()).html(element.data('loading-text')).prop('disabled', true);
+
 }
 
 GallerySeedNew2 = function(){
@@ -262,17 +265,5 @@ function addLoadEvent(func) {
 		}
 	}
 }
-
-// Loading button plugin (removed from BS4)
-(function($) {
-  $.fn.button = function(action) {
-    if (action === 'loading' && this.data('loading-text')) {
-      this.data('original-text', this.html()).html(this.data('loading-text')).prop('disabled', true);
-    }
-    if (action === 'reset' && this.data('original-text')) {
-      this.html(this.data('original-text')).prop('disabled', false);
-    }
-  };
-}(jQuery));
 
 addLoadEvent(GalleryRetrieve());

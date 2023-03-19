@@ -94,7 +94,8 @@ wanted_gallery_filter_keys = (
     "title", "wanted_page_count_lower", "wanted_page_count_upper",
     "provider", "not_used", "wanted-should-search", "wanted-should-search-not", "book_type",
     "publisher", "wanted-found", "wanted-not-found", "reason",
-    "wanted-no-found-galleries", "with-possible-matches", "tags"
+    "wanted-no-found-galleries", "with-possible-matches", "tags",
+    "mention-source"
 )
 
 wanted_gallery_order_fields = (
@@ -215,34 +216,6 @@ def panda_userscript(request: HttpRequest) -> HttpResponse:
         },
         content_type='application/javascript'
     )
-
-
-@login_required
-def image_viewer(request: HttpRequest, archive: int, page: int) -> HttpResponse:
-
-    images = Image.objects.filter(archive=archive, extracted=True)
-    if not images:
-        raise Http404("Archive " + str(archive) + " has no extracted images")
-
-    paginator = Paginator(images, 1)
-    try:
-        image = paginator.page(page)
-    except (InvalidPage, EmptyPage):
-        image = paginator.page(paginator.num_pages)
-
-    image_object = image.object_list[0]
-
-    is_horizontal = False
-    if image_object.image_width is not None and image_object.image_height is not None:
-        if image_object.image_width / image_object.image_height > 1:
-            is_horizontal = True
-
-    d = {
-        'image': image, 'backurl': redirect(image.object_list[0].archive).url,
-        'images_range': range(1, images.count() + 1), 'image_object': image_object, 'is_horizontal': is_horizontal
-    }
-
-    return render(request, "viewer/image_viewer.html", d)
 
 
 def image_url(request: HttpRequest, pk: int) -> HttpResponse:
@@ -1973,7 +1946,7 @@ def filter_wanted_galleries_simple(params: dict[str, Any]) -> QuerySet[WantedGal
     if params["wanted_page_count_upper"]:
         results = results.filter(wanted_page_count_upper=int(params["wanted_page_count_upper"]))
     if params["provider"]:
-        results = results.filter(provider=params["provider"])
+        results = results.filter(wanted_providers__slug=params["provider"]).distinct()
     if params["not_used"]:
         results = results.filter(Q(archive__isnull=True))
     if params['wanted-should-search']:
@@ -1995,8 +1968,8 @@ def filter_wanted_galleries_simple(params: dict[str, Any]) -> QuerySet[WantedGal
     if params['with-possible-matches']:
         results = results.annotate(
             num_possible=Count('possible_matches')).filter(num_possible__gt=0)
-    if params['provider']:
-        results = results.filter(provider=params['provider'])
+    if params["mention-source"]:
+        results = results.filter(mentions__source=params["mention-source"]).distinct()
 
     if params["tags"]:
         tags = params["tags"].split(',')

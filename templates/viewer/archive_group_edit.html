@@ -18,10 +18,10 @@
         <h3>{{ archive_group.title }}</h3>
     </div>
       <div class="col-md-5 col-sm-12">
-        <button class="btn btn-secondary float-right" id="edit-archive-group" data-toggle="collapse" data-target="#add-change-archive-group-form" name="edit-archive-group" type="button" aria-label="toggle edit archive group">Edit <i class="fas fa-chevron-down"></i></button>
-        <a class="btn {% if 'add_multiple' in request.GET %}btn-info{% else %}btn-secondary{% endif %} float-right" href="?{% url_toggle 'add_multiple' %}" role="button">Add Multiple Archives</a>
-        {% if perms.viewer.expand_archive %}<a class="btn btn-secondary float-right" href="{% url 'viewer:archive-group-edit' archive_group.title_slug %}?extract_all=" role="button">Extract all</a>{% endif %}
-        <a class="btn btn-secondary float-right" href="{% url 'viewer:archive-group' archive_group.title_slug %}" role="button">View</a>
+        <button class="btn btn-secondary float-end" id="edit-archive-group" data-bs-toggle="collapse" data-bs-target="#add-change-archive-group-form" name="edit-archive-group" type="button" aria-label="toggle edit archive group">Edit <i class="fas fa-chevron-down"></i></button>
+        <a class="btn {% if 'add_multiple' in request.GET %}btn-info{% else %}btn-secondary{% endif %} float-end" href="?{% url_toggle 'add_multiple' %}" role="button">Add Multiple Archives</a>
+        {% if perms.viewer.expand_archive %}<a class="btn btn-secondary float-end" href="{% url 'viewer:archive-group-edit' archive_group.title_slug %}?extract_all=" role="button">Extract all</a>{% endif %}
+        <a class="btn btn-secondary float-end" href="{% url 'viewer:archive-group' archive_group.title_slug %}" role="button">View</a>
       </div>
     </div>
   </div>
@@ -61,7 +61,7 @@
         {% endwith %}
       </a>
       <div class="caption">
-        {{ archive.filecount }} | {{ archive.filesize|filesizeformat }} | {% if archive.crc32 %}<a href="{% url 'viewer:archive-download' archive.pk %}">DL</a>{% else %}DL{% endif %} | <a class="tag-preview" tabindex="0" role="button" data-toggle="popover" data-trigger="focus" data-pk="{{ archive.pk }}">Tags</a>
+        {{ archive.filecount }} | {{ archive.filesize|filesizeformat }} | {% if archive.crc32 %}<a href="{% url 'viewer:archive-download' archive.pk %}">DL</a>{% else %}DL{% endif %} | <a class="tag-preview" tabindex="0" role="button" data-bs-toggle="popover" data-bs-trigger="focus" data-bs-pk="{{ archive.pk }}">Tags</a>
         {% if user.is_authenticated and archive.extracted %}| <a href="{% url 'viewer:new-image-viewer' archive.pk '1' %}?{% url_replace 'extracted' '1' %}">View</a>{% endif %}
       </div>
     </div>
@@ -92,12 +92,10 @@
   {% load compress %}
   {{ archive_group_entry_formset.media }}
   {% compress css %}
-    <link href="{% static 'autocomplete_light/vendor/jal/src/style.css' %}" type="text/css" media="all" rel="stylesheet" />
+    <link href="{% static 'css/vendor/jal/style.css' %}" type="text/css" media="all" rel="stylesheet" />
   {% endcompress %}
   {% compress js %}
-    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/autocomplete.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/vendor/jal/src/text_widget.js' %}"></script>
-    <script type="text/javascript" src="{% static 'autocomplete_light/jal.js' %}"></script>
+    <script src="{% static 'js/vendor/jquery.autocomplete-light.min.js' %}"></script>
   {% endcompress %}
   {% compress js %}
     <script>
@@ -122,7 +120,7 @@
     $(document).ready(function() {
         $(".tag-preview").click(function() {
             var el = $(this);
-            var pk = $(this).data('pk');
+            var pk = $(this).data('bs-pk');
             if (tagData[pk]) {
                 return tagData[pk];
             }
@@ -139,7 +137,6 @@
             }
         });
     });
-
     </script>
   {% endcompress %}
 {% endblock %}

@@ -9,7 +9,8 @@ else
 }
 });
 
-$('.img-preview').popover({
+const popoverTriggerList = document.querySelectorAll('.img-preview')
+const popoverList = [...popoverTriggerList].map(popoverTriggerEl => new bootstrap.Popover(popoverTriggerEl, {
     trigger : 'hover',
     html : true,
     content : function(){
@@ -17,4 +18,4 @@ $('.img-preview').popover({
         '<img height="' + $(this).data('height') + '" width="' + $(this).data('width') + '" src="'+$(this).data('imageUrl')+'">' :
             '<img src="'+$(this).data('imageUrl')+'">';
     }
-});
+}))
