@@ -8,7 +8,7 @@ from django.urls import reverse
 from core.base.setup import Settings
 from core.base.utilities import timestamp_or_zero, timestamp_or_null
 
-from viewer.models import Gallery, Archive
+from viewer.models import Gallery, Archive, Image
 from viewer.utils.actions import event_log
 
 
@@ -186,3 +186,19 @@ def galleries_update_metadata(gallery_links, gallery_providers, user, reason, cs
             override_options=current_settings,
             gallery_callback=gallery_callback
         )
+
+
+def images_data_to_json(images: Iterable[Image]) -> dict[int, dict[str, Any]]:
+    return {
+        image.archive_position: {
+            'id': image.pk,
+            'position': image.position,
+            'archive_position': image.archive_position,
+            'filename': image.image_name,
+            'size': image.image_size,
+            'height': image.original_height,
+            'width': image.original_width,
+            'format': image.image_format,
+            'mode': image.image_mode,
+        } for image in images
+    }

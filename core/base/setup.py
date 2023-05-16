@@ -219,6 +219,8 @@ class Settings:
         self.redownload = False
         self.auto_download_nested = False
         self.recheck_wanted_on_update = False
+        self.vertical_image_max_width = 900
+        self.horizontal_image_max_width = 1500
         # Option to add metadata from a non-current link, but no archive download.
         # The logic for a current link is provider-specific
         self.non_current_links_as_deleted = False
@@ -475,6 +477,10 @@ class Settings:
                 self.recheck_wanted_on_update = config['general']['recheck_wanted_on_update']
             if 'force_log_level' in config['general']:
                 self.log_level = config['general']['force_log_level']
+            if 'vertical_image_max_width' in config['general']:
+                self.vertical_image_max_width = config['general']['vertical_image_max_width']
+            if 'horizontal_image_max_width' in config['general']:
+                self.horizontal_image_max_width = config['general']['horizontal_image_max_width']
 
         if 'cloning_image_tool' in config:
             if 'enable' in config['cloning_image_tool']:

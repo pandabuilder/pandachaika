@@ -478,7 +478,7 @@ class WebCrawler(object):
                             archive.title = archive.gallery.title
                             archive.title_jpn = archive.gallery.title_jpn
                             archive.simple_save()
-                            archive.tags.set(archive.gallery.tags.all())
+                            archive.set_tags_from_gallery(archive.gallery)
 
     def update_galleries_missing_thumbnails(self, args, current_settings):
         galleries = Gallery.objects.filter(
@@ -514,6 +514,6 @@ class WebCrawler(object):
                             archive.title = archive.gallery.title
                             archive.title_jpn = archive.gallery.title_jpn
                             archive.simple_save()
-                            archive.tags.set(archive.gallery.tags.all())
+                            archive.set_tags_from_gallery(archive.gallery)
         else:
             logger.info("No galleries with missing thumbnail after applying filters")

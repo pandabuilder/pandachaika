@@ -58,6 +58,9 @@ general:
   auto_phash_images: false
   # Create marks for archives that when their metadata change, the accepted WantedGallery is no longer valid
   recheck_wanted_on_update: false
+  # Sizes to apply when using the resized extract option.
+  vertical_image_max_width: 900
+  horizontal_image_max_width: 1500
 # Extra tool to apply to images when using the cloning tool, use 'input' and 'output' kwargs on executable_path to replace on runtime
 cloning_image_tool:
   enable: false

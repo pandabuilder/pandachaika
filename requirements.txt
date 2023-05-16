@@ -1,24 +1,25 @@
 # Chose one depending on database backend
 # mysqlclient
-psycopg2==2.9.5
+psycopg==3.1.9
 # Main
 python-dateutil==2.8.2
 twitter==1.19.6
-beautifulsoup4==4.11.2
+beautifulsoup4==4.12.2
 CherryPy==18.8.0
-Django==4.1.7
+Django==4.2.1
 django-compressor==4.3.1
-Pillow==9.4.0
+Pillow==9.5.0
 rarfile==4.0
-py7zr==0.20.4
-requests==2.28.2
+py7zr==0.20.5
+requests==2.30.0
 feedparser==6.0.10
 transmissionrpc==0.11
-django-autocomplete-light==3.9.4
+django-autocomplete-light==3.9.7
 -e git+https://github.com/pandabuilder/django-vite@multi-config#egg=django-vite
 elasticsearch==7.17.4
 elasticsearch-dsl==7.4.1
 django-simple-history==3.3.0
 PyYAML==6.0
-django-debug-toolbar~=3.8.1
 deckar01-ratelimit==3.0.2
+# For image operations in edge cases
+numpy==1.24.3

@@ -30,7 +30,7 @@ from viewer.utils.actions import event_log
 from viewer.forms import (
     ArchiveSearchForm,
     GallerySearchForm,
-    SpanErrorList, ArchiveSearchSimpleForm, BootstrapPasswordChangeForm, ProfileChangeForm, UserChangeForm)
+    DivErrorList, ArchiveSearchSimpleForm, BootstrapPasswordChangeForm, ProfileChangeForm, UserChangeForm)
 from viewer.models import (
     Archive, Image, Tag, Gallery,
     UserArchivePrefs, WantedGallery,
@@ -135,7 +135,7 @@ def viewer_logout(request: HttpRequest) -> HttpResponse:
 @login_required
 def change_password(request: HttpRequest) -> HttpResponse:
     if request.method == 'POST':
-        form = BootstrapPasswordChangeForm(request.user, request.POST, error_class=SpanErrorList)
+        form = BootstrapPasswordChangeForm(request.user, request.POST, error_class=DivErrorList)
         if form.is_valid():
             user = form.save()
             update_session_auth_hash(request, user) 
@@ -144,7 +144,7 @@ def change_password(request: HttpRequest) -> HttpResponse:
         else:
             messages.error(request, 'Please correct the error below.')
     else:
-        form = BootstrapPasswordChangeForm(request.user, error_class=SpanErrorList)
+        form = BootstrapPasswordChangeForm(request.user, error_class=DivErrorList)
     return render(request, 'viewer/accounts/change_password.html', {
         'form': form
     })
@@ -155,8 +155,8 @@ def change_profile(request: AuthenticatedHttpRequest) -> HttpResponse:
     if not hasattr(request.user, 'profile'):
         Profile.objects.create(user=request.user)
     if request.method == 'POST':
-        user_form = UserChangeForm(request.POST, instance=request.user, error_class=SpanErrorList)
-        profile_form = ProfileChangeForm(request.POST, instance=request.user.profile, error_class=SpanErrorList)
+        user_form = UserChangeForm(request.POST, instance=request.user, error_class=DivErrorList)
+        profile_form = ProfileChangeForm(request.POST, instance=request.user.profile, error_class=DivErrorList)
         if all((user_form.is_valid(), profile_form.is_valid())):
             user = user_form.save()
             profile = profile_form.save(commit=False)
@@ -167,8 +167,8 @@ def change_profile(request: AuthenticatedHttpRequest) -> HttpResponse:
         else:
             messages.error(request, 'Please correct the error below.')
     else:
-        user_form = UserChangeForm(instance=request.user, error_class=SpanErrorList)
-        profile_form = ProfileChangeForm(instance=request.user.profile, error_class=SpanErrorList)
+        user_form = UserChangeForm(instance=request.user, error_class=DivErrorList)
+        profile_form = ProfileChangeForm(instance=request.user.profile, error_class=DivErrorList)
     return render(request, 'viewer/accounts/change_profile.html', {
         'profile_form': profile_form,
         'user_form': user_form
@@ -687,7 +687,7 @@ def gallery_list(request: HttpRequest, mode: str = 'none', tag: Optional[str] = 
 
 filter_galleries_defer = (
     "origin", "status", "thumbnail_url", "dl_type", "public", "fjord",
-    "hidden", "rating", "expunged", "comment", "gallery_container_id", "magazine_id", "uploader",
+    "hidden", "rating", "expunged", "comment", "gallery_container", "magazine", "uploader",
     "reason", "last_modified"
 )
 
@@ -859,10 +859,10 @@ def search(request: HttpRequest, mode: str = 'none', tag: Optional[str] = None) 
         form = ArchiveSearchForm(initial={'title': '', 'tags': ''})
         form_simple = ArchiveSearchSimpleForm(initial={'source_type': ''})
     else:
-        form_simple = ArchiveSearchSimpleForm(request.GET, error_class=SpanErrorList)
+        form_simple = ArchiveSearchSimpleForm(request.GET, error_class=DivErrorList)
         form_simple.is_valid()
         for field_name, errors in form_simple.errors.items():
-            messages.error(request, field_name + ": " + ", ".join(errors), extra_tags='danger')
+            messages.error(request, field_name + ": " + ", ".join([str(x) for x in errors]), extra_tags='danger')
         if mode == 'tag' and tag:
             display_prms['tags'] = "^" + tag
         # create dictionary of properties for each archive and a dict of

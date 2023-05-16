@@ -121,7 +121,7 @@ class ArchiveAdmin(SimpleHistoryAdmin):
     def save_related(self, request: HttpRequest, form: ModelForm, formsets: BaseFormSet, change):
         super(ArchiveAdmin, self).save_related(request, form, formsets, change)
         if form.instance.gallery and form.instance.gallery.tags.all():
-            form.instance.tags.set(form.instance.gallery.tags.all())
+            form.instance.set_tags_from_gallery(form.instance.gallery)
 
 
 class ArchiveGroupEntryInline(admin.TabularInline):

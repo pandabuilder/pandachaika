@@ -549,6 +549,56 @@ class TagAutocomplete(ListView):
         return results.order_by('pk')[0:self.limit_choices]
 
 
+class TagAutocompleteJson(ListView):
+
+    model = Tag
+
+    limit_choices = 10
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.modifier = ''
+
+    def render_to_response(self, context: dict[str, Any], **response_kwargs: Any) -> HttpResponse:
+
+        tag_list = [
+            self.choice_json(c) for c in self.choices_for_request()
+        ]
+
+        return http.JsonResponse({'results': tag_list})
+
+    def choice_json(self, choice: Tag) -> dict:
+        return {
+            'id': choice.pk,
+            'modifier': self.modifier,
+            # 'source': str(choice.source),
+            'scope': str(choice.scope),
+            'name': str(choice.name),
+        }
+
+    def choices_for_request(self) -> Iterable[Tag]:
+
+        tag_clean = self.request.GET.get('q', '').replace(" ", "_")
+        m = re.match(r"^([-^])", tag_clean)
+        if m:
+            self.modifier = m.group(1)
+            tag_clean = tag_clean.replace(self.modifier, "")
+        else:
+            self.modifier = ''
+        scope_name = tag_clean.split(":", maxsplit=1)
+
+        if len(scope_name) > 1:
+            results = Tag.objects.filter(
+                Q(name__contains=scope_name[1]),
+                Q(scope__contains=scope_name[0]))
+        else:
+            results = Tag.objects.filter(
+                Q(name__contains=tag_clean)
+                | Q(scope__contains=tag_clean))
+
+        return results.order_by('pk')[0:self.limit_choices]
+
+
 class TagPkAutocomplete(autocomplete.Select2QuerySetView):
     model = Tag
 

@@ -139,12 +139,12 @@ def archive_details(request: HttpRequest, pk: int, mode: str = 'view') -> HttpRe
             # check whether it's valid:
             if edit_form.is_valid():
                 # TODO: Maybe this should be in save method for the form
-                new_archive = edit_form.save(commit=False)
+                new_archive: Archive = edit_form.save(commit=False)
                 new_archive.simple_save()
                 edit_form.save_m2m()
                 if new_archive.gallery:
                     if new_archive.gallery.tags.all():
-                        new_archive.tags.set(new_archive.gallery.tags.all())
+                        new_archive.set_tags_from_gallery(new_archive.gallery)
                     if new_archive.gallery != old_gallery:
                         new_archive.title = new_archive.gallery.title
                         new_archive.title_jpn = new_archive.gallery.title_jpn
@@ -322,7 +322,7 @@ def archive_update(request: HttpRequest, pk: int, tool: Optional[str] = None, to
             archive.gallery_id = p["possible_matches"]
             archive.title = matched_gallery.title
             archive.title_jpn = matched_gallery.title_jpn
-            archive.tags.set(matched_gallery.tags.all())
+            archive.set_tags_from_gallery(matched_gallery)
 
             archive.match_type = "manual:cutoff"
             archive.possible_matches.clear()
@@ -1133,6 +1133,7 @@ def delete_archive(request: HttpRequest, pk: int) -> HttpResponse:
 
             gallery = archive.gallery
             archive_report = archive.delete_text_report()
+            old_gallery_link = None
 
             user_reason = p.get('reason', '')
 
@@ -1166,14 +1167,23 @@ def delete_archive(request: HttpRequest, pk: int) -> HttpResponse:
                 archive.delete_files_but_archive()
                 archive.delete()
 
-            event_log(
-                request.user,
-                'DELETE_ARCHIVE',
-                reason=user_reason,
-                content_object=gallery,
-                result='deleted',
-                data=archive_report
-            )
+            if old_gallery_link:
+                event_log(
+                    request.user,
+                    'DELETE_ARCHIVE',
+                    reason=user_reason,
+                    result='deleted',
+                    data=archive_report
+                )
+            else:
+                event_log(
+                    request.user,
+                    'DELETE_ARCHIVE',
+                    reason=user_reason,
+                    content_object=gallery,
+                    result='deleted',
+                    data=archive_report
+                )
 
             return HttpResponseRedirect(reverse('viewer:main-page'))
 

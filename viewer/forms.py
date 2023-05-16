@@ -313,14 +313,9 @@ class ArchiveManageSearchSimpleForm(forms.Form):
     )
 
 
-class SpanErrorList(ErrorList):
-    def __str__(self) -> str:              # __unicode__ on Python 2
-        return self.as_divs()
+class DivErrorList(ErrorList):
 
-    def as_divs(self) -> str:
-        if not self:
-            return ''
-        return '<div class="errorlist">%s</div>' % ''.join(['<div  class="alert alert-danger error" role="alert">%s</div>' % e for e in self])
+    template_name = 'viewer/forms/errors_as_div.html'
 
 
 class ArchiveGroupSelectForm(forms.Form):

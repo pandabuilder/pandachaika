@@ -50,6 +50,7 @@ from simple_history.models import HistoricalRecords
 
 
 from core.base.comparison import get_list_closer_gallery_titles_from_list
+from core.base.image_ops import img_to_thumbnail
 from core.base.utilities import (
     calc_crc32, get_zip_filesize,
     get_zip_fileinfo,
@@ -525,7 +526,7 @@ class ArchiveManager(models.Manager['Archive']):
             gallery, _ = Gallery.objects.get_or_create(gid=gid_provider[0], provider=gid_provider[1])
             archive.gallery = gallery
             archive.save()
-            archive.tags.set(gallery.tags.all())
+            archive.set_tags_from_gallery(gallery)
 
         return archive
 
@@ -536,7 +537,7 @@ class ArchiveManager(models.Manager['Archive']):
         if gid_provider:
             gallery, _ = Gallery.objects.get_or_create(gid=gid_provider[0], provider=gid_provider[1])
             archive.gallery = gallery
-            archive.tags.set(gallery.tags.all())
+            archive.set_tags_from_gallery(gallery)
 
         if archive.title:
             base_file_name = replace_illegal_name(archive.title)
@@ -2198,82 +2199,12 @@ class Archive(models.Model):
 
     # TODO: Replace every use of extract toggle for extract and reduce, to avoid race conditions.
     # TODO: The ones left are used from JS and API.
-    def extract_toggle(self) -> bool:
+    def extract_toggle(self, resized=True):
 
-        extracted_images = self.image_set.filter(extracted=True)
-
-        if extracted_images:
-            for img in extracted_images:
-                img.image.delete(save=False)
-                img.image = None
-                img.thumbnail.delete(save=False)
-                img.thumbnail = None
-                img.extracted = False
-                img.save()
+        if self.extracted:
+            self.reduce()
         else:
-            try:
-                my_zip = zipfile.ZipFile(
-                    self.zipped.path, 'r')
-            except (zipfile.BadZipFile, NotImplementedError):
-                return False
-
-            if my_zip.testzip():
-                my_zip.close()
-                return False
-
-            os.makedirs(pjoin(settings.MEDIA_ROOT, "images/extracted/archive_{id}/full/".format(id=self.pk)), exist_ok=True)
-            os.makedirs(pjoin(settings.MEDIA_ROOT, "images/extracted/archive_{id}/thumb/".format(id=self.pk)), exist_ok=True)
-
-            non_extracted_images = self.image_set.filter(extracted=False)
-            if not non_extracted_images:
-                self.generate_image_set()
-                non_extracted_images = self.image_set.filter(extracted=False)
-            non_extracted_positions = non_extracted_images.values_list('archive_position', flat=True)
-
-            filtered_files = get_images_from_zip(my_zip)
-
-            for count, filename_tuple in enumerate(filtered_files, start=1):
-                if count not in non_extracted_positions:
-                    continue
-                try:
-                    image = non_extracted_images.get(archive_position=count)
-                except Image.DoesNotExist:
-                    self.generate_image_set()
-                    image = non_extracted_images.get(archive_position=count)
-                image_name = os.path.split(filename_tuple[2].replace('\\', os.sep))[1]
-
-                # Image
-                img_path = upload_imgpath(self, image_name)
-                full_img_name = pjoin(settings.MEDIA_ROOT, img_path)
-                thumb_img_name = upload_thumbpath_handler(image, image_name)
-
-                with open(full_img_name, "wb") as current_new_img, my_zip.open(filename_tuple[1] or filename_tuple[0]) as current_file:
-                    if filename_tuple[1]:
-                        with zipfile.ZipFile(current_file) as my_nested_zip:
-                            with my_nested_zip.open(filename_tuple[0]) as current_img:
-                                shutil.copyfileobj(current_img, current_new_img)
-                    else:
-                        shutil.copyfileobj(current_file, current_new_img)
-                image.image.name = img_path
-
-                # Thumbnail
-                im = PImage.open(full_img_name)
-                if im.mode != 'RGB':
-                    im = im.convert('RGB')
-
-                im.thumbnail((200, 290), PImage.ANTIALIAS)
-                im.save(pjoin(settings.MEDIA_ROOT, thumb_img_name), "JPEG")
-                image.thumbnail.name = thumb_img_name
-
-                image.extracted = True
-                image.save()
-                im.close()
-
-            my_zip.close()
-
-        self.extracted = not self.extracted
-        self.simple_save()
-        return True
+            self.extract(resized=resized)
 
     def reduce(self):
 
@@ -2346,9 +2277,9 @@ class Archive(models.Model):
                                     im_resized = im_resized.convert('RGB')
                                 im_w, im_h = im_resized.size
                                 if im_w > im_h:
-                                    im_resized.thumbnail((1500, 9999), PImage.ANTIALIAS)
+                                    im_resized.thumbnail((settings.CRAWLER_SETTINGS.horizontal_image_max_width, 9999), PImage.LANCZOS)
                                 else:
-                                    im_resized.thumbnail((900, 9999), PImage.ANTIALIAS)
+                                    im_resized.thumbnail((settings.CRAWLER_SETTINGS.vertical_image_max_width, 9999), PImage.LANCZOS)
                                 im_resized.save(current_new_img, "JPEG")
                             else:
                                 shutil.copyfileobj(current_img, current_new_img)
@@ -2359,9 +2290,9 @@ class Archive(models.Model):
                             im_resized = im_resized.convert('RGB')
                         im_w, im_h = im_resized.size
                         if im_w > im_h:
-                            im_resized.thumbnail((1500, 9999), PImage.ANTIALIAS)
+                            im_resized.thumbnail((settings.CRAWLER_SETTINGS.horizontal_image_max_width, 9999), PImage.LANCZOS)
                         else:
-                            im_resized.thumbnail((900, 9999), PImage.ANTIALIAS)
+                            im_resized.thumbnail((settings.CRAWLER_SETTINGS.vertical_image_max_width, 9999), PImage.LANCZOS)
                         im_resized.save(current_new_img, "JPEG")
                     else:
                         shutil.copyfileobj(current_file, current_new_img)
@@ -2369,10 +2300,7 @@ class Archive(models.Model):
 
             # Thumbnail
             im = PImage.open(full_img_name)
-            if im.mode != 'RGB':
-                im = im.convert('RGB')
-
-            im.thumbnail((200, 290), PImage.ANTIALIAS)
+            im = img_to_thumbnail(im)
             im.save(pjoin(settings.MEDIA_ROOT, thumb_img_name), "JPEG")
             image.thumbnail.name = thumb_img_name
 
@@ -2580,7 +2508,7 @@ class Archive(models.Model):
 
         # tags
         if self.gallery and self.gallery.tags.all():
-            self.tags.set(self.gallery.tags.all())
+            self.set_tags_from_gallery(self.gallery)
 
         # title_jpn
         if self.gallery and self.gallery.title_jpn:
@@ -2618,9 +2546,7 @@ class Archive(models.Model):
 
     def create_thumbnail_from_io_image(self, current_img):
         im = PImage.open(current_img)
-        if im.mode != 'RGB':
-            im = im.convert('RGB')
-        im.thumbnail((200, 290), PImage.ANTIALIAS)
+        im = img_to_thumbnail(im)
         thumb_name = thumb_path_handler(self, "thumb2.jpg")
         os.makedirs(os.path.dirname(pjoin(settings.MEDIA_ROOT, thumb_name)), exist_ok=True)
         im.save(pjoin(settings.MEDIA_ROOT, thumb_name), "JPEG")
@@ -3023,7 +2949,7 @@ class Archive(models.Model):
         self.match_type = "manual:user"
         self.possible_matches.clear()
         self.simple_save()
-        self.tags.set(matched_gallery.tags.all())
+        self.set_tags_from_gallery(matched_gallery)
         if self.public:
             matched_gallery.public = True
             matched_gallery.save()
@@ -3032,6 +2958,14 @@ class Archive(models.Model):
         return Archive.objects.filter(tags__in=self.tags.all(), **kwargs).exclude(pk=self.pk).\
             annotate(num_common_tags=Count('pk')).filter(num_common_tags__gt=num_common_tags).distinct().\
             order_by('-num_common_tags')
+
+    def set_tags_from_gallery(self, gallery: Gallery, preserve_custom: bool = True):
+        if preserve_custom:
+            current_custom_tags = list(self.custom_tags())
+            gallery_tags = list(gallery.tags.all())
+            self.tags.set(gallery_tags + current_custom_tags)
+        else:
+            self.tags.set(gallery.tags.all())
 
 
 class ArchiveTag(models.Model):
@@ -3314,7 +3248,7 @@ class Image(models.Model):
                     im = PImage.open(io.BytesIO(full_image))
                     if im.mode != 'RGB':
                         im = im.convert('RGB')
-                    im.thumbnail((200, 290), PImage.ANTIALIAS)
+                    im.thumbnail((200, 290), PImage.LANCZOS)
                     img_bytes = io.BytesIO()
                     im.save(img_bytes, format='JPEG')
                     return img_bytes.getvalue()
@@ -3501,11 +3435,7 @@ class Mention(models.Model):
         if not self.image:
             return
         im = PImage.open(self.image.path)
-        if im.mode != 'RGB':
-            im = im.convert('RGB')
-
-        # large thumbnail
-        im.thumbnail((200, 290), PImage.ANTIALIAS)
+        im = img_to_thumbnail(im)
         thumb_relative_path = upload_mention_thumb_handler(self, os.path.splitext(self.image.name)[1])
         thumb_fn = pjoin(settings.MEDIA_ROOT, thumb_relative_path)
         os.makedirs(os.path.dirname(thumb_fn), exist_ok=True)

@@ -19,14 +19,34 @@ from django.conf import settings
 
 from core.base.setup import Settings
 from core.base.utilities import str_to_int, timestamp_or_zero
-from viewer.models import Archive, Gallery, UserArchivePrefs
+from viewer.models import Archive, Gallery, UserArchivePrefs, Image
 from viewer.utils.matching import generate_possible_matches_for_archives
 from viewer.views.head import gallery_filter_keys, gallery_order_fields, filter_archives_simple, archive_filter_keys
 from viewer.utils.functions import gallery_search_results_to_json, gallery_search_dict_to_json, \
-    archive_search_result_to_json
+    archive_search_result_to_json, images_data_to_json
 
 crawler_settings = settings.CRAWLER_SETTINGS
 logger = logging.getLogger(__name__)
+
+
+def get_galleries_from_request(data: QueryDict, request: HttpRequest) -> QuerySet[Gallery]:
+    args = data.copy()
+    for k in gallery_filter_keys:
+        if k not in args:
+            args[k] = ''
+    keys = ("sort", "asc_desc")
+    for k in keys:
+        if k not in args:
+            args[k] = ''
+    # args = data
+    if not request.user.is_authenticated:
+        args['public'] = '1'
+    else:
+        args['public'] = ''
+    galleries_matcher = filter_galleries_no_request(args).prefetch_related(
+        'tags'
+    )
+    return galleries_matcher
 
 
 @csrf_exempt
@@ -66,638 +86,600 @@ def api_logout(request: HttpRequest) -> HttpResponse:
 @csrf_exempt
 def json_search(request: HttpRequest) -> HttpResponse:
 
-    if request.method == 'GET':
-        data = request.GET
-        # Get fields from a specific archive.
-        if 'archive' in data:
-            try:
-                archive_id = int(data['archive'])
-            except ValueError:
-                return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
-            try:
-                archive = Archive.objects.get(pk=archive_id)
-            except Archive.DoesNotExist:
-                return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
-            if not archive.public and not request.user.is_authenticated:
-                return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
-            response = json.dumps(
-                {
-                    'title': archive.title,
-                    'title_jpn': archive.title_jpn,
-                    'category': archive.gallery.category if archive.gallery else '',
-                    'uploader': archive.gallery.uploader if archive.gallery else '',
-                    'posted': int(timestamp_or_zero(archive.gallery.posted)) if archive.gallery else '',
-                    'filecount': archive.filecount,
-                    'filesize': archive.filesize,
-                    'expunged': archive.gallery.expunged if archive.gallery else '',
-                    'rating': float(str_to_int(archive.gallery.rating)) if archive.gallery else '',
-                    'fjord': archive.gallery.fjord if archive.gallery else '',
-                    'tags': archive.tag_list(),
-                    'download': reverse('viewer:archive-download', args=(archive.pk,)),
-                    'gallery': archive.gallery.pk if archive.gallery else '',
-                },
-                # indent=2,
-                sort_keys=True,
-                ensure_ascii=False,
-            )
-            return HttpResponse(response, content_type="application/json; charset=utf-8")
-        elif 'archives' in data:
-            try:
-                archive_ids: list[str] = data.getlist('archives', [])
-            except ValueError:
-                return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
-            if not archive_ids:
-                return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
-
-            try:
-                [int(x) for x in archive_ids]
-            except ValueError:
-                return HttpResponse(json.dumps({'result': "Invalid Archive ID."}),
-                                    content_type="application/json; charset=utf-8")
-            try:
-                if request.user.is_authenticated:
-                    archives = Archive.objects.filter(pk__in=archive_ids)
-                else:
-                    archives = Archive.objects.filter(pk__in=archive_ids, public=True)
-            except Archive.DoesNotExist:
-                return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
-            response = json.dumps(
-                archive_search_result_to_json(request, archives),
-                # indent=2,
-                ensure_ascii=False,
-            )
-            return HttpResponse(response, content_type="application/json; charset=utf-8")
-        # Get tags from a specific archive.
-        elif 'at' in data:
-            try:
-                archive_id = int(data['at'])
-            except ValueError:
-                return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
-            try:
-                archive = Archive.objects.get(pk=archive_id)
-            except Archive.DoesNotExist:
-                return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
-            if not archive.public and not request.user.is_authenticated:
-                return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
-            response = json.dumps(
-                {
-                    'tags': archive.tag_list_sorted(),
-                },
-                # indent=2,
-                sort_keys=True,
-                ensure_ascii=False,
-            )
-            return HttpResponse(response, content_type="application/json; charset=utf-8")
-        # Get hashes from a specific archive.
-        elif 'ah' in data:
-            try:
-                archive_id = int(data['ah'])
-            except ValueError:
-                return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
-            try:
-                archive = Archive.objects.get(pk=archive_id)
-            except Archive.DoesNotExist:
-                return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
-            if not archive.public and not request.user.is_authenticated:
-                return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
-            response = json.dumps(
-                {
-                    'image_hashes': [x.sha1 for x in archive.image_set.all()],
-                },
-                # indent=2,
-                sort_keys=True,
-                ensure_ascii=False,
-            )
-            return HttpResponse(response, content_type="application/json; charset=utf-8")
-        # Get fields from a specific gallery.
-        elif 'gallery' in data:
-            try:
-                gallery_id = int(data['gallery'])
-            except ValueError:
-                return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
-            try:
-                gallery = Gallery.objects.get(pk=gallery_id)
-            except Gallery.DoesNotExist:
-                return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
-            if not gallery.public and not request.user.is_authenticated:
-                return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
-            response = json.dumps(
-                {
-                    'title': gallery.title,
-                    'title_jpn': gallery.title_jpn,
-                    'category': gallery.category,
-                    'uploader': gallery.uploader,
-                    'posted': int(timestamp_or_zero(gallery.posted)),
-                    'filecount': gallery.filecount,
-                    'filesize': gallery.filesize,
-                    'expunged': gallery.expunged,
-                    'rating': float(str_to_int(gallery.rating)),
-                    'fjord': gallery.fjord,
-                    'link': gallery.get_link(),
-                    'tags': gallery.tag_list(),
-                    'archives': [
-                        {
-                            'id': archive.id, 'download': reverse('viewer:archive-download', args=(archive.pk,))
-                        } for archive in gallery.archive_set.filter_by_authenticated_status(
-                            authenticated=request.user.is_authenticated
-                        )
-                    ],
-                },
-                # indent=2,
-                sort_keys=True,
-                ensure_ascii=False,
-            )
-            return HttpResponse(response, content_type="application/json; charset=utf-8")
-        # Get fields from a specific gallery (Using gid).
-        elif 'gid' in data:
-            gallery_gid = data['gid']
-            if 'provider' in data:
-                possible_gallery = Gallery.objects.filter_first(gid=gallery_gid, provider=data['provider'])
-            else:
-                possible_gallery = Gallery.objects.filter_first(gid=gallery_gid)
-            if not possible_gallery:
-                return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
-            else:
-                gallery = possible_gallery
-            if not gallery.public and not request.user.is_authenticated:
-                return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
-            response = json.dumps(
-                {
-                    'title': gallery.title,
-                    'title_jpn': gallery.title_jpn,
-                    'category': gallery.category,
-                    'uploader': gallery.uploader,
-                    'posted': int(timestamp_or_zero(gallery.posted)),
-                    'filecount': gallery.filecount,
-                    'filesize': gallery.filesize,
-                    'expunged': gallery.expunged,
-                    'rating': float(str_to_int(gallery.rating)),
-                    'fjord': gallery.fjord,
-                    'link': gallery.get_link(),
-                    'tags': gallery.tag_list(),
-                    'archives': [
-                        {
-                            'id': archive.id, 'download': reverse('viewer:archive-download', args=(archive.pk,))
-                        } for archive in gallery.archive_set.filter_by_authenticated_status(
-                            authenticated=request.user.is_authenticated
-                        )
-                    ],
-                },
-                # indent=2,
-                sort_keys=True,
-                ensure_ascii=False,
-            )
-            return HttpResponse(response, content_type="application/json; charset=utf-8")
-        # Get tags from a specific Gallery.
-        elif 'gt' in data:
-            try:
-                gallery_id = int(data['gt'])
-            except ValueError:
-                return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
-            try:
-                gallery = Gallery.objects.get(pk=gallery_id)
-            except Gallery.DoesNotExist:
-                return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
-            if not gallery.public and not request.user.is_authenticated:
-                return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
-            response = json.dumps(
-                {
-                    'tags': gallery.tag_list_sorted(),
-                },
-                # indent=2,
-                sort_keys=True,
-                ensure_ascii=False,
-            )
-            return HttpResponse(response, content_type="application/json; charset=utf-8")
-        # Get fields from several archives by one of its images sha1 value.
-        elif 'sha1' in data:
-            archives = Archive.objects.filter(image__sha1=data['sha1']).select_related('gallery').prefetch_related('tags')
-
-            if not request.user.is_authenticated:
-                archives = archives.filter(public=True)
-
-            if not archives:
-                return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
-
-            response = json.dumps(
-                [{
-                    'id': archive.id,
-                    'title': archive.title,
-                    'title_jpn': archive.title_jpn,
-                    'category': archive.gallery.category if archive.gallery else '',
-                    'uploader': archive.gallery.uploader if archive.gallery else '',
-                    'posted': int(timestamp_or_zero(archive.gallery.posted)) if archive.gallery else '',
-                    'filecount': archive.filecount,
-                    'filesize': archive.filesize,
-                    'expunged': archive.gallery.expunged if archive.gallery else '',
-                    'rating': float(str_to_int(archive.gallery.rating)) if archive.gallery else '',
-                    'fjord': archive.gallery.fjord if archive.gallery else '',
-                    'tags': archive.tag_list(),
-                    'download': reverse('viewer:archive-download', args=(archive.pk,)),
-                    'gallery': archive.gallery.pk if archive.gallery else '',
-                } for archive in archives],
-                # indent=2,
-                sort_keys=True,
-                ensure_ascii=False,
-            )
-            return HttpResponse(response, content_type="application/json; charset=utf-8")
-        # Get reduced number of fields from several archives by doing filtering.
-        elif 'qa' in data:
-
-            archive_args = request.GET.copy()
-
-            params: dict[str, str] = {
-                'sort': 'create_date',
-                'asc_desc': 'desc',
-            }
-
-            for k, v in archive_args.items():
-                if isinstance(v, str):
-                    params[k] = v
-
-            for k in archive_filter_keys:
-                if k not in params:
-                    params[k] = ''
-
-            results = filter_archives_simple(
-                params, authenticated=request.user.is_authenticated
-            ).prefetch_related('tags')
-
-            if not request.user.is_authenticated:
-                results = results.filter(public=True).order_by('-public_date')
-
-            response = json.dumps(
-                [{
-                    'id': o.pk,
-                    'title': o.title,
-                    'tags': o.tag_list(),
-                    'url': reverse('viewer:archive-download', args=(o.pk,))} for o in results
-                 ]
-            )
-            return HttpResponse(response, content_type="application/json; charset=utf-8")
-        # Get reduced number of fields from several archives by doing a simple filtering.
-        elif 'q' in data:
-            q_args = data['q']
-            if not request.user.is_authenticated:
-                results = simple_archive_filter(q_args, public=True).prefetch_related('tags')
-            else:
-                results = simple_archive_filter(q_args, public=False).prefetch_related('tags')
-            response = json.dumps(
-                [{
-                    'id': o.pk,
-                    'title': o.title,
-                    'tags': o.tag_list(),
-                    'url': reverse('viewer:archive-download', args=(o.pk,))} for o in results
-                 ]
-            )
-            return HttpResponse(response, content_type="application/json; charset=utf-8")
-        # Get galleries associated with archive by crc32, used with matcher.
-        elif 'match' in data:
-
-            args = data.copy()
-
-            for k in gallery_filter_keys:
-                if k not in args:
-                    args[k] = ''
-
-            keys = ("sort", "asc_desc")
-
-            for k in keys:
-                if k not in args:
-                    args[k] = ''
-
-            # args = data
-            # args = data
-            if not request.user.is_authenticated:
-                args['public'] = '1'
-            else:
-                args['public'] = ''
-
-            galleries_matcher = filter_galleries_no_request(args).prefetch_related(
-                'tags'
-            )
-
-            if not galleries_matcher:
-                return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
-            response = json.dumps(
-                [{
-                    'id': gallery.pk,
-                    'gid': gallery.gid,
-                    'token': gallery.token,
-                    'title': gallery.title,
-                    'title_jpn': gallery.title_jpn,
-                    'category': gallery.category,
-                    'uploader': gallery.uploader,
-                    'comment': gallery.comment,
-                    'posted': int(timestamp_or_zero(gallery.posted)),
-                    'filecount': gallery.filecount,
-                    'filesize': gallery.filesize,
-                    'expunged': gallery.expunged,
-                    'provider': gallery.provider,
-                    'rating': gallery.rating,
-                    'reason': gallery.reason,
-                    'fjord': gallery.fjord,
-                    'tags': gallery.tag_list(),
-                    'link': gallery.get_link(),
-                    'thumbnail': request.build_absolute_uri(
-                        reverse('viewer:gallery-thumb', args=(gallery.pk,))) if gallery.thumbnail else '',
-                    'thumbnail_url': gallery.thumbnail_url,
-                    'gallery_container': gallery.gallery_container.gid if gallery.gallery_container else '',
-                    'parent_gid': gallery.parent_gallery.gid if gallery.parent_gallery else '',
-                    'first_gid': gallery.first_gallery.gid if gallery.first_gallery else '',
-                    'magazine': gallery.magazine.gid if gallery.magazine else ''
-                } for gallery in galleries_matcher
-                ],
-                # indent=2,
-                sort_keys=True,
-                ensure_ascii=False,
-            )
-            return HttpResponse(response, content_type="application/json; charset=utf-8")
-        # Get fields from several galleries by doing a simple filtering.
-        elif 'g' in data:
-
-            args = data.copy()
-
-            for k in gallery_filter_keys:
-                if k not in args:
-                    args[k] = ''
-
-            keys = ("sort", "asc_desc")
-
-            for k in keys:
-                if k not in args:
-                    args[k] = ''
-
-            # args = data
-            if not request.user.is_authenticated:
-                args['public'] = '1'
-            else:
-                args['public'] = ''
-            results_gallery = filter_galleries_no_request(args).prefetch_related(
-                'tags'
-            )
-            if not results_gallery:
-                return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
-            response = json.dumps(
-                [{
-                    'title': gallery.title,
-                    'title_jpn': gallery.title_jpn,
-                    'category': gallery.category,
-                    'uploader': gallery.uploader,
-                    'posted': int(timestamp_or_zero(gallery.posted)),
-                    'filecount': gallery.filecount,
-                    'filesize': gallery.filesize,
-                    'expunged': gallery.expunged,
-                    'source': gallery.provider,
-                    'rating': float(str_to_int(gallery.rating)),
-                    'fjord': gallery.fjord,
-                    'tags': gallery.tag_list(),
-                } for gallery in results_gallery
-                ],
-                # indent=2,
-                sort_keys=True,
-                ensure_ascii=False,
-            )
-            return HttpResponse(response, content_type="application/json; charset=utf-8")
-        # this part should be used in conjunction with json crawler provider, to transfer easily already fetched links.
-        # Get more fields from several galleries by doing a simple filtering.
-        elif 'gc' in data:
-
-            args = data.copy()
-
-            for k in gallery_filter_keys:
-                if k not in args:
-                    args[k] = ''
-
-            keys = ("sort", "asc_desc")
-
-            for k in keys:
-                if k not in args:
-                    args[k] = ''
-
-            # args = data
-            if not request.user.is_authenticated:
-                args['public'] = '1'
-            else:
-                args['public'] = ''
-            results_gallery = filter_galleries_no_request(args).prefetch_related(
-                'tags'
-            )
-            if not results_gallery:
-                return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
-            response = json.dumps(
-                [{
-                    'gid': gallery.gid,
-                    'token': gallery.token,
-                    'title': gallery.title,
-                    'title_jpn': gallery.title_jpn,
-                    'category': gallery.category,
-                    'uploader': gallery.uploader,
-                    'posted': int(timestamp_or_zero(gallery.posted)),
-                    'filecount': gallery.filecount,
-                    'filesize': gallery.filesize,
-                    'expunged': gallery.expunged,
-                    'provider': gallery.provider,
-                    'rating': gallery.rating,
-                    'fjord': gallery.fjord,
-                    'tags': gallery.tag_list(),
-                    'link': gallery.get_link()
-                } for gallery in results_gallery
-                ],
-                # indent=2,
-                sort_keys=True,
-                ensure_ascii=False,
-            )
-            return HttpResponse(response, content_type="application/json; charset=utf-8")
-        # this part should be used in conjunction with json crawler provider, to transfer easily already fetched links.
-        # Get more fields from several galleries by doing a simple filtering.
-        # More complete version of the last one, since you also get the archives (DL link only, use the gallery data
-        # to create the final archive).
-        # Gallery search, no pagination
-        elif 'gs' in data:
-
-            args = data.copy()
-
-            for k in gallery_filter_keys:
-                if k not in args:
-                    args[k] = ''
-
-            keys = ("sort", "asc_desc")
-
-            for k in keys:
-                if k not in args:
-                    args[k] = ''
-
-            # args = data
-            if not request.user.is_authenticated:
-                args['public'] = '1'
-                used_prefetch = Prefetch('archive_set', queryset=Archive.objects.filter(public=True),
-                                         to_attr='available_archives')
-            else:
-                args['public'] = ''
-                used_prefetch = Prefetch('archive_set', to_attr='available_archives')
-            results_gallery = filter_galleries_no_request(args).prefetch_related(
-                'tags',
-                used_prefetch
-            )
-            if not results_gallery:
-                return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
-            response = json.dumps(
-                gallery_search_results_to_json(request, results_gallery),
-                # indent=2,
-                sort_keys=True,
-                ensure_ascii=False,
-            )
-            return HttpResponse(response, content_type="application/json; charset=utf-8")
-        # Gallery search with pagination
-        elif 'gsp' in data:
-
-            args = data.copy()
-
-            for k in gallery_filter_keys:
-                if k not in args:
-                    args[k] = ''
-
-            keys = ("sort", "asc_desc")
-
-            for k in keys:
-                if k not in args:
-                    args[k] = ''
-
-            # args = data
-            if not request.user.is_authenticated:
-                args['public'] = '1'
-                used_prefetch = Prefetch('archive_set', queryset=Archive.objects.filter(public=True),
-                                         to_attr='available_archives')
-            else:
-                args['public'] = ''
-                used_prefetch = Prefetch('archive_set', to_attr='available_archives')
-            results_gallery = filter_galleries_no_request(args).prefetch_related(
-                'tags',
-                used_prefetch
-            )
-
-            paginator = Paginator(results_gallery, 48)
-            try:
-                page = int(args.get("page", '1'))
-            except ValueError:
-                page = 1
-            try:
-                results_page = paginator.page(page)
-            except EmptyPage:
-                # If page is out of range (e.g. 9999), deliver last page of results.
-                results_page = paginator.page(paginator.num_pages)
-
-            response = json.dumps(
-                {
-                    'galleries': gallery_search_results_to_json(request, results_page),
-                    'has_previous': results_page.has_previous(),
-                    'has_next': results_page.has_next(),
-                    'num_pages': paginator.num_pages,
-                    'count': paginator.count,
-                    'number': results_page.number,
-                },
-                # indent=2,
-                sort_keys=True,
-                ensure_ascii=False,
-            )
-            return HttpResponse(response, content_type="application/json; charset=utf-8")
-        # Gallery data
-        elif 'gd' in data:
-            try:
-                gallery_id = int(data['gd'])
-            except ValueError:
-                return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
-            try:
-                gallery = Gallery.objects.get(pk=gallery_id)
-            except Gallery.DoesNotExist:
-                return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
-            if not gallery.public and not request.user.is_authenticated:
-                return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
-            response = json.dumps(
-                {
-                    'id': gallery.pk,
-                    'gid': gallery.gid,
-                    'token': gallery.token,
-                    'title': gallery.title,
-                    'title_jpn': gallery.title_jpn,
-                    'category': gallery.category,
-                    'uploader': gallery.uploader,
-                    'comment': gallery.comment,
-                    'posted': int(timestamp_or_zero(gallery.posted)),
-                    'filecount': gallery.filecount,
-                    'filesize': gallery.filesize,
-                    'expunged': gallery.expunged,
-                    'provider': gallery.provider,
-                    'rating': gallery.rating,
-                    'fjord': gallery.fjord,
-                    'tags': gallery.tag_list(),
-                    'link': gallery.get_link(),
-                    'thumbnail': request.build_absolute_uri(
-                        reverse('viewer:gallery-thumb', args=(gallery.pk,))) if gallery.thumbnail else '',
-                    'thumbnail_url': gallery.thumbnail_url,
-                    'archives': [
-                        {
-                            'link': request.build_absolute_uri(
-                                reverse('viewer:archive-download', args=(archive.pk,))
-                            ),
-                            'source': archive.source_type,
-                            'reason': archive.reason
-                        } for archive in
-                        gallery.archive_set.filter_by_authenticated_status(authenticated=request.user.is_authenticated)
-                    ],
-                },
-                # indent=2,
-                sort_keys=True,
-                ensure_ascii=False,
-            )
-            return HttpResponse(response, content_type="application/json; charset=utf-8")
-        # Archive search, no pagination (Used to download from another instance,
-        # that's why search is done on archives, and it returns Gallery info)
-        elif 'as' in data:
-
-            archive_args = request.GET.copy()
-
-            params = {
-                'sort': 'create_date',
-                'asc_desc': 'desc',
-            }
-
-            for k, v in archive_args.items():
-                if isinstance(v, str):
-                    params[k] = v
-
-            for k in archive_filter_keys:
-                if k not in params:
-                    params[k] = ''
-
-            results_archive = filter_archives_simple(
-                params, authenticated=request.user.is_authenticated
-            ).select_related('gallery').prefetch_related('gallery__tags')
-
-            if not request.user.is_authenticated:
-                results_archive = results_archive.filter(public=True).order_by('-public_date')
-
-            if not results_archive:
-                return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
-
-            found_galleries = defaultdict(list)
-
-            for archive in results_archive:
-                if archive.gallery:
-                    found_galleries[archive.gallery].append(archive)
-
-            response = json.dumps(
-                gallery_search_dict_to_json(request, found_galleries),
-                # indent=2,
-                sort_keys=True,
-                ensure_ascii=False,
-            )
-            return HttpResponse(response, content_type="application/json; charset=utf-8")
-        else:
-            return HttpResponse(json.dumps({'result': "Unknown command"}), content_type="application/json; charset=utf-8")
-    else:
+    if request.method != 'GET':
         return HttpResponse(json.dumps({'result': "Request must be GET"}), content_type="application/json; charset=utf-8")
+    data = request.GET
+    # Get fields from a specific archive.
+    if 'archive' in data:
+        try:
+            archive_id = int(data['archive'])
+        except ValueError:
+            return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+        try:
+            archive = Archive.objects.get(pk=archive_id)
+        except Archive.DoesNotExist:
+            return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+        if not archive.public and not request.user.is_authenticated:
+            return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+        response = json.dumps(
+            {
+                'title': archive.title,
+                'title_jpn': archive.title_jpn,
+                'category': archive.gallery.category if archive.gallery else '',
+                'uploader': archive.gallery.uploader if archive.gallery else '',
+                'posted': int(timestamp_or_zero(archive.gallery.posted)) if archive.gallery else '',
+                'filecount': archive.filecount,
+                'filesize': archive.filesize,
+                'expunged': archive.gallery.expunged if archive.gallery else '',
+                'rating': float(str_to_int(archive.gallery.rating)) if archive.gallery else '',
+                'fjord': archive.gallery.fjord if archive.gallery else '',
+                'tags': archive.tag_list(),
+                'download': reverse('viewer:archive-download', args=(archive.pk,)),
+                'gallery': archive.gallery.pk if archive.gallery else '',
+            },
+            # indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        return HttpResponse(response, content_type="application/json; charset=utf-8")
+    elif 'archives' in data:
+        try:
+            archive_ids: list[str] = data.getlist('archives', [])
+        except ValueError:
+            return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+        if not archive_ids:
+            return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
+
+        try:
+            [int(x) for x in archive_ids]
+        except ValueError:
+            return HttpResponse(json.dumps({'result': "Invalid Archive ID."}),
+                                content_type="application/json; charset=utf-8")
+        try:
+            if request.user.is_authenticated:
+                archives = Archive.objects.filter(pk__in=archive_ids)
+            else:
+                archives = Archive.objects.filter(pk__in=archive_ids, public=True)
+        except Archive.DoesNotExist:
+            return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+        response = json.dumps(
+            archive_search_result_to_json(request, archives),
+            # indent=2,
+            ensure_ascii=False,
+        )
+        return HttpResponse(response, content_type="application/json; charset=utf-8")
+    # Get tags from a specific archive.
+    elif 'at' in data:
+        try:
+            archive_id = int(data['at'])
+        except ValueError:
+            return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+        try:
+            archive = Archive.objects.get(pk=archive_id)
+        except Archive.DoesNotExist:
+            return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+        if not archive.public and not request.user.is_authenticated:
+            return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+        response = json.dumps(
+            {
+                'tags': archive.tag_list_sorted(),
+            },
+            # indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        return HttpResponse(response, content_type="application/json; charset=utf-8")
+    # Get hashes from a specific archive.
+    elif 'ah' in data:
+        try:
+            archive_id = int(data['ah'])
+        except ValueError:
+            return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+        try:
+            archive = Archive.objects.get(pk=archive_id)
+        except Archive.DoesNotExist:
+            return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+        if not archive.public and not request.user.is_authenticated:
+            return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+        response = json.dumps(
+            {
+                'image_hashes': [x.sha1 for x in archive.image_set.all()],
+            },
+            # indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        return HttpResponse(response, content_type="application/json; charset=utf-8")
+    # Get images data from a list of archives.
+    elif 'aid' in data:
+        try:
+            archive_ids = data.getlist('aid', [])
+        except ValueError:
+            return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+        if not archive_ids:
+            return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
+        try:
+            [int(x) for x in archive_ids]
+        except ValueError:
+            return HttpResponse(json.dumps({'result': "Invalid Archive ID."}), content_type="application/json; charset=utf-8")
+        try:
+            if request.user.is_authenticated:
+                archives = Archive.objects.filter(pk__in=archive_ids)
+            else:
+                archives = Archive.objects.filter(pk__in=archive_ids, public=True)
+        except Archive.DoesNotExist:
+            return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+        response = json.dumps(
+            {a.pk: images_data_to_json(a.image_set.all()) for a in archives},
+            # indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        return HttpResponse(response, content_type="application/json; charset=utf-8")
+    # Get fields from a specific gallery.
+    elif 'gallery' in data:
+        try:
+            gallery_id = int(data['gallery'])
+        except ValueError:
+            return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
+        try:
+            gallery = Gallery.objects.get(pk=gallery_id)
+        except Gallery.DoesNotExist:
+            return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
+        if not gallery.public and not request.user.is_authenticated:
+            return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
+        response = json.dumps(
+            {
+                'title': gallery.title,
+                'title_jpn': gallery.title_jpn,
+                'category': gallery.category,
+                'uploader': gallery.uploader,
+                'posted': int(timestamp_or_zero(gallery.posted)),
+                'filecount': gallery.filecount,
+                'filesize': gallery.filesize,
+                'expunged': gallery.expunged,
+                'rating': float(str_to_int(gallery.rating)),
+                'fjord': gallery.fjord,
+                'link': gallery.get_link(),
+                'tags': gallery.tag_list(),
+                'archives': [
+                    {
+                        'id': archive.id, 'download': reverse('viewer:archive-download', args=(archive.pk,))
+                    } for archive in gallery.archive_set.filter_by_authenticated_status(
+                        authenticated=request.user.is_authenticated
+                    )
+                ],
+            },
+            # indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        return HttpResponse(response, content_type="application/json; charset=utf-8")
+    # Get fields from a specific gallery (Using gid).
+    elif 'gid' in data:
+        gallery_gid = data['gid']
+        if 'provider' in data:
+            possible_gallery = Gallery.objects.filter_first(gid=gallery_gid, provider=data['provider'])
+        else:
+            possible_gallery = Gallery.objects.filter_first(gid=gallery_gid)
+        if not possible_gallery:
+            return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
+        else:
+            gallery = possible_gallery
+        if not gallery.public and not request.user.is_authenticated:
+            return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
+        response = json.dumps(
+            {
+                'title': gallery.title,
+                'title_jpn': gallery.title_jpn,
+                'category': gallery.category,
+                'uploader': gallery.uploader,
+                'posted': int(timestamp_or_zero(gallery.posted)),
+                'filecount': gallery.filecount,
+                'filesize': gallery.filesize,
+                'expunged': gallery.expunged,
+                'rating': float(str_to_int(gallery.rating)),
+                'fjord': gallery.fjord,
+                'link': gallery.get_link(),
+                'tags': gallery.tag_list(),
+                'archives': [
+                    {
+                        'id': archive.id, 'download': reverse('viewer:archive-download', args=(archive.pk,))
+                    } for archive in gallery.archive_set.filter_by_authenticated_status(
+                        authenticated=request.user.is_authenticated
+                    )
+                ],
+            },
+            # indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        return HttpResponse(response, content_type="application/json; charset=utf-8")
+    # Get tags from a specific Gallery.
+    elif 'gt' in data:
+        try:
+            gallery_id = int(data['gt'])
+        except ValueError:
+            return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
+        try:
+            gallery = Gallery.objects.get(pk=gallery_id)
+        except Gallery.DoesNotExist:
+            return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
+        if not gallery.public and not request.user.is_authenticated:
+            return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
+        response = json.dumps(
+            {
+                'tags': gallery.tag_list_sorted(),
+            },
+            # indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        return HttpResponse(response, content_type="application/json; charset=utf-8")
+    # Get fields from several archives by one of its images sha1 value.
+    elif 'sha1' in data:
+        archives = Archive.objects.filter(image__sha1=data['sha1']).select_related('gallery').prefetch_related('tags')
+
+        if not request.user.is_authenticated:
+            archives = archives.filter(public=True)
+
+        if not archives:
+            return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
+
+        response = json.dumps(
+            [{
+                'id': archive.id,
+                'title': archive.title,
+                'title_jpn': archive.title_jpn,
+                'category': archive.gallery.category if archive.gallery else '',
+                'uploader': archive.gallery.uploader if archive.gallery else '',
+                'posted': int(timestamp_or_zero(archive.gallery.posted)) if archive.gallery else '',
+                'filecount': archive.filecount,
+                'filesize': archive.filesize,
+                'expunged': archive.gallery.expunged if archive.gallery else '',
+                'rating': float(str_to_int(archive.gallery.rating)) if archive.gallery else '',
+                'fjord': archive.gallery.fjord if archive.gallery else '',
+                'tags': archive.tag_list(),
+                'download': reverse('viewer:archive-download', args=(archive.pk,)),
+                'gallery': archive.gallery.pk if archive.gallery else '',
+            } for archive in archives],
+            # indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        return HttpResponse(response, content_type="application/json; charset=utf-8")
+    # Get reduced number of fields from several archives by doing filtering.
+    elif 'qa' in data:
+
+        archive_args = request.GET.copy()
+
+        params: dict[str, str] = {
+            'sort': 'create_date',
+            'asc_desc': 'desc',
+        }
+
+        for k, v in archive_args.items():
+            if isinstance(v, str):
+                params[k] = v
+
+        for k in archive_filter_keys:
+            if k not in params:
+                params[k] = ''
+
+        results = filter_archives_simple(
+            params, authenticated=request.user.is_authenticated
+        ).prefetch_related('tags')
+
+        if not request.user.is_authenticated:
+            results = results.filter(public=True).order_by('-public_date')
+
+        response = json.dumps(
+            [{
+                'id': o.pk,
+                'title': o.title,
+                'tags': o.tag_list(),
+                'url': reverse('viewer:archive-download', args=(o.pk,))} for o in results
+             ]
+        )
+        return HttpResponse(response, content_type="application/json; charset=utf-8")
+    # Get reduced number of fields from several archives by doing a simple filtering.
+    elif 'q' in data:
+        q_args = data['q']
+        if not request.user.is_authenticated:
+            results = simple_archive_filter(q_args, public=True).prefetch_related('tags')
+        else:
+            results = simple_archive_filter(q_args, public=False).prefetch_related('tags')
+        response = json.dumps(
+            [{
+                'id': o.pk,
+                'title': o.title,
+                'tags': o.tag_list(),
+                'url': reverse('viewer:archive-download', args=(o.pk,))} for o in results
+             ]
+        )
+        return HttpResponse(response, content_type="application/json; charset=utf-8")
+    # Get galleries associated with archive by crc32, used with matcher.
+    elif 'match' in data:
+        galleries_matcher = get_galleries_from_request(data, request)
+        if not galleries_matcher:
+            return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
+        response = json.dumps(
+            [{
+                'id': gallery.pk,
+                'gid': gallery.gid,
+                'token': gallery.token,
+                'title': gallery.title,
+                'title_jpn': gallery.title_jpn,
+                'category': gallery.category,
+                'uploader': gallery.uploader,
+                'comment': gallery.comment,
+                'posted': int(timestamp_or_zero(gallery.posted)),
+                'filecount': gallery.filecount,
+                'filesize': gallery.filesize,
+                'expunged': gallery.expunged,
+                'provider': gallery.provider,
+                'rating': gallery.rating,
+                'reason': gallery.reason,
+                'fjord': gallery.fjord,
+                'tags': gallery.tag_list(),
+                'link': gallery.get_link(),
+                'thumbnail': request.build_absolute_uri(
+                    reverse('viewer:gallery-thumb', args=(gallery.pk,))) if gallery.thumbnail else '',
+                'thumbnail_url': gallery.thumbnail_url,
+                'gallery_container': gallery.gallery_container.gid if gallery.gallery_container else '',
+                'parent_gid': gallery.parent_gallery.gid if gallery.parent_gallery else '',
+                'first_gid': gallery.first_gallery.gid if gallery.first_gallery else '',
+                'magazine': gallery.magazine.gid if gallery.magazine else ''
+            } for gallery in galleries_matcher
+            ],
+            # indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        return HttpResponse(response, content_type="application/json; charset=utf-8")
+    # Get fields from several galleries by doing a simple filtering.
+    elif 'g' in data:
+        results_gallery = get_galleries_from_request(data, request)
+        if not results_gallery:
+            return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
+        response = json.dumps(
+            [{
+                'title': gallery.title,
+                'title_jpn': gallery.title_jpn,
+                'category': gallery.category,
+                'uploader': gallery.uploader,
+                'posted': int(timestamp_or_zero(gallery.posted)),
+                'filecount': gallery.filecount,
+                'filesize': gallery.filesize,
+                'expunged': gallery.expunged,
+                'source': gallery.provider,
+                'rating': float(str_to_int(gallery.rating)),
+                'fjord': gallery.fjord,
+                'tags': gallery.tag_list(),
+            } for gallery in results_gallery
+            ],
+            # indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        return HttpResponse(response, content_type="application/json; charset=utf-8")
+    # this part should be used in conjunction with json crawler provider, to transfer easily already fetched links.
+    # Get more fields from several galleries by doing a simple filtering.
+    elif 'gc' in data:
+        results_gallery = get_galleries_from_request(data, request)
+        if not results_gallery:
+            return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
+        response = json.dumps(
+            [{
+                'gid': gallery.gid,
+                'token': gallery.token,
+                'title': gallery.title,
+                'title_jpn': gallery.title_jpn,
+                'category': gallery.category,
+                'uploader': gallery.uploader,
+                'posted': int(timestamp_or_zero(gallery.posted)),
+                'filecount': gallery.filecount,
+                'filesize': gallery.filesize,
+                'expunged': gallery.expunged,
+                'provider': gallery.provider,
+                'rating': gallery.rating,
+                'fjord': gallery.fjord,
+                'tags': gallery.tag_list(),
+                'link': gallery.get_link()
+            } for gallery in results_gallery
+            ],
+            # indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        return HttpResponse(response, content_type="application/json; charset=utf-8")
+    # this part should be used in conjunction with json crawler provider, to transfer easily already fetched links.
+    # Get more fields from several galleries by doing a simple filtering.
+    # More complete version of the last one, since you also get the archives (DL link only, use the gallery data
+    # to create the final archive).
+    # Gallery search, no pagination
+    elif 'gs' in data:
+
+        args = data.copy()
+
+        for k in gallery_filter_keys:
+            if k not in args:
+                args[k] = ''
+
+        keys = ("sort", "asc_desc")
+
+        for k in keys:
+            if k not in args:
+                args[k] = ''
+
+        # args = data
+        if not request.user.is_authenticated:
+            args['public'] = '1'
+            used_prefetch = Prefetch('archive_set', queryset=Archive.objects.filter(public=True),
+                                     to_attr='available_archives')
+        else:
+            args['public'] = ''
+            used_prefetch = Prefetch('archive_set', to_attr='available_archives')
+        results_gallery = filter_galleries_no_request(args).prefetch_related(
+            'tags',
+            used_prefetch
+        )
+        if not results_gallery:
+            return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
+        response = json.dumps(
+            gallery_search_results_to_json(request, results_gallery),
+            # indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        return HttpResponse(response, content_type="application/json; charset=utf-8")
+    # Gallery search with pagination
+    elif 'gsp' in data:
+
+        args = data.copy()
+
+        for k in gallery_filter_keys:
+            if k not in args:
+                args[k] = ''
+
+        keys = ("sort", "asc_desc")
+
+        for k in keys:
+            if k not in args:
+                args[k] = ''
+
+        # args = data
+        if not request.user.is_authenticated:
+            args['public'] = '1'
+            used_prefetch = Prefetch('archive_set', queryset=Archive.objects.filter(public=True),
+                                     to_attr='available_archives')
+        else:
+            args['public'] = ''
+            used_prefetch = Prefetch('archive_set', to_attr='available_archives')
+        results_gallery = filter_galleries_no_request(args).prefetch_related(
+            'tags',
+            used_prefetch
+        )
+
+        paginator = Paginator(results_gallery, 48)
+        try:
+            page = int(args.get("page", '1'))
+        except ValueError:
+            page = 1
+        try:
+            results_page = paginator.page(page)
+        except EmptyPage:
+            # If page is out of range (e.g. 9999), deliver last page of results.
+            results_page = paginator.page(paginator.num_pages)
+
+        response = json.dumps(
+            {
+                'galleries': gallery_search_results_to_json(request, results_page),
+                'has_previous': results_page.has_previous(),
+                'has_next': results_page.has_next(),
+                'num_pages': paginator.num_pages,
+                'count': paginator.count,
+                'number': results_page.number,
+            },
+            # indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        return HttpResponse(response, content_type="application/json; charset=utf-8")
+    # Gallery data
+    elif 'gd' in data:
+        try:
+            gallery_id = int(data['gd'])
+        except ValueError:
+            return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
+        try:
+            gallery = Gallery.objects.get(pk=gallery_id)
+        except Gallery.DoesNotExist:
+            return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
+        if not gallery.public and not request.user.is_authenticated:
+            return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
+        response = json.dumps(
+            {
+                'id': gallery.pk,
+                'gid': gallery.gid,
+                'token': gallery.token,
+                'title': gallery.title,
+                'title_jpn': gallery.title_jpn,
+                'category': gallery.category,
+                'uploader': gallery.uploader,
+                'comment': gallery.comment,
+                'posted': int(timestamp_or_zero(gallery.posted)),
+                'filecount': gallery.filecount,
+                'filesize': gallery.filesize,
+                'expunged': gallery.expunged,
+                'provider': gallery.provider,
+                'rating': gallery.rating,
+                'fjord': gallery.fjord,
+                'tags': gallery.tag_list(),
+                'link': gallery.get_link(),
+                'thumbnail': request.build_absolute_uri(
+                    reverse('viewer:gallery-thumb', args=(gallery.pk,))) if gallery.thumbnail else '',
+                'thumbnail_url': gallery.thumbnail_url,
+                'archives': [
+                    {
+                        'link': request.build_absolute_uri(
+                            reverse('viewer:archive-download', args=(archive.pk,))
+                        ),
+                        'source': archive.source_type,
+                        'reason': archive.reason
+                    } for archive in
+                    gallery.archive_set.filter_by_authenticated_status(authenticated=request.user.is_authenticated)
+                ],
+            },
+            # indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        return HttpResponse(response, content_type="application/json; charset=utf-8")
+    # Archive search, no pagination (Used to download from another instance,
+    # that's why search is done on archives, and it returns Gallery info)
+    elif 'as' in data:
+
+        archive_args = request.GET.copy()
+
+        params = {
+            'sort': 'create_date',
+            'asc_desc': 'desc',
+        }
+
+        for k, v in archive_args.items():
+            if isinstance(v, str):
+                params[k] = v
+
+        for k in archive_filter_keys:
+            if k not in params:
+                params[k] = ''
+
+        results_archive = filter_archives_simple(
+            params, authenticated=request.user.is_authenticated
+        ).select_related('gallery').prefetch_related('gallery__tags')
+
+        if not request.user.is_authenticated:
+            results_archive = results_archive.filter(public=True).order_by('-public_date')
+
+        if not results_archive:
+            return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
+
+        found_galleries = defaultdict(list)
+
+        for archive in results_archive:
+            if archive.gallery:
+                found_galleries[archive.gallery].append(archive)
+
+        response = json.dumps(
+            gallery_search_dict_to_json(request, found_galleries),
+            # indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        return HttpResponse(response, content_type="application/json; charset=utf-8")
+    else:
+        return HttpResponse(json.dumps({'result': "Unknown command"}), content_type="application/json; charset=utf-8")
 
 
 # Private API, checks for the API key.

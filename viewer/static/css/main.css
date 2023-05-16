@@ -441,24 +441,11 @@ img {
 
 .right-container {
   float: right;
-  display: block;
 }
 
 .right-tools {
   text-align: right;
   float: right;
-  position: relative;
-  display: flex;
-}
-
-.right-tools.second-tools {
-  margin-top: 11px;
-}
-
-.right-tools li {
-  display: block;
-  float: left;
-  margin-left: 2px;
 }
 
 .right-tools a {

@@ -174,8 +174,9 @@ urlpatterns += [
 
 urlpatterns += [
     re_path(r'^autocomplete-view/$', autocomplete_view, name='es-autocomplete-view'),
-    re_path(r'^title-suggest/$', elasticsearch.title_suggest_view, name='es-suggest-view'),
-    re_path(r'^es-title-pk-suggest/$', elasticsearch.title_pk_suggest_view, name='es-title-pk-suggest'),
+    re_path(r'^title-text-suggest/$', elasticsearch.title_suggest_view, name='es-title-text-suggest-view'),
+    re_path(r'^title-suggest/$', elasticsearch.title_suggest_archive_view, name='es-suggest-view'),
+    re_path(r'^es-title-pk-suggest/$', elasticsearch.title_pk_suggest_archive_view, name='es-title-pk-suggest'),
     re_path(r'^es-archive-simple/$', elasticsearch.archive_simple, name='es-archive-simple'),
     re_path(r'^es-archives-simple/$', elasticsearch.archives_simple, name='es-archives-simple'),
     re_path(r'^es-index/$', ESHomePageView.as_view(), name='es-index-view'),

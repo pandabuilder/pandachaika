@@ -21,7 +21,7 @@ from django.conf import settings
 
 from core.base.types import DataDict
 from core.base.utilities import timestamp_or_zero, str_to_int
-from viewer.forms import GallerySearchForm, SpanErrorList, GallerySearchSimpleForm
+from viewer.forms import GallerySearchForm, DivErrorList, GallerySearchSimpleForm
 from viewer.models import Gallery, Tag, Archive, Image, UserArchivePrefs
 from viewer.views.head import archive_filter_keys, filter_archives, render_error
 from viewer.views.api import simple_archive_filter
@@ -41,13 +41,13 @@ def tag_frequency(request: HttpRequest) -> HttpResponse:
     if 'clear' in request.GET:
         request.GET = QueryDict('')
         form = GallerySearchForm()
-        form_simple = GallerySearchSimpleForm(request.GET, error_class=SpanErrorList)
+        form_simple = GallerySearchSimpleForm(request.GET, error_class=DivErrorList)
     else:
         form = GallerySearchForm(initial={'title': title, 'tags': tags})
-        form_simple = GallerySearchSimpleForm(request.GET, error_class=SpanErrorList)
+        form_simple = GallerySearchSimpleForm(request.GET, error_class=DivErrorList)
         form_simple.is_valid()
         for field_name, errors in form_simple.errors.items():
-            messages.error(request, field_name + ": " + ", ".join(errors), extra_tags='danger')
+            messages.error(request, field_name + ": " + ", ".join([str(x) for x in errors]), extra_tags='danger')
     d = {'form': form, 'form_simple': form_simple}
     return render(request, "viewer/graph_tags.html", d)
 
@@ -63,13 +63,13 @@ def gallery_frequency(request: HttpRequest) -> HttpResponse:
     if 'clear' in request.GET:
         request.GET = QueryDict('')
         form = GallerySearchForm()
-        form_simple = GallerySearchSimpleForm(request.GET, error_class=SpanErrorList)
+        form_simple = GallerySearchSimpleForm(request.GET, error_class=DivErrorList)
     else:
         form = GallerySearchForm(initial={'title': title, 'tags': tags})
-        form_simple = GallerySearchSimpleForm(request.GET, error_class=SpanErrorList)
+        form_simple = GallerySearchSimpleForm(request.GET, error_class=DivErrorList)
         form_simple.is_valid()
         for field_name, errors in form_simple.errors.items():
-            messages.error(request, field_name + ": " + ", ".join(errors), extra_tags='danger')
+            messages.error(request, field_name + ": " + ", ".join([str(x) for x in errors]), extra_tags='danger')
     d = {'form': form, 'form_simple': form_simple}
     return render(request, "viewer/graph_gallery_posted.html", d)
 

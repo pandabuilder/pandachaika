@@ -1,18 +1,18 @@
 {
-  "node_modules/slick-carousel/slick/ajax-loader.gif": {
+  "../../node_modules/slick-carousel/slick/ajax-loader.gif": {
     "file": "assets/ajax-loader-e7b44c86.gif",
-    "src": "node_modules/slick-carousel/slick/ajax-loader.gif"
+    "src": "../../node_modules/slick-carousel/slick/ajax-loader.gif"
   },
-  "node_modules/slick-carousel/slick/fonts/slick.svg": {
+  "../../node_modules/slick-carousel/slick/fonts/slick.svg": {
     "file": "assets/slick-12459f22.svg",
-    "src": "node_modules/slick-carousel/slick/fonts/slick.svg"
+    "src": "../../node_modules/slick-carousel/slick/fonts/slick.svg"
   },
   "src/assets/no_cover.png": {
     "file": "assets/no_cover-06b8d12b.png",
     "src": "src/assets/no_cover.png"
   },
   "src/main.css": {
-    "file": "assets/main-63f3de47.css",
+    "file": "assets/main-c5a20ed0.css",
     "src": "src/main.css"
   },
   "src/main.tsx": {
@@ -22,9 +22,9 @@
       "assets/slick-12459f22.svg"
     ],
     "css": [
-      "assets/main-63f3de47.css"
+      "assets/main-c5a20ed0.css"
     ],
-    "file": "assets/main-9a71f271.js",
+    "file": "assets/main-6e618f58.js",
     "isEntry": true,
     "src": "src/main.tsx"
   }

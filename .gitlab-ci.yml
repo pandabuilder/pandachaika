@@ -2,6 +2,15 @@ stages:
   - test
   - deploy
 
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+cache:
+  paths:
+  - .mypy_cache
+  - .ruff_cache
+  - .cache/pip
+
 test3.9:
   stage: test
   script:
@@ -15,12 +24,14 @@ test3.9:
   - bash ./set_db_engine.sh
   - python3.9 manage.py migrate
   - python3.9 manage.py test viewer.tests.test_internal viewer.tests.test_core
-  cache:
-    paths:
-    - .mypy_cache
-    - .ruff_cache
   tags:
     - django
+  artifacts:
+    when: always
+    paths:
+      - test-results/TEST-*.xml
+    reports:
+      junit: test-results/TEST-*.xml
 
 test3.10:
   stage: test
@@ -35,12 +46,14 @@ test3.10:
   - bash ./set_db_engine.sh
   - python3.10 manage.py migrate
   - python3.10 manage.py test viewer.tests.test_internal viewer.tests.test_core
-  cache:
-    paths:
-    - .mypy_cache
-    - .ruff_cache
   tags:
     - django
+  artifacts:
+    when: always
+    paths:
+      - test-results/TEST-*.xml
+    reports:
+      junit: test-results/TEST-*.xml
 
 test3.11:
   stage: test
@@ -55,12 +68,14 @@ test3.11:
   - bash ./set_db_engine.sh
   - python3.11 manage.py migrate
   - python3.11 manage.py test viewer.tests.test_internal viewer.tests.test_core
-  cache:
-    paths:
-    - .mypy_cache
-    - .ruff_cache
   tags:
     - django
+  artifacts:
+    when: always
+    paths:
+      - test-results/TEST-*.xml
+    reports:
+      junit: test-results/TEST-*.xml
 
 deploy_review:
   stage: deploy

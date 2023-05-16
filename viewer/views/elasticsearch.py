@@ -399,6 +399,44 @@ def title_suggest_view(request: HttpRequest) -> HttpResponse:
 
     query = request.GET.get('q', '')
     s = Search(using=es_client, index=es_index_name) \
+        .suggest(
+        "title-suggestion", text=query,
+        phrase={
+            'field': 'title_suggest',
+            "size": 5,
+            # "gram_size": 10,
+            # "confidence": 0.0,
+            "direct_generator": [
+                {
+                    "field": "title_suggest",
+                    "suggest_mode": "always",
+                    "min_word_length": 3,
+                }
+            ]
+        }
+    )
+    response = s.execute()
+
+    suggestion_parts = [
+        part['text'] for part in response['suggest']['title-suggestion'][0]['options']
+    ]
+
+    data = json.dumps(
+        {'suggestions': suggestion_parts}
+    )
+    mime_type = 'application/json; charset=utf-8'
+    http_response = HttpResponse(data, mime_type)
+    return http_response
+
+
+def title_suggest_archive_view(request: HttpRequest) -> HttpResponse:
+    if not settings.ES_ENABLED or not es_client:
+        return HttpResponse({})
+    if not es_client.indices.exists(index=es_index_name):
+        return HttpResponse({})
+
+    query = request.GET.get('q', '')
+    s = Search(using=es_client, index=es_index_name) \
         .source(['title', 'thumbnail']) \
         .query("match", title_suggest={'query': query, 'operator': 'and', 'fuzziness': 'AUTO'})
     response = s.execute()
@@ -411,7 +449,7 @@ def title_suggest_view(request: HttpRequest) -> HttpResponse:
     return http_response
 
 
-def title_pk_suggest_view(request: HttpRequest) -> HttpResponse:
+def title_pk_suggest_archive_view(request: HttpRequest) -> HttpResponse:
     if not settings.ES_ENABLED or not es_client:
         return HttpResponse({})
     if not es_client.indices.exists(index=es_index_name):

@@ -13,8 +13,19 @@ from viewer.models import Tag, Archive, Gallery, WantedGallery, ArchiveTag
 
 class TagTestCase(TestCase):
     def setUp(self):
-        Tag.objects.create(name="sister", scope="female")
-        Tag.objects.create(name="hisasi", scope="artist")
+
+        test_user1 = User.objects.create_user(username='testuser1', password='12345')
+        test_user1.save()
+
+        self.gallery_tag1 = Tag.objects.create(name="sister", scope="female")
+        self.gallery_tag2 = Tag.objects.create(name="hisasi", scope="artist")
+        self.archive_tag1 = Tag.objects.create(name="distance", scope="artist")
+        self.custom_tag = Tag.objects.create(scope="custom", name="adjective", source="user")
+        self.test_gallery1 = Gallery.objects.create(title='sample non public gallery 1', gid='344', provider='panda')
+        self.test_gallery1.tags.set([self.gallery_tag1, self.gallery_tag2])
+        self.archive1 = Archive.objects.create(title='sample Archive', user=test_user1)
+        archive_tag = ArchiveTag(archive=self.archive1, tag=self.archive_tag1, origin=ArchiveTag.ORIGIN_SYSTEM)
+        archive_tag.save()
 
     def test_first_artist_tag(self):
         """Test obtain first artist tag"""
@@ -25,6 +36,20 @@ class TagTestCase(TestCase):
         """Test default tag formatting"""
         tag = Tag.objects.get(scope='female', name='sister')
         self.assertIn(':', str(tag))
+
+    def test_preserve_custom_tag_on_gallery_update(self):
+        archive_custom_tag = ArchiveTag(archive=self.archive1, tag=self.custom_tag, origin=ArchiveTag.ORIGIN_USER)
+        archive_custom_tag.save()
+        self.archive1.set_tags_from_gallery(self.test_gallery1)
+
+        all_tags = self.archive1.tags.all()
+
+        self.assertIn(archive_custom_tag.tag, all_tags)
+        self.assertListEqual(list(all_tags), [archive_custom_tag.tag] + list(self.test_gallery1.tags.all()))
+
+        self.archive1.set_tags_from_gallery(self.test_gallery1, preserve_custom=False)
+
+        self.assertQuerySetEqual(self.archive1.tags.all(), self.test_gallery1.tags.all())
 
 
 class PrivateURLsTest(TestCase):

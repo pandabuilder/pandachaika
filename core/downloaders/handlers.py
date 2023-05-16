@@ -135,7 +135,7 @@ class BaseDownloader(metaclass=Meta):
                     if banned_result:
                         archive_banned_result, archive_banned_reasons = self.general_utils.discard_by_gallery_data(archive.tag_list(), force_check=True)
 
-                    archive.tags.set(archive.gallery.tags.all())
+                    archive.set_tags_from_gallery(archive.gallery)
 
                     if banned_result and not archive_banned_result and self.settings.archive_manage_entry_model:
                         mark_comment = "The refreshed Gallery has added banned data:\n{}".format(banned_reasons)

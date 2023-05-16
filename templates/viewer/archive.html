@@ -11,54 +11,56 @@
   <!-- Archives  -->
   <ul class="info">
     {% if user.is_authenticated %}
-      <li class="right-container">
-      <ul class="right-tools">
-         <li>Tools:</li>
+      <li class="right-container d-flex flex-column">
+      <div class="d-flex flex-md-row flex-column right-tools justify-content-end">
+         <div class="me-1">Tools:</div>
         {% if perms.viewer.recycle_archive %}
-            <li>
+            <div class="me-1">
                 {% if archive.is_recycled %}
                     <a class="open-modal" data-popup-url="{% url 'viewer:archive-tool-reason' archive.pk 'unrecycle' %}?inline=1" href="{% url 'viewer:archive-tool-reason' archive.pk 'unrecycle' %}">unrecycle</a>
                 {% else %}
                     <a class="open-modal" data-popup-url="{% url 'viewer:archive-tool-reason' archive.pk 'recycle' %}?inline=1" href="{% url 'viewer:archive-tool-reason' archive.pk 'recycle' %}">recycle</a>
                 {% endif %}
-            </li>
+            </div>
         {% endif %}
         {% if perms.viewer.modify_archive_tools %}
-            <li>
+            <div class="me-1">
                 <a class="open-modal" data-popup-url="{% url 'viewer:archive-clone-plus' archive.pk %}?inline=1" href="{% url 'viewer:archive-clone-plus' archive.pk %}">clone +</a>
-            </li>
+            </div>
         {% endif %}
-        {% if user.is_staff %}<li><a href="{% url 'viewer:archive-recalc-info' archive.pk %}">recalc</a></li>{% endif %}
-        {% if perms.viewer.mark_similar_archive %}<li><a href="{% url 'viewer:archive-mark-similar' archive.pk %}">mark similar</a></li>{% endif %}
-        {% if user.is_staff %}<li><a href="{% url 'viewer:check-convert-type' archive.pk %}">convert zip</a></li>{% endif %}
-        {% if perms.viewer.update_metadata %}<li><a href="{% url 'viewer:archive-recall-api' archive.pk %}">recall api</a></li>{% endif %}
-        {% if perms.viewer.publish_archive %}<li><a href="{% url 'viewer:archive-calc-imgs-sha1' archive.pk %}">calc sha1</a></li>{% endif %}
-        {% if user.is_staff %}<li><a href="{% url 'viewer:archive-rematch' archive.pk %}">rematch</a></li>{% endif %}
         {% if user.is_staff %}
-          <li>
-            <a
-              class="open-modal"
-              href="{% url 'viewer:archive-delete' archive.pk %}"
-              data-popup-url="{% url 'viewer:archive-delete' archive.pk %}?inline=1"
-              >delete
-            </a>
-          </li>
+            <div class="me-1"><a href="{% url 'viewer:archive-recalc-info' archive.pk %}">recalc</a></div>
         {% endif %}
-        {% if user.is_staff %}{% if archive.gallery %}<li><a href="{% url 'viewer:gallery-tool' archive.gallery.pk 'toggle-hidden' %}">{% if archive.gallery.hidden %}open{% else %}hidden{% endif %}</a></li>{% endif %}{% endif %}
-        {% if perms.viewer.publish_archive %}<li>{% if archive.public %}<a href="{% url 'viewer:archive-private' archive.pk %}">private</a>{% else %}<a href="{% url 'viewer:archive-public' archive.pk %}">public</a>{% endif %}</li>{% endif %}
-        {% if user.is_staff %}<li><a href="{% url 'admin:viewer_archive_change' archive.pk %}">admin</a></li>{% endif %}
-        {% if user.is_staff %}<li>{% if mode == 'view' %}<a href="{% url 'viewer:archive-edit' archive.pk 'edit' %}">edit</a>{% else %}<a href="{% url 'viewer:archive' archive.pk %}">view</a>{% endif %}</li>
+        {% if perms.viewer.mark_similar_archive %}
+            <div class="me-1"><a href="{% url 'viewer:archive-mark-similar' archive.pk %}">mark similar</a></div>
         {% endif %}
-      </ul>
+        {% if user.is_staff %}
+            <div class="me-1"><a href="{% url 'viewer:check-convert-type' archive.pk %}">convert zip</a></div>
+        {% endif %}
+        {% if perms.viewer.update_metadata %}
+            <div class="me-1"><a href="{% url 'viewer:archive-recall-api' archive.pk %}">recall api</a></div>
+        {% endif %}
+        {% if perms.viewer.publish_archive %}
+            <div class="me-1"><a href="{% url 'viewer:archive-calc-imgs-sha1' archive.pk %}">calc sha1</a></div>
+        {% endif %}
+        {% if perms.viewer.publish_archive %}
+            <div class="me-1">{% if archive.public %}<a href="{% url 'viewer:archive-private' archive.pk %}">private</a>{% else %}<a href="{% url 'viewer:archive-public' archive.pk %}">public</a>{% endif %}</div>
+        {% endif %}
+        {% if user.is_staff %}
+            <div class="me-1"><a href="{% url 'viewer:archive-rematch' archive.pk %}">rematch</a></div>
+            <div class="me-1"><a class="open-modal" href="{% url 'viewer:archive-delete' archive.pk %}" data-popup-url="{% url 'viewer:archive-delete' archive.pk %}?inline=1">delete</a></div>
+            {% if archive.gallery %}<div class="me-1"><a href="{% url 'viewer:gallery-tool' archive.gallery.pk 'toggle-hidden' %}">{% if archive.gallery.hidden %}open{% else %}hidden{% endif %}</a></div>{% endif %}
+            <div class="me-1"><a href="{% url 'admin:viewer_archive_change' archive.pk %}">admin</a></div>
+            <div class="me-1">{% if mode == 'view' %}<a href="{% url 'viewer:archive-edit' archive.pk 'edit' %}">edit</a>{% else %}<a href="{% url 'viewer:archive' archive.pk %}">view</a>{% endif %}</div>
+        {% endif %}
+      </div>
       {% if archive.extracted %}
-      <div>
-        <ul class="right-tools second-tools">
-            <li>View:</li>
-            <li><a href="?{% url_replace 'view' 'cover' %}">cover</a></li>
-            <li><a href="?{% url_replace 'view' 'thumbnails' %}">thumbnails</a></li>
-            <li><a href="?{% url_replace 'view' 'full' %}">full</a></li>
-            <li><a href="?{% url_replace 'view' 'single' %}">single</a></li>
-        </ul>
+      <div class="d-flex flex-md-row flex-column right-tools mt-3 justify-content-end">
+        <div class="me-1">View:</div>
+        <div class="me-1"><a href="?{% url_replace 'view' 'cover' %}">cover</a></div>
+        <div class="me-1"><a href="?{% url_replace 'view' 'thumbnails' %}">thumbnails</a></div>
+        <div class="me-1"><a href="?{% url_replace 'view' 'full' %}">full</a></div>
+        <div class="me-1"><a href="?{% url_replace 'view' 'single' %}">single</a></div>
       </div>
       {% endif %}
       </li>
@@ -274,7 +276,7 @@
     {% if user.is_staff %}
       {% if archive.crc32 %}
           {% if archive.extracted %}
-            <a class="btn btn-info" href="{% url 'viewer:new-image-viewer' archive.pk '1' %}">View online</a>
+            <a class="btn btn-info" href="{% url 'viewer:new-image-viewer' archive.pk '1' %}" id="view-online">View online</a>
             <a class="btn btn-light" href="{% url 'viewer:archive-reduce' archive.pk %}">Reduce archive</a>
           {% else %}
             <a class="btn btn-light" href="{% url 'viewer:archive-extract' archive.pk %}">Expand archive</a>
@@ -302,7 +304,7 @@
     {% elif archive.crc32 %}
         {% if perms.viewer.expand_archive %}
           {% if archive.extracted %}
-            <a class="btn btn-info" href="{% url 'viewer:new-image-viewer' archive.pk '1' %}">View online</a>
+            <a class="btn btn-info" href="{% url 'viewer:new-image-viewer' archive.pk '1' %}" id="view-online">View online</a>
             <a class="btn btn-light" href="{% url 'viewer:archive-reduce' archive.pk %}">Reduce archive</a>
           {% else %}
             <a class="btn btn-light" href="{% url 'viewer:archive-extract' archive.pk %}">Expand archive</a>
@@ -470,11 +472,11 @@
               </a>
             {% elif view == "full" %}
               <a href="{% url 'viewer:new-image-viewer' archive.pk images.start_index|add:forloop.counter0 %}?{% url_replace 'extracted' '1' %}">
-                <img id="img-{{ forloop.counter }}" class="img-fluid mx-auto" alt="" src="{% if img.image.name %}{{ img.image.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" width="{% if image.is_horizontal %}1500{% else %}1200{% endif %}"/>
+                <img id="img-{{ forloop.counter }}" class="img-fluid mx-auto" alt="" src="{% if img.image.name %}{{ img.image.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" width="{{ image.image_width }}"/>
               </a>
             {% elif view == "single" %}
               <a href="{% url 'viewer:new-image-viewer' archive.pk images.start_index|add:forloop.counter0 %}?{% url_replace 'extracted' '1' %}">
-                <img class="img-fluid mx-auto" alt="" src="{% if img.image.name %}{{ img.image.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" width="{% if image.is_horizontal %}1500{% else %}900{% endif %}"/>
+                <img class="img-fluid mx-auto" alt="" src="{% if img.image.name %}{{ img.image.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" width="{{ image.image_width }}"/>
               </a>
             {% elif view == "thumbnails" %}
               <a href="{% url 'viewer:new-image-viewer' archive.pk images.start_index|add:forloop.counter0 %}?{% url_replace 'extracted' '1' %}">
@@ -564,16 +566,14 @@
                         }
                     });
                 }
-            }).on("show.bs.popover", function(el) {
-               {#document.querySelectorAll('.hash-preview').forEach(#}
-               {# el => el.style.maxWidth = "600px"#}
-               {#)#}
             });
         });
     </script>
   {% endcompress %}
   {% if user.is_staff %}
     <script type="text/javascript" src="{% static 'js/admin.js' %}"></script>
+    <script type="text/javascript" src="{% static 'js/vendor/keys.min.js' %}"></script>
+    <script type="text/javascript" src="{% static 'js/archnav.js' %}"></script>
     {% include "viewer/include/viewer_modal.html" %}
   {% endif %}
 {% endblock %}
