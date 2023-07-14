@@ -30,6 +30,7 @@ from django.db.models.signals import post_delete, post_save
 from django.db.models.sql.compiler import SQLCompiler
 from django.dispatch import receiver
 from django.http import HttpRequest
+from django.utils.crypto import salted_hmac
 from django.utils.text import slugify
 from django.db.models import Value, CharField
 from django.db.models.functions import Concat, Replace
@@ -585,7 +586,9 @@ class Tag(models.Model):
 
     class Meta:
         ordering = ['-id']
-        unique_together = [['scope', 'name']]
+        constraints = [
+            models.UniqueConstraint(fields=['scope', 'name'], name='unique_scope_name')
+        ]
 
     def natural_key(self):
         return self.scope, self.name
@@ -874,6 +877,12 @@ class Gallery(models.Model):
 
     def tag_lists(self) -> list[tuple[str, list['Tag']]]:
         return sort_tags(self.tags.all())
+
+    def get_available_thumbnail_plus_size(self) -> tuple[str, Optional[int], Optional[int]]:
+        if self.thumbnail.name and self.thumbnail.url:
+            return self.thumbnail.url, None, 196
+        else:
+            return static("imgs/no_cover.png"), 290, 196
 
     def public_toggle(self) -> None:
 
@@ -3334,7 +3343,10 @@ class Profile(models.Model):
     class Meta:
         permissions = (
             ("read_private_stats", "Can check the general statistics about the backup"),
+            ("use_remote_api", "Can use the remote admin API"),
         )
+
+
 
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     bio = models.TextField(max_length=500, blank=True, default='')
@@ -3343,8 +3355,41 @@ class Profile(models.Model):
     notify_wanted_gallery_found = models.BooleanField(default=False, blank=True)
 
 
+def in_10_years() -> datetime:
+    return django_tz.now() + timedelta(days=3650)
+
+
+class UserLongLivedToken(models.Model):
+
+    VALID_CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-_"
+    TOKEN_LENGTH = 50
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["name"]),
+            models.Index(fields=["key"]),
+        ]
+
+    @staticmethod
+    def create_salted_key_from_key(secret_key):
+        salted_key = salted_hmac(
+            'panda.backup.py',
+            secret_key,
+            secret=settings.SECRET_KEY,
+            algorithm='sha256',
+        ).hexdigest()
+
+        return salted_key
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='long_lived_tokens')
+    name = models.CharField(max_length=100, unique=True)
+    key = models.CharField(max_length=256, null=False, blank=False, unique=True)
+    expire_date = models.DateTimeField(null=False, blank=False, default=in_10_years)
+    create_date = models.DateTimeField(auto_now_add=True)
+
+
 @receiver(post_save, sender=User)
-def create_favorites(sender, instance, created, **kwargs):
+def create_profile(sender, instance, created, **kwargs):
     if created:
         Profile.objects.create(user=instance)
 

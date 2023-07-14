@@ -37,7 +37,7 @@ def send_mass_html_mail(datatuple, fail_silently=False, user=None, password=None
     return connection.send_messages(messages)
 
 
-def archive_search_result_to_json(request: HttpRequest, archives: Iterable[Archive]) -> list[dict[str, Any]]:
+def archive_search_result_to_json(request: HttpRequest, archives: Iterable[Archive], user_is_authenticated: bool) -> list[dict[str, Any]]:
     response = [
         {
             'id': archive.pk,
@@ -47,7 +47,7 @@ def archive_search_result_to_json(request: HttpRequest, archives: Iterable[Archi
             'filesize': archive.filesize,
             'posted': timestamp_or_null(archive.gallery.posted) if archive.gallery else None,
             'public_date': timestamp_or_null(archive.public_date),
-            'create_date': timestamp_or_null(archive.create_date) if request.user.is_authenticated else None,
+            'create_date': timestamp_or_null(archive.create_date) if user_is_authenticated else None,
             'source': archive.source_type,
             'reason': archive.reason,
             'category': archive.gallery.category if archive.gallery else None,
@@ -63,7 +63,7 @@ def archive_search_result_to_json(request: HttpRequest, archives: Iterable[Archi
     return response
 
 
-def archive_manage_results_to_json(request: HttpRequest, archives: Iterable[Archive]) -> list[dict[str, Any]]:
+def archive_manage_results_to_json(request: HttpRequest, archives: Iterable[Archive], user_is_authenticated: bool) -> list[dict[str, Any]]:
     response = [
         {
             'id': archive.pk,
@@ -72,8 +72,8 @@ def archive_manage_results_to_json(request: HttpRequest, archives: Iterable[Arch
             'filecount': archive.filecount,
             'filesize': archive.filesize,
             'public_date': timestamp_or_null(archive.public_date),
-            'create_date': timestamp_or_null(archive.create_date) if request.user.is_authenticated else None,
-            'last_modified': timestamp_or_null(archive.last_modified) if request.user.is_authenticated else None,
+            'create_date': timestamp_or_null(archive.create_date) if user_is_authenticated else None,
+            'last_modified': timestamp_or_null(archive.last_modified) if user_is_authenticated else None,
             'source_type': archive.source_type,
             'reason': archive.reason,
             'download': request.build_absolute_uri(reverse('viewer:archive-download', args=(archive.pk,))),

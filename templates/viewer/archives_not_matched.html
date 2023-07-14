@@ -76,27 +76,27 @@
           <span class="dropdown">
             <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">generate matches internally</button>
             <div class="dropdown-menu">
-            <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ api_key }}', '{% static 'favicon-160.png' %}', 'match_archive_internally', {archive: {{ archive.pk }}, provider: ''}); return false;">All</a>
+            <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{% static 'favicon-160.png' %}', 'match_archive_internally', {archive: {{ archive.pk }}, provider: ''}); return false;">All</a>
               {% for provider in providers %}
-                <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ api_key }}', '{% static 'favicon-160.png' %}', 'match_archive_internally', {archive: {{ archive.pk }}, provider: '{{ provider }}'}); return false;">{{ provider }}</a>
+                <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{% static 'favicon-160.png' %}', 'match_archive_internally', {archive: {{ archive.pk }}, provider: '{{ provider }}'}); return false;">{{ provider }}</a>
               {% endfor %}
             </div>
           </span>
           <span class="dropdown">
             <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">generate matches internally clear title<span class="caret"></span></button>
             <div class="dropdown-menu">
-            <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ api_key }}', '{% static 'favicon-160.png' %}', 'match_archive_internally', {archive: {{ archive.pk }}, provider: '', clear: ''}); return false;">All</a>
+            <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{% static 'favicon-160.png' %}', 'match_archive_internally', {archive: {{ archive.pk }}, provider: '', clear: ''}); return false;">All</a>
               {% for provider in providers %}
-                <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ api_key }}', '{% static 'favicon-160.png' %}', 'match_archive_internally', {archive: {{ archive.pk }}, provider: '{{ provider }}', clear: ''}); return false;">{{ provider }}</a>
+                <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{% static 'favicon-160.png' %}', 'match_archive_internally', {archive: {{ archive.pk }}, provider: '{{ provider }}', clear: ''}); return false;">{{ provider }}</a>
               {% endfor %}
             </div>
           </span>
           <span class="dropdown">
             <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">generate matches web<span class="caret"></span></button>
             <div class="dropdown-menu">
-            <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ api_key }}', '{% static 'favicon-160.png' %}', 'match_archive', {archive: {{ archive.pk }}, match_filter: ''}); return false;">All</a>
+            <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{% static 'favicon-160.png' %}', 'match_archive', {archive: {{ archive.pk }}, match_filter: ''}); return false;">All</a>
               {% for matcher, priority in matchers %}
-                <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ api_key }}', '{% static 'favicon-160.png' %}', 'match_archive', {archive: {{ archive.pk }}, match_filter: '{{ matcher }}'}); return false;">{{ matcher }}</a>
+                <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{% static 'favicon-160.png' %}', 'match_archive', {archive: {{ archive.pk }}, match_filter: '{{ matcher }}'}); return false;">{{ matcher }}</a>
               {% endfor %}
             </div>
           </span> >>

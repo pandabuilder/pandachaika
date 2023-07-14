@@ -38,7 +38,7 @@
                   <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">force download<span class="caret"></span></button>
                   <ul class="dropdown-menu dropdown-menu-end">
                   {% for downloader, priority in settings.downloaders.items %}
-                    <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{{ settings.api_key }}', '{% static 'favicon-160.png' %}', 'webcrawler', {link: '{{ gallery.get_link }}', downloader: '{{ downloader }}'}); return false;">{{ downloader }}</a>
+                    <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{% static 'favicon-160.png' %}', 'webcrawler', {link: '{{ gallery.get_link }}', downloader: '{{ downloader }}'}); return false;">{{ downloader }}</a>
                   {% endfor %}
                   </ul>
                 </div>
@@ -171,9 +171,7 @@
       </table>
     </li>
     <a class="btn btn-light" href="{% url 'viewer:api' %}?gallery={{ gallery.pk }}">JSON info</a>
-    {% if perms.viewer.read_gallery_change_log %}
-        <a class="btn btn-light" href="{% url 'viewer:gallery-change-log' gallery.pk %}">Change Log</a>
-    {% endif %}
+    <a class="btn btn-light" href="{% url 'viewer:gallery-change-log' gallery.pk %}">Change Log</a>
     {% if perms.viewer.read_activity_logs %}
         <a class="btn btn-light" href="{% url 'viewer:activity-event-log' %}?content-type=gallery&content-id={{ gallery.pk }}">Activity Log</a>
     {% endif %}

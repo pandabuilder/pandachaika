@@ -14,16 +14,18 @@ from viewer.models import Archive, Gallery
 crawler_settings = settings.CRAWLER_SETTINGS
 
 
-def get_gid_path_association(archives_to_check, site_page, api_key):
+def get_gid_path_association(archives_to_check, site_page, user_token):
 
     archives_gid_provider = list(archives_to_check.values_list('gallery__gid', 'gallery__provider'))
     data = {
         'operation': 'archive_request',
-        'api_key': api_key,
         'args': archives_gid_provider
     }
 
-    headers = {'Content-Type': 'application/json; charset=utf-8'}
+    headers = {
+        'Content-Type': 'application/json; charset=utf-8',
+        "Authorization": "Bearer {}".format(user_token)
+    }
     r = requests.post(
         site_page,
         data=json.dumps(data),
@@ -39,13 +41,12 @@ def get_gid_path_association(archives_to_check, site_page, api_key):
     return response_data
 
 
-def send_urls_from_archive_list(site_page, api_key, reason, details, archive_ids):
+def send_urls_from_archive_list(site_page, user_token, reason, details, archive_ids):
 
     url_list = [x.get_link() for x in Archive.objects.filter(pk__in=archive_ids)]
 
     data = {
         'operation': 'force_queue_archives',
-        'api_key': api_key,
         'args': url_list
     }
 
@@ -54,7 +55,10 @@ def send_urls_from_archive_list(site_page, api_key, reason, details, archive_ids
     if details:
         data['archive_details'] = details
 
-    headers = {'Content-Type': 'application/json; charset=utf-8'}
+    headers = {
+        'Content-Type': 'application/json; charset=utf-8',
+        "Authorization": "Bearer {}".format(user_token)
+    }
     r = requests.post(
         site_page,
         data=json.dumps(data),
@@ -68,13 +72,12 @@ def send_urls_from_archive_list(site_page, api_key, reason, details, archive_ids
         yield "Error parsing the response: {}".format(r.text)
 
 
-def send_urls_from_archives(site_page, api_key, reason, details):
+def send_urls_from_archives(site_page, user_token, reason, details):
 
     url_list = [x.get_link() for x in Archive.objects.filter(gallery__hidden=True)]
 
     data = {
         'operation': 'queue_archives',
-        'api_key': api_key,
         'args': url_list
     }
 
@@ -83,7 +86,11 @@ def send_urls_from_archives(site_page, api_key, reason, details):
     if details:
         data['archive_details'] = details
 
-    headers = {'Content-Type': 'application/json; charset=utf-8'}
+    headers = {
+        'Content-Type': 'application/json; charset=utf-8',
+        "Authorization": "Bearer {}".format(user_token)
+    }
+
     r = requests.post(
         site_page,
         data=json.dumps(data),
@@ -97,7 +104,7 @@ def send_urls_from_archives(site_page, api_key, reason, details):
         yield "Error parsing the response: {}".format(r.text)
 
 
-def send_urls_from_gallery_query(site_page, api_key, reason, details, web_page, sessionid):
+def send_urls_from_gallery_query(site_page, user_token, reason, details, web_page, sessionid):
 
     galleries_request = requests.get(
         web_page,
@@ -129,7 +136,6 @@ def send_urls_from_gallery_query(site_page, api_key, reason, details, web_page, 
 
     data = {
         'operation': 'force_queue_archives',
-        'api_key': api_key,
         'args': url_list
     }
 
@@ -138,7 +144,11 @@ def send_urls_from_gallery_query(site_page, api_key, reason, details, web_page, 
     if details:
         data['archive_details'] = details
 
-    headers = {'Content-Type': 'application/json; charset=utf-8'}
+    headers = {
+        'Content-Type': 'application/json; charset=utf-8',
+        "Authorization": "Bearer {}".format(user_token)
+    }
+
     r = requests.post(
         site_page,
         data=json.dumps(data),
@@ -156,17 +166,20 @@ def send_urls_from_gallery_query(site_page, api_key, reason, details, web_page, 
         yield "Error parsing the response: {}".format(r.text)
 
 
-def send_urls_from_galleries(site_page, api_key):
+def send_urls_from_galleries(site_page, user_token):
 
     url_list = [x.get_link() for x in Gallery.objects.filter(hidden=True)]
 
     data = {
         'operation': 'queue_galleries',
-        'api_key': api_key,
         'args': url_list
     }
 
-    headers = {'Content-Type': 'application/json; charset=utf-8'}
+    headers = {
+        'Content-Type': 'application/json; charset=utf-8',
+        "Authorization": "Bearer {}".format(user_token)
+    }
+
     r = requests.post(
         site_page,
         data=json.dumps(data),
@@ -180,17 +193,20 @@ def send_urls_from_galleries(site_page, api_key):
         yield "Error parsing the response: {}".format(r.text)
 
 
-def send_urls_fakku(site_page, api_key):
+def send_urls_fakku(site_page, user_token):
 
     url_list = [x.get_link() for x in Gallery.objects.filter(provider__contains='fakku')]
 
     data = {
         'operation': 'links',
-        'api_key': api_key,
         'args': url_list
     }
 
-    headers = {'Content-Type': 'application/json; charset=utf-8'}
+    headers = {
+        'Content-Type': 'application/json; charset=utf-8',
+        "Authorization": "Bearer {}".format(user_token)
+    }
+
     r = requests.post(
         site_page,
         data=json.dumps(data),
@@ -263,9 +279,9 @@ class FTPHandler(object):
         progress = self.upload_current / self.upload_total * 100
         print_method("Upload progress: {:05.2f}%".format(progress), ending='\r')
 
-    def check_remote(self, archives_to_check, remote_site_api, api_key, remote_folder):
+    def check_remote(self, archives_to_check, remote_site_api, user_token, remote_folder):
 
-        remote_info = get_gid_path_association(archives_to_check, remote_site_api, api_key)
+        remote_info = get_gid_path_association(archives_to_check, remote_site_api, user_token)
 
         yield "Checking {} archives versus {} remote files".format(archives_to_check.count(), len(remote_info['result']))
 
@@ -360,23 +376,23 @@ class Command(BaseCommand):
         if options['archive_specify']:
             for message in send_urls_from_archive_list(
                     crawler_settings.remote_site['api_url'],
-                    crawler_settings.remote_site['api_key'],
+                    crawler_settings.remote_site['user_token'],
                     options['archive_reason'],
                     options['archive_details'],
                     options['archive_specify'],
             ):
                 self.stdout.write(message)
         if options['archives']:
-            for message in send_urls_from_archives(crawler_settings.remote_site['api_url'], crawler_settings.remote_site['api_key'], options['archive_reason'], options['archive_details']):
+            for message in send_urls_from_archives(crawler_settings.remote_site['api_url'], crawler_settings.remote_site['user_token'], options['archive_reason'], options['archive_details']):
                 self.stdout.write(message)
         if options['galleries_from_url']:
-            for message in send_urls_from_gallery_query(crawler_settings.remote_site['api_url'], crawler_settings.remote_site['api_key'], options['archive_reason'], options['archive_details'], options['galleries_from_url'], crawler_settings.remote_site['sessionid']):
+            for message in send_urls_from_gallery_query(crawler_settings.remote_site['api_url'], crawler_settings.remote_site['user_token'], options['archive_reason'], options['archive_details'], options['galleries_from_url'], crawler_settings.remote_site['sessionid']):
                 self.stdout.write(message)
         if options['galleries']:
-            for message in send_urls_from_galleries(crawler_settings.remote_site['api_url'], crawler_settings.remote_site['api_key']):
+            for message in send_urls_from_galleries(crawler_settings.remote_site['api_url'], crawler_settings.remote_site['user_token']):
                 self.stdout.write(message)
         if options['fakku']:
-            for message in send_urls_fakku(crawler_settings.remote_site['api_url'], crawler_settings.remote_site['api_key']):
+            for message in send_urls_fakku(crawler_settings.remote_site['api_url'], crawler_settings.remote_site['user_token']):
                 self.stdout.write(message)
         if options['upload']:
             all_archives = Archive.objects.filter_and_order_by_posted(gallery__hidden=True)
@@ -385,7 +401,7 @@ class Command(BaseCommand):
             for message in ftp_handler.check_remote(
                     all_archives,
                     crawler_settings.remote_site['api_url'],
-                    crawler_settings.remote_site['api_key'],
+                    crawler_settings.remote_site['user_token'],
                     crawler_settings.remote_site['remote_folder']
             ):
                 self.stdout.write(message)
@@ -396,7 +412,7 @@ class Command(BaseCommand):
             for message in ftp_handler.check_remote(
                     specified_archives,
                     crawler_settings.remote_site['api_url'],
-                    crawler_settings.remote_site['api_key'],
+                    crawler_settings.remote_site['user_token'],
                     crawler_settings.remote_site['remote_folder']
             ):
                 self.stdout.write(message)
@@ -418,7 +434,7 @@ class Command(BaseCommand):
             for message in ftp_handler.check_remote(
                     specified_archives,
                     crawler_settings.remote_site['api_url'],
-                    crawler_settings.remote_site['api_key'],
+                    crawler_settings.remote_site['user_token'],
                     crawler_settings.remote_site['remote_folder']
             ):
                 self.stdout.write(message)

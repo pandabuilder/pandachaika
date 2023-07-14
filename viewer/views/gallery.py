@@ -10,7 +10,6 @@ from viewer.models import (
 )
 
 
-@permission_required('viewer.read_gallery_change_log')
 def change_log(request: HttpRequest, pk: int) -> HttpResponse:
     try:
         gallery = Gallery.objects.get(pk=pk)

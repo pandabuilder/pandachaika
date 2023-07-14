@@ -147,6 +147,7 @@ urlpatterns += [
     re_path(r"^activity-event-log/$", collaborators.activity_event_log, name='activity-event-log'),
     re_path(r"^monitored-links$", collaborators.monitored_links, name='monitored-links'),
     re_path(r"^archives-by-field/$", collaborators.archives_similar_by_fields, name='archives-by-field'),
+    re_path(r"^user-token/([\w-]+)/$", collaborators.user_token, name='user-token'),
 ]
 
 # Archive groups.

@@ -15,6 +15,7 @@ from django.db.models import Prefetch, Count, Case, When, QuerySet, Q, F
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect, Http404, QueryDict
 from django.shortcuts import render
 from django.urls import reverse
+from django.utils.crypto import get_random_string
 
 from core.base.setup import Settings
 from core.base.utilities import thread_exists, clamp, get_schedulers_status
@@ -26,7 +27,7 @@ from viewer.forms import GallerySearchForm, ArchiveSearchForm, WantedGalleryCrea
     WantedGalleryColSearchForm, ArchiveManageSearchSimpleForm, AllGalleriesSearchForm, \
     EventSearchForm
 from viewer.models import Archive, Gallery, EventLog, ArchiveMatches, Tag, WantedGallery, ArchiveGroup, \
-    ArchiveGroupEntry, GallerySubmitEntry, MonitoredLink, ArchiveRecycleEntry, ArchiveTag
+    ArchiveGroupEntry, GallerySubmitEntry, MonitoredLink, ArchiveRecycleEntry, ArchiveTag, UserLongLivedToken
 from viewer.utils.tags import sort_tags
 from viewer.utils.types import AuthenticatedHttpRequest
 from viewer.views.head import gallery_filter_keys, filter_galleries_simple, \
@@ -757,7 +758,7 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
     if json_request:
         response = json.dumps(
             {
-                'results': archive_manage_results_to_json(request, results_page),
+                'results': archive_manage_results_to_json(request, results_page, request.user.is_authenticated),
                 'has_previous': results_page.has_previous(),
                 'has_next': results_page.has_next(),
                 'num_pages': paginator.num_pages,
@@ -2039,3 +2040,48 @@ def monitored_links(request: HttpRequest) -> HttpResponse:
         "schedulers": schedulers,
     }
     return render(request, "viewer/collaborators/monitored_links.html", d)
+
+
+@login_required
+def user_token(request: AuthenticatedHttpRequest, operation: str) -> HttpResponse:
+
+    if operation == 'create':
+
+        token_name = request.GET.get("token-name", None)
+
+        if not token_name:
+            messages.error(request, "Missing parameter 'token-name'.")
+            return HttpResponseRedirect(request.META["HTTP_REFERER"])
+
+        token_exists = request.user.long_lived_tokens.filter(name=token_name)
+        if len(token_exists) > 0:
+            messages.error(request, "Cannot create token with name: {}. Already exists.".format(token_name))
+            return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        else:
+            secret_key = get_random_string(UserLongLivedToken.TOKEN_LENGTH, UserLongLivedToken.VALID_CHARS)
+
+            salted_key = UserLongLivedToken.create_salted_key_from_key(secret_key)
+
+            UserLongLivedToken.objects.create(
+                key=salted_key,
+                user=request.user,
+                name=token_name,
+            )
+            messages.success(request, "Token with name: {} created successfully. Write down the token itself it will be only shown here (everything inside <>): <{}>.".format(token_name, secret_key))
+    elif operation == 'delete':
+
+        token_id = request.GET.get("id", None)
+
+        if token_id is None:
+            messages.error(request, "Missing parameter 'id'.")
+            return HttpResponseRedirect(request.META["HTTP_REFERER"])
+
+        token_exists = request.user.long_lived_tokens.filter(pk=token_id)
+        if len(token_exists) < 1:
+            messages.error(request, "Cannot delete token with ID: {}. It does not exist or does not belong to you.".format(token_id))
+            return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        else:
+            token_exists.delete()
+            messages.success(request, "Token with ID: {} deleted successfully.".format(token_id))
+
+    return HttpResponseRedirect(request.META["HTTP_REFERER"])

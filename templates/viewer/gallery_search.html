@@ -179,49 +179,148 @@
           </ul>
         </nav>
       </div>
-
+        {% if extra_options %}
+          <div class="col-md-4 justify-content-end">
+            <nav>
+              <ul class="pagination justify-content-end mb-0">
+              {% for option in extra_options %}
+                <li class="page-item{% if option == prm.view %} active{% endif %}">
+                  <a class="page-link" href="?{% url_replace 'view' option %}">{{ option }}</a>
+                </li>
+              {% endfor %}
+              </ul>
+            </nav>
+          </div>
+        {% endif %}
     </div>
     <!-- Results  -->
-    <div class="table-responsive">
-      <table class="table table-sm table-bordered result-table mb-0">
-        <thead>
-        <tr>
-          {% if prm.sort == "create_date" %}
-            <th class="w-5" scope="col"><a href="?{% url_replace 'sort' 'create_date' %}">Created</a></th>
-          {% else %}
-            <th class="w-5" scope="col"><a href="?{% url_replace 'sort' 'posted' %}">Posted</a></th>
-          {% endif %}
-          <th scope="col"><a href="?{% url_replace 'sort' 'title' %}">Title</a></th>
-          {% if prm.show_source %}
-            <th class="w-20" scope="col">Source</th>
-          {% endif %}
-          <th class="w-5" scope="col"><a href="?{% url_replace 'sort' 'provider' %}">Provider</a></th>
-          <th class="w-5" scope="col"><a href="?{% url_replace 'sort' 'category' %}">Category</a></th>
-          <th class="w-3" scope="col"><a href="?{% url_replace 'sort' 'filecount' %}">Images</a></th>
-          <th class="w-3" scope="col"><a href="?{% url_replace 'sort' 'filesize' %}">Size</a></th>
-        </tr>
-        </thead>
-        <tbody>
-        {% for gallery in results.object_list %}
-          <tr class="result-list">
-            {% if prm.sort == "create_date" %}
-              <td>{{ gallery.create_date|date:"SHORT_DATE_FORMAT" }}</td>
-            {% else %}
-              <td>{{ gallery.posted|date:"SHORT_DATE_FORMAT" }}</td>
-            {% endif %}
-            <td><a href="{% url 'viewer:gallery' gallery.pk %}" {% if gallery.thumbnail.name %} data-image-url="{{ gallery.thumbnail.url }}" class="img-preview" rel="popover"{% else %} title ="{{ gallery.title_jpn }}"{% endif %}>{{ gallery.best_title }}</a></td>
-          {% if prm.show_source %}
-            <td>{{ gallery.get_link|urlize_all_rel }}</td>
-          {% endif %}
-            <td>{{ gallery.provider }}</td>
-            <td>{{ gallery.category }}</td>
-            <td>{{ gallery.filecount }}</td>
-            <td>{{ gallery.filesize|filesizeformat }}</td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </div>
+    {% if prm.view == "extended" %}
+        <table class="table table-sm result-table">
+          <tbody>
+          {% for gallery in results.object_list %}
+            <tr>
+              <td class="td-extended">
+                <a href="{% url 'viewer:gallery' gallery.pk %}">
+                  {% with thumbnail_details=gallery.get_available_thumbnail_plus_size %}
+                  <img alt="" title="{{ gallery.title }}"
+                      width="{{ thumbnail_details.2 }}" height="{{ thumbnail_details.1 }}" src="{{ thumbnail_details.0 }}"/>
+                  {% endwith %}
+                </a>
+              </td>
+              <td class="td-extended">
+                <h5>{{ gallery.best_title }}</h5>
+                <h6>{{ gallery.title_jpn|default_if_none:"" }}</h6>
+                <h6>{{ gallery.comment|safe|default:"" }}</h6>
+                {% if user.is_staff %}
+                  <div>
+                    <a class="btn btn-sm btn-light" href="{% url 'viewer:api' %}?gallery={{ gallery.pk }}">JSON info</a>
+                    <a class="btn btn-sm btn-light" href="{% url 'viewer:gallery-change-log' gallery.pk %}">Change Log</a>
+                    {% if perms.viewer.read_activity_logs %}
+                        <a class="btn btn-sm btn-light" href="{% url 'viewer:activity-event-log' %}?content-type=gallery&content-id={{ gallery.pk }}">Activity Log</a>
+                    {% endif %}
+                  </div>
+                {% else %}
+                  <div>
+                    <a class="btn btn-sm btn-light" href="{% url 'viewer:gallery-change-log' gallery.pk %}">Change Log</a>
+                    <a class="btn btn-sm btn-light" href="{% url 'viewer:api' %}?gallery={{ gallery.pk }}">JSON info</a>
+                  </div>
+                {% endif %}
+                <div>
+                  {% with both_tag_lists=gallery.tag_lists %}
+                  {% if both_tag_lists %}
+                    <ul class="tags">
+                      {% for tag_list in both_tag_lists %}
+                        <li>
+                          {% if tag_list.0 %}
+                            <label class="label-extended">{{ tag_list.0 }}:</label>
+                          {% endif %}
+                          {% for tag in tag_list.1 %}
+                            <a href="{% url 'viewer:gallery-tag-search' 'gallery-tag' tag %}">
+                              {% if tag_list.0 %}{{ tag.name }}{% else %}
+                                {{ tag }}{% endif %}</a>
+                          {% endfor %}
+                        </li>{% endfor %}
+                    </ul>
+                  {% endif %}
+                {% endwith %}
+                </div>
+                <div><label class="label-extended">Source URL:</label>{{ gallery.get_link|urlize_all_rel }}</div>
+                {% if gallery.gallery_container %}<div><label class="label-extended">Contained in:</label><a href="{% url 'viewer:gallery' gallery.gallery_container.id %}">{{ gallery.gallery_container }}</a></div>{% endif %}
+                {% if gallery.magazine %}<div><label class="label-extended">Magazine:</label><a href="{% url 'viewer:gallery' gallery.magazine.id %}">{{ gallery.magazine }}</a></div>{% endif %}
+                {% if gallery.parent_gallery %}<div><label class="label-extended">Parent:</label><a href="{% url 'viewer:gallery' gallery.parent_gallery.id %}">{{ gallery.parent_gallery }}</a></div>{% endif %}
+                {% if gallery.first_gallery %}<div><label class="label-extended">First:</label><a href="{% url 'viewer:gallery' gallery.first_gallery.id %}">{{ gallery.first_gallery }}</a></div>{% endif %}
+              </td>
+              <td class="td-extended">
+                <div><label class="label-extended">Count:</label>{{ gallery.filecount }}</div>
+                <div><label class="label-extended">Size:</label>{{ gallery.filesize|filesizeformat }}</div>
+                <div><label class="label-extended">Category:</label>{{ gallery.category }}</div>
+                <div><label class="label-extended">Posted:</label>{{ gallery.posted|date:"SHORT_DATE_FORMAT" }}</div>
+                {% if user.is_authenticated %}
+                  <div><label class="label-extended">Created:</label>{{ gallery.create_date|date:"SHORT_DATE_FORMAT" }}</div>
+                  <div><label class="label-extended">Published:</label>{{ gallery.public_date|date:"SHORT_DATE_FORMAT" }}</div>
+                {% else %}
+                  <div><label class="label-extended">Added:</label>{{ gallery.public_date|date:"SHORT_DATE_FORMAT" }}</div>
+                {% endif %}
+              </td>
+              <td class="td-extended">
+                <div><label class="label-extended">Provider:</label>{{ gallery.provider }}</div>
+                <div><label class="label-extended">Reason:</label>{{ gallery.reason }}</div>
+                <div><label class="label-extended">Uploader:</label>{{ gallery.uploader }}</div>
+                <div><label class="label-extended">Rating:</label>{{ gallery.rating }}</div>
+                <div><label class="label-extended">Fjord:</label>{{ gallery.fjord|yesno }}</div>
+                {% if user.is_authenticated %}
+                    <div><label class="label-extended">Hidden:</label>{{ gallery.hidden|yesno }}</div>
+                    <div><label class="label-extended">Status:</label>{{ gallery.get_status_display }}</div>
+                    <div><label class="label-extended">Origin:</label>{{ gallery.get_origin_display }}</div>
+                    <div><label class="label-extended">DL type:</label>{{ gallery.dl_type }}</div>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+    {% else %}
+        <div class="table-responsive">
+          <table class="table table-sm table-bordered result-table mb-0">
+            <thead>
+            <tr>
+              {% if prm.sort == "create_date" %}
+                <th class="w-5" scope="col"><a href="?{% url_replace 'sort' 'create_date' %}">Created</a></th>
+              {% else %}
+                <th class="w-5" scope="col"><a href="?{% url_replace 'sort' 'posted' %}">Posted</a></th>
+              {% endif %}
+              <th scope="col"><a href="?{% url_replace 'sort' 'title' %}">Title</a></th>
+              {% if prm.show_source %}
+                <th class="w-20" scope="col">Source</th>
+              {% endif %}
+              <th class="w-5" scope="col"><a href="?{% url_replace 'sort' 'provider' %}">Provider</a></th>
+              <th class="w-5" scope="col"><a href="?{% url_replace 'sort' 'category' %}">Category</a></th>
+              <th class="w-3" scope="col"><a href="?{% url_replace 'sort' 'filecount' %}">Images</a></th>
+              <th class="w-3" scope="col"><a href="?{% url_replace 'sort' 'filesize' %}">Size</a></th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for gallery in results.object_list %}
+              <tr class="result-list">
+                {% if prm.sort == "create_date" %}
+                  <td>{{ gallery.create_date|date:"SHORT_DATE_FORMAT" }}</td>
+                {% else %}
+                  <td>{{ gallery.posted|date:"SHORT_DATE_FORMAT" }}</td>
+                {% endif %}
+                <td><a href="{% url 'viewer:gallery' gallery.pk %}" {% if gallery.thumbnail.name %} data-image-url="{{ gallery.thumbnail.url }}" class="img-preview" rel="popover"{% else %} title ="{{ gallery.title_jpn }}"{% endif %}>{{ gallery.best_title }}</a></td>
+              {% if prm.show_source %}
+                <td>{{ gallery.get_link|urlize_all_rel }}</td>
+              {% endif %}
+                <td>{{ gallery.provider }}</td>
+                <td>{{ gallery.category }}</td>
+                <td>{{ gallery.filecount }}</td>
+                <td>{{ gallery.filesize|filesizeformat }}</td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+    {% endif %}
     <!-- Next/Prev page links  -->
     <div class="row">
      <div class="col-md-4">

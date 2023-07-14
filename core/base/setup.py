@@ -228,7 +228,6 @@ class Settings:
         self.MEDIA_ROOT = ''
         self.django_secret_key = ''
         self.django_debug_mode = False
-        self.api_key = ''
         self.download_handler = 'local'
         # More specific, if not set, will use 'download_handler'
         self.download_handler_torrent = ''
@@ -439,8 +438,6 @@ class Settings:
                 self.django_secret_key = config['general']['django_secret_key']
             if 'django_debug_mode' in config['general']:
                 self.django_debug_mode = config['general']['django_debug_mode']
-            if 'api_key' in config['general']:
-                self.api_key = config['general']['api_key']
             if 'download_handler' in config['general']:
                 self.download_handler = config['general']['download_handler']
             if 'download_handler_torrent' in config['general']:

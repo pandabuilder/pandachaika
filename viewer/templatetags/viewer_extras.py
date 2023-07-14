@@ -242,15 +242,20 @@ GALLERY_INCLUDED_FIELDS = (
     'expunged', 'rating', 'fjord', 'public', 'dl_type', 'reason', 'thumbnail_url', 'status'
 )
 
+GALLERY_PUBLIC_INCLUDED_FIELDS = (
+    'title', 'title_jpn', 'category', 'uploader', 'comment', 'posted', 'filecount', 'filesize',
+    'expunged', 'rating'
+)
+
 
 @register.filter
-def changes_gallery_delta(new_record):
+def changes_gallery_delta(new_record, is_authenticated=False):
     prev_record = new_record.prev_record
     if prev_record is None:
         return []
     delta = new_record.diff_against(
         prev_record,
-        included_fields=GALLERY_INCLUDED_FIELDS
+        included_fields=GALLERY_INCLUDED_FIELDS if is_authenticated else GALLERY_PUBLIC_INCLUDED_FIELDS
     )
     return delta.changes
 
@@ -267,9 +272,11 @@ def tag_history_to_tag_lists(history) -> list[tuple[str, list[Tag]]]:
 
 
 @register.filter
-def gallery_history_fields(new_record):
+def gallery_history_fields(new_record, is_authenticated=False):
 
-    history_fields = {gallery_field: getattr(new_record, gallery_field) for gallery_field in GALLERY_INCLUDED_FIELDS}
+    fields_to_check = GALLERY_INCLUDED_FIELDS if is_authenticated else GALLERY_PUBLIC_INCLUDED_FIELDS
+
+    history_fields = {gallery_field: getattr(new_record, gallery_field) for gallery_field in fields_to_check}
 
     history_fields['tags'] = ''
 

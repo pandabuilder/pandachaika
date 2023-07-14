@@ -1,9 +1,9 @@
 Notification.requestPermission();
 
-function sendJSONAPICommand(url, api_key, iconUrl, operation, args) {
+function sendJSONAPICommand(url, iconUrl, operation, args) {
 
     var xmlhttp = new XMLHttpRequest();
-    var body ={ api_key : api_key,operation : operation, args : args };
+    var body ={ operation : operation, args : args };
     var params = JSON.stringify( body );
 
     xmlhttp.onreadystatechange = function () {
@@ -22,7 +22,10 @@ function sendJSONAPICommand(url, api_key, iconUrl, operation, args) {
     };
     xmlhttp.open("POST", url, true);
 
+    const token = localStorage.getItem("activeUserToken");
+
     xmlhttp.setRequestHeader("Content-type", "application/json");
+    xmlhttp.setRequestHeader("Authorization", "Bearer " + token);
 
     xmlhttp.send(params);
 

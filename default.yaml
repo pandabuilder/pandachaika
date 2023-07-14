@@ -12,8 +12,6 @@ general:
   django_secret_key: 89!yi9gvd2r*m5rq9y-elj86u*zg@-j3ce90@^7+0(-!fkgpzd
   # Enable Django debug mode, that will be more verbose in case of something going wrong.
   django_debug_mode: false
-  # API key, that will be applied to the JSON server, JSON view, and userscript. MUST CHANGE.
-  api_key: panda_backup
   # How torrent downloads are handled. remote means file is downloaded on a remote server, so the file must be downloaded via FTP from that server.
   # local_copy, local_move, local_hardlink means files will be copied or moved instead of FTP downloading.
   # For hardlinks, make sure that it's being copied under the same filesystem.
@@ -251,10 +249,10 @@ urls:
   # User facing URL, (scheme+authority), used to resolve absolute URLs where the request is not accessible.
   main_webserver_url: ''
   elasticsearch_as_main_urls: false
-# Used if two instances of this application are running, to communicate between them
+# Used if two instances of this application are running, to communicate between them (user_token must be set on an account on the remote server)
 remote_site:
   api_url: https://panda.chaika.moe/jsonapi
-  api_key: asdf1234
+  user_token: asdf1234
   remote_folder: /media/galleries/archives
 # Control the startup of the monitored_links subsystem (threads)
 monitored_links:

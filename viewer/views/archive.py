@@ -30,6 +30,7 @@ from viewer.models import (
     UserArchivePrefs, ArchiveManageEntry, ArchiveRecycleEntry, GalleryProviderData, ArchiveGroup, ArchiveGroupEntry,
     ArchiveTag
 )
+from viewer.utils.requests import double_check_auth
 from viewer.views.head import render_error
 
 logger = logging.getLogger(__name__)
@@ -119,7 +120,6 @@ def archive_details(request: HttpRequest, pk: int, mode: str = 'view') -> HttpRe
             'image_formset': image_formset,
             'image_queryset': all_images,
             'matchers': crawler_settings.provider_context.get_matchers(crawler_settings, force=True),
-            'api_key': crawler_settings.api_key,
         })
 
     if request.user.is_authenticated:
@@ -369,7 +369,6 @@ def archive_update(request: HttpRequest, pk: int, tool: Optional[str] = None, to
         'form': form,
         'image_formset': image_formset,
         'matchers': crawler_settings.provider_context.get_matchers(crawler_settings, force=True),
-        'api_key': crawler_settings.api_key,
     })
 
     return HttpResponseRedirect(request.META["HTTP_REFERER"])
@@ -582,13 +581,12 @@ def change_log(request: HttpRequest, pk: int) -> HttpResponse:
     return render(request, "viewer/archive_change_log.html", d)
 
 
-@login_required
 def image_live_thumb(request: HttpRequest, archive_pk: int, position: int) -> HttpResponse:
     try:
         image = Image.objects.get(archive=archive_pk, position=position)
     except Image.DoesNotExist:
         raise Http404("Archive does not exist")
-    if not image.archive.public and not request.user.is_authenticated:
+    if not image.archive.public and not double_check_auth(request)[0]:
         raise Http404("Archive does not exist")
 
     full_image = bool(request.GET.get("full", ''))

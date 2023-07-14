@@ -28,7 +28,8 @@ from viewer.models import (
     EventLog,
     Provider, Attribute, ArchiveQuerySet, GalleryQuerySet, GallerySubmitEntry, ArchiveManageEntry,
     ArchiveRecycleEntry,
-    MonitoredLink, TagQuerySet, GalleryProviderData, ItemProperties
+    MonitoredLink, TagQuerySet, GalleryProviderData, ItemProperties,
+    UserLongLivedToken
 )
 from django.contrib import admin
 from django.contrib.admin.helpers import ActionForm
@@ -557,6 +558,14 @@ class EventLogAdmin(admin.ModelAdmin):
     search_fields = ["user__username", "user__email", "reason", "result", "object_id"]
 
 
+class UserLongLivedTokenAdmin(admin.ModelAdmin):
+
+    raw_id_fields = ["user"]
+    list_display = ["user", "name", "create_date", "expire_date"]
+    list_filter = ["create_date", "expire_date"]
+    search_fields = ["user__username", "user__email"]
+
+
 class ItemPropertiesAdmin(admin.ModelAdmin):
 
     list_filter = ["name", "tag", "content_type"]
@@ -648,6 +657,7 @@ admin.site.register(Scheduler, SchedulerAdmin)
 admin.site.register(ArchiveMatches, ArchiveMatchesAdmin)
 admin.site.register(Provider, ProviderAdmin)
 admin.site.register(EventLog, EventLogAdmin)
+admin.site.register(UserLongLivedToken, UserLongLivedTokenAdmin)
 admin.site.register(ItemProperties, ItemPropertiesAdmin)
 admin.site.register(GallerySubmitEntry, GallerySubmitEntryAdmin)
 admin.site.register(ArchiveManageEntry, ArchiveManageEntryAdmin)

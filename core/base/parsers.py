@@ -532,7 +532,12 @@ class BaseParser:
                     # Note that we have a filter here to not add galleries that already exist.
                     # If the gallery already exists, the relationship will be set backwards, without
                     # needing to process the Gallery directly
-                    if not self.settings.stop_nested and self.settings.auto_download_nested and self.settings.workers.web_queue and self.settings.gallery_model:
+                    # Also, don't auto download related galleries when check submissions
+                    if not self.settings.stop_nested and \
+                            self.settings.auto_download_nested and \
+                            self.settings.workers.web_queue and \
+                            self.settings.gallery_model and \
+                            self.downloaders[0][0].type != 'submit':
                         if gallery.gallery_contains_gids:
                             existing_gids = self.settings.gallery_model.objects.filter(
                                 gid__in=gallery.gallery_contains_gids,

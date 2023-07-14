@@ -6,12 +6,12 @@ python-dateutil==2.8.2
 twitter==1.19.6
 beautifulsoup4==4.12.2
 CherryPy==18.8.0
-Django==4.2.1
-django-compressor==4.3.1
-Pillow==9.5.0
+Django==4.2.3
+django-compressor==4.4
+Pillow==10.0.0
 rarfile==4.0
 py7zr==0.20.5
-requests==2.30.0
+requests==2.31.0
 feedparser==6.0.10
 transmissionrpc==0.11
 django-autocomplete-light==3.9.7
@@ -22,4 +22,7 @@ django-simple-history==3.3.0
 PyYAML==6.0
 deckar01-ratelimit==3.0.2
 # For image operations in edge cases
-numpy==1.24.3
+numpy==1.25.1
+# Optional packages (depending on features wanted):
+# imagehash==4.3.1
+# PySocks==1.7.1

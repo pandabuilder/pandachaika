@@ -1,5 +1,6 @@
 import threading
 import logging
+import traceback
 
 import django.utils.timezone as django_tz
 from django.db import close_old_connections
@@ -8,6 +9,16 @@ from core.workers.schedulers import BaseScheduler
 from viewer.models import Attribute
 
 logger = logging.getLogger(__name__)
+
+
+def catch_and_log_error(func):
+    def wrapper_catch_and_log_error(*args, **kwargs):
+        try:
+            func(*args, **kwargs)
+        except BaseException:
+            logger.critical(traceback.format_exc())
+
+    return wrapper_catch_and_log_error
 
 
 class TimedAutoWanted(BaseScheduler):
@@ -26,6 +37,7 @@ class TimedAutoWanted(BaseScheduler):
             if self.settings.auto_wanted.enable:
                 logger.info("Starting timed auto wanted.")
                 close_old_connections()
+
                 for provider_name in self.settings.auto_wanted.providers:
 
                     attrs = Attribute.objects.filter(provider__slug=provider_name)
@@ -34,7 +46,7 @@ class TimedAutoWanted(BaseScheduler):
                         # wanted_generator(self.settings, self.crawler_logger, attrs)
                         wanted_generator_thread = threading.Thread(
                             name="{}-{}-{}".format(self.thread_name, provider_name, count),
-                            target=wanted_generator,
+                            target=catch_and_log_error(wanted_generator),
                             args=(self.settings, attrs)
                         )
                         wanted_generator_thread.daemon = True

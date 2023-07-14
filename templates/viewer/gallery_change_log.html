@@ -10,10 +10,14 @@
     {% endfor %}
   {% endif %}
 
-  <!-- Wanted galleries  -->
   <div class="page-header">
     <h2>Change Log for Gallery: <a href="{% url 'viewer:gallery' gallery.pk %}">{{ gallery.best_title }}</a></h2>
-    <p class="lead">Tracked fields: title, title_jpn, tags, category, uploader, comment, posted, filecount, filesize, expunged, rating, fjord, public, dl_type, reason, thumbnail_url, status.</p>
+
+    {% if user.is_authenticated %}
+        <p class="lead">Tracked fields: title, title_jpn, tags, category, uploader, comment, posted, filecount, filesize, expunged, rating, fjord, public, dl_type, reason, thumbnail_url, status.</p>
+    {% else %}
+        <p class="lead">Tracked public fields: title, title_jpn, tags, category, uploader, comment, posted, filecount, filesize, expunged, rating.</p>
+    {% endif %}
   </div>
   {% load viewer_extras %}
     <div>
@@ -49,6 +53,8 @@
         </thead>
         <tbody>
         {% for history in results %}
+            {% with changes=history|changes_gallery_delta:user.is_authenticated %}
+            {% if changes|length > 0 %}
           <tr>
             <td>
               {{ history.history_date|date:"DATETIME_FORMAT" }}
@@ -62,7 +68,7 @@
                 </tr>
                 </thead>
                 <tbody>
-                {% for gallery_field, gallery_value in history|gallery_history_fields %}
+                {% for gallery_field, gallery_value in history|gallery_history_fields:user.is_authenticated %}
                   <tr>
                     <td>
                       {{ gallery_field }}
@@ -149,6 +155,8 @@
             {% endwith %}
             </td>
           </tr>
+        {% endif %}
+        {% endwith %}
         {% endfor %}
         </tbody>
       </table>

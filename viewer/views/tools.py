@@ -8,13 +8,19 @@ from django.shortcuts import render
 
 from viewer.models import Archive, ItemProperties, Image
 from viewer.services import CompareObjectsService
+from viewer.utils.requests import double_check_auth
 
 crawler_settings = settings.CRAWLER_SETTINGS
 logger = logging.getLogger(__name__)
 
 
-@permission_required('viewer.compare_archives')
 def compare_archives(request: HttpRequest) -> HttpResponse:
+
+    authenticated, actual_user = double_check_auth(request)
+
+    if not actual_user or not actual_user.has_perm('viewer.download_gallery'):
+        return HttpResponse(json.dumps({'results': []}), content_type="application/json; charset=utf-8")
+
     response: dict = {}
     algos = request.GET.getlist("algos", ['phash'])
     thumbs = bool(request.GET.get("thumbs", False))

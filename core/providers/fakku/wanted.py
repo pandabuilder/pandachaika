@@ -75,13 +75,9 @@ def wanted_generator(settings: 'Settings', attrs: 'AttributeManager'):
                 logger.error('Cannot query without html container definition for {}'.format(query_name))
                 break
             container_tag = query_values['container_tag']
-            container_attribute_name = query_values['container_attribute_name']
-            container_attribute_value = query_values['container_attribute_value']
 
             get_text_from_container = False
             link_tag = ''
-            link_attribute_name = ''
-            link_attribute_value = ''
             url_attribute_name = ''
 
             if 'link_attribute_get_text' in query_values and query_values['link_attribute_get_text']:
@@ -92,10 +88,6 @@ def wanted_generator(settings: 'Settings', attrs: 'AttributeManager'):
                     logger.error('Cannot query without link container definition for {}'.format(query_name))
                     break
                 link_tag = query_values['link_tag']
-                link_attribute_name = query_values['link_attribute_name']
-                if link_attribute_name == 'class':
-                    link_attribute_name = 'class_'
-                link_attribute_value = query_values['link_attribute_value']
                 url_attribute_name = query_values['url_attribute_name']
 
             full_url = urllib.parse.urljoin("{}/".format(subpath), "page/{}".format(query_values['page']))
@@ -123,10 +115,11 @@ def wanted_generator(settings: 'Settings', attrs: 'AttributeManager'):
 
             soup = BeautifulSoup(response.text, 'html.parser')
 
-            gallery_containers = soup.find_all(
-                container_tag,
-                **{container_attribute_name: re.compile(container_attribute_value)}
+            gallery_containers = soup.select(
+                container_tag
             )
+
+            n_containers = len(gallery_containers)
 
             gallery_links: list[str] = []
             gallery_gids: list[str] = []
@@ -135,12 +128,16 @@ def wanted_generator(settings: 'Settings', attrs: 'AttributeManager'):
                 if get_text_from_container:
                     gallery_link = gallery_container.get_text()
                 else:
-                    gallery_url_container = gallery_container.find(
-                        link_tag,
-                        **{link_attribute_name: re.compile(link_attribute_value)}
+                    gallery_url_containers = gallery_container.select(
+                        link_tag
                     )
-                    if gallery_url_container.has_attr(url_attribute_name):
-                        gallery_link = gallery_url_container[url_attribute_name]
+
+                    if len(gallery_url_containers) > 0:
+                        gallery_url_container = gallery_url_containers[0]
+                        if gallery_url_container.has_attr(url_attribute_name):
+                            gallery_link = gallery_url_container[url_attribute_name]
+                        else:
+                            continue
                     else:
                         continue
 
@@ -148,9 +145,10 @@ def wanted_generator(settings: 'Settings', attrs: 'AttributeManager'):
 
             if not gallery_gids:
                 logger.error(
-                    'For provider {}: Got to url: {}, but could not parse the response into galleries, stopping'.format(
+                    'For provider {}: Got to url: {}, but could not parse the response into galleries, stopping. Number of gallery containers found: {}.'.format(
                         constants.provider_name,
-                        full_url
+                        full_url,
+                        n_containers
                     )
                 )
                 break
@@ -208,7 +206,7 @@ def wanted_generator(settings: 'Settings', attrs: 'AttributeManager'):
                     if isinstance(wanted_reason, str):
                         gallery_data.reason = wanted_reason or 'backup'
                     gallery = Gallery.objects.add_from_values(gallery_data)
-                    # We match anyways in case there's a previous WantedGallery.
+                    # We match anyway in case there's a previous WantedGallery.
                     # Actually, we don't match since we only get metadata here, so it should not count as found.
                     publisher_name = ''
                     publisher = gallery.tags.filter(scope='publisher').first()

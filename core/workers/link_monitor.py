@@ -51,7 +51,7 @@ class LinkMonitor(BaseScheduler):
             if monitored_link.provider:
                 arguments_to_crawler.extend(['--include-providers', monitored_link.provider.slug])
             # TODO: This currently sets the proxy for both the queried page and the resulting downloads.
-            # Could be benefitial to have a separate setting.
+            # Could be beneficial to have a separate setting.
             if monitored_link.proxy:
                 logger.info("Using proxy: {}".format(monitored_link.proxy))
                 for provider_settings in current_settings.providers.values():

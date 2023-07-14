@@ -169,7 +169,7 @@ def change_profile(request: AuthenticatedHttpRequest) -> HttpResponse:
     else:
         user_form = UserChangeForm(instance=request.user, error_class=DivErrorList)
         profile_form = ProfileChangeForm(instance=request.user.profile, error_class=DivErrorList)
-    return render(request, 'viewer/accounts/change_profile.html', {
+    return render(request, 'viewer/accounts/user_profile.html', {
         'profile_form': profile_form,
         'user_form': user_form
     })
@@ -210,7 +210,6 @@ def panda_userscript(request: HttpRequest) -> HttpResponse:
         request,
         'viewer/panda.user.js',
         {
-            "api_key": crawler_settings.api_key,
             "img_url": request.build_absolute_uri(crawler_settings.urls.static_url + 'favicon-160.png'),
             "server_url": request.build_absolute_uri(reverse('viewer:json-parser'))
         },
@@ -642,7 +641,10 @@ def gallery_list(request: HttpRequest, mode: str = 'none', tag: Optional[str] = 
             return redirect(results[random_index])
 
     # make paginator
-    galleries_per_page = 100
+    if parameters['view'] == 'list' or json_request:
+        galleries_per_page = 100
+    else:
+        galleries_per_page = 24
 
     paginator = Paginator(results, galleries_per_page)
     try:
@@ -677,9 +679,12 @@ def gallery_list(request: HttpRequest, mode: str = 'none', tag: Optional[str] = 
     form = GallerySearchForm(initial={'title': display_prms['title'],
                                       'tags': display_prms['tags']})
 
+    view_options = ("list", "extended")
+
     d = {
         'results': results_page, 'prm': parameters,
-        'display_prms': display_prms, 'form': form
+        'display_prms': display_prms, 'form': form,
+        'extra_options': view_options
     }
 
     return render(request, "viewer/gallery_search.html", d)
@@ -801,8 +806,12 @@ def filter_galleries(request: HttpRequest, session_filters: dict[str, str], requ
 
         results = results.distinct()
 
+    if session_filters["view"] == "extended":
+        results = results.select_related('gallery_container', 'magazine', 'first_gallery', 'parent_gallery')\
+            .prefetch_related('tags')\
+            .defer('provider_metadata')
     # Remove fields that are admin related, not public facing
-    if not json_request:
+    elif not json_request:
         results = results.defer(*filter_galleries_defer)
 
     return results
@@ -891,7 +900,7 @@ def search(request: HttpRequest, mode: str = 'none', tag: Optional[str] = None) 
         results = quick_search(request, parameters, display_prms)
     else:
         parameters['main_filters'] = True
-        results = filter_archives(request, parameters, display_prms)
+        results = filter_archives(request, parameters, display_prms, request.user.is_authenticated)
 
     request.session["parameters"] = parameters
 
@@ -924,7 +933,7 @@ def search(request: HttpRequest, mode: str = 'none', tag: Optional[str] = None) 
     if json_request:
         response = json.dumps(
             {
-                'archives': archive_search_result_to_json(request, results_page),
+                'archives': archive_search_result_to_json(request, results_page, request.user.is_authenticated),
                 'has_previous': results_page.has_previous(),
                 'has_next': results_page.has_next(),
                 'num_pages': paginator.num_pages,
@@ -952,12 +961,12 @@ def search(request: HttpRequest, mode: str = 'none', tag: Optional[str] = None) 
     return render(request, "viewer/archive_search.html", d)
 
 
-def filter_archives(request: HttpRequest, session_filters: dict[str, str], request_filters: dict[str, str], force_private: bool = False) -> QuerySet[Archive]:
+def filter_archives(request: HttpRequest, session_filters: dict[str, str], request_filters: dict[str, str], authenticated: bool, force_private: bool = False) -> QuerySet[Archive]:
     """Filter results through parameters
     and return results list.
     """
 
-    if not request.user.is_authenticated and not force_private:
+    if not authenticated and not force_private:
         results: QuerySet[Archive] = Archive.objects.filter(public=True)
         to_use_order_fields = archive_public_order_fields
     else:
@@ -1086,7 +1095,7 @@ def filter_archives(request: HttpRequest, session_filters: dict[str, str], reque
         # Same name for a tag with 2 different scopes: artist:syukurin, group:syukurin
         results = results.distinct()
 
-    if "only_favorites" in request_filters and request_filters["only_favorites"] and request.user.is_authenticated:
+    if "only_favorites" in request_filters and request_filters["only_favorites"] and authenticated and type(request.user.id) == int:
         user_arch_ids = UserArchivePrefs.objects.filter(
             user=request.user.id, favorite_group__gt=0).values_list('archive')
         results = results.filter(id__in=user_arch_ids)
@@ -1094,7 +1103,7 @@ def filter_archives(request: HttpRequest, session_filters: dict[str, str], reque
     if "archive-group" in request_filters and request_filters["archive-group"]:
         try:
             archive_group_instance = ArchiveGroup.objects.get(title_slug=request_filters["archive-group"])
-            if archive_group_instance.public or request.user.is_authenticated:
+            if archive_group_instance.public or authenticated:
                 results = results.filter(archive_groups=archive_group_instance)
                 if "group-order" in request_filters and request_filters["group-order"]:
                     results = results.order_by("archivegroupentry")

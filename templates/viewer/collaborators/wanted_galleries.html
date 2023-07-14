@@ -217,6 +217,7 @@
   {% compress css %}
     <link href="{% static 'css/vendor/jal/style.css' %}" type="text/css" media="all" rel="stylesheet" />
   {% endcompress %}
+  {{ form.media }}
   {% compress js %}
     <script>
     $('#add-wanted').click(function () {
@@ -230,6 +231,5 @@
     }
     });
     </script>
-  {{ form.media }}
   {% endcompress %}
 {% endblock %}

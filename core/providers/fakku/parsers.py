@@ -230,9 +230,10 @@ class Parser(BaseParser):
                     gallery.posted = datetime.strptime(right_date_text, "%B %d, %Y")
                 elif left_text == "":
                     for tag_a in right_div.find_all("a", href=lambda x: x and '/tags/' in x):
-                        if tag_a.get_text().strip() == 'doujin':
+                        translated_tag = translate_tag(tag_a.get_text().strip())
+                        if translated_tag == 'doujin':
                             is_doujinshi = True
-                        gallery.tags.append(translate_tag(tag_a.get_text().strip()))
+                        gallery.tags.append(translated_tag)
                     if right_div.find_all("a", href=lambda x: x and '/unlimited' == x):
                         gallery.tags.append(translate_tag('unlimited'))
             if is_doujinshi:
@@ -245,7 +246,7 @@ class Parser(BaseParser):
             return None
 
     # Even if we just call the single method, it allows to upgrade this easily in case group calls are supported
-    # afterwards. Also, we can add a wait_timer here.
+    # afterward. Also, we can add a wait_timer here.
     def get_values_from_gallery_link_list(self, links: list[str]) -> list[GalleryData]:
         response = []
         for i, element in enumerate(links):

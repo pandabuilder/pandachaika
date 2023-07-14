@@ -17,7 +17,7 @@ from django.conf import settings
 
 from dal import autocomplete
 from viewer.models import Archive, ArchiveMatches, Image, Gallery, Profile, WantedGallery, ArchiveGroup, \
-    ArchiveGroupEntry, Tag, ArchiveManageEntry
+    ArchiveGroupEntry, Tag, ArchiveManageEntry, UserLongLivedToken
 
 from dal.widgets import (
     WidgetMixin

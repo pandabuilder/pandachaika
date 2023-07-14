@@ -23,6 +23,7 @@ from core.base.types import DataDict
 from core.base.utilities import timestamp_or_zero, str_to_int
 from viewer.forms import GallerySearchForm, DivErrorList, GallerySearchSimpleForm
 from viewer.models import Gallery, Tag, Archive, Image, UserArchivePrefs
+from viewer.utils.requests import double_check_auth
 from viewer.views.head import archive_filter_keys, filter_archives, render_error
 from viewer.views.api import simple_archive_filter
 
@@ -329,6 +330,9 @@ def get_archive_data(data: QueryDict) -> 'QuerySet[Archive]':
 
 # TODO: move modifying actions to POST requests. If something changes here, must update panda-react too.
 def api(request: HttpRequest, model: Optional[str] = None, obj_id: Optional[str] = None, action: Optional[str] = None) -> HttpResponse:
+
+    authenticated, actual_user = double_check_auth(request)
+
     if request.method == 'GET':
         data = request.GET
         if model == 'archive' and obj_id is not None:
@@ -338,7 +342,7 @@ def api(request: HttpRequest, model: Optional[str] = None, obj_id: Optional[str]
                 return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
             if action == 'extract_toggle':
                 try:
-                    if request.user.has_perm('viewer.expand_archive') or data.get('api_key', '') == crawler_settings.api_key:
+                    if actual_user and actual_user.has_perm('viewer.expand_archive'):
                         with transaction.atomic():
                             archive = Archive.objects.select_for_update().get(pk=archive_id)
                             archive.extract_toggle()
@@ -358,7 +362,7 @@ def api(request: HttpRequest, model: Optional[str] = None, obj_id: Optional[str]
                 })
             elif action == 'extract_archive':
                 try:
-                    if request.user.has_perm('viewer.expand_archive') or data.get('api_key', '') == crawler_settings.api_key:
+                    if actual_user and actual_user.has_perm('viewer.expand_archive'):
                         with transaction.atomic():
                             archive = Archive.objects.select_for_update().get(pk=archive_id)
                             if archive.extracted:
@@ -389,7 +393,7 @@ def api(request: HttpRequest, model: Optional[str] = None, obj_id: Optional[str]
                 })
             elif action == 'reduce_archive':
                 try:
-                    if request.user.has_perm('viewer.expand_archive') or data.get('api_key', '') == crawler_settings.api_key:
+                    if actual_user and actual_user.has_perm('viewer.expand_archive'):
                         with transaction.atomic():
                             archive = Archive.objects.select_for_update().get(pk=archive_id)
                             if not archive.extracted:
@@ -421,7 +425,7 @@ def api(request: HttpRequest, model: Optional[str] = None, obj_id: Optional[str]
             elif action == 'image_list':
                 positions = data.getlist('i')
                 try:
-                    if request.user.is_authenticated or data.get('api_key', '') == crawler_settings.api_key:
+                    if authenticated:
                         images = Image.objects.filter(archive=archive_id, position__in=positions, extracted=True)
                     else:
                         images = Image.objects.filter(archive=archive_id, position__in=positions, extracted=True).filter(archive__public=True)
@@ -439,7 +443,7 @@ def api(request: HttpRequest, model: Optional[str] = None, obj_id: Optional[str]
                 response = json.dumps(image_urls)
             else:
                 try:
-                    if request.user.is_authenticated or data.get('api_key', '') == crawler_settings.api_key:
+                    if authenticated:
                         archive = Archive.objects.select_related('gallery').\
                             prefetch_related('tags').get(pk=archive_id)
                     else:
@@ -478,7 +482,7 @@ def api(request: HttpRequest, model: Optional[str] = None, obj_id: Optional[str]
                 )
         elif model == 'archive':
             archives_list = get_archive_data(data)
-            if not request.user.is_authenticated and not data.get('api_key', '') == crawler_settings.api_key:
+            if not authenticated:
                 archives_list = archives_list.filter(public=True, extracted=True)
             if "favorites" in data and data["favorites"] and request.user.is_authenticated:
                 user_arch_ids = UserArchivePrefs.objects.filter(
@@ -515,24 +519,24 @@ def api(request: HttpRequest, model: Optional[str] = None, obj_id: Optional[str]
             if 'asc_desc' not in parameters or parameters['asc_desc'] == '':
                 parameters['asc_desc'] = 'desc'
             if 'sort' not in parameters or parameters['sort'] == '':
-                if request.user.is_authenticated or data.get('api_key', '') == crawler_settings.api_key:
+                if authenticated:
                     parameters['sort'] = 'create_date'
                 else:
                     parameters['sort'] = 'public_date'
 
-            if data.get('api_key', '') == crawler_settings.api_key:
+            if authenticated:
                 force_private = True
             else:
                 force_private = False
 
-            archives_list_filtered: 'QuerySet[Archive]' = filter_archives(request, parameters, display_prms, force_private=force_private)
+            archives_list_filtered: 'QuerySet[Archive]' = filter_archives(request, parameters, display_prms, authenticated, force_private=force_private)
             if 'extracted' in data:
                 archives_list_filtered = archives_list_filtered.filter(extracted=True)
 
             response = archives_to_json_response(archives_list_filtered.prefetch_related('tags'), request)
         elif model == 'archives_simple':
             q_args = data.get('q', '')
-            if request.user.is_authenticated or data.get('api_key', '') == crawler_settings.api_key:
+            if authenticated:
                 results = simple_archive_filter(q_args, public=False)
             else:
                 results = simple_archive_filter(q_args, public=True)

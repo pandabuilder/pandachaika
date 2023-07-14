@@ -6,12 +6,126 @@
 // @include     http://exhentai.org/*
 // @include     https://e-hentai.org/*
 // @include     https://exhentai.org/*
-// @version     0.1.9
+// @version     0.1.13
 // @grant       GM_xmlhttpRequest
+// @grant       GM_setValue
+// @grant       GM_getValue
 // ==/UserScript==
+
+
+const setTokenIfMissing = () => {
+    const currentToken = GM_getValue("activeUserToken", null);
+    if (currentToken === null) {
+        let modal = document.createElement('div');
+        modal.setAttribute('id', 'tokenModal');
+        modal.setAttribute('class', 'modal');
+        modal.innerHTML = '<div class="modal-content"><div class="modal-header"><span id="closeTokenModal" class="close">×</span><h2>Confirm</h2></div><div class="modal-body"><p id="tokenModalMessage">Message</p></div><div class="modal-footer"><input type="text" id="user-token-text" size="100"/><button id="ok-token-modal" class="modal-button">OK</button><button id="cancel-token-modal" class="modal-button">Cancel</button></div></div>';
+        document.body.appendChild(modal);
+        modal = document.getElementById('tokenModal');
+        // Get the <span> element that closes the modal
+        let span = document.getElementById("closeTokenModal");
+
+        document.getElementById('tokenModalMessage').innerHTML = "Enter the Token you want to use for requests to Panda Backup. If it needs to change, delete activeUserToken from this script's data";
+
+        // When the user clicks on <span> (x), close the modal
+        span.onclick = function() {
+            modal.style.display = "none";
+        };
+        // When the user clicks on Cancel, close the modal
+        document.getElementById('cancel-token-modal').onclick = function() {
+            modal.style.display = "none";
+        };
+        // When the user clicks anywhere outside the modal, close it
+        window.onclick = function(event) {
+            if (event.target === modal) {
+                modal.style.display = "none";
+            }
+        };
+
+        document.getElementById('ok-token-modal').onclick = function () {
+            const elem = document.getElementById('user-token-text');
+            const newToken = elem.value;
+            GM_setValue("activeUserToken", newToken);
+            modal.style.display = "none";
+        };
+
+        modal.style.display = "block"
+
+    }
+}
+
+addGlobalStyle('/* The Modal (background) */\
+.modal {\
+    display: none; /* Hidden by default */\
+    position: fixed; /* Stay in place */\
+    z-index: 3; /* Sit on top */\
+    padding-top: 100px; /* Location of the box */\
+    left: 0;\
+    top: 0;\
+    width: 100%; /* Full width */\
+    height: 100%; /* Full height */\
+    overflow: auto; /* Enable scroll if needed */\
+    background-color: rgb(0,0,0); /* Fallback color */\
+    background-color: rgba(0,0,0,0.4); /* Black w/ opacity */\
+}\
+\
+/* Modal Content */\
+.modal-content {\
+    position: relative;\
+    background-color: #fefefe;\
+    margin: auto;\
+    padding: 0;\
+    border: 1px solid #888;\
+    width: 50%;\
+    box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19);\
+}\
+\
+\
+/* The Close Button */\
+.close {\
+    color: white;\
+    float: right;\
+    font-size: 28px;\
+    font-weight: bold;\
+}\
+\
+.close:hover,\
+.close:focus {\
+    color: #000;\
+    text-decoration: none;\
+    cursor: pointer;\
+}\
+\
+.modal-header {\
+    padding: 2px 16px;\
+    background-color: #5cb85c;\
+    color: white;\
+}\
+\
+.modal-body {padding: 2px 16px;\
+color: black;\
+}\
+.modal-footer {\
+    padding: 2px 16px;\
+    background-color: #5cb85c;\
+    color: white;\
+}\
+.modal-button {\
+    background-color: #4CAF50; /* Green */\
+    border: none;\
+    color: white;\
+    padding: 10px 23px;\
+    text-align: center;\
+    text-decoration: none;\
+    display: inline-block;\
+    font-size: 16px;\
+}');
+
 
 insertCrawler();
 Notification.requestPermission();
+
+setTokenIfMissing();
 
 function addGlobalStyle(css) {
     var head, style;
@@ -41,7 +155,7 @@ function insertModal() {
     document.getElementById('cancel-modal').onclick = function() {
         modal.style.display = "none";
     };
-    // When the user clicks anywhere outside of the modal, close it
+    // When the user clicks anywhere outside the modal, close it
     window.onclick = function(event) {
         if (event.target === modal) {
             modal.style.display = "none";
@@ -60,7 +174,7 @@ function displayModalConfirm(message, cbOK, cbNO) {
 
 function sendWebCrawlerAction ( link, parentLink, action, reason ) {
 
-    var data ={ api_key : '{{ api_key }}',operation : 'webcrawler',args : {link: link, action: action} };
+    var data ={ operation : 'webcrawler',args : {link: link, action: action} };
 
     if(parentLink !== null) {
         data.args.parentLink = parentLink;
@@ -70,12 +184,15 @@ function sendWebCrawlerAction ( link, parentLink, action, reason ) {
         data.args.reason = reason;
     }
 
+    const token = GM_getValue("activeUserToken", '');
+
     GM_xmlhttpRequest( {
         method : 'POST',
         url : '{{ server_url }}',
         data : JSON.stringify( data ),
         headers : {
-            'Content-Type' : 'application/json'
+            'Content-Type' : 'application/json',
+            "Authorization": "Bearer " + token
         },
         onload: function (response) {
             var jsonResponse = JSON.parse(response.responseText);
@@ -156,72 +273,6 @@ function insertCrawler() {
                 if(infoNodes[k].innerHTML.includes('Parent:') && infoNodes[k].nextSibling.getElementsByTagName('a').length > 0) {
                     parentLink = infoNodes[k].nextSibling.getElementsByTagName('a')[0].href;
 
-                    addGlobalStyle('/* The Modal (background) */\
-.modal {\
-    display: none; /* Hidden by default */\
-    position: fixed; /* Stay in place */\
-    z-index: 3; /* Sit on top */\
-    padding-top: 100px; /* Location of the box */\
-    left: 0;\
-    top: 0;\
-    width: 100%; /* Full width */\
-    height: 100%; /* Full height */\
-    overflow: auto; /* Enable scroll if needed */\
-    background-color: rgb(0,0,0); /* Fallback color */\
-    background-color: rgba(0,0,0,0.4); /* Black w/ opacity */\
-}\
-\
-/* Modal Content */\
-.modal-content {\
-    position: relative;\
-    background-color: #fefefe;\
-    margin: auto;\
-    padding: 0;\
-    border: 1px solid #888;\
-    width: 50%;\
-    box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19);\
-}\
-\
-\
-/* The Close Button */\
-.close {\
-    color: white;\
-    float: right;\
-    font-size: 28px;\
-    font-weight: bold;\
-}\
-\
-.close:hover,\
-.close:focus {\
-    color: #000;\
-    text-decoration: none;\
-    cursor: pointer;\
-}\
-\
-.modal-header {\
-    padding: 2px 16px;\
-    background-color: #5cb85c;\
-    color: white;\
-}\
-\
-.modal-body {padding: 2px 16px;\
-color: black;\
-}\
-.modal-footer {\
-    padding: 2px 16px;\
-    background-color: #5cb85c;\
-    color: white;\
-}\
-.modal-button {\
-    background-color: #4CAF50; /* Green */\
-    border: none;\
-    color: white;\
-    padding: 10px 23px;\
-    text-align: center;\
-    text-decoration: none;\
-    display: inline-block;\
-    font-size: 16px;\
-}');
                     insertModal();
 
                 }

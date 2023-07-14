@@ -139,8 +139,8 @@ if module_exists('compressor'):
 if module_exists('django_unused_media'):
     INSTALLED_APPS += ['django_unused_media']
 
-# if DEBUG and module_exists('debug_toolbar'):
-#     INSTALLED_APPS += ['debug_toolbar']
+if DEBUG and module_exists('debug_toolbar'):
+    INSTALLED_APPS += ['debug_toolbar']
 
 if module_exists('xmlrunner'):
     TEST_RUNNER = 'xmlrunner.extra.djangotestrunner.XMLTestRunner'
@@ -156,7 +156,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    # 'viewer.middleware.NonHtmlDebugToolbarMiddleware'
+    'viewer.middleware.NonHtmlDebugToolbarMiddleware'
 ]
 
 STATICFILES_FINDERS = [
@@ -200,11 +200,11 @@ ROOT_URLCONF = 'pandabackup.urls'
 WSGI_APPLICATION = 'pandabackup.wsgi.application'
 
 # Debug Toolbar
-# if DEBUG and module_exists('debug_toolbar'):
-#     INTERNAL_IPS = ['127.0.0.1']
-#     DEBUG_TOOLBAR_PATCH_SETTINGS = False
-#     MIDDLEWARE = ['debug_toolbar.middleware.DebugToolbarMiddleware'] + \
-#         MIDDLEWARE
+if DEBUG and module_exists('debug_toolbar'):
+    INTERNAL_IPS = ['127.0.0.1']
+    DEBUG_TOOLBAR_PATCH_SETTINGS = False
+    MIDDLEWARE = ['debug_toolbar.middleware.DebugToolbarMiddleware'] + \
+        MIDDLEWARE
 
 
 # # Profiling

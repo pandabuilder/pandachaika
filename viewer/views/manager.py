@@ -489,7 +489,6 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
         'results': results_page,
         'providers': Gallery.objects.all().values_list('provider', flat=True).distinct(),
         'matchers': crawler_settings.provider_context.get_matchers(crawler_settings, force=True),
-        'api_key': crawler_settings.api_key,
         'form': form,
         'inline_thumbnails': inline_thumbnails
     }

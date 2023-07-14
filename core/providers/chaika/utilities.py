@@ -45,6 +45,6 @@ class ChaikaGalleryData(GalleryData):
 def clean_title(title: str) -> str:
     # Remove parenthesis
     adjusted_title = re.sub(r'\s+\(.+?\)', r'', re.sub(r'\[.+?\]\s*', r'', title)).replace("_", "")
-    # Remove non words, non whitespace
+    # Remove non-words, non whitespace
     # adjusted_title = re.sub(r'[^\w\s]', r' ', adjusted_title)
     return adjusted_title

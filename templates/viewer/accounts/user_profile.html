@@ -1,0 +1,111 @@
+{% extends "viewer/base.html" %}
+{% block title %}Profile | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+
+{% block content %}
+    {% if messages %}
+      {% for message in messages %}
+        <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  <div class="container">
+    <form class="form-signin" action="{% url 'viewer:change-profile' %}" method="POST">
+      {% csrf_token %}
+        <div class="row g-1">
+            {% for field in user_form %}
+               <div class="col-md-12">
+                    {{ field.errors }}
+                  {{ field.label_tag }}{{ field }}
+               </div>
+            {% endfor %}
+        </div>
+        <div class="row g-1">
+            {% for field in profile_form %}
+               <div class="col-md-12">
+               <div class="form-check">
+                    {{ field.errors }}
+                  {{ field.label_tag }}{{ field }}
+               </div>
+               </div>
+            {% endfor %}
+        </div>
+    <div class="d-grid">
+      <button class="btn btn-lg btn-primary" type="submit">User profile</button>
+    </div>
+    </form>
+  <h2>Long-lived Access Tokens</h2>
+    <div class="my-2">
+        <form class="row row-cols-lg-auto g-3 align-items-center" action="{% url 'viewer:user-token' 'create' %}" method="GET">
+          {% csrf_token %}
+            <div class="col-12">
+                <label class="visually-hidden" for="token-name">Name</label>
+                <input id="token-name" class="form-control" type="text" name="token-name" placeholder="Enter a unique name..." maxlength="100">
+            </div>
+            <div class="col-12">
+              <button class="btn btn-primary" type="submit">Create new Long-Lived Token</button>
+            </div>
+        </form>
+    </div>
+
+  <h3>Set Token as Active for Actions, uses browser localStorage (activeUserToken)</h3>
+  <div class="row row-cols-lg-auto g-3 align-items-center my-2">
+      <div class="col-12">
+      <label for="active-token">Active Token</label>
+      </div>
+      <div class="col-12">
+      <input id="active-token" class="form-control" type="text" name="active-token" maxlength="100" size="100">
+      </div>
+      <div class="col-12">
+      <a class="btn btn-primary" role="button" href="#" onclick="setActiveToken(); return false;">Set</a>
+      <a class="btn btn-primary" role="button" href="#" onclick="clearActiveToken(); return false;">Clear</a>
+      </div>
+  </div>
+
+
+     <table class="table table-bordered table-sm generic-table">
+        <thead>
+        <tr>
+            <th>Name</th><th>Created at</th><th>Expires at</th><th>Delete</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for token in request.user.long_lived_tokens.all %}
+          <tr>
+            <td>
+              {{ token.name }}
+            </td>
+            <td>
+              {{ token.expire_date|date:"DATETIME_FORMAT" }}
+            </td>
+            <td>
+              {{ token.create_date|date:"DATETIME_FORMAT" }}
+            </td>
+            <td>
+                <a href="{% url 'viewer:user-token' 'delete' %}?id={{ token.pk }}"><i class="fas fa-trash"></i></a>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+  </div>
+    <script>
+    const setActiveToken = () => {
+        const elem = document.getElementById("active-token");
+        const userToken = elem.value;
+        localStorage.setItem("activeUserToken", userToken);
+    };
+    const clearActiveToken = () => {
+        const elem = document.getElementById("active-token");
+        elem.value = '';
+        localStorage.removeItem("activeUserToken");
+    };
+    const loadActiveTokenToInput = () => {
+        const token = localStorage.getItem("activeUserToken");
+        const elem = document.getElementById("active-token");
+        elem.value = token;
+    }
+    window.onload = function LoadTokenToInput() {
+        loadActiveTokenToInput();
+    }
+    </script>
+{% endblock %}
