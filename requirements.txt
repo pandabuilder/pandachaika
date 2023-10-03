@@ -8,7 +8,7 @@ beautifulsoup4==4.12.2
 CherryPy==18.8.0
 Django==4.2.3
 django-compressor==4.4
-Pillow==10.0.0
+Pillow==10.0.1
 rarfile==4.0
 py7zr==0.20.5
 requests==2.31.0
