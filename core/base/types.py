@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import datetime
 import typing
 from typing import Optional, Union, Any
@@ -5,7 +6,7 @@ if typing.TYPE_CHECKING:
     from core.base.setup import Settings
 
 
-# gid and provider are mandatory, since they are a unique constrain on the database.
+# gid and provider are mandatory, since they are a unique constraint on the database.
 class GalleryData:
     def __init__(
             self, gid: str, provider: str,
@@ -158,3 +159,10 @@ class TorrentClient:
 
 
 QueueItem = dict[str, Any]
+
+
+@dataclass
+class ArchiveGenericFile:
+    file_name: str
+    file_size: float = 0
+    position: int = 1

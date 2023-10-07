@@ -215,60 +215,61 @@
   {% endcompress %}
   <script type="text/javascript" src="{% static 'js/list_operations.js' %}"></script>
   <script>
-    var tagData = {};
-    var tagUrl = '{% url 'viewer:api' %}?at=';
+    let tagData = {};
+    const tagUrl = '{% url 'viewer:api' %}?at=';
+    let tagDataGallery = {};
+    const tagUrlGallery = '{% url 'viewer:api' %}?gt=';
     function tagToHtml (tag) {
         return '<div class="tag">' + tag + '</div>'
     }
-    $(document).ready(function() {
-        $(".tag-preview").click(function() {
-            var el = $(this);
-            var pk = $(this).data('bs-pk');
-            if (tagData[pk]) {
-                return tagData[pk];
-            }
-            else {
-                $.get(tagUrl + pk, function(response) {
-                    if (response.tags) {
-                        tagData[pk] = response.tags.map(tagToHtml);
-                        el.unbind('click').popover({
-                            content: tagData[pk].join(""),
-                            {#            title: 'Dynamic response!',#}
-                            html: true,
-                            {#                        delay: {show: 500, hide: 100}#}
-                        }).popover('show');
-                    }
-                });
-            }
+    document.addEventListener("DOMContentLoaded", function() {
+        document.querySelectorAll('.tag-preview')?.forEach((element) => {
+            element.addEventListener("click", function(event) {
+                let el = event.currentTarget;
+                const pk = event.currentTarget.dataset['bsPk'];
+                if (tagData[pk]) {
+                    return tagData[pk];
+                } else {
+                    fetch(tagUrl + pk).then(function (response) {
+                        return response.json();
+                    }).then(function (body) {
+                        if (body.tags) {
+                            tagData[pk] = body.tags.map(tagToHtml);
+
+                            const popover = new bootstrap.Popover(el, {
+                                content: tagData[pk].join(""),
+                                html: true,
+                            })
+                            popover.show();
+
+                        }
+                    });
+                }
+            })
         });
-    });
-  </script>
-  <script>
-    var tagDataGallery = {};
-    var tagUrlGallery = '{% url 'viewer:api' %}?gt=';
-    function tagToHtml (tag) {
-        return '<div class="tag">' + tag + '</div>'
-    }
-    $(document).ready(function() {
-        $(".tag-preview-g").click(function() {
-            var el = $(this);
-            var pk = $(this).data('bs-pk');
-            if (tagDataGallery[pk]) {
-                return tagDataGallery[pk];
-            }
-            else {
-                $.get(tagUrlGallery + pk, function(response) {
-                    if (response.tags) {
-                        tagDataGallery[pk] = response.tags.map(tagToHtml);
-                        el.unbind('click').popover({
-                            content: tagDataGallery[pk].join(""),
-                            {#            title: 'Dynamic response!',#}
-                            html: true,
-                            {#                        delay: {show: 500, hide: 100}#}
-                        }).popover('show');
-                    }
-                });
-            }
+        document.querySelectorAll('.tag-preview-g')?.forEach((element) => {
+            element.addEventListener("click", function (event) {
+                let el = event.currentTarget;
+                const pk = event.currentTarget.dataset['bsPk'];
+                if (tagDataGallery[pk]) {
+                    return tagDataGallery[pk];
+                } else {
+                    fetch(tagUrlGallery + pk).then(function (response) {
+                        return response.json();
+                    }).then(function (body) {
+                        if (body.tags) {
+                            tagDataGallery[pk] = body.tags.map(tagToHtml);
+
+                            const popover = new bootstrap.Popover(el, {
+                                content: tagDataGallery[pk].join(""),
+                                html: true,
+                            })
+                            popover.show();
+
+                        }
+                    });
+                }
+            });
         });
     });
   </script>

@@ -29,7 +29,8 @@ from viewer.models import (
     Provider, Attribute, ArchiveQuerySet, GalleryQuerySet, GallerySubmitEntry, ArchiveManageEntry,
     ArchiveRecycleEntry,
     MonitoredLink, TagQuerySet, GalleryProviderData, ItemProperties,
-    UserLongLivedToken
+    UserLongLivedToken,
+    ProcessedLinks
 )
 from django.contrib import admin
 from django.contrib.admin.helpers import ActionForm
@@ -321,7 +322,7 @@ class WantedGalleryAdmin(admin.ModelAdmin):
                'search_title_from_title', 'set_reason',
                'add_wanted_provider', 'add_unwanted_provider', 'remove_wanted_provider', 'remove_unwanted_provider',
                'enable_notify_when_found', 'disable_notify_when_found',
-               'set_wait_for_time'
+               'set_wait_for_time', 'set_category'
                ]
 
     action_form = UpdateActionForm
@@ -506,6 +507,16 @@ class WantedGalleryAdmin(admin.ModelAdmin):
         self.message_user(request, "%s successfully set wait for time to: %s." % (message_bit, wait_for_time))
     set_wait_for_time.short_description = "Set wait for time of selected wanted galleries"  # type: ignore
 
+    def set_category(self, request: HttpRequest, queryset: QuerySet) -> None:
+        category = request.POST['extra_field']
+        rows_updated = queryset.update(category=category)
+        if rows_updated == 1:
+            message_bit = "1 wanted gallery was"
+        else:
+            message_bit = "%s wanted galleries were" % rows_updated
+        self.message_user(request, "%s successfully set category to: %s." % (message_bit, category))
+    set_category.short_description = "Set category of selected wanted galleries"  # type: ignore
+
 
 class GalleryMatchAdmin(admin.ModelAdmin):
     # search_fields = ["name", "scope"]
@@ -564,6 +575,13 @@ class UserLongLivedTokenAdmin(admin.ModelAdmin):
     list_display = ["user", "name", "create_date", "expire_date"]
     list_filter = ["create_date", "expire_date"]
     search_fields = ["user__username", "user__email"]
+
+
+class ProcessedLinksAdmin(admin.ModelAdmin):
+
+    list_filter = ["link_date", "create_date", "provider"]
+    list_display = ["source_id", "url", "title", "link_date", "create_date"]
+    search_fields = ["url"]
 
 
 class ItemPropertiesAdmin(admin.ModelAdmin):
@@ -658,6 +676,7 @@ admin.site.register(ArchiveMatches, ArchiveMatchesAdmin)
 admin.site.register(Provider, ProviderAdmin)
 admin.site.register(EventLog, EventLogAdmin)
 admin.site.register(UserLongLivedToken, UserLongLivedTokenAdmin)
+admin.site.register(ProcessedLinks, ProcessedLinksAdmin)
 admin.site.register(ItemProperties, ItemPropertiesAdmin)
 admin.site.register(GallerySubmitEntry, GallerySubmitEntryAdmin)
 admin.site.register(ArchiveManageEntry, ArchiveManageEntryAdmin)

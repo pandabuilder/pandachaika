@@ -148,8 +148,6 @@
                 <a class="dropdown-item" href="{% url 'viewer:es-index-view' %}">Advanced search (Archive)</a>
                 <a class="dropdown-item" href="{% url 'viewer:es-gallery-index-view' %}">Advanced search (Gallery)</a>
                 <a class="dropdown-item" href="{% url 'viewer:public-stats' %}">Collection stats</a>
-                <a class="dropdown-item" href="{% url 'viewer:tag-frequency' %}">Tag frequency</a>
-                <a class="dropdown-item" href="{% url 'viewer:gallery-frequency' %}">Gallery frequency</a>
                 <a class="dropdown-item" href="{% url 'viewer:archive-groups' %}">Archive Groups</a>
                 <a class="dropdown-item" href="{% url 'viewer:compare-archives-viewer' %}">Compare archives</a>
                 <a class="dropdown-item" href="{% url 'viewer:public-missing-archives' %}">Public missing galleries</a>
@@ -163,8 +161,6 @@
                 <a class="dropdown-item" href="{% url 'viewer:es-gallery-index-view' %}">Advanced search (Gallery)</a>
                 <a class="dropdown-item" href="{% url 'viewer:public-stats' %}">Backup stats</a>
                 <a class="dropdown-item" href="/public/stats.html">Full Metadata stats</a>
-                <a class="dropdown-item" href="{% url 'viewer:tag-frequency' %}">Tag frequency</a>
-                <a class="dropdown-item" href="{% url 'viewer:gallery-frequency' %}">Gallery frequency</a>
                 <a class="dropdown-item" href="{% url 'viewer:found-galleries' %}">Found galleries log</a>
               </ul>
             </li>
@@ -176,7 +172,7 @@
             <input class="form-control me-sm-2" name="qsearch" placeholder="Title or source URL archive quick search" autocomplete="off" value="{{ display_prms.qsearch }}" type="search" aria-label="quick text">
             <span>
             <button class="btn btn-secondary my-2 my-sm-0" type="submit" aria-label="quick search"><i class="fas fa-search"></i></button>
-            <button class="btn btn-secondary my-2 my-sm-0" id="more" data-bs-toggle="collapse" data-bs-target="#main-search" name="main_filters" type="button" aria-label="toggle search"><i class="fas fa-chevron-{% if prm.main_filters %}up{% else %}down{% endif %}"></i></button>
+            <button class="btn btn-secondary my-2 my-sm-0 collapse-icon" id="more" data-bs-toggle="collapse" data-bs-target="#main-search" name="main_filters" type="button" aria-label="toggle search"><i class="fas fa-chevron-{% if prm.main_filters %}up{% else %}down{% endif %}"></i></button>
             </span>
           </div>
         </form>

@@ -160,15 +160,15 @@ class Encoder:
         return self.encode_next(self._data)
 
     def encode_next(self, data):
-        if type(data) == str:
+        if isinstance(data, str):
             return self._encode_string(data)
-        elif type(data) == int:
+        elif isinstance(data, int):
             return self._encode_int(data)
-        elif type(data) == list:
+        elif isinstance(data, list):
             return self._encode_list(data)
-        elif type(data) == dict or type(data) == OrderedDict:
+        elif isinstance(data, dict) or isinstance(data, OrderedDict):
             return self._encode_dict(data)
-        elif type(data) == bytes:
+        elif isinstance(data, bytes):
             return self._encode_bytes(data)
         else:
             return None

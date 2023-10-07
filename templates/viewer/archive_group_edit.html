@@ -18,7 +18,7 @@
         <h3>{{ archive_group.title }}</h3>
     </div>
       <div class="col-md-5 col-sm-12">
-        <button class="btn btn-secondary float-end" id="edit-archive-group" data-bs-toggle="collapse" data-bs-target="#add-change-archive-group-form" name="edit-archive-group" type="button" aria-label="toggle edit archive group">Edit <i class="fas fa-chevron-down"></i></button>
+        <button class="btn btn-secondary float-end collapse-icon" id="edit-archive-group" data-bs-toggle="collapse" data-bs-target="#add-change-archive-group-form" name="edit-archive-group" type="button" aria-label="toggle edit archive group">Edit <i class="fas fa-chevron-down"></i></button>
         <a class="btn {% if 'add_multiple' in request.GET %}btn-info{% else %}btn-secondary{% endif %} float-end" href="?{% url_toggle 'add_multiple' %}" role="button">Add Multiple Archives</a>
         {% if perms.viewer.expand_archive %}<a class="btn btn-secondary float-end" href="{% url 'viewer:archive-group-edit' archive_group.title_slug %}?extract_all=" role="button">Extract all</a>{% endif %}
         <a class="btn btn-secondary float-end" href="{% url 'viewer:archive-group' archive_group.title_slug %}" role="button">View</a>
@@ -98,18 +98,6 @@
     <script src="{% static 'js/vendor/jquery.autocomplete-light.min.js' %}"></script>
   {% endcompress %}
   {% compress js %}
-    <script>
-    $('#edit-archive-group').click(function () {
-    if($('#edit-archive-group i').hasClass('fa-chevron-down'))
-    {
-       $('#edit-archive-group').html('Edit <i class="fas fa-chevron-up"></i>');
-    }
-    else
-    {
-        $('#edit-archive-group').html('Edit <i class="fas fa-chevron-down"></i>');
-    }
-    });
-    </script>
     <script type="text/javascript" src="{% static 'js/list_operations.js' %}"></script>
     <script>
     var tagData = {};
@@ -117,25 +105,31 @@
     function tagToHtml (tag) {
         return '<div class="tag">' + tag + '</div>'
     }
-    $(document).ready(function() {
-        $(".tag-preview").click(function() {
-            var el = $(this);
-            var pk = $(this).data('bs-pk');
-            if (tagData[pk]) {
-                return tagData[pk];
-            }
-            else {
-                $.get(tagUrl + pk, function(response) {
-                    if (response.tags) {
-                        tagData[pk] = response.tags.map(tagToHtml);
-                        el.unbind('click').popover({
-                            content: tagData[pk].join(""),
-                            html: true,
-                        }).popover('show');
-                    }
-                });
-            }
-        });
+    document.addEventListener("DOMContentLoaded", function() {
+        document.querySelectorAll('.tag-preview')?.forEach((element) => {
+            element.addEventListener("click", function (event) {
+                let el = event.currentTarget;
+                const pk = event.currentTarget.dataset['bsPk'];
+                if (tagData[pk]) {
+                    return tagData[pk];
+                } else {
+                    fetch(tagUrl + pk).then(function (response) {
+                        return response.json();
+                    }).then(function (body) {
+                        if (body.tags) {
+                            tagData[pk] = body.tags.map(tagToHtml);
+
+                            const popover = new bootstrap.Popover(el, {
+                                content: tagData[pk].join(""),
+                                html: true,
+                            })
+                            popover.show();
+
+                        }
+                    });
+                }
+            });
+        })
     });
     </script>
   {% endcompress %}

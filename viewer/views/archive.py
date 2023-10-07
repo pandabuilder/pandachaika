@@ -225,7 +225,8 @@ def archive_details(request: HttpRequest, pk: int, mode: str = 'view') -> HttpRe
     d.update(
         {
             'tag_count': archive.tags.exclude(archivetag__origin=ArchiveTag.ORIGIN_USER).count(),
-            'custom_tag_count': archive.tags.filter(archivetag__origin=ArchiveTag.ORIGIN_USER).count()
+            'custom_tag_count': archive.tags.filter(archivetag__origin=ArchiveTag.ORIGIN_USER).count(),
+            'file_entry_total': sum([x.file_size for x in archive.archivefileentry_set.all()])
         }
     )
 

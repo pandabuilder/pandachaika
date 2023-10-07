@@ -1,12 +1,38 @@
 <script>
-  $(document).on("click", ".open-modal", function (e) {
-    e.preventDefault();
-    var $popup = $("#popup");
-    var popup_url = $(this).data("popup-url");
-    $(".modal-body", $popup).load(popup_url, function () {
-      $popup.modal("show");
-    });
+    function setInnerHTML(elm, html) {
+      elm.innerHTML = html;
+
+      Array.from(elm.querySelectorAll("script"))
+        .forEach( oldScriptEl => {
+          const newScriptEl = document.createElement("script");
+
+          Array.from(oldScriptEl.attributes).forEach( attr => {
+            newScriptEl.setAttribute(attr.name, attr.value)
+          });
+
+          const scriptText = document.createTextNode(oldScriptEl.innerHTML);
+          newScriptEl.appendChild(scriptText);
+
+          oldScriptEl.parentNode.replaceChild(newScriptEl, oldScriptEl);
+      });
+    }
+
+  document.querySelectorAll(".open-modal").forEach((element) => {
+      element.addEventListener('click', function (event) {
+          event.preventDefault();
+          const popup = new bootstrap.Modal(document.getElementById('popup'));
+          const popup_url = event.currentTarget.dataset["popupUrl"];
+          fetch(popup_url)
+              .then(function (response) {
+                  return response.text();
+              })
+              .then(function (body) {
+                  setInnerHTML(document.querySelector('.modal-body'), body);
+                  popup.show();
+              });
+      })
   });
+
 </script>
 
 <div id="popup" class="modal fade" role="dialog">

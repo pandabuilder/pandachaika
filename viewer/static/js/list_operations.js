@@ -1,25 +1,29 @@
-$('#toggle-all').click(function() {
-  $('input.toggle-list').click();
+document.querySelector("#toggle-all")
+    .addEventListener("click", () => {
+        document.querySelectorAll("input.toggle-list").forEach((element) => element.click());
 });
 
-$(document).ready(function() {
-    var $chkboxes = $('input.toggle-list');
-    var lastChecked = null;
+document.addEventListener("DOMContentLoaded", function(){
+    const checkboxes = Array.from(document.querySelectorAll("input.toggle-list"));
+    let lastChecked = null;
 
-    $chkboxes.click(function(e) {
-        if(!lastChecked) {
-            lastChecked = this;
-            return;
-        }
+    checkboxes.forEach((checkbox) => {
+        checkbox.addEventListener('click', function(e) {
+            if(!lastChecked) {
+                lastChecked = checkbox;
+                return;
+            }
 
-        if(e.shiftKey) {
-            var start = $chkboxes.index(this);
-            var end = $chkboxes.index(lastChecked);
+            if(e.shiftKey) {
+                const start = checkboxes.index(checkbox);
+                const end = checkboxes.index(lastChecked);
 
-            $chkboxes.slice(Math.min(start,end), Math.max(start,end)+ 1).prop('checked', lastChecked.checked);
+                checkboxes.slice(Math.min(start,end), Math.max(start,end)+ 1).prop('checked', lastChecked.checked);
 
-        }
+            }
 
-        lastChecked = this;
-    });
+            lastChecked = checkbox;
+        });
+    })
+
 });

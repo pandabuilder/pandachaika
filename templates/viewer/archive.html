@@ -12,55 +12,55 @@
   <ul class="info">
     {% if user.is_authenticated %}
       <li class="right-container d-flex flex-column">
-      <div class="d-flex flex-md-row flex-column right-tools justify-content-end">
+      <div class="d-grid gap-1 d-md-flex justify-content-md-end">
          <div class="me-1">Tools:</div>
         {% if perms.viewer.recycle_archive %}
-            <div class="me-1">
+            <button class="btn btn-sm shrink-btn">
                 {% if archive.is_recycled %}
                     <a class="open-modal" data-popup-url="{% url 'viewer:archive-tool-reason' archive.pk 'unrecycle' %}?inline=1" href="{% url 'viewer:archive-tool-reason' archive.pk 'unrecycle' %}">unrecycle</a>
                 {% else %}
                     <a class="open-modal" data-popup-url="{% url 'viewer:archive-tool-reason' archive.pk 'recycle' %}?inline=1" href="{% url 'viewer:archive-tool-reason' archive.pk 'recycle' %}">recycle</a>
                 {% endif %}
-            </div>
+            </button>
         {% endif %}
         {% if perms.viewer.modify_archive_tools %}
-            <div class="me-1">
+            <button class="btn btn-sm shrink-btn">
                 <a class="open-modal" data-popup-url="{% url 'viewer:archive-clone-plus' archive.pk %}?inline=1" href="{% url 'viewer:archive-clone-plus' archive.pk %}">clone +</a>
-            </div>
+            </button>
         {% endif %}
         {% if user.is_staff %}
-            <div class="me-1"><a href="{% url 'viewer:archive-recalc-info' archive.pk %}">recalc</a></div>
+            <button class="btn btn-sm shrink-btn"><a href="{% url 'viewer:archive-recalc-info' archive.pk %}">recalc</a></button>
         {% endif %}
         {% if perms.viewer.mark_similar_archive %}
-            <div class="me-1"><a href="{% url 'viewer:archive-mark-similar' archive.pk %}">mark similar</a></div>
+            <button class="btn btn-sm shrink-btn"><a href="{% url 'viewer:archive-mark-similar' archive.pk %}">mark similar</a></button>
         {% endif %}
         {% if user.is_staff %}
-            <div class="me-1"><a href="{% url 'viewer:check-convert-type' archive.pk %}">convert zip</a></div>
+            <button class="btn btn-sm shrink-btn"><a href="{% url 'viewer:check-convert-type' archive.pk %}">convert zip</a></button>
         {% endif %}
         {% if perms.viewer.update_metadata %}
-            <div class="me-1"><a href="{% url 'viewer:archive-recall-api' archive.pk %}">recall api</a></div>
+            <button class="btn btn-sm shrink-btn"><a href="{% url 'viewer:archive-recall-api' archive.pk %}">recall api</a></button>
         {% endif %}
         {% if perms.viewer.publish_archive %}
-            <div class="me-1"><a href="{% url 'viewer:archive-calc-imgs-sha1' archive.pk %}">calc sha1</a></div>
+            <button class="btn btn-sm shrink-btn"><a href="{% url 'viewer:archive-calc-imgs-sha1' archive.pk %}">calc sha1</a></button>
         {% endif %}
         {% if perms.viewer.publish_archive %}
-            <div class="me-1">{% if archive.public %}<a href="{% url 'viewer:archive-private' archive.pk %}">private</a>{% else %}<a href="{% url 'viewer:archive-public' archive.pk %}">public</a>{% endif %}</div>
+            <button class="btn btn-sm shrink-btn">{% if archive.public %}<a href="{% url 'viewer:archive-private' archive.pk %}">private</a>{% else %}<a href="{% url 'viewer:archive-public' archive.pk %}">public</a>{% endif %}</button>
         {% endif %}
         {% if user.is_staff %}
-            <div class="me-1"><a href="{% url 'viewer:archive-rematch' archive.pk %}">rematch</a></div>
-            <div class="me-1"><a class="open-modal" href="{% url 'viewer:archive-delete' archive.pk %}" data-popup-url="{% url 'viewer:archive-delete' archive.pk %}?inline=1">delete</a></div>
-            {% if archive.gallery %}<div class="me-1"><a href="{% url 'viewer:gallery-tool' archive.gallery.pk 'toggle-hidden' %}">{% if archive.gallery.hidden %}open{% else %}hidden{% endif %}</a></div>{% endif %}
-            <div class="me-1"><a href="{% url 'admin:viewer_archive_change' archive.pk %}">admin</a></div>
-            <div class="me-1">{% if mode == 'view' %}<a href="{% url 'viewer:archive-edit' archive.pk 'edit' %}">edit</a>{% else %}<a href="{% url 'viewer:archive' archive.pk %}">view</a>{% endif %}</div>
+            <button class="btn btn-sm shrink-btn"><a href="{% url 'viewer:archive-rematch' archive.pk %}">rematch</a></button>
+            <button class="btn btn-sm shrink-btn"><a class="open-modal" href="{% url 'viewer:archive-delete' archive.pk %}" data-popup-url="{% url 'viewer:archive-delete' archive.pk %}?inline=1">delete</a></button>
+            {% if archive.gallery %}<button class="btn btn-sm shrink-btn"><a href="{% url 'viewer:gallery-tool' archive.gallery.pk 'toggle-hidden' %}">{% if archive.gallery.hidden %}open{% else %}hidden{% endif %}</a></button>{% endif %}
+            <button class="btn btn-sm shrink-btn"><a href="{% url 'admin:viewer_archive_change' archive.pk %}">admin</a></button>
+            <button class="btn btn-sm shrink-btn">{% if mode == 'view' %}<a href="{% url 'viewer:archive-edit' archive.pk 'edit' %}">edit</a>{% else %}<a href="{% url 'viewer:archive' archive.pk %}">view</a>{% endif %}</button>
         {% endif %}
       </div>
       {% if archive.extracted %}
-      <div class="d-flex flex-md-row flex-column right-tools mt-3 justify-content-end">
+      <div class="d-grid gap-1 d-md-flex justify-content-md-end mt-1">
         <div class="me-1">View:</div>
-        <div class="me-1"><a href="?{% url_replace 'view' 'cover' %}">cover</a></div>
-        <div class="me-1"><a href="?{% url_replace 'view' 'thumbnails' %}">thumbnails</a></div>
-        <div class="me-1"><a href="?{% url_replace 'view' 'full' %}">full</a></div>
-        <div class="me-1"><a href="?{% url_replace 'view' 'single' %}">single</a></div>
+        <button class="btn btn-sm shrink-btn"><a href="?{% url_replace 'view' 'cover' %}">cover</a></button>
+        <button class="btn btn-sm shrink-btn"><a href="?{% url_replace 'view' 'thumbnails' %}">thumbnails</a></button>
+        <button class="btn btn-sm shrink-btn"><a href="?{% url_replace 'view' 'full' %}">full</a></button>
+        <button class="btn btn-sm shrink-btn"><a href="?{% url_replace 'view' 'single' %}">single</a></button>
       </div>
       {% endif %}
       </li>
@@ -83,7 +83,7 @@
         </tr>
         <tr>
           <th>Total image size</th>
-          <td>{{ archive.filesize|filesizeformat }}, {{ archive.filesize }}</td>
+          <td><span class="align-middle">{{ archive.filesize|filesizeformat }}, {{ archive.filesize }}</span><span class="align-middle mx-2">{% if file_entry_total %}| <span class="fw-bold">Non-images total size:</span> {{ file_entry_total|filesizeformat }}, {{ file_entry_total }}</span><a class="btn btn-sm btn-light other-preview" tabindex="0" role="button" data-bs-toggle="popover" data-bs-pk="{{ archive.pk }}">Non-Images Details</a>{% endif %}</td>
         </tr>
         <tr>
           <th>Source type</th>
@@ -298,8 +298,8 @@
               <a class="btn btn-light" href="{% url 'viewer:user-archive-preferences' archive.pk 'unfavorite' %}">Unfavorite</a>
           {% endif %}
       {% endif %}
-      <button class="btn btn-secondary" id="edit-archive" data-bs-toggle="collapse" data-bs-target="#change-archive-form" name="edit-archive" type="button" aria-label="toggle edit archive">Edit <i class="fas fa-chevron-down"></i></button>
-      <button class="btn {% if manage_entries_count %}btn-success{% else %}btn-secondary{% endif %}" id="manage-archive" data-bs-toggle="collapse" data-bs-target="#manage-archive-form" name="manage-archive" type="button" aria-label="toggle edit archive">Manage <i class="fas fa-chevron-down"></i></button>
+      <button class="btn btn-secondary collapse-icon" id="edit-archive" data-bs-toggle="collapse" data-bs-target="#change-archive-form" name="edit-archive" type="button" aria-label="toggle edit archive">Edit <i class="fas fa-chevron-down"></i></button>
+      <button class="btn {% if manage_entries_count %}btn-success{% else %}btn-secondary{% endif %} collapse-icon" id="manage-archive" data-bs-toggle="collapse" data-bs-target="#manage-archive-form" name="manage-archive" type="button" aria-label="toggle edit archive">Manage <i class="fas fa-chevron-down"></i></button>
 
     {% elif archive.crc32 %}
         {% if perms.viewer.expand_archive %}
@@ -333,17 +333,17 @@
             {% endif %}
         {% endif %}
         {% if perms.viewer.change_archive %}
-        <button class="btn btn-secondary" id="edit-archive" data-bs-toggle="collapse" data-bs-target="#change-archive-form" name="edit-archive" type="button" aria-label="toggle edit archive">Edit <i class="fas fa-chevron-down"></i></button>
+        <button class="btn btn-secondary collapse-icon" id="edit-archive" data-bs-toggle="collapse" data-bs-target="#change-archive-form" name="edit-archive" type="button" aria-label="toggle edit archive">Edit <i class="fas fa-chevron-down"></i></button>
         {% endif %}
         {% if perms.viewer.mark_archive %}
-        <button class="btn {% if manage_entries_count %}btn-success{% else %}btn-secondary{% endif %}" id="manage-archive" data-bs-toggle="collapse" data-bs-target="#manage-archive-form" name="manage-archive" type="button" aria-label="toggle edit archive">Manage <i class="fas fa-chevron-down"></i></button>
+        <button class="btn {% if manage_entries_count %}btn-success{% else %}btn-secondary{% endif %} collapse-icon" id="manage-archive" data-bs-toggle="collapse" data-bs-target="#manage-archive-form" name="manage-archive" type="button" aria-label="toggle edit archive">Manage <i class="fas fa-chevron-down"></i></button>
         {% endif %}
     {% else %}
         {% if perms.viewer.change_archive %}
-        <button class="btn btn-secondary" id="edit-archive" data-bs-toggle="collapse" data-bs-target="#change-archive-form" name="edit-archive" type="button" aria-label="toggle edit archive">Edit <i class="fas fa-chevron-down"></i></button>
+        <button class="btn btn-secondary collapse-icon" id="edit-archive" data-bs-toggle="collapse" data-bs-target="#change-archive-form" name="edit-archive" type="button" aria-label="toggle edit archive">Edit <i class="fas fa-chevron-down"></i></button>
         {% endif %}
         {% if perms.viewer.mark_archive %}
-        <button class="btn {% if manage_entries_count %}btn-success{% else %}btn-secondary{% endif %}" id="manage-archive" data-bs-toggle="collapse" data-bs-target="#manage-archive-form" name="manage-archive" type="button" aria-label="toggle edit archive">Manage <i class="fas fa-chevron-down"></i></button>
+        <button class="btn {% if manage_entries_count %}btn-success{% else %}btn-secondary{% endif %} collapse-icon" id="manage-archive" data-bs-toggle="collapse" data-bs-target="#manage-archive-form" name="manage-archive" type="button" aria-label="toggle edit archive">Manage <i class="fas fa-chevron-down"></i></button>
         {% endif %}
     {% endif %}
     </li>
@@ -498,71 +498,100 @@
   </ul>
 {% endblock %}
 {% block afterJQ %}
+  {% load compress %}
   {% if perms.viewer.change_archive %}
   {{ edit_form.media }}
-  {% load compress %}
-  {% compress js %}
-    <script>
-    $('#edit-archive').click(function () {
-    if($('#edit-archive i').hasClass('fa-chevron-down'))
-    {
-       $('#edit-archive').html('Edit <i class="fas fa-chevron-up"></i>');
-    }
-    else
-    {
-        $('#edit-archive').html('Edit <i class="fas fa-chevron-down"></i>');
-    }
-    });
-    </script>
-  {% endcompress %}
   {% endif %}
   {% if perms.viewer.mark_archive %}
   {{ archive_manage_formset.media }}
-  {% load compress %}
-  {% compress js %}
-    <script>
-    $('#manage-archive').click(function () {
-    if($('#manage-archive i').hasClass('fa-chevron-down'))
-    {
-       $('#manage-archive').html('Manage <i class="fas fa-chevron-up"></i>');
-    }
-    else
-    {
-        $('#manage-archive').html('Manage <i class="fas fa-chevron-down"></i>');
-    }
-    });
-    </script>
-  {% endcompress %}
   {% endif %}
   {% compress js %}
     <script>
-        var hashData = {};
-        var hashUrl = '{% url 'viewer:api' %}?ah=';
+        let hashData = {};
+        let otherFilesData = {};
+        let hashUrl = '{% url 'viewer:api' %}?ah=';
+        let otherFilesUrl = '{% url 'viewer:api' %}?aof=';
         function hashToHtml (hash) {
             return hash
         }
-        $(document).ready(function() {
-            $(".hash-preview").click(function() {
-                var el = $(this);
-                var pk = $(this).data('bs-pk');
+        function otherDataToHtml (otherData) {
+            let row = document.createElement('tr');
+            let cell1 = row.insertCell();
+            cell1.textContent = otherData.name;
+            let cell2 = row.insertCell();
+            cell2.textContent = otherData.size;
+            let cell3 = row.insertCell();
+            cell3.textContent = otherData.sha1;
+            return row
+        }
+        document.addEventListener("DOMContentLoaded", function() {
+            document.querySelector('.hash-preview')?.addEventListener("click", function (event) {
+                let el = event.currentTarget;
+                let pk = event.currentTarget.dataset['bsPk'];
                 if (hashData[pk]) {
                     return hashData[pk];
-                }
-                else {
-                    $.get(hashUrl + pk, function(response) {
-                        if (response.image_hashes) {
-                            hashData[pk] = response.image_hashes.map(hashToHtml);
+                } else {
+                    fetch(hashUrl + pk).then(function (response) {
+                          return response.json();
+                    }).then(function(body) {
+                        if (body.image_hashes) {
+                            hashData[pk] = body.image_hashes.map(hashToHtml);
                             let textareaHashes = document.createElement('textarea');
                             textareaHashes.setAttribute("readonly", true);
                             textareaHashes.setAttribute("class", "form-control");
                             textareaHashes.setAttribute("rows", "10");
                             textareaHashes.setAttribute("style", "background-color: #29527a; width: 360px;");
                             textareaHashes.innerHTML = hashData[pk].join("\n");
-                            el.unbind('click').popover({
+
+                            const popover = new bootstrap.Popover(el, {
                                 content: textareaHashes,
                                 html: true,
                                 customClass: 'popover-custom-length',
-                            }).popover('show');
+                            })
+                            popover.show();
+
+                        }
+                    });
+                }
+            });
+            document.querySelector('.other-preview')?.addEventListener("click", function (event) {
+                let el = event.currentTarget;
+                let pk = event.currentTarget.dataset['bsPk'];
+                if (otherFilesData[pk]) {
+                    return otherFilesData[pk];
+                } else {
+                    fetch(otherFilesUrl + pk).then(function (response) {
+                      return response.json();
+                    }).then(function(data) {
+                        if (data.other_files) {
+                            otherFilesData[pk] = data.other_files.map(otherDataToHtml);
+                            let table = document.createElement('table');
+                            let head = table.createTHead()
+                            let headRow = head.insertRow()
+                            let thead1 = headRow.appendChild(document.createElement("th"));
+                            thead1.innerText = "File"
+                            let thead2 = headRow.appendChild(document.createElement("th"));
+                            thead2.innerText = "Size"
+                            let thead3 = headRow.appendChild(document.createElement("th"));
+                            thead3.innerText = "SHA1"
+                            let body = table.createTBody()
+                            otherFilesData[pk].forEach((row) => {
+                                let newRow = body.insertRow();
+                                newRow.innerHTML = row.innerHTML;
+                            })
+
+                            table.setAttribute("class", "table table-sm table-bordered");
+                            let div = document.createElement('div');
+                            div.setAttribute("style", "background-color: #29527a; width: 800px;");
+                            div.appendChild(table);
+
+                            const popover = new bootstrap.Popover(el, {
+                                content: div,
+                                html: true,
+                                customClass: 'popover-custom-length',
+                            })
+                            popover.show();
+
                         }
                     });
                 }

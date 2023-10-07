@@ -1,7 +1,7 @@
 -r requirements.txt
-mypy==1.4.1
-ruff==0.0.278
-django-stubs==4.2.3
-types-requests==2.31.0.1
-types-python-dateutil==2.8.19.13
+mypy==1.5.1
+ruff==0.0.292
+django-stubs==4.2.4
+types-requests==2.31.0.8
+types-python-dateutil==2.8.19.14
 unittest-xml-reporting==3.2.0

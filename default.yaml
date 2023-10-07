@@ -240,10 +240,6 @@ urls:
   enable_public_submit: false
   # Enable public facing stats
   enable_public_stats: false
-  # Enable public gallery frequency
-  enable_gallery_frequency: false
-  # Enable public tag frequency
-  enable_tag_frequency: false
   external_media_server: ''
   external_as_main_download: false
   # User facing URL, (scheme+authority), used to resolve absolute URLs where the request is not accessible.

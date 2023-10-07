@@ -17,11 +17,11 @@ from difflib import SequenceMatcher
 from functools import wraps
 from itertools import tee, islice, chain
 from tempfile import mkdtemp
-from typing import Union, Optional, Any
+from typing import Union, Optional, Any, Tuple, List
 
 from ratelimit import limits, RateLimitException
 
-from core.base.types import GalleryData
+from core.base.types import GalleryData, ArchiveGenericFile
 
 try:
     import rarfile
@@ -397,18 +397,23 @@ def check_and_convert_to_zip(filepath: str) -> tuple[str, int]:
     # py7zr.exceptions.Bad7zFile: not a 7z file
 
 
-def get_zip_fileinfo(filepath: str) -> tuple[int, int]:
+def get_zip_fileinfo(filepath: str, get_extra_data: bool = False) -> tuple[int, int, Optional[list[ArchiveGenericFile]]]:
     try:
         my_zip = zipfile.ZipFile(filepath, 'r')
     except zipfile.BadZipFile:
-        return -1, -1
+        return -1, -1, None
 
     total_size = 0
     total_count = 0
 
+    if get_extra_data:
+        other_file_data: Optional[list[ArchiveGenericFile]] = []
+    else:
+        other_file_data = None
+
     filtered_files = list(filter(discard_zipfile_extra_files_info, sorted(my_zip.infolist(), key=lambda x: x.filename)))
 
-    for current_file_info in filtered_files:
+    for index, current_file_info in enumerate(filtered_files, start=1):
         if IMAGES_REGEX.search(current_file_info.filename):
             total_size += int(current_file_info.file_size)
             total_count += 1
@@ -419,6 +424,45 @@ def get_zip_fileinfo(filepath: str) -> tuple[int, int]:
                 except zipfile.BadZipFile:
                     continue
                 nested_files = list(filter(accept_images_only_info, sorted(nested_zip.infolist(), key=lambda x: x.filename)))
+                total_count += len(nested_files)
+                total_size += sum([x.file_size for x in nested_files])
+                nested_zip.close()
+        elif other_file_data is not None and not current_file_info.is_dir():
+            file_generic_data = ArchiveGenericFile(
+                file_name=current_file_info.filename,
+                file_size=int(current_file_info.file_size),
+                position=index
+            )
+            other_file_data.append(file_generic_data)
+
+    my_zip.close()
+
+    return total_size, total_count, other_file_data
+
+
+def get_zip_fileinfo_for_gallery(filepath: str) -> tuple[int, int]:
+    try:
+        my_zip = zipfile.ZipFile(filepath, 'r')
+    except zipfile.BadZipFile:
+        return -1, -1
+
+    total_size = 0
+    total_count = 0
+
+    filtered_files = list(filter(discard_zipfile_extra_files_info, sorted(my_zip.infolist(), key=lambda x: x.filename)))
+
+    for index, current_file_info in enumerate(filtered_files, start=1):
+        if IMAGES_REGEX.search(current_file_info.filename):
+            total_size += int(current_file_info.file_size)
+            total_count += 1
+        elif ZIP_CONTAINER_REGEX.search(current_file_info.filename):
+            with my_zip.open(current_file_info.filename) as current_nested_zip_file:
+                try:
+                    nested_zip = zipfile.ZipFile(current_nested_zip_file, 'r')
+                except zipfile.BadZipFile:
+                    continue
+                nested_files = list(
+                    filter(accept_images_only_info, sorted(nested_zip.infolist(), key=lambda x: x.filename)))
                 total_count += len(nested_files)
                 total_size += sum([x.file_size for x in nested_files])
                 nested_zip.close()

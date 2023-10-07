@@ -9,9 +9,8 @@ import time
 from core.base.matchers import Matcher
 from core.base.types import MatchesValues, DataDict
 from core.base.utilities import (
-    filecount_in_zip,
-    get_zip_filesize,
-    sha1_from_file_object, clean_title, construct_request_dict, get_images_from_zip, file_matches_any_filter)
+    sha1_from_file_object, clean_title, construct_request_dict, get_images_from_zip, file_matches_any_filter,
+    get_zip_fileinfo)
 from core.providers.panda.utilities import link_from_gid_token_fjord, SearchHTMLParser
 from . import constants
 
@@ -57,14 +56,15 @@ class ImageMatcher(Matcher):
             return None
 
         self.match_gid = self.match_values.gid
+        filesize, filecount, _ = get_zip_fileinfo(os.path.join(self.settings.MEDIA_ROOT, self.file_path))
         values = {
             'title': self.match_title,
             'title_jpn': self.match_values.title_jpn,
             'zipped': self.file_path,
             'crc32': self.crc32,
             'match_type': self.found_by,
-            'filesize': get_zip_filesize(os.path.join(self.settings.MEDIA_ROOT, self.file_path)),
-            'filecount': filecount_in_zip(os.path.join(self.settings.MEDIA_ROOT, self.file_path)),
+            'filesize': filesize,
+            'filecount': filecount,
             'source_type': self.provider
         }
         return values
@@ -162,14 +162,15 @@ class TitleMatcher(Matcher):
             return None
 
         self.match_gid = self.match_values.gid
+        filesize, filecount, _ = get_zip_fileinfo(os.path.join(self.settings.MEDIA_ROOT, self.file_path))
         values = {
             'title': self.match_title,
             'title_jpn': self.match_values.title_jpn,
             'zipped': self.file_path,
             'crc32': self.crc32,
             'match_type': self.found_by,
-            'filesize': get_zip_filesize(os.path.join(self.settings.MEDIA_ROOT, self.file_path)),
-            'filecount': filecount_in_zip(os.path.join(self.settings.MEDIA_ROOT, self.file_path)),
+            'filesize': filesize,
+            'filecount': filecount,
             'source_type': self.provider
         }
         return values

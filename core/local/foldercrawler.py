@@ -13,8 +13,7 @@ from core.base.comparison import get_closer_gallery_title_from_list
 from core.base.setup import Settings
 from core.base.types import DataDict
 from core.base.utilities import (
-    calc_crc32, filecount_in_zip,
-    get_zip_filesize,
+    calc_crc32, get_zip_fileinfo,
     replace_illegal_name
 )
 
@@ -440,14 +439,15 @@ class FolderCrawler(object):
                         except_at_open = True
                     if except_at_open or return_error:
                         logger.warning("File check on zipfile failed on file: {}, marking as corrupt.".format(filepath))
+                        filesize, filecount, other_file_datas = get_zip_fileinfo(os.path.join(self.settings.MEDIA_ROOT, filepath), get_extra_data=True)
                         values = {
                             'title': title,
                             'title_jpn': '',
                             'zipped': filepath,
                             'crc32': crc32,
                             'match_type': 'corrupt',
-                            'filesize': get_zip_filesize(os.path.join(self.settings.MEDIA_ROOT, filepath)),
-                            'filecount': filecount_in_zip(os.path.join(self.settings.MEDIA_ROOT, filepath)),
+                            'filesize': filesize,
+                            'filecount': filecount,
                             'source_type': 'folder',
                             'origin': Archive.ORIGIN_FOLDER_SCAN
                         }
@@ -457,8 +457,9 @@ class FolderCrawler(object):
                             values.update({'details': self.settings.archive_details})
                         if self.settings.archive_source:
                             values.update({'source_type': self.settings.archive_source})
-                        Archive.objects.update_or_create_by_values_and_gid(
+                        resulting_archive = Archive.objects.update_or_create_by_values_and_gid(
                             values, None, zipped=filepath)
+                        resulting_archive.fill_other_file_data(other_file_datas)
                         continue
 
                     # Look for previous matches
@@ -466,14 +467,15 @@ class FolderCrawler(object):
                     if archive_to_process:
                         if self.settings.copy_match_file:
                             logger.info("Found previous match by CRC32, copying its values")
+                            filesize, filecount, other_file_datas = get_zip_fileinfo(os.path.join(self.settings.MEDIA_ROOT, filepath), get_extra_data=True)
                             values = {
                                 'title': archive_to_process.title,
                                 'title_jpn': archive_to_process.title_jpn,
                                 'zipped': filepath,
                                 'crc32': crc32,
                                 'match_type': archive_to_process.match_type,
-                                'filesize': get_zip_filesize(os.path.join(self.settings.MEDIA_ROOT, filepath)),
-                                'filecount': filecount_in_zip(os.path.join(self.settings.MEDIA_ROOT, filepath)),
+                                'filesize': filesize,
+                                'filecount': filecount,
                                 'gallery_id': archive_to_process.gallery_id,
                                 'source_type': archive_to_process.source_type,
                                 'origin': Archive.ORIGIN_FOLDER_SCAN
@@ -484,8 +486,9 @@ class FolderCrawler(object):
                                 values.update({'details': self.settings.archive_details})
                             if self.settings.archive_source:
                                 values.update({'source_type': self.settings.archive_source})
-                            Archive.objects.add_or_update_from_values(
+                            resulting_archive = Archive.objects.add_or_update_from_values(
                                 values, zipped=filepath)
+                            resulting_archive.fill_other_file_data(other_file_datas)
                             continue
                         else:
                             logger.info("Matching independently and ignoring previous match")
@@ -522,15 +525,15 @@ class FolderCrawler(object):
 
                 if not match_result and not do_not_replace:
                     logger.info('Could not match with any matcher, adding as non-match.')
-
+                    filesize, filecount, other_file_datas = get_zip_fileinfo(os.path.join(self.settings.MEDIA_ROOT, filepath), get_extra_data=True)
                     values = {
                         'title': title,
                         'title_jpn': '',
                         'zipped': filepath,
                         'crc32': crc32,
                         'match_type': 'non-match',
-                        'filesize': get_zip_filesize(os.path.join(self.settings.MEDIA_ROOT, filepath)),
-                        'filecount': filecount_in_zip(os.path.join(self.settings.MEDIA_ROOT, filepath)),
+                        'filesize': filesize,
+                        'filecount': filecount,
                         'source_type': 'folder',
                         'origin': Archive.ORIGIN_FOLDER_SCAN
                     }
@@ -542,6 +545,8 @@ class FolderCrawler(object):
                         values.update({'source_type': self.settings.archive_source})
                     archive = Archive.objects.update_or_create_by_values_and_gid(
                         values, None, zipped=filepath)
+
+                    archive.fill_other_file_data(other_file_datas)
 
                     if self.settings.internal_matches_for_non_matches:
                         logger.info('Generating possible internal matches.')

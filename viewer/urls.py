@@ -164,10 +164,6 @@ urlpatterns += [
 ]
 
 urlpatterns += [
-    re_path(r"^tag-frequency/$", exp.tag_frequency, name='tag-frequency'),
-    re_path(r"^gallery-frequency/$", exp.gallery_frequency, name='gallery-frequency'),
-    re_path(r"^seed$", exp.seeder),
-    re_path(r"^posted-seed$", exp.release_date_seeder),
     re_path(r"^r-api/([\w-]+)/$", exp.api, name='model-all'),
     re_path(r"^r-api/([\w-]+)/(\d+)/$", exp.api, name='model-obj'),
     re_path(r"^r-api/([\w-]+)/(\d+)/([\w-]+)/$", exp.api, name='model-obj-action'),

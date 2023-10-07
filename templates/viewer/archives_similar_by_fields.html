@@ -256,10 +256,14 @@
     <script src="{% static 'js/vendor/jquery.autocomplete-light.min.js' %}"></script>
   {% endcompress %}
   <script type="text/javascript">
-  $('button[data-role="toggle-field"]').click(function() {
-    var field_name = $(this).data("field");
-    var current_value = $(`input[name=${field_name}]`).val();
-    $(`input.toggle-list[${'data-' + field_name}="${current_value}"]`).click();
+  document.querySelectorAll('button[data-role="toggle-field"]').forEach((element) => {
+      element.addEventListener("click", function(event) {
+        const field_name = event.currentTarget.dataset["field"];
+        const current_value = document.querySelector(`input[name=${field_name}]`).value;
+        document.querySelectorAll(`input.toggle-list[${'data-' + field_name}="${current_value}"]`).forEach((elementIn) => {
+            elementIn.click();
+        })
+    })
   });
   </script>
 {% endblock %}

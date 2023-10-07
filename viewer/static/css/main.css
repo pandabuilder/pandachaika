@@ -443,25 +443,16 @@ img {
   float: right;
 }
 
-.right-tools {
-  text-align: right;
-  float: right;
-}
-
-.right-tools a {
-  background: #464646;
-  border-radius: 2px;
-  padding: 3px 4px;
-}
-
-.right-tools a.dropdown-item {
-  background: transparent;
-}
-
 .private-info-table tr th {
   margin: 0 5px 0 0;
   padding: 0;
   display: inline;
+}
+
+.shrink-btn {
+  --bs-btn-padding-x: .15rem;
+  --bs-btn-bg: #464646;
+  --bs-btn-border-color: #464646;
 }
 
 .archives {
@@ -597,6 +588,11 @@ img {
 
 .table {
   color: lightgrey;
+}
+
+.table > :not(caption) > * > * {
+  --bs-table-bg: rgba(0, 0, 0, 0);
+  --bs-table-color-state: lightgrey;
 }
 
 .table-striped > thead {
@@ -735,5 +731,5 @@ img {
 }
 
 .popover-custom-length {
-  max-width: 600px;
+  max-width: 850px;
 }

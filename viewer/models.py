@@ -59,7 +59,7 @@ from core.base.utilities import (
     clean_title,
     request_with_retries, get_images_from_zip, get_title_from_path, check_and_convert_to_zip, available_filename,
     file_matches_any_filter)
-from core.base.types import GalleryData, DataDict
+from core.base.types import GalleryData, DataDict, ArchiveGenericFile
 from core.base.utilities import (
     get_dict_allowed_fields, replace_illegal_name
 )
@@ -2102,7 +2102,7 @@ class Archive(models.Model):
         else:
             return static("imgs/no_cover.png"), 290, 196
 
-    def calculate_sha1_and_data_for_images(self) -> bool:
+    def calculate_sha1_and_data_for_images(self, process_other_data: bool = True) -> bool:
 
         image_set = self.image_set.all()
 
@@ -2151,6 +2151,14 @@ class Archive(models.Model):
                                         }
                                     )
             image.save()
+
+        # Calculate other data:
+        if process_other_data and self.archivefileentry_set.count() > 0:
+            for file_entry in self.archivefileentry_set.all():
+                file_entry_name = file_entry.file_name
+                with my_zip.open(file_entry_name) as current_other_file:
+                    file_entry.sha1 = sha1_from_file_object(current_other_file)
+                    file_entry.save()
 
         my_zip.close()
         return True
@@ -2525,8 +2533,8 @@ class Archive(models.Model):
 
         # size
         if self.filesize is None or self.filecount is None:
-            self.filesize, self.filecount = get_zip_fileinfo(
-                self.zipped.path)
+            self.filesize, self.filecount, other_file_datas = get_zip_fileinfo(self.zipped.path, get_extra_data=True)
+            self.fill_other_file_data(other_file_datas)
 
         # crc32
         if self.crc32 is None or self.crc32 == '':
@@ -2552,6 +2560,20 @@ class Archive(models.Model):
                         'value': hash_result
                     }
                 )
+
+    def fill_other_file_data(self, other_file_datas: Optional[list[ArchiveGenericFile]]):
+        self.archivefileentry_set.all().delete()
+        if other_file_datas:
+            for other_file_data in other_file_datas:
+                file_entry = ArchiveFileEntry(
+                    archive=self,
+                    archive_position=other_file_data.position,
+                    position=other_file_data.position,
+                    file_name=other_file_data.file_name,
+                    file_size=other_file_data.file_size,
+                    file_type=os.path.splitext(other_file_data.file_name)[1]
+                )
+                file_entry.save()
 
     def create_thumbnail_from_io_image(self, current_img):
         im = PImage.open(current_img)
@@ -2851,14 +2873,13 @@ class Archive(models.Model):
 
     def recalc_filesize(self) -> None:
         if os.path.isfile(self.zipped.path):
-            self.filesize = get_zip_filesize(
-                self.zipped.path)
+            self.filesize = get_zip_filesize(self.zipped.path)
             super(Archive, self).save()
 
     def recalc_fileinfo(self) -> None:
         if os.path.isfile(self.zipped.path):
-            self.filesize, self.filecount = get_zip_fileinfo(
-                self.zipped.path)
+            self.filesize, self.filecount, other_file_datas = get_zip_fileinfo(self.zipped.path, get_extra_data=True)
+            self.fill_other_file_data(other_file_datas)
             self.crc32 = calc_crc32(self.zipped.path)
             super(Archive, self).save()
 
@@ -3152,6 +3173,21 @@ class ArchiveMatches(models.Model):
     class Meta:
         verbose_name_plural = "Archive matches"
         ordering = ['-match_accuracy']
+
+
+class ArchiveFileEntry(models.Model):
+    archive = models.ForeignKey(Archive, on_delete=models.CASCADE)
+    archive_position = models.PositiveIntegerField(default=1)
+    position = models.PositiveIntegerField(default=1)
+    sha1 = models.CharField(max_length=50, blank=True, null=True)
+    file_name = models.CharField(max_length=500, blank=True, default='')
+    file_type = models.CharField(max_length=40, blank=True, default='')
+    file_size = models.PositiveIntegerField(default=0)
+    description = models.CharField(max_length=500, blank=True, default='')
+
+    class Meta:
+        verbose_name_plural = "Archive file entries"
+        ordering = ['-position']
 
 
 def upload_imgpath(instance: 'Archive', filename: str) -> str:
@@ -3515,6 +3551,19 @@ class WantedGalleryManager(models.Manager['WantedGallery']):
                 | Q(found=True, keep_searching=True)
             )
         )
+
+
+class ProcessedLinks(models.Model):
+    provider = models.ForeignKey('Provider', on_delete=models.SET_NULL, null=True, blank=True)
+    source_id = models.CharField('Source Id', max_length=200, unique=True)
+    url = models.URLField(max_length=2000)
+    title = models.CharField(max_length=500, blank=True, null=True, default='')
+    link_date = models.DateTimeField('Link date', blank=True, null=True)
+    content = models.TextField(blank=True, default='')
+    create_date = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name_plural = "Processed Links"
 
 
 class WantedGallery(models.Model):

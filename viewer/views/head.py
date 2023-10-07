@@ -1095,7 +1095,7 @@ def filter_archives(request: HttpRequest, session_filters: dict[str, str], reque
         # Same name for a tag with 2 different scopes: artist:syukurin, group:syukurin
         results = results.distinct()
 
-    if "only_favorites" in request_filters and request_filters["only_favorites"] and authenticated and type(request.user.id) == int:
+    if "only_favorites" in request_filters and request_filters["only_favorites"] and authenticated and isinstance(request.user.id, int):
         user_arch_ids = UserArchivePrefs.objects.filter(
             user=request.user.id, favorite_group__gt=0).values_list('archive')
         results = results.filter(id__in=user_arch_ids)

@@ -370,6 +370,7 @@ PROVIDERS = [
     'core.providers.twodmarket',
     'core.providers.nyaa',
     'core.providers.irodori',
+    'core.providers.wanimagazine',
 ]
 
 PROVIDER_CONTEXT: 'ProviderContext' = crawler_settings.provider_context

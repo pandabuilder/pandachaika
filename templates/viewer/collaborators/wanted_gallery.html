@@ -17,7 +17,7 @@
       <a class="btn btn-secondary float-end" href="{% url 'viewer:col-create-wanted-gallery' %}?wanted-gallery={{ wanted_gallery.id }}" role="button">Use as template to create another</a>
     {% endif %}
     {% if perms.viewer.change_wantedgallery %}
-      <button class="btn btn-secondary float-end" id="edit-wanted" data-bs-toggle="collapse" data-bs-target="#add-change-wanted-form" name="edit-wanted" type="button" aria-label="toggle add wanted">Edit <i class="fas fa-chevron-down"></i></button>
+      <button class="btn btn-secondary float-end collapse-icon" id="edit-wanted" data-bs-toggle="collapse" data-bs-target="#add-change-wanted-form" name="edit-wanted" type="button" aria-label="toggle add wanted">Edit <i class="fas fa-chevron-down"></i></button>
     {% endif %}
   </h1>
   <div class="row">
@@ -306,6 +306,7 @@
           <th scope="col">Type</th>
           <th scope="col">Source</th>
           <th scope="col">Image</th>
+          <th scope="col">Comment</th>
         </tr>
         </thead>
         <tbody>
@@ -316,8 +317,8 @@
             <td>{{ mention.release_date }}</td>
             <td>{{ mention.type }}</td>
             <td>{{ mention.source }}</td>
-            <td>{% if mention.image %}
-              <a href="{{ mention.image.url }}" data-image-url="{{ mention.thumbnail.url }}" class="img-preview" rel="popover">Image</a>{% endif %}</td>
+            <td>{% if mention.image %}<a href="{{ mention.image.url }}" data-image-url="{{ mention.thumbnail.url }}" class="img-preview" rel="popover">Image</a>{% endif %}</td>
+            <td>{{ mention.comment }}</td>
           </tr>
         {% endfor %}
         </tbody>
@@ -337,20 +338,5 @@
 {% block afterJQ %}
   {% if perms.viewer.change_wantedgallery %}
   {{ edit_form.media }}
-  {% load compress %}
-  {% compress js %}
-    <script>
-    $('#edit-wanted').click(function () {
-    if($('#edit-wanted i').hasClass('fa-chevron-down'))
-    {
-       $('#edit-wanted').html('Edit <i class="fas fa-chevron-up"></i>');
-    }
-    else
-    {
-        $('#edit-wanted').html('Edit <i class="fas fa-chevron-down"></i>');
-    }
-    });
-    </script>
-  {% endcompress %}
   {% endif %}
 {% endblock %}

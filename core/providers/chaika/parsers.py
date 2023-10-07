@@ -56,12 +56,12 @@ class Parser(BaseParser):
             logger.error("Could not parse response to JSON: {}".format(response.text))
             return []
 
-        if type(json_decoded) == dict:
+        if isinstance(json_decoded, dict):
             if 'galleries' in json_decoded:
                 dict_list = json_decoded['galleries']
             else:
                 dict_list.append(json_decoded)
-        elif type(json_decoded) == list:
+        elif isinstance(json_decoded, list):
             dict_list = json_decoded
 
         total_galleries_filtered: list[ChaikaGalleryData] = []
@@ -295,12 +295,12 @@ class Parser(BaseParser):
                     logger.error("Could not parse response to JSON: {}".format(response.text))
                     continue
 
-                if type(json_decoded) == dict:
+                if isinstance(json_decoded, dict):
                     if 'galleries' in json_decoded:
                         dict_list = json_decoded['galleries']
                     else:
                         dict_list.append(json_decoded)
-                elif type(json_decoded) == list:
+                elif isinstance(json_decoded, list):
                     dict_list = json_decoded
 
             found_galleries = set()

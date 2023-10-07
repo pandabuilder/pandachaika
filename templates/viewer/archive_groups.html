@@ -12,7 +12,7 @@
   {% endif %}
   <!-- Archive groups  -->
   {% if perms.viewer.add_archivegroup %}
-  <button class="btn btn-secondary" id="add-archive-group" data-bs-toggle="collapse" data-bs-target="#add-change-archive-group-form" name="add-archive-group" type="button" aria-label="toggle add wanted">Add Archive Group <i class="fas fa-chevron-down"></i></button>
+  <button class="btn btn-secondary collapse-icon" id="add-archive-group" data-bs-toggle="collapse" data-bs-target="#add-change-archive-group-form" name="add-archive-group" type="button" aria-label="toggle add wanted">Add Archive Group <i class="fas fa-chevron-down"></i></button>
   {% include 'viewer/include/archive_group_edit.html' %}
   {% endif %}
   <div class="page-header">
@@ -85,20 +85,6 @@
   {% load compress %}
   {% if perms.viewer.add_archivegroup %}
   {{ edit_form.media }}
-  {% compress js %}
-    <script>
-    $('#add-archive-group').click(function () {
-    if($('#add-archive-group i').hasClass('fa-chevron-down'))
-    {
-       $('#add-archive-group').html('Add Archive Group <i class="fas fa-chevron-up"></i>');
-    }
-    else
-    {
-        $('#add-archive-group').html('Add Archive Group <i class="fas fa-chevron-down"></i>');
-    }
-    });
-    </script>
-  {% endcompress %}
   {% endif %}
   {% compress css %}
     <link href="{% static 'css/vendor/jal/style.css' %}" type="text/css" media="all" rel="stylesheet" />
@@ -106,31 +92,35 @@
     {{ form.media }}
   {% compress js %}
     <script>
-    var tagData = {};
-    var tagUrl = '{% url 'viewer:api' %}?at=';
+    let tagData = {};
+    const tagUrl = '{% url 'viewer:api' %}?at=';
     function tagToHtml (tag) {
         return '<div class="tag">' + tag + '</div>'
     }
-    $(document).ready(function() {
-        $(".tag-preview").click(function() {
-            var el = $(this);
-            var pk = $(this).data('bs-pk');
-            if (tagData[pk]) {
-                return tagData[pk];
-            }
-            else {
-                $.get(tagUrl + pk, function(response) {
-                    if (response.tags) {
-                        tagData[pk] = response.tags.map(tagToHtml);
-                        el.unbind('click').popover({
-                            content: tagData[pk].join(""),
-                            {#            title: 'Dynamic response!',#}
-                            html: true,
-                            {#                        delay: {show: 500, hide: 100}#}
-                        }).popover('show');
-                    }
-                });
-            }
+    document.addEventListener("DOMContentLoaded", function() {
+        document.querySelectorAll('.tag-preview')?.forEach((element) => {
+            element.addEventListener("click", function (event) {
+                let el = event.currentTarget;
+                let pk = event.currentTarget.dataset['bsPk'];
+                if (tagData[pk]) {
+                    return tagData[pk];
+                } else {
+                    fetch(tagUrl + pk).then(function (response) {
+                        return response.json();
+                    }).then(function (body) {
+                        if (body.tags) {
+                            tagData[pk] = body.tags.map(tagToHtml);
+
+                            const popover = new bootstrap.Popover(el, {
+                                content: tagData[pk].join(""),
+                                html: true,
+                            })
+                            popover.show();
+
+                        }
+                    });
+                }
+            });
         });
     });
     </script>

@@ -6,7 +6,7 @@ from tempfile import mkdtemp
 from typing import Any, Optional
 
 from core.base.types import DataDict
-from core.base.utilities import replace_illegal_name, available_filename, calc_crc32, get_zip_fileinfo
+from core.base.utilities import replace_illegal_name, available_filename, calc_crc32, get_zip_fileinfo_for_gallery
 
 from core.downloaders.handlers import BaseDownloader
 from viewer.models import Archive
@@ -109,7 +109,7 @@ class MegaArchiveDownloader(BaseDownloader):
         shutil.move(output_path, filepath)
         shutil.rmtree(directory_path, ignore_errors=True)
 
-        self.gallery.filesize, self.gallery.filecount = get_zip_fileinfo(filepath)
+        self.gallery.filesize, self.gallery.filecount = get_zip_fileinfo_for_gallery(filepath)
         if self.gallery.filesize > 0:
             self.crc32 = calc_crc32(filepath)
 

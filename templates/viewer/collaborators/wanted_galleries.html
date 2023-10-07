@@ -11,7 +11,7 @@
 
   <!-- Wanted galleries  -->
   {% if perms.viewer.add_wantedgallery %}
-  <button class="btn btn-secondary" id="add-wanted" data-bs-toggle="collapse" data-bs-target="#add-change-wanted-form" name="add-wanted" type="button" aria-label="toggle add wanted">Add Wanted Gallery <i class="fas fa-chevron-down"></i></button>
+  <button class="btn btn-secondary collapse-icon" id="add-wanted" data-bs-toggle="collapse" data-bs-target="#add-change-wanted-form" name="add-wanted" type="button" aria-label="toggle add wanted">Add Wanted Gallery <i class="fas fa-chevron-down"></i></button>
   <a class="btn btn-secondary" href="{% url 'viewer:col-create-wanted-gallery' %}" role="button">Add Wanted Gallery page</a>
   {% include 'viewer/include/wanted_gallery_edit.html' %}
   {% endif %}
@@ -218,18 +218,4 @@
     <link href="{% static 'css/vendor/jal/style.css' %}" type="text/css" media="all" rel="stylesheet" />
   {% endcompress %}
   {{ form.media }}
-  {% compress js %}
-    <script>
-    $('#add-wanted').click(function () {
-    if($('#add-wanted i').hasClass('fa-chevron-down'))
-    {
-       $('#add-wanted').html('Add Wanted Gallery <i class="fas fa-chevron-up"></i>');
-    }
-    else
-    {
-        $('#add-wanted').html('Add Wanted Gallery <i class="fas fa-chevron-down"></i>');
-    }
-    });
-    </script>
-  {% endcompress %}
 {% endblock %}

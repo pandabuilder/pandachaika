@@ -7,8 +7,7 @@ import requests
 from core.base.matchers import Matcher
 from core.base.types import DataDict
 from core.base.utilities import (
-    filecount_in_zip,
-    get_zip_filesize, construct_request_dict, file_matches_any_filter)
+    construct_request_dict, file_matches_any_filter, get_zip_fileinfo)
 from . import constants
 
 
@@ -40,14 +39,15 @@ class TitleMatcher(Matcher):
         if not self.match_values:
             return None
         self.match_gid = self.match_values.gid
+        filesize, filecount, _ = get_zip_fileinfo(os.path.join(self.settings.MEDIA_ROOT, self.file_path))
         values = {
             'title': self.match_title,
             'title_jpn': self.match_values.title_jpn,
             'zipped': self.file_path,
             'crc32': self.crc32,
             'match_type': self.found_by,
-            'filesize': get_zip_filesize(os.path.join(self.settings.MEDIA_ROOT, self.file_path)),
-            'filecount': filecount_in_zip(os.path.join(self.settings.MEDIA_ROOT, self.file_path)),
+            'filesize': filesize,
+            'filecount': filecount,
             'source_type': self.provider
         }
 

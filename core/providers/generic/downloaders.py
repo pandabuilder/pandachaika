@@ -6,7 +6,7 @@ from typing import Any, Optional, cast
 import requests
 
 from core.base.types import DataDict
-from core.base.utilities import replace_illegal_name, available_filename, get_filename_from_cd, get_zip_fileinfo, \
+from core.base.utilities import replace_illegal_name, available_filename, get_filename_from_cd, get_zip_fileinfo_for_gallery, \
     calc_crc32, construct_request_dict, remove_archive_extensions
 from core.downloaders.torrent import get_torrent_client
 
@@ -65,7 +65,7 @@ class GenericTorrentDownloader(BaseDownloader):
             if client.expected_torrent_name == '':
                 from core.libs.bencoding import Decoder
                 try:
-                    if client.convert_to_base64 and type(torrent_data) is str:
+                    if client.convert_to_base64 and isinstance(torrent_data, str):
                         torrent_data = cast(str, torrent_data)
                         torrent_metadata = Decoder(base64.decodebytes(torrent_data.encode('utf-8'))).decode()
                     else:
@@ -190,7 +190,7 @@ class GenericArchiveDownloader(BaseDownloader):
             for chunk in request_file.iter_content(4096):
                 fo.write(chunk)
 
-        self.gallery.filesize, self.gallery.filecount = get_zip_fileinfo(filepath)
+        self.gallery.filesize, self.gallery.filecount = get_zip_fileinfo_for_gallery(filepath)
         if self.gallery.filesize > 0:
             self.crc32 = calc_crc32(filepath)
 

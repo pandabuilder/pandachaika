@@ -197,6 +197,36 @@ def json_search(request: HttpRequest) -> HttpResponse:
             ensure_ascii=False,
         )
         return HttpResponse(response, content_type="application/json; charset=utf-8")
+    # Get other files data from a specific archive.
+    elif 'aof' in data:
+        try:
+            archive_id = int(data['aof'])
+        except ValueError:
+            return HttpResponse(json.dumps({'result': "Archive does not exist."}),
+                                content_type="application/json; charset=utf-8")
+        try:
+            archive = Archive.objects.get(pk=archive_id)
+        except Archive.DoesNotExist:
+            return HttpResponse(json.dumps({'result': "Archive does not exist."}),
+                                content_type="application/json; charset=utf-8")
+        if not archive.public and not user_is_authenticated:
+            return HttpResponse(json.dumps({'result': "Archive does not exist."}),
+                                content_type="application/json; charset=utf-8")
+        response = json.dumps(
+            {
+                'other_files': [
+                    {
+                        'name': x.file_name,
+                        'size': x.file_size,
+                        'sha1': x.sha1,
+                    } for x in archive.archivefileentry_set.all()
+                ],
+            },
+            # indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        return HttpResponse(response, content_type="application/json; charset=utf-8")
     # Get images data from a list of archives.
     elif 'aid' in data:
         try:

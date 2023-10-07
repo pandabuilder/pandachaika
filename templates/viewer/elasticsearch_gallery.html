@@ -82,7 +82,7 @@
               </div>
               </div>
               <div class="col-md-auto">
-                <button type="button" class="btn btn-info btn-sm mx-2" id="copy-ruls">Copy current source URLs to clipboard</button>
+                <button type="button" class="btn btn-info btn-sm mx-2" id="copy-urls">Copy current source URLs to clipboard</button>
               </div>
               </div>
             </form>
@@ -225,19 +225,17 @@
 
 {% block afterJQ %}
   <script>
-    $(document).ready(function() {
-        $("#copy-ruls").click(function() {
-          var urls = $(".url-container").map(function() {
-              return $(this).text();
-          }).get();
-          var joined_urls = urls.join("\n");
-          var dummy = document.createElement("textarea");
-          document.body.appendChild(dummy);
-          dummy.value = joined_urls;
-          dummy.select();
-          document.execCommand("copy");
-          document.body.removeChild(dummy);
-        });
+    document.querySelector("#copy-urls").addEventListener('click',function () {
+      const urls = Array.from(document.querySelectorAll(".url-container")).map(function(element) {
+          return element.textContent;
+      });
+      const joined_urls = urls.join("\n");
+      let dummy = document.createElement("textarea");
+      document.body.appendChild(dummy);
+      dummy.value = joined_urls;
+      dummy.select();
+      document.execCommand("copy");
+      document.body.removeChild(dummy);
     });
   </script>
 {% endblock afterJQ %}

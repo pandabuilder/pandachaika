@@ -669,9 +669,9 @@ class InternalParser(BaseParser):
         dict_list = []
         json_decoded = json.loads(json_string)
 
-        if type(json_decoded) == dict:
+        if isinstance(json_decoded, dict):
             dict_list.append(json_decoded)
-        elif type(json_decoded) == list:
+        elif isinstance(json_decoded, list):
             dict_list = json_decoded
 
         galleries_gids = []

@@ -8,7 +8,7 @@ from urllib.parse import urljoin
 from core.base.matchers import Matcher
 from core.base.types import MatchesValues, DataDict, GalleryData
 from core.base.utilities import (
-    filecount_in_zip, file_matches_any_filter,
+    get_zip_fileinfo, file_matches_any_filter,
     get_zip_filesize, clean_title,
     request_with_retries, construct_request_dict, calc_crc32)
 from . import constants
@@ -77,14 +77,15 @@ class BaseExactMatcher(Matcher):
             return None
         self.match_gid = self.match_values.gid
         self.match_provider = self.match_values.provider
+        filesize, filecount, _ = get_zip_fileinfo(os.path.join(self.settings.MEDIA_ROOT, self.file_path))
         values = {
             'title': self.match_values.title,
             'title_jpn': self.match_values.title_jpn,
             'zipped': self.file_path,
             'crc32': self.crc32,
             'match_type': self.found_by,
-            'filesize': get_zip_filesize(os.path.join(self.settings.MEDIA_ROOT, self.file_path)),
-            'filecount': filecount_in_zip(os.path.join(self.settings.MEDIA_ROOT, self.file_path)),
+            'filesize': filesize,
+            'filecount': filecount,
             'source_type': self.match_provider or self.provider
         }
 
@@ -199,14 +200,15 @@ class TitleMatcher(Matcher):
             return None
         self.match_gid = self.match_values.gid
         self.match_provider = self.match_values.provider
+        filesize, filecount, _ = get_zip_fileinfo(os.path.join(self.settings.MEDIA_ROOT, self.file_path))
         values = {
             'title': self.match_values.title,
             'title_jpn': self.match_values.title_jpn,
             'zipped': self.file_path,
             'crc32': self.crc32,
             'match_type': self.found_by,
-            'filesize': get_zip_filesize(os.path.join(self.settings.MEDIA_ROOT, self.file_path)),
-            'filecount': filecount_in_zip(os.path.join(self.settings.MEDIA_ROOT, self.file_path)),
+            'filesize': filesize,
+            'filecount': filecount,
             'source_type': self.match_provider or self.provider
         }
 
@@ -320,14 +322,15 @@ class TitleMetaMatcher(Matcher):
             return None
         self.match_gid = self.match_values.gid
         self.match_provider = self.match_values.provider
+        filesize, filecount, _ = get_zip_fileinfo(os.path.join(self.settings.MEDIA_ROOT, self.file_path))
         values = {
             'title': self.match_values.title,
             'title_jpn': self.match_values.title_jpn,
             'zipped': self.file_path,
             'crc32': self.crc32,
             'match_type': self.found_by,
-            'filesize': get_zip_filesize(os.path.join(self.settings.MEDIA_ROOT, self.file_path)),
-            'filecount': filecount_in_zip(os.path.join(self.settings.MEDIA_ROOT, self.file_path)),
+            'filesize': filesize,
+            'filecount': filecount,
             'source_type': self.match_provider or self.provider
         }
 

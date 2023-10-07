@@ -40,7 +40,7 @@
   <button type="submit" name="delete_confirm" class="btn btn-light">Confirm delete</button>
 </form>
 <script>
-$('#select-all').click(function() {
-    $('div input[type="checkbox"]').prop('checked', true);
+document.querySelector('#select-all').addEventListener("click", function() {
+    document.querySelectorAll('div input[type="checkbox"]')?.forEach((element) => element.checked = true);
 });
 </script>

@@ -12,7 +12,7 @@ from bs4 import BeautifulSoup
 
 from core.base.types import DataDict
 from core.base.utilities import calc_crc32, get_base_filename_string_from_gallery_data, \
-    get_zip_fileinfo, construct_request_dict
+    get_zip_fileinfo_for_gallery, construct_request_dict
 from core.downloaders.handlers import BaseDownloader, BaseInfoDownloader
 from .utilities import guess_gallery_read_url
 from viewer.models import Archive
@@ -152,7 +152,7 @@ class ArchiveDownloader(BaseDownloader):
                         os.path.join(root_path, current_file), arcname=os.path.basename(current_file))
         shutil.rmtree(directory_path, ignore_errors=True)
 
-        self.gallery.filesize, self.gallery.filecount = get_zip_fileinfo(file_path)
+        self.gallery.filesize, self.gallery.filecount = get_zip_fileinfo_for_gallery(file_path)
         if self.gallery.filesize > 0:
             self.crc32 = calc_crc32(file_path)
             self.fileDownloaded = 1
@@ -300,7 +300,7 @@ class ArchiveJSDownloader(BaseDownloader):
                             os.path.join(root_path, current_file), arcname=os.path.basename(current_file))
             shutil.rmtree(directory_path, ignore_errors=True)
 
-            self.gallery.filesize, self.gallery.filecount = get_zip_fileinfo(file_path)
+            self.gallery.filesize, self.gallery.filecount = get_zip_fileinfo_for_gallery(file_path)
             if self.gallery.filesize > 0:
                 self.crc32 = calc_crc32(file_path)
                 self.fileDownloaded = 1

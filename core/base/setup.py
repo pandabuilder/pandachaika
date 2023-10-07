@@ -164,7 +164,6 @@ class WebServerSettings:
 class UrlSettings:
     __slots__ = [
         'behind_proxy', 'enable_public_submit', 'enable_public_stats',
-        'enable_gallery_frequency', 'enable_tag_frequency',
         'viewer_main_url', 'media_url', 'static_url', 'external_media_server',
         'main_webserver_url', 'external_as_main_download', 'elasticsearch_as_main_urls'
     ]
@@ -173,8 +172,6 @@ class UrlSettings:
         self.behind_proxy: bool = False
         self.enable_public_submit: bool = False
         self.enable_public_stats: bool = False
-        self.enable_gallery_frequency: bool = False
-        self.enable_tag_frequency: bool = False
         self.elasticsearch_as_main_urls: bool = False
         self.viewer_main_url: str = ''
         self.media_url: str = '/media/'
@@ -644,10 +641,6 @@ class Settings:
                 self.urls.enable_public_submit = config['urls']['enable_public_submit']
             if 'enable_public_stats' in config['urls']:
                 self.urls.enable_public_stats = config['urls']['enable_public_stats']
-            if 'enable_gallery_frequency' in config['urls']:
-                self.urls.enable_gallery_frequency = config['urls']['enable_gallery_frequency']
-            if 'enable_tag_frequency' in config['urls']:
-                self.urls.enable_tag_frequency = config['urls']['enable_tag_frequency']
             if 'external_media_server' in config['urls']:
                 self.urls.external_media_server = config['urls']['external_media_server']
             if 'external_as_main_download' in config['urls']:

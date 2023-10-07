@@ -344,6 +344,7 @@
           <th scope="col">Type</th>
           <th scope="col">Source</th>
           <th scope="col">Image</th>
+          <th scope="col">Comment</th>
         </tr>
         </thead>
         <tbody>
@@ -354,8 +355,8 @@
             <td>{{ mention.release_date }}</td>
             <td>{{ mention.type }}</td>
             <td>{{ mention.source }}</td>
-            <td>{% if mention.image %}
-              <a href="{{ mention.image.url }}" data-image-url="{{ mention.thumbnail.url }}" class="img-preview" rel="popover">Image</a>{% endif %}</td>
+            <td>{% if mention.image %}<a href="{{ mention.image.url }}" data-image-url="{{ mention.thumbnail.url }}" class="img-preview" rel="popover">Image</a>{% endif %}</td>
+            <td>{{ mention.comment }}</td>
           </tr>
         {% endfor %}
         </tbody>

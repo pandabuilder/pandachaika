@@ -8,7 +8,7 @@ from tempfile import mkdtemp
 from typing import Optional, Any
 
 from core.base.utilities import GeneralUtils, replace_illegal_name, get_base_filename_string_from_gallery_data, \
-    available_filename, get_zip_fileinfo, calc_crc32
+    available_filename, get_zip_fileinfo_for_gallery, calc_crc32
 from core.base.types import GalleryData, TorrentClient, DataDict
 
 if typing.TYPE_CHECKING:
@@ -397,7 +397,7 @@ class BaseGalleryDLDownloader(BaseDownloader):
         shutil.move(output_path, filepath)
         shutil.rmtree(directory_path, ignore_errors=True)
 
-        self.gallery.filesize, self.gallery.filecount = get_zip_fileinfo(filepath)
+        self.gallery.filesize, self.gallery.filecount = get_zip_fileinfo_for_gallery(filepath)
         if self.gallery.filesize > 0:
             self.crc32 = calc_crc32(filepath)
 

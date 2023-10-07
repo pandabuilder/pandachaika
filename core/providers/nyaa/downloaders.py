@@ -59,7 +59,7 @@ class NyaaTorrentDownloader(GenericTorrentDownloader):
             if client.expected_torrent_name == '':
                 from core.libs.bencoding import Decoder
                 try:
-                    if client.convert_to_base64 and type(torrent_data) is str:
+                    if client.convert_to_base64 and isinstance(torrent_data, str):
                         torrent_data = cast(str, torrent_data)
                         torrent_metadata = Decoder(base64.decodebytes(torrent_data.encode('utf-8'))).decode()
                     else:

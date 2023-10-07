@@ -3,16 +3,13 @@
 
 import json
 import re
-from itertools import chain
 import typing
 from typing import Optional
 
-from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core import serializers
 from django.db import transaction
 from django.db.models import Q, QuerySet
-from django.http import HttpResponse, HttpRequest, Http404
+from django.http import HttpResponse, HttpRequest
 from django.http.request import QueryDict
 from django.shortcuts import render
 from django.core.paginator import Paginator, EmptyPage
@@ -21,187 +18,12 @@ from django.conf import settings
 
 from core.base.types import DataDict
 from core.base.utilities import timestamp_or_zero, str_to_int
-from viewer.forms import GallerySearchForm, DivErrorList, GallerySearchSimpleForm
-from viewer.models import Gallery, Tag, Archive, Image, UserArchivePrefs
+from viewer.models import Archive, Image, UserArchivePrefs
 from viewer.utils.requests import double_check_auth
-from viewer.views.head import archive_filter_keys, filter_archives, render_error
+from viewer.views.head import archive_filter_keys, filter_archives
 from viewer.views.api import simple_archive_filter
 
 crawler_settings = settings.CRAWLER_SETTINGS
-
-
-# @login_required
-def tag_frequency(request: HttpRequest) -> HttpResponse:
-    if not crawler_settings.urls.enable_tag_frequency:
-        if not request.user.is_staff:
-            raise Http404("Page not found")
-        else:
-            return render_error(request, "Page disabled by settings (urls: enable_tag_frequency).")
-    title = request.GET.get("title", '')
-    tags = request.GET.get("tags", '')
-    if 'clear' in request.GET:
-        request.GET = QueryDict('')
-        form = GallerySearchForm()
-        form_simple = GallerySearchSimpleForm(request.GET, error_class=DivErrorList)
-    else:
-        form = GallerySearchForm(initial={'title': title, 'tags': tags})
-        form_simple = GallerySearchSimpleForm(request.GET, error_class=DivErrorList)
-        form_simple.is_valid()
-        for field_name, errors in form_simple.errors.items():
-            messages.error(request, field_name + ": " + ", ".join([str(x) for x in errors]), extra_tags='danger')
-    d = {'form': form, 'form_simple': form_simple}
-    return render(request, "viewer/graph_tags.html", d)
-
-
-def gallery_frequency(request: HttpRequest) -> HttpResponse:
-    if not crawler_settings.urls.enable_gallery_frequency:
-        if not request.user.is_staff:
-            raise Http404("Page not found")
-        else:
-            return render_error(request, "Page disabled by settings (urls: enable_gallery_frequency).")
-    title = request.GET.get("title", '')
-    tags = request.GET.get("tags", '')
-    if 'clear' in request.GET:
-        request.GET = QueryDict('')
-        form = GallerySearchForm()
-        form_simple = GallerySearchSimpleForm(request.GET, error_class=DivErrorList)
-    else:
-        form = GallerySearchForm(initial={'title': title, 'tags': tags})
-        form_simple = GallerySearchSimpleForm(request.GET, error_class=DivErrorList)
-        form_simple.is_valid()
-        for field_name, errors in form_simple.errors.items():
-            messages.error(request, field_name + ": " + ", ".join([str(x) for x in errors]), extra_tags='danger')
-    d = {'form': form, 'form_simple': form_simple}
-    return render(request, "viewer/graph_gallery_posted.html", d)
-
-
-def get_gallery_data(data: QueryDict) -> 'QuerySet[Gallery]':
-    """Quick search of galleries.
-    """
-
-    # sort and filter results by parameters
-    order = '-posted'
-
-    results = Gallery.objects.order_by(order)
-
-    title_data = data.get('title')
-    if title_data is not None:
-        q_formatted = '%' + title_data.replace(' ', '%') + '%'
-        results = results.filter(
-            Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted)
-        )
-
-    tags_data = data.get('tags')
-    if tags_data is not None:
-        tags = tags_data.split(',')
-        for tag in tags:
-            tag = tag.strip().replace(" ", "_")
-            tag_clean = re.sub("^[-|^]", "", tag)
-            scope_name = tag_clean.split(":", maxsplit=1)
-            if len(scope_name) > 1:
-                tag_scope = scope_name[0]
-                tag_name = scope_name[1]
-            else:
-                tag_scope = ''
-                tag_name = scope_name[0]
-            if tag.startswith("-"):
-                if tag_name != '' and tag_scope != '':
-                    tag_query = Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)
-                elif tag_name != '':
-                    tag_query = Q(tags__name__contains=tag_name)
-                else:
-                    tag_query = Q(tags__scope__contains=tag_scope)
-
-                results = results.exclude(
-                    tag_query
-                )
-            elif tag.startswith("^"):
-                if tag_name != '' and tag_scope != '':
-                    tag_query = Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope)
-                elif tag_name != '':
-                    tag_query = Q(tags__name__exact=tag_name)
-                else:
-                    tag_query = Q(tags__scope__exact=tag_scope)
-
-                results = results.filter(
-                    tag_query
-                )
-            else:
-                if tag_name != '' and tag_scope != '':
-                    tag_query = Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)
-                elif tag_name != '':
-                    tag_query = Q(tags__name__contains=tag_name)
-                else:
-                    tag_query = Q(tags__scope__contains=tag_scope)
-
-                results = results.filter(
-                    tag_query
-                )
-
-        results = results.distinct()
-
-    filecount_from = data.get("filecount_from")
-    if filecount_from is not None:
-        results = results.filter(filecount__gte=int(float(filecount_from)))
-    filecount_to = data.get("filecount_to")
-    if filecount_to is not None:
-        results = results.filter(filecount__lte=int(float(filecount_to)))
-    filesize_from = data.get("filesize_from")
-    if filesize_from is not None:
-        results = results.filter(filesize__gte=int(float(filesize_from)))
-    filesize_to = data.get("filesize_to")
-    if filesize_to is not None:
-        results = results.filter(filesize__lte=int(float(filesize_to)))
-    if 'posted_from' in data:
-        results = results.filter(posted__gte=data['posted_from'])
-    if 'posted_to' in data:
-        results = results.filter(posted__lte=data['posted_to'])
-    if 'provider' in data:
-        results = results.filter(provider__icontains=data['provider'])
-    if 'reason' in data:
-        results = results.filter(reason__icontains=data['reason'])
-    if 'provider' in data:
-        results = results.filter(provider__icontains=data['provider'])
-    if 'uploader' in data:
-        results = results.filter(uploader__icontains=data['uploader'])
-
-    # results = results.distinct()
-
-    return results
-
-
-def seeder(request: HttpRequest) -> HttpResponse:
-    if not crawler_settings.urls.enable_tag_frequency:
-        if not request.user.is_staff:
-            response = json.dumps({'error': "Page not Found"})
-        else:
-            response = json.dumps({'error': "Page disabled by settings (urls: enable_tag_frequency)."})
-        return HttpResponse(response, content_type="application/json")
-    if request.method == 'GET':
-        data = request.GET
-        galleries = get_gallery_data(data).filter(posted__gt='1970-01-01 00:00:00+00:00')
-        tags = Tag.objects.filter(gallery__in=galleries).distinct()
-        combined = list(chain(tags, galleries))
-        response = serializers.serialize("json", combined, fields=('title', 'name', 'scope', 'pk', 'tags'))
-    else:
-        response = json.dumps({'error': "method must be GET"})
-    return HttpResponse(response, content_type="application/json")
-
-
-def release_date_seeder(request: HttpRequest) -> HttpResponse:
-    if not crawler_settings.urls.enable_gallery_frequency:
-        if not request.user.is_staff:
-            response = json.dumps({'error': "Page not Found"})
-        else:
-            response = json.dumps({'error': "Page disabled by settings (urls: enable_gallery_frequency)."})
-        return HttpResponse(response, content_type="application/json")
-    if request.method == 'GET':
-        data = request.GET
-        galleries = get_gallery_data(data).filter(posted__gt='1970-01-01 00:00:00+00:00')
-        response = serializers.serialize("json", list(galleries), fields=('pk', 'title', 'posted'))
-    else:
-        response = json.dumps({'error': "method must be GET"})
-    return HttpResponse(response, content_type="application/json")
 
 
 def get_archive_data(data: QueryDict) -> 'QuerySet[Archive]':
