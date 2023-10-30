@@ -1280,6 +1280,11 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                     'gallery__tags',
                     queryset=Tag.objects.filter(scope__exact='artist'),
                     to_attr='artist_tags'
+                ),
+                Prefetch(
+                    'gallery__tags',
+                    queryset=Tag.objects.filter(scope__exact='magazine'),
+                    to_attr='magazine_tags'
                 )
             ),
             to_attr='possible_galleries'

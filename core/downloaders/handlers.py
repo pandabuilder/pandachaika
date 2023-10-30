@@ -105,9 +105,7 @@ class BaseDownloader(metaclass=Meta):
                 banned_result, banned_reasons = False, []
             for archive in self.gallery_db_entry.archive_set.all():
                 if archive.gallery:
-                    archive.title = archive.gallery.title
-                    archive.title_jpn = archive.gallery.title_jpn
-                    archive.simple_save()
+                    archive.set_titles_from_gallery(archive.gallery)
 
                     if self.settings.recheck_wanted_on_update and self.settings.archive_manage_entry_model:
 

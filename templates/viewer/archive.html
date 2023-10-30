@@ -44,14 +44,20 @@
             <button class="btn btn-sm shrink-btn"><a href="{% url 'viewer:archive-calc-imgs-sha1' archive.pk %}">calc sha1</a></button>
         {% endif %}
         {% if perms.viewer.publish_archive %}
-            <button class="btn btn-sm shrink-btn">{% if archive.public %}<a href="{% url 'viewer:archive-private' archive.pk %}">private</a>{% else %}<a href="{% url 'viewer:archive-public' archive.pk %}">public</a>{% endif %}</button>
+            <button class="btn btn-sm shrink-btn">
+                {% if archive.public %}
+                    <a href="{% url 'viewer:archive-private' archive.pk %}">private</a>
+                {% else %}
+                    <a href="{% url 'viewer:archive-public' archive.pk %}">public</a>
+                {% endif %}
+            </button>
         {% endif %}
         {% if user.is_staff %}
             <button class="btn btn-sm shrink-btn"><a href="{% url 'viewer:archive-rematch' archive.pk %}">rematch</a></button>
             <button class="btn btn-sm shrink-btn"><a class="open-modal" href="{% url 'viewer:archive-delete' archive.pk %}" data-popup-url="{% url 'viewer:archive-delete' archive.pk %}?inline=1">delete</a></button>
             {% if archive.gallery %}<button class="btn btn-sm shrink-btn"><a href="{% url 'viewer:gallery-tool' archive.gallery.pk 'toggle-hidden' %}">{% if archive.gallery.hidden %}open{% else %}hidden{% endif %}</a></button>{% endif %}
-            <button class="btn btn-sm shrink-btn"><a href="{% url 'admin:viewer_archive_change' archive.pk %}">admin</a></button>
             <button class="btn btn-sm shrink-btn">{% if mode == 'view' %}<a href="{% url 'viewer:archive-edit' archive.pk 'edit' %}">edit</a>{% else %}<a href="{% url 'viewer:archive' archive.pk %}">view</a>{% endif %}</button>
+            <button class="btn btn-sm shrink-btn"><a href="{% url 'admin:viewer_archive_change' archive.pk %}">admin</a></button>
         {% endif %}
       </div>
       {% if archive.extracted %}

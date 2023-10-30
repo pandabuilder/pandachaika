@@ -1479,14 +1479,14 @@ class Archive(models.Model):
         upload_to=thumb_path_handler, default='', max_length=500,
         height_field='thumbnail_height',
         width_field='thumbnail_width')
-    possible_matches = models.ManyToManyField(
+    possible_matches: models.ManyToManyField = models.ManyToManyField(
         Gallery, related_name="possible_matches",
         blank=True, default='',
         through='ArchiveMatches', through_fields=('archive', 'gallery'))
     extracted = models.BooleanField(default=False)
     binned = models.BooleanField(default=False)
 
-    tags = models.ManyToManyField(
+    tags: models.ManyToManyField = models.ManyToManyField(
         Tag, related_name="archive_tags",
         blank=True,
         through='ArchiveTag', through_fields=('archive', 'tag')
@@ -2513,8 +2513,10 @@ class Archive(models.Model):
 
             my_zip.close()
 
+        archive_option = ArchiveOption.objects.filter(archive=self).first()
+
         # title
-        if self.gallery and self.gallery.title:
+        if self.gallery and self.gallery.title and (not archive_option or not archive_option.freeze_titles):
             self.title = self.gallery.title
             self.possible_matches.clear()
         elif self.title is None:
@@ -2528,7 +2530,7 @@ class Archive(models.Model):
             self.set_tags_from_gallery(self.gallery)
 
         # title_jpn
-        if self.gallery and self.gallery.title_jpn:
+        if self.gallery and self.gallery.title_jpn and (not archive_option or not archive_option.freeze_titles):
             self.title_jpn = self.gallery.title_jpn
 
         # size
@@ -2974,8 +2976,9 @@ class Archive(models.Model):
         except Gallery.DoesNotExist:
             return
         self.gallery_id = matched_gallery.id
-        self.title = matched_gallery.title
-        self.title_jpn = matched_gallery.title_jpn
+
+        self.set_titles_from_gallery(matched_gallery, dont_save=True)
+
         self.match_type = "manual:user"
         self.possible_matches.clear()
         self.simple_save()
@@ -2989,13 +2992,49 @@ class Archive(models.Model):
             annotate(num_common_tags=Count('pk')).filter(num_common_tags__gt=num_common_tags).distinct().\
             order_by('-num_common_tags')
 
-    def set_tags_from_gallery(self, gallery: Gallery, preserve_custom: bool = True):
-        if preserve_custom:
-            current_custom_tags = list(self.custom_tags())
-            gallery_tags = list(gallery.tags.all())
-            self.tags.set(gallery_tags + current_custom_tags)
-        else:
-            self.tags.set(gallery.tags.all())
+    def set_tags_from_gallery(self, gallery: Gallery, preserve_custom: bool = True, force: bool = False):
+        archive_option = ArchiveOption.objects.filter(archive=self).first()
+        if force or not archive_option or not archive_option.freeze_tags:
+            if preserve_custom:
+                current_custom_tags = list(self.custom_tags())
+                gallery_tags = list(gallery.tags.all())
+                self.tags.set(gallery_tags + current_custom_tags)
+            else:
+                self.tags.set(gallery.tags.all())
+
+    def set_titles_from_gallery(self, gallery: Gallery, force: bool = False, dont_save: bool = False):
+        archive_option = ArchiveOption.objects.filter(archive=self).first()
+        if force or not archive_option or not archive_option.freeze_titles:
+            self.title = gallery.title
+            self.title_jpn = gallery.title_jpn
+            if not dont_save:
+                self.simple_save()
+
+    def do_freeze_titles(self):
+        archive_option, created = ArchiveOption.objects.get_or_create(archive=self, defaults={'freeze_titles': True})
+        if not created:
+            archive_option.freeze_titles = True
+            archive_option.save()
+
+    def do_freeze_tags(self):
+        archive_option, created = ArchiveOption.objects.get_or_create(archive=self, defaults={'freeze_tags': True})
+        if not created:
+            archive_option.freeze_tags = True
+            archive_option.save()
+
+    def undo_freeze_titles(self):
+        archive_option = ArchiveOption.objects.filter(archive=self).first()
+        if not archive_option:
+            return
+        archive_option.freeze_titles = False
+        archive_option.save()
+
+    def undo_freeze_tags(self):
+        archive_option = ArchiveOption.objects.filter(archive=self).first()
+        if not archive_option:
+            return
+        archive_option.freeze_tags = False
+        archive_option.save()
 
 
 class ArchiveTag(models.Model):
@@ -3059,6 +3098,13 @@ class ArchiveManageEntry(models.Model):
         return json.dumps(data)
 
 
+class ArchiveOption(models.Model):
+
+    archive = models.OneToOneField(Archive, on_delete=models.CASCADE)
+    freeze_titles = models.BooleanField(default=False, blank=True)
+    freeze_tags = models.BooleanField(default=False, blank=True)
+
+
 class ArchiveRecycleEntry(models.Model):
 
     ORIGIN_SYSTEM = 1
@@ -3102,7 +3148,7 @@ class ArchiveGroup(models.Model):
     title_slug = models.SlugField(unique=True)
     details = models.TextField(
         blank=True, null=True, default='')
-    archives = models.ManyToManyField(
+    archives: models.ManyToManyField = models.ManyToManyField(
         Archive, related_name="archive_groups",
         blank=True, default='',
         through='ArchiveGroupEntry', through_fields=('archive_group', 'archive'))
@@ -3382,8 +3428,6 @@ class Profile(models.Model):
             ("use_remote_api", "Can use the remote admin API"),
         )
 
-
-
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     bio = models.TextField(max_length=500, blank=True, default='')
     notify_new_submissions = models.BooleanField(default=False, blank=True)
@@ -3602,15 +3646,15 @@ class WantedGallery(models.Model):
     unwanted_tags = models.ManyToManyField(Tag, blank=True, related_name="unwanted_tags")
     category = models.CharField(
         max_length=20, blank=True, null=True, default='')
-    wanted_providers = models.ManyToManyField('Provider', blank=True)
-    unwanted_providers = models.ManyToManyField('Provider', blank=True, related_name="unwanted_providers")
+    wanted_providers: models.ManyToManyField = models.ManyToManyField('Provider', blank=True)
+    unwanted_providers: models.ManyToManyField = models.ManyToManyField('Provider', blank=True, related_name="unwanted_providers")
     wait_for_time = models.DurationField('Wait for time', blank=True, null=True)
-    found_galleries = models.ManyToManyField(
+    found_galleries: models.ManyToManyField = models.ManyToManyField(
         Gallery, related_name="found_galleries",
         blank=True,
         through='FoundGallery', through_fields=('wanted_gallery', 'gallery'))
 
-    possible_matches = models.ManyToManyField(
+    possible_matches: models.ManyToManyField = models.ManyToManyField(
         Gallery, related_name="gallery_matches",
         blank=True,
         through='GalleryMatch', through_fields=('wanted_gallery', 'gallery'))

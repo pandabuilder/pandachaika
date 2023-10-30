@@ -28,7 +28,7 @@ from viewer.forms import (
 from viewer.models import (
     Archive, Tag, Gallery, Image,
     UserArchivePrefs, ArchiveManageEntry, ArchiveRecycleEntry, GalleryProviderData, ArchiveGroup, ArchiveGroupEntry,
-    ArchiveTag
+    ArchiveTag, ArchiveOption
 )
 from viewer.utils.requests import double_check_auth
 from viewer.views.head import render_error
@@ -142,12 +142,22 @@ def archive_details(request: HttpRequest, pk: int, mode: str = 'view') -> HttpRe
                 new_archive: Archive = edit_form.save(commit=False)
                 new_archive.simple_save()
                 edit_form.save_m2m()
+
+                if edit_form.cleaned_data['freeze_titles']:
+                    new_archive.do_freeze_titles()
+                else:
+                    new_archive.undo_freeze_titles()
+
+                if edit_form.cleaned_data['freeze_tags']:
+                    new_archive.do_freeze_tags()
+                else:
+                    new_archive.undo_freeze_tags()
+
                 if new_archive.gallery:
                     if new_archive.gallery.tags.all():
                         new_archive.set_tags_from_gallery(new_archive.gallery)
                     if new_archive.gallery != old_gallery:
-                        new_archive.title = new_archive.gallery.title
-                        new_archive.title_jpn = new_archive.gallery.title_jpn
+                        new_archive.set_titles_from_gallery(new_archive.gallery, dont_save=True)
                         if edit_form.cleaned_data['old_gallery_to_alt'] and old_gallery is not None:
                             new_archive.alternative_sources.add(old_gallery)
                         new_archive.simple_save()
@@ -167,7 +177,17 @@ def archive_details(request: HttpRequest, pk: int, mode: str = 'view') -> HttpRe
                 messages.error(request, 'The provided data is not valid', extra_tags='danger')
                 # return HttpResponseRedirect(request.META["HTTP_REFERER"])
         else:
-            edit_form = ArchiveEditForm(instance=archive)
+            archive_option = ArchiveOption.objects.filter(archive=archive).first()
+            if not archive_option:
+                freeze_titles = False
+                freeze_tags = False
+            else:
+                freeze_titles = archive_option.freeze_titles
+                freeze_tags = archive_option.freeze_tags
+            edit_form = ArchiveEditForm(
+                initial={"freeze_titles": freeze_titles, "freeze_tags": freeze_tags},
+                instance=archive
+            )
         d.update({'edit_form': edit_form})
 
     if request.user.has_perm('viewer.mark_archive') and request.user.is_authenticated:
@@ -321,8 +341,7 @@ def archive_update(request: HttpRequest, pk: int, tool: Optional[str] = None, to
             matched_gallery = Gallery.objects.get(pk=p["possible_matches"])
 
             archive.gallery_id = p["possible_matches"]
-            archive.title = matched_gallery.title
-            archive.title_jpn = matched_gallery.title_jpn
+            archive.set_titles_from_gallery(matched_gallery, dont_save=True)
             archive.set_tags_from_gallery(matched_gallery)
 
             archive.match_type = "manual:cutoff"

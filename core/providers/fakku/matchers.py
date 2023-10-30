@@ -78,7 +78,7 @@ class TitleMatcher(Matcher):
         r.encoding = 'utf-8'
         soup_1 = BeautifulSoup(r.text, 'html.parser')
 
-        comic_regex = re.compile("col-comic")
+        comic_regex = re.compile("overflow-hidden relative")
 
         matches_links = set()
 
@@ -90,8 +90,7 @@ class TitleMatcher(Matcher):
         chapters_container = soup_1.find_all("div", class_=comic_regex)
 
         for chapter_container in chapters_container:
-            chapter_title_container = chapter_container.find("a", class_=re.compile(
-                "text-lg text-brand-light font-semibold"))
+            chapter_title_container = chapter_container.find("a")
             if chapter_title_container:
                 chapter_link = constants.main_url + chapter_title_container.get('href')
                 matches_links.add(chapter_link)

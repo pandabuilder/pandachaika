@@ -24,7 +24,8 @@
         {% endfor %}
       </div>
   </div>
-    <div>{{ gallery.artist_tags.0.name }}</div>
+    <div>artist: {{ gallery.artist_tags.0.name|default:"none" }}</div>
+    <div>magazine: {{ gallery.magazine_tags.0.name|default:"none" }}</div>
     <div>{{ gallery.get_link|urlize_all_rel }}</div>
     <div>{{ gallery.posted|date:"DATETIME_FORMAT" }}</div>
 </div>

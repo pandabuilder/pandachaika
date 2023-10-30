@@ -30,7 +30,8 @@ from viewer.models import (
     ArchiveRecycleEntry,
     MonitoredLink, TagQuerySet, GalleryProviderData, ItemProperties,
     UserLongLivedToken,
-    ProcessedLinks
+    ProcessedLinks,
+    ArchiveOption
 )
 from django.contrib import admin
 from django.contrib.admin.helpers import ActionForm
@@ -65,7 +66,6 @@ class ArchiveAdmin(SimpleHistoryAdmin):
     action_form = UpdateActionForm
     list_select_related = ('gallery',)
     inlines = (ArchiveImageInline,)
-
 
     def make_public(self, request: HttpRequest, queryset: ArchiveQuerySet) -> None:
         rows_updated = queryset.count()
@@ -616,6 +616,13 @@ class ArchiveRecycleEntryAdmin(admin.ModelAdmin):
     search_fields = ["reason", "comment"]
 
 
+class ArchiveOptionAdmin(admin.ModelAdmin):
+
+    raw_id_fields = ["archive"]
+    list_filter = ["freeze_titles", "freeze_tags"]
+    list_display = ["archive", "freeze_titles", "freeze_tags"]
+
+
 class MonitoredLinkAdmin(admin.ModelAdmin):
 
     list_filter = ["enabled", "auto_start", "provider"]
@@ -681,4 +688,5 @@ admin.site.register(ItemProperties, ItemPropertiesAdmin)
 admin.site.register(GallerySubmitEntry, GallerySubmitEntryAdmin)
 admin.site.register(ArchiveManageEntry, ArchiveManageEntryAdmin)
 admin.site.register(ArchiveRecycleEntry, ArchiveRecycleEntryAdmin)
+admin.site.register(ArchiveOption, ArchiveOptionAdmin)
 admin.site.register(MonitoredLink, MonitoredLinkAdmin)

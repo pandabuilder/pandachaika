@@ -72,7 +72,7 @@ body a {
 }
 
 .archive-incomplete {
-  color: #f0ad4e;
+  color: #f0ad4e !important;
 }
 
 .archive-diff {

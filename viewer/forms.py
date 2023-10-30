@@ -785,6 +785,18 @@ class ArchiveEditForm(ModelForm):
         help_text='When changing the main Gallery, add the old one as Alternative Source'
     )
 
+    freeze_titles = forms.BooleanField(
+        initial=False,
+        required=False,
+        help_text='When an associated gallery updates its titles, don\'t update this Archive\'s titles.'
+    )
+
+    freeze_tags = forms.BooleanField(
+        initial=False,
+        required=False,
+        help_text='When an associated gallery updates its tags, don\'t update this Archive\'s gallery tags.'
+    )
+
     class Meta:
         model = Archive
         fields = [
