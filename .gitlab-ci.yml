@@ -11,19 +11,19 @@ cache:
   - .ruff_cache
   - .cache/pip
 
-test3.9:
+test3.12:
   stage: test
   script:
-  - python3.9 --version
-  - pip3.9 -V
-  - python3.9 -m venv ENV3.9
-  - source ENV3.9/bin/activate
-  - pip3.9 install -r ci-requirements.txt
-  - ruff --exclude="ENV3.9" .
+  - python3.12 --version
+  - pip3.12 -V
+  - python3.12 -m venv ENV3.12
+  - source ENV3.12/bin/activate
+  - pip3.12 install -r ci-requirements.txt
+  - ruff --exclude="ENV3.12" .
   - mypy core pandabackup viewer --exclude viewer/migrations
   - bash ./set_db_engine.sh
-  - python3.9 manage.py migrate
-  - python3.9 manage.py test viewer.tests.test_internal viewer.tests.test_core
+  - python3.12 manage.py migrate
+  - python3.12 manage.py test viewer.tests.test_internal viewer.tests.test_core
   tags:
     - django
   artifacts:
@@ -86,7 +86,7 @@ deploy_review:
     - ssh-add <(echo "$SERVER_PRIV_KEY_REVIEW")
   script:
     - rsync -av --delete --exclude='.gitlab-ci.yml' --exclude='.git/' --exclude='static/' --exclude settings.ini --exclude settings.yaml . ${SERVER_REMOTE_ADDR_REVIEW}:${SERVER_REMOTE_DIR_REVIEW}
-    - ssh $SERVER_REMOTE_ADDR_REVIEW "cd $SERVER_REMOTE_DIR_REVIEW && python3.9 -m venv ENV && source ENV/bin/activate && pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --noinput && {{test -f ./current.pid && cat ./current.pid | xargs kill -9} || true } && python server.py -d -pf ./current.pid"
+    - ssh $SERVER_REMOTE_ADDR_REVIEW "cd $SERVER_REMOTE_DIR_REVIEW && python3.11 -m venv ENV && source ENV/bin/activate && pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --noinput && {{test -f ./current.pid && cat ./current.pid | xargs kill -9} || true } && python server.py -d -pf ./current.pid"
   environment:
     name: review/$CI_COMMIT_REF_NAME
     url: $SERVER_URL_REVIEW
@@ -104,7 +104,7 @@ deploy_prod:
     - ssh-add <(echo "$SERVER_PRIV_KEY_PROD")
   script:
     - rsync -av --delete --exclude='.gitlab-ci.yml' --exclude='.git/' --exclude='static/' --exclude settings.ini --exclude settings.yaml . ${SERVER_REMOTE_ADDR_PROD}:${SERVER_REMOTE_DIR_PROD}
-    - ssh $SERVER_REMOTE_ADDR_PROD "cd $SERVER_REMOTE_DIR_PROD && python3.9 -m venv ENV && source ENV/bin/activate && pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --noinput && {{test -f ./current.pid && cat ./current.pid | xargs kill -9} || true } && python server.py -d -pf ./current.pid"
+    - ssh $SERVER_REMOTE_ADDR_PROD "cd $SERVER_REMOTE_DIR_PROD && python3.11 -m venv ENV && source ENV/bin/activate && pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --noinput && {{test -f ./current.pid && cat ./current.pid | xargs kill -9} || true } && python server.py -d -pf ./current.pid"
   environment:
     name: review/$CI_COMMIT_REF_NAME
     url: $SERVER_URL_PROD
