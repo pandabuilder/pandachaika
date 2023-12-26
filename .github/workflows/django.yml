@@ -24,7 +24,10 @@ jobs:
     - name: Install Dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
-    - name: Run Tests
+        pip install -r ci-requirements.txt
+    - name: Run Ruff
       run: |
-        python manage.py test viewer.tests.test_internal viewer.tests.test_core
+        ruff .
+    - name: Run mypy
+      run: |
+        mypy core pandabackup viewer
