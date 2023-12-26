@@ -30,4 +30,4 @@ jobs:
         ruff .
     - name: Run mypy
       run: |
-        mypy core pandabackup viewer
+        mypy core pandabackup viewer --exclude viewer/migrations
