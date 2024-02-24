@@ -15,17 +15,17 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='wantedgallery',
             name='announces',
-            field=models.ManyToManyField(blank=True, null=True, to='viewer.Announce'),
+            field=models.ManyToManyField(blank=True, to='viewer.Announce'),
         ),
         migrations.AlterField(
             model_name='wantedgallery',
             name='artists',
-            field=models.ManyToManyField(blank=True, null=True, to='viewer.Artist'),
+            field=models.ManyToManyField(blank=True, to='viewer.Artist'),
         ),
         migrations.AlterField(
             model_name='wantedgallery',
             name='possible_matches',
-            field=models.ManyToManyField(blank=True, null=True, through='viewer.GalleryMatch', related_name='gallery_matches', to='viewer.Gallery'),
+            field=models.ManyToManyField(blank=True, through='viewer.GalleryMatch', related_name='gallery_matches', to='viewer.Gallery'),
         ),
         migrations.AlterField(
             model_name='wantedgallery',
@@ -35,11 +35,11 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='wantedgallery',
             name='unwanted_tags',
-            field=models.ManyToManyField(blank=True, null=True, related_name='unwanted_tags', to='viewer.Tag'),
+            field=models.ManyToManyField(blank=True, related_name='unwanted_tags', to='viewer.Tag'),
         ),
         migrations.AlterField(
             model_name='wantedgallery',
             name='wanted_tags',
-            field=models.ManyToManyField(blank=True, null=True, to='viewer.Tag'),
+            field=models.ManyToManyField(blank=True, to='viewer.Tag'),
         ),
     ]
