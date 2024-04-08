@@ -7,23 +7,32 @@
     </div>
   {% endfor %}
   <div class="page-line row g-1 align-items-center">
-  <div class="col-md-auto">
+  {% for field in form_simple %}
+      <div class="col-md-auto">
       <div class="input-group align-items-center">
-    <label for="sort">Sort</label>
-    <select id="sort" name="sort" class="form-control">
-      <option value="posted" {% if request.GET.sort == "posted" %} selected{% endif %}>posted date</option>
-      {% if user.is_staff %}
-        <option value="create_date" {% if request.GET.sort == "create_date" %} selected{% endif %}>create date</option>
-        <option value="public_date" {% if request.GET.sort == "public_date" %} selected{% endif %}>public date</option>
-      {% else %}
-        <option value="public_date" {% if request.GET.sort == "public_date" %} selected{% endif %}>public date</option>
-      {% endif %}
-      <option value="title" {% if request.GET.sort == "title" %} selected{% endif %}>title</option>
-      <option value="title_jpn" {% if request.GET.sort == "title_jpn" %} selected{% endif %}>title jpn</option>
-      <option value="rating" {% if request.GET.sort == "rating" %} selected{% endif %}>rating</option>
-      <option value="filecount" {% if request.GET.sort == "filecount" %} selected{% endif %}>images</option>
-      <option value="filesize" {% if request.GET.sort == "filesize" %} selected{% endif %}>size</option>
-    </select>
+        {{ field.label_tag }}{{ field }}
+      </div>
+      </div>
+  {% endfor %}
+    <div class="col-md-auto">
+      <div class="input-group align-items-center">
+        <label for="sort">Sort</label>
+        <select id="sort" name="sort" class="form-control">
+          <option value="posted" {% if prm.sort == "posted" %} selected{% endif %}>posted date</option>
+          {% if user.is_authenticated %}
+            <option value="create_date" {% if prm.sort == "create_date" %} selected{% endif %}>create date</option>
+            <option value="last_modified" {% if prm.sort == "last_modified" %} selected{% endif %}>last modified</option>
+            <option value="public_date" {% if prm.sort == "public_date" %} selected{% endif %}>public date</option>
+          {% else %}
+            <option value="public_date" {% if prm.sort == "public_date" %} selected{% endif %}>public date</option>
+          {% endif %}
+          <option value="title" {% if prm.sort == "title" %} selected{% endif %}>title</option>
+          <option value="title_jpn" {% if prm.sort == "title_jpn" %} selected{% endif %}>title jpn</option>
+          <option value="rating" {% if prm.sort == "rating" %} selected{% endif %}>rating</option>
+          <option value="filecount" {% if prm.sort == "filecount" %} selected{% endif %}>images</option>
+          <option value="filesize" {% if prm.sort == "filesize" %} selected{% endif %}>size</option>
+          <option value="category" {% if prm.sort == "category" %} selected{% endif %}>category</option>
+        </select>
       </div>
   </div>
   <div class="col-md-auto">
@@ -31,24 +40,6 @@
       <option value="asc" {% if request.GET.asc_desc == "asc" %} selected{% endif %}>ascending</option>
       <option value="desc" {% if request.GET.asc_desc == "desc" %} selected{% endif %}>descending</option>
     </select>
-  </div>
-  <div class="col-md-auto">
-      <div class="input-group align-items-center">
-    <label>Filecount</label>
-    <input size="2" type="text" class="form-control me-sm-1" name="filecount_from" value="{{ request.GET.filecount_from }}" placeholder="from"/>
-      </div>
-  </div>
-  <div class="col-md-auto">
-    <input size="2" type="text" class="form-control me-sm-1" name="filecount_to" value="{{ request.GET.filecount_to }}" placeholder="to"/>
-  </div>
-  <div class="col-md-auto">
-    <input title="Category" class="form-control" name="category" placeholder="Category" value="{{ request.GET.category }}">
-  </div>
-  <div class="col-md-auto">
-    <input title="Source type" class="form-control" name="source_type" placeholder="Source type" value="{{ request.GET.source_type }}">
-  </div>
-  <div class="col-md-auto">
-    <input title="Reason" class="form-control" name="reason" placeholder="Reason" value="{{ request.GET.reason }}">
   </div>
   <div class="col-md-auto">
     <div class="form-check">

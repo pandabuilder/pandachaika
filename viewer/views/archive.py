@@ -24,7 +24,7 @@ from core.local.foldercrawlerthread import FolderCrawlerThread
 from viewer.utils.actions import event_log
 from viewer.forms import (
     ArchiveModForm, ImageFormSet,
-    ArchiveEditForm, ArchiveManageEditFormSet)
+    ArchiveEditForm, ArchiveManageEditFormSet, SplitArchiveFormSet)
 from viewer.models import (
     Archive, Tag, Gallery, Image,
     UserArchivePrefs, ArchiveManageEntry, ArchiveRecycleEntry, GalleryProviderData, ArchiveGroup, ArchiveGroupEntry,
@@ -821,30 +821,32 @@ def clone_plus(request: HttpRequest, pk: int) -> HttpResponse:
                         data=original_archive_url
                     )
 
-                    if bin_original and not archive.is_recycled():
+                    old_archive = Archive.objects.select_for_update().get(pk=pk)
+
+                    if bin_original and not old_archive.is_recycled():
                         r = ArchiveRecycleEntry(
-                            archive=archive,
+                            archive=old_archive,
                             reason=user_reason,
                             user=request.user,
                             origin=ArchiveRecycleEntry.ORIGIN_USER,
                         )
 
                         r.save()
-                        archive.binned = True
-                        archive.simple_save()
+                        old_archive.binned = True
+                        old_archive.simple_save()
                         event_log(
                             request.user,
                             'MOVE_TO_RECYCLE_BIN',
-                            content_object=archive,
+                            content_object=old_archive,
                             result='recycled',
                             reason=user_reason
                         )
-                        if archive.public:
-                            archive.set_private()
+                        if old_archive.public:
+                            old_archive.set_private()
                             event_log(
                                 request.user,
                                 'UNPUBLISH_ARCHIVE',
-                                content_object=archive,
+                                content_object=old_archive,
                                 result='unpublished'
                             )
 
@@ -891,6 +893,219 @@ def clone_plus(request: HttpRequest, pk: int) -> HttpResponse:
             return render(request, "viewer/include/archive_clone_plus.html", d)
         else:
             return render(request, "viewer/archive_display_clone_plus.html", d)
+
+
+@login_required
+def split(request: HttpRequest, pk: int) -> HttpResponse:
+    """Split an Archive into several others."""
+
+    if not request.user.has_perm('viewer.modify_archive_tools'):
+        return render_error(request, "You don't have the permission to modify the underlying file.")
+    if not request.user.is_authenticated:
+        raise Http404("Archive does not exist")
+
+    p = request.POST
+
+    if p and "submit" in p:
+
+        bin_original = p.get("bin-original", "")
+
+        user_reason = p.get('reason', '')
+
+        split_nested = p.get("split-nested", "")
+
+        try:
+            with transaction.atomic():
+                archive = Archive.objects.select_for_update().get(pk=pk)
+
+                original_archive_url = request.build_absolute_uri(archive.get_absolute_url())
+
+                if split_nested:
+                    logger.info('Splitting Archive: {}, if it is nested.'.format(archive.get_absolute_url()))
+
+                    new_archives, error_message = archive.split_archive([], split_from_nested=True)
+
+                    if new_archives:
+                        result_message = 'success'
+
+                        for new_archive in new_archives:
+                            event_log(
+                                request.user,
+                                'SPLIT_ARCHIVE',
+                                reason=user_reason,
+                                content_object=new_archive,
+                                result=result_message,
+                                data=original_archive_url
+                            )
+
+                            messages.success(
+                                request, 'Split new Archive: {}'.format(
+                                    request.build_absolute_uri(new_archive.get_absolute_url())
+                                )
+                            )
+
+                        old_archive = Archive.objects.select_for_update().get(pk=pk)
+
+                        if bin_original and not old_archive.is_recycled():
+                            r = ArchiveRecycleEntry(
+                                archive=old_archive,
+                                reason=user_reason,
+                                user=request.user,
+                                origin=ArchiveRecycleEntry.ORIGIN_USER,
+                            )
+
+                            r.save()
+                            old_archive.binned = True
+                            old_archive.simple_save()
+                            event_log(
+                                request.user,
+                                'MOVE_TO_RECYCLE_BIN',
+                                content_object=old_archive,
+                                result='recycled',
+                                reason=user_reason
+                            )
+                            if old_archive.public:
+                                old_archive.set_private()
+                                event_log(
+                                    request.user,
+                                    'UNPUBLISH_ARCHIVE',
+                                    content_object=old_archive,
+                                    result='unpublished'
+                                )
+
+                        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+                    else:
+                        result_message = 'failed'
+                        event_log(
+                            request.user,
+                            'SPLIT_ARCHIVE',
+                            reason=user_reason,
+                            content_object=archive,
+                            result=result_message,
+                            data=error_message,
+                        )
+                        messages.error(
+                            request, 'Could not split Archive: {}, error: {}.'.format(
+                                request.build_absolute_uri(archive.get_absolute_url()), error_message
+                            )
+                        )
+                else:
+                    logger.info('Splitting Archive: {}, using provided positions.'.format(archive.get_absolute_url()))
+
+                    split_form = SplitArchiveFormSet(
+                        p,
+                        queryset=Archive.objects.none(),
+                        prefix='archives',
+                        filecount=archive.filecount
+                    )
+                    if split_form.is_valid():
+                        cleaned_data = [(x['starting_position'], x['ending_position'], x['new_file_name'], False) for x in split_form.cleaned_data if x]
+
+                        new_archives, error_message = archive.split_archive(cleaned_data)
+
+                        if new_archives:
+                            result_message = 'success'
+
+                            for new_archive in new_archives:
+                                event_log(
+                                    request.user,
+                                    'SPLIT_ARCHIVE',
+                                    reason=user_reason,
+                                    content_object=new_archive,
+                                    result=result_message,
+                                    data=original_archive_url
+                                )
+
+                                messages.success(
+                                    request, 'Split new Archive: {}'.format(
+                                        request.build_absolute_uri(new_archive.get_absolute_url())
+                                    )
+                                )
+
+                            old_archive = Archive.objects.select_for_update().get(pk=pk)
+
+                            if bin_original and not old_archive.is_recycled():
+                                r = ArchiveRecycleEntry(
+                                    archive=old_archive,
+                                    reason=user_reason,
+                                    user=request.user,
+                                    origin=ArchiveRecycleEntry.ORIGIN_USER,
+                                )
+
+                                r.save()
+                                old_archive.binned = True
+                                old_archive.simple_save()
+                                event_log(
+                                    request.user,
+                                    'MOVE_TO_RECYCLE_BIN',
+                                    content_object=old_archive,
+                                    result='recycled',
+                                    reason=user_reason
+                                )
+                                if old_archive.public:
+                                    old_archive.set_private()
+                                    event_log(
+                                        request.user,
+                                        'UNPUBLISH_ARCHIVE',
+                                        content_object=old_archive,
+                                        result='unpublished'
+                                    )
+
+                            return HttpResponseRedirect(request.META["HTTP_REFERER"])
+                        else:
+                            result_message = 'failed'
+                            event_log(
+                                request.user,
+                                'SPLIT_ARCHIVE',
+                                reason=user_reason,
+                                content_object=archive,
+                                result=result_message,
+                                data=error_message,
+                            )
+                            messages.error(
+                                request, 'Could not split Archive: {}, error: {}.'.format(
+                                    request.build_absolute_uri(archive.get_absolute_url()), error_message
+                                )
+                            )
+                    else:
+                        error_message = 'The provided data is not valid'
+                        result_message = 'failed'
+                        event_log(
+                            request.user,
+                            'SPLIT_ARCHIVE',
+                            reason=user_reason,
+                            content_object=archive,
+                            result=result_message,
+                            data=error_message,
+                        )
+                        messages.error(request, error_message, extra_tags='danger')
+
+        except Archive.DoesNotExist:
+            raise Http404("Archive does not exist")
+    else:
+
+        try:
+            archive = Archive.objects.get(pk=pk)
+        except Archive.DoesNotExist:
+            raise Http404("Archive does not exist")
+
+        split_form = SplitArchiveFormSet(
+            queryset=Archive.objects.none(),
+            prefix='archives',
+            filecount=archive.filecount
+        )
+
+    d = {
+        'archive': archive,
+        'split_form': split_form,
+    }
+
+    inlined = request.GET.get("inline", None)
+
+    if inlined:
+        return render(request, "viewer/include/archive_split.html", d)
+    else:
+        return render(request, "viewer/archive_display_split.html", d)
 
 
 @login_required
@@ -1164,10 +1379,22 @@ def delete_archive(request: HttpRequest, pk: int) -> HttpResponse:
                     request.user,
                     'MARK_DELETE_GALLERY',
                     reason=user_reason,
+                    data=archive_report,
                     content_object=gallery,
                     result='success',
                 )
+            elif "mark-gallery-denied" in p and archive.gallery:
+                archive.gallery.mark_as_denied()
+                archive.gallery = None
 
+                event_log(
+                    request.user,
+                    'DENY_GALLERY',
+                    reason=user_reason,
+                    data=archive_report,
+                    content_object=gallery,
+                    result='success',
+                )
             elif "delete-gallery" in p and archive.gallery:
                 old_gallery_link = archive.gallery.get_link()
                 archive.gallery.delete()

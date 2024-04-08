@@ -65,9 +65,9 @@ class BaseDownloader(metaclass=Meta):
         if self.settings.keep_dl_type and self.original_gallery.dl_type is not None:
             self.original_gallery.dl_type = None
         if self.type == 'submit':
-            self.original_gallery.origin = gallery_model.ORIGIN_SUBMITTED
+            self.original_gallery.origin = gallery_model.OriginChoices.ORIGIN_SUBMITTED
         if self.no_metadata:
-            self.original_gallery.status = gallery_model.NO_METADATA
+            self.original_gallery.status = gallery_model.StatusChoices.NO_METADATA
         if self.settings.gallery_reason:
             self.original_gallery.reason = self.settings.gallery_reason
         self.gallery_db_entry = gallery_model.objects.update_or_create_from_values(self.original_gallery)

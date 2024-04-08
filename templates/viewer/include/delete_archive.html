@@ -28,6 +28,12 @@
       </li>
       <li class="list-group-item">
             <div class="form-check">
+                <input id="checkbox6" class="form-check-input" type="checkbox" name="mark-gallery-denied" value="1"><label class="form-check-label" for="checkbox6">Mark associated gallery as denied</label>
+            </div>
+        <p>{{ archive.gallery.filesize }} >> {{ archive.gallery.filecount }} >> {{ archive.gallery.title }} >> {{ archive.gallery.get_link|urlize_all_rel }}</p>
+      </li>
+      <li class="list-group-item">
+            <div class="form-check">
                 <input id="checkbox4" class="form-check-input" type="checkbox" name="delete-gallery" value="1"><label class="form-check-label" for="checkbox4">Delete gallery</label>
             </div>
         <p>{{ archive.gallery.filesize }} >> {{ archive.gallery.filecount }} >> {{ archive.gallery.title }} >> {{ archive.gallery.get_link|urlize_all_rel }}</p>

@@ -281,6 +281,7 @@ class Settings:
         self.mark_similar_new_archives = False
         self.auto_hash_images = False
         self.auto_phash_images = False
+        self.auto_match_wanted_images = False
         self.cloning_image_tool = CloningImageToolSettings()
 
         self.requests_headers: dict[str, Any] = {
@@ -467,6 +468,8 @@ class Settings:
                 self.auto_hash_images = config['general']['auto_hash_images']
             if 'auto_phash_images' in config['general']:
                 self.auto_phash_images = config['general']['auto_phash_images']
+            if 'auto_match_wanted_images' in config['general']:
+                self.auto_match_wanted_images = config['general']['auto_match_wanted_images']
             if 'recheck_wanted_on_update' in config['general']:
                 self.recheck_wanted_on_update = config['general']['recheck_wanted_on_update']
             if 'force_log_level' in config['general']:

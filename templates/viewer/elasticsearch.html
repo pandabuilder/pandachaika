@@ -145,7 +145,21 @@
                 </ul>
               </nav>
             </div>
+            {% if extra_view_options %}
+              <div class="col-md-4 justify-content-end">
+                <nav>
+                  <ul class="pagination justify-content-end mb-0">
+                  {% for option in extra_view_options %}
+                    <li class="page-item{% if option == view_parameters.view %} active{% endif %}">
+                      <a class="page-link" href="?{% url_replace 'view' option %}">{{ option }}</a>
+                    </li>
+                  {% endfor %}
+                  </ul>
+                </nav>
+              </div>
+            {% endif %}
         </div>
+          {% if view_parameters.view == 'list' %}
           <table class="table table-striped table-responsive-md">
             <thead>
             <tr>
@@ -182,7 +196,50 @@
             {% endfor %}
             </tbody>
           </table>
-
+          {% elif view_parameters.view == 'extended' %}
+                <table class="table table-striped table-responsive-md">
+                  <tbody>
+                  {% for hit in hits %}
+                    <tr>
+                      <td class="td-extended">
+                        <a href="{% url 'viewer:gallery' hit.pk %}">
+                          <img alt="" title="{{ hit.title }}" src="{{ hit.thumbnail }}"/>
+                        </a>
+                      </td>
+                      <td class="td-extended">
+                        <h5>{{ hit.title }}</h5>
+                        <h6>{{ hit.title_jpn|default_if_none:"" }}</h6>
+                        <div>
+                        <ul class="tags">
+                          {% for tag_list in hit.tags|tag_query_to_tag_lists %}
+                            <li>
+                              {% if tag_list.0 %}
+                                <label class="label-extended">{{ tag_list.0 }}:</label>
+                              {% endif %}
+                              {% for tag in tag_list.1 %}
+                                <a href="{% url 'viewer:es-index-view'%}?tags__full={{ tag.full|escape_colon }}">
+                                  {% if tag_list.0 %}{{ tag.name }}{% else %}
+                                    {{ tag.full }}{% endif %}</a>
+                              {% endfor %}
+                            </li>{% endfor %}
+                        </ul>
+                        </div>
+                      </td>
+                      <td class="td-extended">
+                        <div><label class="label-extended">Count:</label>{{ hit.image_count }}</div>
+                        <div><label class="label-extended">Size:</label>{{ hit.size|filesizeformat }}</div>
+                        <div><label class="label-extended">Category:</label>{{ hit.category }}</div>
+                        <div><label class="label-extended">Posted:</label>{{ hit.original_date_c|date:"SHORT_DATE_FORMAT" }}</div>
+                        {% if user.is_authenticated %}
+                          <div><label class="label-extended">Created:</label>{{ hit.create_date_c|date:"SHORT_DATE_FORMAT" }}</div>
+                        {% endif %}
+                        <div><label class="label-extended">Reason:</label>{{ hit.reason }}</div>
+                      </td>
+                    </tr>
+                  {% endfor %}
+                  </tbody>
+                </table>
+            {% endif %}
           {% endif %}
       </div>
     </div>

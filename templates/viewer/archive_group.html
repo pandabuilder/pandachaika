@@ -14,14 +14,15 @@
   <!-- ArchiveGroup  -->
   <div class="container">
     <div class="row">
-    <div class="col-md-10 col-sm-12">
+    <div class="col-md-9 col-sm-12">
         <h3>{{ archive_group.title }}</h3>
-
     </div>
       {% if perms.viewer.change_archivegroup %}
-      <div class="col-md-2 col-sm-12">
+      <div class="col-md-3 col-sm-12">
+        {% if perms.viewer.delete_archivegroup %}<a class="btn btn-danger float-end open-modal" href="{% url 'viewer:archive-group-tool-reason' archive_group.title_slug 'delete' %}" data-popup-url="{% url 'viewer:archive-group-tool-reason' archive_group.title_slug 'delete' %}?inline=1" role="button">Delete</a>{% endif %}
+        {% if perms.viewer.change_archivegroup %}<a class="btn btn-secondary float-end" href="{% url 'viewer:archive-group-edit' archive_group.title_slug %}" role="button">Edit</a>{% endif %}
+        {% if perms.viewer.change_archivegroup %}<a class="btn btn-secondary float-end" href="{% url 'viewer:archive-group-editor' %}?archive-group={{ archive_group.pk }}" role="button">New Edit</a>{% endif %}
         {% if perms.viewer.expand_archive %}<a class="btn btn-secondary float-end" href="{% url 'viewer:archive-group-edit' archive_group.title_slug %}?extract_all=" role="button">Extract all</a>{% endif %}
-        <a class="btn btn-secondary float-end" href="{% url 'viewer:archive-group-edit' archive_group.title_slug %}" role="button">Edit</a>
       </div>
       {% endif %}
     </div>
@@ -107,4 +108,5 @@
     });
     </script>
   {% endcompress %}
+  {% include "viewer/include/viewer_modal.html" %}
 {% endblock %}

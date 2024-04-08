@@ -167,13 +167,15 @@ STATICFILES_FINDERS = [
 DJANGO_VITE = {
     'image_viewer': {
         'manifest_path': os.path.join(BASE_DIR, 'viewer/assets/image-viewer/manifest.json'),
-        'assets_path': os.path.join(BASE_DIR, 'viewer/assets/image-viewer'),
         'static_url_prefix': 'image-viewer'
     },
     'compare_archives': {
         'manifest_path': os.path.join(BASE_DIR, 'viewer/assets/compare-archives/manifest.json'),
-        'assets_path': os.path.join(BASE_DIR, 'viewer/assets/compare-archives'),
         'static_url_prefix': 'compare-archives'
+    },
+    'archive_groups': {
+        'manifest_path': os.path.join(BASE_DIR, 'viewer/assets/archive-groups/.vite/manifest.json'),
+        'static_url_prefix': 'archive-groups'
     }
 }
 

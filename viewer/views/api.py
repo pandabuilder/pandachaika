@@ -9,9 +9,12 @@ from collections import defaultdict
 from typing import Any, Union, Optional
 
 from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.models import User, AnonymousUser
 from django.core.paginator import Paginator, EmptyPage
+from django.db import transaction
 from django.db.models import Q, QuerySet, Prefetch
-from django.http import HttpResponse, HttpRequest, HttpResponseBadRequest
+from django.http import HttpResponse, HttpRequest, HttpResponseBadRequest, HttpResponseNotFound, HttpResponseForbidden, \
+    HttpResponseNotAllowed
 from django.http.request import QueryDict
 from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
@@ -19,12 +22,12 @@ from django.conf import settings
 
 from core.base.setup import Settings
 from core.base.utilities import str_to_int, timestamp_or_zero
-from viewer.models import Archive, Gallery, UserArchivePrefs, Image
+from viewer.models import Archive, Gallery, UserArchivePrefs, ArchiveGroup, ArchiveGroupEntry
 from viewer.utils.matching import generate_possible_matches_for_archives
 from viewer.utils.requests import authenticate_by_token, double_check_auth
 from viewer.views.head import gallery_filter_keys, gallery_order_fields, filter_archives_simple, archive_filter_keys
 from viewer.utils.functions import gallery_search_results_to_json, gallery_search_dict_to_json, \
-    archive_search_result_to_json, images_data_to_json
+    archive_search_result_to_json, images_data_to_json, archive_group_entry_to_json, archive_entry_archive_to_json
 
 crawler_settings = settings.CRAWLER_SETTINGS
 logger = logging.getLogger(__name__)
@@ -82,32 +85,21 @@ def api_logout(request: HttpRequest) -> HttpResponse:
     return HttpResponse(json.dumps(data), content_type='application/json')
 
 
-# NOTE: This is used by 3rd parties, do not modify, at most create a new function if something needs changing
-# Public API, does not check for any token, but filters if the user is authenticated or not.
-@csrf_exempt
-def json_search(request: HttpRequest) -> HttpResponse:
-
-    if request.method != 'GET':
-        return HttpResponse(json.dumps({'result': "Request must be GET"}), content_type="application/json; charset=utf-8")
+def json_api_handle_get(request: HttpRequest, user_is_authenticated: bool):
     data = request.GET
-
-    token_valid, token_user = authenticate_by_token(request)
-
-    user_is_authenticated = request.user.is_authenticated or token_valid
-
     # Get fields from a specific archive.
     if 'archive' in data:
         try:
             archive_id = int(data['archive'])
         except ValueError:
-            return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+            return HttpResponseNotFound(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
         try:
             archive = Archive.objects.get(pk=archive_id)
         except Archive.DoesNotExist:
-            return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+            return HttpResponseNotFound(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
 
         if not archive.public and not user_is_authenticated:
-            return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+            return HttpResponseNotFound(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
         response = json.dumps(
             {
                 'title': archive.title,
@@ -133,7 +125,7 @@ def json_search(request: HttpRequest) -> HttpResponse:
         try:
             archive_ids: list[str] = data.getlist('archives', [])
         except ValueError:
-            return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+            return HttpResponseNotFound(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
         if not archive_ids:
             return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
 
@@ -148,7 +140,7 @@ def json_search(request: HttpRequest) -> HttpResponse:
             else:
                 archives = Archive.objects.filter(pk__in=archive_ids, public=True)
         except Archive.DoesNotExist:
-            return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+            return HttpResponseNotFound(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
         response = json.dumps(
             archive_search_result_to_json(request, archives, user_is_authenticated),
             # indent=2,
@@ -160,13 +152,13 @@ def json_search(request: HttpRequest) -> HttpResponse:
         try:
             archive_id = int(data['at'])
         except ValueError:
-            return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+            return HttpResponseNotFound(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
         try:
             archive = Archive.objects.get(pk=archive_id)
         except Archive.DoesNotExist:
-            return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+            return HttpResponseNotFound(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
         if not archive.public and not user_is_authenticated:
-            return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+            return HttpResponseNotFound(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
         response = json.dumps(
             {
                 'tags': archive.tag_list_sorted(),
@@ -181,13 +173,13 @@ def json_search(request: HttpRequest) -> HttpResponse:
         try:
             archive_id = int(data['ah'])
         except ValueError:
-            return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+            return HttpResponseNotFound(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
         try:
             archive = Archive.objects.get(pk=archive_id)
         except Archive.DoesNotExist:
-            return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+            return HttpResponseNotFound(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
         if not archive.public and not user_is_authenticated:
-            return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+            return HttpResponseNotFound(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
         response = json.dumps(
             {
                 'image_hashes': [x.sha1 for x in archive.image_set.all()],
@@ -202,15 +194,15 @@ def json_search(request: HttpRequest) -> HttpResponse:
         try:
             archive_id = int(data['aof'])
         except ValueError:
-            return HttpResponse(json.dumps({'result': "Archive does not exist."}),
+            return HttpResponseNotFound(json.dumps({'result': "Archive does not exist."}),
                                 content_type="application/json; charset=utf-8")
         try:
             archive = Archive.objects.get(pk=archive_id)
         except Archive.DoesNotExist:
-            return HttpResponse(json.dumps({'result': "Archive does not exist."}),
+            return HttpResponseNotFound(json.dumps({'result': "Archive does not exist."}),
                                 content_type="application/json; charset=utf-8")
         if not archive.public and not user_is_authenticated:
-            return HttpResponse(json.dumps({'result': "Archive does not exist."}),
+            return HttpResponseNotFound(json.dumps({'result': "Archive does not exist."}),
                                 content_type="application/json; charset=utf-8")
         response = json.dumps(
             {
@@ -232,7 +224,7 @@ def json_search(request: HttpRequest) -> HttpResponse:
         try:
             archive_ids = data.getlist('aid', [])
         except ValueError:
-            return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+            return HttpResponseNotFound(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
         if not archive_ids:
             return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
         try:
@@ -245,7 +237,7 @@ def json_search(request: HttpRequest) -> HttpResponse:
             else:
                 archives = Archive.objects.filter(pk__in=archive_ids, public=True)
         except Archive.DoesNotExist:
-            return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+            return HttpResponseNotFound(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
         response = json.dumps(
             {a.pk: images_data_to_json(a.image_set.all()) for a in archives},
             # indent=2,
@@ -258,13 +250,13 @@ def json_search(request: HttpRequest) -> HttpResponse:
         try:
             gallery_id = int(data['gallery'])
         except ValueError:
-            return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
+            return HttpResponseNotFound(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
         try:
             gallery = Gallery.objects.get(pk=gallery_id)
         except Gallery.DoesNotExist:
-            return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
+            return HttpResponseNotFound(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
         if not gallery.public and not user_is_authenticated:
-            return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
+            return HttpResponseNotFound(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
         response = json.dumps(
             {
                 'title': gallery.title,
@@ -300,11 +292,11 @@ def json_search(request: HttpRequest) -> HttpResponse:
         else:
             possible_gallery = Gallery.objects.filter_first(gid=gallery_gid)
         if not possible_gallery:
-            return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
+            return HttpResponseNotFound(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
         else:
             gallery = possible_gallery
         if not gallery.public and not user_is_authenticated:
-            return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
+            return HttpResponseNotFound(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
         response = json.dumps(
             {
                 'title': gallery.title,
@@ -337,13 +329,13 @@ def json_search(request: HttpRequest) -> HttpResponse:
         try:
             gallery_id = int(data['gt'])
         except ValueError:
-            return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
+            return HttpResponseNotFound(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
         try:
             gallery = Gallery.objects.get(pk=gallery_id)
         except Gallery.DoesNotExist:
-            return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
+            return HttpResponseNotFound(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
         if not gallery.public and not user_is_authenticated:
-            return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
+            return HttpResponseNotFound(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
         response = json.dumps(
             {
                 'tags': gallery.tag_list_sorted(),
@@ -388,7 +380,7 @@ def json_search(request: HttpRequest) -> HttpResponse:
     # Get reduced number of fields from several archives by doing filtering.
     elif 'qa' in data:
 
-        archive_args = request.GET.copy()
+        archive_args = data.copy()
 
         params: dict[str, str] = {
             'sort': 'create_date',
@@ -628,13 +620,13 @@ def json_search(request: HttpRequest) -> HttpResponse:
         try:
             gallery_id = int(data['gd'])
         except ValueError:
-            return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
+            return HttpResponseNotFound(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
         try:
             gallery = Gallery.objects.get(pk=gallery_id)
         except Gallery.DoesNotExist:
-            return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
+            return HttpResponseNotFound(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
         if not gallery.public and not user_is_authenticated:
-            return HttpResponse(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
+            return HttpResponseNotFound(json.dumps({'result': "Gallery does not exist."}), content_type="application/json; charset=utf-8")
         response = json.dumps(
             {
                 'id': gallery.pk,
@@ -677,7 +669,7 @@ def json_search(request: HttpRequest) -> HttpResponse:
     # that's why search is done on archives, and it returns Gallery info)
     elif 'as' in data:
 
-        archive_args = request.GET.copy()
+        archive_args = data.copy()
 
         params = {
             'sort': 'create_date',
@@ -715,8 +707,346 @@ def json_search(request: HttpRequest) -> HttpResponse:
             ensure_ascii=False,
         )
         return HttpResponse(response, content_type="application/json; charset=utf-8")
+    # Get fields from a specific gallery.
+    elif 'archive-group' in data:
+        try:
+            archive_group_id = int(data['archive-group'])
+        except ValueError:
+            return HttpResponseNotFound(json.dumps({'result': "ArchiveGroup does not exist."}), content_type="application/json; charset=utf-8")
+        try:
+            archive_group = ArchiveGroup.objects.get(pk=archive_group_id)
+        except ArchiveGroup.DoesNotExist:
+            return HttpResponseNotFound(json.dumps({'result': "ArchiveGroup does not exist."}), content_type="application/json; charset=utf-8")
+        if not archive_group.public and not user_is_authenticated:
+            return HttpResponseNotFound(json.dumps({'result': "ArchiveGroup does not exist."}), content_type="application/json; charset=utf-8")
+
+        archive_group_entries = ArchiveGroupEntry.objects.filter_by_authenticated_status(
+                        authenticated=user_is_authenticated, archive_group=archive_group
+                    ).select_related(
+            'archive').prefetch_related(
+            Prefetch(
+                'archive__tags',
+            )
+        )
+
+        response = json.dumps(
+            {
+                'id': archive_group.id,
+                'title': archive_group.title,
+                'title_slug': archive_group.title_slug,
+                'details': archive_group.details,
+                'position': archive_group.position,
+                'public': archive_group.public,
+                'create_date': int(timestamp_or_zero(archive_group.create_date)),
+                'last_modified': int(timestamp_or_zero(archive_group.last_modified)),
+                'archive_group_entries': [
+                    archive_group_entry_to_json(archive_entry, user_is_authenticated, request) for archive_entry in archive_group_entries
+                ],
+            },
+            # indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        return HttpResponse(response, content_type="application/json; charset=utf-8")
+    elif 'archive-group-entry' in data:
+        try:
+            archive_group_entry_id = int(data['archive-group-entry'])
+        except ValueError:
+            return HttpResponseNotFound(json.dumps({'result': "ArchiveGroupEntry does not exist."}), content_type="application/json; charset=utf-8")
+        try:
+            archive_group_entry = ArchiveGroupEntry.objects.get(pk=archive_group_entry_id)
+        except ArchiveGroupEntry.DoesNotExist:
+            return HttpResponseNotFound(json.dumps({'result': "ArchiveGroupEntry does not exist."}), content_type="application/json; charset=utf-8")
+        if not (archive_group_entry.archive_group.public or archive_group_entry.archive.public) and not user_is_authenticated:
+            return HttpResponseNotFound(json.dumps({'result': "ArchiveGroupEntry does not exist."}), content_type="application/json; charset=utf-8")
+
+        response = json.dumps(
+            archive_group_entry_to_json(archive_group_entry, user_is_authenticated, request),
+            # indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        return HttpResponse(response, content_type="application/json; charset=utf-8")
+    elif 'archive-group-entry-archive' in data:
+        try:
+            archive_id = int(data['archive-group-entry-archive'])
+        except ValueError:
+            return HttpResponseNotFound(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+        try:
+            archive = Archive.objects.get(pk=archive_id)
+        except ArchiveGroupEntry.DoesNotExist:
+            return HttpResponseNotFound(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+        if not archive.public and not user_is_authenticated:
+            return HttpResponseNotFound(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+
+        response = json.dumps(
+            archive_entry_archive_to_json(archive, user_is_authenticated, request),
+            # indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        return HttpResponse(response, content_type="application/json; charset=utf-8")
     else:
         return HttpResponse(json.dumps({'result': "Unknown command"}), content_type="application/json; charset=utf-8")
+
+
+def json_api_handle_post(request: HttpRequest, user: Optional[User | AnonymousUser]):
+    data = request.GET
+    body = json.loads(request.body)
+    if 'archive-group' in data and user and user.has_perm('viewer.change_archivegroup'):
+        try:
+            archive_group = ArchiveGroup(
+                title=body['title'],
+                title_slug=body['title_slug'],
+            )
+
+            archive_group.title = body['title']
+            archive_group.details = body['details']
+            archive_group.position = body['position']
+
+            archive_group.save()
+
+            archive_group_entries = []
+
+            for entry in body['archive_group_entries']:
+                try:
+                    archive = Archive.objects.get(pk=entry['archive']['id'])
+                    archive_group_entry = ArchiveGroupEntry(
+                        title=entry['title'] if 'title' in entry else None,
+                        position=entry['position'] if 'position' in entry else None,
+                        archive=archive, archive_group=archive_group
+                    )
+                    archive_group_entry.save()
+                    archive_group_entries.append(archive_group_entry)
+                except Archive.DoesNotExist:
+                    return HttpResponseNotFound(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+
+            response = json.dumps(
+                {
+                    'id': archive_group.id,
+                    'title': archive_group.title,
+                    'title_slug': archive_group.title_slug,
+                    'details': archive_group.details,
+                    'position': archive_group.position,
+                    'public': archive_group.public,
+                    'create_date': int(timestamp_or_zero(archive_group.create_date)),
+                    'last_modified': int(timestamp_or_zero(archive_group.last_modified)),
+                    'archive_group_entries': [
+                        archive_group_entry_to_json(archive_entry, True, request) for archive_entry in
+                        sorted(archive_group_entries, key=lambda x: x.position or 0)
+                    ],
+                },
+                # indent=2,
+                sort_keys=True,
+                ensure_ascii=False,
+            )
+            return HttpResponse(response, content_type="application/json; charset=utf-8")
+
+        except ArchiveGroup.DoesNotExist:
+            return HttpResponseNotFound(json.dumps({'result': "ArchiveGroup does not exist."}), content_type="application/json; charset=utf-8")
+    elif 'archive-group-entry' in data and user and user.has_perm('viewer.change_archivegroupentry'):
+        try:
+            archive_group_id = int(data['archive-group-entry'])
+        except ValueError:
+            return HttpResponseNotFound(json.dumps({'result': "ArchiveGroup does not exist."}), content_type="application/json; charset=utf-8")
+        try:
+            archive_group = ArchiveGroup.objects.get(pk=archive_group_id)
+        except ArchiveGroup.DoesNotExist:
+            return HttpResponseNotFound(json.dumps({'result': "ArchiveGroup does not exist."}), content_type="application/json; charset=utf-8")
+
+        try:
+            archive = Archive.objects.get(pk=body['archive']['id'])
+            archive_group_entry = ArchiveGroupEntry(
+                title=body['title'] if 'title' in body else None, position=body['position'] if 'position' in body else None,
+                archive=archive, archive_group=archive_group
+            )
+            archive_group_entry.save()
+
+            response = json.dumps(
+                archive_group_entry_to_json(archive_group_entry, True, request),
+                # indent=2,
+                sort_keys=True,
+                ensure_ascii=False,
+            )
+
+            return HttpResponse(response, content_type="application/json; charset=utf-8")
+
+        except Archive.DoesNotExist:
+            return HttpResponseNotFound(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+    else:
+        return HttpResponse(json.dumps({'result': "Unknown command"}), content_type="application/json; charset=utf-8")
+
+
+def json_api_handle_put(request: HttpRequest, user: Optional[User | AnonymousUser]):
+    data = request.GET
+    body = json.loads(request.body)
+    if 'archive-group' in data and user and user.has_perm('viewer.change_archivegroup'):
+        try:
+            archive_group_id = int(data['archive-group'])
+        except ValueError:
+            return HttpResponseNotFound(json.dumps({'result': "ArchiveGroup does not exist."}), content_type="application/json; charset=utf-8")
+        try:
+
+            body_entries = {entry['id']: entry for entry in body['archive_group_entries']}
+
+            with transaction.atomic():
+                archive_group = ArchiveGroup.objects.select_for_update(of=("self",)).get(pk=archive_group_id)
+
+                archive_group_entries = ArchiveGroupEntry.objects.filter(archive_group=archive_group).select_related('archive').select_for_update(of=("self",)).prefetch_related(
+                    Prefetch(
+                        'archive__tags',
+                    )
+                )
+
+                archive_group.title = body['title']
+                archive_group.details = body['details']
+                archive_group.position = body['position']
+                archive_group.save()
+
+                for entry in archive_group_entries:
+                    if entry.pk in body_entries:
+                        entry.title = body_entries[entry.pk]['title']
+                        entry.position = body_entries[entry.pk]['position']
+
+                        if entry.archive.id != body_entries[entry.pk]['archive']['id']:
+                            try:
+                                new_archive = Archive.objects.get(pk=body_entries[entry.pk]['archive']['id'])
+                                entry.archive = new_archive
+                            except Archive.DoesNotExist:
+                                pass
+
+                        entry.save()
+
+            response = json.dumps(
+                {
+                    'id': archive_group.id,
+                    'title': archive_group.title,
+                    'title_slug': archive_group.title_slug,
+                    'details': archive_group.details,
+                    'position': archive_group.position,
+                    'public': archive_group.public,
+                    'create_date': int(timestamp_or_zero(archive_group.create_date)),
+                    'last_modified': int(timestamp_or_zero(archive_group.last_modified)),
+                    'archive_group_entries': [
+                        archive_group_entry_to_json(archive_entry, True, request) for archive_entry in
+                        sorted(archive_group_entries, key=lambda x: x.position or 0)
+                    ],
+                },
+                # indent=2,
+                sort_keys=True,
+                ensure_ascii=False,
+            )
+            return HttpResponse(response, content_type="application/json; charset=utf-8")
+
+        except ArchiveGroup.DoesNotExist:
+            return HttpResponseNotFound(json.dumps({'result': "ArchiveGroup does not exist."}), content_type="application/json; charset=utf-8")
+    elif 'archive-group-entry' in data and user and user.has_perm('viewer.change_archivegroupentry'):
+        try:
+            archive_group_entry_id = int(data['archive-group-entry'])
+        except ValueError:
+            return HttpResponseNotFound(json.dumps({'result': "ArchiveGroupEntry does not exist."}), content_type="application/json; charset=utf-8")
+        try:
+            with transaction.atomic():
+                archive_group_entry = ArchiveGroupEntry.objects.select_related("archive").prefetch_related(
+                    Prefetch(
+                        'archive__tags',
+                    )
+                ).select_for_update(of=("self",)).get(pk=archive_group_entry_id)
+
+                archive_group_entry.title = body['title']
+                archive_group_entry.position = body['position']
+
+                if archive_group_entry.archive.id != body['archive']['id']:
+                    try:
+                        new_archive = Archive.objects.get(pk=body['archive']['id'])
+                        archive_group_entry.archive = new_archive
+                    except Archive.DoesNotExist:
+                        pass
+
+                archive_group_entry.save()
+
+                response = json.dumps(
+                    archive_group_entry_to_json(archive_group_entry, True, request),
+                    # indent=2,
+                    sort_keys=True,
+                    ensure_ascii=False,
+                )
+
+                return HttpResponse(response, content_type="application/json; charset=utf-8")
+
+        except ArchiveGroupEntry.DoesNotExist:
+            return HttpResponseNotFound(json.dumps({'result': "ArchiveGroupEntry does not exist."}), content_type="application/json; charset=utf-8")
+
+    else:
+        return HttpResponse(json.dumps({'result': "Unknown command"}), content_type="application/json; charset=utf-8")
+
+
+def json_api_handle_delete(request: HttpRequest, user: Optional[User | AnonymousUser]):
+    data = request.GET
+    if 'archive-group' in data and user and user.has_perm('viewer.delete_archivegroup'):
+        try:
+            archive_group_id = int(data['archive-group'])
+        except ValueError:
+            return HttpResponseNotFound(json.dumps({'result': "ArchiveGroup does not exist."}), content_type="application/json; charset=utf-8")
+        try:
+
+            with transaction.atomic():
+                archive_group = ArchiveGroup.objects.select_for_update(of=("self",)).get(pk=archive_group_id)
+
+                delete_number = archive_group.delete()[0]
+
+            return HttpResponse(json.dumps({'result': delete_number}), content_type="application/json; charset=utf-8")
+
+        except ArchiveGroup.DoesNotExist:
+            return HttpResponseNotFound(json.dumps({'result': "ArchiveGroup does not exist."}), content_type="application/json; charset=utf-8")
+    elif 'archive-group-entry' in data and user and user.has_perm('viewer.delete_archivegroupentry'):
+        try:
+            archive_group_entry_id = int(data['archive-group-entry'])
+        except ValueError:
+            return HttpResponseNotFound(json.dumps({'result': "ArchiveGroupEntry does not exist."}), content_type="application/json; charset=utf-8")
+        try:
+            with transaction.atomic():
+                archive_group_entry = ArchiveGroupEntry.objects.select_for_update(of=("self",)).get(pk=archive_group_entry_id)
+
+                delete_number = archive_group_entry.delete()[0]
+
+            return HttpResponse(json.dumps({'result': delete_number}), content_type="application/json; charset=utf-8")
+
+        except ArchiveGroupEntry.DoesNotExist:
+            return HttpResponseNotFound(json.dumps({'result': "ArchiveGroupEntry does not exist."}), content_type="application/json; charset=utf-8")
+
+    else:
+        return HttpResponseNotFound(json.dumps({'result': "Unknown command"}), content_type="application/json; charset=utf-8")
+
+
+# NOTE: This is used by 3rd parties, do not modify, at most create a new function if something needs changing
+# Public API, does not check for any token, but filters if the user is authenticated or not.
+@csrf_exempt
+def json_api(request: HttpRequest) -> HttpResponse:
+
+    token_valid, token_user = authenticate_by_token(request)
+
+    user_is_authenticated = request.user.is_authenticated or token_valid
+
+    if request.method == 'GET':
+        return json_api_handle_get(request, user_is_authenticated)
+    elif request.method == 'POST':
+        if user_is_authenticated:
+            return json_api_handle_post(request, token_user or request.user)
+        else:
+            return HttpResponseForbidden(json.dumps({'result': "Not authorized"}), content_type="application/json; charset=utf-8")
+    elif request.method == 'PUT':
+        if user_is_authenticated:
+            return json_api_handle_put(request, token_user or request.user)
+        else:
+            return HttpResponseForbidden(json.dumps({'result': "Not authorized"}), content_type="application/json; charset=utf-8")
+    elif request.method == 'DELETE':
+        if user_is_authenticated:
+            return json_api_handle_delete(request, token_user or request.user)
+        else:
+            return HttpResponseForbidden(json.dumps({'result': "Not authorized"}), content_type="application/json; charset=utf-8")
+    else:
+        return HttpResponseNotAllowed(["GET", "PUT", "DELETE"], json.dumps({'result': "Unsupported request method"}), content_type="application/json; charset=utf-8")
 
 
 # Private API, checks for the API key.
@@ -938,7 +1268,7 @@ def json_parser(request: HttpRequest) -> HttpResponse:
 
                 gids_list = list(gids_set)
 
-                existing_galleries = Gallery.objects.filter(gid__in=gids_list).exclude(status=Gallery.DELETED)
+                existing_galleries = Gallery.objects.filter(gid__in=gids_list).exclude(status=Gallery.StatusChoices.DELETED)
                 for gallery_object in existing_galleries:
                     if gallery_object.is_submitted():
                         gallery_object.delete()

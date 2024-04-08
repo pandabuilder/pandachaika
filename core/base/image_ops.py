@@ -13,7 +13,7 @@ def convert(img, target_type_min, target_type_max, target_type):
 
 
 # Adapted from https://github.com/bertsky/core/blob/061bae37f79aaac5aea64cf9afb8e1429b8243f5/ocrd/ocrd/workspace.py#L407
-def img_to_thumbnail(im: Image) -> Image:
+def img_to_thumbnail(im: Image.Image, width: int = 200, height: int = 290) -> Image.Image:
     if im.mode.startswith('I') or im.mode.startswith('F'):
         arr_image = np.array(im)
         if arr_image.dtype.kind == 'i' or arr_image.dtype.kind == 'u':
@@ -26,6 +26,6 @@ def img_to_thumbnail(im: Image) -> Image:
     else:
         if im.mode != 'RGB':
             im = im.convert('RGB')
-    im.thumbnail((200, 290), Image.LANCZOS)
+    im.thumbnail((width, height), Image.Resampling.LANCZOS)
 
     return im

@@ -30,7 +30,7 @@ if es_client:
     from elasticsearch_dsl.response import AggResponse
 
 
-ES_SKIP_FIELDS = ('page', 'q', 'order', 'sort', 'metrics', 'show_url', 'count', 'no_agg')
+ES_SKIP_FIELDS = ('page', 'q', 'order', 'sort', 'metrics', 'show_url', 'count', 'no_agg', 'view')
 
 
 class ESHomePageView(TemplateView):
@@ -56,6 +56,9 @@ class ESHomePageView(TemplateView):
     public_sort_field = 'public_date'
 
     accepted_per_page = [24, 48, 100, 200, 300]
+
+    extra_view_options = ("list", "extended")
+    view_parameters_name = 'parameters'
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
 
@@ -168,6 +171,26 @@ class ESHomePageView(TemplateView):
                 )
                 context['paginator'] = es_pagination
 
+        if self.extra_view_options:
+            context['extra_view_options'] = self.extra_view_options
+
+        if self.view_parameters_name in self.request.session:
+            parameters = self.request.session[self.view_parameters_name]
+        else:
+            parameters = {}
+
+        view_option = self.request.GET.get("view", '')
+
+        if view_option:
+            parameters['view'] = view_option
+
+        # Fill default parameters
+        if 'view' not in parameters or parameters['view'] == '':
+            parameters['view'] = 'list'
+
+        self.request.session[self.view_parameters_name] = parameters
+
+        context['view_parameters'] = parameters
         context['q'] = self.request.GET.get("q", '')
         context['sort'] = self.request.GET.get("sort", '')
         context['order'] = self.request.GET.get("order", 'desc')
@@ -309,6 +332,8 @@ class ESHomeGalleryPageView(ESHomePageView):
     index_name = settings.ES_GALLERY_INDEX_NAME
     page_title = 'Gallery Search'
 
+    extra_view_options = ("list", "extended")
+
     possible_sorts = [
         'create_date',
         'posted_date',
@@ -325,6 +350,8 @@ class ESHomeGalleryPageView(ESHomePageView):
     ]
 
     public_sort_field = 'posted_date'
+
+    view_parameters_name = 'gallery_parameters'
 
     @staticmethod
     def convert_hit_to_template(hit):

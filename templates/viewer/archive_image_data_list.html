@@ -37,7 +37,7 @@
       <table class="table table-bordered table-sm generic-table">
         <thead>
         <tr>
-          <th style="width:4%">#</th><th style="width:7%">Archive Position</th><th>File Name</th><th style="width:7%">File Size</th><th style="width:4%">Height</th><th style="width:4%">Width</th><th style="width:4%">Format</th><th style="width:4%">Mode</th>
+          <th style="width:4%">#</th><th style="width:7%">Archive Position</th><th>File Name</th><th style="width:7%">File Size</th><th style="width:7%">SHA1</th><th style="width:4%">Height</th><th style="width:4%">Width</th><th style="width:4%">Format</th><th style="width:4%">Mode</th>
         </tr>
         </thead>
         <tbody>
@@ -54,6 +54,9 @@
             </td>
             <td>
               {{ image.image_size|filesizeformat }}
+            </td>
+            <td>
+              {{ image.sha1 }}
             </td>
             <td>
               {{ image.original_height }}

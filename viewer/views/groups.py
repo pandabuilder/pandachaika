@@ -12,7 +12,7 @@ from django.urls import reverse
 
 from viewer.utils.actions import event_log
 from viewer.forms import ArchiveGroupSearchForm, ArchiveGroupCreateOrEditForm, ArchiveSearchForm, \
-    ArchiveGroupEntryFormSet
+    ArchiveGroupEntryFormSet, ArchiveSearchSimpleForm, DivErrorList
 from viewer.models import ArchiveGroup, ArchiveGroupEntry, Archive
 
 from viewer.views.head import archive_filter_keys, filter_archives_simple
@@ -100,7 +100,7 @@ def archive_groups_explorer(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
-def archive_group(request: HttpRequest, pk: Optional[int] = None, slug: Optional[str] = None) -> HttpResponse:
+def archive_group_details(request: HttpRequest, pk: Optional[int] = None, slug: Optional[str] = None) -> HttpResponse:
     """ArchiveGroup listing."""
     try:
         if pk is not None:
@@ -189,9 +189,12 @@ def archive_group_edit(request: HttpRequest, pk: Optional[int] = None, slug: Opt
             new_archive_group = edit_form.save()
 
             # archive_group_entry_formset.save()
-            archive_group_entries = archive_group_entry_formset.save(commit=False)
-            for archive_group_entry in archive_group_entries:
-                archive_group_entry.save()
+            archive_group_entry_formset.save(commit=False)
+            for form in archive_group_entry_formset.ordered_forms:
+                form.instance.position = form.cleaned_data['ORDER']
+                form.instance.save()
+            # for archive_group_entry in archive_group_entries:
+            #     archive_group_entry.save()
             for archive_group_entry in archive_group_entry_formset.deleted_objects:
                 archive_group_entry.delete()
 
@@ -281,8 +284,10 @@ def archive_group_edit(request: HttpRequest, pk: Optional[int] = None, slug: Opt
     if 'add_multiple' in get:
         if 'clear' in get:
             search_form = ArchiveSearchForm()
+            form_simple = ArchiveSearchSimpleForm(initial={'source_type': ''})
         else:
             search_form = ArchiveSearchForm(initial={'title': title, 'tags': tags})
+            form_simple = ArchiveSearchSimpleForm(request.GET, error_class=DivErrorList)
 
         params = {
             'sort': get.get("sort", 'create_date'),
@@ -314,6 +319,7 @@ def archive_group_edit(request: HttpRequest, pk: Optional[int] = None, slug: Opt
 
         d.update(
             search_form=search_form,
+            form_simple=form_simple,
             search_results=search_results_page,
         )
 
@@ -323,3 +329,52 @@ def archive_group_edit(request: HttpRequest, pk: Optional[int] = None, slug: Opt
     )
 
     return render(request, "viewer/archive_group_edit.html", d)
+
+
+@login_required
+def archive_group_enter_reason(request: HttpRequest, pk: Optional[int] = None, slug: Optional[str] = None, tool: Optional[str] = None) -> HttpResponse:
+    try:
+        if pk is not None:
+            archive_group_instance = ArchiveGroup.objects.get(pk=pk)
+        elif slug is not None:
+            archive_group_instance = ArchiveGroup.objects.get(title_slug=slug)
+        else:
+            raise Http404("Archive Group does not exist")
+    except ArchiveGroup.DoesNotExist:
+        raise Http404("Archive Group does not exist")
+    if not archive_group_instance.public and not request.user.is_authenticated:
+        raise Http404("Archive Group does not exist")
+
+    if request.method == 'POST':
+
+        p = request.POST
+        user_reason = p.get('reason', '')
+        if "confirm_tool" in p:
+
+            if request.user.has_perm('viewer.delete_archivegroup') and tool == "delete":
+                delete_report = archive_group_instance.delete_text_report()
+
+                message = 'Deleting Archive Group: {}'.format(archive_group_instance.title)
+
+                logger.info("User {}: {}".format(request.user.username, message))
+                messages.success(request, message)
+
+                archive_group_instance.delete()
+                event_log(
+                    request.user,
+                    'DELETE_ARCHIVE_GROUP',
+                    reason=user_reason,
+                    result='deleted',
+                    data=delete_report
+                )
+
+                return HttpResponseRedirect(reverse('viewer:archive-groups'))
+
+    d = {'archive_group': archive_group_instance, 'tool': tool}
+
+    inlined = request.GET.get("inline", None)
+
+    if inlined:
+        return render(request, "viewer/include/modals/archive_group_tool_reason.html", d)
+    else:
+        return render(request, "viewer/archive_group_display_tool.html", d)

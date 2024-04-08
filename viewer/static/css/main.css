@@ -453,6 +453,7 @@ img {
   --bs-btn-padding-x: .15rem;
   --bs-btn-bg: #464646;
   --bs-btn-border-color: #464646;
+  color: rgb(54, 176, 249);
 }
 
 .archives {

@@ -54,6 +54,8 @@ general:
   auto_hash_images: false
   # Auto phash images when adding new archives
   auto_phash_images: false
+  # Auto process wanted images  when adding new archives (requires numpy, opencv-python installed)
+  auto_match_wanted_images: false
   # Create marks for archives that when their metadata change, the accepted WantedGallery is no longer valid
   recheck_wanted_on_update: false
   # Sizes to apply when using the resized extract option.

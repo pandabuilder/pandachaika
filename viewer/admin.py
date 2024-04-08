@@ -31,7 +31,7 @@ from viewer.models import (
     MonitoredLink, TagQuerySet, GalleryProviderData, ItemProperties,
     UserLongLivedToken,
     ProcessedLinks,
-    ArchiveOption
+    ArchiveOption, WantedImage
 )
 from django.contrib import admin
 from django.contrib.admin.helpers import ActionForm
@@ -253,7 +253,7 @@ class GalleryAdmin(SimpleHistoryAdmin):
     make_private.short_description = "Mark selected galleries as private"  # type: ignore
 
     def make_normal(self, request: HttpRequest, queryset: GalleryQuerySet) -> None:
-        rows_updated = queryset.update(status=Gallery.NORMAL)
+        rows_updated = queryset.update(status=Gallery.StatusChoices.NORMAL)
         if rows_updated == 1:
             message_bit = "1 gallery was"
         else:
@@ -299,6 +299,13 @@ class MentionAdmin(admin.ModelAdmin):
     # search_fields = ["name", "scope"]
     list_display = ["id", "mention_date", "release_date", "type", "source", "comment", "thumbnail"]
     list_filter = ["type", "source"]
+
+
+class WantedImageAdmin(admin.ModelAdmin):
+    exclude = ('thumbnail', 'thumbnail_height', 'thumbnail_width', 'sha1', 'image_width', 'image_height', 'image_format', 'image_mode', 'image_size')
+    search_fields = ["image_name", "sha1"]
+    list_display = ["id", "active", "image_name", 'minimum_features', 'match_threshold']
+    list_filter = ["active"]
 
 
 class FoundGalleryInline(admin.TabularInline):
@@ -602,7 +609,7 @@ class GallerySubmitEntryAdmin(admin.ModelAdmin):
 class ArchiveManageEntryAdmin(admin.ModelAdmin):
 
     raw_id_fields = ["archive"]
-    list_filter = ["mark_check", "mark_user", "resolve_check", "resolve_user", "mark_date", "origin"]
+    list_filter = ["mark_check", "mark_user", "resolve_check", "resolve_user", "mark_date", "origin", "mark_reason"]
     list_display = ["archive", "mark_check", "mark_priority", "mark_reason",
                     "mark_user", "mark_extra", "resolve_check", "resolve_user"]
     search_fields = ["mark_reason", "mark_extra", "mark_comment", "resolve_comment"]
@@ -674,6 +681,7 @@ admin.site.register(Image, ImageAdmin)
 
 admin.site.register(Artist, ArtistAdmin)
 admin.site.register(Mention, MentionAdmin)
+admin.site.register(WantedImage, WantedImageAdmin)
 admin.site.register(WantedGallery, WantedGalleryAdmin)
 admin.site.register(GalleryMatch, GalleryMatchAdmin)
 admin.site.register(TweetPost, TweetPostAdmin)

@@ -13,7 +13,7 @@ from core.base.utilities import (
     get_thread_status_bool,
     thread_exists)
 from core.web.crawlerthread import CrawlerThread
-from core.workers.imagework import ImageWorker
+from core.workers.archive_work import ArchiveWorker
 
 from viewer.models import (
     Archive,
@@ -103,12 +103,12 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
             'Recalculating file info for all archives, count: {}'.format(archives.count())
         )
 
-        image_worker_thread = ImageWorker(4)
+        archive_worker_thread = ArchiveWorker(4)
         for archive in archives:
             if os.path.exists(archive.zipped.path):
-                image_worker_thread.enqueue_archive(archive)
+                archive_worker_thread.enqueue_archive(archive)
         fileinfo_thread = threading.Thread(
-            name='fileinfo_worker', target=image_worker_thread.start_info_thread)
+            name='fileinfo_worker', target=archive_worker_thread.start_info_thread)
         fileinfo_thread.start()
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
     elif tool == "set_all_hidden_as_public":
@@ -133,13 +133,13 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = '') -> HttpR
         logger.info(
             'Generating thumbs for all archives, count {}'.format(archives.count()))
 
-        image_worker_thread = ImageWorker(4)
+        archive_worker_thread = ArchiveWorker(4)
         for archive in archives:
             if os.path.exists(archive.zipped.path):
-                image_worker_thread.enqueue_archive(archive)
+                archive_worker_thread.enqueue_archive(archive)
         thumbnails_thread = threading.Thread(
             name='thumbnails_worker',
-            target=image_worker_thread.start_thumbs_thread
+            target=archive_worker_thread.start_thumbs_thread
         )
         thumbnails_thread.start()
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")

@@ -5,11 +5,9 @@
 {% block content %}
 {% load viewer_extras %}
   {% if messages %}
-    <ul class="messages">
-      {% for message in messages %}
-        <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
-      {% endfor %}
-    </ul>
+    {% for message in messages %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+    {% endfor %}
   {% endif %}
     {% include 'viewer/include/modals/gallery_tool_reason.html' %}
 {% endblock %}

@@ -303,3 +303,6 @@ def format_json(maybe_json: Optional[str]) -> str:
         return maybe_json
 
 
+@register.filter
+def escape_colon(word: str):
+    return word.replace(":", "%3A")

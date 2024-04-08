@@ -1,28 +1,28 @@
 # Chose one depending on database backend
 # mysqlclient
-psycopg==3.1.16
+psycopg==3.1.18
 # Main
-python-dateutil==2.8.2
+python-dateutil==2.9.0.post0
 twitter==1.19.6
-beautifulsoup4==4.12.2
+beautifulsoup4==4.12.3
 CherryPy==18.9.0
-Django==5.0
+Django==5.0.4
 django-compressor==4.4
-Pillow==10.1.0
-rarfile==4.1
-py7zr==0.20.8
+Pillow==10.3.0
+rarfile==4.2
+py7zr==0.21.0
 requests==2.31.0
 feedparser==6.0.11
 transmissionrpc==0.11
-django-autocomplete-light==3.9.7
--e git+https://github.com/pandabuilder/django-vite@multi-config#egg=django-vite
+django-autocomplete-light==3.11.0
+django-vite==3.0.4
 elasticsearch==7.17.7
 elasticsearch-dsl==7.4.1
-django-simple-history==3.4.0
+django-simple-history==3.5.0
 PyYAML==6.0.1
 deckar01-ratelimit==3.0.2
 # For image operations in edge cases
-numpy==1.26.2
+numpy==1.26.4
 # Optional packages (depending on features wanted):
 # imagehash==4.3.1
 # PySocks==1.7.1

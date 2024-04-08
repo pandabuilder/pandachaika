@@ -43,3 +43,9 @@ def compare_archives(request: HttpRequest) -> HttpResponse:
 def compare_archives_viewer(request: HttpRequest) -> HttpResponse:
 
     return render(request, "viewer/collaborators/compare_archives.html")
+
+
+@permission_required('viewer.change_archivegroup')
+def archive_group_editor(request: HttpRequest) -> HttpResponse:
+
+    return render(request, "viewer/collaborators/archive_group_editor.html")

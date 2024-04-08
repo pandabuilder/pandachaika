@@ -522,6 +522,19 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                         event_log(
                             request.user,
                             'MARK_DELETE_GALLERY',
+                            data=archive_report,
+                            reason=user_reason,
+                            content_object=gallery,
+                            result='success',
+                        )
+                    elif 'deny_galleries' in p and p['deny_galleries'] and request.user.has_perm('viewer.approve_gallery'):
+                        archive.gallery.mark_as_denied()
+                        message += ', gallery: {} will be marked as denied'.format(archive.gallery.get_absolute_url())
+                        archive.gallery = None
+                        event_log(
+                            request.user,
+                            'DENY_GALLERY',
+                            data=archive_report,
                             reason=user_reason,
                             content_object=gallery,
                             result='success',
@@ -1131,6 +1144,34 @@ def user_crawler(request: AuthenticatedHttpRequest) -> HttpResponse:
                             reason=user_reason,
                             data=url_filtered,
                             result='already_public'
+                        )
+                    elif gallery.is_deleted():
+                        messages.warning(
+                            request,
+                            '{}: Already present, marked as deleted: {}, reason: {}'.format(
+                                url_filtered, gallery.get_absolute_url(), gallery.reason
+                            )
+                        )
+                        event_log(
+                            request.user,
+                            'CRAWL_URL',
+                            reason=user_reason,
+                            data=url_filtered,
+                            result='already_deleted'
+                        )
+                    elif gallery.is_denied():
+                        messages.warning(
+                            request,
+                            '{}: Already present, marked as denied: {}, reason: {}'.format(
+                                url_filtered, gallery.get_absolute_url(), gallery.reason
+                            )
+                        )
+                        event_log(
+                            request.user,
+                            'CRAWL_URL',
+                            reason=user_reason,
+                            data=url_filtered,
+                            result='already_denied'
                         )
                     else:
                         messages.info(

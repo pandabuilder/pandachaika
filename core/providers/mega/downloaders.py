@@ -117,7 +117,7 @@ class MegaArchiveDownloader(BaseDownloader):
             self.return_code = 1
 
         else:
-            logger.error("Could not download archive")
+            logger.error("Could not download archive, filesize resulted in 0 at path: {}".format(filepath))
             self.return_code = 0
 
     def update_archive_db(self, default_values: DataDict) -> Optional['Archive']:

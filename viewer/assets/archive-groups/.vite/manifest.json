@@ -1,0 +1,17 @@
+{
+  "src/assets/no_cover.png": {
+    "file": "assets/no_cover-eEdCbnFG.png",
+    "src": "src/assets/no_cover.png"
+  },
+  "src/main.tsx": {
+    "file": "assets/main-w7zI0bA9.js",
+    "src": "src/main.tsx",
+    "isEntry": true,
+    "css": [
+      "assets/main-pB5vMxAY.css"
+    ],
+    "assets": [
+      "assets/no_cover-eEdCbnFG.png"
+    ]
+  }
+}

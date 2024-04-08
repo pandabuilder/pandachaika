@@ -1,13 +1,10 @@
 <form action="" method="POST">
   {% csrf_token %}
   <div id="add-change-archive-group-form" class="collapse page-line">
-    <table class="table">
       {{ edit_form }}
-    </table>
     {% if archive_group_entry_formset %}
-      <table>
-          {{ archive_group_entry_formset }}
-      </table>
+        {{ archive_group_entry_formset.management_form }}
+        {{ archive_group_entry_formset.as_div }}
     {% endif %}
     <button type="submit" name="submit-archive-group" value="Submit" class="btn btn-light me-sm-1">Submit</button>
   </div>

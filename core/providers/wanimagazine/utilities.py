@@ -1,3 +1,4 @@
+import logging
 import re
 from datetime import datetime
 
@@ -7,6 +8,8 @@ from bs4 import BeautifulSoup
 
 from core.base.types import DataDict
 from .constants import provider_name
+
+logger = logging.getLogger(__name__)
 
 
 PRODUCT_ID_MATCHER = re.compile('.+?/product/(.+)/$')
@@ -121,6 +124,12 @@ def get_on_sale_date_from_soup(soup):
             sale_text_year = int(on_sale_match.group(1))
             sale_text_month = int(on_sale_match.group(2))
             sale_text_day = int(on_sale_match.group(3))
-            on_sale_date = datetime(sale_text_year, sale_text_month, sale_text_day, 0, 0, 0, 0,
-                                    pytz.timezone('Asia/Tokyo'))
+            try:
+                on_sale_date = datetime(
+                    sale_text_year, sale_text_month, sale_text_day,
+                    0, 0, 0, 0,
+                    pytz.timezone('Asia/Tokyo')
+                )
+            except ValueError:
+                logger.error("Could not parse year: {}, month: {}, day: {} into datetime.".format(sale_text_year, sale_text_month, sale_text_day))
     return on_sale_date

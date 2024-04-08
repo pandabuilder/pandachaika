@@ -161,53 +161,114 @@
                 </ul>
               </nav>
             </div>
+            {% if extra_view_options %}
+              <div class="col-md-4 justify-content-end">
+                <nav>
+                  <ul class="pagination justify-content-end mb-0">
+                  {% for option in extra_view_options %}
+                    <li class="page-item{% if option == view_parameters.view %} active{% endif %}">
+                      <a class="page-link" href="?{% url_replace 'view' option %}">{{ option }}</a>
+                    </li>
+                  {% endfor %}
+                  </ul>
+                </nav>
+              </div>
+            {% endif %}
         </div>
-          <table class="table table-striped table-responsive-md">
-            <thead>
-            <tr>
-              <th style="width:4%">#</th>
-              {% if user.is_authenticated %}
-                <th style="width:71%">Title</th>
-                {% if request.GET.show_url == '1' %}
-                <th>URL</th>
-                {% endif %}
-                <th style="width:4%"><a href="?{% url_multi_replace sort='image_count' order=order|revert_order %}">Images</a></th>
-                <th style="width:6%"><a href="?{% url_multi_replace sort='size' order=order|revert_order %}">Size</a></th>
-                <th style="width:5%"><a href="?{% url_multi_replace sort='category' order=order|revert_order %}">Category</a></th>
-                <th style="width:5%"><a href="?{% url_multi_replace sort='create_date' order=order|revert_order %}">Available</a></th>
-                <th style="width:5%"><a href="?{% url_multi_replace sort='posted_date' order=order|revert_order %}">Original</a></th>
-              {% else %}
-                <th style="width:76%">Title</th>
-                {% if request.GET.show_url == '1' %}
-                <th>URL</th>
-                {% endif %}
-                <th style="width:4%"><a href="?{% url_multi_replace sort='image_count' order=order|revert_order %}">Images</a></th>
-                <th style="width:6%"><a href="?{% url_multi_replace sort='size' order=order|revert_order %}">Size</a></th>
-                <th style="width:5%"><a href="?{% url_multi_replace sort='create_date' order=order|revert_order %}">Available</a></th>
-                <th style="width:5%"><a href="?{% url_multi_replace sort='posted_date' order=order|revert_order %}">Original</a></th>
-              {% endif %}
-            </tr>
-            </thead>
-            <tbody>
-            {% for hit in hits %}
-              <tr>
-                <td><a href="{% url 'viewer:gallery' hit.pk %}" {% if hit.thumbnail %} data-image-url="{{ hit.thumbnail }}" class="img-preview" rel="popover"{% else %} title ="{{ hit.title_jpn }}"{% endif %}>{{ hit.pk }}</a></td>
-                <td>{% firstof hit.title hit.title_jpn "No title" %}</td>
-                {% if request.GET.show_url == '1' %}
-                <td id="{{ hit.pk }}-url" class="url-container">{{ hit.source_url|urlize_all_rel }}</td>
-                {% endif %}
-                <td>{{ hit.image_count }}</td>
-                <td>{{ hit.size|filesizeformat }}</td>
-                <td>{{ hit.category|default:'none' }}</td>
-                {% if user.is_authenticated %}
-                  <td>{{ hit.create_date_c|date:"SHORT_DATE_FORMAT" }}</td>
-                {% endif %}
-                <td>{{ hit.posted_date_c|date:"SHORT_DATE_FORMAT"|default:'none' }}</td>
-              </tr>
-            {% endfor %}
-            </tbody>
-          </table>
+          {% if view_parameters.view == 'list' %}
+              <table class="table table-striped table-responsive-md">
+                <thead>
+                <tr>
+                  <th style="width:4%">#</th>
+                  {% if user.is_authenticated %}
+                    <th style="width:71%">Title</th>
+                    {% if request.GET.show_url == '1' %}
+                    <th>URL</th>
+                    {% endif %}
+                    <th style="width:4%"><a href="?{% url_multi_replace sort='image_count' order=order|revert_order %}">Images</a></th>
+                    <th style="width:6%"><a href="?{% url_multi_replace sort='size' order=order|revert_order %}">Size</a></th>
+                    <th style="width:5%"><a href="?{% url_multi_replace sort='category' order=order|revert_order %}">Category</a></th>
+                    <th style="width:5%"><a href="?{% url_multi_replace sort='create_date' order=order|revert_order %}">Available</a></th>
+                    <th style="width:5%"><a href="?{% url_multi_replace sort='posted_date' order=order|revert_order %}">Original</a></th>
+                  {% else %}
+                    <th style="width:76%">Title</th>
+                    {% if request.GET.show_url == '1' %}
+                    <th>URL</th>
+                    {% endif %}
+                    <th style="width:4%"><a href="?{% url_multi_replace sort='image_count' order=order|revert_order %}">Images</a></th>
+                    <th style="width:6%"><a href="?{% url_multi_replace sort='size' order=order|revert_order %}">Size</a></th>
+                    <th style="width:5%"><a href="?{% url_multi_replace sort='create_date' order=order|revert_order %}">Available</a></th>
+                    <th style="width:5%"><a href="?{% url_multi_replace sort='posted_date' order=order|revert_order %}">Original</a></th>
+                  {% endif %}
+                </tr>
+                </thead>
+                <tbody>
+                {% for hit in hits %}
+                  <tr>
+                    <td><a href="{% url 'viewer:gallery' hit.pk %}" {% if hit.thumbnail %} data-image-url="{{ hit.thumbnail }}" class="img-preview" rel="popover"{% else %} title ="{{ hit.title_jpn }}"{% endif %}>{{ hit.pk }}</a></td>
+                    <td>{% firstof hit.title hit.title_jpn "No title" %}</td>
+                    {% if request.GET.show_url == '1' %}
+                    <td id="{{ hit.pk }}-url" class="url-container">{{ hit.source_url|urlize_all_rel }}</td>
+                    {% endif %}
+                    <td>{{ hit.image_count }}</td>
+                    <td>{{ hit.size|filesizeformat }}</td>
+                    <td>{{ hit.category|default:'none' }}</td>
+                    {% if user.is_authenticated %}
+                      <td>{{ hit.create_date_c|date:"SHORT_DATE_FORMAT" }}</td>
+                    {% endif %}
+                    <td>{{ hit.posted_date_c|date:"SHORT_DATE_FORMAT"|default:'none' }}</td>
+                  </tr>
+                {% endfor %}
+                </tbody>
+              </table>
+          {% elif view_parameters.view == 'extended' %}
+            <table class="table table-striped table-responsive-md">
+              <tbody>
+              {% for hit in hits %}
+                <tr>
+                  <td class="td-extended">
+                    <a href="{% url 'viewer:gallery' hit.pk %}">
+                      <img alt="" title="{{ hit.title }}" src="{{ hit.thumbnail }}"/>
+                    </a>
+                  </td>
+                  <td class="td-extended">
+                    <h5>{{ hit.title }}</h5>
+                    <h6>{{ hit.title_jpn|default_if_none:"" }}</h6>
+                    <div>
+                    <ul class="tags">
+                      {% for tag_list in hit.tags|tag_query_to_tag_lists %}
+                        <li>
+                          {% if tag_list.0 %}
+                            <label class="label-extended">{{ tag_list.0 }}:</label>
+                          {% endif %}
+                          {% for tag in tag_list.1 %}
+                            <a href="{% url 'viewer:es-gallery-index-view'%}?tags__full={{ tag.full|escape_colon }}">
+                              {% if tag_list.0 %}{{ tag.name }}{% else %}
+                                {{ tag.full }}{% endif %}</a>
+                          {% endfor %}
+                        </li>{% endfor %}
+                    </ul>
+                    </div>
+                    <div><label class="label-extended">Source URL:</label>{{ hit.source_url|urlize_all_rel }}</div>
+                  </td>
+                  <td class="td-extended">
+                    <div><label class="label-extended">Count:</label>{{ hit.image_count }}</div>
+                    <div><label class="label-extended">Size:</label>{{ hit.size|filesizeformat }}</div>
+                    <div><label class="label-extended">Category:</label>{{ hit.category }}</div>
+                    <div><label class="label-extended">Posted:</label>{{ hit.posted_date_c|date:"SHORT_DATE_FORMAT" }}</div>
+                    {% if user.is_authenticated %}
+                      <div><label class="label-extended">Created:</label>{{ hit.create_date_c|date:"SHORT_DATE_FORMAT" }}</div>
+                    {% endif %}
+                    <div><label class="label-extended">Provider:</label>{{ hit.provider }}</div>
+                    <div><label class="label-extended">Reason:</label>{{ hit.reason }}</div>
+                    <div><label class="label-extended">Uploader:</label>{{ hit.uploader }}</div>
+                  </td>
+                </tr>
+              {% endfor %}
+              </tbody>
+            </table>
           {% endif %}
+        {% endif %}
         <div>
           {% if perms.viewer.update_metadata %}
           <form action="{{ request.get_full_path }}" method="POST">{% csrf_token %}

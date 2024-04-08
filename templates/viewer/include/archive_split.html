@@ -1,0 +1,72 @@
+{% load viewer_extras %}
+<div class="page-header">
+  <h5>Splitting archive: {{ archive.title }}</h5>
+  <h6>Choose: New file name per file, starting image position from file, ending image position from file. Current file has {{ archive.filecount }} images.</h6>
+  <h6>No file name means same as source (with auto-incremented counter)</h6>
+  <h6>Position uses 1-based indexing</h6>
+</div>
+
+<form action="{% url 'viewer:archive-split' archive.pk %}" method="POST">{% csrf_token %}
+    {% if split_form %}
+      {{ split_form.non_form_errors }}
+      {{ split_form.management_form }}
+      <div id="split-form-container" class="text-center">
+          {% for form in split_form %}
+              <div class="row row-cols-lg-auto g-3 align-items-center">
+                {{ form.id }}
+                  {{ form.non_field_errors }}
+                  <div>{{ forloop.counter0|add:1}}:</div>
+                <div>
+                  {{ form.new_file_name.errors }}
+                  {{ form.new_file_name.label }}
+                </div>
+                <div>
+                  {{ form.new_file_name }}
+                </div>
+                <div>
+                  {{ form.starting_position.errors }}
+                  {{ form.starting_position.label }}
+                </div>
+                <div>
+                  {{ form.starting_position }}
+                </div>
+                <div>
+                  {{ form.ending_position.errors }}
+                  {{ form.ending_position.label }}
+                </div>
+                <div>
+                  {{ form.ending_position }}
+                </div>
+              </div>
+          {% endfor %}
+      </div>
+    {% endif %}
+    <div class="mt-5">
+        <div class="form-check">
+            <input id="checkbox-f3" class="form-check-input" type="checkbox" name="bin-original" value="1" {% if "bin-original" in request.POST %}checked{% endif %}><label class="form-check-label" for="checkbox-f3">Bin the original Archive after correctly splitting</label>
+        </div>
+    </div>
+    <div class="mb-3 mt-5">
+        <div class="form-check">
+            <input id="checkbox-f4" class="form-check-input" onchange="toggleForm();" type="checkbox" name="split-nested" value="0" {% if "split-nested" in request.POST %}checked{% endif %}><label class="form-check-label" for="checkbox-f4">Split file if nested (ignores explicit form, uses internal file names and positions)</label>
+        </div>
+    </div>
+    <div class="mb-3">
+        <input size="10" class="form-control" name="reason" value="" placeholder="Reason" maxlength="200"/>
+    </div>
+    <button type="submit" name="submit" class="btn btn-light">Confirm split</button>
+</form>
+<script>
+    function toggleForm() {
+        const container = document.getElementById("split-form-container");
+        const formElements = container.getElementsByClassName("form-control");
+
+        Array.from(formElements).forEach((el) => {
+          if (el.hasAttribute('disabled')) {
+            el.removeAttribute('disabled');
+          } else {
+            el.setAttribute('disabled', '');
+          }
+        });
+    }
+</script>

@@ -18,21 +18,21 @@
         <div class="d-grid gap-1 d-md-flex justify-content-end">
             <div class="me-1">Tools:</div>
 
-            {% if perms.viewer.publish_gallery %}<button class="btn btn-sm shrink-btn"><a href="{% url 'viewer:gallery-tool' gallery.pk 'toggle-public' %}">toggle public</a></button>{% endif %}
+            {% if perms.viewer.publish_gallery %}<a class="btn btn-sm shrink-btn" href="{% url 'viewer:gallery-tool' gallery.pk 'toggle-public' %}">toggle public</a>{% endif %}
             {% if perms.viewer.mark_delete_gallery %}
                 {% if gallery.is_normal %}
-                    <button class="btn btn-sm shrink-btn"><a class="open-modal" href="{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-deleted' %}" data-popup-url="{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-deleted' %}?inline=1">mark deleted</a></button>
+                    <a class="btn btn-sm shrink-btn open-modal" href="{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-deleted' %}" data-popup-url="{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-deleted' %}?inline=1" role="button">mark deleted</a>
                 {% else %}
-                    <button class="btn btn-sm shrink-btn"><a class="open-modal" href="{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-normal' %}" data-popup-url="{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-normal' %}?inline=1">mark normal</a></button>
+                    <a class="btn btn-sm shrink-btn open-modal" href="{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-normal' %}" data-popup-url="{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-normal' %}?inline=1" role="button">mark normal</a>
                 {% endif %}
             {% endif %}
-            {% if perms.viewer.update_metadata %}<button class="btn btn-sm shrink-btn"><a href="{% url 'viewer:gallery-tool' gallery.pk 'recall-api' %}">recall api</a></button>{% endif %}
-            {% if perms.viewer.update_metadata %}<button class="btn btn-sm shrink-btn"><a href="{% url 'viewer:gallery-tool' gallery.pk 'refetch-thumbnail' %}">refetch thumbnail</a></button>{% endif %}
-            {% if perms.viewer.download_gallery %}<button class="btn btn-sm shrink-btn"><a href="{% url 'viewer:gallery-tool' gallery.pk 'download' %}">default download</a></button>{% endif %}
-            {% if perms.viewer.upload_with_metadata_archive %}<button class="btn btn-sm shrink-btn"><a href="{% url 'viewer:upload-archive' %}?gallery={{ gallery.id }}">upload archive</a></button>{% endif %}
+            {% if perms.viewer.update_metadata %}<a class="btn btn-sm shrink-btn" href="{% url 'viewer:gallery-tool' gallery.pk 'recall-api' %}">recall api</a>{% endif %}
+            {% if perms.viewer.update_metadata %}<a class="btn btn-sm shrink-btn" href="{% url 'viewer:gallery-tool' gallery.pk 'refetch-thumbnail' %}">refetch thumbnail</a>{% endif %}
+            {% if perms.viewer.download_gallery %}<a class="btn btn-sm shrink-btn" href="{% url 'viewer:gallery-tool' gallery.pk 'download' %}">default download</a>{% endif %}
+            {% if perms.viewer.upload_with_metadata_archive %}<a class="btn btn-sm shrink-btn" href="{% url 'viewer:upload-archive' %}?gallery={{ gallery.id }}">upload archive</a>{% endif %}
             {% if user.is_staff %}
-                <button class="btn btn-sm shrink-btn"><a href="{% url 'admin:viewer_gallery_change' gallery.pk %}">admin</a></button>
-                <button class="btn btn-sm shrink-btn"><a href="{% url 'viewer:gallery-tool' gallery.pk 'toggle-hidden' %}">toggle hidden</a></button>
+                <a class="btn btn-sm shrink-btn" href="{% url 'admin:viewer_gallery_change' gallery.pk %}">admin</a>
+                <a class="btn btn-sm shrink-btn" href="{% url 'viewer:gallery-tool' gallery.pk 'toggle-hidden' %}">toggle hidden</a>
                 <div class="me-1">
                 <div class="dropdown">
                   <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">force download<span class="caret"></span></button>

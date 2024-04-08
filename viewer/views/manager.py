@@ -123,7 +123,7 @@ def repeated_galleries_by_field(request: HttpRequest) -> HttpResponse:
 
                 event_log(
                     request.user,
-                    'DELETE_GALLERY',
+                    'MARK_DELETE_GALLERY',
                     reason=user_reason,
                     content_object=gallery,
                     result='deleted'

@@ -15,8 +15,8 @@ urlpatterns = [
     re_path(r"^dir-browser/$", browser.directory_parser, name='directory-parser'),
     re_path(r"^api-login/*$", api.api_login, name='api-login'),
     re_path(r"^api-logout/*$", api.api_logout, name='api-logout'),
-    re_path(r"^jsearch/*$", api.json_search, name='json-search'),
-    re_path(r"^api/*$", api.json_search, name='api'),
+    re_path(r"^jsearch/*$", api.json_api, name='json-search'),
+    re_path(r"^api/*$", api.json_api, name='api'),
     re_path(r"^jsonapi$", api.json_parser, name='json-parser'),
     re_path(r"^admin-api/$", api.json_parser, name='json-parser'),
     re_path(r"^archive/(\d+)/$", archive.archive_details, name='archive'),
@@ -29,6 +29,7 @@ urlpatterns = [
     re_path(r"^archive/(\d+)/calc-imgs-sha1/$", archive.calculate_images_sha1, name='archive-calc-imgs-sha1'),
     re_path(r"^archive/(\d+)/check-convert-type/$", archive.check_and_convert_filetype, name='check-convert-type'),
     re_path(r"^archive/(\d+)/clone-plus/$", archive.clone_plus, name='archive-clone-plus'),
+    re_path(r"^archive/(\d+)/split/$", archive.split, name='archive-split'),
     re_path(r"^archive/(\d+)/recalc-info/$", archive.recalc_info, name='archive-recalc-info'),
     re_path(r"^archive/(\d+)/mark-similar-archives/$", archive.mark_similar_archives, name='archive-mark-similar'),
     re_path(r"^archive/(\d+)/recall-api/$", archive.recall_api, name='archive-recall-api'),
@@ -153,10 +154,12 @@ urlpatterns += [
 # Archive groups.
 urlpatterns += [
     re_path(r"^archive-groups/$", groups.archive_groups_explorer, name='archive-groups'),
-    path("archive-group/<slug:slug>/", groups.archive_group, name='archive-group'),
-    path("archive-group/<int:pk>/", groups.archive_group, name='archive-group'),
-    path("archive-group-edit/<slug:slug>/", groups.archive_group_edit, name='archive-group-edit'),
+    path("archive-group/<slug:slug>/", groups.archive_group_details, name='archive-group'),
+    path("archive-group/<int:pk>/", groups.archive_group_details, name='archive-group'),
     path("archive-group-edit/<int:pk>/", groups.archive_group_edit, name='archive-group-edit'),
+    path("archive-group-edit/<slug:slug>/", groups.archive_group_edit, name='archive-group-edit'),
+    path("archive-group-reason/<int:pk>/<str:tool>/", groups.archive_group_enter_reason, name='archive-group-tool-reason'),
+    path("archive-group-reason/<slug:slug>/<str:tool>/", groups.archive_group_enter_reason, name='archive-group-tool-reason')
 ]
 
 urlpatterns += [
@@ -185,4 +188,5 @@ urlpatterns += [
 urlpatterns += [
     re_path(r'^compare-archives/$', tools.compare_archives, name='compare-archives'),
     re_path(r"^compare-archives-viewer/$", tools.compare_archives_viewer, name='compare-archives-viewer'),
+    re_path(r"^archive-group-editor/$", tools.archive_group_editor, name='archive-group-editor'),
 ]

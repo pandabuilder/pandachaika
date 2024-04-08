@@ -36,7 +36,7 @@ urlpatterns += [
     ),
     re_path(
         r'^' + settings.MAIN_URL + r'archive-group-select-autocomplete/$',
-        ArchiveGroupSelectAutocomplete.as_view(),
+        ArchiveGroupSelectAutocomplete.as_view(create_field='title'),
         name='archive-group-select-autocomplete',
     ),
     re_path(

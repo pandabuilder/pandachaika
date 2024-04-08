@@ -159,7 +159,7 @@ class Parser(BaseParser):
                 gallery.comment = description_container['content'].strip()
             thumbnail_container = soup.find("meta", property="og:image")
             if thumbnail_container:
-                gallery.thumbnail_url = thumbnail_container['content']
+                gallery.thumbnail_url = thumbnail_container['content'].replace("https:https:", "https:")
 
             if gallery.gid.startswith('manga') or gallery.gid.startswith('hentai'):
                 gallery.category = 'Manga'
@@ -303,7 +303,15 @@ class Parser(BaseParser):
                 logger.warning("Invalid URL, skipping: {}".format(url))
                 continue
             url = url.replace('/manga/', '/hentai/')
-            unique_urls.add(url)
+
+            if '/hentai/' in url or '/magazines/' in url:
+                unique_urls.add(url)
+            else:
+                logger.warning("Assuming page is a general URL container, will process to get gallery pages: {}".format(url))
+                found_urls = self.get_galleries_from_general_page_link(url)
+                if found_urls is not None:
+                    logger.warning("Found {} gallery pages".format(len(found_urls)))
+                    unique_urls.update(found_urls)
 
         for gallery in unique_urls:
             gid = self.id_from_url(gallery)
@@ -361,6 +369,31 @@ class Parser(BaseParser):
             gallery_data_list.append(internal_gallery_data)
 
         self.pass_gallery_data_to_downloaders(gallery_data_list, gallery_wanted_lists)
+
+    def get_galleries_from_general_page_link(self, url: str) -> Optional[set[str]]:
+        request_dict = construct_request_dict(self.settings, self.own_settings)
+
+        response = request_with_retries(
+            url,
+            request_dict,
+            post=False,
+        )
+
+        if not response:
+            return None
+
+        found_urls = set()
+
+        response.encoding = 'utf-8'
+        response_text = response.text
+        soup = BeautifulSoup(response_text, 'html.parser')
+        all_hrefs = soup.find_all("a", href=True)
+        for href in all_hrefs:
+            href_url = href['href']
+            if href_url.startswith('/magazines/') or href_url.startswith('/hentai/'):
+                found_urls.add(href_url)
+
+        return found_urls
 
 
 API = (

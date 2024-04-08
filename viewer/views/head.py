@@ -1682,6 +1682,9 @@ def filter_archives_simple(params: dict[str, Any], authenticated=False, show_bin
 
         results = Archive.objects.order_by(order_argument)
 
+    if authenticated and 'gallery__status' in params and params['gallery__status'] and params['gallery__status'] != '0':
+        results = results.filter(gallery__status=params["gallery__status"])
+
     if params["title"]:
         q_formatted = '%' + params["title"].replace(' ', '%') + '%'
         results = results.filter(
@@ -1697,6 +1700,10 @@ def filter_archives_simple(params: dict[str, Any], authenticated=False, show_bin
         results = results.filter(filecount__gte=int(float(params["filecount_from"])))
     if params["filecount_to"]:
         results = results.filter(filecount__lte=int(float(params["filecount_to"])))
+    if params["filesize_from"]:
+        results = results.filter(filesize__gte=int(float(params["filesize_from"])))
+    if params["filesize_to"]:
+        results = results.filter(filesize__lte=int(float(params["filesize_to"])))
     if params["posted_from"]:
         results = results.filter(gallery__posted__gte=params["posted_from"])
     if params["posted_to"]:

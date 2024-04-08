@@ -1,7 +1,10 @@
-document.querySelector("#toggle-all")
-    .addEventListener("click", () => {
+const toggleElements = document.querySelector("#toggle-all")
+
+if (toggleElements !== null) {
+    toggleElements.addEventListener("click", () => {
         document.querySelectorAll("input.toggle-list").forEach((element) => element.click());
-});
+    });
+}
 
 document.addEventListener("DOMContentLoaded", function(){
     const checkboxes = Array.from(document.querySelectorAll("input.toggle-list"));

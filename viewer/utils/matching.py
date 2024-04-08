@@ -479,6 +479,9 @@ def match_internal(archives: 'QuerySet[Archive]', providers: Iterable[str],
                 for similar_item in galleries_hashes:
                     gallery_object = similar_item.content_object
 
+                    if not gallery_object:
+                        continue
+
                     if providers and gallery_object and gallery_object.provider not in providers:
                         continue
 
@@ -515,6 +518,11 @@ def match_internal(archives: 'QuerySet[Archive]', providers: Iterable[str],
                 for similar_item in galleries_hashes:
 
                     gallery_object = similar_item.content_object
+
+                    # For some reason we are getting null violations when not doing this filtering.
+                    # Maybe gallery gets deleted?
+                    if not gallery_object:
+                        continue
 
                     if providers and gallery_object and gallery_object.provider not in providers:
                         continue

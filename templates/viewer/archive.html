@@ -15,58 +15,61 @@
       <div class="d-grid gap-1 d-md-flex justify-content-md-end">
          <div class="me-1">Tools:</div>
         {% if perms.viewer.recycle_archive %}
-            <button class="btn btn-sm shrink-btn">
-                {% if archive.is_recycled %}
-                    <a class="open-modal" data-popup-url="{% url 'viewer:archive-tool-reason' archive.pk 'unrecycle' %}?inline=1" href="{% url 'viewer:archive-tool-reason' archive.pk 'unrecycle' %}">unrecycle</a>
-                {% else %}
-                    <a class="open-modal" data-popup-url="{% url 'viewer:archive-tool-reason' archive.pk 'recycle' %}?inline=1" href="{% url 'viewer:archive-tool-reason' archive.pk 'recycle' %}">recycle</a>
-                {% endif %}
-            </button>
+            {% if archive.is_recycled %}
+                <a class="btn btn-sm shrink-btn open-modal" data-popup-url="{% url 'viewer:archive-tool-reason' archive.pk 'unrecycle' %}?inline=1" href="{% url 'viewer:archive-tool-reason' archive.pk 'unrecycle' %}" role="button">unrecycle</a>
+            {% else %}
+                <a class="btn btn-sm shrink-btn open-modal" data-popup-url="{% url 'viewer:archive-tool-reason' archive.pk 'recycle' %}?inline=1" href="{% url 'viewer:archive-tool-reason' archive.pk 'recycle' %}" role="button">recycle</a>
+            {% endif %}
         {% endif %}
         {% if perms.viewer.modify_archive_tools %}
-            <button class="btn btn-sm shrink-btn">
-                <a class="open-modal" data-popup-url="{% url 'viewer:archive-clone-plus' archive.pk %}?inline=1" href="{% url 'viewer:archive-clone-plus' archive.pk %}">clone +</a>
-            </button>
+            <a class="btn btn-sm shrink-btn open-modal" data-popup-url="{% url 'viewer:archive-clone-plus' archive.pk %}?inline=1" href="{% url 'viewer:archive-clone-plus' archive.pk %}" role="button">clone +</a>
+        {% endif %}
+        {% if perms.viewer.modify_archive_tools %}
+            <a class="btn btn-sm shrink-btn open-modal" data-popup-url="{% url 'viewer:archive-split' archive.pk %}?inline=1" href="{% url 'viewer:archive-split' archive.pk %}" role="button">split</a>
         {% endif %}
         {% if user.is_staff %}
-            <button class="btn btn-sm shrink-btn"><a href="{% url 'viewer:archive-recalc-info' archive.pk %}">recalc</a></button>
+            <a class="btn btn-sm shrink-btn" href="{% url 'viewer:archive-recalc-info' archive.pk %}">recalc</a>
         {% endif %}
         {% if perms.viewer.mark_similar_archive %}
-            <button class="btn btn-sm shrink-btn"><a href="{% url 'viewer:archive-mark-similar' archive.pk %}">mark similar</a></button>
+            <a class="btn btn-sm shrink-btn" href="{% url 'viewer:archive-mark-similar' archive.pk %}">mark similar</a>
         {% endif %}
         {% if user.is_staff %}
-            <button class="btn btn-sm shrink-btn"><a href="{% url 'viewer:check-convert-type' archive.pk %}">convert zip</a></button>
+            <a class="btn btn-sm shrink-btn" href="{% url 'viewer:check-convert-type' archive.pk %}">convert zip</a>
         {% endif %}
         {% if perms.viewer.update_metadata %}
-            <button class="btn btn-sm shrink-btn"><a href="{% url 'viewer:archive-recall-api' archive.pk %}">recall api</a></button>
+            <a class="btn btn-sm shrink-btn" href="{% url 'viewer:archive-recall-api' archive.pk %}">recall api</a>
         {% endif %}
         {% if perms.viewer.publish_archive %}
-            <button class="btn btn-sm shrink-btn"><a href="{% url 'viewer:archive-calc-imgs-sha1' archive.pk %}">calc sha1</a></button>
+            <a class="btn btn-sm shrink-btn" href="{% url 'viewer:archive-calc-imgs-sha1' archive.pk %}">calc sha1</a>
         {% endif %}
         {% if perms.viewer.publish_archive %}
-            <button class="btn btn-sm shrink-btn">
-                {% if archive.public %}
-                    <a href="{% url 'viewer:archive-private' archive.pk %}">private</a>
-                {% else %}
-                    <a href="{% url 'viewer:archive-public' archive.pk %}">public</a>
-                {% endif %}
-            </button>
+            {% if archive.public %}
+                <a class="btn btn-sm shrink-btn" href="{% url 'viewer:archive-private' archive.pk %}">private</a>
+            {% else %}
+                <a class="btn btn-sm shrink-btn" href="{% url 'viewer:archive-public' archive.pk %}">public</a>
+            {% endif %}
         {% endif %}
         {% if user.is_staff %}
-            <button class="btn btn-sm shrink-btn"><a href="{% url 'viewer:archive-rematch' archive.pk %}">rematch</a></button>
-            <button class="btn btn-sm shrink-btn"><a class="open-modal" href="{% url 'viewer:archive-delete' archive.pk %}" data-popup-url="{% url 'viewer:archive-delete' archive.pk %}?inline=1">delete</a></button>
-            {% if archive.gallery %}<button class="btn btn-sm shrink-btn"><a href="{% url 'viewer:gallery-tool' archive.gallery.pk 'toggle-hidden' %}">{% if archive.gallery.hidden %}open{% else %}hidden{% endif %}</a></button>{% endif %}
-            <button class="btn btn-sm shrink-btn">{% if mode == 'view' %}<a href="{% url 'viewer:archive-edit' archive.pk 'edit' %}">edit</a>{% else %}<a href="{% url 'viewer:archive' archive.pk %}">view</a>{% endif %}</button>
-            <button class="btn btn-sm shrink-btn"><a href="{% url 'admin:viewer_archive_change' archive.pk %}">admin</a></button>
+            <a class="btn btn-sm shrink-btn" href="{% url 'viewer:archive-rematch' archive.pk %}">rematch</a>
+            <a class="btn btn-sm shrink-btn open-modal" href="{% url 'viewer:archive-delete' archive.pk %}" data-popup-url="{% url 'viewer:archive-delete' archive.pk %}?inline=1" role="button">delete</a>
+            {% if archive.gallery %}
+                <a class="btn btn-sm shrink-btn" href="{% url 'viewer:gallery-tool' archive.gallery.pk 'toggle-hidden' %}">{% if archive.gallery.hidden %}open{% else %}hidden{% endif %}</a>
+            {% endif %}
+            {% if mode == 'view' %}
+                <a class="btn btn-sm shrink-btn" href="{% url 'viewer:archive-edit' archive.pk 'edit' %}">edit</a>
+            {% else %}
+                <a class="btn btn-sm shrink-btn" href="{% url 'viewer:archive' archive.pk %}">view</a>
+            {% endif %}
+            <a class="btn btn-sm shrink-btn" href="{% url 'admin:viewer_archive_change' archive.pk %}">admin</a>
         {% endif %}
       </div>
       {% if archive.extracted %}
       <div class="d-grid gap-1 d-md-flex justify-content-md-end mt-1">
         <div class="me-1">View:</div>
-        <button class="btn btn-sm shrink-btn"><a href="?{% url_replace 'view' 'cover' %}">cover</a></button>
-        <button class="btn btn-sm shrink-btn"><a href="?{% url_replace 'view' 'thumbnails' %}">thumbnails</a></button>
-        <button class="btn btn-sm shrink-btn"><a href="?{% url_replace 'view' 'full' %}">full</a></button>
-        <button class="btn btn-sm shrink-btn"><a href="?{% url_replace 'view' 'single' %}">single</a></button>
+        <a class="btn btn-sm shrink-btn" href="?{% url_replace 'view' 'cover' %}">cover</a>
+        <a class="btn btn-sm shrink-btn" href="?{% url_replace 'view' 'thumbnails' %}">thumbnails</a>
+        <a class="btn btn-sm shrink-btn" href="?{% url_replace 'view' 'full' %}">full</a>
+        <a class="btn btn-sm shrink-btn" href="?{% url_replace 'view' 'single' %}">single</a>
       </div>
       {% endif %}
       </li>
@@ -363,7 +366,7 @@
         <div class="col-sm-3">
           <div class="card panel">
             <div class="card-header">
-              by: {% if not archive_manage_instance.mark_user or archive_manage_instance.mark_user.pk == 1 %}ServiceAccount{% else %}{{ archive_manage_instance.mark_user }}{% endif %}, on: {{ archive_manage_instance.mark_date|date:"y-m-d, H:i:s" }}, priority: {{ archive_manage_instance.mark_priority }}
+                <div>by: {% if not archive_manage_instance.mark_user or archive_manage_instance.mark_user.pk == 1 %}ServiceAccount{% else %}{{ archive_manage_instance.mark_user }}{% endif %}, on: {{ archive_manage_instance.mark_date|date:"y-m-d H:i:s" }}, priority: {{ archive_manage_instance.mark_priority|floatformat:2 }}</div>
             </div>
             <div class="card-body">
               <h5 class="card-title">{{ archive_manage_instance.mark_reason }}</h5>

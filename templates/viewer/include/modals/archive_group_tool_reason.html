@@ -1,0 +1,13 @@
+{% load viewer_extras %}
+<div class="page-header">
+  <h5>Archive Group: {{ archive_group.title }}</h5>
+</div>
+
+<h6>Before using tool: {{ tool }}, enter a reason</h6>
+
+<form action="{% url 'viewer:archive-group-tool-reason' pk=archive_group.pk tool=tool %}" method="POST">{% csrf_token %}
+  <div class="mb-3">
+    <input size="10" class="form-control" name="reason" value="" placeholder="Reason" maxlength="200"/>
+  </div>
+  <button type="submit" name="confirm_tool" class="btn btn-light">Confirm</button>
+</form>

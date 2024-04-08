@@ -1,0 +1,13 @@
+{% extends "viewer/base.html" %}
+{% block title %}{{ archive_group.title }} | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+
+{% block content %}
+{% load viewer_extras %}
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+    {% include 'viewer/include/modals/archive_group_tool_reason.html' %}
+{% endblock %}

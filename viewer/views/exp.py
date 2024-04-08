@@ -9,7 +9,7 @@ from typing import Optional
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.db.models import Q, QuerySet
-from django.http import HttpResponse, HttpRequest
+from django.http import HttpResponse, HttpRequest, HttpResponseNotFound
 from django.http.request import QueryDict
 from django.shortcuts import render
 from django.core.paginator import Paginator, EmptyPage
@@ -161,7 +161,7 @@ def api(request: HttpRequest, model: Optional[str] = None, obj_id: Optional[str]
             try:
                 archive_id = int(obj_id)
             except (ValueError, TypeError):
-                return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+                return HttpResponseNotFound(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
             if action == 'extract_toggle':
                 try:
                     if actual_user and actual_user.has_perm('viewer.expand_archive'):
@@ -172,7 +172,7 @@ def api(request: HttpRequest, model: Optional[str] = None, obj_id: Optional[str]
                         return HttpResponse(json.dumps({'result': "Admin only action."}),
                                             content_type="application/json; charset=utf-8")
                 except Archive.DoesNotExist:
-                    return HttpResponse(json.dumps({'result': "Archive does not exist."}),
+                    return HttpResponseNotFound(json.dumps({'result': "Archive does not exist."}),
                                         content_type="application/json; charset=utf-8")
 
                 response = json.dumps({
@@ -252,7 +252,7 @@ def api(request: HttpRequest, model: Optional[str] = None, obj_id: Optional[str]
                     else:
                         images = Image.objects.filter(archive=archive_id, position__in=positions, extracted=True).filter(archive__public=True)
                 except Archive.DoesNotExist:
-                    return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+                    return HttpResponseNotFound(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
                 image_urls: list[dict[str, typing.Any]] = [
                     {
                         'position': image.position,
@@ -272,7 +272,7 @@ def api(request: HttpRequest, model: Optional[str] = None, obj_id: Optional[str]
                         archive = Archive.objects.filter(public=True, extracted=True).select_related('gallery').\
                             prefetch_related('tags').get(pk=archive_id)
                 except Archive.DoesNotExist:
-                    return HttpResponse(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+                    return HttpResponseNotFound(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
                 position = int(data['position']) if 'position' in data else 1
 
                 # We are sending 2 types for startImage in case it's not

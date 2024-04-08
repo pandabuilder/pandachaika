@@ -17,6 +17,7 @@ import elasticsearch
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.core.files.storage import FileSystemStorage
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db.backends.base.base import BaseDatabaseWrapper
 from django.templatetags.static import static
 from os.path import join as pjoin, basename
@@ -48,6 +49,15 @@ from django.db.models import Lookup
 from django.utils.translation import gettext_lazy as _
 from django.conf import settings
 from simple_history.models import HistoricalRecords
+
+
+try:
+    import cv2 as cv
+    import numpy as np
+    can_use_image_match = True
+except ModuleNotFoundError:
+    # Error handling
+    can_use_image_match = False
 
 
 from core.base.comparison import get_list_closer_gallery_titles_from_list
@@ -147,7 +157,7 @@ class GalleryQuerySet(models.QuerySet):
 
     def non_used_galleries(self, **kwargs: typing.Any) -> QuerySet:
         return self.filter(
-            Q(status=Gallery.NORMAL),
+            Q(status=Gallery.StatusChoices.NORMAL),
             ~Q(dl_type__contains='skipped'),
             Q(archive__isnull=True),
             Q(gallery_container__archive__isnull=True),
@@ -158,8 +168,8 @@ class GalleryQuerySet(models.QuerySet):
 
     def submitted_galleries(self, *args: typing.Any, **kwargs: typing.Any) -> QuerySet:
         return self.filter(
-            Q(origin=Gallery.ORIGIN_SUBMITTED),
-            ~Q(status=Gallery.DELETED),
+            Q(origin=Gallery.OriginChoices.ORIGIN_SUBMITTED),
+            ~Q(status=Gallery.StatusChoices.DELETED),
             Q(archive__isnull=True),
             Q(gallery_container__archive__isnull=True),
             Q(magazine__archive__isnull=True),
@@ -169,7 +179,7 @@ class GalleryQuerySet(models.QuerySet):
 
     def eligible_for_use(self, **kwargs: typing.Any) -> QuerySet:
         return self.filter(
-            Q(status=Gallery.NORMAL),
+            Q(status=Gallery.StatusChoices.NORMAL),
             **kwargs
         )
 
@@ -606,31 +616,22 @@ def gallery_thumb_path_handler(instance: 'Gallery', filename: str) -> str:
 
 
 class Gallery(models.Model):
-    NORMAL = 1
-    # Denied status is intended for submitted galleries that were not accepted by a moderator. Different from deleted.
-    # To remove denied galleries from other lists, an admin should mark as DELETED.
-    DENIED = 4
-    # The deleted status hides the gallery from some user facing interfaces, as match galleries, gallery list, etc.
-    # And makes that trying to parse it again results in it being skipped.
-    DELETED = 5
-    # This status is meant for galleries that are only kept as a way to mark already seen galleries, that don't live
-    # With metadata
-    NO_METADATA = 6
 
-    ORIGIN_NORMAL = 1
-    ORIGIN_SUBMITTED = 2
+    class StatusChoices(models.IntegerChoices):
+        NORMAL = 1, _("Normal")
+        # Denied status is intended for submitted galleries that were not accepted by a moderator. Different from deleted.
+        # To remove denied galleries from other lists, an admin should mark as DELETED.
+        DENIED = 4, _("Denied")
+        # The deleted status hides the gallery from some user facing interfaces, as match galleries, gallery list, etc.
+        # And makes that trying to parse it again results in it being skipped.
+        DELETED = 5, _("Deleted")
+        # This status is meant for galleries that are only kept as a way to mark already seen galleries, that don't live
+        # With metadata
+        NO_METADATA = 6, _("No metadata")
 
-    STATUS_CHOICES = (
-        (NORMAL, 'Normal'),
-        (DENIED, 'Denied'),
-        (DELETED, 'Deleted'),
-        (NO_METADATA, 'No metadata'),
-    )
-
-    ORIGIN_CHOICES = (
-        (ORIGIN_NORMAL, 'Normal'),
-        (ORIGIN_SUBMITTED, 'Submitted'),
-    )
+    class OriginChoices(models.IntegerChoices):
+        ORIGIN_NORMAL = 1, _("Normal")
+        ORIGIN_SUBMITTED = 2, _("Submitted")
 
     gid = models.CharField(max_length=200)
     token = models.CharField(max_length=50, blank=True, null=True)
@@ -683,10 +684,10 @@ class Gallery(models.Model):
         height_field='thumbnail_height',
         width_field='thumbnail_width')
     status = models.SmallIntegerField(
-        choices=STATUS_CHOICES, db_index=True, default=NORMAL
+        choices=StatusChoices, db_index=True, default=StatusChoices.NORMAL
     )
     origin = models.SmallIntegerField(
-        choices=ORIGIN_CHOICES, db_index=True, default=ORIGIN_NORMAL
+        choices=OriginChoices, db_index=True, default=OriginChoices.ORIGIN_NORMAL
     )
     provider_metadata = models.TextField(blank=True, default='')
 
@@ -900,17 +901,17 @@ class Gallery(models.Model):
         self.save()
 
     def is_deleted(self) -> bool:
-        return self.status == self.DELETED
+        return self.status == self.StatusChoices.DELETED
 
     def is_normal(self) -> bool:
-        return self.status == self.NORMAL
+        return self.status == self.StatusChoices.NORMAL
 
     def is_denied(self) -> bool:
-        return self.status == self.DENIED
+        return self.status == self.StatusChoices.DENIED
 
     # Kinda not optimal
     def is_submitted(self) -> bool:
-        return self.origin == self.ORIGIN_SUBMITTED and self.status != self.DENIED and self.status != self.DELETED and not self.archive_set.all()
+        return self.origin == self.OriginChoices.ORIGIN_SUBMITTED and self.status != self.StatusChoices.DENIED and self.status != self.StatusChoices.DELETED and not self.archive_set.all()
 
     def get_link(self) -> str:
         return settings.PROVIDER_CONTEXT.resolve_all_urls(self)
@@ -1118,18 +1119,18 @@ class Gallery(models.Model):
 
     def mark_as_deleted(self) -> None:
         self.remove_wanted_relations()
-        self.status = self.DELETED
+        self.status = self.StatusChoices.DELETED
         self.public = False
         self.save()
 
     def mark_as_denied(self) -> None:
         self.remove_wanted_relations()
-        self.status = self.DENIED
+        self.status = self.StatusChoices.DENIED
         self.public = False
         self.save()
 
     def mark_as_normal(self) -> None:
-        self.status = self.NORMAL
+        self.status = self.StatusChoices.NORMAL
         self.save()
 
     def match_against_wanted_galleries(self, wanted_filters: Optional['QuerySet[WantedGallery]'] = None, skip_already_found: bool = True) -> 'list[WantedGallery]':
@@ -2094,6 +2095,131 @@ class Archive(models.Model):
 
         return new_archive, ''
 
+    def split_archive(self, split_data: list[tuple[int, int, Optional[str], bool]], split_from_nested: bool = False) -> 'tuple[Optional[list[Archive]], str]':
+
+        images = self.image_set.all()
+        if images.count() != self.filecount:
+            return None, 'Image count different from filecount'
+
+        try:
+            my_zip = zipfile.ZipFile(self.zipped.path, 'r')
+        except (zipfile.BadZipFile, NotImplementedError):
+            return None, 'Bad original zip file'
+
+        if my_zip.testzip():
+            return None, 'Bad original zip file'
+
+        filtered_files = get_images_from_zip(my_zip)
+
+        if split_from_nested:
+            nested_images = [x for x in filtered_files if x[1] is not None]
+            if len(filtered_files) == len(nested_images):
+
+                split_data_to_use = []
+                nested_with_index_images = [(x[1][0], x[1][1], x[1][2], x[0] + 1) for x in enumerate(nested_images)]
+
+                for nested_file, image_group in itertools.groupby(nested_with_index_images, lambda x: x[1]):
+                    image_list = list(image_group)
+                    split_data_to_use.append((image_list[0][3], image_list[-1][3], nested_file, True))
+            else:
+                return None, 'Not all images are nested'
+        else:
+            split_data_to_use = split_data
+
+        new_archives = []
+
+        for split_archive in split_data_to_use:
+            starting_position, ending_position, file_name, force_filename = split_archive
+            current_dir, current_file = os.path.split(self.zipped.name)
+            if file_name and not force_filename and not file_name.endswith(".zip"):
+                file_name += ".zip"
+            new_name = file_name or current_file
+            new_path = os.path.join(current_dir, new_name)
+            new_file_name = available_filename(settings.MEDIA_ROOT, new_path)
+
+            new_file_path = os.path.join(settings.MEDIA_ROOT, new_file_name)
+
+            new_zipfile = zipfile.ZipFile(new_file_path, 'w')
+            dir_path = mkdtemp()
+
+            for position in range(starting_position, ending_position+1):
+
+                try:
+                    if split_from_nested:
+                        current_image = images.get(archive_position=position)
+                    else:
+                        current_image = images.get(position=position)
+                except Image.DoesNotExist:
+                    shutil.rmtree(dir_path, ignore_errors=True)
+                    return None, 'Image from position: {} does not exist'.format(position)
+
+                archive_position = current_image.archive_position
+                current_file_tuple = filtered_files[archive_position - 1]
+                if current_file_tuple[1] is None:
+                    my_zip.extract(current_file_tuple[0], path=dir_path)
+
+                    extracted_file = os.path.join(dir_path, current_file_tuple[0].replace('\\', '/'))
+
+                    out_file = extracted_file
+
+                    current_basename = os.path.basename(current_file_tuple[0])
+
+                    out_name = current_basename
+
+                    new_zipfile.write(
+                        out_file,
+                        arcname=out_name,
+                    )
+                else:
+                    with my_zip.open(current_file_tuple[1]) as current_zip:
+                        with zipfile.ZipFile(current_zip) as my_nested_zip:
+                            my_nested_zip.extract(current_file_tuple[0], path=dir_path)
+
+                            extracted_file = os.path.join(dir_path, current_file_tuple[0].replace('\\', '/'))
+
+                            out_file = extracted_file
+
+                            current_basename = os.path.basename(current_file_tuple[0])
+
+                            out_name = current_basename
+
+                            new_zipfile.write(
+                                out_file,
+                                arcname=out_name,
+                            )
+
+            new_zipfile.close()
+            shutil.rmtree(dir_path, ignore_errors=True)
+
+            new_archive = self
+
+            # possible_matches = self.possible_matches.all()
+            tags = self.tags.all()
+            alternative_sources = self.alternative_sources.all()
+
+            new_archive.pk = None
+            new_archive._state.adding = True
+            new_archive.public = False
+            new_archive.public_date = None
+            new_archive.title = new_name.replace(".zip", "")
+            new_archive.crc32 = ''
+            new_archive.thumbnail = ''
+            new_archive.filesize = None
+            new_archive.zipped = new_file_name
+            new_archive.save()
+            # new_archive.possible_matches.set(possible_matches)
+            new_archive.tags.set(tags)
+            new_archive.alternative_sources.set(alternative_sources)
+
+            new_archive.refresh_from_db()
+            new_archive.create_marks_for_similar_archives([self.pk])
+
+            new_archives.append(new_archive)
+
+        my_zip.close()
+
+        return new_archives, ''
+
     def get_available_thumbnail_plus_size(self) -> tuple[str, Optional[int], Optional[int]]:
         if self.thumbnail.name and self.thumbnail.url:
             return self.thumbnail.url, self.thumbnail_height, self.thumbnail_width
@@ -2294,9 +2420,9 @@ class Archive(models.Model):
                                     im_resized = im_resized.convert('RGB')
                                 im_w, im_h = im_resized.size
                                 if im_w > im_h:
-                                    im_resized.thumbnail((settings.CRAWLER_SETTINGS.horizontal_image_max_width, 9999), PImage.LANCZOS)
+                                    im_resized.thumbnail((settings.CRAWLER_SETTINGS.horizontal_image_max_width, 9999), PImage.Resampling.LANCZOS)
                                 else:
-                                    im_resized.thumbnail((settings.CRAWLER_SETTINGS.vertical_image_max_width, 9999), PImage.LANCZOS)
+                                    im_resized.thumbnail((settings.CRAWLER_SETTINGS.vertical_image_max_width, 9999), PImage.Resampling.LANCZOS)
                                 im_resized.save(current_new_img, "JPEG")
                             else:
                                 shutil.copyfileobj(current_img, current_new_img)
@@ -2307,9 +2433,9 @@ class Archive(models.Model):
                             im_resized = im_resized.convert('RGB')
                         im_w, im_h = im_resized.size
                         if im_w > im_h:
-                            im_resized.thumbnail((settings.CRAWLER_SETTINGS.horizontal_image_max_width, 9999), PImage.LANCZOS)
+                            im_resized.thumbnail((settings.CRAWLER_SETTINGS.horizontal_image_max_width, 9999), PImage.Resampling.LANCZOS)
                         else:
-                            im_resized.thumbnail((settings.CRAWLER_SETTINGS.vertical_image_max_width, 9999), PImage.LANCZOS)
+                            im_resized.thumbnail((settings.CRAWLER_SETTINGS.vertical_image_max_width, 9999), PImage.Resampling.LANCZOS)
                         im_resized.save(current_new_img, "JPEG")
                     else:
                         shutil.copyfileobj(current_file, current_new_img)
@@ -2444,6 +2570,21 @@ class Archive(models.Model):
                 my_zip.close()
                 return
             filtered_files = get_images_from_zip(my_zip)
+
+            nested_images = [x for x in filtered_files if x[1] is not None]
+
+            if len(nested_images) > 0:
+                c = Counter(nested_image[1] for nested_image in nested_images)
+                mark_comment_list = ["File: {} has: {} images".format(x, c[x]) for x in c.keys()]
+                mark_comment = "\n".join(mark_comment_list)
+                manager_entry, _ = ArchiveManageEntry.objects.update_or_create(
+                    archive=self,
+                    mark_reason="found_nested_files",
+                    defaults={
+                        'mark_comment': mark_comment, 'mark_priority': 1.0, 'mark_check': True,
+                        'origin': ArchiveManageEntry.ORIGIN_SYSTEM
+                    },
+                )
 
             if not image_set_present:
                 for count, filename_tuple in enumerate(filtered_files, start=1):
@@ -2669,9 +2810,9 @@ class Archive(models.Model):
                                               match_type='size',
                                               match_accuracy=1)
 
-    def create_marks_for_similar_archives(self) -> None:
+    def create_marks_for_similar_archives(self, excluded_archives: Optional[list[int]] = None) -> None:
         if self.crc32:
-            similar_crc32 = Archive.objects.filter(crc32=self.crc32).exclude(pk=self.pk)
+            similar_crc32 = Archive.objects.filter(crc32=self.crc32).exclude(pk=self.pk).exclude(binned=True)
 
             # 4.2 means high level priority
             if similar_crc32.count() > 0:
@@ -2693,7 +2834,7 @@ class Archive(models.Model):
                 ).delete()
 
         if self.filesize and self.filecount:
-            similar_fileinfo = Archive.objects.filter(filesize=self.filesize, filecount=self.filecount).exclude(pk=self.pk)
+            similar_fileinfo = Archive.objects.filter(filesize=self.filesize, filecount=self.filecount).exclude(pk=self.pk).exclude(binned=True)
 
             # 4.1 means high level priority
             if similar_fileinfo.count() > 0:
@@ -2715,7 +2856,7 @@ class Archive(models.Model):
                 ).delete()
 
         if self.title:
-            similar_title = Archive.objects.filter(title=self.title).exclude(pk=self.pk)
+            similar_title = Archive.objects.filter(title=self.title).exclude(pk=self.pk).exclude(binned=True)
 
             if similar_title.count() > 0:
 
@@ -2737,17 +2878,22 @@ class Archive(models.Model):
                     mark_user__isnull=True
                 ).delete()
 
-        self.create_sha1_similarity_mark()
-        self.create_phash_similarity_mark()
+        self.create_sha1_similarity_mark(excluded_archives)
+        self.create_phash_similarity_mark(excluded_archives)
+        self.create_wanted_image_similarity_mark()
+        # .exclude(pk__in=excluded_archives)
 
-    def create_sha1_similarity_mark(self) -> None:
+    def create_sha1_similarity_mark(self, excluded_archives: Optional[list[int]] = None) -> None:
         images_from_archive = self.image_set.filter(sha1__isnull=False)
 
         if images_from_archive:
             images_sha1 = images_from_archive.values_list('sha1', flat=True)
 
             similar_images = Image.objects.filter(sha1__in=images_sha1)\
-                .exclude(pk__in=images_from_archive).filter(archive__filecount__gte=self.filecount).distinct()
+                .exclude(pk__in=images_from_archive).filter(archive__filecount__gte=self.filecount).exclude(archive__binned=True).distinct()
+
+            if excluded_archives:
+                similar_images = similar_images.exclude(archive__pk__in=excluded_archives)
 
             if similar_images:
                 similar_images_pk = similar_images.values_list('pk', flat=True)
@@ -2799,7 +2945,7 @@ class Archive(models.Model):
             mark_user__isnull=True
         ).delete()
 
-    def create_phash_similarity_mark(self) -> None:
+    def create_phash_similarity_mark(self, excluded_archives: Optional[list[int]] = None) -> None:
         images_from_archive = self.image_set.all()
 
         image_type = ContentType.objects.get_for_model(Image)
@@ -2818,7 +2964,9 @@ class Archive(models.Model):
 
             if similar_images:
                 similar_images_pk = similar_images.values_list('object_id', flat=True)
-                archives_phash = Archive.objects.filter(image__in=similar_images_pk).distinct()
+                archives_phash = Archive.objects.filter(image__in=similar_images_pk).exclude(binned=True).distinct()
+                if excluded_archives:
+                    archives_phash = archives_phash.exclude(pk__in=excluded_archives)
                 per_archives_comment = []
 
                 mark_priority = 0.0
@@ -2873,6 +3021,72 @@ class Archive(models.Model):
             mark_user__isnull=True
         ).delete()
 
+    def create_wanted_image_similarity_mark(self) -> None:
+        if can_use_image_match and settings.CRAWLER_SETTINGS.auto_match_wanted_images and self.thumbnail:
+
+            wanted_images = WantedImage.objects.filter(active=True)
+
+            if wanted_images:
+                img_thumbnail = cv.imread(self.thumbnail.path)
+                img_gray = cv.cvtColor(img_thumbnail, cv.COLOR_BGR2GRAY)
+
+                per_archives_comment = []
+
+                highest_priority = 0.0
+
+                for wanted_image in wanted_images:
+                    template_img = cv.imread(wanted_image.thumbnail.path)
+                    template_gray = cv.cvtColor(template_img, cv.COLOR_BGR2GRAY)
+
+                    sift = cv.SIFT_create()  # type: ignore
+
+                    kp1, des1 = sift.detectAndCompute(template_gray, None)
+                    kp2, des2 = sift.detectAndCompute(img_gray, None)
+
+                    # FLANN parameters
+                    FLANN_INDEX_KDTREE = 1
+                    index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
+                    search_params = dict(checks=50)  # or pass empty dictionary
+
+                    flann = cv.FlannBasedMatcher(index_params, search_params)  # type: ignore
+
+                    matches = flann.knnMatch(des1, des2, k=2)
+
+                    good = []
+                    for i, (m, n) in enumerate(matches):
+                        if m.distance < wanted_image.match_threshold * n.distance:
+                            good.append([m])
+
+                    if len(good) > 0 and len(good) >= wanted_image.minimum_features:
+                        per_archives_comment.append(
+                            "Image: (special-link):({})({}) found {} features".format(
+                                wanted_image.image_name,
+                                wanted_image.get_image_url(),
+                                len(good)
+                            )
+                        )
+                        if wanted_image.mark_priority > highest_priority:
+                            highest_priority = wanted_image.mark_priority
+
+                if per_archives_comment:
+                    mark_comment = "\n".join(per_archives_comment)
+
+                    manager_entry, _ = ArchiveManageEntry.objects.update_or_create(
+                        archive=self,
+                        mark_reason="wanted_images_found",
+                        defaults={
+                            'mark_comment': mark_comment, 'mark_priority': highest_priority, 'mark_check': True,
+                            'origin': ArchiveManageEntry.ORIGIN_SYSTEM
+                        },
+                    )
+                    return
+
+        ArchiveManageEntry.objects.filter(
+            archive=self,
+            mark_reason="wanted_images_found",
+            mark_user__isnull=True
+        ).delete()
+
     def recalc_filesize(self) -> None:
         if os.path.isfile(self.zipped.path):
             self.filesize = get_zip_filesize(self.zipped.path)
@@ -2910,6 +3124,21 @@ class Archive(models.Model):
         if not filtered_files:
             my_zip.close()
             return False
+
+        nested_images = [x for x in filtered_files if x[1] is not None]
+
+        if len(nested_images) > 0:
+            c = Counter(nested_image[1] for nested_image in nested_images)
+            mark_comment_list = ["File: {} has: {} images".format(x, c[x]) for x in c.keys()]
+            mark_comment = "\n".join(mark_comment_list)
+            manager_entry, _ = ArchiveManageEntry.objects.update_or_create(
+                archive=self,
+                mark_reason="found_nested_files",
+                defaults={
+                    'mark_comment': mark_comment, 'mark_priority': 1.0, 'mark_check': True,
+                    'origin': ArchiveManageEntry.ORIGIN_SYSTEM
+                },
+            )
 
         images_from_archive = self.image_set.all()
 
@@ -3179,12 +3408,36 @@ class ArchiveGroup(models.Model):
             self.title_slug = slug_candidate
         super().save(*args, **kwargs)
 
+    def delete_text_report(self) -> str:
+        data: dict[str, typing.Any] = {
+        }
+        if self.title:
+            data['title'] = self.title
+        if self.details:
+            data['details'] = self.details
+        if not data:
+            return ''
+        return json.dumps(data, ensure_ascii=False)
+
+
+class ArchiveGroupEntryManager(models.Manager['ArchiveGroupEntry']):
+    def get_queryset(self) -> models.QuerySet:
+        return models.QuerySet(self.model, using=self._db)
+
+    def filter_by_authenticated_status(self, authenticated: bool, **kwargs: typing.Any) -> models.QuerySet:
+        if authenticated:
+            return self.get_queryset().filter(**kwargs)
+        else:
+            return self.get_queryset().filter(archive__public=True, **kwargs)
+
 
 class ArchiveGroupEntry(models.Model):
     archive_group = models.ForeignKey(ArchiveGroup, on_delete=models.CASCADE)
     archive = models.ForeignKey(Archive, on_delete=models.CASCADE)
     title = models.CharField(max_length=500, blank=True, default='')
     position = models.PositiveIntegerField(blank=True, null=True)
+
+    objects = ArchiveGroupEntryManager()
 
     class Meta:
         verbose_name_plural = "Archive group entries"
@@ -3238,30 +3491,27 @@ class ArchiveFileEntry(models.Model):
 
 def upload_imgpath(instance: 'Archive', filename: str) -> str:
     file_name, file_extension = os.path.splitext(filename)
-    return "images/extracted/archive_{id}/full/{file}.{uuid}{extension}".format(
+    return "images/extracted/archive_{id}/full/{uuid}{extension}".format(
         uuid=uuid.uuid4(),
         id=instance.id,
-        file=file_name,
         extension=file_extension,
     )
 
 
 def upload_imgpath_handler(instance: 'Image', filename: str) -> str:
     file_name, file_extension = os.path.splitext(filename)
-    return "images/extracted/archive_{id}/full/{file}.{uuid}{extension}".format(
+    return "images/extracted/archive_{id}/full/{uuid}{extension}".format(
         uuid=uuid.uuid4(),
         id=instance.archive.id,
-        file=file_name,
         extension=file_extension,
     )
 
 
 def upload_thumbpath_handler(instance: 'Image', filename: str) -> str:
     file_name, file_extension = os.path.splitext(filename)
-    return "images/extracted/archive_{id}/thumb/{file}.{uuid}{extension}".format(
+    return "images/extracted/archive_{id}/thumb/{uuid}{extension}".format(
         uuid=uuid.uuid4(),
         id=instance.archive.id,
-        file=file_name,
         extension=file_extension,
     )
 
@@ -3339,7 +3589,7 @@ class Image(models.Model):
                     im = PImage.open(io.BytesIO(full_image))
                     if im.mode != 'RGB':
                         im = im.convert('RGB')
-                    im.thumbnail((200, 290), PImage.LANCZOS)
+                    im.thumbnail((200, 290), PImage.Resampling.LANCZOS)
                     img_bytes = io.BytesIO()
                     im.save(img_bytes, format='JPEG')
                     return img_bytes.getvalue()
@@ -4188,3 +4438,114 @@ class MonitoredLink(models.Model):
         settings.WORKERS.timed_link_monitors = list(filter(lambda x: x.monitored_link.pk != self.pk, settings.WORKERS.timed_link_monitors))
         deleted = super(MonitoredLink, self).delete(*args, **kwargs)
         return deleted
+
+
+def upload_wanted_image_handler(instance: 'WantedImage', filename: str) -> str:
+    return "images/wanted_images/{uuid}_{file}".format(
+        file=filename,
+        uuid=uuid.uuid4(),
+    )
+
+
+def upload_wanted_image_thumbnail_handler(instance: 'WantedImage', filename: str) -> str:
+    return "images/wanted_images/{id}/tn/{file}".format(
+        id=instance.id,
+        file=filename
+    )
+
+
+class WantedImage(models.Model):
+
+    image = models.ImageField(
+        upload_to=upload_wanted_image_handler, max_length=500,
+        height_field='image_height',
+        width_field='image_width'
+    )
+    active = models.BooleanField(default=True)
+    image_name = models.CharField(max_length=500, blank=True, null=True)
+    image_height = models.PositiveIntegerField(null=True)
+    image_width = models.PositiveIntegerField(null=True)
+    image_format = models.CharField(max_length=50, blank=True, null=True)
+    image_mode = models.CharField(max_length=50, blank=True, null=True)
+    image_size = models.PositiveIntegerField(null=True)
+    thumbnail_height = models.PositiveIntegerField(blank=True, null=True)
+    thumbnail_width = models.PositiveIntegerField(blank=True, null=True)
+    thumbnail = models.ImageField(
+        upload_to=upload_wanted_image_thumbnail_handler, blank=True,
+        null=True, max_length=500,
+        height_field='thumbnail_height',
+        width_field='thumbnail_width'
+    )
+    sha1 = models.CharField(max_length=50, blank=True, null=True)
+    match_threshold = models.FloatField(
+        default=0.8,
+        validators=[
+            MaxValueValidator(1.0),
+            MinValueValidator(0.0)
+        ]
+    )
+
+    minimum_features = models.PositiveIntegerField(
+        default=0,
+    )
+    match_height = models.PositiveIntegerField(blank=True, null=True)
+    match_width = models.PositiveIntegerField(blank=True, null=True)
+    mark_priority = models.FloatField(blank=True, default=1.0)
+
+    # def delete_plus_files(self) -> None:
+    #     self.image.delete(save=False)
+    #     self.thumbnail.delete(save=False)
+    #     self.delete()
+
+    def __str__(self) -> str:
+        if self.image_name:
+            return self.image_name
+        else:
+            return self.image.name
+
+    # def get_absolute_url(self) -> str:
+    #     return reverse('viewer:wanted-image', args=[str(self.id)])
+
+    def get_image_url(self) -> str:
+        return self.image.url
+
+    def delete(self, *args: typing.Any, **kwargs: typing.Any) -> tuple[int, dict[str, int]]:
+        self.image.delete(save=False)
+        self.thumbnail.delete(save=False)
+        return super(WantedImage, self).delete(*args, **kwargs)
+
+    def save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
+        super(WantedImage, self).save(*args, **kwargs)
+        if self.image and os.path.isfile(self.image.path):
+            im = PImage.open(self.image.path)
+            self.image_format = im.format
+            self.image_mode = im.mode
+            self.image_size = self.image.size
+            if not self.image_name:
+                self.image_name = self.image.name
+            self.sha1 = sha1_from_file_object(self.image.path)
+            super(WantedImage, self).save(*args, **kwargs)
+        if not self.thumbnail:
+            self.regen_thumbnail()
+
+    def regen_thumbnail(self):
+        if self.image and os.path.isfile(self.image.path):
+            im = PImage.open(self.image.path)
+            size = im.size
+            thumb_img_name = upload_wanted_image_thumbnail_handler(self, os.path.basename(self.image.name))
+            if not self.match_width or not self.match_height:
+                to_use_width = size[0]
+                to_use_height = size[1]
+            else:
+                to_use_width = self.match_width
+                to_use_height = self.match_height
+            im = img_to_thumbnail(im, to_use_width, to_use_height)
+            thumb_fn = pjoin(settings.MEDIA_ROOT, thumb_img_name)
+            os.makedirs(os.path.dirname(thumb_fn), exist_ok=True)
+            im.save(thumb_fn, "JPEG")
+            self.thumbnail.name = thumb_img_name
+            im.close()
+            super(WantedImage, self).save()
+
+    def simple_save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
+        super(WantedImage, self).save(*args, **kwargs)

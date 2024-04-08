@@ -312,6 +312,13 @@ class ArchiveManageSearchSimpleForm(forms.Form):
         ),
     )
 
+    gallery__status = forms.ChoiceField(
+        choices=[(0, "--------")] + Gallery.StatusChoices.choices,
+        required=False,
+        label='Gallery Status',
+        widget=forms.widgets.Select(attrs={'class': 'form-control'}),
+    )
+
 
 class DivErrorList(ErrorList):
 
@@ -715,13 +722,13 @@ class ArchiveGroupCreateOrEditForm(ModelForm):
 
 
 class ArchiveGroupEntryForm(ModelForm):
-
+    # template_name_div = "form_snippet.html"
     class Meta:
         model = ArchiveGroupEntry
-        fields = ['archive', 'title', 'position']
+        fields = ['archive', 'title']
         widgets = {
             'title': forms.widgets.TextInput(attrs={'class': 'form-control'}),
-            'position': forms.widgets.NumberInput(attrs={'class': 'form-control'}),
+            # 'position': forms.widgets.NumberInput(attrs={'class': 'form-control'}),
             'archive': autocomplete.ModelSelect2(
                 url='archive-select-simple-autocomplete',
                 attrs={
@@ -732,14 +739,17 @@ class ArchiveGroupEntryForm(ModelForm):
 
 
 class BaseArchiveGroupEntryFormSet(BaseInlineFormSet):
+    def get_ordering_widget(self):
+        return forms.widgets.NumberInput(attrs={'min': 0, 'class': 'form-control'})
+
     def clean(self) -> None:
         super().clean()
         if any(self.errors):
             return
         positions: list[int] = []
         for form in self.forms:
-            if 'position' in form.cleaned_data:
-                position = form.cleaned_data['position']
+            if 'ORDER' in form.cleaned_data:
+                position = form.cleaned_data['ORDER']
                 if position in positions:
                     raise forms.ValidationError("Positions must be unique: {}".format(position))
                 positions.append(position)
@@ -748,7 +758,7 @@ class BaseArchiveGroupEntryFormSet(BaseInlineFormSet):
 ArchiveGroupEntryFormSet = inlineformset_factory(
     ArchiveGroup, ArchiveGroupEntry, form=ArchiveGroupEntryForm, extra=2,
     formset=BaseArchiveGroupEntryFormSet,
-    can_delete=True)
+    can_delete=True, can_order=True)
 
 
 class ArchiveCreateForm(ModelForm):
@@ -1032,3 +1042,43 @@ class EventSearchForm(forms.Form):
         widget=forms.DateInput(attrs={'class': 'form-control mr-sm-1', 'placeholder': 'to', 'type': 'date', 'size': 9}),
         input_formats=['%Y-%m-%d']
     )
+
+
+class SplitArchiveForm(forms.ModelForm):
+    new_file_name = forms.CharField(widget=forms.widgets.TextInput(attrs={'class': 'form-control', 'size': 100}))
+    starting_position = forms.IntegerField(required=True, widget=forms.NumberInput(attrs={'size': 10, 'min': 0, 'class': 'form-control'}))
+    ending_position = forms.IntegerField(required=True, widget=forms.NumberInput(attrs={'size': 10, 'min': 0, 'class': 'form-control'}))
+
+    class Meta:
+        model = Archive
+        fields: list[str] = []
+
+
+class BaseSplitArchiveFormSet(BaseModelFormSet):
+
+    def __init__(self, *args, **kwargs):
+        self.filecount = kwargs.pop("filecount")
+        super(BaseSplitArchiveFormSet, self).__init__(*args, **kwargs)
+
+    def clean(self) -> None:
+        if any(self.errors):
+            return
+        positions: list[int] = [0] * self.filecount
+        for form in self.forms:
+            if not form.cleaned_data:
+                continue
+            starting_position = form.cleaned_data['starting_position']
+            ending_position = form.cleaned_data['ending_position']
+            if starting_position < 1 or ending_position > self.filecount:
+                raise forms.ValidationError("Archive position out of bounds (1-index): [{}, {}]".format(starting_position, ending_position))
+            positions = [x[1] + 1 if x[0] >= starting_position - 1 and x[0] <= ending_position - 1 else x[1] for x in enumerate(positions)]
+            overlapping_positions = [x for x in positions if x > 1]
+            if overlapping_positions:
+                raise forms.ValidationError("The following positions are overlapping: {}".format(",".join([str(x) for x in overlapping_positions])))
+
+
+SplitArchiveFormSet = modelformset_factory(
+    Archive, form=SplitArchiveForm, extra=5,
+    formset=BaseSplitArchiveFormSet,
+    can_delete=False
+)
