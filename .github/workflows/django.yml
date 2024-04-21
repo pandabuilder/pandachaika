@@ -24,6 +24,8 @@ jobs:
     - name: Install Dependencies
       run: |
         python -m pip install --upgrade pip uv
+        uv venv
+        source .venv/bin/activate
         uv pip install -r ci-requirements.txt
     - name: Run Ruff
       run: |
