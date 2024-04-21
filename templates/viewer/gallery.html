@@ -135,6 +135,10 @@
           <td>{{ gallery.uploader|default:"None provided" }}</td>
         </tr>
         <tr>
+          <th>Disowned</th>
+          <td>{{ gallery.disowned|yesno }}</td>
+        </tr>
+        <tr>
           <th>Expunged</th>
           <td>{{ gallery.expunged|yesno }}</td>
         </tr>

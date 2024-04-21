@@ -357,18 +357,20 @@
     {% endif %}
     </li>
     {% if perms.viewer.change_archive %}
-    {% include 'viewer/include/archive_edit.html' %}
+    <li class="subtitle">
+        {% include 'viewer/include/archive_edit.html' %}
+    </li>
     {% endif %}
     {% if perms.viewer.view_marks %}
       <li class="subtitle">
-      <div class="row">
+      <div class="row g-4">
       {% for archive_manage_instance in manage_entries %}
         <div class="col-sm-3">
           <div class="card panel">
             <div class="card-header">
-                <div>by: {% if not archive_manage_instance.mark_user or archive_manage_instance.mark_user.pk == 1 %}ServiceAccount{% else %}{{ archive_manage_instance.mark_user }}{% endif %}, on: {{ archive_manage_instance.mark_date|date:"y-m-d H:i:s" }}, priority: {{ archive_manage_instance.mark_priority|floatformat:2 }}</div>
+                <div class="d-flex"><div class="text-center">by: {% if not archive_manage_instance.mark_user or archive_manage_instance.mark_user.pk == 1 %}ServiceAccount{% else %}{{ archive_manage_instance.mark_user }}{% endif %}, on: {{ archive_manage_instance.mark_date|date:"y-m-d H:i:s" }}, priority: {{ archive_manage_instance.mark_priority|floatformat:2 }}</div><a class="btn btn-sm btn-primary justify-content-end" role="button" onclick="toggleHeight(this);">expand</a></div>
             </div>
-            <div class="card-body">
+            <div class="card-body mark-height">
               <h5 class="card-title">{{ archive_manage_instance.mark_reason }}</h5>
               <p class="card-text">{{ archive_manage_instance.mark_comment|urlize_all_rel|convert_special_urls|linebreaks }}</p>
               <p class="card-text">{{ archive_manage_instance.mark_extra }}</p>
@@ -380,11 +382,18 @@
       </div>
       </li>
       {% if perms.viewer.mark_archive %}
+      <li class="subtitle">
       {% include 'viewer/include/archive_manage.html' %}
+      </li>
       {% endif %}
     {% endif %}
      <!-- Pagination and messages -->
     {% if user.is_authenticated %}
+      {% if not archive.crc32 %}
+          <li class="subtitle">
+            <div class="mt-4">The file is still being downloaded, cannot operate it unless it finishes</div>
+          </li>
+      {% endif %}
       {% if images and images.paginator.num_pages > 1 %}
         <!-- Next/Prev page links  -->
         <li class="text-center">
@@ -396,15 +405,12 @@
           </span>
         </li>
       {% endif %}
-      {% if not archive.crc32 %}
-        The file is still being downloaded, cannot operate it unless it finishes
-      {% endif %}
     {% endif %}
 
     {% if user.is_authenticated %}
       {% if mode == "edit" and user.is_staff %}
         <!-- EDIT VIEW  -->
-        <li class="subtitle">
+        <li class="subtitle mt-4">
           <a href="{% url 'viewer:archive-generate-matches' archive.pk %}">generate matches internally</a> >>
           <a href="{% url 'viewer:archive-generate-matches' archive.pk %}?clear">generate matches internally with cleared title</a> >>
           <span class="dropdown">
@@ -606,6 +612,18 @@
                 }
             });
         });
+
+        function toggleHeight(elem) {
+            console.log(elem.parentNode.parentNode.parentNode.parentNode);
+            const el = elem.parentNode.parentNode.parentNode.parentNode.querySelector(".card-body");
+            if(el.classList.contains("mark-height")) {
+                el.classList.remove("mark-height");
+            }
+            else {
+                el.classList.add("mark-height");
+            }
+        }
+
     </script>
   {% endcompress %}
   {% if user.is_staff %}

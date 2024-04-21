@@ -665,6 +665,7 @@ class Gallery(models.Model):
         'File count', blank=True, null=True, default=0)
     filesize = models.BigIntegerField('Size', blank=True, null=True, default=0)
     expunged = models.BooleanField(default=False)
+    disowned = models.BooleanField(default=False)
     rating = models.CharField(max_length=10, blank=True, null=True, default='')
     hidden = models.BooleanField(default=False)
     fjord = models.BooleanField(default=False)
@@ -737,6 +738,7 @@ class Gallery(models.Model):
                 'public': {'type': 'boolean'},
                 'category': {'type': 'keyword'},
                 'expunged': {'type': 'boolean'},
+                'disowned': {'type': 'boolean'},
                 'uploader': {'type': 'keyword'},
                 'source_url': {'type': 'text', 'index': False},
                 'thumbnail': {'type': 'text', 'index': False},
@@ -756,6 +758,7 @@ class Gallery(models.Model):
             ("wanted_gallery_found", "Can be notified of new wanted gallery matches"),
             ("crawler_adder", "Can add links to the crawler with more options"),
             ("read_gallery_change_log", "Can read the Gallery change log"),
+            ("manage_gallery", "Can manage available galleries"),
         )
         constraints = [
             models.UniqueConstraint(fields=['gid', 'provider'], name='unique_gallery')
@@ -940,6 +943,7 @@ class Gallery(models.Model):
             filesize=self.filesize,
             filecount=self.filecount,
             expunged=self.expunged,
+            disowned=self.disowned,
             rating=self.rating,
             fjord=self.fjord,
             hidden=self.hidden,
@@ -2687,7 +2691,28 @@ class Archive(models.Model):
         if self.original_filename is None or self.original_filename == '':
             self.original_filename = os.path.basename(self.zipped.name)
 
+        self.create_mark_if_parent_gallery()
+
         self.simple_save(force_update=True)
+
+    def create_mark_if_parent_gallery(self):
+        if (self.gallery and self.gallery.parent_gallery and
+                (self.gallery.parent_gallery.archive_set.filter(binned=True).count() > 0 or self.gallery.parent_gallery.alternative_sources.filter(binned=True).count() > 0)):
+            mark_comment = "Linked gallery: (special-link):({})({}), has a parent gallery: (special-link):({})({})".format(self.gallery.id, self.gallery.get_absolute_url(), self.gallery.parent_gallery.id, self.gallery.parent_gallery.get_absolute_url())
+            manager_entry, _ = ArchiveManageEntry.objects.update_or_create(
+                archive=self,
+                mark_reason="gallery_with_parent",
+                defaults={
+                    'mark_comment': mark_comment, 'mark_priority': 1.0, 'mark_check': True,
+                    'origin': ArchiveManageEntry.ORIGIN_SYSTEM
+                },
+            )
+        else:
+            ArchiveManageEntry.objects.filter(
+                archive=self,
+                mark_reason="gallery_with_parent",
+                mark_user__isnull=True
+            ).delete()
 
     def create_or_update_thumbnail_hash(self, algorithm: str):
 
@@ -3052,17 +3077,48 @@ class Archive(models.Model):
 
                     matches = flann.knnMatch(des1, des2, k=2)
 
-                    good = []
-                    for i, (m, n) in enumerate(matches):
+                    good_matches = []
+                    for m, n in matches:
                         if m.distance < wanted_image.match_threshold * n.distance:
-                            good.append([m])
+                            good_matches.append([m])
 
-                    if len(good) > 0 and len(good) >= wanted_image.minimum_features:
+                    if len(good_matches) > 0 and len(good_matches) >= wanted_image.minimum_features:
+
+                        if wanted_image.restrict_by_homogeneity:
+                            src_pts = np.array([kp1[m[0].queryIdx].pt for m in good_matches], dtype=np.float32)
+                            dst_pts = np.array([kp2[m[0].trainIdx].pt for m in good_matches], dtype=np.float32)
+
+                            slopes = (dst_pts[:, 1] - src_pts[:, 1]) / (dst_pts[:, 0] + template_img.shape[0] - src_pts[:, 0])
+                            slopes_mean = np.mean(slopes, axis=0)
+                            slopes_compared = np.abs((slopes/slopes_mean)-1)
+                            distances = np.sqrt((dst_pts[:, 1] - src_pts[:, 1])**2 + (dst_pts[:, 0] + template_img.shape[0] - src_pts[:, 0])**2)
+                            distances_mean = np.mean(distances, axis=0)
+                            distances_compared = np.abs((distances / distances_mean)-1)
+
+                            if np.count_nonzero(slopes_compared > 0.1) > 0 or np.count_nonzero(distances_compared > 0.1) > 0:
+                                continue
+
+                        found_image, created = FoundWantedImageOnArchive.objects.get_or_create(
+                            wanted_image=wanted_image, archive=self,
+                            defaults={
+                                'comment': django_tz.now(),
+                            }
+                        )
+
+                        draw_params = dict(matchColor=(0, 255, 0),  # draw matches in green color
+                                           singlePointColor=None,
+                                           flags=2)
+
+                        img_matches = cv.drawMatchesKnn(template_img, kp1, img_thumbnail, kp2, good_matches, None, **draw_params)  # type: ignore
+                        im = PImage.fromarray(cv.cvtColor(img_matches, cv.COLOR_BGR2RGB))
+                        found_image.save_result_image(im)
+
                         per_archives_comment.append(
-                            "Image: (special-link):({})({}) found {} features".format(
+                            "Image: (popover-img):({})({}) found {} (popover-img):(features)({})".format(
                                 wanted_image.image_name,
                                 wanted_image.get_image_url(),
-                                len(good)
+                                len(good_matches),
+                                found_image.get_image_url()
                             )
                         )
                         if wanted_image.mark_priority > highest_priority:
@@ -4488,6 +4544,9 @@ class WantedImage(models.Model):
     minimum_features = models.PositiveIntegerField(
         default=0,
     )
+
+    restrict_by_homogeneity = models.BooleanField(default=False)
+
     match_height = models.PositiveIntegerField(blank=True, null=True)
     match_width = models.PositiveIntegerField(blank=True, null=True)
     mark_priority = models.FloatField(blank=True, default=1.0)
@@ -4549,3 +4608,55 @@ class WantedImage(models.Model):
 
     def simple_save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
         super(WantedImage, self).save(*args, **kwargs)
+
+
+def upload_found_wanted_image_thumbnail_handler(instance: 'FoundWantedImageOnArchive', filename: str) -> str:
+    return "images/wanted_images_result/{id}/{filename}".format(
+        id=instance.id,
+        filename=filename,
+    )
+
+
+class FoundWantedImageOnArchive(models.Model):
+
+    wanted_image = models.ForeignKey(WantedImage, on_delete=models.CASCADE)
+    archive = models.ForeignKey(Archive, on_delete=models.CASCADE)
+
+    comment = models.CharField(max_length=250, blank=True, null=True)
+
+    result_image_height = models.PositiveIntegerField(blank=True, null=True)
+    result_image_width = models.PositiveIntegerField(blank=True, null=True)
+    result_image = models.ImageField(
+        upload_to=upload_found_wanted_image_thumbnail_handler, blank=True,
+        null=True, max_length=500,
+        height_field='result_image_height',
+        width_field='result_image_width'
+    )
+
+    def __str__(self) -> str:
+        return self.result_image.name
+
+    def get_image_url(self) -> str:
+        return self.result_image.url
+
+    def delete(self, *args: typing.Any, **kwargs: typing.Any) -> tuple[int, dict[str, int]]:
+        self.result_image.delete(save=False)
+        return super(FoundWantedImageOnArchive, self).delete(*args, **kwargs)
+
+    def save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
+        super(FoundWantedImageOnArchive, self).save(*args, **kwargs)
+
+    def save_result_image(self, result_image: PImage.Image) -> None:
+        size = result_image.size
+        img_name = upload_found_wanted_image_thumbnail_handler(self, "result_image.jpg")
+        to_use_width = size[0]
+        to_use_height = size[1]
+        im = img_to_thumbnail(result_image, to_use_width, to_use_height)
+        thumb_fn = pjoin(settings.MEDIA_ROOT, img_name)
+        os.makedirs(os.path.dirname(thumb_fn), exist_ok=True)
+        im.save(thumb_fn, "JPEG")
+        self.result_image.name = img_name
+        super(FoundWantedImageOnArchive, self).save()
+
+    def simple_save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
+        super(FoundWantedImageOnArchive, self).save(*args, **kwargs)

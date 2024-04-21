@@ -12,7 +12,7 @@ import typing
 import zipfile
 import zlib
 import fnmatch
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, timezone
 from difflib import SequenceMatcher
 from functools import wraps
 from itertools import tee, islice, chain
@@ -44,6 +44,7 @@ if typing.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 PUSHOVER_API_URL = 'https://api.pushover.net/1/messages.json'
+WAYBACK_API_URL = 'https://web.archive.org/cdx/search/cdx'
 
 ZIP_CONTAINER_REGEX = re.compile(r'(\.zip|\.cbz)$', re.IGNORECASE)
 IMAGES_REGEX = re.compile(r'(\.jpeg|\.jpg|\.png|\.gif)$', re.IGNORECASE)
@@ -616,7 +617,7 @@ def get_title_from_path(path: str) -> str:
 needed_keys = [
     'gid', 'token', 'title', 'title_jpn',
     'category', 'uploader', 'posted', 'filecount',
-    'filesize', 'expunged', 'rating', 'fjord',
+    'filesize', 'expunged', 'disowned', 'rating', 'fjord',
     'hidden', 'dl_type', 'comment', 'thumbnail_url',
     'public', 'provider', 'gallery_container_gid', 'magazine_gid',
     'status', 'origin', 'reason',
@@ -865,3 +866,16 @@ def remove_archive_extensions(filename: str):
     for extension in ZIP_CONTAINER_EXTENSIONS:
         filename = filename.replace(extension, "")
     return filename
+
+
+def get_oldest_entry_from_wayback(url: str) -> Optional[datetime]:
+    request_url = WAYBACK_API_URL + '?url={}&output=json&fl=timestamp&limit=1&filter=statuscode:200'.format(url)
+    r = request_with_retries(request_url, {})
+    if r is None:
+        return None
+    if r.status_code == 200:
+        json_response = r.json()
+        if len(json_response) >= 2:
+            if len(json_response[1]) >= 1:
+                return datetime.strptime(json_response[1][0], "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
+    return None

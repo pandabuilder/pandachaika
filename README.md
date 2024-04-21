@@ -3,6 +3,8 @@ Backend+Frontend for viewing, matching and downloading hentai-manga galleries in
 
 Runs the [panda.chaika.moe](https://panda.chaika.moe) website, behind NGINX.
 
+Note: Code is managed internally on another repository. This repository is used as a mirror, pushed to from time to time.
+
 Overview
 ---------------------
 Program is separated into two parts, one command line program that you can feed e-hentai.org/exhentai.org (panda) links, and it will download them using either torrent or archive/GP/Credits. The files will be kept on the filesystem as zip files. After downloading, all associated metadata will be obtained and stored on a database. Downloads using torrents can be handled by downloading to an external server, from which you can then download to the running server using FTPS.

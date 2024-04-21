@@ -111,12 +111,16 @@ SPECIAL_FINAL = r"<a href=\2>\1</a>"
 SPECIAL_RE_OLD = re.compile(r"special-link:(/archive/\d+/?)")
 SPECIAL_FINAL_OLD = r"<a href=\1>\1</a>"
 
+POPOVER_IMG_RE = re.compile(r"\(popover-img\):\((.*?)\)?\((.*?)\)")
+POPOVER_IMG_FINAL = r'<a href="#" class="img-preview" data-image-url=\2 rel="popover">\1</a>'
+
 
 @register.filter(is_safe=True)
 @stringfilter
 def convert_special_urls(value: str) -> str:
     value = re.sub(SPECIAL_RE, SPECIAL_FINAL, value)
     value = re.sub(SPECIAL_RE_OLD, SPECIAL_FINAL_OLD, value)
+    value = re.sub(POPOVER_IMG_RE, POPOVER_IMG_FINAL, value)
     return value
 
 
@@ -239,12 +243,12 @@ def changes_archive_delta(new_record):
 
 GALLERY_INCLUDED_FIELDS = (
     'title', 'title_jpn', 'category', 'uploader', 'comment', 'posted', 'filecount', 'filesize',
-    'expunged', 'rating', 'fjord', 'public', 'dl_type', 'reason', 'thumbnail_url', 'status'
+    'expunged', 'disowned', 'rating', 'fjord', 'public', 'dl_type', 'reason', 'thumbnail_url', 'status'
 )
 
 GALLERY_PUBLIC_INCLUDED_FIELDS = (
     'title', 'title_jpn', 'category', 'uploader', 'comment', 'posted', 'filecount', 'filesize',
-    'expunged', 'rating'
+    'expunged', 'disowned', 'rating'
 )
 
 

@@ -62,6 +62,11 @@
             <input id="checkbox1" class="form-check-input" type="checkbox" name="expunged" value="1" {% if display_prms.expunged == '1' %}checked{% endif %}><label for="checkbox1">Expunged</label>
           </div>
       </div>
+      <div class="col-md-auto">
+          <div class="form-check">
+            <input id="checkbox11" class="form-check-input" type="checkbox" name="disowned" value="1" {% if display_prms.disowned == '1' %}checked{% endif %}><label for="checkbox11">Disowned</label>
+          </div>
+      </div>
         {% if user.is_authenticated %}
           <div class="col-md-auto">
               <div class="form-check">

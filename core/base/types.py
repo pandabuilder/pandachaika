@@ -19,6 +19,7 @@ class GalleryData:
             filesize: Optional[int] = None, filecount: Optional[int] = None,
             expunged: Optional[int] = None, rating: Optional[str] = None,
             fjord: Optional[bool] = None, hidden: Optional[bool] = None,
+            disowned: Optional[bool] = None,
             uploader: Optional[str] = None, thumbnail_url: Optional[str] = None,
             dl_type: Optional[str] = None, public: Optional[bool] = None,
             content: Optional[str] = None, archiver_key: Optional[str] = None,
@@ -57,6 +58,7 @@ class GalleryData:
         self.thumbnail_url = thumbnail_url
         self.dl_type = dl_type
         self.expunged = expunged
+        self.disowned = disowned
         self.rating = rating
         self.fjord = fjord
         self.hidden = hidden

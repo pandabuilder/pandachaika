@@ -290,6 +290,7 @@ def api(request: HttpRequest, model: Optional[str] = None, obj_id: Optional[str]
                         'download': request.build_absolute_uri(reverse('viewer:archive-download', args=(archive.pk,))),
                         'url': request.build_absolute_uri(reverse('viewer:archive', args=(archive.pk,))),
                         'expunged': archive.gallery.expunged if archive.gallery else '',
+                        'disowned': archive.gallery.disowned if archive.gallery else '',
                         'rating': float(str_to_int(archive.gallery.rating)) if archive.gallery else '',
                         'fjord': archive.gallery.fjord if archive.gallery else None,
                         'tags': archive.tag_list_sorted(),

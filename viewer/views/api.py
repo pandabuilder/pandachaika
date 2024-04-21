@@ -110,6 +110,7 @@ def json_api_handle_get(request: HttpRequest, user_is_authenticated: bool):
                 'filecount': archive.filecount,
                 'filesize': archive.filesize,
                 'expunged': archive.gallery.expunged if archive.gallery else '',
+                'disowned': archive.gallery.disowned if archive.gallery else '',
                 'rating': float(str_to_int(archive.gallery.rating)) if archive.gallery else '',
                 'fjord': archive.gallery.fjord if archive.gallery else '',
                 'tags': archive.tag_list(),
@@ -267,6 +268,7 @@ def json_api_handle_get(request: HttpRequest, user_is_authenticated: bool):
                 'filecount': gallery.filecount,
                 'filesize': gallery.filesize,
                 'expunged': gallery.expunged,
+                'disowned': gallery.disowned,
                 'rating': float(str_to_int(gallery.rating)),
                 'fjord': gallery.fjord,
                 'link': gallery.get_link(),
@@ -307,6 +309,7 @@ def json_api_handle_get(request: HttpRequest, user_is_authenticated: bool):
                 'filecount': gallery.filecount,
                 'filesize': gallery.filesize,
                 'expunged': gallery.expunged,
+                'disowned': gallery.disowned,
                 'rating': float(str_to_int(gallery.rating)),
                 'fjord': gallery.fjord,
                 'link': gallery.get_link(),
@@ -366,6 +369,7 @@ def json_api_handle_get(request: HttpRequest, user_is_authenticated: bool):
                 'filecount': archive.filecount,
                 'filesize': archive.filesize,
                 'expunged': archive.gallery.expunged if archive.gallery else '',
+                'disowned': archive.gallery.disowned if archive.gallery else '',
                 'rating': float(str_to_int(archive.gallery.rating)) if archive.gallery else '',
                 'fjord': archive.gallery.fjord if archive.gallery else '',
                 'tags': archive.tag_list(),
@@ -446,6 +450,7 @@ def json_api_handle_get(request: HttpRequest, user_is_authenticated: bool):
                 'filecount': gallery.filecount,
                 'filesize': gallery.filesize,
                 'expunged': gallery.expunged,
+                'disowned': gallery.disowned,
                 'provider': gallery.provider,
                 'rating': gallery.rating,
                 'reason': gallery.reason,
@@ -481,6 +486,7 @@ def json_api_handle_get(request: HttpRequest, user_is_authenticated: bool):
                 'filecount': gallery.filecount,
                 'filesize': gallery.filesize,
                 'expunged': gallery.expunged,
+                'disowned': gallery.disowned,
                 'source': gallery.provider,
                 'rating': float(str_to_int(gallery.rating)),
                 'fjord': gallery.fjord,
@@ -510,6 +516,7 @@ def json_api_handle_get(request: HttpRequest, user_is_authenticated: bool):
                 'filecount': gallery.filecount,
                 'filesize': gallery.filesize,
                 'expunged': gallery.expunged,
+                'disowned': gallery.disowned,
                 'provider': gallery.provider,
                 'rating': gallery.rating,
                 'fjord': gallery.fjord,
@@ -641,6 +648,7 @@ def json_api_handle_get(request: HttpRequest, user_is_authenticated: bool):
                 'filecount': gallery.filecount,
                 'filesize': gallery.filesize,
                 'expunged': gallery.expunged,
+                'disowned': gallery.disowned,
                 'provider': gallery.provider,
                 'rating': gallery.rating,
                 'fjord': gallery.fjord,
@@ -1384,6 +1392,7 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                     'filecount': gallery.filecount,
                     'filesize': gallery.filesize,
                     'expunged': gallery.expunged,
+                    'disowned': gallery.disowned,
                     'rating': gallery.rating,
                     'hidden': gallery.hidden,
                     'fjord': gallery.fjord,
@@ -1536,6 +1545,8 @@ def filter_galleries_no_request(filter_args: Union[dict[str, Any], QueryDict]) -
         results = results.filter(category__icontains=filter_args["category"])
     if filter_args["expunged"]:
         results = results.filter(expunged=bool(filter_args["expunged"]))
+    if filter_args["disowned"]:
+        results = results.filter(disowned=bool(filter_args["disowned"]))
     if filter_args["hidden"]:
         results = results.filter(hidden=bool(filter_args["hidden"]))
     if filter_args["fjord"]:

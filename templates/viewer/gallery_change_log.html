@@ -14,9 +14,9 @@
     <h2>Change Log for Gallery: <a href="{% url 'viewer:gallery' gallery.pk %}">{{ gallery.best_title }}</a></h2>
 
     {% if user.is_authenticated %}
-        <p class="lead">Tracked fields: title, title_jpn, tags, category, uploader, comment, posted, filecount, filesize, expunged, rating, fjord, public, dl_type, reason, thumbnail_url, status.</p>
+        <p class="lead">Tracked fields: title, title_jpn, tags, category, uploader, comment, posted, filecount, filesize, expunged, disowned, rating, fjord, public, dl_type, reason, thumbnail_url, status.</p>
     {% else %}
-        <p class="lead">Tracked public fields: title, title_jpn, tags, category, uploader, comment, posted, filecount, filesize, expunged, rating.</p>
+        <p class="lead">Tracked public fields: title, title_jpn, tags, category, uploader, comment, posted, filecount, filesize, expunged, disowned, rating.</p>
     {% endif %}
   </div>
   {% load viewer_extras %}

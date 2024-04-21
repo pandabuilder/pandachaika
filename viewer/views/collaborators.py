@@ -19,13 +19,14 @@ from django.utils.crypto import get_random_string
 
 from core.base.setup import Settings
 from core.base.utilities import thread_exists, clamp, get_schedulers_status
-from viewer.utils.functions import archive_manage_results_to_json, galleries_update_metadata
+from viewer.utils.functions import archive_manage_results_to_json, galleries_update_metadata, \
+    gallery_search_results_to_json
 from viewer.utils.matching import generate_possible_matches_for_archives
 from viewer.utils.actions import event_log
 from viewer.forms import GallerySearchForm, ArchiveSearchForm, WantedGalleryCreateOrEditForm, \
     ArchiveCreateForm, ArchiveGroupSelectForm, GalleryCreateForm, ArchiveManageEntrySimpleForm, \
     WantedGalleryColSearchForm, ArchiveManageSearchSimpleForm, AllGalleriesSearchForm, \
-    EventSearchForm
+    EventSearchForm, GallerySearchSimpleForm
 from viewer.models import Archive, Gallery, EventLog, ArchiveMatches, Tag, WantedGallery, ArchiveGroup, \
     ArchiveGroupEntry, GallerySubmitEntry, MonitoredLink, ArchiveRecycleEntry, ArchiveTag, UserLongLivedToken
 from viewer.utils.tags import sort_tags
@@ -807,6 +808,237 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
     return render(request, "viewer/collaborators/manage_archives.html", d)
 
 
+@permission_required('viewer.manage_gallery')
+def manage_galleries(request: HttpRequest) -> HttpResponse:
+    p = request.POST
+    get = request.GET
+
+    title = get.get("title", '')
+    tags = get.get("tags", '')
+
+    json_request = get.get('json', '')
+
+    try:
+        page = int(get.get("page", '1'))
+    except ValueError:
+        page = 1
+
+    try:
+        size = int(get.get("size", '100'))
+        if size not in (10, 20, 50, 100):
+            size = 100
+    except ValueError:
+        size = 100
+
+    if p:
+        pks = []
+        for k, v in p.items():
+            if k.startswith("sel-"):
+                # k, pk = k.split('-')
+                # results[pk][k] = v
+                pks.append(v)
+
+        if 'reason' in p and p['reason'] != '':
+            reason = p['reason']
+        else:
+            reason = ''
+
+        if 'run_for_all' in p and request.user.is_staff:
+            params = {
+                'sort': 'create_date',
+                'asc_desc': 'desc',
+            }
+
+            for k, v in get.items():
+                if isinstance(v, str):
+                    params[k] = v
+
+            for k in gallery_filter_keys:
+                if k not in params:
+                    params[k] = ''
+
+            if 'sort_by' in get:
+                params['sort_by'] = get.get('sort_by', '')
+
+            results_gallery = filter_galleries_simple(params)
+        else:
+            preserved = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(pks)])
+            results_gallery = Gallery.objects.filter(id__in=pks).order_by(preserved)
+
+        if 'delete_galleries' in p and request.user.has_perm('viewer.mark_delete_gallery'):
+            for gallery in results_gallery:
+                message = 'Marking deleted for gallery: {}, link: {}'.format(gallery.title, gallery.get_link())
+                logger.info(message)
+                messages.success(request, message)
+                gallery.mark_as_deleted()
+                event_log(
+                    request.user,
+                    'MARK_DELETE_GALLERY',
+                    reason=reason,
+                    content_object=gallery,
+                    result='success',
+                )
+        elif 'real_delete_galleries' in p and request.user.has_perm('viewer.delete_gallery'):
+            for gallery in results_gallery:
+                message = 'Deleting gallery: {}, link: {}'.format(gallery.title, gallery.get_link())
+                old_gallery_link = gallery.get_link()
+                logger.info(message)
+                messages.success(request, message)
+                gallery.delete()
+                event_log(
+                    request.user,
+                    'DELETE_GALLERY',
+                    reason=reason,
+                    data=old_gallery_link,
+                    result='success',
+                )
+        elif 'publish_galleries' in p and request.user.has_perm('viewer.publish_gallery'):
+            for gallery in results_gallery:
+                message = 'Publishing gallery: {}, link: {}'.format(gallery.title, gallery.get_link())
+                logger.info(message)
+                messages.success(request, message)
+                gallery.set_public()
+                event_log(
+                    request.user,
+                    'PUBLISH_GALLERY',
+                    reason=reason,
+                    content_object=gallery,
+                    result='success',
+                )
+        elif 'private_galleries' in p and request.user.has_perm('viewer.private_gallery'):
+            for gallery in results_gallery:
+                message = 'Making private gallery: {}, link: {}'.format(gallery.title, gallery.get_link())
+                logger.info(message)
+                messages.success(request, message)
+                gallery.set_private()
+                event_log(
+                    request.user,
+                    'UNPUBLISH_GALLERY',
+                    reason=reason,
+                    content_object=gallery,
+                    result='success',
+                )
+        elif 'download_galleries' in p and request.user.has_perm('viewer.download_gallery'):
+            for gallery in results_gallery:
+                message = 'Queueing gallery: {}, link: {}'.format(gallery.title, gallery.get_link())
+                logger.info(message)
+                messages.success(request, message)
+
+                # Force replace_metadata when queueing from this list, since it's mostly used to download non used.
+                current_settings = Settings(load_from_config=crawler_settings.config)
+
+                if current_settings.workers.web_queue:
+
+                    current_settings.replace_metadata = True
+                    current_settings.retry_failed = True
+
+                    if reason:
+                        # Force limit string length (reason field max_length)
+                        current_settings.archive_reason = reason[:200]
+                        current_settings.archive_details = gallery.reason or ''
+                        current_settings.gallery_reason = reason[:200]
+                    elif gallery.reason:
+                        current_settings.archive_reason = gallery.reason
+
+                    def archive_callback(x: Optional['Archive'], crawled_url: Optional[str], result: str) -> None:
+                        event_log(
+                            request.user,
+                            'DOWNLOAD_ARCHIVE',
+                            reason=reason,
+                            content_object=x,
+                            result=result,
+                            data=crawled_url
+                        )
+
+                    def gallery_callback(x: Optional['Gallery'], crawled_url: Optional[str], result: str) -> None:
+                        event_log(
+                            request.user,
+                            'DOWNLOAD_GALLERY',
+                            reason=reason,
+                            content_object=x,
+                            result=result,
+                            data=crawled_url
+                        )
+
+                    current_settings.workers.web_queue.enqueue_args_list(
+                        (gallery.get_link(),),
+                        override_options=current_settings,
+                        archive_callback=archive_callback,
+                        gallery_callback=gallery_callback,
+
+                    )
+        elif 'recall_api' in p and request.user.has_perm('viewer.update_metadata'):
+            message = 'Recalling API for {} galleries'.format(results_gallery.count())
+            logger.info(message)
+            messages.success(request, message)
+
+            gallery_links = [x.get_link() for x in results_gallery]
+            gallery_providers = list(results_gallery.values_list('provider', flat=True).distinct())
+
+            galleries_update_metadata(gallery_links, gallery_providers, request.user, reason, crawler_settings)
+
+        if json_request:
+            return HttpResponse('', content_type="application/json; charset=utf-8")
+
+    params = {
+        'sort': 'create_date',
+        'asc_desc': 'desc',
+    }
+
+    for k, v in get.items():
+        if isinstance(v, str):
+            params[k] = v
+
+    for k in gallery_filter_keys:
+        if k not in params:
+            params[k] = ''
+
+    if 'sort_by' in get:
+        params['sort_by'] = get.get('sort_by', '')
+
+    results = filter_galleries_simple(params).prefetch_related('foundgallery_set', 'magazine_chapters')
+
+    if json_request:
+        results = results.prefetch_related('tags')
+
+    paginator = Paginator(results, size)
+    try:
+        results_page = paginator.page(page)
+    except (InvalidPage, EmptyPage):
+        results_page = paginator.page(paginator.num_pages)
+
+    if json_request:
+        response = json.dumps(
+            {
+                'results': gallery_search_results_to_json(request, results_page),
+                'has_previous': results_page.has_previous(),
+                'has_next': results_page.has_next(),
+                'num_pages': paginator.num_pages,
+                'count': paginator.count,
+                'number': results_page.number,
+            },
+            # indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        return HttpResponse(response, content_type="application/json; charset=utf-8")
+
+    if 'clear' in get:
+        form = AllGalleriesSearchForm()
+    else:
+        form = AllGalleriesSearchForm(initial={'title': title, 'tags': tags})
+
+    search_form = GallerySearchSimpleForm(request.GET)
+
+    d = {
+        'results': results_page,
+        'form': form,
+        'search_form': search_form,
+    }
+
+    return render(request, "viewer/collaborators/manage_galleries.html", d)
+
+
 @login_required
 def my_event_log(request: AuthenticatedHttpRequest) -> HttpResponse:
     get = request.GET
@@ -1097,6 +1329,7 @@ def user_crawler(request: AuthenticatedHttpRequest) -> HttpResponse:
                 for url_filtered in urls_filtered:
                     gid = parser.id_from_url(url_filtered)
                     gallery = Gallery.objects.filter(gid=gid, provider=parser.name).first()
+                    found_states = []
                     if not gallery:
                         if add_as_deleted:
                             messages.warning(
@@ -1116,13 +1349,28 @@ def user_crawler(request: AuthenticatedHttpRequest) -> HttpResponse:
                             result='queued'
                         )
                         continue
+
                     if gallery.is_submitted():
-                        messages.info(
-                            request,
-                            '{}: Already in submit queue, link: {}, reason: {}'.format(
-                                url_filtered, gallery.get_absolute_url(), gallery.reason
-                            )
+                        found_states.append("submitted")
+                    if gallery.is_deleted():
+                        found_states.append("deleted")
+                    if gallery.is_denied():
+                        found_states.append("denied")
+                    if gallery.public:
+                        found_states.append("public")
+                    else:
+                        found_states.append("private")
+                    if 'failed' in gallery.dl_type:
+                        found_states.append("failed_download")
+
+                    messages.info(
+                        request,
+                        '{}: Gallery present: {}, found states: [{}], reason: {}'.format(
+                            url_filtered, request.build_absolute_uri(gallery.get_absolute_url()), ",".join(found_states), gallery.reason
                         )
+                    )
+
+                    if gallery.is_submitted():
                         event_log(
                             request.user,
                             'CRAWL_URL',
@@ -1131,13 +1379,6 @@ def user_crawler(request: AuthenticatedHttpRequest) -> HttpResponse:
                             result='already_submitted'
                         )
                     elif gallery.public:
-                        messages.info(
-                            request,
-                            '{}: Already present, is public: {}'.format(
-                                url_filtered,
-                                request.build_absolute_uri(gallery.get_absolute_url())
-                            )
-                        )
                         event_log(
                             request.user,
                             'CRAWL_URL',
@@ -1146,12 +1387,6 @@ def user_crawler(request: AuthenticatedHttpRequest) -> HttpResponse:
                             result='already_public'
                         )
                     elif gallery.is_deleted():
-                        messages.warning(
-                            request,
-                            '{}: Already present, marked as deleted: {}, reason: {}'.format(
-                                url_filtered, gallery.get_absolute_url(), gallery.reason
-                            )
-                        )
                         event_log(
                             request.user,
                             'CRAWL_URL',
@@ -1160,12 +1395,6 @@ def user_crawler(request: AuthenticatedHttpRequest) -> HttpResponse:
                             result='already_deleted'
                         )
                     elif gallery.is_denied():
-                        messages.warning(
-                            request,
-                            '{}: Already present, marked as denied: {}, reason: {}'.format(
-                                url_filtered, gallery.get_absolute_url(), gallery.reason
-                            )
-                        )
                         event_log(
                             request.user,
                             'CRAWL_URL',
@@ -1174,13 +1403,6 @@ def user_crawler(request: AuthenticatedHttpRequest) -> HttpResponse:
                             result='already_denied'
                         )
                     else:
-                        messages.info(
-                            request,
-                            '{}: Already present, is not public: {}'.format(
-                                url_filtered,
-                                request.build_absolute_uri(gallery.get_absolute_url())
-                            )
-                        )
                         event_log(
                             request.user,
                             'CRAWL_URL',

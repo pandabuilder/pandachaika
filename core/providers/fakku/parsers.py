@@ -13,7 +13,7 @@ from django.db.models import QuerySet
 from dateutil import parser as date_parser
 
 from core.base.parsers import BaseParser
-from core.base.utilities import request_with_retries, construct_request_dict
+from core.base.utilities import request_with_retries, construct_request_dict, get_oldest_entry_from_wayback
 from core.base.types import GalleryData
 from core.base.utilities import translate_tag
 from . import constants
@@ -85,6 +85,8 @@ class Parser(BaseParser):
             gallery = GalleryData(gid, self.name)
             if self.own_settings.get_posted_date_from_feed:
                 gallery.posted = self.parse_posted_date_from_feed(constants.aux_feed_url, gallery.gid)
+            if self.own_settings.get_posted_date_from_wayback and gallery.posted is None:
+                gallery.posted = get_oldest_entry_from_wayback(link)
             gallery.link = link
             gallery.provider_metadata = response_text
             gallery.tags = []
@@ -115,7 +117,7 @@ class Parser(BaseParser):
             artists_set = set()
 
             for chapter_container in chapters_container:
-                chapter_title_container = chapter_container.find("a", class_=re.compile("text-lg text-brand-light font-semibold"))
+                chapter_title_container = chapter_container.find("a", class_=re.compile("text-brand-light font-semibold"))
                 if chapter_title_container:
                     chapter_link = chapter_title_container.get('href').replace(constants.main_url + '/', '')
                     chapter_gid = chapter_link[1:] if chapter_link[0] == '/' else chapter_link
@@ -152,14 +154,18 @@ class Parser(BaseParser):
             gallery.tags = []
             if self.own_settings.get_posted_date_from_feed:
                 gallery.posted = self.parse_posted_date_from_feed(constants.aux_feed_url, gallery.gid)
+            if self.own_settings.get_posted_date_from_wayback and gallery.posted is None:
+                gallery.posted = get_oldest_entry_from_wayback(link)
             gallery.title = gallery_container.find("h1", class_="block col-span-full text-2xl pt-2 font-semibold text-brand-light text-left dark:text-white dark:link:text-white pt-0").get_text()
 
             description_container = soup.find("meta", property="og:description")
             if description_container:
                 gallery.comment = description_container['content'].strip()
-            thumbnail_container = soup.find("meta", property="og:image")
+            thumbnail_container = gallery_container.find("img", class_="max-w-full")
             if thumbnail_container:
-                gallery.thumbnail_url = thumbnail_container['content'].replace("https:https:", "https:")
+                gallery.thumbnail_url = thumbnail_container.get("src")
+                if gallery.thumbnail_url and gallery.thumbnail_url.startswith('//'):
+                    gallery.thumbnail_url = 'https:' + gallery.thumbnail_url
 
             if gallery.gid.startswith('manga') or gallery.gid.startswith('hentai'):
                 gallery.category = 'Manga'

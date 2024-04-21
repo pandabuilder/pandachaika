@@ -34,6 +34,10 @@ def map_external_gallery_data_to_internal(gallery_data: DataDict) -> GalleryData
         tags=translate_tag_list(gallery_data['tags']),
     )
 
+    if gallery_data['uploader'] == '(Disowned)':
+        internal_gallery_data.disowned = True
+        internal_gallery_data.uploader = None
+
     internal_gallery_data.provider_metadata = json.dumps(gallery_data)
 
     possible_extra_keys = ('parent_gid', 'parent_key', 'first_gid', 'first_key', 'current_gid', 'current_key')

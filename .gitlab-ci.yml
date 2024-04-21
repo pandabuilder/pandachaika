@@ -24,7 +24,7 @@ test3.12:
   - pip3.12 install uv
   - uv pip install -r ci-requirements.txt
   - ruff check --exclude="ENV3.12" .
-  - mypy core pandabackup viewer --exclude viewer/migrations
+  - mypy core pandabackup viewer
   - bash ./set_db_engine.sh
   - python3.12 manage.py migrate
   - python3.12 manage.py test viewer.tests.test_internal viewer.tests.test_core
@@ -48,7 +48,7 @@ test3.10:
   - pip3.10 install uv
   - uv pip install -r ci-requirements.txt
   - ruff check --exclude="ENV3.10" .
-  - mypy core pandabackup viewer --exclude viewer/migrations
+  - mypy core pandabackup viewer
   - bash ./set_db_engine.sh
   - python3.10 manage.py migrate
   - python3.10 manage.py test viewer.tests.test_internal viewer.tests.test_core
@@ -72,7 +72,7 @@ test3.11:
   - pip3.11 install uv
   - uv pip install -r ci-requirements.txt
   - ruff check --exclude="ENV3.11" .
-  - mypy core pandabackup viewer --exclude viewer/migrations
+  - mypy core pandabackup viewer
   - bash ./set_db_engine.sh
   - python3.11 manage.py migrate
   - python3.11 manage.py test viewer.tests.test_internal viewer.tests.test_core

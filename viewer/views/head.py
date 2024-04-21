@@ -47,7 +47,7 @@ gallery_filter_keys = (
     "filesize_to", "filecount_from", "filecount_to", "posted_from", "posted_to",
     "create_from", "create_to",
     "category", "provider", "dl_type",
-    "expunged", "hidden", "fjord", "uploader", "tags", "not_used", "reason",
+    "expunged", "disowned", "hidden", "fjord", "uploader", "tags", "not_used", "reason",
     "contains", "contained", "not_normal", "crc32", "used"
 )
 
@@ -235,14 +235,7 @@ def image_url(request: HttpRequest, pk: int) -> HttpResponse:
         return HttpResponseRedirect(image.image.url)
 
 
-def gallery_details(request: HttpRequest, pk: int, tool: Optional[str] = None) -> HttpResponse:
-    try:
-        gallery = Gallery.objects.get(pk=pk)
-    except Gallery.DoesNotExist:
-        raise Http404("Gallery does not exist")
-    if not (gallery.public or request.user.is_authenticated):
-        raise Http404("Gallery does not exist")
-
+def process_gallery_page(request: HttpRequest, gallery: Gallery, tool: Optional[str] = None) -> HttpResponse:
     if request.user.has_perm('viewer.download_gallery') and tool == "download":
         if 'downloader' in request.GET and request.user.is_staff:
             current_settings = Settings(load_from_config=crawler_settings.config)
@@ -378,6 +371,36 @@ def gallery_details(request: HttpRequest, pk: int, tool: Optional[str] = None) -
     d.update({'gallery_chain': Gallery.objects.filter(gallery_filters, provider=gallery.provider).order_by('gid')})
 
     return render(request, "viewer/gallery.html", d)
+
+
+def gallery_details_gid_provider(request: HttpRequest, tool: Optional[str] = None) -> HttpResponse:
+    if 'gid' in request.GET:
+        gallery_gid = request.GET['gid']
+        if 'provider' in request.GET:
+            possible_gallery = Gallery.objects.filter_first(gid=gallery_gid, provider=request.GET['provider'])
+        else:
+            possible_gallery = Gallery.objects.filter_first(gid=gallery_gid)
+        if not possible_gallery:
+            raise Http404("Gallery does not exist")
+        else:
+            gallery = possible_gallery
+    else:
+        raise Http404("Gallery does not exist")
+    if not (gallery.public or request.user.is_authenticated):
+        raise Http404("Gallery does not exist")
+
+    return process_gallery_page(request, gallery, tool)
+
+
+def gallery_details(request: HttpRequest, pk: int, tool: Optional[str] = None) -> HttpResponse:
+    try:
+        gallery = Gallery.objects.get(pk=pk)
+    except Gallery.DoesNotExist:
+        raise Http404("Gallery does not exist")
+    if not (gallery.public or request.user.is_authenticated):
+        raise Http404("Gallery does not exist")
+
+    return process_gallery_page(request, gallery, tool)
 
 
 @login_required
@@ -733,6 +756,8 @@ def filter_galleries(request: HttpRequest, session_filters: dict[str, str], requ
         results = results.filter(category__icontains=request_filters["category"])
     if request_filters["expunged"]:
         results = results.filter(expunged=request_filters["expunged"])
+    if request_filters["disowned"]:
+        results = results.filter(disowned=request_filters["disowned"])
     if request_filters["fjord"]:
         results = results.filter(fjord=request_filters["fjord"])
     if request_filters["uploader"]:
@@ -1865,6 +1890,8 @@ def filter_galleries_simple(params: dict[str, str]) -> QuerySet[Gallery]:
         results = results.filter(category__icontains=params["category"])
     if params["expunged"]:
         results = results.filter(expunged=params["expunged"])
+    if params["disowned"]:
+        results = results.filter(disowned=params["disowned"])
     if params["hidden"]:
         results = results.filter(hidden=params["hidden"])
     if params["fjord"]:
@@ -1935,6 +1962,16 @@ def filter_galleries_simple(params: dict[str, str]) -> QuerySet[Gallery]:
 
     if "public" in params and params["public"]:
         results = results.filter(public=True)
+
+    if 'status' in params and params['status'] and params['status'] != '0':
+        results = results.filter(status=params["status"])
+
+    if "contained" in params and params["contained"]:
+        results = results.filter(Q(gallery_container__isnull=False) | Q(magazine__isnull=False))
+    if "contains" in params and params["contains"]:
+        results = results.annotate(
+            num_contains=Count('gallery_contains'), num_chapters=Count('magazine_chapters')
+        ).filter(Q(num_contains__gt=0) | Q(num_chapters__gt=0))
 
     return results
 

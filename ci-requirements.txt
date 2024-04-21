@@ -1,6 +1,6 @@
 -r requirements.txt
 mypy==1.9.0
-ruff==0.3.5
+ruff==0.3.7
 django-stubs==4.2.7
 types-requests==2.31.0.6
 types-python-dateutil==2.9.0.20240316

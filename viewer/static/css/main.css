@@ -303,6 +303,21 @@ img {
   }
 }
 
+
+@media screen and (max-width: 2000px) {
+  .arch-cont,
+  .page-line {
+    width: 1320px;
+  }
+}
+
+@media screen and (max-width: 1320px) {
+  .arch-cont,
+  .page-line {
+    width: 100%;
+  }
+}
+
 @media screen and (max-width: 400px) {
   .gallery {
     width: 100%;
@@ -310,17 +325,10 @@ img {
   }
 }
 
-@media screen and (min-width: 1454px) {
+@media screen and (min-width: 2000px) {
   .arch-cont,
   .page-line {
-    width: 1320px;
-  }
-}
-
-@media screen and (max-width: 1100px) {
-  .arch-cont,
-  .page-line {
-    width: 100%;
+    width: 1800px;
   }
 }
 
@@ -733,4 +741,9 @@ img {
 
 .popover-custom-length {
   max-width: 850px;
+}
+
+.mark-height {
+  max-height: 135px;
+  overflow: auto;
 }

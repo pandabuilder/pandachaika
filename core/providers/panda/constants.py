@@ -3,7 +3,7 @@ home_page = 'https://e-hentai.org'
 
 image_search_link = 'https://upload.e-hentai.org/image_lookup.php'
 
-rss_url = 'http://xml.ehgt.org/ehg.xml'
+rss_url = 'https://xml.e-hentai.org/ehg.xml'
 
 ex_page = 'https://exhentai.org'
 ge_page = 'https://e-hentai.org'

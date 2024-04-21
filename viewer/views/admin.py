@@ -101,6 +101,7 @@ def stats_collection(request: HttpRequest) -> HttpResponse:
             filesize__gt=0, hidden=True).aggregate(Sum('filesize')),
         "fjord_galleries": Gallery.objects.filter(fjord=True).count(),
         "expunged_galleries": Gallery.objects.filter(expunged=True).count(),
+        "disowned_galleries": Gallery.objects.filter(disowned=True).count(),
         "n_tags": Tag.objects.count(),
         "n_tag_scopes": Tag.objects.values('scope').distinct().count(),
         "n_custom_tags": Tag.objects.are_custom().count(),

@@ -503,6 +503,13 @@ class GallerySearchSimpleForm(forms.Form):
         widget=forms.NumberInput(attrs={'class': 'form-control mr-sm-1', 'placeholder': 'to'})
     )
 
+    status = forms.ChoiceField(
+        choices=[(0, "--------")] + Gallery.StatusChoices.choices,
+        required=False,
+        label='Status',
+        widget=forms.widgets.Select(attrs={'class': 'form-control'}),
+    )
+
 
 class WantedGallerySearchForm(forms.Form):
 
@@ -939,7 +946,7 @@ class GalleryCreateForm(ModelForm):
         model = Gallery
         fields = [
             'gid', 'token', 'title', 'title_jpn', 'tags', 'gallery_container', 'magazine',
-            'category', 'uploader', 'comment', 'posted', 'filecount', 'filesize', 'expunged',
+            'category', 'uploader', 'comment', 'posted', 'filecount', 'filesize', 'expunged', 'disowned',
             'hidden', 'fjord', 'provider', 'reason', 'thumbnail_url', 'thumbnail'
         ]
         widgets = {
@@ -965,6 +972,7 @@ class GalleryCreateForm(ModelForm):
             'filecount': forms.widgets.NumberInput(attrs={'class': 'form-control'}),
             'filesize': forms.widgets.NumberInput(attrs={'class': 'form-control'}),
             'expunged': forms.widgets.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'disowned': forms.widgets.CheckboxInput(attrs={'class': 'form-check-input'}),
             'hidden': forms.widgets.CheckboxInput(attrs={'class': 'form-check-input'}),
             'fjord': forms.widgets.CheckboxInput(attrs={'class': 'form-check-input'}),
             'reason': forms.widgets.TextInput(attrs={'class': 'form-control'}),

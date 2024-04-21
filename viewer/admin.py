@@ -218,7 +218,7 @@ class GalleryAdmin(SimpleHistoryAdmin):
         "filecount", "hidden", "dl_type", "provider"
     ]
     list_filter = [
-        "category", "expunged", "fjord", "public", "hidden", "dl_type",
+        "category", "expunged", "disowned", "fjord", "public", "hidden", "dl_type",
         "provider", "status", "origin", "reason"
     ]
     actions = ['make_hidden', 'make_public', 'make_private', 'set_provider', 'set_reason', 'make_normal']
