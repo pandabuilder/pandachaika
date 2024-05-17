@@ -50,16 +50,6 @@ from django.utils.translation import gettext_lazy as _
 from django.conf import settings
 from simple_history.models import HistoricalRecords
 
-
-try:
-    import cv2 as cv
-    import numpy as np
-    can_use_image_match = True
-except ModuleNotFoundError:
-    # Error handling
-    can_use_image_match = False
-
-
 from core.base.comparison import get_list_closer_gallery_titles_from_list
 from core.base.image_ops import img_to_thumbnail
 from core.base.utilities import (
@@ -74,6 +64,7 @@ from core.base.utilities import (
     get_dict_allowed_fields, replace_illegal_name
 )
 from viewer.services import CompareObjectsService
+from viewer.utils import image_processing
 from viewer.utils.tags import sort_tags, sort_tags_str
 
 if typing.TYPE_CHECKING:
@@ -166,6 +157,37 @@ class GalleryQuerySet(models.QuerySet):
             **kwargs
         ).order_by('-create_date')
 
+    def only_used_galleries(self, **kwargs: typing.Any) -> QuerySet:
+        return self.filter(
+            Q(status=Gallery.StatusChoices.NORMAL),
+            Q(
+                Q(archive__isnull=False) |
+                Q(gallery_container__archive__isnull=False) |
+                Q(magazine__archive__isnull=False) |
+                Q(alternative_sources__isnull=False)
+            ),
+            **kwargs
+        ).order_by('-create_date')
+
+    def report_as_missing_galleries(self, **kwargs: typing.Any) -> QuerySet:
+        return self.annotate(number_of_archives=Count('archive')).filter(
+            Q(
+                Q(status=Gallery.StatusChoices.NORMAL),
+                ~Q(dl_type__contains='skipped'),
+                Q(number_of_archives=0),
+                Q(gallery_container__archive__isnull=True),
+                Q(magazine__archive__isnull=True),
+                Q(alternative_sources__isnull=True)
+            ) | Q(
+                Q(status=Gallery.StatusChoices.NORMAL),
+                ~Q(filesize=F('archive__filesize')),
+                Q(number_of_archives=1),
+                ~Q(filesize=0),
+                Q(archive__isnull=False)
+            ),
+            **kwargs
+        ).order_by('-create_date')
+
     def submitted_galleries(self, *args: typing.Any, **kwargs: typing.Any) -> QuerySet:
         return self.filter(
             Q(origin=Gallery.OriginChoices.ORIGIN_SUBMITTED),
@@ -208,6 +230,12 @@ class GalleryManager(models.Manager['Gallery']):
 
     def non_used_galleries(self, **kwargs: typing.Any) -> QuerySet:
         return self.get_queryset().non_used_galleries(**kwargs)
+
+    def only_used_galleries(self, **kwargs: typing.Any) -> QuerySet:
+        return self.get_queryset().only_used_galleries(**kwargs)
+
+    def report_as_missing_galleries(self, **kwargs: typing.Any) -> QuerySet:
+        return self.get_queryset().report_as_missing_galleries(**kwargs)
 
     def submitted_galleries(self, *args: typing.Any, **kwargs: typing.Any) -> QuerySet:
         return self.get_queryset().submitted_galleries(*args, **kwargs)
@@ -757,6 +785,7 @@ class Gallery(models.Model):
             ("approve_gallery", "Can approve submitted galleries"),
             ("wanted_gallery_found", "Can be notified of new wanted gallery matches"),
             ("crawler_adder", "Can add links to the crawler with more options"),
+            ("download_history", "Can check the download history"),
             ("read_gallery_change_log", "Can read the Gallery change log"),
             ("manage_gallery", "Can manage available galleries"),
         )
@@ -1379,6 +1408,7 @@ class GallerySubmitEntry(models.Model):
     submit_extra = models.TextField(blank=True, null=True, default='')
     submit_result = models.CharField(blank=True, null=True, default='', max_length=200)
     submit_date = models.DateTimeField(blank=True, default=django_tz.now)
+    submit_group = models.UUIDField(blank=True, null=True)
     create_date = models.DateTimeField(auto_now_add=True)
     resolved_date = models.DateTimeField(blank=True, null=True)
     resolved_status = models.SmallIntegerField(
@@ -1750,7 +1780,6 @@ class Archive(models.Model):
         return self.tags.filter(archivetag__origin=ArchiveTag.ORIGIN_USER)
 
     def is_recycled(self) -> bool:
-        # return hasattr(self, 'recycle_entry')
         return self.binned
 
     def delete_text_report(self) -> str:
@@ -3047,56 +3076,24 @@ class Archive(models.Model):
         ).delete()
 
     def create_wanted_image_similarity_mark(self) -> None:
-        if can_use_image_match and settings.CRAWLER_SETTINGS.auto_match_wanted_images and self.thumbnail:
+        if image_processing.CAN_USE_IMAGE_MATCH and settings.CRAWLER_SETTINGS.auto_match_wanted_images and self.thumbnail:
 
             wanted_images = WantedImage.objects.filter(active=True)
 
             if wanted_images:
-                img_thumbnail = cv.imread(self.thumbnail.path)
-                img_gray = cv.cvtColor(img_thumbnail, cv.COLOR_BGR2GRAY)
+                img_thumbnail, img_gray = image_processing.get_image_thumbnail_and_grayscale(self)
 
                 per_archives_comment = []
 
                 highest_priority = 0.0
 
                 for wanted_image in wanted_images:
-                    template_img = cv.imread(wanted_image.thumbnail.path)
-                    template_gray = cv.cvtColor(template_img, cv.COLOR_BGR2GRAY)
-
-                    sift = cv.SIFT_create()  # type: ignore
-
-                    kp1, des1 = sift.detectAndCompute(template_gray, None)
-                    kp2, des2 = sift.detectAndCompute(img_gray, None)
-
-                    # FLANN parameters
-                    FLANN_INDEX_KDTREE = 1
-                    index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
-                    search_params = dict(checks=50)  # or pass empty dictionary
-
-                    flann = cv.FlannBasedMatcher(index_params, search_params)  # type: ignore
-
-                    matches = flann.knnMatch(des1, des2, k=2)
-
-                    good_matches = []
-                    for m, n in matches:
-                        if m.distance < wanted_image.match_threshold * n.distance:
-                            good_matches.append([m])
-
-                    if len(good_matches) > 0 and len(good_matches) >= wanted_image.minimum_features:
-
-                        if wanted_image.restrict_by_homogeneity:
-                            src_pts = np.array([kp1[m[0].queryIdx].pt for m in good_matches], dtype=np.float32)
-                            dst_pts = np.array([kp2[m[0].trainIdx].pt for m in good_matches], dtype=np.float32)
-
-                            slopes = (dst_pts[:, 1] - src_pts[:, 1]) / (dst_pts[:, 0] + template_img.shape[0] - src_pts[:, 0])
-                            slopes_mean = np.mean(slopes, axis=0)
-                            slopes_compared = np.abs((slopes/slopes_mean)-1)
-                            distances = np.sqrt((dst_pts[:, 1] - src_pts[:, 1])**2 + (dst_pts[:, 0] + template_img.shape[0] - src_pts[:, 0])**2)
-                            distances_mean = np.mean(distances, axis=0)
-                            distances_compared = np.abs((distances / distances_mean)-1)
-
-                            if np.count_nonzero(slopes_compared > 0.1) > 0 or np.count_nonzero(distances_compared > 0.1) > 0:
-                                continue
+                    found_match, n_good_matches, im_result = image_processing.compare_wanted_with_image(
+                        img_gray, img_thumbnail, wanted_image
+                    )
+                    if found_match:
+                        if wanted_image.mark_priority > highest_priority:
+                            highest_priority = wanted_image.mark_priority
 
                         found_image, created = FoundWantedImageOnArchive.objects.get_or_create(
                             wanted_image=wanted_image, archive=self,
@@ -3105,24 +3102,17 @@ class Archive(models.Model):
                             }
                         )
 
-                        draw_params = dict(matchColor=(0, 255, 0),  # draw matches in green color
-                                           singlePointColor=None,
-                                           flags=2)
-
-                        img_matches = cv.drawMatchesKnn(template_img, kp1, img_thumbnail, kp2, good_matches, None, **draw_params)  # type: ignore
-                        im = PImage.fromarray(cv.cvtColor(img_matches, cv.COLOR_BGR2RGB))
-                        found_image.save_result_image(im)
+                        if im_result is not None:
+                            found_image.save_result_image(im_result)
 
                         per_archives_comment.append(
                             "Image: (popover-img):({})({}) found {} (popover-img):(features)({})".format(
                                 wanted_image.image_name,
                                 wanted_image.get_image_url(),
-                                len(good_matches),
+                                n_good_matches,
                                 found_image.get_image_url()
                             )
                         )
-                        if wanted_image.mark_priority > highest_priority:
-                            highest_priority = wanted_image.mark_priority
 
                 if per_archives_comment:
                     mark_comment = "\n".join(per_archives_comment)
@@ -3255,6 +3245,17 @@ class Archive(models.Model):
         except (zipfile.BadZipFile, NotImplementedError):
             return None
 
+    def release_gallery(self):
+
+        if self.gallery:
+            self.gallery.archive_set.remove(self)
+
+            ArchiveManageEntry.objects.filter(
+                archive=self,
+                mark_reason="wrong_file",
+                mark_user__isnull=True
+            ).delete()
+
     def select_as_match(self, gallery_id: int) -> None:
         try:
             matched_gallery = Gallery.objects.get(pk=gallery_id)
@@ -3268,9 +3269,34 @@ class Archive(models.Model):
         self.possible_matches.clear()
         self.simple_save()
         self.set_tags_from_gallery(matched_gallery)
+
+        self.mark_if_different_size_from_gallery()
+
         if self.public:
             matched_gallery.public = True
             matched_gallery.save()
+
+    def mark_if_different_size_from_gallery(self):
+        if self.gallery and self.gallery.filesize is not None and self.gallery.filesize != 0 and self.filesize != self.gallery.filesize:
+            mark_comment = (
+                "Torrent downloaded has not the same file as the matched gallery"
+                " (different filesize or filecount). This file must be replaced if the correct one"
+                " is found."
+            )
+            manager_entry, _ = ArchiveManageEntry.objects.update_or_create(
+                archive=self,
+                mark_reason="wrong_file",
+                defaults={
+                    'mark_comment': mark_comment, 'mark_priority': 4.3, 'mark_check': True,
+                    'origin': ArchiveManageEntry.ORIGIN_SYSTEM
+                },
+            )
+        else:
+            ArchiveManageEntry.objects.filter(
+                archive=self,
+                mark_reason="wrong_file",
+                mark_user__isnull=True
+            ).delete()
 
     def similar_archives(self, num_common_tags: int = 0, **kwargs: typing.Any) -> 'QuerySet[Archive]':
         return Archive.objects.filter(tags__in=self.tags.all(), **kwargs).exclude(pk=self.pk).\
@@ -4660,3 +4686,43 @@ class FoundWantedImageOnArchive(models.Model):
 
     def simple_save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
         super(FoundWantedImageOnArchive, self).save(*args, **kwargs)
+
+
+class DownloadEventQuerySet(models.QuerySet):
+    def in_progress(self, **kwargs: typing.Any) -> QuerySet:
+        return self.filter(completed=False, **kwargs)
+
+
+class DownloadEventManager(models.Manager['DownloadEvent']):
+    def get_queryset(self) -> DownloadEventQuerySet:
+        return DownloadEventQuerySet(self.model, using=self._db)
+
+    def in_progress(self, **kwargs: typing.Any) -> QuerySet:
+        return self.get_queryset().in_progress(**kwargs)
+
+
+class DownloadEvent(models.Model):
+    name = models.CharField()
+    archive = models.ForeignKey(Archive, on_delete=models.SET_NULL, blank=True, null=True)
+    gallery = models.ForeignKey(Gallery, on_delete=models.SET_NULL, blank=True, null=True)
+    progress = models.FloatField(default=0.0)
+    total_size = models.PositiveIntegerField(default=0)
+    failed = models.BooleanField(default=False)
+    completed = models.BooleanField(default=False)
+    method = models.CharField()
+    agent = models.CharField()
+    download_id = models.CharField()
+    create_date = models.DateTimeField(auto_now_add=True)
+    completed_date = models.DateTimeField('Posted date', blank=True, null=True)
+
+    objects = DownloadEventManager()
+
+    def finish_download(self):
+        self.progress = 100
+        self.completed = True
+        self.completed_date = django_tz.now()
+
+    def set_as_failed(self):
+        self.failed = True
+        self.completed = True
+        self.completed_date = django_tz.now()

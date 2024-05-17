@@ -270,12 +270,15 @@ def match_archives_from_gallery_titles(archives: 'QuerySet[Archive]', cutoff: fl
 
 
 # Archive
-def generate_possible_matches_for_archives(archives: 'QuerySet[Archive]',
-                                           cutoff: float = 0.4, max_matches: int = 20,
-                                           filters: Iterable[str] = (),
-                                           match_local: bool = True,
-                                           match_web: bool = True,
-                                           update_if_local: bool = False) -> None:
+def generate_possible_matches_for_archives(
+        archives: 'QuerySet[Archive]',
+        cutoff: float = 0.4, max_matches: int = 20,
+        filters: Iterable[str] = (),
+        match_local: bool = True,
+        match_web: bool = True,
+        update_if_local: bool = False,
+        method_filter: str = 'title'
+    ) -> None:
     # TODO: Not implemented: update_if_local, expose match_by_filesize.
     try:
         if not archives:
@@ -286,7 +289,7 @@ def generate_possible_matches_for_archives(archives: 'QuerySet[Archive]',
         if non_match_archives:
 
             if match_local:
-                match_internal(non_match_archives, filters, cutoff=cutoff, max_matches=max_matches, match_by_filesize=True)
+                match_internal(non_match_archives, filters, cutoff=cutoff, max_matches=max_matches, match_by_filesize=True, method_filter=method_filter)
             if match_web:
                 match_external(non_match_archives, filters, cutoff=cutoff, max_matches=max_matches)
 
@@ -364,12 +367,15 @@ def match_external(archives: 'QuerySet[Archive]', matcher_filters: Iterable[str]
                     )
 
 
-def match_internal(archives: 'QuerySet[Archive]', providers: Iterable[str],
-                   cutoff: float = 0.4,
-                   max_matches: int = 20, match_by_filesize: bool = True, match_by_thumbnail: bool = True) -> None:
+def match_internal(
+        archives: 'QuerySet[Archive]', providers: Iterable[str],
+        cutoff: float = 0.4, max_matches: int = 20,
+        match_by_filesize: bool = True, match_by_thumbnail: bool = True,
+        method_filter: str = 'title'
+) -> None:
 
     galleries_per_provider: dict[str, QuerySet[Gallery]] = {}
-    galleries_title_id_per_provider: dict[str, list[tuple[str, str]]] = {}
+    galleries_title_id_type_per_provider: dict[str, list[tuple[str, str, str]]] = {}
 
     if providers:
         for provider in providers:
@@ -378,14 +384,16 @@ def match_internal(archives: 'QuerySet[Archive]', providers: Iterable[str],
         galleries_per_provider['all'] = Gallery.objects.eligible_for_use()
 
     for provider, galleries in galleries_per_provider.items():
-        galleries_title_id_per_provider[provider] = list()
+        galleries_title_id_type_per_provider[provider] = list()
         for gallery in galleries:
             if gallery.title:
-                galleries_title_id_per_provider[provider].append(
-                    (replace_illegal_name(gallery.title), str(gallery.pk)))
+                galleries_title_id_type_per_provider[provider].append(
+                    (replace_illegal_name(gallery.title), str(gallery.pk), 'title'))
             if gallery.title_jpn:
-                galleries_title_id_per_provider[provider].append(
-                    (replace_illegal_name(gallery.title_jpn), str(gallery.pk)))
+                galleries_title_id_type_per_provider[provider].append(
+                    (replace_illegal_name(gallery.title_jpn), str(gallery.pk), 'title'))
+            if gallery.gid:
+                galleries_title_id_type_per_provider[provider].append((gallery.gid, str(gallery.pk), 'gid'))
 
     image_type = ContentType.objects.get_for_model(Image)
     archive_type = ContentType.objects.get_for_model(Archive)
@@ -393,44 +401,52 @@ def match_internal(archives: 'QuerySet[Archive]', providers: Iterable[str],
 
     for i, archive in enumerate(archives, start=1):
 
-        for provider, galleries_title_id in galleries_title_id_per_provider.items():
+        for provider, galleries_title_id_type in galleries_title_id_type_per_provider.items():
 
             if provider != 'all':
                 matchers = crawler_settings.provider_context.get_matchers(
                     crawler_settings,
-                    filter_name="{}_title".format(provider), force=True
+                    filter_name="{}_{}".format(provider, method_filter), force=True
                 )
                 if matchers:
                     adj_title = matchers[0][0].format_to_compare_title(archive.zipped.name)
+                    attribute_match = method_filter
                 else:
                     adj_title = get_title_from_path(archive.zipped.name)
+                    attribute_match = 'title'
             else:
                 adj_title = get_title_from_path(archive.zipped.name)
-            similar_list_provider = get_list_closer_gallery_titles_from_list(
-                adj_title, galleries_title_id, cutoff, max_matches)
+                attribute_match = 'title'
 
-            if similar_list_provider is not None:
+            if adj_title:
+                galleries_title_id = [(x[0], x[1]) for x in galleries_title_id_type if x[2] == attribute_match]
 
-                for similar in similar_list_provider:
-                    gallery = Gallery.objects.get(pk=similar[1])
+                similar_list_provider = get_list_closer_gallery_titles_from_list(
+                    adj_title, galleries_title_id, cutoff, max_matches)
 
-                    ArchiveMatches.objects.update_or_create(
-                        archive=archive,
-                        gallery=gallery,
-                        match_type='title',
-                        match_accuracy=similar[2]
+                if similar_list_provider is not None:
+
+                    for similar in similar_list_provider:
+                        gallery = Gallery.objects.get(pk=similar[1])
+
+                        ArchiveMatches.objects.update_or_create(
+                            archive=archive,
+                            gallery=gallery,
+                            match_type=method_filter,
+                            match_accuracy=similar[2]
+                        )
+
+                    logger.info(
+                        "{} of {}: Found {} matches (internal search) from title for archive: {}, with formatted title: ({}), using provider filter: {}, method filter: {}".format(
+                            i,
+                            archives.count(),
+                            len(similar_list_provider),
+                            archive.title,
+                            adj_title,
+                            provider,
+                            method_filter
+                        )
                     )
-
-                logger.info(
-                    "{} of {}: Found {} matches (internal search) from title for archive: {}, with formatted title: ({}), using provider filter: {}".format(
-                        i,
-                        archives.count(),
-                        len(similar_list_provider),
-                        archive.title,
-                        adj_title,
-                        provider
-                    )
-                )
 
         if not match_by_filesize or archive.filesize is None or archive.filesize <= 0:
             continue

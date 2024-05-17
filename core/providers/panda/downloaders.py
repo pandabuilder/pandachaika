@@ -111,8 +111,9 @@ class ArchiveDownloader(BaseDownloader):
 
                 if r and r.status_code == 200:
                     logger.info('Downloading gallery: {}.zip'.format(to_use_filename))
-                    filepath = os.path.join(self.settings.MEDIA_ROOT,
-                                            self.gallery.filename)
+                    filepath = os.path.join(self.settings.MEDIA_ROOT, self.gallery.filename)
+                    total_size = int(request_file.headers.get('Content-Length', 0))
+                    self.download_event = self.create_download_event(self.gallery.link, self.type, filepath, total_size=total_size)
                     with open(filepath, 'wb') as fo:
                         for chunk in request_file.iter_content(4096):
                             fo.write(chunk)
@@ -397,6 +398,7 @@ class HathDownloader(BaseDownloader):
 
     type = 'hath'
     provider = constants.provider_name
+    direct_downloader = False
 
     def start_download(self) -> None:
 
@@ -448,6 +450,7 @@ class HathDownloader(BaseDownloader):
                 )
             )
 
+            self.download_id = self.gallery.gid
             self.fileDownloaded = 1
             self.return_code = 1
         else:

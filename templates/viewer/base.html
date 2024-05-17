@@ -76,6 +76,9 @@
                 {% if perms.viewer.crawler_adder %}
                   <a class="dropdown-item" href="{% url 'viewer:user-crawler' %}">Add URLs</a>
                 {% endif %}
+                {% if perms.viewer.download_history %}
+                  <a class="dropdown-item" href="{% url 'viewer:download-history' %}">Download History</a>
+                {% endif %}
                 {% if perms.viewer.upload_with_metadata_archive %}
                   <a class="dropdown-item" href="{% url 'viewer:upload-archive' %}">Upload archive</a>
                 {% endif %}
@@ -126,6 +129,7 @@
                 <a class="dropdown-item" href="{% url 'viewer:manage-archives' %}?non_public=1">Manage archives</a>
                 <a class="dropdown-item" href="{% url 'viewer:manage-galleries' %}">Manage galleries</a>
                 <a class="dropdown-item" href="{% url 'viewer:user-crawler' %}">Add URLs</a>
+                <a class="dropdown-item" href="{% url 'viewer:download-history' %}">Download History</a>
                 <a class="dropdown-item" href="{% url 'viewer:upload-archive' %}">Upload archive</a>
                 <a class="dropdown-item" href="{% url 'viewer:match-archives' %}">Match archives</a>
                 <a class="dropdown-item" href="{% url 'viewer:col-wanted-galleries' %}">Wanted galleries</a>

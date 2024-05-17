@@ -319,6 +319,12 @@ class ArchiveManageSearchSimpleForm(forms.Form):
         widget=forms.widgets.Select(attrs={'class': 'form-control'}),
     )
 
+    extra_files = forms.CharField(
+        required=False,
+        label='Extra files',
+        widget=forms.widgets.TextInput(attrs={'class': 'form-control'}),
+    )
+
 
 class DivErrorList(ErrorList):
 

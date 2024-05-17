@@ -41,7 +41,7 @@ class NyaaTorrentDownloader(GenericTorrentDownloader):
         logger.info("Adding torrent to client.")
         client.connect()
         if client.send_url or torrent_link.startswith('magnet:'):
-            result = client.add_url(
+            result, torrent_id = client.add_url(
                 torrent_link,
                 download_dir=self.settings.torrent['download_dir']
             )
@@ -52,7 +52,7 @@ class NyaaTorrentDownloader(GenericTorrentDownloader):
                 convert_to_base64=client.convert_to_base64
             )
 
-            result = client.add_torrent(
+            result, torrent_id = client.add_torrent(
                 torrent_data,
                 download_dir=self.settings.torrent['download_dir']
             )
@@ -73,6 +73,7 @@ class NyaaTorrentDownloader(GenericTorrentDownloader):
                     return
 
         if result:
+            self.download_id = torrent_id
             if client.expected_torrent_name:
                 self.expected_torrent_name = "{}".format(client.expected_torrent_name)
             else:

@@ -28,7 +28,8 @@ from viewer.forms import GallerySearchForm, ArchiveSearchForm, WantedGalleryCrea
     WantedGalleryColSearchForm, ArchiveManageSearchSimpleForm, AllGalleriesSearchForm, \
     EventSearchForm, GallerySearchSimpleForm
 from viewer.models import Archive, Gallery, EventLog, ArchiveMatches, Tag, WantedGallery, ArchiveGroup, \
-    ArchiveGroupEntry, GallerySubmitEntry, MonitoredLink, ArchiveRecycleEntry, ArchiveTag, UserLongLivedToken
+    ArchiveGroupEntry, GallerySubmitEntry, MonitoredLink, ArchiveRecycleEntry, ArchiveTag, UserLongLivedToken, \
+    DownloadEvent
 from viewer.utils.tags import sort_tags
 from viewer.utils.types import AuthenticatedHttpRequest
 from viewer.views.head import gallery_filter_keys, filter_galleries_simple, \
@@ -348,6 +349,9 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
     if 'submit_reason' in get:
         submit_entries = submit_entries.filter(submit_reason__icontains=get['submit_reason'])
 
+    if 'submit_group' in get:
+        submit_entries = submit_entries.filter(submit_group__icontains=get['submit_group'])
+
     if 'has_similar' in get:
         submit_entries = submit_entries.annotate(similar_count=Count('similar_galleries')).filter(similar_count__gt=0)
 
@@ -507,6 +511,25 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                     content_object=archive,
                     result='unpublished'
                 )
+        elif 'release_gallery' in p:
+            for archive in archives:
+                if archive.gallery:
+                    message = 'Releasing associated gallery: {} for archive: {}, link: {}'.format(
+                        archive.gallery.get_absolute_url(), archive.title, archive.get_absolute_url()
+                    )
+                    if 'reason' in p and p['reason'] != '':
+                        message += ', reason: {}'.format(p['reason'])
+                    logger.info("User {}: {}".format(request.user.username, message))
+                    if not json_request:
+                        messages.success(request, message)
+                    archive.release_gallery()
+                    event_log(
+                        request.user,
+                        'RELEASE_GALLERY_FROM_ARCHIVE',
+                        reason=user_reason,
+                        content_object=archive,
+                        result='success'
+                    )
         elif 'delete_archives' in p and request.user.has_perm('viewer.delete_archive'):
             for archive in archives:
                 message = 'Deleting archive: {}, link: {}, with it\'s file: {}'.format(
@@ -740,6 +763,9 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
     results = filter_archives_simple(params, request.user.is_authenticated, show_binned=True)
 
     results, mark_filters = filter_by_marks(results, request.GET)
+
+    if 'diff-filesize' in get:
+        results = results.exclude(gallery__filesize__isnull=True).exclude(filesize=0).filter(gallery__filesize__gt=0).exclude(filesize=F('gallery__filesize'))
 
     if 'recycled' in get and request.user.has_perm('viewer.recycle_archive'):
         results = results.filter(binned=True)
@@ -1194,6 +1220,37 @@ def activity_event_log(request: HttpRequest) -> HttpResponse:
     return render(request, "viewer/collaborators/activity_event_log.html", d)
 
 
+@permission_required('viewer.download_history')
+def download_history(request: AuthenticatedHttpRequest) -> HttpResponse:
+    completed = request.GET.get('completed', '')
+
+    try:
+        page = int(request.GET.get("page", '1'))
+    except ValueError:
+        page = 1
+
+    try:
+        limit = max(1, int(request.GET.get("limit", '100')))
+    except ValueError:
+        limit = 100
+
+    if completed:
+        download_events = DownloadEvent.objects.select_related('archive', 'gallery').order_by('-create_date')
+    else:
+        download_events = DownloadEvent.objects.in_progress().select_related('archive', 'gallery').order_by('-create_date')
+
+    paginator = Paginator(download_events, limit)
+    try:
+        results_page = paginator.page(page)
+    except (InvalidPage, EmptyPage):
+        results_page = paginator.page(paginator.num_pages)
+
+    d = {
+        'results': results_page
+    }
+    return render(request, "viewer/collaborators/download_history.html", d)
+
+
 @permission_required('viewer.crawler_adder')
 def user_crawler(request: AuthenticatedHttpRequest) -> HttpResponse:
     """Crawl given URLs."""
@@ -1482,6 +1539,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
             if thread_exists('match_unmatched_worker'):
                 return render_error(request, "Local matching worker is already running.")
             provider = p['create_possible_matches']
+            method = p.get('matcher_type', 'title')
             try:
                 cutoff = clamp(float(p.get('cutoff', '0.4')), 0.0, 1.0)
             except ValueError:
@@ -1494,7 +1552,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
             logger.info(
                 'User {}: Looking for possible matches in gallery database '
                 'for non-matched archives (cutoff: {}, max matches: {}) '
-                'using provider filter "{}"'.format(request.user.username, cutoff, max_matches, provider)
+                'using provider filter "{}" and method filter: {}'.format(request.user.username, cutoff, max_matches, provider, method)
             )
             matching_thread = threading.Thread(
                 name='match_unmatched_worker',
@@ -1502,11 +1560,16 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                 args=(archives,),
                 kwargs={
                     'cutoff': cutoff, 'max_matches': max_matches, 'filters': (provider,),
-                    'match_local': True, 'match_web': False
+                    'match_local': True, 'match_web': False, 'method_filter': method
                 })
             matching_thread.daemon = True
             matching_thread.start()
-            messages.success(request, 'Starting internal match worker.')
+            messages.success(
+                request,
+                'Looking for possible matches in gallery database '
+                'for non-matched archives (cutoff: {}, max matches: {}) '
+                'using provider filter "{}" and method filter: {}'.format(cutoff, max_matches, provider, method)
+            )
         elif 'clear_possible_matches' in p:
 
             for archive in archives:
@@ -1516,6 +1579,32 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                 'User {}: Clearing possible matches for archives'.format(request.user.username)
             )
             messages.success(request, 'Clearing possible matches.')
+        elif 'auto_select_first_match' in p:
+            for archive in archives:
+                try:
+                    possible_gallery = archive.possible_matches.first()
+                    if possible_gallery:
+                        archive.select_as_match(possible_gallery.id)
+                        if archive.gallery:
+                            logger.info("User: {}: Archive {} ({}) was matched with gallery {} ({}).".format(
+                                request.user.username,
+                                archive,
+                                reverse('viewer:archive', args=(archive.pk,)),
+                                archive.gallery,
+                                reverse('viewer:gallery', args=(archive.gallery.pk,)),
+                            ))
+                            event_log(
+                                request.user,
+                                'MATCH_ARCHIVE',
+                                # reason=user_reason,
+                                data=reverse('viewer:gallery', args=(archive.gallery.pk,)),
+                                content_object=archive,
+                                result='matched'
+                            )
+                except ValueError:
+                    return HttpResponseRedirect(request.META["HTTP_REFERER"])
+
+            messages.success(request, 'Matching with first possible match.')
 
     params: dict[str, str] = {
         'sort': 'create_date',
@@ -1564,9 +1653,18 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
     except (InvalidPage, EmptyPage):
         results_page = paginator.page(paginator.num_pages)
 
+    available_providers = Gallery.objects.all().values_list('provider', flat=True).distinct()
+
+    matchers = crawler_settings.provider_context.get_matchers(
+        crawler_settings, force=True
+    )
+
+    matcher_types = list(dict.fromkeys([x[0].type for x in matchers]))
+
     d = {
         'results': results_page,
-        'providers': Gallery.objects.all().values_list('provider', flat=True).distinct(),
+        'providers': available_providers,
+        'matcher_types': matcher_types,
         'form': form,
         'inline_thumbnails': inline_thumbnails
     }
@@ -1749,9 +1847,9 @@ def upload_archive(request: HttpRequest) -> HttpResponse:
             new_archive = edit_form.save()
             if crawler_settings.mark_similar_new_archives:
                 new_archive.create_marks_for_similar_archives()
-            message = 'Archive successfully uploaded: {}'.format(new_archive.get_absolute_url())
-            messages.success(request, message)
-            logger.info("User {}: {}".format(request.user.username, message))
+            message = 'Archive successfully uploaded: {}'
+            messages.success(request, message.format(request.build_absolute_uri(new_archive.get_absolute_url())))
+            logger.info("User {}: {}".format(request.user.username, message.format(new_archive.get_absolute_url())))
             event_log(
                 request.user,
                 'ADD_ARCHIVE',
@@ -1851,9 +1949,9 @@ def create_wanted_gallery(request: HttpRequest) -> HttpResponse:
             new_wanted_gallery = edit_form.save(commit=False)
             new_wanted_gallery.save()
             edit_form.save_m2m()
-            message = 'WantedGallery successfully created: {}'.format(new_wanted_gallery.get_absolute_url())
-            messages.success(request, message)
-            logger.info("User {}: {}".format(request.user.username, message))
+            message = 'WantedGallery successfully created: {}'
+            messages.success(request, message.format(request.build_absolute_uri(new_wanted_gallery.get_absolute_url())))
+            logger.info("User {}: {}".format(request.user.username, message.format(new_wanted_gallery.get_absolute_url())))
             event_log(
                 request.user,
                 'CREATE_WANTED_GALLERY',
@@ -2050,7 +2148,7 @@ def missing_archives_for_galleries(request: HttpRequest) -> HttpResponse:
 
     results = filter_galleries_simple(params)
 
-    results = results.non_used_galleries().prefetch_related('foundgallery_set')  # type: ignore
+    results = results.report_as_missing_galleries().prefetch_related('foundgallery_set')  # type: ignore
 
     paginator = Paginator(results, 50)
     try:

@@ -106,6 +106,35 @@
     {% endfor %}
     </tbody>
   </table>
+<h3>Download progress</h3>
+  <table class="table table-striped">
+    <thead>
+    <tr>
+      <th>URL</th><th>Archive</th><th>Gallery</th><th>Size</th><th>Progress</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for item in stats.download_progress_checker %}
+      <tr>
+        <td>
+          {{ item.name }}
+        </td>
+        <td>
+            <a href="{{ item.archive.get_absolute_url }}">{{ item.archive.pk }}</a>
+        </td>
+        <td>
+            <a href="{{ item.gallery.get_absolute_url }}">{{ item.gallery.pk }}</a>
+        </td>
+        <td>
+          {{ item.total_size|filesizeformat }}
+        </td>
+        <td>
+          {{ item.progress }}%
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
   <h3>Post downloader</h3>
   <table class="table table-striped">
     <thead>

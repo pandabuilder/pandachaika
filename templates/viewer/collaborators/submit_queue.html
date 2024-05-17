@@ -129,7 +129,7 @@
           <table class="table table-bordered table-sm generic-table my-0">
             <thead>
             <tr>
-              <th>Select</th><th>URL</th><th>Gallery</th><th>Title</th><th>Size</th><th>Images</th><th>Source URL</th><th title="Linked to Wanted Gallery?">Wanted</th><th title="Gallery has Archives? (binned, total)">Archive</th><th title="Similar Galleries by filesize and filecount">Similar</th><th>Entry Reason</th><th>Submitted</th><th>Entry Status</th><th>Public</th><th>Gallery Status</th>
+              <th>Select</th><th>URL</th><th>Gallery</th><th>Title</th><th>Size</th><th>Images</th><th>Source URL</th><th title="Linked to Wanted Gallery?">Wanted</th><th title="Gallery has Archives? (binned, total)">Archive</th><th title="Similar Galleries by filesize and filecount">Similar</th><th title="URLs in the same group were added together">Group</th><th>Entry Reason</th><th>Submitted</th><th>Entry Status</th><th>Public</th><th>Gallery Status</th>
             </tr>
             </thead>
             <tbody>
@@ -180,6 +180,13 @@
                       {% endif %}
                     </span>
                   {% endfor %}
+                </td>
+              <td>
+                  {% if entry.submit_group %}
+                      <a href="?{% url_replace 'submit_group' entry.submit_group %}">{{ entry.submit_group }}</a>
+                  {% else %}
+                      Not set
+                  {% endif %}
                 </td>
                 <td>
                   {{ entry.submit_reason }}

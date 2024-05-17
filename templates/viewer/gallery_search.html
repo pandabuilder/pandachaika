@@ -75,6 +75,11 @@
           </div>
           <div class="col-md-auto">
               <div class="form-check">
+                  <input id="checkbox55" class="form-check-input" type="checkbox" name="only_used" value="1" {% if display_prms.only_used == '1' %}checked{% endif %}><label for="checkbox55">Only used</label>
+              </div>
+          </div>
+          <div class="col-md-auto">
+              <div class="form-check">
                   <input id="checkbox4" class="form-check-input" type="checkbox" name="not_used" value="1" {% if display_prms.not_used == '1' %}checked{% endif %}><label for="checkbox4">Not used</label>
               </div>
           </div>

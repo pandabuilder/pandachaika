@@ -13,7 +13,7 @@ from core.base.types import GalleryData, TorrentClient, DataDict
 
 if typing.TYPE_CHECKING:
     from core.base.setup import Settings
-    from viewer.models import Gallery, Archive, WantedGallery
+    from viewer.models import Gallery, Archive, WantedGallery, DownloadEvent
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,7 @@ class BaseDownloader(metaclass=Meta):
     archive_only = False
     no_metadata = False
     mark_hidden_if_last = False
+    direct_downloader = True
 
     def __init__(self, settings: 'Settings', general_utils: GeneralUtils) -> None:
         self.settings = settings
@@ -45,6 +46,8 @@ class BaseDownloader(metaclass=Meta):
         self.crc32: str = ''
         self.original_gallery: Optional[GalleryData] = None
         self.gallery: Optional[GalleryData] = None
+        self.download_id: Optional[str] = None
+        self.download_event: Optional['DownloadEvent'] = None
 
     def __str__(self) -> str:
         return "{}_{}".format(self.provider, self.type)
@@ -147,6 +150,27 @@ class BaseDownloader(metaclass=Meta):
                             },
                         )
 
+    def create_download_event(self, name, method, download_id, archive: Optional['Archive'] = None, gallery: Optional['Gallery'] = None, progress: float = 0.0, total_size: int = 0) -> Optional['DownloadEvent']:
+        if not self.settings.download_event_model:
+            return None
+        if not total_size and archive and archive.filesize:
+            total_size = archive.filesize
+
+        download_event = self.settings.download_event_model(
+            name=name,
+            method=method,
+            download_id=download_id,
+            archive=archive,
+            gallery=gallery,
+            progress=progress,
+            total_size=total_size,
+        )
+
+        download_event.save()
+
+        return download_event
+        # result, torrent_id
+
     def init_download(self, gallery: GalleryData, wanted_gallery_list: Optional[list['WantedGallery']] = None) -> None:
 
         self.original_gallery = copy.deepcopy(gallery)
@@ -185,6 +209,20 @@ class BaseDownloader(metaclass=Meta):
                         default_values['reason'] = wanted_gallery.reason
 
             self.archive_db_entry = self.update_archive_db(default_values)
+
+            if self.direct_downloader and self.download_event:
+                if self.archive_db_entry is not None:
+                    self.download_event.archive = self.archive_db_entry
+                if self.gallery_db_entry is not None:
+                    self.download_event.gallery = self.gallery_db_entry
+                self.download_event.finish_download()
+                self.download_event.save()
+
+            if not self.direct_downloader and self.download_id is not None:
+                self.create_download_event(
+                    self.gallery.link, self.type, self.download_id,
+                    archive=self.archive_db_entry, gallery=self.gallery_db_entry
+                )
 
             if self.archive_db_entry and self.settings.mark_similar_new_archives:
                 self.archive_db_entry.create_marks_for_similar_archives()
@@ -242,6 +280,7 @@ class BaseFakeDownloader(BaseDownloader):
 class BaseTorrentDownloader(BaseDownloader):
 
     type = 'torrent'
+    direct_downloader = False
 
     def __init__(self, *args: typing.Any, **kwargs: typing.Any) -> None:
         super().__init__(*args, **kwargs)
@@ -253,12 +292,12 @@ class BaseTorrentDownloader(BaseDownloader):
             return None
         client.connect()
         if client.send_url:
-            result = client.add_url(
+            result, torrent_id = client.add_url(
                 torrent_link,
                 download_dir=self.settings.torrent['download_dir']
             )
         else:
-            result = client.add_torrent(
+            result, torrent_id = client.add_torrent(
                 self.general_utils.get_torrent(
                     torrent_link,
                     self.own_settings.cookies,
@@ -267,6 +306,7 @@ class BaseTorrentDownloader(BaseDownloader):
                 download_dir=self.settings.torrent['download_dir']
             )
         if result:
+            self.download_id = torrent_id
             if client.expected_torrent_name:
                 self.expected_torrent_name = "{} [{}]".format(
                     client.expected_torrent_name, self.gallery.gid
@@ -299,7 +339,7 @@ class BaseTorrentDownloader(BaseDownloader):
             )
         else:
             self.return_code = 0
-            logger.error("There was an error adding the torrent to the client")
+            logger.error("There was an error adding the torrent to the client, torrent link: {}, error in client {}:".format(torrent_link, client.error))
 
 
 class BaseGalleryDLDownloader(BaseDownloader):
@@ -345,6 +385,8 @@ class BaseGalleryDLDownloader(BaseDownloader):
 
         logger.info("Calling gallery-dl: {}.".format(" ".join([exe_path_to_use, *arguments])))
 
+        self.download_event = self.create_download_event(self.gallery.link, self.type, '')
+
         process_result = subprocess.run(
             [exe_path_to_use, *arguments],
             stdout=subprocess.PIPE,
@@ -387,6 +429,10 @@ class BaseGalleryDLDownloader(BaseDownloader):
                 replace_illegal_name(file_name)
             )
         )
+
+        if self.download_event:
+            self.download_event.name = self.gallery.filename
+            self.download_event.save()
 
         self.gallery.title = os.path.splitext(file_name)[0]
 

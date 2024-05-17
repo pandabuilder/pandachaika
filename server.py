@@ -3,6 +3,7 @@
 import os.path
 import sys
 import argparse
+import typing
 
 import cherrypy
 from cherrypy.process import plugins
@@ -22,7 +23,7 @@ class DjangoAppPlugin(plugins.SimplePlugin):
 
     def __init__(self, bus: Bus, settings_module: str = 'settings',
                  wsgi_http_logger: type = HTTPLogger,
-                 local_settings: Settings = None) -> None:
+                 local_settings: typing.Optional[Settings] = None) -> None:
         """ CherryPy engine plugin to configure and mount
         the Django application onto the CherryPy server.
         """

@@ -24,7 +24,7 @@ class uTorrent(TorrentClient):
     def __str__(self) -> str:
         return self.name
 
-    def add_torrent(self, torrent_data: Union[str, bytes], download_dir: Optional[str] = None) -> bool:
+    def add_torrent(self, torrent_data: Union[str, bytes], download_dir: Optional[str] = None) -> tuple[bool, Optional[str]]:
 
         self.total_size = 0
         self.expected_torrent_name = ''
@@ -46,14 +46,14 @@ class uTorrent(TorrentClient):
                 timeout=25).json()
             lf.close()
             if 'error' in response:
-                return False
+                return False, None
             else:
-                return True
+                return True, None
         except RequestException:
             lf.close()
-            return False
+            return False, None
 
-    def add_url(self, url: str, download_dir: Optional[str] = None) -> bool:
+    def add_url(self, url: str, download_dir: Optional[str] = None) -> tuple[bool, Optional[str]]:
 
         self.total_size = 0
         self.expected_torrent_name = ''
@@ -68,11 +68,11 @@ class uTorrent(TorrentClient):
                 params=params,
                 timeout=25).json()
             if 'error' in response:
-                return False
+                return False, None
             else:
-                return True
+                return True, None
         except RequestException:
-            return False
+            return False, None
 
     def connect(self) -> bool:
         self.UTORRENT_URL = '%s:%s/gui/' % (self.address, self.port)
@@ -91,3 +91,25 @@ class uTorrent(TorrentClient):
             return False
         # guid = r.cookies['GUID']
         # self.cookies = dict(GUID=guid)
+
+    def get_download_progress(self, download_list: list[tuple[str, TorrentClient.TorrentKey]]) -> list[tuple[TorrentClient.TorrentKey, float]]:
+        results: list[tuple[TorrentClient.TorrentKey, float]] = []
+
+        params = {'action': 'list', 'token': self.token}
+        try:
+            response = requests.get(
+                self.UTORRENT_URL,
+                auth=self.auth,
+                # cookies=self.cookies,
+                params=params,
+                timeout=25).json()
+            if 'error' in response:
+                return results
+        except RequestException:
+            return results
+
+        torrent_progress = {x[0]: x[4]*1000 for x in response['torrents']}
+
+        results = [(x[1], torrent_progress[int(x[0])]) for x in download_list if int(x[0]) in torrent_progress]
+
+        return results

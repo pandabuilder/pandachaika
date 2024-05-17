@@ -16,7 +16,7 @@ from core.base.types import DataDict
 from core.workers.holder import WorkerContext
 
 if typing.TYPE_CHECKING:
-    from viewer.models import Gallery, Archive, WantedGallery, FoundGallery, ArchiveManageEntry
+    from viewer.models import Gallery, Archive, WantedGallery, FoundGallery, ArchiveManageEntry, DownloadEvent
     from django.contrib.auth.models import User
 
 
@@ -31,6 +31,7 @@ class GlobalInfo:
         ('web_queue', 'Queue that processes gallery links, one at a time', 'queue'),
         ('webcrawler', 'Processes gallery links, can coexist with web_queue', 'processor'),
         ('foldercrawler', 'Processes galleries on the filesystem', 'processor'),
+        ('download_progress_checker', 'Checks for progress on downloads', 'processor'),
         ('post_downloader', 'Transfers archives downloaded with other programs (torrent, hath)', 'scheduler'),
         ('auto_wanted', 'Parses providers for new galleries to create wanted galleries entries', 'scheduler'),
     ]
@@ -191,6 +192,7 @@ class Settings:
     found_gallery_model: Optional['typing.Type[FoundGallery]'] = None
     wanted_gallery_model: Optional['typing.Type[WantedGallery]'] = None
     archive_manage_entry_model: Optional['typing.Type[ArchiveManageEntry]'] = None
+    download_event_model: Optional['typing.Type[DownloadEvent]'] = None
 
     def __init__(self, load_from_disk: bool = False,
                  default_dir: Optional[str] = None,
@@ -251,6 +253,9 @@ class Settings:
         self.parallel_post_downloaders = 4
         self.cherrypy_auto_restart = False
         self.add_as_public = False
+
+        self.download_progress_checker_startup = False
+        self.download_progress_checker_cycle_timer: float = 10
 
         self.db_engine = 'postgresql'
         self.database: dict[str, Any] = {}
@@ -399,15 +404,19 @@ class Settings:
         self.silent_processing = True
 
     @classmethod
-    def set_models(cls, gallery_model: 'typing.Type[Gallery]',
-                   archive_model: 'typing.Type[Archive]', found_gallery_model: 'typing.Type[FoundGallery]',
-                   wanted_gallery_model: 'typing.Type[WantedGallery]',
-                   archive_manage_entry_model: 'typing.Type[ArchiveManageEntry]'):
+    def set_models(
+            cls, gallery_model: 'typing.Type[Gallery]',
+            archive_model: 'typing.Type[Archive]', found_gallery_model: 'typing.Type[FoundGallery]',
+            wanted_gallery_model: 'typing.Type[WantedGallery]',
+            archive_manage_entry_model: 'typing.Type[ArchiveManageEntry]',
+            download_event_model: 'typing.Type[DownloadEvent]'
+    ):
         cls.gallery_model = gallery_model
         cls.archive_model = archive_model
         cls.found_gallery_model = found_gallery_model
         cls.wanted_gallery_model = wanted_gallery_model
         cls.archive_manage_entry_model = archive_manage_entry_model
+        cls.download_event_model = download_event_model
 
     def dict_to_settings(self, config: DataDict) -> None:
         if 'requests_headers' in config and config['requests_headers'] is not None:
@@ -446,6 +455,10 @@ class Settings:
                 self.wait_timer = config['general']['wait_timer']
             if 'timed_downloader_startup' in config['general']:
                 self.timed_downloader_startup = config['general']['timed_downloader_startup']
+            if 'download_progress_checker_startup' in config['general']:
+                self.download_progress_checker_startup = config['general']['download_progress_checker_startup']
+            if 'download_progress_checker_cycle_timer' in config['general']:
+                self.download_progress_checker_cycle_timer = config['general']['download_progress_checker_cycle_timer']
             if 'timed_downloader_cycle_timer' in config['general']:
                 self.timed_downloader_cycle_timer = config['general']['timed_downloader_cycle_timer']
             if 'parallel_post_downloaders' in config['general']:

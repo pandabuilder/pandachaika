@@ -8,7 +8,7 @@ import traceback
 from collections.abc import Iterable, Callable
 from ftplib import FTP_TLS
 from tempfile import mkdtemp
-from typing import Any, Optional
+from typing import Any, Optional, TypeVar
 from zipfile import ZipFile, BadZipFile
 
 import django.utils.timezone as django_tz
@@ -28,6 +28,8 @@ from core.workers.schedulers import BaseScheduler
 from viewer.models import Archive, ArchiveManageEntry
 
 logger = logging.getLogger(__name__)
+
+ArchiveKey = TypeVar('ArchiveKey')
 
 
 class PostDownloader(object):
@@ -92,7 +94,7 @@ class PostDownloader(object):
 
             if archive.gallery and archive.filesize != archive.gallery.filesize:
                 mark_comment = (
-                    "Torrent downloaded is not the same file as the gallery reports" 
+                    "Torrent downloaded has not the same file as the matched gallery" 
                     " (different filesize or filecount). This file must be replaced if the correct one" 
                     " is found."
                 )
@@ -605,6 +607,44 @@ class PostDownloader(object):
                 else:
                     return
             logger.error("Download failed, restart limit reached (3), ending")
+
+    def check_download_progress_archives(self, archives: Iterable[tuple[Archive, ArchiveKey]]) -> dict[ArchiveKey, float]:
+
+        progress_per_archive: dict[ArchiveKey, float] = {}
+
+        self.start_connection()
+
+        if not self.ftps:
+            logger.error(
+                "Cannot download the archives, the FTP connection is not initialized."
+            )
+            return progress_per_archive
+
+        self.set_current_dir(self.settings.providers['panda'].remote_hath_dir)
+        # self.ftps.encoding = 'utf8'
+
+        files_matched_hath = []
+        for line in self.ftps.mlsd(facts=["type"]):
+            if line[1]["type"] != 'dir':
+                continue
+            m = re.search(r'.*?\[(\d+)\]$', line[0])
+            if m:
+                for archive, key in archives:
+                    if archive.gallery and archive.filesize and m.group(1) == archive.gallery.gid:
+                        files_matched_hath.append(
+                            (line[0], archive.zipped.path, int(archive.filesize), key))
+
+        for matched_file_hath in files_matched_hath:
+            total_remote_size = 0
+            remote_ftp_tuples = []
+            for img_file_tuple in self.ftps.mlsd(path=matched_file_hath[0], facts=["type", "size"]):
+                if img_file_tuple[1]["type"] != 'file' or img_file_tuple[0] == 'galleryinfo.txt':
+                    continue
+                total_remote_size += int(img_file_tuple[1]["size"])
+                remote_ftp_tuples.append((img_file_tuple[0], img_file_tuple[1]["size"]))
+            progress_per_archive[matched_file_hath[3]] = total_remote_size/matched_file_hath[2]
+
+        return progress_per_archive
 
 
 class TimedPostDownloader(BaseScheduler):

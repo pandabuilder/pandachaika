@@ -76,6 +76,13 @@ class ArchiveDownloader(BaseDownloader):
 
         logger.info('Downloading gallery: {}'.format(self.gallery.title))
 
+        file_path = os.path.join(
+            self.settings.MEDIA_ROOT,
+            self.gallery.filename
+        )
+
+        self.download_event = self.create_download_event(self.gallery.link, self.type, file_path)
+
         second_pass = False
         while True:
 
@@ -128,7 +135,8 @@ class ArchiveDownloader(BaseDownloader):
             if request_file.status_code == 404:
                 # yield ("Got to last image, stopping")
                 break
-            with open(os.path.join(directory_path, img_name), "wb") as fo:
+            filepath = os.path.join(directory_path, img_name)
+            with open(filepath, "wb") as fo:
                 for chunk in request_file.iter_content(4096):
                     fo.write(chunk)
 
@@ -139,11 +147,6 @@ class ArchiveDownloader(BaseDownloader):
             else:
                 # yield ("Could not match to change page, stopping")
                 break
-
-        file_path = os.path.join(
-            self.settings.MEDIA_ROOT,
-            self.gallery.filename
-        )
 
         with ZipFile(file_path, 'w') as archive:
             for (root_path, _, file_names) in os.walk(directory_path):
@@ -222,7 +225,7 @@ class ArchiveJSDownloader(BaseDownloader):
 
         gallery_read = soup_1.find("a", {"class": "x-btn-rounded"})['href']
 
-        # Some URLs are really bad formatted
+        # Some URLs are really badly formatted
         gallery_read = re.sub(
             r'.*(' + re.escape(constants.main_page) + r'/manga/read/.+/0/1/).*', r'\1',
             gallery_read,
@@ -273,6 +276,13 @@ class ArchiveJSDownloader(BaseDownloader):
 
             directory_path = mkdtemp()
 
+            file_path = os.path.join(
+                self.settings.MEDIA_ROOT,
+                self.gallery.filename
+            )
+
+            self.download_event = self.create_download_event(self.gallery.link, self.type, file_path)
+
             for image_url in image_urls:
                 img_name = os.path.basename(image_url)
 
@@ -284,14 +294,10 @@ class ArchiveJSDownloader(BaseDownloader):
                 if request_file.status_code == 404:
                     logger.warning("Image link reported 404 error, stopping")
                     break
-                with open(os.path.join(directory_path, img_name), "wb") as fo:
+                filepath = os.path.join(directory_path, img_name)
+                with open(filepath, "wb") as fo:
                     for chunk in request_file.iter_content(4096):
                         fo.write(chunk)
-
-            file_path = os.path.join(
-                self.settings.MEDIA_ROOT,
-                self.gallery.filename
-            )
 
             with ZipFile(file_path, 'w') as archive:
                 for (root_path, _, file_names) in os.walk(directory_path):

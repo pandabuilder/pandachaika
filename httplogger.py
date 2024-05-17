@@ -2,6 +2,7 @@
 import logging
 from collections.abc import Callable
 from logging.handlers import RotatingFileHandler, SMTPHandler
+from typing import cast
 
 import cherrypy
 from cherrypy import _cplogging, _cperror
@@ -58,7 +59,7 @@ class HTTPLogger(_cplogging.LogManager):
         to this middleware, we log it as such.
         """
         try:
-            response = self.app(environ, start_response)
+            response: HttpResponse = cast(HttpResponse, self.app(environ, start_response))
             self.access(environ, response)
             return response
         except Exception:

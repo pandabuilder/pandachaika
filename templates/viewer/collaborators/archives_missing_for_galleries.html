@@ -12,7 +12,7 @@
     {% endif %}
     <!-- Galleries not used  -->
     <div class="page-header">
-    <h2>Galleries without associated archives</h2>
+    <h2>Galleries without associated archives or archives with non-matching filesize</h2>
     <p class="lead">Number of galleries (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
     </div>
     <form action="{{ request.get_full_path }}" method="GET">

@@ -21,6 +21,7 @@ class GenericTorrentDownloader(BaseDownloader):
     type = 'torrent'
     provider = 'generic'
     archive_only = True
+    direct_downloader = False
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -47,7 +48,7 @@ class GenericTorrentDownloader(BaseDownloader):
         logger.info("Adding torrent to client.")
         client.connect()
         if client.send_url or torrent_link.startswith('magnet:'):
-            result = client.add_url(
+            result, torrent_id = client.add_url(
                 torrent_link,
                 download_dir=self.settings.torrent['download_dir']
             )
@@ -58,7 +59,7 @@ class GenericTorrentDownloader(BaseDownloader):
                 convert_to_base64=client.convert_to_base64
             )
 
-            result = client.add_torrent(
+            result, torrent_id = client.add_torrent(
                 torrent_data,
                 download_dir=self.settings.torrent['download_dir']
             )
@@ -79,6 +80,7 @@ class GenericTorrentDownloader(BaseDownloader):
                     return
 
         if result:
+            self.download_id = torrent_id
             if client.expected_torrent_name:
                 self.expected_torrent_name = client.expected_torrent_name
             else:
@@ -104,7 +106,7 @@ class GenericTorrentDownloader(BaseDownloader):
             )
         else:
             self.return_code = 0
-            logger.error("There was an error adding the torrent to the client")
+            logger.error("There was an error adding the torrent to the client, torrent link: {}, error in client {}:".format(torrent_link, client.error))
 
     def update_archive_db(self, default_values: DataDict) -> Optional['Archive']:
 
@@ -186,6 +188,8 @@ class GenericArchiveDownloader(BaseDownloader):
 
         filepath = os.path.join(self.settings.MEDIA_ROOT,
                                 self.gallery.filename)
+        total_size = int(request_file.headers.get('Content-Length', 0))
+        self.download_event = self.create_download_event(self.gallery.link, self.type, filepath, total_size=total_size)
         with open(filepath, 'wb') as fo:
             for chunk in request_file.iter_content(4096):
                 fo.write(chunk)

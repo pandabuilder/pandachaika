@@ -132,6 +132,7 @@ class ProviderSettings:
 
 
 class TorrentClient:
+    TorrentKey = typing.TypeVar('TorrentKey')
 
     name = 'torrent'
     convert_to_base64 = False
@@ -150,11 +151,14 @@ class TorrentClient:
         self.set_expected = True
         self.error = ''
 
-    def add_torrent(self, torrent_data: Union[str, bytes], download_dir: Optional[str] = None) -> bool:
-        return False
+    def add_torrent(self, torrent_data: Union[str, bytes], download_dir: Optional[str] = None) -> tuple[bool, Optional[str]]:
+        return False, None
 
-    def add_url(self, url: str, download_dir: Optional[str] = None) -> bool:
-        return False
+    def add_url(self, url: str, download_dir: Optional[str] = None) -> tuple[bool, Optional[str]]:
+        return False, None
+
+    def get_download_progress(self, download_list: list[tuple[str, TorrentKey]]) -> list[tuple[TorrentKey, float]]:
+        return []
 
     def connect(self) -> bool:
         return False

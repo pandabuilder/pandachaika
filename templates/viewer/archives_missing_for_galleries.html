@@ -11,7 +11,7 @@
         {% endfor %}
     {% endif %}
     <div class="page-header">
-    <h2>Galleries without associated archives (total: {{ results.count }})</h2>
+    <h2>Galleries without associated archives or archives with non-matching filesize (total: {{ results.count }})</h2>
       <p class="lead">If you have any of these galleries, and their <b>unpacked filesize MATCHES the one displayed here</b> (for panda links), please get in touch.</p>
     </div>
     {% if results.count > 0 %}

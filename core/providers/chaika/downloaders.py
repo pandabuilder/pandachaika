@@ -53,6 +53,9 @@ class PandaBackupHttpFileDownloader(BaseDownloader):
             return
         filepath = os.path.join(self.settings.MEDIA_ROOT, self.gallery.filename)
 
+        total_size = int(request_file.headers.get('Content-Length', 0))
+        self.download_event = self.create_download_event(self.gallery.link, self.type, filepath, total_size=total_size)
+
         with open(filepath, 'wb') as fo:
             for chunk in request_file.iter_content(4096):
                 fo.write(chunk)

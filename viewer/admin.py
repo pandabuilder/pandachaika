@@ -31,7 +31,8 @@ from viewer.models import (
     MonitoredLink, TagQuerySet, GalleryProviderData, ItemProperties,
     UserLongLivedToken,
     ProcessedLinks,
-    ArchiveOption, WantedImage
+    ArchiveOption, WantedImage,
+    DownloadEvent
 )
 from django.contrib import admin
 from django.contrib.admin.helpers import ActionForm
@@ -672,6 +673,13 @@ class MonitoredLinkAdmin(admin.ModelAdmin):
     force_run.short_description = "Force run selected MonitoredLinks"  # type: ignore
 
 
+class DownloadEventAdmin(admin.ModelAdmin):
+
+    raw_id_fields = ["archive", "gallery"]
+    list_filter = ["completed", "failed", "method"]
+    list_display = ["id", "name", "archive", "progress", "total_size", "failed", "completed", "method", "download_id", "create_date", "completed_date"]
+
+
 admin.site.register(Archive, ArchiveAdmin)
 admin.site.register(ArchiveGroup, ArchiveGroupAdmin)
 admin.site.register(ArchiveGroupEntry, ArchiveGroupEntryAdmin)
@@ -698,3 +706,4 @@ admin.site.register(ArchiveManageEntry, ArchiveManageEntryAdmin)
 admin.site.register(ArchiveRecycleEntry, ArchiveRecycleEntryAdmin)
 admin.site.register(ArchiveOption, ArchiveOptionAdmin)
 admin.site.register(MonitoredLink, MonitoredLinkAdmin)
+admin.site.register(DownloadEvent, DownloadEventAdmin)

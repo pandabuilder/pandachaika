@@ -431,8 +431,7 @@ class FolderCrawler(object):
                     except_at_open = False
                     return_error = None
                     try:
-                        my_zip = ZipFile(
-                            os.path.join(self.settings.MEDIA_ROOT, filepath), 'r')
+                        my_zip = ZipFile(os.path.join(self.settings.MEDIA_ROOT, filepath), 'r')
                         return_error = my_zip.testzip()
                         my_zip.close()
                     except (BadZipFile, NotImplementedError):
@@ -460,6 +459,8 @@ class FolderCrawler(object):
                         resulting_archive = Archive.objects.update_or_create_by_values_and_gid(
                             values, None, zipped=filepath)
                         resulting_archive.fill_other_file_data(other_file_datas)
+                        if self.settings.mark_similar_new_archives:
+                            resulting_archive.create_marks_for_similar_archives()
                         continue
 
                     # Look for previous matches
@@ -489,6 +490,8 @@ class FolderCrawler(object):
                             resulting_archive = Archive.objects.add_or_update_from_values(
                                 values, zipped=filepath)
                             resulting_archive.fill_other_file_data(other_file_datas)
+                            if self.settings.mark_similar_new_archives:
+                                resulting_archive.create_marks_for_similar_archives()
                             continue
                         else:
                             logger.info("Matching independently and ignoring previous match")
@@ -547,6 +550,8 @@ class FolderCrawler(object):
                         values, None, zipped=filepath)
 
                     archive.fill_other_file_data(other_file_datas)
+                    if self.settings.mark_similar_new_archives:
+                        archive.create_marks_for_similar_archives()
 
                     if self.settings.internal_matches_for_non_matches:
                         logger.info('Generating possible internal matches.')

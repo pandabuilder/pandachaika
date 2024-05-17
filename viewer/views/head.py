@@ -1,6 +1,7 @@
 ﻿import json
 import logging
 import re
+import uuid
 from functools import reduce
 from random import randint
 
@@ -47,7 +48,7 @@ gallery_filter_keys = (
     "filesize_to", "filecount_from", "filecount_to", "posted_from", "posted_to",
     "create_from", "create_to",
     "category", "provider", "dl_type",
-    "expunged", "disowned", "hidden", "fjord", "uploader", "tags", "not_used", "reason",
+    "expunged", "disowned", "hidden", "fjord", "uploader", "tags", "not_used", "reason", "only_used",
     "contains", "contained", "not_normal", "crc32", "used"
 )
 
@@ -236,6 +237,12 @@ def image_url(request: HttpRequest, pk: int) -> HttpResponse:
 
 
 def process_gallery_page(request: HttpRequest, gallery: Gallery, tool: Optional[str] = None) -> HttpResponse:
+
+    if 'HTTP_REFERER' in request.META:
+        response = HttpResponseRedirect(request.META["HTTP_REFERER"])
+    else:
+        response = HttpResponseRedirect(gallery.get_absolute_url())
+
     if request.user.has_perm('viewer.download_gallery') and tool == "download":
         if 'downloader' in request.GET and request.user.is_staff:
             current_settings = Settings(load_from_config=crawler_settings.config)
@@ -250,12 +257,12 @@ def process_gallery_page(request: HttpRequest, gallery: Gallery, tool: Optional[
             current_settings.retry_failed = True
             if current_settings.workers.web_queue:
                 current_settings.workers.web_queue.enqueue_args_list((gallery.get_link(),), override_options=current_settings)
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return response
 
     if request.user.is_staff and tool == "toggle-hidden":
         gallery.hidden = not gallery.hidden
         gallery.save()
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return response
 
     if request.user.has_perm('viewer.publish_gallery') and tool == "toggle-public":
         gallery.public_toggle()
@@ -275,7 +282,7 @@ def process_gallery_page(request: HttpRequest, gallery: Gallery, tool: Optional[
                 result='success'
             )
 
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return response
 
     if request.user.has_perm('viewer.mark_delete_gallery') and tool == "mark-deleted":
         gallery.mark_as_deleted()
@@ -287,7 +294,7 @@ def process_gallery_page(request: HttpRequest, gallery: Gallery, tool: Optional[
             result='deleted'
         )
 
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return response
 
     if request.user.has_perm('viewer.mark_delete_gallery') and tool == "mark-normal":
         gallery.mark_as_normal()
@@ -299,7 +306,7 @@ def process_gallery_page(request: HttpRequest, gallery: Gallery, tool: Optional[
             result='success'
         )
 
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return response
 
     if request.user.has_perm('viewer.update_metadata') and tool == "recall-api":
 
@@ -330,7 +337,7 @@ def process_gallery_page(request: HttpRequest, gallery: Gallery, tool: Optional[
                 )
             )
 
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return response
 
     if request.user.has_perm('viewer.update_metadata') and tool == "refetch-thumbnail":
 
@@ -352,7 +359,7 @@ def process_gallery_page(request: HttpRequest, gallery: Gallery, tool: Optional[
                 )
             )
 
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return response
 
     tag_lists = sort_tags(gallery.tags.all())
 
@@ -776,6 +783,8 @@ def filter_galleries(request: HttpRequest, session_filters: dict[str, str], requ
     if request.user.is_authenticated:
         if request_filters["not_used"]:
             results = results.non_used_galleries()  # type: ignore
+        if request_filters["only_used"]:
+            results = results.only_used_galleries()  # type: ignore
         if request_filters["hidden"]:
             results = results.filter(hidden=request_filters["hidden"])
         if "not_normal" not in request_filters or not request_filters["not_normal"]:
@@ -1435,12 +1444,15 @@ def url_submit(request: HttpRequest) -> HttpResponse:
         gallery_submit_entries: dict[str, GallerySubmitEntry] = {}
         gallery_submit_entries_by_id: dict[tuple[str, str], GallerySubmitEntry] = {}
 
+        uuid_group = uuid.uuid4()
+
         for url_filtered, gallery, provider_name, gallery_id in url_provider_gallery_tuple:
             if not gallery:
                 submit_entry = GallerySubmitEntry(
                     submit_url=url_filtered,
                     submit_reason=reason,
-                    submit_extra="\n".join(extra_text)
+                    submit_extra="\n".join(extra_text),
+                    submit_group=uuid_group
                 )
                 submit_entry.save()
             else:
@@ -1450,6 +1462,7 @@ def url_submit(request: HttpRequest) -> HttpResponse:
                     submit_url=url_filtered,
                     submit_reason=reason,
                     submit_extra="\n".join(extra_text),
+                    submit_group=uuid_group
                 )
                 submit_entry.save()
 
@@ -1466,7 +1479,7 @@ def url_submit(request: HttpRequest) -> HttpResponse:
             if crawled_url in gallery_submit_entries:
                 gallery_submit_entries[crawled_url].submit_result = result
                 gallery_submit_entries[crawled_url].save()
-            # For some reason we're getting a int here, convert to str
+            # For some reason we're getting an int here, convert to str
             if x:
                 gallery_gid = str(x.gid)
                 if (gid, x.provider) in gallery_submit_entries_by_id:
@@ -1742,6 +1755,8 @@ def filter_archives_simple(params: dict[str, Any], authenticated=False, show_bin
             results = results.filter(create_date__gte=params["created_from"])
         if "created_to" in params and params["created_to"]:
             results = results.filter(create_date__lte=params["created_to"])
+        if "extra_files" in params and params["extra_files"]:
+            results = results.filter(archivefileentry__file_name__icontains=params["extra_files"])
 
     if params["match_type"]:
         results = results.filter(match_type__icontains=params["match_type"])

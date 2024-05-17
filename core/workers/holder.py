@@ -7,6 +7,7 @@ from core.base.utilities import check_for_running_threads
 
 if typing.TYPE_CHECKING:
     from core.downloaders.postdownload import TimedPostDownloader
+    from core.workers.download_progress import DownloadProgressChecker
     from core.workers.autoupdate import ProviderTimedAutoUpdater
     from core.workers.auto_wanted import TimedAutoWanted
     from core.workers.webqueue import WebQueue
@@ -18,6 +19,7 @@ class WorkerContext:
     web_queue: Optional['WebQueue'] = None
     timed_auto_wanted: Optional['TimedAutoWanted'] = None
     timed_downloader: Optional['TimedPostDownloader'] = None
+    download_progress_checker: Optional['DownloadProgressChecker'] = None
     timed_auto_updaters: list['ProviderTimedAutoUpdater'] = []
     timed_link_monitors: list['LinkMonitor'] = []
 
@@ -27,6 +29,8 @@ class WorkerContext:
             workers.append(self.timed_auto_wanted)
         if self.timed_downloader:
             workers.append(self.timed_downloader)
+        if self.download_progress_checker:
+            workers.append(self.download_progress_checker)
         workers.extend(self.timed_auto_updaters)
         workers.extend(self.timed_link_monitors)
         return workers
@@ -64,6 +68,7 @@ class WorkerContext:
 
         from core.downloaders.postdownload import TimedPostDownloader
         from core.workers.autoupdate import ProviderTimedAutoUpdater
+        from core.workers.download_progress import DownloadProgressChecker
         from core.workers.auto_wanted import TimedAutoWanted
         from core.workers.link_monitor import LinkMonitor
         from core.workers.webqueue import WebQueue
@@ -153,10 +158,26 @@ class WorkerContext:
             if link_monitor.monitored_link.auto_start:
                 link_monitor.start_running(timer=link_monitor.original_timer)
 
+        self.download_progress_checker = DownloadProgressChecker(
+            crawler_settings,
+            web_queue=self.web_queue,
+            timer=10
+        )
+
+        obj = Scheduler.objects.get_or_create(
+            name=self.download_progress_checker.thread_name,
+        )
+        self.download_progress_checker.last_run = obj[0].last_run
+        self.download_progress_checker.pk = obj[0].pk
+        if crawler_settings.download_progress_checker_startup:
+            self.download_progress_checker.start_running(timer=crawler_settings.download_progress_checker_cycle_timer)
+
     def command_workers_to_stop(self) -> None:
 
         if self.timed_downloader:
             self.timed_downloader.stop_running()
+        if self.download_progress_checker:
+            self.download_progress_checker.stop_running()
         if self.timed_auto_wanted:
             self.timed_auto_wanted.stop_running()
         for provider_auto_updater in self.timed_auto_updaters:

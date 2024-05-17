@@ -13,21 +13,27 @@ cache:
   - .cache/pip
   - .cache/uv
 
-test3.12:
-  image: python:3.12
+test-all:
+  parallel:
+    matrix:
+      - PYTHON_VERSION:
+        - '3.10'
+        - '3.11'
+        - '3.12'
+  image: python:$PYTHON_VERSION
   stage: test
   script:
-  - python3.12 --version
-  - pip3.12 -V
-  - python3.12 -m venv ENV3.12
-  - source ENV3.12/bin/activate
-  - pip3.12 install uv
+  - python --version
+  - pip -V
+  - python -m venv ENV
+  - source ENV/bin/activate
+  - pip install uv
   - uv pip install -r ci-requirements.txt
-  - ruff check --exclude="ENV3.12" .
+  - ruff check --exclude="ENV" .
   - mypy core pandabackup viewer
   - bash ./set_db_engine.sh
-  - python3.12 manage.py migrate
-  - python3.12 manage.py test viewer.tests.test_internal viewer.tests.test_core
+  - python manage.py migrate
+  - python manage.py test viewer.tests.test_internal viewer.tests.test_core
   tags:
     - django
   artifacts:
@@ -36,88 +42,3 @@ test3.12:
       - test-results/TEST-*.xml
     reports:
       junit: test-results/TEST-*.xml
-
-test3.10:
-  image: python:3.10
-  stage: test
-  script:
-  - python3.10 --version
-  - pip3.10 -V
-  - python3.10 -m venv ENV3.10
-  - source ENV3.10/bin/activate
-  - pip3.10 install uv
-  - uv pip install -r ci-requirements.txt
-  - ruff check --exclude="ENV3.10" .
-  - mypy core pandabackup viewer
-  - bash ./set_db_engine.sh
-  - python3.10 manage.py migrate
-  - python3.10 manage.py test viewer.tests.test_internal viewer.tests.test_core
-  tags:
-    - django
-  artifacts:
-    when: always
-    paths:
-      - test-results/TEST-*.xml
-    reports:
-      junit: test-results/TEST-*.xml
-
-test3.11:
-  image: python:3.11
-  stage: test
-  script:
-  - python3.11 --version
-  - pip3.11 -V
-  - python3.11 -m venv ENV3.11
-  - source ENV3.11/bin/activate
-  - pip3.11 install uv
-  - uv pip install -r ci-requirements.txt
-  - ruff check --exclude="ENV3.11" .
-  - mypy core pandabackup viewer
-  - bash ./set_db_engine.sh
-  - python3.11 manage.py migrate
-  - python3.11 manage.py test viewer.tests.test_internal viewer.tests.test_core
-  tags:
-    - django
-  artifacts:
-    when: always
-    paths:
-      - test-results/TEST-*.xml
-    reports:
-      junit: test-results/TEST-*.xml
-
-#deploy_review:
-#  image: ubuntu_rsync
-#  stage: deploy
-#  before_script:
-#    - mkdir -p ~/.ssh
-#    - 'echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
-#    - echo "$SERVER_PRIV_KEY_PROD" > ~/.ssh/id_rsa
-#  script:
-#    - rsync -av --delete --exclude='.gitlab-ci.yml' --exclude='.git/' --exclude='static/' --exclude settings.ini --exclude settings.yaml . ${SERVER_REMOTE_ADDR_REVIEW}:${SERVER_REMOTE_DIR_REVIEW}
-#    - ssh $SERVER_REMOTE_ADDR_REVIEW "cd $SERVER_REMOTE_DIR_REVIEW && python3.11 -m venv ENV && source ENV/bin/activate && pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --noinput && {{test -f ./current.pid && cat ./current.pid | xargs kill -9} || true } && python server.py -d -pf ./current.pid"
-#  environment:
-#    name: review/$CI_COMMIT_REF_NAME
-#    url: $SERVER_URL_REVIEW
-#  only:
-#    - trunk
-#  tags:
-#    - django
-#
-#deploy_prod:
-#  image: ubuntu_rsync
-#  stage: deploy
-#  before_script:
-#    - mkdir -p ~/.ssh
-#    - 'echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
-#    - echo "$SERVER_PRIV_KEY_PROD" > ~/.ssh/id_rsa
-#  script:
-#    - rsync -av --delete --exclude='.gitlab-ci.yml' --exclude='.git/' --exclude='static/' --exclude settings.ini --exclude settings.yaml . ${SERVER_REMOTE_ADDR_PROD}:${SERVER_REMOTE_DIR_PROD}
-#    - ssh $SERVER_REMOTE_ADDR_PROD "cd $SERVER_REMOTE_DIR_PROD && python3.11 -m venv ENV && source ENV/bin/activate && pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --noinput && {{test -f ./current.pid && cat ./current.pid | xargs kill -9} || true } && python server.py -d -pf ./current.pid"
-#  environment:
-#    name: review/$CI_COMMIT_REF_NAME
-#    url: $SERVER_URL_PROD
-#  when: manual
-#  only:
-#    - trunk
-#  tags:
-#    - django

@@ -4,7 +4,7 @@ from typing import Optional, Union
 from PIL import Image as PImage
 from PIL import UnidentifiedImageError
 from django.contrib.contenttypes.models import ContentType
-from django.db.models import QuerySet, Model
+from django.db.models import QuerySet
 
 from core.base import hashing
 

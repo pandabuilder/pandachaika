@@ -245,9 +245,84 @@ class TitleGoogleMatcher(TitleMatcher):
             return False
 
 
+class TitleGidMatcher(Matcher):
+
+    name = 'gid'
+    provider = constants.provider_name
+    type = 'gid'
+    time_to_wait_after_compare = 10
+    default_cutoff = 0.7
+
+    def format_to_search_title(self, file_name: str) -> str:
+        if file_matches_any_filter(file_name, self.settings.filename_filter):
+            return clean_title(self.get_title_from_path(file_name))
+        else:
+            return clean_title(file_name)
+
+    @staticmethod
+    def get_gid_from_title(title: str) -> str:
+        result = re.search(r"^(\d+)", title)
+        if result:
+            return result.group(1)
+        else:
+            return ''
+
+    def format_to_compare_title(self, file_name: str) -> str:
+        if file_matches_any_filter(file_name, self.settings.filename_filter):
+            return self.get_gid_from_title(clean_title(self.get_title_from_path(file_name)))
+        else:
+            return self.get_gid_from_title(clean_title(file_name))
+
+    def search_method(self, title_to_search: str) -> bool:
+        return self.compare_by_title(title_to_search)
+
+    def format_match_values(self) -> Optional[DataDict]:
+
+        if not self.match_values:
+            return None
+
+        self.match_gid = self.match_values.gid
+        filesize, filecount, _ = get_zip_fileinfo(os.path.join(self.settings.MEDIA_ROOT, self.file_path))
+        values = {
+            'title': self.match_title,
+            'title_jpn': self.match_values.title_jpn,
+            'zipped': self.file_path,
+            'crc32': self.crc32,
+            'match_type': self.found_by,
+            'filesize': filesize,
+            'filecount': filecount,
+            'source_type': self.provider
+        }
+        return values
+
+    def compare_by_title(self, image_title: str) -> bool:
+
+        filters = {'f_search': '"' + image_title + '"'}
+
+        request_dict = construct_request_dict(self.settings, self.own_settings)
+        request_dict['params'] = filters
+
+        r = requests.get(
+            constants.ex_page,
+            **request_dict
+        )
+
+        parser = SearchHTMLParser()
+        parser.feed(r.text)
+
+        self.gallery_links = list(parser.galleries)
+
+        if len(self.gallery_links) > 0:
+            self.found_by = self.name
+            return True
+        else:
+            return False
+
+
 API = (
     CoverMatcher,
     ImageMatcher,
     TitleMatcher,
     TitleGoogleMatcher,
+    TitleGidMatcher,
 )

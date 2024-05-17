@@ -30,7 +30,7 @@ from core.workers.archive_work import ArchiveWorker
 from viewer.models import (
     Archive, Tag, Gallery,
     ArchiveMatches,
-    WantedGallery, FoundGallery)
+    WantedGallery, FoundGallery, DownloadEvent)
 from viewer.utils.matching import (
     create_matches_wanted_galleries_from_providers,
     create_matches_wanted_galleries_from_providers_internal,
@@ -71,6 +71,7 @@ def stats_workers(request: HttpRequest) -> HttpResponse:
         "thread_status": get_thread_status(),
         "web_queue": crawler_settings.workers.web_queue,
         "post_downloader": crawler_settings.workers.timed_downloader,
+        "download_progress_checker": DownloadEvent.objects.in_progress().select_related('archive', 'gallery'),
         "schedulers": get_schedulers_status(crawler_settings.workers.get_active_initialized_workers())
     }
 

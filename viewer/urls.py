@@ -142,6 +142,7 @@ urlpatterns += [
     re_path(r"^col-wanted-gallery/(\d+)/$", collaborators.wanted_gallery, name='col-wanted-gallery'),
     re_path(r"^col-create-wanted-gallery/$", collaborators.create_wanted_gallery, name='col-create-wanted-gallery'),
     re_path(r"^user-crawler/$", collaborators.user_crawler, name='user-crawler'),
+    re_path(r"^download-history/$", collaborators.download_history, name='download-history'),
     re_path(r"^match-archives/$", collaborators.archives_not_matched_with_gallery, name='match-archives'),
     re_path(r"^col-update/(\d+)/([\w-]+)/(\d*)/$", collaborators.archive_update, name='col-archive-update-tool-id'),
     re_path(r"^col-update/(\d+)/([\w-]+)/$", collaborators.archive_update, name='col-archive-update-tool'),

@@ -9,7 +9,7 @@ from django.template import RequestContext
 from django.template.defaultfilters import stringfilter
 from django.utils.encoding import punycode
 from django.utils.functional import keep_lazy_text
-from django.utils.html import smart_urlquote, Urlizer, escape  # type: ignore[attr-defined]
+from django.utils.html import smart_urlquote, Urlizer, escape
 from django.utils.safestring import SafeText, mark_safe
 
 from core.base.utilities import translate_tag, artist_from_title

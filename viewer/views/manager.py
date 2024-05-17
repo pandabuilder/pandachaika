@@ -259,7 +259,7 @@ def archive_filesize_different_from_gallery(request: HttpRequest) -> HttpRespons
 
 
 def public_missing_archives_for_galleries(request: HttpRequest) -> HttpResponse:
-    results = Gallery.objects.non_used_galleries(public=True, provider__in=['panda', 'fakku'])  # type: ignore
+    results = Gallery.objects.report_as_missing_galleries(public=True, provider__in=['panda', 'fakku'])  # type: ignore
     d = {'results': results}
     return render(request, "viewer/archives_missing_for_galleries.html", d)
 

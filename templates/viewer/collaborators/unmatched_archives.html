@@ -183,8 +183,18 @@
         </ul>
     </div>
     </div>
+      <div class="col-md-auto">
+        <select id="matcher_type" name="matcher_type" class="form-control" title="Matcher type to use" aria-label="matcher_type">
+          {% for matcher_type in matcher_types %}
+            <option value="{{ matcher_type }}" {% if request.POST.matcher_type == matcher_type %} selected{% endif %}>{{ matcher_type }}</option>
+          {% endfor %}
+        </select>
+      </div>
     <div class="col-md-auto">
     <button type="submit" name="clear_possible_matches" class="btn btn-light" value="">Clear possible matches</button>
+    </div>
+    <div class="col-md-auto">
+    <button type="submit" name="auto_select_first_match" class="btn btn-light" value="">Auto match with first possible match</button>
     </div>
     </div>
   </form>
