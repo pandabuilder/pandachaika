@@ -180,7 +180,8 @@ class GalleryQuerySet(models.QuerySet):
                 Q(alternative_sources__isnull=True)
             ) | Q(
                 Q(status=Gallery.StatusChoices.NORMAL),
-                ~Q(filesize=F('archive__filesize')),
+                # Hardcode fakku restriction, older galleries had a reported filesize that was wrong.
+                (~Q(filesize=F('archive__filesize')) & ~Q(provider='fakku')),
                 Q(number_of_archives=1),
                 ~Q(filesize=0),
                 Q(archive__isnull=False)
@@ -1961,6 +1962,7 @@ class Archive(models.Model):
 
         new_archive.pk = None
         new_archive._state.adding = True
+        new_archive.extracted = False
         new_archive.public = False
         new_archive.public_date = None
         new_archive.crc32 = ''
@@ -2120,6 +2122,7 @@ class Archive(models.Model):
         new_archive.thumbnail = ''
         if image_tool:
             new_archive.filesize = None
+        new_archive.extracted = False
         new_archive.zipped = new_file_name
         new_archive.save()
         new_archive.possible_matches.set(possible_matches)
@@ -2238,6 +2241,7 @@ class Archive(models.Model):
             new_archive.crc32 = ''
             new_archive.thumbnail = ''
             new_archive.filesize = None
+            new_archive.extracted = False
             new_archive.zipped = new_file_name
             new_archive.save()
             # new_archive.possible_matches.set(possible_matches)

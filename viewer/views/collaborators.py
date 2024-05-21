@@ -30,6 +30,7 @@ from viewer.forms import GallerySearchForm, ArchiveSearchForm, WantedGalleryCrea
 from viewer.models import Archive, Gallery, EventLog, ArchiveMatches, Tag, WantedGallery, ArchiveGroup, \
     ArchiveGroupEntry, GallerySubmitEntry, MonitoredLink, ArchiveRecycleEntry, ArchiveTag, UserLongLivedToken, \
     DownloadEvent
+from viewer.utils.requests import double_check_auth
 from viewer.utils.tags import sort_tags
 from viewer.utils.types import AuthenticatedHttpRequest
 from viewer.views.head import gallery_filter_keys, filter_galleries_simple, \
@@ -413,8 +414,12 @@ def filter_by_marks(archives: QuerySet[Archive], params: QueryDict) -> tuple[Que
     return archives, mark_filters
 
 
-@permission_required('viewer.manage_archive')
 def manage_archives(request: HttpRequest) -> HttpResponse:
+    authenticated, actual_user = double_check_auth(request)
+
+    if not actual_user or not actual_user.has_perm('viewer.manage_archive'):
+        return HttpResponse(status=403)
+
     p = request.POST
     get = request.GET
 
@@ -760,14 +765,14 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
     if 'sort_by' in get:
         params['sort_by'] = get.get('sort_by', '')
 
-    results = filter_archives_simple(params, request.user.is_authenticated, show_binned=True)
+    results = filter_archives_simple(params, authenticated, show_binned=True)
 
     results, mark_filters = filter_by_marks(results, request.GET)
 
     if 'diff-filesize' in get:
         results = results.exclude(gallery__filesize__isnull=True).exclude(filesize=0).filter(gallery__filesize__gt=0).exclude(filesize=F('gallery__filesize'))
 
-    if 'recycled' in get and request.user.has_perm('viewer.recycle_archive'):
+    if 'recycled' in get and actual_user is not None and actual_user.has_perm('viewer.recycle_archive'):
         results = results.filter(binned=True)
     else:
         results = results.filter(binned=False)
@@ -786,7 +791,7 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
     if json_request:
         results = results.prefetch_related('tags')
 
-    if request.user.has_perm('viewer.view_marks'):
+    if actual_user.has_perm('viewer.view_marks'):
         results = results.prefetch_related('manage_entries')
 
     paginator = Paginator(results, size)
@@ -798,7 +803,7 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
     if json_request:
         response = json.dumps(
             {
-                'results': archive_manage_results_to_json(request, results_page, request.user.is_authenticated),
+                'results': archive_manage_results_to_json(request, results_page, authenticated),
                 'has_previous': results_page.has_previous(),
                 'has_next': results_page.has_next(),
                 'num_pages': paginator.num_pages,
@@ -827,7 +832,7 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
         'search_form': search_form,
     }
 
-    if request.user.has_perm('viewer.change_archivegroup'):
+    if actual_user.has_perm('viewer.change_archivegroup'):
         group_form = ArchiveGroupSelectForm()
         d.update(group_form=group_form)
 
