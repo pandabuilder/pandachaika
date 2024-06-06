@@ -1,0 +1,27 @@
+{
+  "../../node_modules/slick-carousel/slick/ajax-loader.gif": {
+    "file": "assets/ajax-loader-BcnMEykj.gif",
+    "src": "../../node_modules/slick-carousel/slick/ajax-loader.gif"
+  },
+  "../../node_modules/slick-carousel/slick/fonts/slick.svg": {
+    "file": "assets/slick-BlzDm7g2.svg",
+    "src": "../../node_modules/slick-carousel/slick/fonts/slick.svg"
+  },
+  "src/assets/no_cover.png": {
+    "file": "assets/no_cover-eEdCbnFG.png",
+    "src": "src/assets/no_cover.png"
+  },
+  "src/main.tsx": {
+    "file": "assets/main-DtZplwK3.js",
+    "src": "src/main.tsx",
+    "isEntry": true,
+    "css": [
+      "assets/main-W-NGe8_v.css"
+    ],
+    "assets": [
+      "assets/no_cover-eEdCbnFG.png",
+      "assets/ajax-loader-BcnMEykj.gif",
+      "assets/slick-BlzDm7g2.svg"
+    ]
+  }
+}

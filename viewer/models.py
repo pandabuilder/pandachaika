@@ -1928,8 +1928,11 @@ class Archive(models.Model):
         for count, sha1 in enumerate(sha1s, start=1):
 
             try:
-                current_image = images.get(sha1=sha1)
+                current_image = images.filter(sha1=sha1).first()
             except Image.DoesNotExist:
+                return None, 'Image from SHA1 value: {} does not exist'.format(sha1)
+
+            if current_image is None:
                 return None, 'Image from SHA1 value: {} does not exist'.format(sha1)
 
             archive_position = current_image.archive_position

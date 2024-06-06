@@ -4,6 +4,7 @@ Django settings for pandabackup project.
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 import os
+import sys
 from typing import Any, Optional
 import typing
 
@@ -139,7 +140,9 @@ if module_exists('compressor'):
 if module_exists('django_unused_media'):
     INSTALLED_APPS += ['django_unused_media']
 
-if DEBUG and module_exists('debug_toolbar'):
+TESTING = sys.argv[1:2] == ['test']
+
+if DEBUG and not TESTING and module_exists('debug_toolbar'):
     INSTALLED_APPS += ['debug_toolbar']
 
 if module_exists('xmlrunner'):
@@ -166,11 +169,11 @@ STATICFILES_FINDERS = [
 
 DJANGO_VITE = {
     'image_viewer': {
-        'manifest_path': os.path.join(BASE_DIR, 'viewer/assets/image-viewer/manifest.json'),
+        'manifest_path': os.path.join(BASE_DIR, 'viewer/assets/image-viewer/.vite/manifest.json'),
         'static_url_prefix': 'image-viewer'
     },
     'compare_archives': {
-        'manifest_path': os.path.join(BASE_DIR, 'viewer/assets/compare-archives/manifest.json'),
+        'manifest_path': os.path.join(BASE_DIR, 'viewer/assets/compare-archives/.vite/manifest.json'),
         'static_url_prefix': 'compare-archives'
     },
     'archive_groups': {
@@ -202,7 +205,7 @@ ROOT_URLCONF = 'pandabackup.urls'
 WSGI_APPLICATION = 'pandabackup.wsgi.application'
 
 # Debug Toolbar
-if DEBUG and module_exists('debug_toolbar'):
+if DEBUG and not TESTING and module_exists('debug_toolbar'):
     INTERNAL_IPS = ['127.0.0.1']
     DEBUG_TOOLBAR_PATCH_SETTINGS = False
     MIDDLEWARE = ['debug_toolbar.middleware.DebugToolbarMiddleware'] + \
@@ -336,10 +339,9 @@ if crawler_settings.mail_logging.enable:
     LOGGING['loggers']['django']['handlers'].append('mail_admins')
 
 if crawler_settings.elasticsearch.enable:
-    from elasticsearch import Elasticsearch, RequestsHttpConnection
+    from elasticsearch import Elasticsearch
     ES_CLIENT: Optional[Elasticsearch] = Elasticsearch(
         [crawler_settings.elasticsearch.url],
-        connection_class=RequestsHttpConnection,
         timeout=crawler_settings.elasticsearch.timeout
     )
     ES_ENABLED = True

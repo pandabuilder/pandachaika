@@ -14,12 +14,11 @@ class Command(BaseCommand):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        from elasticsearch import Elasticsearch, RequestsHttpConnection
+        from elasticsearch import Elasticsearch
 
         # TODO: Timeout as option.
         self.es_client = Elasticsearch(
             [crawler_settings.elasticsearch.url],
-            connection_class=RequestsHttpConnection,
             timeout=crawler_settings.elasticsearch.timeout,
         )
 
@@ -63,7 +62,7 @@ class Command(BaseCommand):
 
     def recreate_index_model(self, model: Union[type[Gallery], type[Archive]]):
 
-        from elasticsearch.client.indices import IndicesClient
+        from elasticsearch.client import IndicesClient
 
         indices_client = IndicesClient(client=self.es_client)
         index_name = model._meta.es_index_name  # type: ignore
