@@ -27,7 +27,7 @@ jobs:
         uv pip install --system -r ci-requirements.txt
     - name: Run Ruff
       run: |
-        ruff .
+        ruff check .
     - name: Run mypy
       run: |
         mypy core pandabackup viewer
