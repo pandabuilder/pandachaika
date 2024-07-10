@@ -79,6 +79,11 @@
       </div>
       <div class="col-md-auto">
         <div class="form-check">
+        <input id="checkbox-f3a" class="form-check-input" type="checkbox" name="restricted-to-links" value="1" {% if "restricted-to-links" in request.GET %}checked{% endif %}><label for="checkbox-f3a">Restricted to Links</label>
+        </div>
+      </div>
+      <div class="col-md-auto">
+        <div class="form-check">
         <input id="checkbox-f4" class="form-check-input" type="checkbox" name="with-possible-matches" value="1" {% if "with-possible-matches" in request.GET %}checked{% endif %}><label for="checkbox-f4">With possible matches</label>
         </div>
       </div>
@@ -139,7 +144,7 @@
         <span class="me-1">
           <input id="sel-{{ gallery.id }}" class="toggle-list form-check-input" type="checkbox" name="sel-{{ gallery.id }}" value="{{ gallery.pk }}"><label for="sel-{{ gallery.id }}"></label>
         </span>
-            <a href="{{ gallery.get_absolute_url }}">{{ gallery.id }}</a>: Title: {{ gallery.title }} >> Artists: {{ gallery.artists.all|join:", " }} >> Release date: {{ gallery.release_date|date }} >> Reason: {{ gallery.reason }} >> Pages: {{ gallery.page_count }} >> Should search: {{ gallery.should_search|yesno }} >> Keep searching: {{ gallery.keep_searching|yesno }} >> Found: {{ gallery.found|yesno }}
+            <a href="{{ gallery.get_absolute_url }}">{{ gallery.id }}</a>: Title: {{ gallery.title }} >> Artists: {{ gallery.artists.all|join:", " }} >> Release date: {{ gallery.release_date|date }} >> Reason: {{ gallery.reason }} >> Pages: {{ gallery.page_count }} >> Should search: {{ gallery.should_search|yesno }} >> Keep searching: {{ gallery.keep_searching|yesno }} >> Restricted to MonitoredLinks: {{ gallery.restricted_to_links|yesno }} >> Found: {{ gallery.found|yesno }}
           {% with matches=gallery.possible_galleries mentions=gallery.mentions.all %}
             {% if matches|length > 0 %}
               <h5>Possible matches >> <a href="{% url 'viewer:wanted-gallery' gallery.pk %}?tool=clear-possible-matches">clear possible matches</a></h5>

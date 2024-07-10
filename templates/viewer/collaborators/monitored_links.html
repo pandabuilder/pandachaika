@@ -35,7 +35,7 @@
       <table class="table table-bordered table-sm generic-table">
         <thead>
         <tr>
-          <th>Name</th><th>URL</th><th>Enabled</th><th>Description</th><th>Provider</th><th title="Applies on paginated pages">Stop page</th><th>Frequency</th><th>Created on</th><th>Last run</th><th>Next run</th><th>Next run in</th>
+          <th>Name</th><th>URL</th><th>Enabled</th><th>Description</th><th>Provider</th><th>Wanted Galleries Restriction</th><th title="Applies on paginated pages">Stop page</th><th>Frequency</th><th>Created on</th><th>Last run</th><th>Next run</th><th>Next run in</th>
         </tr>
         </thead>
         <tbody>
@@ -45,8 +45,8 @@
             <td>
               {{ monitored_link.name }}
             </td>
-            <td>
-              {{ monitored_link.url|urlize_all_rel }}
+            <td class="text-break">
+                {{ monitored_link.url|urlize_all_rel }}
             </td>
             <td>
               {{ monitored_link.enabled|yesno }}
@@ -58,6 +58,14 @@
               {{ monitored_link.provider.slug }}
             </td>
             <td>
+              {{ monitored_link.use_limited_wanted_galleries|yesno }}: 
+                  {% for wanted_gallery in monitored_link.limited_wanted_galleries.all %}
+                    <span style="padding-right: 10px;">
+                        <a href="{% url 'viewer:col-wanted-gallery' wanted_gallery.pk %}" rel="popover">{{ wanted_gallery.pk }}</a>
+                    </span>
+                  {% endfor %}
+            </td>
+            <td>
               {{ monitored_link.stop_page }}
             </td>
             <td>
@@ -67,13 +75,19 @@
               {{ monitored_link.create_date|date:"y-m-d, H:i:s" }}
             </td>
             <td>
-              {{ schedulers|dict_key:link_pk|dict_key:2|date:"y-m-d, H:i:s" }}
+                {% if schedulers %}
+                    {{ schedulers|dict_key:link_pk|dict_key:2|date:"y-m-d, H:i:s" }}
+                {% endif %}
             </td>
             <td>
-              {{ schedulers|dict_key:link_pk|dict_key:4|date:"y-m-d, H:i:s" }}
+                {% if schedulers %}
+                    {{ schedulers|dict_key:link_pk|dict_key:4|date:"y-m-d, H:i:s" }}
+                {% endif %}
             </td>
             <td>
-              {{ schedulers|dict_key:link_pk|dict_key:4|timeuntil }}
+                {% if schedulers %}
+                    {{ schedulers|dict_key:link_pk|dict_key:4|timeuntil }}
+                {% endif %}
             </td>
           </tr>
             {% endwith %}

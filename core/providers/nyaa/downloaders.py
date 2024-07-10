@@ -82,24 +82,27 @@ class NyaaTorrentDownloader(GenericTorrentDownloader):
                 )
             if client.expected_torrent_extension:
                 self.expected_torrent_extension = client.expected_torrent_extension
-            else:
-                self.expected_torrent_extension = ".zip"
             self.fileDownloaded = 1
             self.return_code = 1
             if client.total_size > 0:
                 self.gallery.filesize = client.total_size
             else:
                 self.gallery.filesize = 0
+
+            if not self.expected_torrent_name.endswith(self.expected_torrent_extension):
+                final_name = replace_illegal_name(self.expected_torrent_name) + self.expected_torrent_extension
+            else:
+                final_name = replace_illegal_name(self.expected_torrent_name)
             self.gallery.filename = available_filename(
                 self.settings.MEDIA_ROOT,
                 os.path.join(
                     self.own_settings.torrent_dl_folder,
-                    replace_illegal_name(self.expected_torrent_name) + self.expected_torrent_extension
+                    final_name
                 )
             )
             # This being a no_metadata downloader, we force the Gallery fields from the Archive
             if self.original_gallery:
-                self.original_gallery.title = self.expected_torrent_name
+                self.original_gallery.title = os.path.splitext(self.expected_torrent_name)[0]
                 self.original_gallery.filesize = self.gallery.filesize
         else:
             self.return_code = 0

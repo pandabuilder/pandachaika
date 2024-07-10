@@ -766,10 +766,13 @@ class Gallery(models.Model):
                 'reason': {'type': 'keyword'},
                 'public': {'type': 'boolean'},
                 'category': {'type': 'keyword'},
+                'rating': {'type': 'float'},
                 'expunged': {'type': 'boolean'},
                 'disowned': {'type': 'boolean'},
                 'uploader': {'type': 'keyword'},
                 'source_url': {'type': 'text', 'index': False},
+                'last_in_chain': {'type': 'boolean'},
+                'gallery_chain_urls': {'type': 'text', 'index': False},
                 'thumbnail': {'type': 'text', 'index': False},
                 'source_thumbnail': {'type': 'text', 'index': False}
             }
@@ -818,6 +821,35 @@ class Gallery(models.Model):
             else:
                 field_es_value = getattr(self, field_name)
         return field_es_value
+
+    def get_es_last_in_chain(self):
+        if self.first_gallery:
+            gallery_filters = Q(first_gallery=self.first_gallery) | Q(first_gallery=self) | Q(pk=self.pk) | Q(
+                pk=self.first_gallery.pk)
+        else:
+            gallery_filters = Q(first_gallery=self) | Q(pk=self.pk)
+
+        gallery_chain = Gallery.objects.filter(gallery_filters, provider=self.provider).order_by('gid')
+
+        last_in_chain = gallery_chain.last()
+
+        if last_in_chain is None:
+            return True
+        elif last_in_chain.pk == self.pk:
+            return True
+        else:
+            return False
+
+    def get_es_gallery_chain_urls(self):
+        if self.first_gallery:
+            gallery_filters = Q(first_gallery=self.first_gallery) | Q(first_gallery=self) | Q(pk=self.pk) | Q(
+                pk=self.first_gallery.pk)
+        else:
+            gallery_filters = Q(first_gallery=self) | Q(pk=self.pk)
+
+        gallery_chain = Gallery.objects.filter(gallery_filters, provider=self.provider).order_by('gid')
+
+        return [x.get_link() for x in gallery_chain]
 
     def get_es_title_complete(self) -> DataDict:
         if self.title_jpn:
@@ -3613,8 +3645,8 @@ class Image(models.Model):
         width_field='image_width'
     )
     image_name = models.CharField(max_length=500, blank=True, null=True)
-    image_height = models.PositiveIntegerField(null=True)
-    image_width = models.PositiveIntegerField(null=True)
+    image_height = models.PositiveIntegerField(blank=True, null=True)
+    image_width = models.PositiveIntegerField(blank=True, null=True)
     original_height = models.PositiveIntegerField(null=True)
     original_width = models.PositiveIntegerField(null=True)
     image_format = models.CharField(max_length=50, blank=True, null=True)
@@ -3636,6 +3668,9 @@ class Image(models.Model):
 
     class Meta:
         ordering = ['position']
+        indexes = [
+            models.Index(fields=["sha1"], name="image_sha1"),
+        ]
 
     def delete_plus_files(self) -> None:
         self.image.delete(save=False)
@@ -3675,7 +3710,7 @@ class Image(models.Model):
                 return full_image
             else:
                 if full_image:
-                    im = PImage.open(io.BytesIO(full_image))
+                    im: PImage.Image | ImageFile.ImageFile = PImage.open(io.BytesIO(full_image))
                     if im.mode != 'RGB':
                         im = im.convert('RGB')
                     im.thumbnail((200, 290), PImage.Resampling.LANCZOS)
@@ -3898,7 +3933,7 @@ class Mention(models.Model):
     def regen_tn(self) -> None:
         if not self.image:
             return
-        im = PImage.open(self.image.path)
+        im: PImage.Image | ImageFile.ImageFile = PImage.open(self.image.path)
         im = img_to_thumbnail(im)
         thumb_relative_path = upload_mention_thumb_handler(self, os.path.splitext(self.image.name)[1])
         thumb_fn = pjoin(settings.MEDIA_ROOT, thumb_relative_path)
@@ -3933,6 +3968,7 @@ class WantedGalleryManager(models.Manager['WantedGallery']):
                 Q(found=False)
                 | Q(found=True, keep_searching=True)
             )
+            & Q(restricted_to_links=False)
         )
 
 
@@ -4006,6 +4042,8 @@ class WantedGallery(models.Model):
     last_modified = models.DateTimeField(auto_now=True, blank=True, null=True)
 
     add_to_archive_group = models.ForeignKey(ArchiveGroup, blank=True, null=True, on_delete=models.SET_NULL)
+
+    restricted_to_links = models.BooleanField('Restricted to MonitoredLinks', blank=True, default=False)
 
     class Meta:
         verbose_name_plural = "Wanted galleries"
@@ -4464,6 +4502,9 @@ class MonitoredLink(models.Model):
     enabled = models.BooleanField(default=False)
     auto_start = models.BooleanField(default=False)
     frequency = models.DurationField()
+
+    use_limited_wanted_galleries = models.BooleanField(default=False)
+    limited_wanted_galleries = models.ManyToManyField(WantedGallery, blank=True)
 
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     create_date = models.DateTimeField(default=django_tz.now, db_index=True)

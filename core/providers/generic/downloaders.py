@@ -97,11 +97,17 @@ class GenericTorrentDownloader(BaseDownloader):
                 self.gallery.filesize = client.total_size
             else:
                 self.gallery.filesize = 0
+
+            if not self.expected_torrent_name.endswith(self.expected_torrent_extension):
+                final_name = replace_illegal_name(self.expected_torrent_name) + self.expected_torrent_extension
+            else:
+                final_name = replace_illegal_name(self.expected_torrent_name)
+
             self.gallery.filename = available_filename(
                 self.settings.MEDIA_ROOT,
                 os.path.join(
                     self.own_settings.torrent_dl_folder,
-                    replace_illegal_name(self.expected_torrent_name) + self.expected_torrent_extension
+                    final_name
                 )
             )
         else:

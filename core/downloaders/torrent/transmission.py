@@ -10,7 +10,8 @@ from core.base.types import TorrentClient
 class Transmission(TorrentClient):
 
     name = 'transmission'
-    convert_to_base64 = True
+    # v4 API needs bytes, not base64 string.
+    convert_to_base64 = False
     send_url = False
 
     def __init__(self, address: str = 'localhost', port: int = 9091, user: str = '', password: str = '', secure: bool = True) -> None:

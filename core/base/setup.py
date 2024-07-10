@@ -278,7 +278,7 @@ class Settings:
         self.copy_match_file = True
 
         self.archive_dl_folder = ''
-        self.torrent_dl_folder = ''
+        self.torrent_dl_folder: str = ''
         self.log_location = ''
         self.log_level: str = 'INFO'
 

@@ -170,6 +170,12 @@ class WebCrawler(object):
                             nargs='*',
                             help='List of url, WantedGallery ids pre-matched to be stored on the database.')
 
+        parser.add_argument('-rwg', '--restrict-wanted-galleries',
+                            required=False,
+                            action='store',
+                            nargs='*',
+                            help='Only compare wanted galleries specified by their ID.')
+
         try:
             args = parser.parse_args(arg_line)
             self.parse_error = False
@@ -337,6 +343,8 @@ class WebCrawler(object):
             current_settings.update_metadata_mode = True
         elif args.no_wanted_check:
             wanted_filters = None
+        elif args.restrict_wanted_galleries:
+            wanted_filters = WantedGallery.objects.filter(pk__in=args.restrict_wanted_galleries)
         else:
             wanted_filters = WantedGallery.objects.eligible_to_search()
         if args.wanted_only and not wanted_filters:

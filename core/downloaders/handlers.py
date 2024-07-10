@@ -327,9 +327,15 @@ class BaseTorrentDownloader(BaseDownloader):
             self.return_code = 1
             if client.total_size > 0:
                 self.gallery.filesize = client.total_size
+
+            if not self.expected_torrent_name.endswith(self.expected_torrent_extension):
+                final_name = replace_illegal_name(self.expected_torrent_name) + self.expected_torrent_extension
+            else:
+                final_name = replace_illegal_name(self.expected_torrent_name)
+
             self.gallery.filename = os.path.join(
                 self.own_settings.torrent_dl_folder,
-                replace_illegal_name(self.expected_torrent_name) + self.expected_torrent_extension
+                final_name
             )
             logger.info(
                 "Torrent added, expecting downloaded name: {}, local name: {}".format(

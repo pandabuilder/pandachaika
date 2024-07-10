@@ -38,7 +38,7 @@
             {% endfor %}
         {% endif %}
         <h2>{{ page_title }}: Powered by <a href="https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-query-string-query.html#query-string-syntax">Elasticsearch</a></h2>
-        <h5>Default fields: title, title_jpn, tags.full. Available fields: gid, title, title_jpn, tags.full, tags.name, tags.scope, size, image_count, posted_date, create_date, provider, reason, category, uploader, expunged, disowned</h5>
+        <h5>Default fields: title, title_jpn, tags.full. Available fields: gid, title, title_jpn, tags.full, tags.name, tags.scope, size, image_count, posted_date, create_date, provider, reason, category, uploader, expunged, disowned, rating, last_in_chain, gallery_chain_urls</h5>
         <div class="row">
           <div class="col-sm-12 text-center sub-header">
             <form>
@@ -262,6 +262,7 @@
                     <div><label class="label-extended">Provider:</label>{{ hit.provider }}</div>
                     <div><label class="label-extended">Reason:</label>{{ hit.reason }}</div>
                     <div><label class="label-extended">Uploader:</label>{{ hit.uploader }}</div>
+                    <div><label class="label-extended">Rating:</label>{{ hit.rating }}</div>
                   </td>
                 </tr>
               {% endfor %}

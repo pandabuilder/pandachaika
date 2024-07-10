@@ -631,7 +631,7 @@ class WantedGalleryCreateOrEditForm(ModelForm):
             'wanted_tags_exclusive_scope', 'exclusive_scope_name', 'wanted_tags_accept_if_none_scope', 'category',
             'wanted_page_count_lower', 'wanted_page_count_upper', 'add_to_archive_group',
             'release_date', 'wait_for_time', 'should_search', 'keep_searching', 'reason', 'book_type', 'publisher',
-            'page_count'
+            'page_count', 'restricted_to_links'
         ]
         help_texts = {
             'title': 'Informative only',
@@ -663,7 +663,8 @@ class WantedGalleryCreateOrEditForm(ModelForm):
             'reason': 'Informative only',
             'book_type': 'Informative only',
             'publisher': 'Informative only',
-            'page_count': 'Informative only'
+            'page_count': 'Informative only',
+            'restricted_to_links': 'Only allow matching against specified MonitoredLinks'
         }
         widgets = {
             'title': forms.widgets.TextInput(attrs={'class': 'form-control'}),
@@ -708,7 +709,9 @@ class WantedGalleryCreateOrEditForm(ModelForm):
                 url='archive-group-select-autocomplete',
                 attrs={
                     'size': 1, 'data-placeholder': 'Archive Group', 'class': 'form-control'
-                }),
+                }
+            ),
+            'restricted_to_links': forms.widgets.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
 
 

@@ -1,8 +1,8 @@
 -r requirements.txt
-mypy==1.10.0
-ruff==0.4.8
+mypy==1.10.1
+ruff==0.5.1
 django-stubs==5.0.2
-types-requests==2.32.0.20240602
+types-requests==2.32.0.20240622
 types-pytz==2024.1.0.20240417
 types-python-dateutil==2.9.0.20240316
 unittest-xml-reporting==3.2.0

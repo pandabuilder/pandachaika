@@ -37,6 +37,7 @@ from viewer.models import (
     UserArchivePrefs, WantedGallery,
     users_with_perm, Profile, GalleryQuerySet, GallerySubmitEntry, ArchiveGroup, GalleryProviderData)
 from viewer.utils.functions import send_mass_html_mail, gallery_search_results_to_json, archive_search_result_to_json
+from viewer.utils.general import valid_sha1_string
 from viewer.utils.tags import sort_tags
 from viewer.utils.types import AuthenticatedHttpRequest
 
@@ -96,7 +97,7 @@ wanted_gallery_filter_keys = (
     "provider", "not_used", "wanted-should-search", "wanted-should-search-not", "book_type",
     "publisher", "wanted-found", "wanted-not-found", "reason",
     "wanted-no-found-galleries", "with-possible-matches", "tags",
-    "mention-source"
+    "mention-source", "restricted-to-links"
 )
 
 wanted_gallery_order_fields = (
@@ -1186,14 +1187,14 @@ def quick_search(request: HttpRequest, parameters: DataDict, display_parameters:
 
     results = results.filter(binned=False)
 
-    # URL search
-    url = display_parameters["qsearch"]
+    q_search = display_parameters["qsearch"]
 
+    # URL search
     parsers = crawler_settings.provider_context.get_parsers(crawler_settings)
     gallery_ids_providers = list()
     for parser in parsers:
         if parser.id_from_url_implemented():
-            accepted_urls = parser.filter_accepted_urls((url,))
+            accepted_urls = parser.filter_accepted_urls((q_search,))
             gallery_ids_providers.extend([(parser.id_from_url(x), parser.name) for x in accepted_urls])
 
     if gallery_ids_providers:
@@ -1205,18 +1206,26 @@ def quick_search(request: HttpRequest, parameters: DataDict, display_parameters:
         results_url: Optional[QuerySet[Archive]] = results.filter(query)
     else:
         results_url = None
-        
-    clean_up_qsearch = display_parameters["qsearch"].replace("	", " ")
 
-    q_formatted = '%' + clean_up_qsearch.replace(' ', '%') + '%'
-    results = results.filter(
-        Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted)
-    )
-
-    if results_url:
-        results = results | results_url
+    # SHA1 search
+    is_valid_sha1_string = valid_sha1_string(q_search)
+    if is_valid_sha1_string:
+        results_sha1 = results.filter(image__sha1=q_search)
     else:
-        results = results
+        results_sha1 = None
+
+    if not gallery_ids_providers and not is_valid_sha1_string:
+        clean_up_qsearch = display_parameters["qsearch"].replace("	", " ")
+
+        q_formatted = '%' + clean_up_qsearch.replace(' ', '%') + '%'
+        results = results.filter(
+            Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted)
+        )
+
+    if gallery_ids_providers:
+        results = results_url or Archive.objects.none()
+    if is_valid_sha1_string:
+        results = results_sha1 or Archive.objects.none()
 
     if "non_public" in display_parameters and display_parameters["non_public"]:
         results = results.filter(public=False)
@@ -2016,6 +2025,8 @@ def filter_wanted_galleries_simple(params: dict[str, Any]) -> QuerySet[WantedGal
         results = results.filter(Q(archive__isnull=True))
     if params['wanted-should-search']:
         results = results.filter(should_search=True)
+    if params['restricted-to-links']:
+        results = results.filter(restricted_to_links=True)
     if params['wanted-should-search-not']:
         results = results.filter(should_search=False)
     if params['book_type']:

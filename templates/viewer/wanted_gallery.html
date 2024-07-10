@@ -182,6 +182,21 @@
         </ul>
       </div>
       </li>
+      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Restrict to Monitored Links:</label>{{ wanted_gallery.restricted_to_links|yesno }}</li>
+      <li class="list-group-item d-flex justify-content-between py-1">
+      <div class="card w-100 text-white bg-secondary">
+        <div class="card-header py-1">
+          Monitored Links
+        </div>
+        <ul class="list-group">
+          {% for monitored_link in wanted_gallery.monitoredlink_set.all %}
+            <li class="list-group-item py-1">
+              {{ monitored_link.name }}
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+      </li>
       <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Release date:</label>{{ wanted_gallery.release_date|date|default:"Not set" }}</li>
       <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Wait for time:</label>{{ wanted_gallery.wait_for_time|default:"Not set" }}</li>
       <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Should search:</label>{{ wanted_gallery.should_search|yesno }}</li>

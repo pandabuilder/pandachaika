@@ -177,7 +177,7 @@
         </ul>
         <form action="{% url 'viewer:archive-search' %}" class="d-inline w-100 mx-2 my-auto" role="search">
           <div class="input-group">
-            <input class="form-control me-sm-2" name="qsearch" placeholder="Title or source URL archive quick search" autocomplete="off" value="{{ display_prms.qsearch }}" type="search" aria-label="quick text">
+            <input class="form-control me-sm-2" name="qsearch" placeholder="Title, source URL or SHA1 image archive quick search" autocomplete="off" value="{{ display_prms.qsearch }}" type="search" aria-label="quick text">
             <span>
             <button class="btn btn-secondary my-2 my-sm-0" type="submit" aria-label="quick search"><i class="fas fa-search"></i></button>
             <button class="btn btn-secondary my-2 my-sm-0 collapse-icon" id="more" data-bs-toggle="collapse" data-bs-target="#main-search" name="main_filters" type="button" aria-label="toggle search"><i class="fas fa-chevron-{% if prm.main_filters %}up{% else %}down{% endif %}"></i></button>

@@ -1,11 +1,11 @@
 -r requirements.txt
-django-debug-toolbar==4.4.2
+django-debug-toolbar==4.4.6
 django-unused-media==0.2.2
-mypy==1.10.0
-ruff==0.4.8
+mypy==1.10.1
+ruff==0.5.1
 django-stubs==5.0.2
-types-requests==2.32.0.20240602
+types-requests==2.32.0.20240622
 types-pytz==2024.1.0.20240417
 types-python-dateutil==2.9.0.20240316
-django-cors-headers==4.3.1
+django-cors-headers==4.4.0
 # django-cprofile-middleware
