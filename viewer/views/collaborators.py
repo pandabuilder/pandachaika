@@ -383,16 +383,16 @@ def filter_by_marks(archives: QuerySet[Archive], params: QueryDict) -> tuple[Que
         archives = archives.filter(manage_entries__mark_check=True)
         mark_filters = True
     if 'mark_reason' in params and params["mark_reason"]:
-        archives = archives.filter(manage_entries__mark_reason__contains=params["mark_reason"])
+        archives = archives.filter(manage_entries__mark_reason__contains=str(params["mark_reason"]))
         mark_filters = True
     if 'mark_comment' in params and params["mark_comment"]:
-        archives = archives.filter(manage_entries__mark_comment__contains=params["mark_comment"])
+        archives = archives.filter(manage_entries__mark_comment__contains=str(params["mark_comment"]))
         mark_filters = True
     if 'mark_extra' in params and params["mark_extra"]:
-        archives = archives.filter(manage_entries__mark_extra__contains=params["mark_extra"])
+        archives = archives.filter(manage_entries__mark_extra__contains=str(params["mark_extra"]))
         mark_filters = True
     if 'origin' in params and params["origin"]:
-        archives = archives.filter(manage_entries__origin=params["origin"])
+        archives = archives.filter(manage_entries__origin=str(params["origin"]))
         mark_filters = True
     priority_to = params.get("priority_to", None)
     if priority_to is not None and priority_to != '':
@@ -537,7 +537,7 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                     )
         elif 'delete_archives' in p and request.user.has_perm('viewer.delete_archive'):
             for archive in archives:
-                message = 'Deleting archive: {}, link: {}, with it\'s file: {}'.format(
+                message = 'Deleting archive: {}, link: {}, with its file: {}'.format(
                     archive.title, archive.get_absolute_url(),
                     archive.zipped.path
                 )

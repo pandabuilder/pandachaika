@@ -760,11 +760,11 @@ def filter_galleries(request: HttpRequest, session_filters: dict[str, str], requ
     if request_filters["category"]:
         results = results.filter(category__icontains=request_filters["category"])
     if request_filters["expunged"]:
-        results = results.filter(expunged=request_filters["expunged"])
+        results = results.filter(expunged=bool(request_filters["expunged"]))
     if request_filters["disowned"]:
-        results = results.filter(disowned=request_filters["disowned"])
+        results = results.filter(disowned=bool(request_filters["disowned"]))
     if request_filters["fjord"]:
-        results = results.filter(fjord=request_filters["fjord"])
+        results = results.filter(fjord=bool(request_filters["fjord"]))
     if request_filters["uploader"]:
         results = results.filter(uploader=request_filters["uploader"])
     if request_filters["provider"]:
@@ -784,7 +784,7 @@ def filter_galleries(request: HttpRequest, session_filters: dict[str, str], requ
         if request_filters["only_used"]:
             results = results.only_used_galleries()  # type: ignore
         if request_filters["hidden"]:
-            results = results.filter(hidden=request_filters["hidden"])
+            results = results.filter(hidden=bool(request_filters["hidden"]))
         if "not_normal" not in request_filters or not request_filters["not_normal"]:
             results = results.eligible_for_use()  # type: ignore
     else:
@@ -1910,13 +1910,13 @@ def filter_galleries_simple(params: dict[str, str]) -> QuerySet[Gallery]:
     if params["category"]:
         results = results.filter(category__icontains=params["category"])
     if params["expunged"]:
-        results = results.filter(expunged=params["expunged"])
+        results = results.filter(expunged=bool(params["expunged"]))
     if params["disowned"]:
-        results = results.filter(disowned=params["disowned"])
+        results = results.filter(disowned=bool(params["disowned"]))
     if params["hidden"]:
-        results = results.filter(hidden=params["hidden"])
+        results = results.filter(hidden=bool(params["hidden"]))
     if params["fjord"]:
-        results = results.filter(fjord=params["fjord"])
+        results = results.filter(fjord=bool(params["fjord"]))
     if params["uploader"]:
         results = results.filter(uploader=params["uploader"])
     if params["dl_type"]:

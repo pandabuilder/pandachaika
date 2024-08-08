@@ -52,7 +52,7 @@ def get_archive_data(data: QueryDict) -> 'QuerySet[Archive]':
             Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted)
         )
 
-    if 'filename' in data:
+    if 'filename' in data and isinstance(data['filename'], str):
         results = results.filter(zipped__icontains=data['filename'])
     rating_from = data.get("rating_from")
     if rating_from is not None:
@@ -77,9 +77,9 @@ def get_archive_data(data: QueryDict) -> 'QuerySet[Archive]':
     if 'posted_to' in data:
         results = results.filter(gallery__posted__lte=data['posted_to'])
     if 'match_type' in data:
-        results = results.filter(match_type__icontains=data['match_type'])
+        results = results.filter(match_type__icontains=str(data['match_type']))
     if 'source_type' in data:
-        results = results.filter(source_type__icontains=data['source_type'])
+        results = results.filter(source_type__icontains=str(data['source_type']))
     if 'extracted' in data:
         results = results.filter(extracted=True)
 

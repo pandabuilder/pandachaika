@@ -475,17 +475,18 @@ def get_zip_fileinfo_for_gallery(filepath: str) -> tuple[int, int]:
 
 def available_filename(root: str, filename: str) -> str:
     filename_full = os.path.join(root, filename)
+    file_head, file_tail = os.path.split(filename)
 
     extra_text = 2
     if os.path.isfile(filename_full):
         while (
             os.path.isfile(
-                os.path.splitext(filename_full)[0] + "-" + str(extra_text)
+                os.path.splitext(os.path.join(root, os.path.join(file_head, file_tail[0:251 - 1 - len(str(extra_text))])))[0] + "-" + str(extra_text)
                 + os.path.splitext(filename_full)[1])
         ):
             extra_text += 1
         return (
-            os.path.splitext(filename)[0] + "-" + str(extra_text) + os.path.splitext(filename)[1]
+            os.path.splitext(os.path.join(file_head, file_tail[0:251 - 1 - len(str(extra_text))]))[0] + "-" + str(extra_text) + os.path.splitext(filename)[1]
         )
     else:
         return filename

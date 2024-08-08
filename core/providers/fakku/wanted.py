@@ -46,11 +46,7 @@ def wanted_generator(settings: 'Settings', attrs: 'AttributeManager'):
     # Values that can be set:
     # subpath: subpath to search. (books, tags/doujin)
     # container_tag: Tag for the main container for each individual link. (div, span)
-    # container_attribute_name: Attribute name for the main container for each individual link. (class)
-    # container_attribute_value: Attribute value for the main container for each individual link. (content-meta)
     # link_tag: Tag for the link container inside the container. (a, span)
-    # link_attribute_name: Attribute name for the link container inside the container. (a, span)
-    # link_attribute_value: Attribute value for the link container inside the container. (href, src)
     # url_attribute_name: Attribute name for the URL container inside the container. (href, src)
     # link_attribute_get_text: Boolean to specify if it should get the text inside a tag. (True, False)
     for query_name, query_values in queries.items():
@@ -71,7 +67,7 @@ def wanted_generator(settings: 'Settings', attrs: 'AttributeManager'):
                 break
             subpath = query_values['subpath']
 
-            if not {'container_tag', 'container_attribute_name', 'container_attribute_value'}.issubset(query_values.keys()):
+            if not {'container_tag'}.issubset(query_values.keys()):
                 logger.error('Cannot query without html container definition for {}'.format(query_name))
                 break
             container_tag = query_values['container_tag']
@@ -83,7 +79,7 @@ def wanted_generator(settings: 'Settings', attrs: 'AttributeManager'):
             if 'link_attribute_get_text' in query_values and query_values['link_attribute_get_text']:
                 get_text_from_container = True
             else:
-                if not {'link_tag', 'link_attribute_name', 'link_attribute_value', 'url_attribute_name'}.issubset(
+                if not {'link_tag', 'url_attribute_name'}.issubset(
                         query_values.keys()):
                     logger.error('Cannot query without link container definition for {}'.format(query_name))
                     break

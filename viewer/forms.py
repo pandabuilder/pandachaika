@@ -82,7 +82,7 @@ class JalTextWidget(WidgetMixin, forms.TextInput):
 
 class MatchesModelChoiceField(ModelChoiceField):
     def label_from_instance(self, obj: Gallery) -> str:  # type: ignore[override]
-        first_artist_tag = Tag.objects.filter(gallery=obj.id).first_artist_tag()
+        first_artist_tag = Tag.objects.first_artist_tag(gallery=obj.id)
         tag_name = ''
         if first_artist_tag:
             tag_name = first_artist_tag.name

@@ -121,15 +121,26 @@ models.CharField.register_lookup(SpacedSearch)
 models.FileField.register_lookup(SpacedSearch)
 
 
-class TagQuerySet(models.QuerySet):
+class TagQuerySet(models.QuerySet['Tag']):
     def are_custom(self) -> QuerySet:
         return self.filter(source='user')
 
     def not_custom(self) -> QuerySet:
         return self.exclude(source='user')
 
-    def first_artist_tag(self) -> Optional['Tag']:
-        return self.filter(scope__exact='artist').first()
+    def first_artist_tag(self, **kwargs: typing.Any) -> Optional['Tag']:
+        return self.filter(scope__exact='artist', **kwargs).first()
+
+
+class TagManager(models.Manager['Tag']):
+    def get_queryset(self) -> TagQuerySet:
+        return TagQuerySet(self.model, using=self._db)
+
+    def are_custom(self) -> QuerySet:
+        return self.get_queryset().are_custom()
+
+    def first_artist_tag(self, **kwargs: typing.Any) -> Optional['Tag']:
+        return self.get_queryset().first_artist_tag(**kwargs)
 
 
 class GalleryQuerySet(models.QuerySet):
@@ -621,7 +632,7 @@ class Tag(models.Model):
         'Source', max_length=50, blank=True, null=True, default='web')
     create_date = models.DateTimeField(auto_now_add=True)
 
-    objects = TagQuerySet.as_manager()
+    objects = TagManager()
 
     class Meta:
         ordering = ['-id']
@@ -1560,9 +1571,10 @@ class Archive(models.Model):
         through='ArchiveTag', through_fields=('archive', 'tag')
     )
 
-    alternative_sources = models.ManyToManyField(
+    alternative_sources: models.ManyToManyField = models.ManyToManyField(
         Gallery, related_name="alternative_sources",
         blank=True, default='')
+
     details = models.TextField(
         blank=True, null=True, default='')
 
@@ -4018,7 +4030,7 @@ class WantedGallery(models.Model):
     wanted_tags_exclusive_scope = models.BooleanField(blank=True, default=False)
     exclusive_scope_name = models.CharField(max_length=200, blank=True, default='')
     wanted_tags_accept_if_none_scope = models.CharField(max_length=200, blank=True, default='')
-    unwanted_tags = models.ManyToManyField(Tag, blank=True, related_name="unwanted_tags")
+    unwanted_tags: models.ManyToManyField = models.ManyToManyField(Tag, blank=True, related_name="unwanted_tags")
     category = models.CharField(
         max_length=20, blank=True, null=True, default='')
     wanted_providers: models.ManyToManyField = models.ManyToManyField('Provider', blank=True)

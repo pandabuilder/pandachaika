@@ -156,7 +156,7 @@ class Parser(BaseParser):
                 gallery.posted = self.parse_posted_date_from_feed(constants.aux_feed_url, gallery.gid)
             if self.own_settings.get_posted_date_from_wayback and gallery.posted is None:
                 gallery.posted = get_oldest_entry_from_wayback(link)
-            gallery.title = gallery_container.find("h1", class_="block col-span-full text-2xl pt-2 font-semibold text-brand-light text-left dark:text-white dark:link:text-white pt-0").get_text()
+            gallery.title = gallery_container.find("h1", class_=re.compile("block col-span-full")).get_text()
 
             description_container = soup.find("meta", property="og:description")
             if description_container:
@@ -261,8 +261,9 @@ class Parser(BaseParser):
 
             logger.info(
                 "Calling API ({}). "
-                "Gallery: {}, total galleries: {}".format(
+                "Gallery URL: {}, count: {}, total galleries: {}".format(
                     self.name,
+                    element,
                     i + 1,
                     len(links)
                 )
