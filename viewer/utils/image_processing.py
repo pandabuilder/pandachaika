@@ -25,7 +25,7 @@ def get_image_thumbnail_and_grayscale(archive: 'Archive') -> tuple[np.ndarray, n
     return img_thumbnail, img_gray
 
 
-def compare_wanted_with_image(img_gray: np.ndarray, img_thumbnail: np.ndarray, wanted_image: 'WantedImage') -> tuple[bool, int, typing.Optional[PImage.Image]]:
+def compare_wanted_with_image(img_gray: np.ndarray, img_thumbnail: np.ndarray, wanted_image: 'WantedImage', skip_minimum: bool = False) -> tuple[bool, int, typing.Optional[PImage.Image]]:
     template_img = cv.imread(wanted_image.thumbnail.path)
     template_gray = cv.cvtColor(template_img, cv.COLOR_BGR2GRAY)
     sift = cv.SIFT.create()
@@ -42,7 +42,7 @@ def compare_wanted_with_image(img_gray: np.ndarray, img_thumbnail: np.ndarray, w
     for m, n in matches:
         if m.distance < wanted_image.match_threshold * n.distance:
             good_matches.append([m])
-    if len(good_matches) > 0 and len(good_matches) >= wanted_image.minimum_features:
+    if len(good_matches) > 0 and (len(good_matches) >= wanted_image.minimum_features or skip_minimum):
 
         if wanted_image.restrict_by_homogeneity:
             src_pts = np.array([kp1[m[0].queryIdx].pt for m in good_matches], dtype=np.float32)
@@ -58,12 +58,11 @@ def compare_wanted_with_image(img_gray: np.ndarray, img_thumbnail: np.ndarray, w
 
             if np.count_nonzero(slopes_compared > 0.1) == 0 and np.count_nonzero(distances_compared > 0.1) == 0:
                 found_match = True
-
-                draw_params = dict(matchColor=(0, 255, 0),  # draw matches in green color
-                                   singlePointColor=None,
-                                   flags=2)
-
-                img_matches = cv.drawMatchesKnn(template_img, kp1, img_thumbnail, kp2, good_matches, None, **draw_params)  # type: ignore
-                im = PImage.fromarray(cv.cvtColor(img_matches, cv.COLOR_BGR2RGB))
+        else:
+            found_match = True
+        if found_match:
+            draw_params = dict(matchColor=(0, 255, 0), singlePointColor=None, flags=2)
+            img_matches = cv.drawMatchesKnn(template_img, kp1, img_thumbnail, kp2, good_matches, None, **draw_params)  # type: ignore
+            im = PImage.fromarray(cv.cvtColor(img_matches, cv.COLOR_BGR2RGB))
 
     return found_match, len(good_matches), im

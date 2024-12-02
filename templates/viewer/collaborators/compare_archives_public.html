@@ -1,0 +1,13 @@
+{% extends "viewer/base.html" %}
+{% block title %}Compare Archives | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+{% load static %}
+{% load django_vite %}
+{% block extrahead %}
+{% vite_asset 'src/main.tsx' app="compare_archives_public" %}
+{% endblock %}
+
+{% block content %}
+<noscript>You need to enable JavaScript to run this app.</noscript>
+  <div id="root"></div>
+{% endblock %}

@@ -221,7 +221,8 @@ class BaseParser:
             'wanted_providers',
             'unwanted_providers',
             'wanted_tags',
-            'unwanted_tags'
+            'unwanted_tags',
+            'categories',
         )
 
         already_founds = self.settings.found_gallery_model.objects.filter(
@@ -292,6 +293,9 @@ class BaseParser:
                     continue
             if wanted_filter.category and gallery.category is not None and gallery.category:
                 if not (wanted_filter.category.lower() == gallery.category.lower()):
+                    continue
+            if bool(wanted_filter.categories.all()):
+                if not gallery.category in wanted_filter.categories_list():
                     continue
 
             gallery_wanted_lists[gallery.gid].append(wanted_filter)

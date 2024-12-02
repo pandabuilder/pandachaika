@@ -38,7 +38,7 @@ class MegaArchiveDownloader(BaseDownloader):
             logger.error("The megadl executable was not found")
             return
 
-        directory_path = mkdtemp()
+        directory_path = mkdtemp(dir=self.settings.temp_directory_path)
 
         arguments = ["--no-progress", "--print-names", "--path", "{}".format(
             directory_path

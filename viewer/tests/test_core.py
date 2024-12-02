@@ -220,7 +220,7 @@ class WantedGalleryTest(TestCase):
 
         gallery_wanted_lists: dict[str, list['WantedGallery']] = defaultdict(list)
 
-        with self.assertNumQueries(7):
+        with self.assertNumQueries(8):
             parser.compare_gallery_with_wanted_filters(incoming_gallery, gallery_link, wanted_galleries, gallery_wanted_lists)
 
         self.assertEqual(len(gallery_wanted_lists[incoming_gallery.gid]), 12)

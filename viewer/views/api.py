@@ -794,6 +794,43 @@ def json_api_handle_get(request: HttpRequest, user_is_authenticated: bool):
             ensure_ascii=False,
         )
         return HttpResponse(response, content_type="application/json; charset=utf-8")
+    elif 'archive-wanted-image' in data:
+        try:
+            archive_id = int(data['archive-wanted-image'])
+        except ValueError:
+            return HttpResponseNotFound(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+        try:
+            archive = Archive.objects.get(pk=archive_id)
+        except ArchiveGroupEntry.DoesNotExist:
+            return HttpResponseNotFound(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+        if not user_is_authenticated:
+            return HttpResponseNotFound(json.dumps({'result': "Archive does not exist."}), content_type="application/json; charset=utf-8")
+
+        result, result_data = archive.get_wanted_images_similarity_mark()
+        if result == -1:
+            return HttpResponseNotFound(json.dumps({'result': "Could not run Image Match."}), content_type="application/json; charset=utf-8")
+        elif result == -2:
+            return HttpResponseNotFound(json.dumps({'result': "No active WantedImages."}), content_type="application/json; charset=utf-8")
+
+        response = json.dumps(
+            {
+                'archive': archive_entry_archive_to_json(archive, user_is_authenticated, request),
+                'matches': [
+                    {
+                        'url': x[0].get_image_url(),
+                        'name': x[0].image_name,
+                        'minimum_features': x[0].minimum_features,
+                        'good_matches': x[1],
+                        'found_match': x[2],
+                        'found_image': "data:image/jpeg;base64," + x[3].decode('utf-8') if x[3] else None,
+                    } for x in result_data
+                ]
+            },
+            # indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        return HttpResponse(response, content_type="application/json; charset=utf-8")
     else:
         return HttpResponse(json.dumps({'result': "Unknown command"}), content_type="application/json; charset=utf-8")
 
@@ -820,7 +857,7 @@ def json_api_handle_post(request: HttpRequest, user: Optional[User | AnonymousUs
                 try:
                     archive = Archive.objects.get(pk=entry['archive']['id'])
                     archive_group_entry = ArchiveGroupEntry(
-                        title=entry['title'] if 'title' in entry else None,
+                        title=entry['title'] if 'title' in entry else '',
                         position=entry['position'] if 'position' in entry else None,
                         archive=archive, archive_group=archive_group
                     )
@@ -865,7 +902,7 @@ def json_api_handle_post(request: HttpRequest, user: Optional[User | AnonymousUs
         try:
             archive = Archive.objects.get(pk=body['archive']['id'])
             archive_group_entry = ArchiveGroupEntry(
-                title=body['title'] if 'title' in body else None, position=body['position'] if 'position' in body else None,
+                title=body['title'] if 'title' in body else '', position=body['position'] if 'position' in body else None,
                 archive=archive, archive_group=archive_group
             )
             archive_group_entry.save()

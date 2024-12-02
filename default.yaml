@@ -242,6 +242,11 @@ urls:
   enable_public_submit: false
   # Enable public facing stats
   enable_public_stats: false
+  # Enable public facing marks in Archive page. These are filtered by reason, not individually
+  enable_public_marks: false
+  public_mark_reasons:
+    - images_sha1_similarity
+    - images_phash_similarity
   external_media_server: ''
   external_as_main_download: false
   # User facing URL, (scheme+authority), used to resolve absolute URLs where the request is not accessible.

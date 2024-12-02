@@ -176,6 +176,10 @@ DJANGO_VITE = {
         'manifest_path': os.path.join(BASE_DIR, 'viewer/assets/compare-archives/.vite/manifest.json'),
         'static_url_prefix': 'compare-archives'
     },
+    'compare_archives_public': {
+        'manifest_path': os.path.join(BASE_DIR, 'viewer/assets/compare-archives-lite/.vite/manifest.json'),
+        'static_url_prefix': 'compare-archives-lite'
+    },
     'archive_groups': {
         'manifest_path': os.path.join(BASE_DIR, 'viewer/assets/archive-groups/.vite/manifest.json'),
         'static_url_prefix': 'archive-groups'

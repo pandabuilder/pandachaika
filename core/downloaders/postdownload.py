@@ -266,7 +266,7 @@ class PostDownloader(object):
                         filename=matched_file_hath[1],
                         image_count=len(remote_ftp_tuples)
                     ))
-                dir_path = mkdtemp()
+                dir_path = mkdtemp(dir=self.settings.temp_directory_path)
                 self.current_download['total'] = len(remote_ftp_tuples)
                 for count, remote_file in enumerate(sorted(remote_ftp_tuples), start=1):
                     for retry_count in range(10):
@@ -324,7 +324,7 @@ class PostDownloader(object):
                             files_matched_torrent.append((line[0], line[1]["type"], int(line[1]["size"]), archive))
             for matched_file_torrent in files_matched_torrent:
                 if matched_file_torrent[1] == 'dir':
-                    dir_path = mkdtemp()
+                    dir_path = mkdtemp(dir=self.settings.temp_directory_path)
                     remote_ftp_files = list(self.ftps.mlsd(path=matched_file_torrent[0], facts=["type", "size"]))
                     self.current_download['total'] = len(remote_ftp_files)
                     logger.info(
@@ -389,7 +389,7 @@ class PostDownloader(object):
                                     matched_file_torrent[3].zipped.path
                                 )
                             )
-                            convert_rar_to_zip(matched_file_torrent[3].zipped.path)
+                            convert_rar_to_zip(matched_file_torrent[3].zipped.path, temp_path=self.settings.temp_directory_path)
                         elif os.path.splitext(matched_file_torrent[0])[1].lower() == ".7z":
                             logger.info(
                                 "For archive: {}, converting 7z: {} to zip".format(
@@ -397,7 +397,7 @@ class PostDownloader(object):
                                     matched_file_torrent[3].zipped.path
                                 )
                             )
-                            convert_7z_to_zip(matched_file_torrent[3].zipped.path)
+                            convert_7z_to_zip(matched_file_torrent[3].zipped.path, temp_path=self.settings.temp_directory_path)
 
                 self.process_downloaded_archive(matched_file_torrent[3])
 
@@ -471,7 +471,7 @@ class PostDownloader(object):
                         filename=img_dir[1],
                         image_count=len(remote_files)
                     ))
-                dir_path = mkdtemp()
+                dir_path = mkdtemp(dir=self.settings.temp_directory_path)
                 for img_file_original in remote_files:
                     img_file = os.path.split(img_file_original)[1]
                     if mode == 'local_move':
@@ -482,9 +482,7 @@ class PostDownloader(object):
                         shutil.copy(img_file_original, os.path.join(dir_path, img_file))
                     else:
                         shutil.copy(img_file_original, os.path.join(dir_path, img_file))
-                with ZipFile(os.path.join(self.settings.MEDIA_ROOT,
-                                          img_dir[1]),
-                             'w') as archive_file:
+                with ZipFile(os.path.join(self.settings.MEDIA_ROOT, img_dir[1]), 'w') as archive_file:
                     for (root_path, _, file_names) in os.walk(dir_path):
                         for current_file in file_names:
                             archive_file.write(
@@ -525,7 +523,7 @@ class PostDownloader(object):
                             archive=matched_archive,
                             filename=matched_name,
                         ))
-                    dir_path = mkdtemp()
+                    dir_path = mkdtemp(dir=self.settings.temp_directory_path)
                     for img_file in os.listdir(target):
                         if not os.path.isfile(os.path.join(target, img_file)):
                             continue
@@ -564,7 +562,7 @@ class PostDownloader(object):
                                     matched_archive.zipped.path
                                 )
                             )
-                            convert_rar_to_zip(matched_archive.zipped.path)
+                            convert_rar_to_zip(matched_archive.zipped.path, temp_path=self.settings.temp_directory_path)
                         elif os.path.splitext(matched_name)[1].lower() == ".7z":
                             logger.info(
                                 "For archive: {}, converting 7z: {} to zip".format(
@@ -572,7 +570,7 @@ class PostDownloader(object):
                                     matched_archive.zipped.path
                                 )
                             )
-                            convert_7z_to_zip(matched_archive.zipped.path)
+                            convert_7z_to_zip(matched_archive.zipped.path, temp_path=self.settings.temp_directory_path)
 
                 self.process_downloaded_archive(matched_archive)
 

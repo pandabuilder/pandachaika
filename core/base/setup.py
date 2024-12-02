@@ -165,6 +165,7 @@ class WebServerSettings:
 class UrlSettings:
     __slots__ = [
         'behind_proxy', 'enable_public_submit', 'enable_public_stats',
+        'enable_public_marks', 'public_mark_reasons',
         'viewer_main_url', 'media_url', 'static_url', 'external_media_server',
         'main_webserver_url', 'external_as_main_download', 'elasticsearch_as_main_urls'
     ]
@@ -173,6 +174,8 @@ class UrlSettings:
         self.behind_proxy: bool = False
         self.enable_public_submit: bool = False
         self.enable_public_stats: bool = False
+        self.enable_public_marks: bool = False
+        self.public_mark_reasons: list[str] = []
         self.elasticsearch_as_main_urls: bool = False
         self.viewer_main_url: str = ''
         self.media_url: str = '/media/'
@@ -228,6 +231,7 @@ class Settings:
         self.django_secret_key = ''
         self.django_debug_mode = False
         self.download_handler = 'local'
+        self.temp_directory_path: Optional[str] = None
         # More specific, if not set, will use 'download_handler'
         self.download_handler_torrent = ''
         self.download_handler_hath = ''
@@ -451,6 +455,8 @@ class Settings:
                 self.download_handler_torrent = config['general']['download_handler_torrent']
             if 'download_handler_hath' in config['general']:
                 self.download_handler_hath = config['general']['download_handler_hath']
+            if 'temp_directory_path' in config['general']:
+                self.temp_directory_path = config['general']['temp_directory_path']
             if 'wait_timer' in config['general']:
                 self.wait_timer = config['general']['wait_timer']
             if 'timed_downloader_startup' in config['general']:
@@ -657,6 +663,10 @@ class Settings:
                 self.urls.enable_public_submit = config['urls']['enable_public_submit']
             if 'enable_public_stats' in config['urls']:
                 self.urls.enable_public_stats = config['urls']['enable_public_stats']
+            if 'enable_public_marks' in config['urls']:
+                self.urls.enable_public_marks = config['urls']['enable_public_marks']
+            if 'public_mark_reasons' in config['urls']:
+                self.urls.public_mark_reasons = config['urls']['public_mark_reasons']
             if 'external_media_server' in config['urls']:
                 self.urls.external_media_server = config['urls']['external_media_server']
             if 'external_as_main_download' in config['urls']:

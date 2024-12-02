@@ -15,7 +15,7 @@ class ChaikaGalleryData(GalleryData):
                  disowned: Optional[bool] = None,
                  hidden: Optional[bool] = None, uploader: Optional[str] = None, thumbnail_url: Optional[str] = None,
                  dl_type: Optional[str] = None, public: Optional[bool] = None, content: Optional[str] = None,
-                 archiver_key: Optional[str] = None, root: Optional[str] = None, filename: Optional[str] = None,
+                 root: Optional[str] = None, filename: Optional[str] = None,
                  queries: Optional[int] = None, thumbnail: Optional[str] = None,
                  archives: Optional[list[dict[str, str]]] = None, temp_archive: Optional[dict[str, str]] = None,
                  **kwargs: Any
@@ -25,7 +25,7 @@ class ChaikaGalleryData(GalleryData):
             comment=comment, category=category, posted=posted, filesize=filesize,
             filecount=filecount, expunged=expunged, disowned=disowned, rating=rating, fjord=fjord, hidden=hidden,
             uploader=uploader, thumbnail_url=thumbnail_url, dl_type=dl_type, public=public, content=content,
-            archiver_key=archiver_key, root=root, filename=filename, queries=queries, thumbnail=thumbnail,
+            root=root, filename=filename, queries=queries, thumbnail=thumbnail,
             **kwargs
         )
         if archives is None:

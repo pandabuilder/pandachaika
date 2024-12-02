@@ -6,7 +6,7 @@ variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
   UV_CACHE_DIR: "$CI_PROJECT_DIR/.cache/uv"
 
-cache:
+cache: &global_cache
   paths:
   - .mypy_cache
   - .ruff_cache
@@ -20,6 +20,9 @@ test-all:
         - '3.10'
         - '3.11'
         - '3.12'
+  cache:
+    <<: *global_cache
+    key: "$CI_JOB_NAME-$CI_COMMIT_REF_SLUG"
   image: python:$PYTHON_VERSION
   stage: test
   script:

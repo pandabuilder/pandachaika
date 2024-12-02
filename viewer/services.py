@@ -17,6 +17,8 @@ class CompareObjectsService:
     image_hash_functions = hashing.available_image_hash_functions
     file_hash_functions = hashing.available_file_hash_functions
 
+    public_algorithms = ['sha1', 'phash']
+
     # code from imagehash library
     @staticmethod
     def alpharemover(image):
@@ -40,7 +42,8 @@ class CompareObjectsService:
     def hash_archives(
             cls, archives: 'QuerySet[Archive]', algorithms: list[str], thumbnails: bool = True, images: bool = True,
             item_model: typing.Optional['typing.Type[ItemProperties]'] = None,
-            image_model: typing.Optional['typing.Type[Image]'] = None
+            image_model: typing.Optional['typing.Type[Image]'] = None,
+            no_live_data: bool = False,
     ) -> dict:
 
         results_per_algorithm: dict[str, dict] = {
@@ -49,6 +52,9 @@ class CompareObjectsService:
 
         available_algos = [(x, cls.image_loader(cls.image_hash_functions[x])) for x in algorithms if x in cls.image_hash_functions]
         available_algos += [(x, cls.file_hash_functions[x]) for x in algorithms if x in cls.file_hash_functions]
+
+        if no_live_data:
+            available_algos = [x for x in available_algos if x[0] in cls.public_algorithms]
 
         for algo_name, algo_func in available_algos:
 
@@ -62,7 +68,7 @@ class CompareObjectsService:
             for archive in archives:
                 if thumbnails:
                     thumbnail = archive.thumbnail
-                    if thumbnail:
+                    if thumbnail and not no_live_data:
                         with open(thumbnail.path, "rb") as thumb:
                             results['archives'][archive.pk] = algo_func(thumb)
                 if images:
@@ -83,10 +89,10 @@ class CompareObjectsService:
                             if images_phashes:
                                 archive_img_results = {item.content_object.archive_position: item.value for item in images_phashes if item.content_object}
                                 results['images'][archive.pk] = archive_img_results
-                            else:
+                            elif not no_live_data:
                                 archive_img_results = archive.hash_images_with_function(algo_func)
                                 results['images'][archive.pk] = archive_img_results
-                        else:
+                        elif not no_live_data:
                             archive_img_results = archive.hash_images_with_function(algo_func)
                             results['images'][archive.pk] = archive_img_results
 

@@ -105,6 +105,11 @@
       </div>
       <div class="col-md-auto">
         <div class="form-check">
+        <input id="checkbox23" class="form-check-input" type="checkbox" name="with-scopeless-tags" value="1" {% if "with-scopeless-tags" in request.GET %}checked{% endif %}><label for="checkbox23">Has scopeless tags</label>
+        </div>
+      </div>
+      <div class="col-md-auto">
+        <div class="form-check">
         <input id="checkbox22" class="form-check-input" type="checkbox" name="diff-filesize" value="1" {% if "diff-filesize" in request.GET %}checked{% endif %}><label for="checkbox22">Different filesize</label>
         </div>
       </div>

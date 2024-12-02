@@ -72,7 +72,7 @@ class ArchiveDownloader(BaseDownloader):
 
         last_image = ''
 
-        directory_path = mkdtemp()
+        directory_path = mkdtemp(dir=self.settings.temp_directory_path)
 
         logger.info('Downloading gallery: {}'.format(self.gallery.title))
 
@@ -274,7 +274,7 @@ class ArchiveJSDownloader(BaseDownloader):
                 self.return_code = 0
                 return
 
-            directory_path = mkdtemp()
+            directory_path = mkdtemp(dir=self.settings.temp_directory_path)
 
             file_path = os.path.join(
                 self.settings.MEDIA_ROOT,

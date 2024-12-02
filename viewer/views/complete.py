@@ -11,7 +11,7 @@ from django.utils.html import format_html
 from django.conf import settings
 from django.views.generic import ListView
 
-from viewer.models import Archive, Tag, Gallery, WantedGallery, ArchiveGroup, Provider, ArchiveManageEntry
+from viewer.models import Archive, Tag, Gallery, WantedGallery, ArchiveGroup, Provider, ArchiveManageEntry, Category
 
 if typing.TYPE_CHECKING:
     from django_stubs_ext import ValuesQuerySet
@@ -605,6 +605,10 @@ class TagPkAutocomplete(autocomplete.Select2QuerySetView):
 
 class ProviderPkAutocomplete(autocomplete.Select2QuerySetView):
     model = Provider
+
+
+class CategoryPkAutocomplete(autocomplete.Select2QuerySetView):
+    model = Category
 
 
 class NonCustomTagAutocomplete(autocomplete.Select2QuerySetView):

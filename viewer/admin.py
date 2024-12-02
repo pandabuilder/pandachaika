@@ -32,7 +32,7 @@ from viewer.models import (
     UserLongLivedToken,
     ProcessedLinks,
     ArchiveOption, WantedImage,
-    DownloadEvent
+    DownloadEvent, Category
 )
 from django.contrib import admin
 from django.contrib.admin.helpers import ActionForm
@@ -61,7 +61,7 @@ class ArchiveAdmin(SimpleHistoryAdmin):
     list_display = ["title", "zipped", "gallery_id", "filesize",
                     "filecount", "create_date"]
     list_filter = ["user", "match_type", "source_type", "public",
-                   "gallery__hidden", "reason", "origin", "extracted", "binned"]
+                   "gallery__provider", "gallery__hidden", "reason", "origin", "extracted", "binned"]
     actions = ['make_public', 'mark_source_fakku', 'mark_source_fakku_sub', 'mark_source_cafe',
                'mark_source_custom', 'set_reason', "mark_origin"]
     action_form = UpdateActionForm
@@ -322,7 +322,8 @@ class WantedGalleryAdmin(admin.ModelAdmin):
     raw_id_fields = ("mentions", "wanted_tags", "unwanted_tags", "artists", "cover_artist")
     list_filter = [
         "book_type", "publisher", "should_search", "keep_searching",
-        "found", "reason", "public", "notify_when_found", "wanted_providers", "unwanted_providers", "wait_for_time"
+        "found", "reason", "public", "notify_when_found", "wanted_providers", "unwanted_providers", "wait_for_time",
+        "category", "categories"
     ]
     actions = ['make_public', 'mark_should_search', 'mark_not_should_search',
                'mark_keep_search', 'mark_not_keep_search',
@@ -568,6 +569,10 @@ class ProviderAdmin(admin.ModelAdmin):
 
     inlines = (AttributeInline,)
 
+class CategoryAdmin(admin.ModelAdmin):
+    search_fields = ["name", "slug"]
+    list_display = ["id", "name", "slug"]
+
 
 class EventLogAdmin(admin.ModelAdmin):
 
@@ -700,6 +705,7 @@ admin.site.register(ArchiveMatches, ArchiveMatchesAdmin)
 admin.site.register(Provider, ProviderAdmin)
 admin.site.register(EventLog, EventLogAdmin)
 admin.site.register(UserLongLivedToken, UserLongLivedTokenAdmin)
+admin.site.register(Category, CategoryAdmin)
 admin.site.register(ProcessedLinks, ProcessedLinksAdmin)
 admin.site.register(ItemProperties, ItemPropertiesAdmin)
 admin.site.register(GallerySubmitEntry, GallerySubmitEntryAdmin)

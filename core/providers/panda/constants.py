@@ -17,7 +17,7 @@ ex_api_url = 'https://exhentai.org/api.php'
 ex_page_short = 'exhentai.org'
 ge_page_short = 'e-hentai.org'
 
-archive_download_data = {'dlcheck': 'Download+Archive'}
+archive_download_data = {'dlcheck': 'Download Original Archive', 'dltype': 'org'}
 
 default_fjord_tags = '/abortion|bestiality|incest|lolicon|shotacon|toddlercon/'
 

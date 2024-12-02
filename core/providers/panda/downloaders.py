@@ -27,11 +27,11 @@ class ArchiveDownloader(BaseDownloader):
     type = 'archive'
     provider = constants.provider_name
 
-    def request_archive_download(self, root: str, gid: str, token: str, key: str) -> Optional[requests.models.Response]:
+    def request_archive_download(self, root: str, gid: str, token: str) -> Optional[requests.models.Response]:
 
         url = root + '/archiver.php'
 
-        params = {'gid': gid, 'token': token, 'or': key}
+        params = {'gid': gid, 'token': token}
 
         request_dict = construct_request_dict(self.settings, self.own_settings)
         request_dict['params'] = params
@@ -60,12 +60,11 @@ class ArchiveDownloader(BaseDownloader):
                 self.own_settings.archive_dl_folder,
                 to_use_filename + '.zip'))
 
-        if not (self.gallery.root and self.gallery.gid and self.gallery.token and self.gallery.archiver_key):
-            logger.error('Missing required data -> root: {}, gid: {}, token: {}, archiver_key: {}.'.format(
+        if not (self.gallery.root and self.gallery.gid and self.gallery.token and self.gallery):
+            logger.error('Missing required data -> root: {}, gid: {}, token: {}.'.format(
                 self.gallery.root,
                 self.gallery.gid,
-                self.gallery.token,
-                self.gallery.archiver_key,
+                self.gallery.token
             ))
             self.return_code = 0
             return
@@ -73,8 +72,7 @@ class ArchiveDownloader(BaseDownloader):
         r = self.request_archive_download(
             self.gallery.root,
             self.gallery.gid,
-            self.gallery.token,
-            self.gallery.archiver_key
+            self.gallery.token
         )
 
         if not r:
@@ -405,12 +403,11 @@ class HathDownloader(BaseDownloader):
         if not self.gallery:
             return
 
-        if not (self.gallery.root and self.gallery.gid and self.gallery.token and self.gallery.archiver_key):
-            logger.error('Missing required data -> root: {}, gid: {}, token: {}, archiver_key: {}.'.format(
+        if not (self.gallery.root and self.gallery.gid and self.gallery.token):
+            logger.error('Missing required data -> root: {}, gid: {}, token: {}.'.format(
                 self.gallery.root,
                 self.gallery.gid,
-                self.gallery.token,
-                self.gallery.archiver_key,
+                self.gallery.token
             ))
             self.return_code = 0
             return
@@ -418,8 +415,7 @@ class HathDownloader(BaseDownloader):
         r = self.request_hath_download(
             self.gallery.root,
             self.gallery.gid,
-            self.gallery.token,
-            self.gallery.archiver_key
+            self.gallery.token
         )
 
         if r and r.status_code == 200:
@@ -460,11 +456,11 @@ class HathDownloader(BaseDownloader):
                 logger.error('Did not get a response')
             self.return_code = 0
 
-    def request_hath_download(self, root: str, gid: str, token: str, key: str) -> Optional[requests.models.Response]:
+    def request_hath_download(self, root: str, gid: str, token: str) -> Optional[requests.models.Response]:
 
         url = root + '/archiver.php'
 
-        params = {'gid': gid, 'token': token, 'or': key}
+        params = {'gid': gid, 'token': token}
 
         # logger.info("Requesting hath download to URL: {}".format(url))
 

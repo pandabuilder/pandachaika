@@ -226,7 +226,7 @@
                     <a class="btn btn-sm btn-light" href="{% url 'viewer:api' %}?gallery={{ gallery.pk }}">JSON info</a>
                     <a class="btn btn-sm btn-light" href="{% url 'viewer:gallery-change-log' gallery.pk %}">Change Log</a>
                     {% if perms.viewer.read_activity_logs %}
-                        <a class="btn btn-sm btn-light" href="{% url 'viewer:activity-event-log' %}?content-type=gallery&content-id={{ gallery.pk }}">Activity Log</a>
+                        <a class="btn btn-sm btn-light" href="{% url 'viewer:activity-event-log' %}?content_type=gallery&content_id={{ gallery.pk }}">Activity Log</a>
                     {% endif %}
                   </div>
                 {% else %}

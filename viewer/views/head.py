@@ -59,7 +59,7 @@ archive_filter_keys = (
     "rating_from", "rating_to", "match_type", "posted_from",
     "posted_to", "source_type", "tags", "only_favorites",
     "non_public", "public", "reason",
-    "uploader", "category", "hidden",
+    "uploader", "category", "provider", "hidden",
     "qsearch", "extracted"
 )
 
@@ -140,7 +140,7 @@ def change_password(request: HttpRequest) -> HttpResponse:
         form = BootstrapPasswordChangeForm(request.user, request.POST, error_class=DivErrorList)
         if form.is_valid():
             user = form.save()
-            update_session_auth_hash(request, user) 
+            update_session_auth_hash(request, user)  # type: ignore
             messages.success(request, 'Your password was successfully updated!')
             return redirect('viewer:change-password')
         else:
@@ -917,6 +917,7 @@ def search(request: HttpRequest, mode: str = 'none', tag: Optional[str] = None) 
                         display_prms[k] = v
                 else:
                     display_prms[k] = v
+        display_prms['title'] = display_prms['title'].replace("\x00", "")
         form = ArchiveSearchForm(initial={'title': display_prms['title'], 'tags': display_prms['tags']})
     if 'view' not in parameters or parameters['view'] == '':
         parameters['view'] = 'list'
@@ -1798,6 +1799,8 @@ def filter_archives_simple(params: dict[str, Any], authenticated=False, show_bin
         results = results.filter(gallery__uploader__icontains=params["uploader"])
     if params["category"]:
         results = results.filter(gallery__category__icontains=params["category"])
+    if params["provider"]:
+        results = results.filter(gallery__provider__icontains=params["provider"])
 
     if params["tags"]:
         tags = params["tags"].split(',')

@@ -370,7 +370,7 @@ class BaseGalleryDLDownloader(BaseDownloader):
             logger.error("The gallery-dl executable was not found")
             return
 
-        directory_path = mkdtemp()
+        directory_path = mkdtemp(dir=self.settings.temp_directory_path)
 
         arguments = ["--zip", "--dest", "{}".format(
             directory_path

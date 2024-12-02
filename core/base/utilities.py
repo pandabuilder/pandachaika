@@ -47,7 +47,7 @@ PUSHOVER_API_URL = 'https://api.pushover.net/1/messages.json'
 WAYBACK_API_URL = 'https://web.archive.org/cdx/search/cdx'
 
 ZIP_CONTAINER_REGEX = re.compile(r'(\.zip|\.cbz)$', re.IGNORECASE)
-IMAGES_REGEX = re.compile(r'(\.jpeg|\.jpg|\.png|\.gif)$', re.IGNORECASE)
+IMAGES_REGEX = re.compile(r'(\.jpeg|\.jpg|\.png|\.gif|\.webp)$', re.IGNORECASE)
 ZIP_CONTAINER_EXTENSIONS = [".zip", ".cbz"]
 
 REPLACE_CHARS = (
@@ -198,8 +198,7 @@ def zfill_to_four(namefile: str) -> str:
 
 
 def accept_images_only(name: str) -> Optional[str]:
-    r = re.compile(r'(\.jpeg|\.jpg|\.png|\.gif)$', re.IGNORECASE)
-    if r.search(name) and '__MACOSX' not in name:
+    if IMAGES_REGEX.search(name) and '__MACOSX' not in name:
         return name
     else:
         return None
@@ -213,8 +212,7 @@ def discard_zipfile_extra_files(name: str) -> Optional[str]:
 
 
 def accept_images_only_info(fileinfo: zipfile.ZipInfo) -> Optional[zipfile.ZipInfo]:
-    r = re.compile(r'(\.jpeg|\.jpg|\.png|\.gif)$', re.IGNORECASE)
-    if r.search(fileinfo.filename) and '__MACOSX' not in fileinfo.filename:
+    if IMAGES_REGEX.search(fileinfo.filename) and '__MACOSX' not in fileinfo.filename:
         return fileinfo
     else:
         return None
@@ -308,7 +306,7 @@ def get_zip_filesize(filepath: str) -> int:
     return total_size
 
 
-def convert_rar_to_zip(filepath: str) -> int:
+def convert_rar_to_zip(filepath: str, temp_path: typing.Optional[str]=None) -> int:
     if not rarfile:
         return -1
     try:
@@ -321,7 +319,7 @@ def convert_rar_to_zip(filepath: str) -> int:
         return -1
 
     new_zipfile = zipfile.ZipFile(filepath, 'w')
-    dirpath = mkdtemp()
+    dirpath = mkdtemp(dir=temp_path)
 
     filtered_files = list(filter(discard_zipfile_extra_files, sorted(my_rar.namelist())))
     for filename in filtered_files:
@@ -339,7 +337,7 @@ def convert_rar_to_zip(filepath: str) -> int:
     return 0
 
 
-def convert_7z_to_zip(filepath: str) -> int:
+def convert_7z_to_zip(filepath: str, temp_path: typing.Optional[str]=None) -> int:
     if not py7zr:
         return -1
     try:
@@ -352,7 +350,7 @@ def convert_7z_to_zip(filepath: str) -> int:
         return -1
 
     new_zipfile = zipfile.ZipFile(filepath, 'w')
-    dirpath = mkdtemp()
+    dirpath = mkdtemp(dir=temp_path)
 
     filtered_files = list(filter(discard_zipfile_extra_files, sorted(my_7z.getnames())))
 
@@ -372,7 +370,7 @@ def convert_7z_to_zip(filepath: str) -> int:
     return 0
 
 
-def check_and_convert_to_zip(filepath: str) -> tuple[str, int]:
+def check_and_convert_to_zip(filepath: str, temp_path: typing.Optional[str]=None) -> tuple[str, int]:
     try:
         zipfile.ZipFile(filepath, 'r')
         return 'zip', 0
@@ -381,13 +379,13 @@ def check_and_convert_to_zip(filepath: str) -> tuple[str, int]:
             return 'zip', 1
     try:
         rarfile.RarFile(filepath, 'r')
-        convert_rar_to_zip(filepath)
+        convert_rar_to_zip(filepath, temp_path)
         return 'rar', 2
     except rarfile.NotRarFile:
         pass
     try:
         py7zr.SevenZipFile(filepath, 'r')
-        convert_7z_to_zip(filepath)
+        convert_7z_to_zip(filepath, temp_path)
         return '7z', 2
     except py7zr.exceptions.Bad7zFile as e:
         if str(e) != 'not a 7z file':

@@ -786,6 +786,9 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
     if 'with-custom-tags' in get:
         results = results.annotate(num_custom_tags=Count('tags', filter=Q(archivetag__origin=ArchiveTag.ORIGIN_USER))).filter(num_custom_tags__gt=0)
 
+    if 'with-scopeless-tags' in get:
+        results = results.annotate(num_scopeless_tags=Count('tags', filter=Q(~Q(archivetag__origin=ArchiveTag.ORIGIN_USER) & Q(archivetag__tag__scope="")))).filter(num_scopeless_tags__gt=0)
+
     results = results.select_related('gallery', 'user')
 
     if json_request:
@@ -1126,13 +1129,19 @@ def activity_event_log(request: HttpRequest) -> HttpResponse:
     else:
         show_users = ''
 
+    event_content_type = get.get("content_type", '')
+    event_content_id = get.get("content_id", '')
+
     if 'clear' in get:
         form = AllGalleriesSearchForm()
         form_event = EventSearchForm()
     else:
         form = AllGalleriesSearchForm(initial={'title': title, 'tags': tags})
         form_event = EventSearchForm(
-            initial={'data_field': data_field, 'event_date_from': event_date_from, 'event_date_to': event_date_to}
+            initial={
+                'data_field': data_field, 'event_date_from': event_date_from, 'event_date_to': event_date_to,
+                'content_type': event_content_type, 'content_id': event_content_id,
+            }
         )
 
     if selected_actions:
@@ -1150,9 +1159,6 @@ def activity_event_log(request: HttpRequest) -> HttpResponse:
 
     if data_field:
         results = results.filter(data__contains=data_field)
-        
-    event_content_type = get.get("content-type", '')
-    event_content_id = get.get("content-id", '')
     
     if event_content_type in ('archive', 'gallery'):
         if event_content_type == 'archive':

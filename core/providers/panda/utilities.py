@@ -20,7 +20,6 @@ def map_external_gallery_data_to_internal(gallery_data: DataDict) -> GalleryData
         str(gallery_data['gid']),
         constants.provider_name,
         token=gallery_data['token'],
-        archiver_key=gallery_data['archiver_key'],
         title=unescape(gallery_data['title']),
         title_jpn=unescape(gallery_data['title_jpn']),
         thumbnail_url=gallery_data['thumb'],

@@ -17,7 +17,7 @@ from django.conf import settings
 
 from dal import autocomplete
 from viewer.models import Archive, ArchiveMatches, Image, Gallery, Profile, WantedGallery, ArchiveGroup, \
-    ArchiveGroupEntry, Tag, ArchiveManageEntry, UserLongLivedToken
+    ArchiveGroupEntry, Tag, ArchiveManageEntry
 
 from dal.widgets import (
     WidgetMixin
@@ -139,6 +139,11 @@ class ArchiveSearchForm(forms.Form):
             },
         ),
     )
+
+    # For some reason some search request include this NULL character, remove it here.
+    def clean_title(self):
+        data = self.cleaned_data["title"]
+        return data.replace("\x00", "")
 
 
 class ArchiveSearchSimpleForm(forms.Form):
@@ -306,6 +311,20 @@ class ArchiveManageSearchSimpleForm(forms.Form):
             attrs={
                 'class': 'form-control',
                 'placeholder': 'Category',
+                'data-autocomplete-minimum-characters': 0,
+                'size': 12,
+            },
+        ),
+    )
+
+    provider = forms.CharField(
+        required=False,
+        label='',
+        widget=JalTextWidget(
+            url='provider-autocomplete',
+            attrs={
+                'class': 'form-control',
+                'placeholder': 'Provider',
                 'data-autocomplete-minimum-characters': 0,
                 'size': 12,
             },
@@ -628,7 +647,7 @@ class WantedGalleryCreateOrEditForm(ModelForm):
             'title', 'title_jpn', 'search_title', 'regexp_search_title', 'regexp_search_title_icase',
             'unwanted_title', 'regexp_unwanted_title', 'regexp_unwanted_title_icase',
             'wanted_tags', 'unwanted_tags', 'wanted_providers', 'unwanted_providers',
-            'wanted_tags_exclusive_scope', 'exclusive_scope_name', 'wanted_tags_accept_if_none_scope', 'category',
+            'wanted_tags_exclusive_scope', 'exclusive_scope_name', 'wanted_tags_accept_if_none_scope', 'category', 'categories',
             'wanted_page_count_lower', 'wanted_page_count_upper', 'add_to_archive_group',
             'release_date', 'wait_for_time', 'should_search', 'keep_searching', 'reason', 'book_type', 'publisher',
             'page_count', 'restricted_to_links'
@@ -650,6 +669,7 @@ class WantedGalleryCreateOrEditForm(ModelForm):
             'wanted_tags_accept_if_none_scope': 'Scope from wanted tags that is either present'
                                                 ' with the tag names or not at all',
             'category': 'Category in Gallery to match',
+            'categories': 'Category in Gallery to match (OR logic)',
             'wanted_page_count_lower': 'Gallery must have more or equal than this value (0 is ignored)',
             'wanted_page_count_upper': 'Gallery must have less or equal than this value (0 is ignored)',
             'add_to_archive_group': 'ArchiveGroup to add the resulting Archive if found',
@@ -687,6 +707,10 @@ class WantedGalleryCreateOrEditForm(ModelForm):
             'exclusive_scope_name': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'wanted_tags_accept_if_none_scope': forms.widgets.TextInput(attrs={'class': 'form-control'}),
             'category': forms.widgets.TextInput(attrs={'class': 'form-control'}),
+            'categories': autocomplete.ModelSelect2Multiple(
+                url='category-pk-autocomplete',
+                attrs={'data-placeholder': 'Category', 'class': 'form-control', 'data-width': '100%'}
+            ),
             'wanted_page_count_lower': forms.widgets.NumberInput(attrs={'min': 0, 'class': 'form-control'}),
             'wanted_page_count_upper': forms.widgets.NumberInput(attrs={'min': 0, 'class': 'form-control'}),
             'wanted_providers': autocomplete.ModelSelect2Multiple(
@@ -1060,6 +1084,18 @@ class EventSearchForm(forms.Form):
         input_formats=['%Y-%m-%d']
     )
 
+    content_type = forms.CharField(
+        required=False,
+        label='',
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Content Type', 'autocomplete': 'off', 'size': 10})
+    )
+
+    content_id = forms.CharField(
+        required=False,
+        label='',
+        widget=forms.TextInput(
+            attrs={'class': 'form-control', 'placeholder': 'Content Id', 'autocomplete': 'off', 'size': 9})
+    )
 
 class SplitArchiveForm(forms.ModelForm):
     new_file_name = forms.CharField(widget=forms.widgets.TextInput(attrs={'class': 'form-control', 'size': 100}))

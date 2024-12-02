@@ -1,4 +1,5 @@
-﻿import io
+import base64
+import io
 import itertools
 import json
 import os
@@ -37,6 +38,7 @@ from django.db.models import Value, CharField
 from django.db.models.functions import Concat, Replace
 
 from PIL import Image as PImage
+import pillow_avif
 from PIL import ImageFile
 import django.db.models.options as options
 from django.urls import reverse
@@ -1860,7 +1862,7 @@ class Archive(models.Model):
 
     def check_and_convert_to_zip(self) -> tuple[str, int]:
         if os.path.isfile(self.zipped.path):
-            extension, result = check_and_convert_to_zip(self.zipped.path)
+            extension, result = check_and_convert_to_zip(self.zipped.path, settings.CRAWLER_SETTINGS.temp_directory_path)
             return extension, result
         else:
             return 'unknown', 0
@@ -2055,7 +2057,7 @@ class Archive(models.Model):
         new_file_path = os.path.join(settings.MEDIA_ROOT, new_file_name)
 
         new_zipfile = zipfile.ZipFile(new_file_path, 'w')
-        dir_path = mkdtemp()
+        dir_path = mkdtemp(dir=settings.CRAWLER_SETTINGS.temp_directory_path)
 
         for count, sha1 in enumerate(local_sha1s, start=1):
 
@@ -2223,7 +2225,7 @@ class Archive(models.Model):
             new_file_path = os.path.join(settings.MEDIA_ROOT, new_file_name)
 
             new_zipfile = zipfile.ZipFile(new_file_path, 'w')
-            dir_path = mkdtemp()
+            dir_path = mkdtemp(dir=settings.CRAWLER_SETTINGS.temp_directory_path)
 
             for position in range(starting_position, ending_position+1):
 
@@ -3184,6 +3186,43 @@ class Archive(models.Model):
             mark_user__isnull=True
         ).delete()
 
+    def get_wanted_images_similarity_mark(self) -> tuple[int, list[tuple['WantedImage', int, bool, Optional[bytes]]]]:
+        per_wanted_data = []
+
+        if image_processing.CAN_USE_IMAGE_MATCH and self.thumbnail:
+
+            wanted_images = WantedImage.objects.filter(active=True)
+
+            if wanted_images:
+                img_thumbnail, img_gray = image_processing.get_image_thumbnail_and_grayscale(self)
+
+                for wanted_image in wanted_images:
+                    found_match, n_good_matches, im_result = image_processing.compare_wanted_with_image(
+                        img_gray, img_thumbnail, wanted_image, skip_minimum=True
+                    )
+                    # if found_match:
+                    if im_result is not None:
+                        buffered = io.BytesIO()
+                        im_result.save(buffered, format="JPEG")
+                        img_str: bytes | None = base64.b64encode(buffered.getvalue())
+                    else:
+                        img_str = None
+
+                    per_wanted_data.append(
+                        (
+                            wanted_image,
+                            n_good_matches,
+                            found_match,
+                            img_str
+                        )
+                    )
+
+                return 0, per_wanted_data
+            else:
+                return -2, per_wanted_data
+        else:
+            return -1, per_wanted_data
+
     def recalc_filesize(self) -> None:
         if os.path.isfile(self.zipped.path):
             self.filesize = get_zip_filesize(self.zipped.path)
@@ -4031,8 +4070,8 @@ class WantedGallery(models.Model):
     exclusive_scope_name = models.CharField(max_length=200, blank=True, default='')
     wanted_tags_accept_if_none_scope = models.CharField(max_length=200, blank=True, default='')
     unwanted_tags: models.ManyToManyField = models.ManyToManyField(Tag, blank=True, related_name="unwanted_tags")
-    category = models.CharField(
-        max_length=20, blank=True, null=True, default='')
+    category = models.CharField(max_length=20, blank=True, null=True, default='')
+    categories: models.ManyToManyField = models.ManyToManyField('Category', blank=True)
     wanted_providers: models.ManyToManyField = models.ManyToManyField('Provider', blank=True)
     unwanted_providers: models.ManyToManyField = models.ManyToManyField('Provider', blank=True, related_name="unwanted_providers")
     wait_for_time = models.DurationField('Wait for time', blank=True, null=True)
@@ -4079,6 +4118,10 @@ class WantedGallery(models.Model):
 
     def wanted_tags_list(self) -> list[str]:
         lst = [str(x) for x in self.wanted_tags.all()]
+        return lst
+
+    def categories_list(self) -> list[str]:
+        lst = [str(x) for x in self.categories.all()]
         return lst
 
     def unwanted_tags_list(self) -> list[str]:
@@ -4134,6 +4177,7 @@ class WantedGallery(models.Model):
         has_unwanted_tags = bool(self.unwanted_tags.all())
         wanted_providers_count = self.wanted_providers.count()
         unwanted_providers_count = self.unwanted_providers.count()
+        categories_count = self.categories.count()
 
         if self.search_title or self.unwanted_title:
             q_objects_search_title = Q()
@@ -4237,6 +4281,8 @@ class WantedGallery(models.Model):
         # Disabled because wanted_providers superseeds provider
         # if self.provider:
         #     galleries = galleries.filter(provider__iexact=self.provider)
+        if categories_count:
+            galleries = galleries.filter(category__in=self.categories.all().values_list('name', flat=True))
 
         if wanted_providers_count:
             galleries = galleries.filter(provider__in=[x.slug for x in self.wanted_providers.all()])
@@ -4383,6 +4429,33 @@ class Provider(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+
+class Category(models.Model):
+    name = models.CharField(max_length=100, help_text=_("User friendly name"))
+    slug = models.SlugField(unique=True)
+
+    create_date = models.DateTimeField(auto_now_add=True)
+    last_modified = models.DateTimeField(auto_now=True, blank=True, null=True)
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name_plural = "Categories"
+
+    def __str__(self) -> str:
+        return self.name
+
+    def save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
+        if not self.slug:
+
+            slug_candidate = slugify(self.name, allow_unicode=True)
+            for i in itertools.count(1):
+                if not Category.objects.filter(slug=slug_candidate).exists():
+                    break
+                slug_candidate = slugify('{}-{}'.format(self.name, i), allow_unicode=True)
+
+            self.slug = slug_candidate
+        super(Category, self).save(*args, **kwargs)
 
 
 class AttributeQuerySet(models.QuerySet):

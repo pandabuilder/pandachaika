@@ -297,7 +297,7 @@
           <a class="btn btn-light hash-preview" tabindex="0" role="button" data-bs-toggle="popover" data-bs-pk="{{ archive.pk }}">Images SHA1</a>
           <a class="btn btn-light" href="{% url 'viewer:image-data-list' archive.pk %}">Images Data</a>
           <a class="btn btn-light" href="{% url 'viewer:archive-change-log' archive.pk %}">Change Log</a>
-          <a class="btn btn-light" href="{% url 'viewer:activity-event-log' %}?content-type=archive&content-id={{ archive.pk }}">Activity Log</a>
+          <a class="btn btn-light" href="{% url 'viewer:activity-event-log' %}?content_type=archive&content_id={{ archive.pk }}">Activity Log</a>
           {% if archive.thumbnail.name %}
             <a class="btn btn-light img-preview" data-image-url="{{ archive.thumbnail.url }}" rel="popover">Hover for cover</a>
           {% endif %}
@@ -329,7 +329,7 @@
         <a class="btn btn-light" href="{% url 'viewer:archive-change-log' archive.pk %}">Change Log</a>
         {% endif %}
         {% if perms.viewer.read_activity_logs %}
-        <a class="btn btn-light" href="{% url 'viewer:activity-event-log' %}?content-type=archive&content-id={{ archive.pk }}">Activity Log</a>
+        <a class="btn btn-light" href="{% url 'viewer:activity-event-log' %}?content_type=archive&content_id={{ archive.pk }}">Activity Log</a>
         {% endif %}
         {% if archive.thumbnail.name %}
           <a class="btn btn-light img-preview" data-image-url="{{ archive.thumbnail.url }}" rel="popover">Hover for cover</a>
@@ -386,7 +386,24 @@
       {% include 'viewer/include/archive_manage.html' %}
       </li>
       {% endif %}
+    {% else %}
+      <li class="subtitle">
+      <div class="row g-4">
+      {% for archive_manage_instance in manage_entries %}
+        <div class="col-sm-3">
+          <div class="card panel">
+            <div class="card-body mark-height">
+              <h5 class="card-title">{{ archive_manage_instance.mark_reason }}<a class="btn btn-sm btn-primary justify-content-end ms-2" role="button" onclick="toggleHeight(this);">expand</a></h5>
+              <p class="card-text">{{ archive_manage_instance.mark_comment|urlize_all_rel|convert_special_urls|linebreaks }}</p>
+              <p class="card-text">{{ archive_manage_instance.mark_extra }}</p>
+            </div>
+          </div>
+        </div>
+     {% endfor %}
+      </div>
+      </li>
     {% endif %}
+
      <!-- Pagination and messages -->
     {% if user.is_authenticated %}
       {% if not archive.crc32 %}

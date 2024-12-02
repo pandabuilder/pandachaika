@@ -241,12 +241,16 @@ def archive_details(request: HttpRequest, pk: int, mode: str = 'view') -> HttpRe
     if request.user.has_perm('viewer.view_marks'):
         manage_entries = ArchiveManageEntry.objects.filter(archive=archive)
         d.update({'manage_entries': manage_entries, 'manage_entries_count': manage_entries.count()})
+    elif crawler_settings.urls.enable_public_marks and crawler_settings.urls.public_mark_reasons:
+        manage_entries = ArchiveManageEntry.objects.filter(archive=archive, mark_reason__in=crawler_settings.urls.public_mark_reasons)
+        d.update({'manage_entries': manage_entries})
 
     d.update(
         {
             'tag_count': archive.tags.exclude(archivetag__origin=ArchiveTag.ORIGIN_USER).count(),
             'custom_tag_count': archive.tags.filter(archivetag__origin=ArchiveTag.ORIGIN_USER).count(),
-            'file_entry_total': sum([x.file_size for x in archive.archivefileentry_set.all()])
+            'file_entry_total': sum([x.file_size for x in archive.archivefileentry_set.all()]),
+            # 'public_mark_reasons': crawler_settings.urls.public_mark_reasons
         }
     )
 
@@ -606,7 +610,7 @@ def image_live_thumb(request: HttpRequest, archive_pk: int, position: int) -> Ht
         image = Image.objects.get(archive=archive_pk, position=position)
     except Image.DoesNotExist:
         raise Http404("Archive does not exist")
-    if not image.archive.public and not double_check_auth(request)[0]:
+    if not double_check_auth(request)[0]:
         raise Http404("Archive does not exist")
 
     full_image = bool(request.GET.get("full", ''))

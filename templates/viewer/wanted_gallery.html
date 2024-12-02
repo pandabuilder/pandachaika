@@ -143,6 +143,19 @@
       <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Exclusive scope name:</label>{{ wanted_gallery.exclusive_scope_name|default:"Not set" }}</li>
       <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Wanted tags 'accept if none' scope:</label>{{ wanted_gallery.wanted_tags_accept_if_none_scope|default:"Not set" }}</li>
       <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Category:</label>{{ wanted_gallery.category|default:"Not set" }}</li>
+        <li class="list-group-item d-flex justify-content-between py-1">
+          <div class="card w-100 text-white bg-secondary">
+            <div class="card-header py-1">
+              Categories
+            </div>
+            <ul class="list-group">
+              {% for category in wanted_gallery.categories.all %}
+                <li class="list-group-item py-1">
+                  {{ category }}
+                </li>{% endfor %}
+            </ul>
+          </div>
+        </li>
       <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Wanted page count lower bound:</label>{{ wanted_gallery.wanted_page_count_lower }}</li>
       <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Wanted page count upper bound:</label>{{ wanted_gallery.wanted_page_count_upper }}</li>
     </ul>

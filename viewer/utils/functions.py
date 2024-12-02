@@ -198,6 +198,7 @@ def images_data_to_json(images: Iterable[Image]) -> dict[int, dict[str, Any]]:
             'archive_position': image.archive_position,
             'filename': image.image_name,
             'size': image.image_size,
+            'sha1': image.sha1,
             'height': image.original_height,
             'width': image.original_width,
             'format': image.image_format,
