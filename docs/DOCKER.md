@@ -12,6 +12,7 @@ Docker Compose (recommended)
 The recommended way to run the stack is using Docker Compose, using the provided [docker-compose.yaml](../docker-compose.yaml), and editing as needed. Depending on your infrastructure, you could turn off the database or the reverse proxy services. Copy the [.env.sample](../.env.sample) file to .env, and edit it (specially if exposing the server to the internet)
 
 It is preferred to copy docker-compose.yml to a new file docker-compose.local.yml, for example, and edit it there.
+Use [docker-compose.build.yaml](../docker-compose.build.yaml) instead for building the image locally.
 
 Remember to replace DJANGO_SECRET_KEY, the output from this command works:
 ```bash
@@ -40,7 +41,12 @@ You can create a self-signed certificate using the command (change days to incre
 openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout ./certs/nginx.key -out ./certs/nginx.crt
 ```
 
-### Run the stack
+### Run the stack (using published image)
+```bash
+docker compose -f docker-compose.local.yml up
+```
+
+### Run the stack (building from local changes)
 ```bash
 docker compose -f docker-compose.local.yml up --build
 ```

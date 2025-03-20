@@ -1,6 +1,6 @@
 services:
   pandachaika:
-    build: .
+    image: ghcr.io/pandabuilder/pandachaika:master
     container_name: pandachaika
     volumes:
       - ./config:/config/

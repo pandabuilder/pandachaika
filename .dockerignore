@@ -52,7 +52,8 @@ aux_*.txt
 aux_*.json
 .env
 /docker/
-docker-compose.*
+docker-compose.yml
+docker-compose.build.yml
 /init
 /docs
 .gitlab-ci.yml

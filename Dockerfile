@@ -58,5 +58,7 @@ USER appuser
 # Expose the application port
 EXPOSE 8090
 
+LABEL org.opencontainers.image.description="PandaChaika Backend"
+
 # Start the application
 ENTRYPOINT ["/bin/bash", "/dockerentry.sh"]
