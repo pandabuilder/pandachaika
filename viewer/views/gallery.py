@@ -5,9 +5,7 @@ from django.http import HttpRequest, HttpResponse, Http404
 from django.shortcuts import render
 
 
-from viewer.models import (
-    Gallery
-)
+from viewer.models import Gallery
 
 
 def change_log(request: HttpRequest, pk: int) -> HttpResponse:
@@ -18,11 +16,11 @@ def change_log(request: HttpRequest, pk: int) -> HttpResponse:
     if not gallery.public and not request.user.is_authenticated:
         raise Http404("Gallery does not exist")
 
-    gallery_history = gallery.history.order_by('-history_date')
+    gallery_history = gallery.history.order_by("-history_date")
 
     paginator = Paginator(gallery_history, 400)
     try:
-        page = int(request.GET.get("page", '1'))
+        page = int(request.GET.get("page", "1"))
     except ValueError:
         page = 1
 
@@ -31,6 +29,6 @@ def change_log(request: HttpRequest, pk: int) -> HttpResponse:
     except (InvalidPage, EmptyPage):
         results = paginator.page(paginator.num_pages)
 
-    d = {'gallery': gallery, 'results': results}
+    d = {"gallery": gallery, "results": results}
 
     return render(request, "viewer/gallery_change_log.html", d)

@@ -21,15 +21,20 @@ class Parser(BaseParser):
     name = constants.provider_name
     accepted_urls = [constants.base_url, constants.old_base_url]
 
-    def crawl_urls(self, urls: list[str], wanted_filters=None, wanted_only: bool = False,
-                   preselected_wanted_matches: Optional[dict[str, list['WantedGallery']]] = None) -> None:
+    def crawl_urls(
+        self,
+        urls: list[str],
+        wanted_filters=None,
+        wanted_only: bool = False,
+        preselected_wanted_matches: Optional[dict[str, list["WantedGallery"]]] = None,
+    ) -> None:
 
         unique_urls = set()
         gallery_data_list = []
-        gallery_wanted_lists: dict[str, list['WantedGallery']] = preselected_wanted_matches or defaultdict(list)
+        gallery_wanted_lists: dict[str, list["WantedGallery"]] = preselected_wanted_matches or defaultdict(list)
 
         if not self.downloaders:
-            logger.warning('No downloaders enabled, returning.')
+            logger.warning("No downloaders enabled, returning.")
             return
 
         for url in urls:
@@ -38,7 +43,7 @@ class Parser(BaseParser):
                 logger.warning("Invalid URL, skipping: {}".format(url))
                 continue
 
-            if '/file/' in url:
+            if "/file/" in url:
                 if constants.old_base_url in url:
                     url = url.replace(constants.old_base_url, constants.base_url)
             else:
@@ -53,6 +58,4 @@ class Parser(BaseParser):
         self.pass_gallery_data_to_downloaders(gallery_data_list, gallery_wanted_lists)
 
 
-API = (
-    Parser,
-)
+API = (Parser,)

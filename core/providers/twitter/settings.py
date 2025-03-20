@@ -7,35 +7,35 @@ if typing.TYPE_CHECKING:
 
 
 class OwnSettings(ProviderSettings):
-    def __init__(self, global_settings: 'Settings', config: dict[str, typing.Any]) -> None:
+    def __init__(self, global_settings: "Settings", config: dict[str, typing.Any]) -> None:
         super().__init__(global_settings, config)
-        self.token = ''
-        self.token_secret = ''
-        self.consumer_key = ''
-        self.consumer_secret = ''
+        self.token = ""
+        self.token_secret = ""
+        self.consumer_key = ""
+        self.consumer_secret = ""
         self.add_as_public = False
         # Automatically add this text to "unwanted_title" field on generated wanted galleries
-        self.unwanted_title = ''
+        self.unwanted_title = ""
         self.enabled_handles: list[str] = []
 
 
-def parse_config(global_settings: 'Settings', config: dict[str, typing.Any]) -> 'OwnSettings':
+def parse_config(global_settings: "Settings", config: dict[str, typing.Any]) -> "OwnSettings":
 
     settings = OwnSettings(global_settings, config)
-    if 'general' in config:
-        if 'token' in config['general']:
-            settings.token = config['general']['token']
-        if 'token_secret' in config['general']:
-            settings.token_secret = config['general']['token_secret']
-        if 'consumer_key' in config['general']:
-            settings.consumer_key = config['general']['consumer_key']
-        if 'consumer_secret' in config['general']:
-            settings.consumer_secret = config['general']['consumer_secret']
-    if 'wanted' in config:
-        if 'add_as_public' in config['wanted']:
-            settings.add_as_public = config['wanted']['add_as_public']
-        if 'unwanted_title' in config['wanted']:
-            settings.unwanted_title = config['wanted']['unwanted_title']
-    if 'enabled_handles' in config:
-        settings.enabled_handles = config['enabled_handles']
+    if "general" in config:
+        if "token" in config["general"]:
+            settings.token = config["general"]["token"]
+        if "token_secret" in config["general"]:
+            settings.token_secret = config["general"]["token_secret"]
+        if "consumer_key" in config["general"]:
+            settings.consumer_key = config["general"]["consumer_key"]
+        if "consumer_secret" in config["general"]:
+            settings.consumer_secret = config["general"]["consumer_secret"]
+    if "wanted" in config:
+        if "add_as_public" in config["wanted"]:
+            settings.add_as_public = config["wanted"]["add_as_public"]
+        if "unwanted_title" in config["wanted"]:
+            settings.unwanted_title = config["wanted"]["unwanted_title"]
+    if "enabled_handles" in config:
+        settings.enabled_handles = config["enabled_handles"]
     return settings

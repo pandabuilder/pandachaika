@@ -5,7 +5,12 @@ from typing import Optional
 from core.base.matchers import Matcher
 from core.base.types import GalleryData, DataDict
 from core.base.utilities import (
-    clean_title, request_with_retries, construct_request_dict, file_matches_any_filter, get_zip_fileinfo)
+    clean_title,
+    request_with_retries,
+    construct_request_dict,
+    file_matches_any_filter,
+    get_zip_fileinfo,
+)
 from core.providers.mugimugi.utilities import convert_api_response_text_to_gallery_dicts
 from . import constants
 
@@ -14,9 +19,9 @@ logger = logging.getLogger(__name__)
 
 class TitleMatcher(Matcher):
 
-    name = 'title'
+    name = "title"
     provider = constants.provider_name
-    type = 'title'
+    type = "title"
     time_to_wait_after_compare = 0
     default_cutoff = 0.6
 
@@ -45,14 +50,14 @@ class TitleMatcher(Matcher):
         self.match_gid = self.match_values.gid
         filesize, filecount, _ = get_zip_fileinfo(os.path.join(self.settings.MEDIA_ROOT, self.file_path))
         values = {
-            'title': self.match_title,
-            'title_jpn': self.match_values.title_jpn,
-            'zipped': self.file_path,
-            'crc32': self.crc32,
-            'match_type': self.found_by,
-            'filesize': filesize,
-            'filecount': filecount,
-            'source_type': self.provider
+            "title": self.match_title,
+            "title_jpn": self.match_values.title_jpn,
+            "zipped": self.file_path,
+            "crc32": self.crc32,
+            "match_type": self.found_by,
+            "filesize": filesize,
+            "filecount": filecount,
+            "source_type": self.provider,
         }
 
         return values
@@ -60,21 +65,17 @@ class TitleMatcher(Matcher):
     def search_using_xml_api(self, title: str) -> bool:
 
         if not self.own_settings.api_key:
-            logger.error("Can't use {} API without an api key. Check {}/API_MANUAL.txt".format(
-                self.name,
-                constants.main_page
-            ))
+            logger.error(
+                "Can't use {} API without an api key. Check {}/API_MANUAL.txt".format(self.name, constants.main_page)
+            )
             return False
 
         page = 1
         galleries = []
 
         while True:
-            link = '{}/api/{}/?S=objectSearch&sn={}&page={}'.format(
-                constants.main_page,
-                self.own_settings.api_key,
-                title,
-                page
+            link = "{}/api/{}/?S=objectSearch&sn={}&page={}".format(
+                constants.main_page, self.own_settings.api_key, title, page
             )
 
             request_dict = construct_request_dict(self.settings, self.own_settings)
@@ -88,7 +89,7 @@ class TitleMatcher(Matcher):
             if not response:
                 break
 
-            response.encoding = 'utf-8'
+            response.encoding = "utf-8"
             # Based on: https://www.doujinshi.org/API_MANUAL.txt
 
             api_galleries = convert_api_response_text_to_gallery_dicts(response.text)
@@ -115,6 +116,4 @@ class TitleMatcher(Matcher):
             return False
 
 
-API = (
-    TitleMatcher,
-)
+API = (TitleMatcher,)

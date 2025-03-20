@@ -15,5 +15,5 @@ def view_link_from_download_link(url: str) -> str:
     return re.sub(r"/download/(\d+)\.torrent", r"/view/\1", url)
 
 
-def resolve_url(gallery: 'Gallery') -> str:
+def resolve_url(gallery: "Gallery") -> str:
     return "{}/{}".format(urljoin(constants.base_url, constants.view_path), gallery.gid)

@@ -23,7 +23,7 @@ def catch_and_log_error(func):
 
 class TimedAutoWanted(BaseScheduler):
 
-    thread_name = 'auto_wanted'
+    thread_name = "auto_wanted"
 
     @staticmethod
     def timer_to_seconds(timer: float) -> float:
@@ -42,12 +42,14 @@ class TimedAutoWanted(BaseScheduler):
 
                     attrs = Attribute.objects.filter(provider__slug=provider_name)
 
-                    for count, wanted_generator in enumerate(self.settings.provider_context.get_wanted_generators(provider_name)):
+                    for count, wanted_generator in enumerate(
+                        self.settings.provider_context.get_wanted_generators(provider_name)
+                    ):
                         # wanted_generator(self.settings, self.crawler_logger, attrs)
                         wanted_generator_thread = threading.Thread(
                             name="{}-{}-{}".format(self.thread_name, provider_name, count),
                             target=catch_and_log_error(wanted_generator),
-                            args=(self.settings, attrs)
+                            args=(self.settings, attrs),
                         )
                         wanted_generator_thread.daemon = True
                         wanted_generator_thread.start()

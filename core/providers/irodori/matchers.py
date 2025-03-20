@@ -4,12 +4,12 @@ import re
 from typing import Optional
 from urllib.parse import urljoin, urlparse
 
+import bs4
 from bs4 import BeautifulSoup
 
 from core.base.matchers import Matcher
 from core.base.types import DataDict
-from core.base.utilities import (
-    request_with_retries, construct_request_dict, file_matches_any_filter, get_zip_fileinfo)
+from core.base.utilities import request_with_retries, construct_request_dict, file_matches_any_filter, get_zip_fileinfo
 from . import constants
 from .utilities import clean_title
 
@@ -18,9 +18,9 @@ logger = logging.getLogger(__name__)
 
 class TitleMatcher(Matcher):
 
-    name = 'title'
+    name = "title"
     provider = constants.provider_name
-    type = 'title'
+    type = "title"
     time_to_wait_after_compare = 0
     default_cutoff = 0.6
 
@@ -46,14 +46,14 @@ class TitleMatcher(Matcher):
         self.match_gid = self.match_values.gid
         filesize, filecount, _ = get_zip_fileinfo(os.path.join(self.settings.MEDIA_ROOT, self.file_path))
         values = {
-            'title': self.match_title,
-            'title_jpn': '',
-            'zipped': self.file_path,
-            'crc32': self.crc32,
-            'match_type': self.found_by,
-            'filesize': filesize,
-            'filecount': filecount,
-            'source_type': self.provider
+            "title": self.match_title,
+            "title_jpn": "",
+            "zipped": self.file_path,
+            "crc32": self.crc32,
+            "match_type": self.found_by,
+            "filesize": filesize,
+            "filecount": filecount,
+            "source_type": self.provider,
         }
 
         return values
@@ -62,10 +62,10 @@ class TitleMatcher(Matcher):
 
         request_dict = construct_request_dict(self.settings, self.own_settings)
 
-        request_dict['params'] = {'q': title}
+        request_dict["params"] = {"q": title}
 
         r = request_with_retries(
-            urljoin(constants.main_url, 'search/'),
+            urljoin(constants.main_url, "search/"),
             request_dict,
         )
 
@@ -73,19 +73,23 @@ class TitleMatcher(Matcher):
             logger.info("Got no response from server")
             return False
 
-        r.encoding = 'utf-8'
-        soup_1 = BeautifulSoup(r.text, 'html.parser')
+        r.encoding = "utf-8"
+        soup_1 = BeautifulSoup(r.text, "html.parser")
 
         matches_links = set()
 
         discard_titles = ["(SPANISH)", "(FRENCH)"]
 
         for link_container in soup_1.find_all("a", class_=re.compile("product-card")):
-            # Discard spanish/french releases
-            title_container = link_container.find("div", class_="product-card__name")
-            if any(x for x in discard_titles if title_container.get_text().startswith(x)):
-                continue
-            matches_links.add(urljoin(constants.main_url, urljoin(link_container['href'], urlparse(link_container['href']).path)))
+            # Discard Spanish/French releases
+            if isinstance(link_container, bs4.element.Tag):
+                title_container = link_container.find("div", class_="product-card__name")
+                if isinstance(title_container, bs4.element.Tag):
+                    if any(x for x in discard_titles if title_container.get_text().startswith(x)):
+                        continue
+                    found_href = link_container["href"]
+                    if isinstance(found_href, str):
+                        matches_links.add(urljoin(constants.main_url, urljoin(found_href, urlparse(found_href).path)))
 
         self.gallery_links = list(matches_links)
         if len(self.gallery_links) > 0:
@@ -95,6 +99,4 @@ class TitleMatcher(Matcher):
             return False
 
 
-API = (
-    TitleMatcher,
-)
+API = (TitleMatcher,)

@@ -43,33 +43,35 @@ if typing.TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-PUSHOVER_API_URL = 'https://api.pushover.net/1/messages.json'
-WAYBACK_API_URL = 'https://web.archive.org/cdx/search/cdx'
+PUSHOVER_API_URL = "https://api.pushover.net/1/messages.json"
+WAYBACK_API_URL = "https://web.archive.org/cdx/search/cdx"
 
-ZIP_CONTAINER_REGEX = re.compile(r'(\.zip|\.cbz)$', re.IGNORECASE)
-IMAGES_REGEX = re.compile(r'(\.jpeg|\.jpg|\.png|\.gif|\.webp)$', re.IGNORECASE)
+ZIP_CONTAINER_REGEX = re.compile(r"(\.zip|\.cbz)$", re.IGNORECASE)
+IMAGES_REGEX = re.compile(r"(\.jpeg|\.jpg|\.png|\.gif|\.webp)$", re.IGNORECASE)
 ZIP_CONTAINER_EXTENSIONS = [".zip", ".cbz"]
 
 REPLACE_CHARS = (
-    ('\\', '＼'),
-    ('/', '／'),
-    (':', '：'),
-    ('*', '＊'),
-    ('?', '？'),
-    ('"', '＂'),
-    ('<', '＜'),
-    ('>', '＞'),
-    ('|', '｜')
+    ("\\", "＼"),
+    ("/", "／"),
+    (":", "："),
+    ("*", "＊"),
+    ("?", "？"),
+    ('"', "＂"),
+    ("<", "＜"),
+    (">", "＞"),
+    ("|", "｜"),
 )
 
 
 # The idea of this class is to contain certain methods, to not have to pass arguments that are global.
 class GeneralUtils:
 
-    def __init__(self, global_settings: 'setup.Settings') -> None:
+    def __init__(self, global_settings: "setup.Settings") -> None:
         self.settings = global_settings
 
-    def discard_by_gallery_data(self, tag_list: Optional[list[str]], uploader: Optional[str] = None, force_check: bool = False) -> tuple[bool, list[str]]:
+    def discard_by_gallery_data(
+        self, tag_list: Optional[list[str]], uploader: Optional[str] = None, force_check: bool = False
+    ) -> tuple[bool, list[str]]:
 
         discarded = False
         reasons: list[str] = []
@@ -81,26 +83,25 @@ class GeneralUtils:
             if found_tags:
                 discarded = True
                 reasons.append("Banned tags: {}".format(", ".join(found_tags)))
-        if uploader is not None and uploader != '' and self.settings.banned_uploaders:
+        if uploader is not None and uploader != "" and self.settings.banned_uploaders:
             found_uploader = uploader in set(self.settings.banned_uploaders)
             if found_uploader:
                 discarded = True
                 reasons.append("Banned uploader: {}".format(uploader))
         return discarded, reasons
 
-    def get_torrent(self, torrent_url: str, cookies: dict[str, Any], convert_to_base64: bool = False) -> Union[str, bytes]:
+    def get_torrent(
+        self, torrent_url: str, cookies: dict[str, Any], convert_to_base64: bool = False
+    ) -> Union[str, bytes]:
 
         r = requests.get(
-            torrent_url,
-            cookies=cookies,
-            headers=self.settings.requests_headers,
-            timeout=self.settings.timeout_timer
+            torrent_url, cookies=cookies, headers=self.settings.requests_headers, timeout=self.settings.timeout_timer
         )
 
         if not convert_to_base64:
             return r.content
         else:
-            return base64.encodebytes(r.content).decode('utf-8')
+            return base64.encodebytes(r.content).decode("utf-8")
 
 
 def discard_string_by_cutoff(base: str, compare: str, cutoff: float) -> bool:
@@ -117,7 +118,7 @@ def replace_illegal_name(filepath: str) -> str:
     delete_chars = r'\/:*?"<>|'
 
     for c in delete_chars:
-        filepath = filepath.replace(c, '')
+        filepath = filepath.replace(c, "")
 
     # Don't end with dot, might confuse some languages/OS.
     if filepath.endswith(".") and len(filepath) > 1:
@@ -126,7 +127,7 @@ def replace_illegal_name(filepath: str) -> str:
     # Limit to 255 characters, 251 plus .zip
     # Update: Limit should be 256 bytes length (ext4).
     try:
-        formatted_path = filepath.encode('utf-8')[0:251].decode('utf-8')
+        formatted_path = filepath.encode("utf-8")[0:251].decode("utf-8")
     except UnicodeDecodeError:
         formatted_path = filepath[0:251]
     return formatted_path
@@ -176,13 +177,13 @@ def sha1_from_file_object(fp: Union[typing.IO, str], close_object: bool = False)
     return hasher.hexdigest()
 
 
-T = typing.TypeVar('T')
+T = typing.TypeVar("T")
 
 
 def chunks(sequence: typing.Sequence[T], n: int):
-    """ Yield successive n-sized chunks from l."""
+    """Yield successive n-sized chunks from l."""
     for i in range(0, len(sequence), n):
-        yield sequence[i:i + n]
+        yield sequence[i : i + n]
 
 
 def zfill_repl(match_obj: typing.Match):
@@ -192,34 +193,34 @@ def zfill_repl(match_obj: typing.Match):
 def zfill_to_four(namefile: str) -> str:
     filename = os.path.splitext(os.path.basename(namefile))[0]
 
-    filename = re.sub(r'\d+', zfill_repl, filename)
+    filename = re.sub(r"\d+", zfill_repl, filename)
 
     return filename.lower()
 
 
 def accept_images_only(name: str) -> Optional[str]:
-    if IMAGES_REGEX.search(name) and '__MACOSX' not in name:
+    if IMAGES_REGEX.search(name) and "__MACOSX" not in name:
         return name
     else:
         return None
 
 
 def discard_zipfile_extra_files(name: str) -> Optional[str]:
-    if '__MACOSX' not in name:
+    if "__MACOSX" not in name:
         return name
     else:
         return None
 
 
 def accept_images_only_info(fileinfo: zipfile.ZipInfo) -> Optional[zipfile.ZipInfo]:
-    if IMAGES_REGEX.search(fileinfo.filename) and '__MACOSX' not in fileinfo.filename:
+    if IMAGES_REGEX.search(fileinfo.filename) and "__MACOSX" not in fileinfo.filename:
         return fileinfo
     else:
         return None
 
 
 def discard_zipfile_extra_files_info(fileinfo: zipfile.ZipInfo) -> Optional[zipfile.ZipInfo]:
-    if '__MACOSX' not in fileinfo.filename:
+    if "__MACOSX" not in fileinfo.filename:
         return fileinfo
     else:
         return None
@@ -237,12 +238,15 @@ def get_images_from_zip(current_zip: zipfile.ZipFile) -> list[tuple[str, Optiona
         elif ZIP_CONTAINER_REGEX.search(current_file):
             with current_zip.open(current_file) as current_nested_zip_file:
                 try:
-                    nested_zip = zipfile.ZipFile(current_nested_zip_file, 'r')
+                    nested_zip = zipfile.ZipFile(current_nested_zip_file, "r")
                 except zipfile.BadZipFile:
                     continue
-                nested_filtered_files = list(filter(accept_images_only, sorted(nested_zip.namelist(), key=zfill_to_four)))
+                nested_filtered_files = list(
+                    filter(accept_images_only, sorted(nested_zip.namelist(), key=zfill_to_four))
+                )
                 found_files = [
-                    (x, current_file, "{}_{}".format(os.path.splitext(current_file)[0], x)) for x in nested_filtered_files
+                    (x, current_file, "{}_{}".format(os.path.splitext(current_file)[0], x))
+                    for x in nested_filtered_files
                 ]
                 nested_files.extend(found_files)
                 nested_zip.close()
@@ -252,7 +256,7 @@ def get_images_from_zip(current_zip: zipfile.ZipFile) -> list[tuple[str, Optiona
 
 def filecount_in_zip(filepath: str) -> int:
     try:
-        my_zip = zipfile.ZipFile(filepath, 'r')
+        my_zip = zipfile.ZipFile(filepath, "r")
     except zipfile.BadZipFile:
         return 0
 
@@ -266,7 +270,7 @@ def filecount_in_zip(filepath: str) -> int:
         elif ZIP_CONTAINER_REGEX.search(current_file):
             with my_zip.open(current_file) as current_nested_zip_file:
                 try:
-                    nested_zip = zipfile.ZipFile(current_nested_zip_file, 'r')
+                    nested_zip = zipfile.ZipFile(current_nested_zip_file, "r")
                 except zipfile.BadZipFile:
                     continue
                 nested_files = list(filter(accept_images_only, nested_zip.namelist()))
@@ -280,7 +284,7 @@ def filecount_in_zip(filepath: str) -> int:
 
 def get_zip_filesize(filepath: str) -> int:
     try:
-        my_zip = zipfile.ZipFile(filepath, 'r')
+        my_zip = zipfile.ZipFile(filepath, "r")
     except zipfile.BadZipFile:
         return -1
 
@@ -294,10 +298,12 @@ def get_zip_filesize(filepath: str) -> int:
         elif ZIP_CONTAINER_REGEX.search(current_file_info.filename):
             with my_zip.open(current_file_info.filename) as current_nested_zip_file:
                 try:
-                    nested_zip = zipfile.ZipFile(current_nested_zip_file, 'r')
+                    nested_zip = zipfile.ZipFile(current_nested_zip_file, "r")
                 except zipfile.BadZipFile:
                     continue
-                nested_files = list(filter(accept_images_only_info, sorted(nested_zip.infolist(), key=lambda x: x.filename)))
+                nested_files = list(
+                    filter(accept_images_only_info, sorted(nested_zip.infolist(), key=lambda x: x.filename))
+                )
                 total_size += sum([x.file_size for x in nested_files])
                 nested_zip.close()
 
@@ -306,28 +312,25 @@ def get_zip_filesize(filepath: str) -> int:
     return total_size
 
 
-def convert_rar_to_zip(filepath: str, temp_path: typing.Optional[str]=None) -> int:
+def convert_rar_to_zip(filepath: str, temp_path: typing.Optional[str] = None) -> int:
     if not rarfile:
         return -1
     try:
         file_name = os.path.splitext(filepath)[0]
         temp_rar_file = file_name + ".tar"
         os.rename(filepath, temp_rar_file)
-        my_rar = rarfile.RarFile(temp_rar_file, 'r')
+        my_rar = rarfile.RarFile(temp_rar_file, "r")
 
     except (rarfile.BadRarFile, rarfile.NotRarFile):
         return -1
 
-    new_zipfile = zipfile.ZipFile(filepath, 'w')
+    new_zipfile = zipfile.ZipFile(filepath, "w")
     dirpath = mkdtemp(dir=temp_path)
 
     filtered_files = list(filter(discard_zipfile_extra_files, sorted(my_rar.namelist())))
     for filename in filtered_files:
         my_rar.extract(filename, path=dirpath)
-        new_zipfile.write(
-            os.path.join(dirpath, filename.replace('\\', '/')),
-            arcname=os.path.basename(filename)
-        )
+        new_zipfile.write(os.path.join(dirpath, filename.replace("\\", "/")), arcname=os.path.basename(filename))
 
     my_rar.close()
     new_zipfile.close()
@@ -337,19 +340,19 @@ def convert_rar_to_zip(filepath: str, temp_path: typing.Optional[str]=None) -> i
     return 0
 
 
-def convert_7z_to_zip(filepath: str, temp_path: typing.Optional[str]=None) -> int:
+def convert_7z_to_zip(filepath: str, temp_path: typing.Optional[str] = None) -> int:
     if not py7zr:
         return -1
     try:
         file_name = os.path.splitext(filepath)[0]
         temp_7z_file = file_name + ".t7z"
         os.rename(filepath, temp_7z_file)
-        my_7z = py7zr.SevenZipFile(temp_7z_file, 'r')
+        my_7z = py7zr.SevenZipFile(temp_7z_file, "r")
 
     except py7zr.Bad7zFile:
         return -1
 
-    new_zipfile = zipfile.ZipFile(filepath, 'w')
+    new_zipfile = zipfile.ZipFile(filepath, "w")
     dirpath = mkdtemp(dir=temp_path)
 
     filtered_files = list(filter(discard_zipfile_extra_files, sorted(my_7z.getnames())))
@@ -357,10 +360,7 @@ def convert_7z_to_zip(filepath: str, temp_path: typing.Optional[str]=None) -> in
     my_7z.extract(targets=filtered_files, path=dirpath)
 
     for filename in filtered_files:
-        new_zipfile.write(
-            os.path.join(dirpath, filename.replace('\\', '/')),
-            arcname=os.path.basename(filename)
-        )
+        new_zipfile.write(os.path.join(dirpath, filename.replace("\\", "/")), arcname=os.path.basename(filename))
 
     my_7z.close()
     new_zipfile.close()
@@ -370,35 +370,37 @@ def convert_7z_to_zip(filepath: str, temp_path: typing.Optional[str]=None) -> in
     return 0
 
 
-def check_and_convert_to_zip(filepath: str, temp_path: typing.Optional[str]=None) -> tuple[str, int]:
+def check_and_convert_to_zip(filepath: str, temp_path: typing.Optional[str] = None) -> tuple[str, int]:
     try:
-        zipfile.ZipFile(filepath, 'r')
-        return 'zip', 0
+        zipfile.ZipFile(filepath, "r")
+        return "zip", 0
     except zipfile.BadZipFile as e:
-        if str(e) != 'File is not a zip file':
-            return 'zip', 1
+        if str(e) != "File is not a zip file":
+            return "zip", 1
     try:
-        rarfile.RarFile(filepath, 'r')
+        rarfile.RarFile(filepath, "r")
         convert_rar_to_zip(filepath, temp_path)
-        return 'rar', 2
+        return "rar", 2
     except rarfile.NotRarFile:
         pass
     try:
-        py7zr.SevenZipFile(filepath, 'r')
+        py7zr.SevenZipFile(filepath, "r")
         convert_7z_to_zip(filepath, temp_path)
-        return '7z', 2
+        return "7z", 2
     except py7zr.exceptions.Bad7zFile as e:
-        if str(e) != 'not a 7z file':
-            return 'unknown', 1
-    return 'unknown', 1
+        if str(e) != "not a 7z file":
+            return "unknown", 1
+    return "unknown", 1
     # zipfile.BadZipFile: File is not a zip file
     # rarfile.NotRarFile: Not a RAR file
     # py7zr.exceptions.Bad7zFile: not a 7z file
 
 
-def get_zip_fileinfo(filepath: str, get_extra_data: bool = False) -> tuple[int, int, Optional[list[ArchiveGenericFile]]]:
+def get_zip_fileinfo(
+    filepath: str, get_extra_data: bool = False
+) -> tuple[int, int, Optional[list[ArchiveGenericFile]]]:
     try:
-        my_zip = zipfile.ZipFile(filepath, 'r')
+        my_zip = zipfile.ZipFile(filepath, "r")
     except zipfile.BadZipFile:
         return -1, -1, None
 
@@ -419,18 +421,18 @@ def get_zip_fileinfo(filepath: str, get_extra_data: bool = False) -> tuple[int, 
         elif ZIP_CONTAINER_REGEX.search(current_file_info.filename):
             with my_zip.open(current_file_info.filename) as current_nested_zip_file:
                 try:
-                    nested_zip = zipfile.ZipFile(current_nested_zip_file, 'r')
+                    nested_zip = zipfile.ZipFile(current_nested_zip_file, "r")
                 except zipfile.BadZipFile:
                     continue
-                nested_files = list(filter(accept_images_only_info, sorted(nested_zip.infolist(), key=lambda x: x.filename)))
+                nested_files = list(
+                    filter(accept_images_only_info, sorted(nested_zip.infolist(), key=lambda x: x.filename))
+                )
                 total_count += len(nested_files)
                 total_size += sum([x.file_size for x in nested_files])
                 nested_zip.close()
         elif other_file_data is not None and not current_file_info.is_dir():
             file_generic_data = ArchiveGenericFile(
-                file_name=current_file_info.filename,
-                file_size=int(current_file_info.file_size),
-                position=index
+                file_name=current_file_info.filename, file_size=int(current_file_info.file_size), position=index
             )
             other_file_data.append(file_generic_data)
 
@@ -441,7 +443,7 @@ def get_zip_fileinfo(filepath: str, get_extra_data: bool = False) -> tuple[int, 
 
 def get_zip_fileinfo_for_gallery(filepath: str) -> tuple[int, int]:
     try:
-        my_zip = zipfile.ZipFile(filepath, 'r')
+        my_zip = zipfile.ZipFile(filepath, "r")
     except zipfile.BadZipFile:
         return -1, -1
 
@@ -457,11 +459,12 @@ def get_zip_fileinfo_for_gallery(filepath: str) -> tuple[int, int]:
         elif ZIP_CONTAINER_REGEX.search(current_file_info.filename):
             with my_zip.open(current_file_info.filename) as current_nested_zip_file:
                 try:
-                    nested_zip = zipfile.ZipFile(current_nested_zip_file, 'r')
+                    nested_zip = zipfile.ZipFile(current_nested_zip_file, "r")
                 except zipfile.BadZipFile:
                     continue
                 nested_files = list(
-                    filter(accept_images_only_info, sorted(nested_zip.infolist(), key=lambda x: x.filename)))
+                    filter(accept_images_only_info, sorted(nested_zip.infolist(), key=lambda x: x.filename))
+                )
                 total_count += len(nested_files)
                 total_size += sum([x.file_size for x in nested_files])
                 nested_zip.close()
@@ -477,14 +480,20 @@ def available_filename(root: str, filename: str) -> str:
 
     extra_text = 2
     if os.path.isfile(filename_full):
-        while (
-            os.path.isfile(
-                os.path.splitext(os.path.join(root, os.path.join(file_head, file_tail[0:251 - 1 - len(str(extra_text))])))[0] + "-" + str(extra_text)
-                + os.path.splitext(filename_full)[1])
+        while os.path.isfile(
+            os.path.splitext(
+                os.path.join(root, os.path.join(file_head, file_tail[0 : 251 - 1 - len(str(extra_text))]))
+            )[0]
+            + "-"
+            + str(extra_text)
+            + os.path.splitext(filename_full)[1]
         ):
             extra_text += 1
         return (
-            os.path.splitext(os.path.join(file_head, file_tail[0:251 - 1 - len(str(extra_text))]))[0] + "-" + str(extra_text) + os.path.splitext(filename)[1]
+            os.path.splitext(os.path.join(file_head, file_tail[0 : 251 - 1 - len(str(extra_text))]))[0]
+            + "-"
+            + str(extra_text)
+            + os.path.splitext(filename)[1]
         )
     else:
         return filename
@@ -498,7 +507,7 @@ def get_base_filename_string_from_gallery_data(gallery_data: GalleryData) -> str
     elif gallery_data.link:
         return gallery_data.link
     else:
-        return ''
+        return ""
 
 
 def translate_tag(tag: str) -> str:
@@ -527,15 +536,15 @@ def translate_tag_list(tags: list[str]) -> list[str]:
 
 def clean_title(title: str) -> str:
     # Remove parenthesis
-    adjusted_title = re.sub(r'\s+\(.+?\)$', r'', re.sub(r'\[.+?\]\s*', r'', title)).replace("_", "")
+    adjusted_title = re.sub(r"\s+\(.+?\)$", r"", re.sub(r"\[.+?\]\s*", r"", title)).replace("_", "")
     # Remove non words, non whitespace
     # adjusted_title = re.sub(r'[^\w\s]', r' ', adjusted_title)
     return adjusted_title
 
 
 def format_title_to_wanted_search(title: str) -> str:
-    words_and_ws = re.sub(r'\W', ' ', title)
-    words_and_ws_once = re.sub(r'\s+', ' ', words_and_ws)
+    words_and_ws = re.sub(r"\W", " ", title)
+    words_and_ws_once = re.sub(r"\s+", " ", words_and_ws)
     return words_and_ws_once
 
 
@@ -547,11 +556,11 @@ def file_matches_any_filter(title: str, filters: list[str]) -> bool:
 
 
 def artist_from_title(title: str) -> str:
-    m = re.match(r'\[(.+?)\]\s*', title)
+    m = re.match(r"\[(.+?)\]\s*", title)
     if m:
         artist = m.group(1)
     else:
-        artist = ''
+        artist = ""
     return artist
 
 
@@ -576,7 +585,7 @@ def timestamp_or_null(posted: Optional[datetime]) -> Optional[int]:
 def compare_search_title_with_strings(original_title: str, titles: list[str]) -> bool:
     if not original_title:
         return False
-    pattern = '.*?{}.*?'.format(re.sub(r'\\\s+', '.+', re.escape(original_title.lower())))
+    pattern = ".*?{}.*?".format(re.sub(r"\\\s+", ".+", re.escape(original_title.lower())))
     re_object = re.compile(pattern)
     for title in titles:
         # # This search is too simple:
@@ -610,17 +619,37 @@ def get_scored_matches(word: str, possibilities: list[str], n: int = 3, cutoff: 
 
 
 def get_title_from_path(path: str) -> str:
-    return re.sub('[_]', ' ', os.path.splitext(os.path.basename(path))[0])
+    return re.sub("[_]", " ", os.path.splitext(os.path.basename(path))[0])
 
 
 needed_keys = [
-    'gid', 'token', 'title', 'title_jpn',
-    'category', 'uploader', 'posted', 'filecount',
-    'filesize', 'expunged', 'disowned', 'rating', 'fjord',
-    'hidden', 'dl_type', 'comment', 'thumbnail_url',
-    'public', 'provider', 'gallery_container_gid', 'magazine_gid',
-    'status', 'origin', 'reason',
-    'parent_gallery_gid', 'first_gallery_gid', 'provider_metadata'
+    "gid",
+    "token",
+    "title",
+    "title_jpn",
+    "category",
+    "uploader",
+    "posted",
+    "filecount",
+    "filesize",
+    "expunged",
+    "disowned",
+    "rating",
+    "fjord",
+    "hidden",
+    "dl_type",
+    "comment",
+    "thumbnail_url",
+    "public",
+    "provider",
+    "gallery_container_gid",
+    "magazine_gid",
+    "status",
+    "origin",
+    "reason",
+    "parent_gallery_gid",
+    "first_gallery_gid",
+    "provider_metadata",
 ]
 
 
@@ -635,7 +664,9 @@ def get_dict_allowed_fields(gallery_data: GalleryData) -> dict[str, Any]:
     return gallery_dict
 
 
-def previous_and_next(some_iterable: typing.Sequence[Optional[T]]) -> typing.Iterator[tuple[Optional[T], Optional[T], Optional[T]]]:
+def previous_and_next(
+    some_iterable: typing.Sequence[Optional[T]],
+) -> typing.Iterator[tuple[Optional[T], Optional[T], Optional[T]]]:
     prevs, items, nexts = tee(some_iterable, 3)
     prevs = chain([None], prevs)
     nexts = chain(islice(nexts, 1, None), [None])
@@ -646,6 +677,7 @@ def unescape(text: Optional[str]) -> Optional[str]:
     if text is None:
         return None
     else:
+
         def fixup(m: typing.Match):
             in_text = m.group(0)
             if in_text[:2] == "&#":
@@ -664,6 +696,7 @@ def unescape(text: Optional[str]) -> Optional[str]:
                 except KeyError:
                     pass
             return in_text  # leave as is
+
         return re.sub(r"&#?\w+;", fixup, text)
 
 
@@ -678,12 +711,14 @@ def get_thread_status() -> list[tuple[tuple[str, str, str], bool]]:
 
     for thread_data in thread_list:
         if thread_data.name not in thread_names:
-            info_list.append(((thread_data.name, 'None', 'other'), thread_data.is_alive()))
+            info_list.append(((thread_data.name, "None", "other"), thread_data.is_alive()))
 
     return info_list
 
 
-def get_schedulers_status(schedulers: typing.Sequence[Optional['BaseScheduler']]) -> list[tuple[str, bool, Optional[datetime], str, Optional[datetime]]]:
+def get_schedulers_status(
+    schedulers: typing.Sequence[Optional["BaseScheduler"]],
+) -> list[tuple[str, bool, Optional[datetime], str, Optional[datetime]]]:
     info_list = []
 
     for scheduler in schedulers:
@@ -699,7 +734,7 @@ def get_schedulers_status(schedulers: typing.Sequence[Optional['BaseScheduler']]
                     scheduler.is_running(),
                     scheduler.last_run,
                     str(scheduler.timer) + ", " + str(scheduler.timer / 60),
-                    next_run
+                    next_run,
                 )
             )
 
@@ -752,23 +787,24 @@ class StandardFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         s = super(StandardFormatter, self).format(record)
-        s += '[0m'
+        s += "[0m"
         return s
 
 
-def send_pushover_notification(user_key: str, token: str, message: str, title: str = "Alert", sound: str = '', device: str = '', attachment: str = '') -> bool:
+def send_pushover_notification(
+    user_key: str,
+    token: str,
+    message: str,
+    title: str = "Alert",
+    sound: str = "",
+    device: str = "",
+    attachment: str = "",
+) -> bool:
 
-    payload = {
-        'token': token,
-        'user': user_key,
-        'message': message,
-        'title': title,
-        'sound': sound,
-        'device': device
-    }
+    payload = {"token": token, "user": user_key, "message": message, "title": title, "sound": sound, "device": device}
 
     if attachment:
-        files = {'attachment': open(attachment, 'rb')}
+        files = {"attachment": open(attachment, "rb")}
         r = requests.post(PUSHOVER_API_URL, data=payload, files=files)
     else:
         r = requests.post(PUSHOVER_API_URL, data=payload)
@@ -780,8 +816,8 @@ def send_pushover_notification(user_key: str, token: str, message: str, title: s
 
 
 def request_with_retries(
-        url: str, request_dict: dict[str, Any],
-        post: bool = False, retries: int = 3) -> Optional[requests.models.Response]:
+    url: str, request_dict: dict[str, Any], post: bool = False, retries: int = 3
+) -> Optional[requests.models.Response]:
     for retry_count in range(retries):
         try:
             if post:
@@ -795,12 +831,16 @@ def request_with_retries(
                 logger.warning("Request failed, attempt: {} of {}: {}".format(retry_count + 1, retries, str(e)))
                 continue
             else:
-                logger.error("Request failed, attempt: {} of {}: Unreachable URL: {}".format(retry_count + 1, retries, url))
+                logger.error(
+                    "Request failed, attempt: {} of {}: Unreachable URL: {}".format(retry_count + 1, retries, url)
+                )
                 return None
     return None
 
 
-REQUESTER_BY_PROVIDER: dict[str, typing.Callable[[str, dict[str, Any], bool, int], Optional[requests.models.Response]]] = {}
+REQUESTER_BY_PROVIDER: dict[
+    str, typing.Callable[[str, dict[str, Any], bool, int], Optional[requests.models.Response]]
+] = {}
 
 
 # Modified ratelimit function
@@ -825,23 +865,27 @@ def request_by_provider(provider_name: str, provider_calls: int, provider_limit:
             @limits(calls=provider_calls, period=provider_limit, name=provider_name)
             def inner_function(*args, **kwargs):
                 return request_with_retries(*args, **kwargs)
+
             return inner_function
+
         REQUESTER_BY_PROVIDER[provider_name] = call_requests()
 
     return REQUESTER_BY_PROVIDER[provider_name]
 
 
-def construct_request_dict(settings: 'setup.Settings', own_settings: 'ProviderSettings', no_cookies: bool = False) -> dict[str, Any]:
+def construct_request_dict(
+    settings: "setup.Settings", own_settings: "ProviderSettings", no_cookies: bool = False
+) -> dict[str, Any]:
     request_dict = {
-        'headers': settings.requests_headers,
-        'timeout': own_settings.timeout_timer,
+        "headers": settings.requests_headers,
+        "timeout": own_settings.timeout_timer,
     }
 
     if not no_cookies:
-        request_dict['cookies'] = own_settings.cookies
+        request_dict["cookies"] = own_settings.cookies
 
     if own_settings.proxies:
-        request_dict['proxies'] = own_settings.proxies
+        request_dict["proxies"] = own_settings.proxies
     return request_dict
 
 
@@ -851,7 +895,7 @@ def get_filename_from_cd(cd: typing.Optional[str] = None):
     """
     if not cd:
         return None
-    fname = re.findall('filename=(.+)', cd)
+    fname = re.findall("filename=(.+)", cd)
     if len(fname) == 0:
         return None
     return fname[0]
@@ -868,7 +912,7 @@ def remove_archive_extensions(filename: str):
 
 
 def get_oldest_entry_from_wayback(url: str) -> Optional[datetime]:
-    request_url = WAYBACK_API_URL + '?url={}&output=json&fl=timestamp&limit=1&filter=statuscode:200'.format(url)
+    request_url = WAYBACK_API_URL + "?url={}&output=json&fl=timestamp&limit=1&filter=statuscode:200".format(url)
     r = request_with_retries(request_url, {})
     if r is None:
         return None

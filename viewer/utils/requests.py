@@ -25,8 +25,7 @@ def authenticate_by_token(request) -> tuple[bool, Optional[User]]:
             return False, None
 
         token = UserLongLivedToken.objects.get(
-            key=UserLongLivedToken.create_salted_key_from_key(long_token),
-            expire_date__gt=now()
+            key=UserLongLivedToken.create_salted_key_from_key(long_token), expire_date__gt=now()
         )
         return True, token.user
     except UserLongLivedToken.DoesNotExist:

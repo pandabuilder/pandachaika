@@ -6,9 +6,7 @@ from django.shortcuts import render
 from django.urls import reverse
 from django.conf import settings
 
-from viewer.models import (
-    Gallery, WantedGallery, FoundGallery, GalleryMatch
-)
+from viewer.models import Gallery, WantedGallery, FoundGallery, GalleryMatch
 from viewer.utils.tags import sort_tags
 
 
@@ -28,35 +26,35 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
         unwanted_tag_lists = sort_tags(wanted_gallery_instance.unwanted_tags.all())
 
         d = {
-            'wanted_gallery': wanted_gallery_instance,
-            'wanted_tag_lists': wanted_tag_lists,
-            'unwanted_tag_lists': unwanted_tag_lists,
+            "wanted_gallery": wanted_gallery_instance,
+            "wanted_tag_lists": wanted_tag_lists,
+            "unwanted_tag_lists": unwanted_tag_lists,
         }
     else:
-        tool = request.GET.get('tool', '')
-        tool_use_id = request.GET.get('tool-id', '')
+        tool = request.GET.get("tool", "")
+        tool_use_id = request.GET.get("tool-id", "")
         try:
             wanted_gallery_instance = WantedGallery.objects.get(pk=pk)
         except WantedGallery.DoesNotExist:
             raise Http404("Wanted gallery does not exist")
-        if tool == 'create-possible-matches-internally':
-            provider = request.GET.get('provider', '')
-            wanted_gallery_instance.create_gallery_matches_internally(
-                provider_filter=provider
+        if tool == "create-possible-matches-internally":
+            provider = request.GET.get("provider", "")
+            wanted_gallery_instance.create_gallery_matches_internally(provider_filter=provider)
+            logger.info(
+                "Wanted gallery {} ({}) internal gallery match resulted in {} possible matches.".format(
+                    wanted_gallery_instance,
+                    reverse("viewer:wanted-gallery", args=(wanted_gallery_instance.pk,)),
+                    wanted_gallery_instance.possible_matches.count(),
+                )
             )
-            logger.info("Wanted gallery {} ({}) internal gallery match resulted in {} possible matches.".format(
-                wanted_gallery_instance,
-                reverse('viewer:wanted-gallery', args=(wanted_gallery_instance.pk,)),
-                wanted_gallery_instance.possible_matches.count()
-            ))
             return HttpResponseRedirect(request.META["HTTP_REFERER"])
-        elif tool == 'clear-possible-matches':
+        elif tool == "clear-possible-matches":
             wanted_gallery_instance.possible_matches.clear()
             return HttpResponseRedirect(request.META["HTTP_REFERER"])
-        elif tool == 'create-matches-internally':
+        elif tool == "create-matches-internally":
             wanted_gallery_instance.create_found_galleries_internally()
             return HttpResponseRedirect(request.META["HTTP_REFERER"])
-        elif tool == 'select-as-match':
+        elif tool == "select-as-match":
             try:
                 matched_gallery = Gallery.objects.get(pk=tool_use_id)
             except Gallery.DoesNotExist:
@@ -69,14 +67,16 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
                 gm.delete()
             wanted_gallery_instance.save()
 
-            logger.info("WantedGallery {} ({}) was matched with gallery {} ({}).".format(
-                wanted_gallery_instance,
-                reverse('viewer:wanted-gallery', args=(wanted_gallery_instance.pk,)),
-                matched_gallery,
-                reverse('viewer:gallery', args=(matched_gallery.pk,)),
-            ))
+            logger.info(
+                "WantedGallery {} ({}) was matched with gallery {} ({}).".format(
+                    wanted_gallery_instance,
+                    reverse("viewer:wanted-gallery", args=(wanted_gallery_instance.pk,)),
+                    matched_gallery,
+                    reverse("viewer:gallery", args=(matched_gallery.pk,)),
+                )
+            )
             return HttpResponseRedirect(request.META["HTTP_REFERER"])
-        elif tool == 'remove-match':
+        elif tool == "remove-match":
             try:
                 matched_gallery = Gallery.objects.get(pk=tool_use_id)
             except Gallery.DoesNotExist:
@@ -89,19 +89,21 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
                 gm.delete()
             wanted_gallery_instance.save()
 
-            logger.info("Gallery {} ({}) was removed as a match for WantedGallery {} ({}).".format(
-                matched_gallery,
-                reverse('viewer:gallery', args=(matched_gallery.pk,)),
-                wanted_gallery_instance,
-                reverse('viewer:wanted-gallery', args=(wanted_gallery_instance.pk,))
-            ))
+            logger.info(
+                "Gallery {} ({}) was removed as a match for WantedGallery {} ({}).".format(
+                    matched_gallery,
+                    reverse("viewer:gallery", args=(matched_gallery.pk,)),
+                    wanted_gallery_instance,
+                    reverse("viewer:wanted-gallery", args=(wanted_gallery_instance.pk,)),
+                )
+            )
             return HttpResponseRedirect(request.META["HTTP_REFERER"])
-        elif tool == 'stop-searching':
+        elif tool == "stop-searching":
             wanted_gallery_instance.should_search = False
             # wanted_gallery_instance.keep_searching = False
             wanted_gallery_instance.save()
             return HttpResponseRedirect(request.META["HTTP_REFERER"])
-        elif tool == 'toggle-public':
+        elif tool == "toggle-public":
             wanted_gallery_instance.public_toggle()
             return HttpResponseRedirect(request.META["HTTP_REFERER"])
 
@@ -109,8 +111,8 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
         unwanted_tag_lists = sort_tags(wanted_gallery_instance.unwanted_tags.all())
 
         d = {
-            'wanted_gallery': wanted_gallery_instance,
-            'wanted_tag_lists': wanted_tag_lists,
-            'unwanted_tag_lists': unwanted_tag_lists,
+            "wanted_gallery": wanted_gallery_instance,
+            "wanted_tag_lists": wanted_tag_lists,
+            "unwanted_tag_lists": unwanted_tag_lists,
         }
     return render(request, "viewer/wanted_gallery.html", d)

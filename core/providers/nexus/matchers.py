@@ -4,17 +4,16 @@ from typing import Optional
 
 from core.base.matchers import Matcher
 from core.base.types import DataDict
-from core.base.utilities import request_with_retries, construct_request_dict, \
-    file_matches_any_filter, get_zip_fileinfo
+from core.base.utilities import request_with_retries, construct_request_dict, file_matches_any_filter, get_zip_fileinfo
 from . import constants
 from .utilities import clean_title
 
 
 class TitleMatcher(Matcher):
 
-    name = 'title'
+    name = "title"
     provider = constants.provider_name
-    type = 'title'
+    type = "title"
     time_to_wait_after_compare = 0
     default_cutoff = 0.6
 
@@ -41,14 +40,14 @@ class TitleMatcher(Matcher):
         self.match_gid = self.match_values.gid
         filesize, filecount, _ = get_zip_fileinfo(os.path.join(self.settings.MEDIA_ROOT, self.file_path))
         values = {
-            'title': self.match_title,
-            'title_jpn': '',
-            'zipped': self.file_path,
-            'crc32': self.crc32,
-            'match_type': self.found_by,
-            'filesize': filesize,
-            'filecount': filecount,
-            'source_type': self.provider
+            "title": self.match_title,
+            "title_jpn": "",
+            "zipped": self.file_path,
+            "crc32": self.crc32,
+            "match_type": self.found_by,
+            "filesize": filesize,
+            "filecount": filecount,
+            "source_type": self.provider,
         }
 
         return values
@@ -56,7 +55,7 @@ class TitleMatcher(Matcher):
     def compare_by_title(self, title: str) -> bool:
 
         request_dict = construct_request_dict(self.settings, self.own_settings)
-        request_dict['params'] = {'q': title}
+        request_dict["params"] = {"q": title}
 
         response = request_with_retries(
             constants.main_page,
@@ -66,7 +65,7 @@ class TitleMatcher(Matcher):
 
         if not response:
             return False
-        response.encoding = 'utf-8'
+        response.encoding = "utf-8"
 
         m = re.finditer(r'a href="/view/(\d+)/*"', response.text)
 
@@ -85,6 +84,4 @@ class TitleMatcher(Matcher):
             return False
 
 
-API = (
-    TitleMatcher,
-)
+API = (TitleMatcher,)

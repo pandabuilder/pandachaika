@@ -16,12 +16,12 @@ if typing.TYPE_CHECKING:
 
 
 class WorkerContext:
-    web_queue: Optional['WebQueue'] = None
-    timed_auto_wanted: Optional['TimedAutoWanted'] = None
-    timed_downloader: Optional['TimedPostDownloader'] = None
-    download_progress_checker: Optional['DownloadProgressChecker'] = None
-    timed_auto_updaters: list['ProviderTimedAutoUpdater'] = []
-    timed_link_monitors: list['LinkMonitor'] = []
+    web_queue: Optional["WebQueue"] = None
+    timed_auto_wanted: Optional["TimedAutoWanted"] = None
+    timed_downloader: Optional["TimedPostDownloader"] = None
+    download_progress_checker: Optional["DownloadProgressChecker"] = None
+    timed_auto_updaters: list["ProviderTimedAutoUpdater"] = []
+    timed_link_monitors: list["LinkMonitor"] = []
 
     def get_active_initialized_workers(self):
         workers = []
@@ -35,16 +35,16 @@ class WorkerContext:
         workers.extend(self.timed_link_monitors)
         return workers
 
-    def add_new_link_monitor(self, crawler_settings: 'setup.Settings', monitored_link: 'MonitoredLink'):
+    def add_new_link_monitor(self, crawler_settings: "setup.Settings", monitored_link: "MonitoredLink"):
 
         from viewer.models import Scheduler
         from core.workers.link_monitor import LinkMonitor
 
         setup.GlobalInfo.worker_threads.append(
             (
-                'link_monitor_' + str(monitored_link.pk),
-                'Used as input for WantedGalleries to match against. Name: {}'.format(monitored_link.name),
-                'scheduler'
+                "link_monitor_" + str(monitored_link.pk),
+                "Used as input for WantedGalleries to match against. Name: {}".format(monitored_link.name),
+                "scheduler",
             ),
         )
         link_monitor = LinkMonitor(
@@ -64,7 +64,7 @@ class WorkerContext:
         if link_monitor.monitored_link.auto_start:
             link_monitor.start_running(timer=link_monitor.original_timer)
 
-    def start_workers(self, crawler_settings: 'setup.Settings') -> None:
+    def start_workers(self, crawler_settings: "setup.Settings") -> None:
 
         from core.downloaders.postdownload import TimedPostDownloader
         from core.workers.autoupdate import ProviderTimedAutoUpdater
@@ -82,24 +82,21 @@ class WorkerContext:
             parallel_post_downloaders=crawler_settings.parallel_post_downloaders,
         )
 
-        self.timed_auto_wanted = TimedAutoWanted(
-            crawler_settings,
-            timer=crawler_settings.auto_wanted.cycle_timer
-        )
+        self.timed_auto_wanted = TimedAutoWanted(crawler_settings, timer=crawler_settings.auto_wanted.cycle_timer)
 
         for provider_name in crawler_settings.autoupdater.providers:
             setup.GlobalInfo.worker_threads.append(
                 (
-                    'auto_updater_' + provider_name,
-                    'Auto updates metadata for galleries (provider: {})'.format(provider_name),
-                    'scheduler'
+                    "auto_updater_" + provider_name,
+                    "Auto updates metadata for galleries (provider: {})".format(provider_name),
+                    "scheduler",
                 ),
             )
             provider_auto_updater = ProviderTimedAutoUpdater(
                 crawler_settings,
                 provider_name,
                 web_queue=self.web_queue,
-                timer=crawler_settings.providers[provider_name].autoupdater_timer
+                timer=crawler_settings.providers[provider_name].autoupdater_timer,
             )
             self.timed_auto_updaters.append(provider_auto_updater)
 
@@ -117,9 +114,9 @@ class WorkerContext:
             for monitored_link in monitored_links:
                 setup.GlobalInfo.worker_threads.append(
                     (
-                        'link_monitor_' + str(monitored_link.pk),
-                        'Used as input for WantedGalleries to match against. Name: {}'.format(monitored_link.name),
-                        'scheduler'
+                        "link_monitor_" + str(monitored_link.pk),
+                        "Used as input for WantedGalleries to match against. Name: {}".format(monitored_link.name),
+                        "scheduler",
                     ),
                 )
                 link_monitor = LinkMonitor(
@@ -158,11 +155,7 @@ class WorkerContext:
             if link_monitor.monitored_link.auto_start:
                 link_monitor.start_running(timer=link_monitor.original_timer)
 
-        self.download_progress_checker = DownloadProgressChecker(
-            crawler_settings,
-            web_queue=self.web_queue,
-            timer=10
-        )
+        self.download_progress_checker = DownloadProgressChecker(crawler_settings, web_queue=self.web_queue, timer=10)
 
         obj = Scheduler.objects.get_or_create(
             name=self.download_progress_checker.thread_name,

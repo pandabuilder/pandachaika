@@ -28,10 +28,10 @@ def mark_completed_and_failed_for_indirect_downloads(download_events):
 
 class DownloadProgressChecker(BaseScheduler):
 
-    thread_name = 'download_progress_checker'
-    TORRENT_METHODS = ['torrent', 'torrent_api']
-    HATH_METHODS = ['hath']
-    ARCHIVE_METHODS = ['archive', 'archive_js', 'gallerydl']
+    thread_name = "download_progress_checker"
+    TORRENT_METHODS = ["torrent", "torrent_api"]
+    HATH_METHODS = ["hath"]
+    ARCHIVE_METHODS = ["archive", "archive_js", "gallerydl"]
 
     def __init__(self, settings: Settings, web_queue=None, timer=1, pk=None):
         super().__init__(settings, web_queue, timer, pk)
@@ -49,9 +49,11 @@ class DownloadProgressChecker(BaseScheduler):
 
             close_old_connections()
 
-            download_events_all = DownloadEvent.objects.in_progress().select_related('archive')
+            download_events_all = DownloadEvent.objects.in_progress().select_related("archive")
 
-            for download_method, download_events_iter in groupby(download_events_all.order_by('download_id'), lambda x: x.method):
+            for download_method, download_events_iter in groupby(
+                download_events_all.order_by("download_id"), lambda x: x.method
+            ):
                 download_events = list(download_events_iter)
                 if download_method in self.TORRENT_METHODS:
                     mark_completed_and_failed_for_indirect_downloads(download_events)
@@ -82,7 +84,11 @@ class DownloadProgressChecker(BaseScheduler):
                         if download_event.archive:
                             download_event.finish_download()
                             download_event.save()
-                        elif download_event.total_size > 0 and download_event.download_id and os.path.isfile(download_event.download_id):
+                        elif (
+                            download_event.total_size > 0
+                            and download_event.download_id
+                            and os.path.isfile(download_event.download_id)
+                        ):
                             file_stats = os.stat(download_event.download_id)
                             filesize = file_stats.st_size
                             download_progress = 100 * filesize / download_event.total_size

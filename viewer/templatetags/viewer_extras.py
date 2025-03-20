@@ -18,31 +18,31 @@ from viewer.utils.tags import sort_tags
 
 register = template.Library()
 
-T = TypeVar('T', float, int)
+T = TypeVar("T", float, int)
 
 
 @register.simple_tag(takes_context=True)
 def url_toggle(context: RequestContext, field: SafeText) -> str:
-    dict_ = context['request'].GET.copy()
+    dict_ = context["request"].GET.copy()
 
     if field in dict_:
         del dict_[field]
     else:
-        dict_[field] = ''
+        dict_[field] = ""
 
     return dict_.urlencode()
 
 
 @register.simple_tag(takes_context=True)
 def url_replace(context: RequestContext, field: SafeText, value: SafeText) -> str:
-    dict_ = context['request'].GET.copy()
+    dict_ = context["request"].GET.copy()
     dict_[field] = str(value)
     return dict_.urlencode()
 
 
 @register.simple_tag(takes_context=True)
 def url_multi_replace(context: RequestContext, **kwargs: Any) -> str:
-    dict_ = context['request'].GET.copy()
+    dict_ = context["request"].GET.copy()
     for key, value in kwargs.items():
         dict_[key] = str(value)
     return dict_.urlencode()
@@ -55,51 +55,51 @@ def subtract(value: T, arg: T) -> T:
 
 @register.filter
 def revert_order(order: str) -> str:
-    if order == 'desc':
-        order = 'asc'
-    elif order == 'asc':
-        order = 'desc'
+    if order == "desc":
+        order = "asc"
+    elif order == "asc":
+        order = "desc"
     else:
-        order = 'desc'
+        order = "desc"
     return order
 
 
 @register.filter
 def color_percent(fraction: int, total: int) -> str:
     if total == 0:
-        return ''
+        return ""
     try:
         fraction_i = float(fraction)
         if float(fraction_i) > float(total):
             fraction_i = float(fraction_i) - 2 * (float(fraction_i) - float(total))
-        result = ((float(fraction_i) / float(total)) * 100)
+        result = (float(fraction_i) / float(total)) * 100
         if result >= 100:
-            return 'total'
+            return "total"
         elif result > 90:
-            return 'very-high'
+            return "very-high"
         elif result > 80:
-            return 'high'
+            return "high"
         else:
-            return ''
+            return ""
     except ValueError:
-        return ''
+        return ""
 
 
 @register.filter
 def mark_color(mark_priority: float) -> str:
     if mark_priority >= 4:
-        return 'mark-high'
+        return "mark-high"
     elif 4 > mark_priority >= 1:
-        return 'mark-mid'
+        return "mark-mid"
     else:
-        return 'mark-low'
+        return "mark-low"
 
 
 @register.filter
 def format_setting_value(value: T) -> Union[T, ItemsView[str, Any]]:
-    if hasattr(value, '__dict__'):
+    if hasattr(value, "__dict__"):
         return vars(value).items()
-    elif hasattr(value, '__slots__'):
+    elif hasattr(value, "__slots__"):
         return {k: getattr(value, k) for k in value.__slots__}.items()
     else:
         return value
@@ -150,7 +150,7 @@ class UrlizerNoRef(Urlizer):
             lead, middle, trail = self.trim_punctuation(word)
             # Make URL we want to point to.
             url = None
-            nofollow_attr = ' rel="noopener noreferrer nofollow"' if nofollow else ''
+            nofollow_attr = ' rel="noopener noreferrer nofollow"' if nofollow else ""
             if self.simple_url_re.match(middle):
                 url = smart_urlquote(html.unescape(middle))
             elif self.simple_url_2_re.match(middle):
@@ -194,19 +194,17 @@ urlizer_all_rel = UrlizerNoRef()
 @stringfilter
 @keep_lazy_text
 def urlize_all_rel(text, trim_url_limit=None, nofollow=True, autoescape=True):
-    return mark_safe(urlizer_all_rel(
-        text, trim_url_limit=trim_url_limit, nofollow=nofollow, autoescape=autoescape
-    ))
+    return mark_safe(urlizer_all_rel(text, trim_url_limit=trim_url_limit, nofollow=nofollow, autoescape=autoescape))
 
 
 @register.filter
 def archive_title_class(archive: Archive) -> str:
     if not archive.crc32:
-        title_class = 'archive-incomplete'
+        title_class = "archive-incomplete"
     elif archive.gallery and archive.gallery.filesize and archive.filesize != archive.gallery.filesize:
-        title_class = 'archive-diff'
+        title_class = "archive-diff"
     else:
-        title_class = ''
+        title_class = ""
     return title_class
 
 
@@ -220,12 +218,23 @@ def artist_name_from_str(title: Optional[str]) -> str:
     if title:
         return translate_tag(artist_from_title(title))
     else:
-        return ''
+        return ""
 
 
 ARCHIVE_INCLUDED_FIELDS = (
-    'title', 'title_jpn', 'source_type', 'reason', 'public_date', 'public', 'gallery', 'filecount', 'filesize',
-    'extracted', 'details', 'crc32', 'binned'
+    "title",
+    "title_jpn",
+    "source_type",
+    "reason",
+    "public_date",
+    "public",
+    "gallery",
+    "filecount",
+    "filesize",
+    "extracted",
+    "details",
+    "crc32",
+    "binned",
 )
 
 
@@ -234,21 +243,42 @@ def changes_archive_delta(new_record):
     prev_record = new_record.prev_record
     if prev_record is None:
         return []
-    delta = new_record.diff_against(
-        prev_record,
-        included_fields=ARCHIVE_INCLUDED_FIELDS
-    )
+    delta = new_record.diff_against(prev_record, included_fields=ARCHIVE_INCLUDED_FIELDS)
     return delta.changes
 
 
 GALLERY_INCLUDED_FIELDS = (
-    'title', 'title_jpn', 'category', 'uploader', 'comment', 'posted', 'filecount', 'filesize',
-    'expunged', 'disowned', 'rating', 'fjord', 'public', 'dl_type', 'reason', 'thumbnail_url', 'status'
+    "title",
+    "title_jpn",
+    "category",
+    "uploader",
+    "comment",
+    "posted",
+    "filecount",
+    "filesize",
+    "expunged",
+    "disowned",
+    "rating",
+    "fjord",
+    "public",
+    "dl_type",
+    "reason",
+    "thumbnail_url",
+    "status",
 )
 
 GALLERY_PUBLIC_INCLUDED_FIELDS = (
-    'title', 'title_jpn', 'category', 'uploader', 'comment', 'posted', 'filecount', 'filesize',
-    'expunged', 'disowned', 'rating'
+    "title",
+    "title_jpn",
+    "category",
+    "uploader",
+    "comment",
+    "posted",
+    "filecount",
+    "filesize",
+    "expunged",
+    "disowned",
+    "rating",
 )
 
 
@@ -258,8 +288,7 @@ def changes_gallery_delta(new_record, is_authenticated=False):
     if prev_record is None:
         return []
     delta = new_record.diff_against(
-        prev_record,
-        included_fields=GALLERY_INCLUDED_FIELDS if is_authenticated else GALLERY_PUBLIC_INCLUDED_FIELDS
+        prev_record, included_fields=GALLERY_INCLUDED_FIELDS if is_authenticated else GALLERY_PUBLIC_INCLUDED_FIELDS
     )
     return delta.changes
 
@@ -271,7 +300,7 @@ def tag_query_to_tag_lists(tag_query) -> list[tuple[str, list[Tag]]]:
 
 @register.filter
 def tag_history_to_tag_lists(history) -> list[tuple[str, list[Tag]]]:
-    tag_query = history.historicalgallery_tags_set.all().prefetch_related('tag')
+    tag_query = history.historicalgallery_tags_set.all().prefetch_related("tag")
     return sort_tags([x.tag for x in tag_query])
 
 
@@ -282,7 +311,7 @@ def gallery_history_fields(new_record, is_authenticated=False):
 
     history_fields = {gallery_field: getattr(new_record, gallery_field) for gallery_field in fields_to_check}
 
-    history_fields['tags'] = ''
+    history_fields["tags"] = ""
 
     return history_fields.items()
 
@@ -290,7 +319,7 @@ def gallery_history_fields(new_record, is_authenticated=False):
 @register.filter
 def format_json(maybe_json: Optional[str]) -> str:
     if maybe_json is None:
-        return 'None'
+        return "None"
     try:
         json_data = json.loads(maybe_json)
 

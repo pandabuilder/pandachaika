@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
+import os
 from collections.abc import Callable
 from logging.handlers import RotatingFileHandler, SMTPHandler
 from typing import cast
@@ -15,28 +16,28 @@ from core.base.setup import Settings
 class HTTPLogger(_cplogging.LogManager):
 
     def __init__(self, app: WSGIHandler, crawler_settings: Settings) -> None:
-        _cplogging.LogManager.__init__(
-            self, id(self), cherrypy.log.logger_root)
+        _cplogging.LogManager.__init__(self, id(self), cherrypy.log.logger_root)
         self.app = app
         max_bytes = getattr(self, "rot_maxBytes", 10000000)
         backup_count = getattr(self, "rot_backupCount", 1000)
 
         # Make a new RotatingFileHandler for the error log.
-        file_name = getattr(self, "rot_error_file", "error.log")
-        h = RotatingFileHandler(file_name, 'a', max_bytes, backup_count)
+        log_base_dir = os.path.dirname(crawler_settings.log_location)
+        file_name = getattr(self, "rot_error_file", os.path.join(log_base_dir, "error.log"))
+        h = RotatingFileHandler(file_name, "a", max_bytes, backup_count)
         h.setLevel(logging.DEBUG)
         h.setFormatter(_cplogging.logfmt)
         self.error_log.addHandler(h)
 
         if crawler_settings.urls.behind_proxy:
-            self.remote_address_string = 'HTTP_X_REAL_IP'
+            self.remote_address_string = "HTTP_X_REAL_IP"
         else:
-            self.remote_address_string = 'REMOTE_ADDR'
+            self.remote_address_string = "REMOTE_ADDR"
 
         if crawler_settings.webserver.write_access_log:
             # Make a new RotatingFileHandler for the access log.
-            file_name = getattr(self, "rot_access_file", "access.log")
-            h = RotatingFileHandler(file_name, 'a', max_bytes, backup_count)
+            file_name = getattr(self, "rot_access_file", os.path.join(log_base_dir, "access.log"))
+            h = RotatingFileHandler(file_name, "a", max_bytes, backup_count)
             h.setLevel(logging.DEBUG)
             h.setFormatter(_cplogging.logfmt)
             self.access_log.addHandler(h)
@@ -45,9 +46,11 @@ class HTTPLogger(_cplogging.LogManager):
             s = SMTPHandler(
                 crawler_settings.mail_logging.mailhost,
                 crawler_settings.mail_logging.from_,
-                [crawler_settings.mail_logging.to, ],
+                [
+                    crawler_settings.mail_logging.to,
+                ],
                 subject=crawler_settings.mail_logging.subject,
-                credentials=crawler_settings.mail_logging.credentials
+                credentials=crawler_settings.mail_logging.credentials,
             )
             s.setLevel(logging.CRITICAL)
             self.error_log.addHandler(s)
@@ -72,18 +75,17 @@ class HTTPLogger(_cplogging.LogManager):
         log format. This is mostly taken from CherryPy and adapted
         to the WSGI's style of passing information.
         """
-        atoms = {'h': environ.get(self.remote_address_string, ''),
-                 'l': '-',
-                 'u': "-",
-                 't': self.time(),
-                 'r': "%s %s %s" % (environ['REQUEST_METHOD'],
-                                    environ['REQUEST_URI'],
-                                    environ['SERVER_PROTOCOL']),
-                 's': response.status_code,
-                 'b': str(len(response.content)),
-                 'f': environ.get('HTTP_REFERER', ''),
-                 'a': environ.get('HTTP_USER_AGENT', ''),
-                 }
+        atoms = {
+            "h": environ.get(self.remote_address_string, ""),
+            "l": "-",
+            "u": "-",
+            "t": self.time(),
+            "r": "%s %s %s" % (environ["REQUEST_METHOD"], environ["REQUEST_URI"], environ["SERVER_PROTOCOL"]),
+            "s": response.status_code,
+            "b": str(len(response.content)),
+            "f": environ.get("HTTP_REFERER", ""),
+            "a": environ.get("HTTP_USER_AGENT", ""),
+        }
         for k, v in atoms.items():
             if not isinstance(v, str):
                 v = str(v)
@@ -94,7 +96,6 @@ class HTTPLogger(_cplogging.LogManager):
             atoms[k] = v.replace('"', '\\"')
 
         try:
-            self.access_log.log(
-                logging.INFO, self.access_log_format.format(**atoms))
+            self.access_log.log(logging.INFO, self.access_log_format.format(**atoms))
         except Exception:
             self.error(traceback=True)

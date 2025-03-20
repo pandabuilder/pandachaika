@@ -537,6 +537,10 @@ img {
   width: 40%;
 }
 
+.archive-reason-input {
+  max-width: 300px;
+}
+
 .td-extended {
   padding: 7px;
   vertical-align: top;

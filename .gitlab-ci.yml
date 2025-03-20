@@ -1,6 +1,7 @@
 stages:
   - test
   - deploy
+  - build
 
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
@@ -20,6 +21,7 @@ test-all:
         - '3.10'
         - '3.11'
         - '3.12'
+        - '3.13'
   cache:
     <<: *global_cache
     key: "$CI_JOB_NAME-$CI_COMMIT_REF_SLUG"
@@ -36,12 +38,24 @@ test-all:
   - mypy core pandabackup viewer
   - bash ./set_db_engine.sh
   - python manage.py migrate
-  - python manage.py test viewer.tests.test_internal viewer.tests.test_core
+  - python manage.py test --noinput viewer.tests.test_internal viewer.tests.test_core
   tags:
     - django
+    - panda
   artifacts:
     when: always
     paths:
       - test-results/TEST-*.xml
     reports:
       junit: test-results/TEST-*.xml
+
+build:
+  image: docker:24.0.5
+  when: manual
+  services:
+    - docker:24.0.5-dind
+  before_script:
+    - docker info
+  stage: build
+  script:
+    - docker build -t pandachaika .

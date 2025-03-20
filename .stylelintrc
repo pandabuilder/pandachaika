@@ -1,8 +1,0 @@
-{
-  "extends": "stylelint-config-standard",
-  "rules": {
-    "string-quotes": "single",
-    "color-hex-length": "long",
-    "selector-type-no-unknown": [true, { "ignoreTypes": ["old"] }]
-  }
-}

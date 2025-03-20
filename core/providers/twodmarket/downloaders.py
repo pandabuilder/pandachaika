@@ -7,6 +7,4 @@ class InfoDownloader(BaseInfoDownloader):
     provider = constants.provider_name
 
 
-API = (
-    InfoDownloader,
-)
+API = (InfoDownloader,)

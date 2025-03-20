@@ -13,13 +13,19 @@ logger = logging.getLogger(__name__)
 
 class LinkMonitor(BaseScheduler):
 
-    thread_name = 'link_monitor'
+    thread_name = "link_monitor"
 
     def __init__(
-            self, settings: Settings, link_monitor_id: int, name: str, timer: timedelta, monitored_link: MonitoredLink,
-            web_queue=None, pk=None
+        self,
+        settings: Settings,
+        link_monitor_id: int,
+        name: str,
+        timer: timedelta,
+        monitored_link: MonitoredLink,
+        web_queue=None,
+        pk=None,
     ):
-        self.thread_name = 'link_monitor_' + str(link_monitor_id)
+        self.thread_name = "link_monitor_" + str(link_monitor_id)
         self.link_name = name
         self.monitored_link = monitored_link
         super().__init__(settings, web_queue, timer.total_seconds(), pk)
@@ -37,7 +43,9 @@ class LinkMonitor(BaseScheduler):
             try:
                 monitored_link: MonitoredLink = MonitoredLink.objects.get(pk=self.monitored_link.pk)
             except MonitoredLink.DoesNotExist:
-                logger.error("Did not find the expected MonitoredLink: {}, id: {}".format(self.link_name, self.monitored_link.pk))
+                logger.error(
+                    "Did not find the expected MonitoredLink: {}, id: {}".format(self.link_name, self.monitored_link.pk)
+                )
                 return
             self.monitored_link = monitored_link
             if not monitored_link.enabled:
@@ -47,12 +55,12 @@ class LinkMonitor(BaseScheduler):
             current_settings.silent_processing = True
             current_settings.replace_metadata = True
             current_settings.archive_origin = Archive.ORIGIN_WANTED_GALLERY
-            arguments_to_crawler = [monitored_link.url, '-wanted']
+            arguments_to_crawler = [monitored_link.url, "-wanted"]
             if monitored_link.provider:
-                arguments_to_crawler.extend(['--include-providers', monitored_link.provider.slug])
+                arguments_to_crawler.extend(["--include-providers", monitored_link.provider.slug])
             if monitored_link.use_limited_wanted_galleries:
                 for wanted_gallery in monitored_link.limited_wanted_galleries.all():
-                    arguments_to_crawler.extend(['--restrict-wanted-galleries', str(wanted_gallery.pk)])
+                    arguments_to_crawler.extend(["--restrict-wanted-galleries", str(wanted_gallery.pk)])
             # TODO: This currently sets the proxy for both the queried page and the resulting downloads.
             # Could be beneficial to have a separate setting.
             if monitored_link.proxy:

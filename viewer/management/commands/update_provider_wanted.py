@@ -11,54 +11,63 @@ crawler_settings = settings.CRAWLER_SETTINGS
 
 
 class Command(BaseCommand):
-    help = 'Update any provider raw and English galleries to watch for, from an artist list.'
+    help = "Update any provider raw and English galleries to watch for, from an artist list."
 
     def add_arguments(self, parser):
-        parser.add_argument('provider',
-                            type=str,
-                            help='Provider name to add.')
-        parser.add_argument('-al', '--artist_list',
-                            required=False,
-                            action='store',
-                            nargs='+',
-                            type=str,
-                            help='Specify list of artists to add.')
-        parser.add_argument('-af', '--artist_file',
-                            required=False,
-                            action='store',
-                            help='File path containing artists\' names.')
-        parser.add_argument('-wp', '--wanted_providers',
-                            required=False,
-                            action='store',
-                            nargs='+',
-                            type=str,
-                            help='Specify list of wanted providers to search for.')
-        parser.add_argument('-ss', '--should_search',
-                            required=False,
-                            action='store_true',
-                            default=False,
-                            help='Add WantedGallery with should_search on.')
-        parser.add_argument('-ca', '--categories',
-                            required=False,
-                            nargs='*',
-                            default=['Doujinshi'],
-                            help='What categories to search for, Defaults to Doujinshi.')
+        parser.add_argument("provider", type=str, help="Provider name to add.")
+        parser.add_argument(
+            "-al",
+            "--artist_list",
+            required=False,
+            action="store",
+            nargs="+",
+            type=str,
+            help="Specify list of artists to add.",
+        )
+        parser.add_argument(
+            "-af", "--artist_file", required=False, action="store", help="File path containing artists' names."
+        )
+        parser.add_argument(
+            "-wp",
+            "--wanted_providers",
+            required=False,
+            action="store",
+            nargs="+",
+            type=str,
+            help="Specify list of wanted providers to search for.",
+        )
+        parser.add_argument(
+            "-ss",
+            "--should_search",
+            required=False,
+            action="store_true",
+            default=False,
+            help="Add WantedGallery with should_search on.",
+        )
+        parser.add_argument(
+            "-ca",
+            "--categories",
+            required=False,
+            nargs="*",
+            default=["Doujinshi"],
+            help="What categories to search for, Defaults to Doujinshi.",
+        )
 
     def handle(self, *args, **options):
         start = time.perf_counter()
 
-        if options['wanted_providers']:
-            providers = Provider.objects.filter(slug__in=options['wanted_providers'])
+        if options["wanted_providers"]:
+            providers = Provider.objects.filter(slug__in=options["wanted_providers"])
         else:
             providers = []
 
         artists = []
 
-        if options['artist_list']:
-            artists += options['artist_list']
+        if options["artist_list"]:
+            artists += options["artist_list"]
 
-        if options['artist_file'] and os.path.isfile(options['artist_file']):
-            with open(options['artist_file'], 'r') as artist_file:
+        if options["artist_file"] and os.path.isfile(options["artist_file"]):
+            with open(options["artist_file"], "r") as artist_file:
                 artists_name = [line.rstrip() for line in artist_file.readlines()]
                 artists += artists_name
 
@@ -68,14 +77,11 @@ class Command(BaseCommand):
         forbidden_content_tag, _ = Tag.objects.get_or_create(scope="other", name="forbidden_content")
         english_tag, _ = Tag.objects.get_or_create(scope="language", name="english")
 
-        unwanted_tags = [
-            already_uploaded_tag,
-            forbidden_content_tag
-        ]
+        unwanted_tags = [already_uploaded_tag, forbidden_content_tag]
 
         categories = []
 
-        for category in options['categories']:
+        for category in options["categories"]:
             category_obj, _ = Category.objects.get_or_create(name=category)
             categories.append(category_obj)
 
@@ -87,9 +93,7 @@ class Command(BaseCommand):
 
             scope_name = artist.split(":", maxsplit=1)
             if len(scope_name) > 1:
-                artist_tag, tag_created = Tag.objects.get_or_create(
-                    scope=scope_name[0],
-                    name=scope_name[1])
+                artist_tag, tag_created = Tag.objects.get_or_create(scope=scope_name[0], name=scope_name[1])
             else:
                 if Tag.objects.filter(scope="group", name=artist).first():
                     artist_tag = Tag.objects.filter(scope="group", name=artist).first()
@@ -103,23 +107,23 @@ class Command(BaseCommand):
                 continue
 
             if tag_created:
-                self.stdout.write("Tag didn\'t exist and was created.")
+                self.stdout.write("Tag didn't exist and was created.")
 
             obj_raw, created = WantedGallery.objects.get_or_create(
-                title='{} {} RAW: {}'.format(options['provider'].capitalize(), artist_tag.scope, artist_tag.name),
-                book_type='user_{}_raw'.format(options['provider']).lower(),
-                publisher=options['provider'].lower(),
-                reason=options['provider'].lower(),
+                title="{} {} RAW: {}".format(options["provider"].capitalize(), artist_tag.scope, artist_tag.name),
+                book_type="user_{}_raw".format(options["provider"]).lower(),
+                publisher=options["provider"].lower(),
+                reason=options["provider"].lower(),
                 defaults={
-                    'should_search': options['should_search'],
-                    'keep_searching': True,
-                    'notify_when_found': False,
-                    'public': False,
-                    'wait_for_time': timedelta(minutes=45),
-                    'release_date': None,
-                    'wanted_tags_exclusive_scope': True,
-                    'exclusive_scope_name': artist_tag.scope,
-                    'wanted_tags_accept_if_none_scope': 'parody',
+                    "should_search": options["should_search"],
+                    "keep_searching": True,
+                    "notify_when_found": False,
+                    "public": False,
+                    "wait_for_time": timedelta(minutes=45),
+                    "release_date": None,
+                    "wanted_tags_exclusive_scope": True,
+                    "exclusive_scope_name": artist_tag.scope,
+                    "wanted_tags_accept_if_none_scope": "parody",
                 },
             )
 
@@ -137,23 +141,25 @@ class Command(BaseCommand):
                     obj_raw.wanted_providers.set(providers)
                 self.stdout.write("Added WantedGallery: {}".format(obj_raw.title))
             else:
-                self.stdout.write("Skipping {}: {}, since it was already created.".format(artist_tag.scope, artist_tag.name))
+                self.stdout.write(
+                    "Skipping {}: {}, since it was already created.".format(artist_tag.scope, artist_tag.name)
+                )
 
             obj_english, created = WantedGallery.objects.get_or_create(
-                title='{} {} English: {}'.format(options['provider'].capitalize(), artist_tag.scope, artist_tag.name),
-                book_type='user_{}_eng'.format(options['provider']).lower(),
-                publisher=options['provider'].lower(),
-                reason=options['provider'].lower(),
+                title="{} {} English: {}".format(options["provider"].capitalize(), artist_tag.scope, artist_tag.name),
+                book_type="user_{}_eng".format(options["provider"]).lower(),
+                publisher=options["provider"].lower(),
+                reason=options["provider"].lower(),
                 defaults={
-                    'should_search': options['should_search'],
-                    'keep_searching': True,
-                    'notify_when_found': False,
-                    'public': False,
-                    'wait_for_time': timedelta(minutes=50),
-                    'release_date': None,
-                    'wanted_tags_exclusive_scope': True,
-                    'exclusive_scope_name': artist_tag.scope,
-                    'wanted_tags_accept_if_none_scope': 'parody',
+                    "should_search": options["should_search"],
+                    "keep_searching": True,
+                    "notify_when_found": False,
+                    "public": False,
+                    "wait_for_time": timedelta(minutes=50),
+                    "release_date": None,
+                    "wanted_tags_exclusive_scope": True,
+                    "exclusive_scope_name": artist_tag.scope,
+                    "wanted_tags_accept_if_none_scope": "parody",
                 },
             )
 
@@ -170,7 +176,9 @@ class Command(BaseCommand):
                     obj_english.wanted_providers.set(providers)
                 self.stdout.write("Added WantedGallery: {}".format(obj_english.title))
             else:
-                self.stdout.write("Skipping {}: {}, since it was already created.".format(artist_tag.scope, artist_tag.name))
+                self.stdout.write(
+                    "Skipping {}: {}, since it was already created.".format(artist_tag.scope, artist_tag.name)
+                )
 
         end = time.perf_counter()
 

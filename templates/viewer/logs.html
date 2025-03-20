@@ -1,4 +1,5 @@
 {% extends "viewer/base.html" %}
+{% load dict_key %}
 {% block title %}Log | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
 
@@ -17,8 +18,16 @@
   <div class="row g-1">
     <div class="col-md-3">
         <div class="input-group align-items-center">
-            <label for="filter">Filter</label>
+            <label for="filter">Filter:</label>
             <input type="search" class="form-control" id="filter" name="filter" value="{{ request.GET.filter }}">
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="input-group align-items-center">
+            <label for="prev-lines">Previous lines:</label>
+            <input title="Previous lines" size="10" type="number" step="1" class="form-control" name="prev-lines" value="{{ request.GET|dict_key:"prev-lines" }}" id="prev-lines" placeholder="10"/>
+            <label for="next-lines">Next lines:</label>
+            <input title="Next lines" size="10" type="number" step="1" class="form-control" name="next-lines" value="{{ request.GET|dict_key:"next-lines" }}" id="next-lines" placeholder="10"/>
         </div>
     </div>
     <div class="col-md-4">

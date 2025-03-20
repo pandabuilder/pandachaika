@@ -1,0 +1,63 @@
+services:
+  pandachaika:
+    build: .
+    container_name: pandachaika
+    volumes:
+      - ./config:/config/
+      - ./media:/media/
+      - ./static:/static/
+    # Expose for access from Nginx
+    # Ports to direct access to the backend (not recommended unless in dev)
+    expose:
+      - "8090"
+#    ports:
+#     - "8090:8090"
+    user: ${PUID}:${PGID}
+    environment:
+     DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+     DEBUG: ${DEBUG}
+     DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS}
+     DATABASE_ENGINE: ${DATABASE_ENGINE}
+     DATABASE_NAME: ${DATABASE_NAME}
+     DATABASE_USERNAME: ${DATABASE_USERNAME}
+
+     DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+     DATABASE_HOST: ${DATABASE_HOST}
+     DATABASE_PORT: ${DATABASE_PORT}
+    env_file:
+      - .env
+    depends_on:
+      - db
+  db:
+   image: postgres:17
+   environment:
+     POSTGRES_DB: ${DATABASE_NAME}
+     POSTGRES_USER: ${DATABASE_USERNAME}
+     POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+  # Uncomment ports if you need external access to the database
+#   ports:
+#     - "5432:5432"
+   expose:
+     - "5432"
+   volumes:
+     - postgres_data:/var/lib/postgresql/data
+   env_file:
+     - .env
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./media:/var/www/media/
+      - ./static:/var/www/static/
+      - ./nginx/conf.d/:/etc/nginx/conf.d/
+      - ./certs:/etc/nginx/certs/
+    depends_on:
+      - pandachaika
+
+volumes:
+  postgres_data:
+#  static_volume:
+#  media_volume:

@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 
 class MegaArchiveDownloader(BaseDownloader):
 
-    type = 'archive'
-    provider = 'mega'
+    type = "archive"
+    provider = "mega"
     archive_only = True
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -40,9 +40,7 @@ class MegaArchiveDownloader(BaseDownloader):
 
         directory_path = mkdtemp(dir=self.settings.temp_directory_path)
 
-        arguments = ["--no-progress", "--print-names", "--path", "{}".format(
-            directory_path
-        )]
+        arguments = ["--no-progress", "--print-names", "--path", "{}".format(directory_path)]
 
         if self.own_settings.proxy:
             arguments.append("--proxy")
@@ -56,10 +54,7 @@ class MegaArchiveDownloader(BaseDownloader):
         logger.info("Calling megadl: {}.".format(" ".join([exe_path_to_use, *arguments])))
 
         process_result = subprocess.run(
-            [exe_path_to_use, *arguments],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            universal_newlines=True
+            [exe_path_to_use, *arguments], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True
         )
 
         message_text = process_result.stdout
@@ -94,17 +89,12 @@ class MegaArchiveDownloader(BaseDownloader):
                 return
 
         self.gallery.filename = available_filename(
-            self.settings.MEDIA_ROOT,
-            os.path.join(
-                self.own_settings.archive_dl_folder,
-                replace_illegal_name(file_name)
-            )
+            self.settings.MEDIA_ROOT, os.path.join(self.own_settings.archive_dl_folder, replace_illegal_name(file_name))
         )
 
         self.gallery.title = os.path.splitext(file_name)[0]
 
-        filepath = os.path.join(self.settings.MEDIA_ROOT,
-                                self.gallery.filename)
+        filepath = os.path.join(self.settings.MEDIA_ROOT, self.gallery.filename)
 
         shutil.move(output_path, filepath)
         shutil.rmtree(directory_path, ignore_errors=True)
@@ -120,27 +110,21 @@ class MegaArchiveDownloader(BaseDownloader):
             logger.error("Could not download archive, filesize resulted in 0 at path: {}".format(filepath))
             self.return_code = 0
 
-    def update_archive_db(self, default_values: DataDict) -> Optional['Archive']:
+    def update_archive_db(self, default_values: DataDict) -> Optional["Archive"]:
 
         if not self.gallery:
             return None
 
         values = {
-            'title': self.gallery.title,
-            'title_jpn': '',
-            'zipped': self.gallery.filename,
-            'crc32': self.crc32,
-            'filesize': self.gallery.filesize,
-            'filecount': self.gallery.filecount,
+            "title": self.gallery.title,
+            "title_jpn": "",
+            "zipped": self.gallery.filename,
+            "crc32": self.crc32,
+            "filesize": self.gallery.filesize,
+            "filecount": self.gallery.filecount,
         }
         default_values.update(values)
-        return Archive.objects.update_or_create_by_values_and_gid(
-            default_values,
-            None,
-            zipped=self.gallery.filename
-        )
+        return Archive.objects.update_or_create_by_values_and_gid(default_values, None, zipped=self.gallery.filename)
 
 
-API = (
-    MegaArchiveDownloader,
-)
+API = (MegaArchiveDownloader,)

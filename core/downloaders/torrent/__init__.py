@@ -12,22 +12,22 @@ def get_torrent_client(torrent_settings: dict[str, Any]) -> Optional[TorrentClie
     client = None
     torrent_module: Union[Optional[types.ModuleType], str] = None
     for module_name in modules_name:
-        if module_name == torrent_settings['client']:
+        if module_name == torrent_settings["client"]:
             if module_name not in sys.modules:
-                full_package_name = '%s.%s' % ('core.downloaders.torrent', module_name)
+                full_package_name = "%s.%s" % ("core.downloaders.torrent", module_name)
                 torrent_module = __import__(full_package_name, fromlist=[module_name])
             else:
                 torrent_module = module_name
     if not torrent_module:
         return None
     for _, obj in inspect.getmembers(torrent_module):
-        if inspect.isclass(obj) and hasattr(obj, 'type') and 'torrent_handler' in getattr(obj, 'type'):
+        if inspect.isclass(obj) and hasattr(obj, "type") and "torrent_handler" in getattr(obj, "type"):
             client = obj(
-                torrent_settings['address'],
-                torrent_settings['port'],
-                torrent_settings['user'],
-                torrent_settings['pass'],
-                secure=not torrent_settings['no_certificate_check'],
+                torrent_settings["address"],
+                torrent_settings["port"],
+                torrent_settings["user"],
+                torrent_settings["pass"],
+                secure=not torrent_settings["no_certificate_check"],
             )
     return client
 

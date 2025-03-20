@@ -55,16 +55,20 @@ from simple_history.models import HistoricalRecords
 from core.base.comparison import get_list_closer_gallery_titles_from_list
 from core.base.image_ops import img_to_thumbnail
 from core.base.utilities import (
-    calc_crc32, get_zip_filesize,
+    calc_crc32,
+    get_zip_filesize,
     get_zip_fileinfo,
     sha1_from_file_object,
     clean_title,
-    request_with_retries, get_images_from_zip, get_title_from_path, check_and_convert_to_zip, available_filename,
-    file_matches_any_filter)
-from core.base.types import GalleryData, DataDict, ArchiveGenericFile
-from core.base.utilities import (
-    get_dict_allowed_fields, replace_illegal_name
+    request_with_retries,
+    get_images_from_zip,
+    get_title_from_path,
+    check_and_convert_to_zip,
+    available_filename,
+    file_matches_any_filter,
 )
+from core.base.types import GalleryData, DataDict, ArchiveGenericFile
+from core.base.utilities import get_dict_allowed_fields, replace_illegal_name
 from viewer.services import CompareObjectsService
 from viewer.utils import image_processing
 from viewer.utils.tags import sort_tags, sort_tags_str
@@ -73,17 +77,17 @@ if typing.TYPE_CHECKING:
     from core.base.setup import CloningImageToolSettings
 
 
-T = typing.TypeVar('T')
+T = typing.TypeVar("T")
 
-options.DEFAULT_NAMES += 'es_index_name', 'es_mapping'
+options.DEFAULT_NAMES += "es_index_name", "es_mapping"
 PImage.MAX_IMAGE_PIXELS = 200000000
-EMPTY_TITLE = 'No title'
+EMPTY_TITLE = "No title"
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
-IMAGE_PHASH_BLACK = '0000000000000000'
-IMAGE_PHASH_WHITE = '8000000000000000'
+IMAGE_PHASH_BLACK = "0000000000000000"
+IMAGE_PHASH_WHITE = "8000000000000000"
 
-SortedTagList = list[tuple[str, list['Tag']]]
+SortedTagList = list[tuple[str, list["Tag"]]]
 
 
 class OriginalFilenameFileSystemStorage(FileSystemStorage):
@@ -101,106 +105,118 @@ fs = OriginalFilenameFileSystemStorage()
 
 class SpacedSearch(Lookup):
 
-    lookup_name = 'ss'
+    lookup_name = "ss"
 
     def as_sql(self, qn: SQLCompiler, connection: BaseDatabaseWrapper) -> tuple[str, typing.Any]:
         lhs, lhs_params = self.process_lhs(qn, connection)
         rhs, rhs_params = self.process_rhs(qn, connection)
-        return '%s LIKE %s' % (lhs, rhs), lhs_params + rhs_params
+        return "%s LIKE %s" % (lhs, rhs), lhs_params + rhs_params
 
     def as_mysql(self, qn: SQLCompiler, connection: BaseDatabaseWrapper) -> tuple[str, typing.Any]:
         lhs, lhs_params = self.process_lhs(qn, connection)
         rhs, rhs_params = self.process_rhs(qn, connection)
-        return '%s LIKE %s' % (lhs, rhs), lhs_params + rhs_params
+        return "%s LIKE %s" % (lhs, rhs), lhs_params + rhs_params
 
     def as_postgresql(self, qn: SQLCompiler, connection: BaseDatabaseWrapper) -> tuple[str, typing.Any]:
         lhs, lhs_params = self.process_lhs(qn, connection)
         rhs, rhs_params = self.process_rhs(qn, connection)
-        return '%s ILIKE %s' % (lhs, rhs), lhs_params + rhs_params
+        return "%s ILIKE %s" % (lhs, rhs), lhs_params + rhs_params
 
 
 models.CharField.register_lookup(SpacedSearch)
 models.FileField.register_lookup(SpacedSearch)
 
 
-class TagQuerySet(models.QuerySet['Tag']):
+class TagQuerySet(models.QuerySet["Tag"]):
     def are_custom(self) -> QuerySet:
-        return self.filter(source='user')
+        return self.filter(source="user")
 
     def not_custom(self) -> QuerySet:
-        return self.exclude(source='user')
+        return self.exclude(source="user")
 
-    def first_artist_tag(self, **kwargs: typing.Any) -> Optional['Tag']:
-        return self.filter(scope__exact='artist', **kwargs).first()
+    def first_artist_tag(self, **kwargs: typing.Any) -> Optional["Tag"]:
+        return self.filter(scope__exact="artist", **kwargs).first()
 
 
-class TagManager(models.Manager['Tag']):
+class TagManager(models.Manager["Tag"]):
     def get_queryset(self) -> TagQuerySet:
         return TagQuerySet(self.model, using=self._db)
 
     def are_custom(self) -> QuerySet:
         return self.get_queryset().are_custom()
 
-    def first_artist_tag(self, **kwargs: typing.Any) -> Optional['Tag']:
+    def first_artist_tag(self, **kwargs: typing.Any) -> Optional["Tag"]:
         return self.get_queryset().first_artist_tag(**kwargs)
 
 
 class GalleryQuerySet(models.QuerySet):
     def several_archives(self) -> QuerySet:
-        return self.annotate(
-            num_archives=Count('archive')
-        ).filter(num_archives__gt=1).order_by('-id').prefetch_related('archive_set')
+        return (
+            self.annotate(num_archives=Count("archive"))
+            .filter(num_archives__gt=1)
+            .order_by("-id")
+            .prefetch_related("archive_set")
+        )
 
     def different_filesize_archive(self, **kwargs: typing.Any) -> QuerySet:
-        return self.filter(
-            ~Q(filesize=F('archive__filesize')),
-            ~Q(filesize=0),
-            Q(archive__isnull=False),
-            **kwargs,
-        ).prefetch_related('archive_set').order_by('provider', '-create_date')
+        return (
+            self.filter(
+                ~Q(filesize=F("archive__filesize")),
+                ~Q(filesize=0),
+                Q(archive__isnull=False),
+                **kwargs,
+            )
+            .prefetch_related("archive_set")
+            .order_by("provider", "-create_date")
+        )
 
     def non_used_galleries(self, **kwargs: typing.Any) -> QuerySet:
         return self.filter(
             Q(status=Gallery.StatusChoices.NORMAL),
-            ~Q(dl_type__contains='skipped'),
+            ~Q(dl_type__contains="skipped"),
             Q(archive__isnull=True),
             Q(gallery_container__archive__isnull=True),
             Q(magazine__archive__isnull=True),
             Q(alternative_sources__isnull=True),
-            **kwargs
-        ).order_by('-create_date')
+            **kwargs,
+        ).order_by("-create_date")
 
     def only_used_galleries(self, **kwargs: typing.Any) -> QuerySet:
         return self.filter(
             Q(status=Gallery.StatusChoices.NORMAL),
             Q(
-                Q(archive__isnull=False) |
-                Q(gallery_container__archive__isnull=False) |
-                Q(magazine__archive__isnull=False) |
-                Q(alternative_sources__isnull=False)
+                Q(archive__isnull=False)
+                | Q(gallery_container__archive__isnull=False)
+                | Q(magazine__archive__isnull=False)
+                | Q(alternative_sources__isnull=False)
             ),
-            **kwargs
-        ).order_by('-create_date')
+            **kwargs,
+        ).order_by("-create_date")
 
     def report_as_missing_galleries(self, **kwargs: typing.Any) -> QuerySet:
-        return self.annotate(number_of_archives=Count('archive')).filter(
-            Q(
-                Q(status=Gallery.StatusChoices.NORMAL),
-                ~Q(dl_type__contains='skipped'),
-                Q(number_of_archives=0),
-                Q(gallery_container__archive__isnull=True),
-                Q(magazine__archive__isnull=True),
-                Q(alternative_sources__isnull=True)
-            ) | Q(
-                Q(status=Gallery.StatusChoices.NORMAL),
-                # Hardcode fakku restriction, older galleries had a reported filesize that was wrong.
-                (~Q(filesize=F('archive__filesize')) & ~Q(provider='fakku')),
-                Q(number_of_archives=1),
-                ~Q(filesize=0),
-                Q(archive__isnull=False)
-            ),
-            **kwargs
-        ).order_by('-create_date')
+        return (
+            self.annotate(number_of_archives=Count("archive"))
+            .filter(
+                Q(
+                    Q(status=Gallery.StatusChoices.NORMAL),
+                    ~Q(dl_type__contains="skipped"),
+                    Q(number_of_archives=0),
+                    Q(gallery_container__archive__isnull=True),
+                    Q(magazine__archive__isnull=True),
+                    Q(alternative_sources__isnull=True),
+                )
+                | Q(
+                    Q(status=Gallery.StatusChoices.NORMAL),
+                    # Hardcode fakku restriction, older galleries had a reported filesize that was wrong.
+                    (~Q(filesize=F("archive__filesize")) & ~Q(provider="fakku")),
+                    Q(number_of_archives=1),
+                    ~Q(filesize=0),
+                    Q(archive__isnull=False),
+                ),
+                **kwargs,
+            )
+            .order_by("-create_date")
+        )
 
     def submitted_galleries(self, *args: typing.Any, **kwargs: typing.Any) -> QuerySet:
         return self.filter(
@@ -210,17 +226,14 @@ class GalleryQuerySet(models.QuerySet):
             Q(gallery_container__archive__isnull=True),
             Q(magazine__archive__isnull=True),
             *args,
-            **kwargs
-        ).order_by('-create_date')
+            **kwargs,
+        ).order_by("-create_date")
 
     def eligible_for_use(self, **kwargs: typing.Any) -> QuerySet:
-        return self.filter(
-            Q(status=Gallery.StatusChoices.NORMAL),
-            **kwargs
-        )
+        return self.filter(Q(status=Gallery.StatusChoices.NORMAL), **kwargs)
 
 
-class GalleryManager(models.Manager['Gallery']):
+class GalleryManager(models.Manager["Gallery"]):
     def get_queryset(self) -> GalleryQuerySet:
         return GalleryQuerySet(self.model, using=self._db)
 
@@ -228,13 +241,13 @@ class GalleryManager(models.Manager['Gallery']):
         return bool(self.filter(gid=gid, provider=provider))
 
     def filter_order_created(self, **kwargs: typing.Any) -> QuerySet:
-        return self.filter(**kwargs).order_by('-create_date')
+        return self.filter(**kwargs).order_by("-create_date")
 
     def filter_order_modified(self, **kwargs: typing.Any) -> QuerySet:
-        return self.filter(**kwargs).order_by('-last_modified')
+        return self.filter(**kwargs).order_by("-last_modified")
 
     def after_posted_date(self, date: datetime) -> QuerySet:
-        return self.filter(posted__gte=date).order_by('posted')
+        return self.filter(posted__gte=date).order_by("posted")
 
     def different_filesize_archive(self, **kwargs: typing.Any) -> QuerySet:
         return self.get_queryset().different_filesize_archive(**kwargs)
@@ -277,12 +290,12 @@ class GalleryManager(models.Manager['Gallery']):
     def filter_dl_type(self, dl_type_filter: str, **kwargs: typing.Any) -> QuerySet:
         return self.filter(dl_type__icontains=dl_type_filter, **kwargs)
 
-    def filter_dl_type_and_posted_dates(self, dl_type_filter: str, start_date: datetime, end_date: datetime) -> QuerySet:
-        return self.filter(posted__gte=start_date,
-                           posted__lte=end_date,
-                           dl_type__icontains=dl_type_filter)
+    def filter_dl_type_and_posted_dates(
+        self, dl_type_filter: str, start_date: datetime, end_date: datetime
+    ) -> QuerySet:
+        return self.filter(posted__gte=start_date, posted__lte=end_date, dl_type__icontains=dl_type_filter)
 
-    def filter_first(self, **kwargs: typing.Any) -> Optional['Gallery']:
+    def filter_first(self, **kwargs: typing.Any) -> Optional["Gallery"]:
         return self.filter(**kwargs).first()
 
     def update_by_gid_provider(self, gallery_data: GalleryData) -> bool:
@@ -296,45 +309,42 @@ class GalleryManager(models.Manager['Gallery']):
                             continue
                         scope_name = tag.split(":", maxsplit=1)
                         if len(scope_name) > 1:
-                            tag_object, _ = Tag.objects.get_or_create(
-                                scope=scope_name[0],
-                                name=scope_name[1])
+                            tag_object, _ = Tag.objects.get_or_create(scope=scope_name[0], name=scope_name[1])
                         else:
-                            scope = ''
-                            tag_object, _ = Tag.objects.get_or_create(
-                                name=tag, scope=scope)
+                            scope = ""
+                            tag_object, _ = Tag.objects.get_or_create(name=tag, scope=scope)
 
                         new_tags.append(tag_object)
                     gallery.tags.set(new_tags)
                 values = get_dict_allowed_fields(gallery_data)
-                if 'gallery_container_gid' in values:
+                if "gallery_container_gid" in values:
                     gallery_container = Gallery.objects.filter(
-                        gid=values['gallery_container_gid'], provider=gallery_data.provider
+                        gid=values["gallery_container_gid"], provider=gallery_data.provider
                     ).first()
                     if gallery_container:
-                        values['gallery_container'] = gallery_container
-                    del values['gallery_container_gid']
-                if 'magazine_gid' in values:
+                        values["gallery_container"] = gallery_container
+                    del values["gallery_container_gid"]
+                if "magazine_gid" in values:
                     magazine = Gallery.objects.filter(
-                        gid=values['magazine_gid'], provider=gallery_data.provider
+                        gid=values["magazine_gid"], provider=gallery_data.provider
                     ).first()
                     if magazine:
-                        values['magazine'] = magazine
-                    del values['magazine_gid']
-                if 'parent_gallery_gid' in values:
+                        values["magazine"] = magazine
+                    del values["magazine_gid"]
+                if "parent_gallery_gid" in values:
                     gallery_parent = Gallery.objects.filter(
-                        gid=values['parent_gallery_gid'], provider=gallery_data.provider
+                        gid=values["parent_gallery_gid"], provider=gallery_data.provider
                     ).first()
                     if gallery_parent:
-                        values['parent_gallery'] = gallery_parent
-                    del values['parent_gallery_gid']
-                if 'first_gallery_gid' in values:
+                        values["parent_gallery"] = gallery_parent
+                    del values["parent_gallery_gid"]
+                if "first_gallery_gid" in values:
                     gallery_first = Gallery.objects.filter(
-                        gid=values['first_gallery_gid'], provider=gallery_data.provider
+                        gid=values["first_gallery_gid"], provider=gallery_data.provider
                     ).first()
                     if gallery_first:
-                        values['first_gallery'] = gallery_first
-                    del values['first_gallery_gid']
+                        values["first_gallery"] = gallery_first
+                    del values["first_gallery_gid"]
                 for key, value in values.items():
                     setattr(gallery, key, value)
                 gallery.save()
@@ -342,7 +352,9 @@ class GalleryManager(models.Manager['Gallery']):
                 if gallery_data.extra_provider_data:
                     for gallery_provider_data in gallery_data.extra_provider_data:
                         data_name, data_type, data_value = gallery_provider_data
-                        obj, _ = GalleryProviderData.objects.update_or_create(gallery=gallery, name=data_name, defaults={'data_type': data_type})
+                        obj, _ = GalleryProviderData.objects.update_or_create(
+                            gallery=gallery, name=data_name, defaults={"data_type": data_type}
+                        )
                         obj.data_type = data_type
                         obj.value = data_value
                         obj.save()
@@ -364,38 +376,34 @@ class GalleryManager(models.Manager['Gallery']):
             return False
 
     @staticmethod
-    def add_from_values(gallery_data: GalleryData) -> 'Gallery':
+    def add_from_values(gallery_data: GalleryData) -> "Gallery":
         tags = gallery_data.tags
 
         values = get_dict_allowed_fields(gallery_data)
-        if 'gallery_container_gid' in values:
+        if "gallery_container_gid" in values:
             gallery_container = Gallery.objects.filter(
-                gid=values['gallery_container_gid'], provider=values['provider']
+                gid=values["gallery_container_gid"], provider=values["provider"]
             ).first()
             if gallery_container:
-                values['gallery_container'] = gallery_container
-            del values['gallery_container_gid']
-        if 'magazine_gid' in values:
-            magazine = Gallery.objects.filter(
-                gid=values['magazine_gid'], provider=values['provider']
-            ).first()
+                values["gallery_container"] = gallery_container
+            del values["gallery_container_gid"]
+        if "magazine_gid" in values:
+            magazine = Gallery.objects.filter(gid=values["magazine_gid"], provider=values["provider"]).first()
             if magazine:
-                values['magazine'] = magazine
-            del values['magazine_gid']
-        if 'parent_gallery_gid' in values:
+                values["magazine"] = magazine
+            del values["magazine_gid"]
+        if "parent_gallery_gid" in values:
             gallery_parent = Gallery.objects.filter(
-                gid=values['parent_gallery_gid'], provider=values['provider']
+                gid=values["parent_gallery_gid"], provider=values["provider"]
             ).first()
             if gallery_parent:
-                values['parent_gallery'] = gallery_parent
-            del values['parent_gallery_gid']
-        if 'first_gallery_gid' in values:
-            gallery_first = Gallery.objects.filter(
-                gid=values['first_gallery_gid'], provider=values['provider']
-            ).first()
+                values["parent_gallery"] = gallery_parent
+            del values["parent_gallery_gid"]
+        if "first_gallery_gid" in values:
+            gallery_first = Gallery.objects.filter(gid=values["first_gallery_gid"], provider=values["provider"]).first()
             if gallery_first:
-                values['first_gallery'] = gallery_first
-            del values['first_gallery_gid']
+                values["first_gallery"] = gallery_first
+            del values["first_gallery_gid"]
 
         with transaction.atomic():
             gallery = Gallery(**values)
@@ -404,20 +412,22 @@ class GalleryManager(models.Manager['Gallery']):
             if gallery_data.extra_provider_data:
                 for gallery_provider_data in gallery_data.extra_provider_data:
                     data_name, data_type, data_value = gallery_provider_data
-                    obj, _ = GalleryProviderData.objects.update_or_create(gallery=gallery, name=data_name, defaults={'data_type': data_type})
+                    obj, _ = GalleryProviderData.objects.update_or_create(
+                        gallery=gallery, name=data_name, defaults={"data_type": data_type}
+                    )
                     obj.data_type = data_type
                     obj.value = data_value
                     obj.save()
 
             if gallery_data.magazine_chapters_gids:
                 chapters = Gallery.objects.filter(
-                    gid__in=gallery_data.magazine_chapters_gids, provider=values['provider']
+                    gid__in=gallery_data.magazine_chapters_gids, provider=values["provider"]
                 )
                 chapters.update(magazine=gallery.pk)
 
             if gallery_data.gallery_contains_gids:
                 contained = Gallery.objects.filter(
-                    gid__in=gallery_data.gallery_contains_gids, provider=values['provider']
+                    gid__in=gallery_data.gallery_contains_gids, provider=values["provider"]
                 )
                 contained.update(gallery_container=gallery.pk)
 
@@ -428,13 +438,10 @@ class GalleryManager(models.Manager['Gallery']):
                         continue
                     scope_name = tag.split(":", maxsplit=1)
                     if len(scope_name) > 1:
-                        tag_object, _ = Tag.objects.get_or_create(
-                            scope=scope_name[0],
-                            name=scope_name[1])
+                        tag_object, _ = Tag.objects.get_or_create(scope=scope_name[0], name=scope_name[1])
                     else:
-                        scope = ''
-                        tag_object, _ = Tag.objects.get_or_create(
-                            name=tag, scope=scope)
+                        scope = ""
+                        tag_object, _ = Tag.objects.get_or_create(name=tag, scope=scope)
 
                     new_tags.append(tag_object)
 
@@ -442,61 +449,59 @@ class GalleryManager(models.Manager['Gallery']):
 
         return gallery
 
-    def update_or_create_from_values(self, gallery_data: GalleryData) -> 'Gallery':
+    def update_or_create_from_values(self, gallery_data: GalleryData) -> "Gallery":
         tags = gallery_data.tags
 
         values = get_dict_allowed_fields(gallery_data)
-        if 'gallery_container_gid' in values:
+        if "gallery_container_gid" in values:
             gallery_container = Gallery.objects.filter(
-                gid=values['gallery_container_gid'], provider=values['provider']
+                gid=values["gallery_container_gid"], provider=values["provider"]
             ).first()
             if gallery_container:
-                values['gallery_container'] = gallery_container
-            del values['gallery_container_gid']
+                values["gallery_container"] = gallery_container
+            del values["gallery_container_gid"]
 
-        if 'magazine_gid' in values:
-            magazine = Gallery.objects.filter(
-                gid=values['magazine_gid'], provider=values['provider']
-            ).first()
+        if "magazine_gid" in values:
+            magazine = Gallery.objects.filter(gid=values["magazine_gid"], provider=values["provider"]).first()
             if magazine:
-                values['magazine'] = magazine
-            del values['magazine_gid']
+                values["magazine"] = magazine
+            del values["magazine_gid"]
 
-        if 'parent_gallery_gid' in values:
+        if "parent_gallery_gid" in values:
             gallery_parent = Gallery.objects.filter(
-                gid=values['parent_gallery_gid'], provider=values['provider']
+                gid=values["parent_gallery_gid"], provider=values["provider"]
             ).first()
             if gallery_parent:
-                values['parent_gallery'] = gallery_parent
-            del values['parent_gallery_gid']
-        if 'first_gallery_gid' in values:
-            gallery_first = Gallery.objects.filter(
-                gid=values['first_gallery_gid'], provider=values['provider']
-            ).first()
+                values["parent_gallery"] = gallery_parent
+            del values["parent_gallery_gid"]
+        if "first_gallery_gid" in values:
+            gallery_first = Gallery.objects.filter(gid=values["first_gallery_gid"], provider=values["provider"]).first()
             if gallery_first:
-                values['first_gallery'] = gallery_first
-            del values['first_gallery_gid']
+                values["first_gallery"] = gallery_first
+            del values["first_gallery_gid"]
 
         with transaction.atomic():
-            gallery, _ = self.update_or_create(defaults=values, gid=values['gid'], provider=values['provider'])
+            gallery, _ = self.update_or_create(defaults=values, gid=values["gid"], provider=values["provider"])
 
             if gallery_data.extra_provider_data:
                 for gallery_provider_data in gallery_data.extra_provider_data:
                     data_name, data_type, data_value = gallery_provider_data
-                    obj, _ = GalleryProviderData.objects.update_or_create(gallery=gallery, name=data_name, defaults={'data_type': data_type})
+                    obj, _ = GalleryProviderData.objects.update_or_create(
+                        gallery=gallery, name=data_name, defaults={"data_type": data_type}
+                    )
                     obj.data_type = data_type
                     obj.value = data_value
                     obj.save()
 
             if gallery_data.magazine_chapters_gids:
                 chapters = Gallery.objects.filter(
-                    gid__in=gallery_data.magazine_chapters_gids, provider=values['provider']
+                    gid__in=gallery_data.magazine_chapters_gids, provider=values["provider"]
                 )
                 chapters.update(magazine=gallery.pk)
 
             if gallery_data.gallery_contains_gids:
                 contained = Gallery.objects.filter(
-                    gid__in=gallery_data.gallery_contains_gids, provider=values['provider']
+                    gid__in=gallery_data.gallery_contains_gids, provider=values["provider"]
                 )
                 contained.update(gallery_container=gallery.pk)
 
@@ -508,13 +513,10 @@ class GalleryManager(models.Manager['Gallery']):
                         continue
                     scope_name = tag.split(":", maxsplit=1)
                     if len(scope_name) > 1:
-                        tag_object, _ = Tag.objects.get_or_create(
-                            scope=scope_name[0],
-                            name=scope_name[1])
+                        tag_object, _ = Tag.objects.get_or_create(scope=scope_name[0], name=scope_name[1])
                     else:
-                        scope = ''
-                        tag_object, _ = Tag.objects.get_or_create(
-                            name=tag, scope=scope)
+                        scope = ""
+                        tag_object, _ = Tag.objects.get_or_create(name=tag, scope=scope)
 
                     new_tags.append(tag_object)
 
@@ -523,7 +525,7 @@ class GalleryManager(models.Manager['Gallery']):
         return gallery
 
     # This method is mainly used to update own fields, no related fields need to be checked
-    def update_by_dl_type(self, values: DataDict, gallery_id: str, dl_type: str) -> typing.Optional['Gallery']:
+    def update_by_dl_type(self, values: DataDict, gallery_id: str, dl_type: str) -> typing.Optional["Gallery"]:
 
         instance = self.filter(id=gallery_id, dl_type__contains=dl_type).first()
         if instance:
@@ -536,32 +538,29 @@ class GalleryManager(models.Manager['Gallery']):
 
 
 class ArchiveQuerySet(models.QuerySet):
-    def filter_non_existent(self, root: str, **kwargs: typing.Any) -> list['Archive']:
-        archives = self.filter(**kwargs).order_by('-id')
+    def filter_non_existent(self, root: str, **kwargs: typing.Any) -> list["Archive"]:
+        archives = self.filter(**kwargs).order_by("-id")
 
         return [archive for archive in archives if not os.path.isfile(os.path.join(root, archive.zipped.path))]
 
 
-class ArchiveManager(models.Manager['Archive']):
+class ArchiveManager(models.Manager["Archive"]):
     def get_queryset(self) -> ArchiveQuerySet:
         return ArchiveQuerySet(self.model, using=self._db)
 
     def filter_and_order_by_posted(self, **kwargs: typing.Any) -> ArchiveQuerySet:
-        return self.get_queryset().filter(**kwargs).order_by('gallery__posted')
+        return self.get_queryset().filter(**kwargs).order_by("gallery__posted")
 
-    def filter_non_existent(self, root: str, **kwargs: typing.Any) -> list['Archive']:
+    def filter_non_existent(self, root: str, **kwargs: typing.Any) -> list["Archive"]:
         return self.get_queryset().filter_non_existent(root, **kwargs)
 
     def filter_by_dl_remote(self) -> ArchiveQuerySet:
         return self.get_queryset().filter(
-            Q(crc32='')
-            & (
-                Q(match_type__startswith='torrent') | Q(match_type__startswith='hath')
-            )
+            Q(crc32="") & (Q(match_type__startswith="torrent") | Q(match_type__startswith="hath"))
         )
 
     def filter_by_missing_file_info(self) -> ArchiveQuerySet:
-        return self.get_queryset().filter(crc32='')
+        return self.get_queryset().filter(crc32="")
 
     def filter_by_authenticated_status(self, authenticated: bool, **kwargs: typing.Any) -> ArchiveQuerySet:
         if authenticated:
@@ -569,11 +568,14 @@ class ArchiveManager(models.Manager['Archive']):
         else:
             return self.get_queryset().filter(public=True, **kwargs)
 
-    def filter_matching_gallery_filesize(self, gid: str, provider: str) -> Optional['Archive']:
-        return self.filter(Q(gallery__gid=gid), Q(gallery__provider=provider),
-                           Q(filesize=F('gallery__filesize'))).first()
+    def filter_matching_gallery_filesize(self, gid: str, provider: str) -> Optional["Archive"]:
+        return self.filter(
+            Q(gallery__gid=gid), Q(gallery__provider=provider), Q(filesize=F("gallery__filesize"))
+        ).first()
 
-    def update_or_create_by_values_and_gid(self, values: DataDict, gid_provider: Optional[tuple[str, str]], **kwargs: typing.Any) -> 'Archive':
+    def update_or_create_by_values_and_gid(
+        self, values: DataDict, gid_provider: Optional[tuple[str, str]], **kwargs: typing.Any
+    ) -> "Archive":
         archive, _ = self.update_or_create(defaults=values, **kwargs)
         if gid_provider:
             gallery, _ = Gallery.objects.get_or_create(gid=gid_provider[0], provider=gid_provider[1])
@@ -584,7 +586,7 @@ class ArchiveManager(models.Manager['Archive']):
         return archive
 
     @staticmethod
-    def create_by_values_and_gid(values: DataDict, gid_provider: Optional[tuple[str, str]]) -> 'Archive':
+    def create_by_values_and_gid(values: DataDict, gid_provider: Optional[tuple[str, str]]) -> "Archive":
         archive = Archive(**values)
         archive.simple_save()
         if gid_provider:
@@ -599,21 +601,14 @@ class ArchiveManager(models.Manager['Archive']):
         else:
             base_file_name = str(archive.id)
         archive.zipped = os.path.join(
-            "galleries/archives/{id}/{file}".format(
-                id=archive.id,
-                file=base_file_name + '.zip'
-            ),
+            "galleries/archives/{id}/{file}".format(id=archive.id, file=base_file_name + ".zip"),
         )
-        os.makedirs(
-            os.path.join(
-                settings.MEDIA_ROOT,
-                "galleries/archives/{id}".format(id=archive.id)),
-            exist_ok=True)
+        os.makedirs(os.path.join(settings.MEDIA_ROOT, "galleries/archives/{id}".format(id=archive.id)), exist_ok=True)
         archive.save()
 
         return archive
 
-    def add_or_update_from_values(self, values: DataDict, **kwargs: typing.Any) -> 'Archive':
+    def add_or_update_from_values(self, values: DataDict, **kwargs: typing.Any) -> "Archive":
 
         archive, _ = self.update_or_create(defaults=values, **kwargs)
         return archive
@@ -629,32 +624,28 @@ class ArchiveManager(models.Manager['Archive']):
 
 class Tag(models.Model):
     name = models.CharField(max_length=200)
-    scope = models.CharField(max_length=200, default='', blank=True)
-    source = models.CharField(
-        'Source', max_length=50, blank=True, null=True, default='web')
+    scope = models.CharField(max_length=200, default="", blank=True)
+    source = models.CharField("Source", max_length=50, blank=True, null=True, default="web")
     create_date = models.DateTimeField(auto_now_add=True)
 
     objects = TagManager()
 
     class Meta:
-        ordering = ['-id']
-        constraints = [
-            models.UniqueConstraint(fields=['scope', 'name'], name='unique_scope_name')
-        ]
+        ordering = ["-id"]
+        constraints = [models.UniqueConstraint(fields=["scope", "name"], name="unique_scope_name")]
 
     def natural_key(self):
         return self.scope, self.name
 
     def __str__(self) -> str:
-        if self.scope != '':
+        if self.scope != "":
             return self.scope + ":" + self.name
         else:
             return self.name
 
 
-def gallery_thumb_path_handler(instance: 'Gallery', filename: str) -> str:
-    return "images/gallery_thumbs/{id}/{file}".format(id=instance.id,
-                                                      file=filename)
+def gallery_thumb_path_handler(instance: "Gallery", filename: str) -> str:
+    return "images/gallery_thumbs/{id}/{file}".format(id=instance.id, file=filename)
 
 
 class Gallery(models.Model):
@@ -677,69 +668,64 @@ class Gallery(models.Model):
 
     gid = models.CharField(max_length=200)
     token = models.CharField(max_length=50, blank=True, null=True)
-    title = models.CharField(max_length=500, blank=True, null=True, default='')
-    title_jpn = models.CharField(
-        max_length=500, blank=True, null=True, default='')
-    tags = models.ManyToManyField(Tag, blank=True, default='')
+    title = models.CharField(max_length=500, blank=True, null=True, default="")
+    title_jpn = models.CharField(max_length=500, blank=True, null=True, default="")
+    tags: 'models.ManyToManyField[Tag, models.Model]' = models.ManyToManyField(Tag, blank=True, default="")
     gallery_container = models.ForeignKey(
-        'self', blank=True, null=True, on_delete=models.SET_NULL,
-        related_name='gallery_contains'
+        "self", blank=True, null=True, on_delete=models.SET_NULL, related_name="gallery_contains"
     )
     magazine = models.ForeignKey(
-        'self', blank=True, null=True, on_delete=models.SET_NULL,
-        related_name='magazine_chapters'
+        "self", blank=True, null=True, on_delete=models.SET_NULL, related_name="magazine_chapters"
     )
     first_gallery = models.ForeignKey(
-        'self', blank=True, null=True, on_delete=models.SET_NULL,
-        related_name='newer_galleries'
+        "self", blank=True, null=True, on_delete=models.SET_NULL, related_name="newer_galleries"
     )
     parent_gallery = models.ForeignKey(
-        'self', blank=True, null=True, on_delete=models.SET_NULL,
-        related_name='children_galleries'
+        "self", blank=True, null=True, on_delete=models.SET_NULL, related_name="children_galleries"
     )
-    category = models.CharField(
-        max_length=20, blank=True, null=True, default='')
-    uploader = models.CharField(
-        max_length=50, blank=True, null=True, default='')
-    comment = models.TextField(blank=True, default='')
-    posted = models.DateTimeField('Date posted', blank=True, null=True)
-    filecount = models.IntegerField(
-        'File count', blank=True, null=True, default=0)
-    filesize = models.BigIntegerField('Size', blank=True, null=True, default=0)
+    category = models.CharField(max_length=20, blank=True, null=True, default="")
+    uploader = models.CharField(max_length=50, blank=True, null=True, default="")
+    comment = models.TextField(blank=True, default="")
+    posted = models.DateTimeField("Date posted", blank=True, null=True)
+    filecount = models.IntegerField("File count", blank=True, null=True, default=0)
+    filesize = models.BigIntegerField("Size", blank=True, null=True, default=0)
     expunged = models.BooleanField(default=False)
     disowned = models.BooleanField(default=False)
-    rating = models.CharField(max_length=10, blank=True, null=True, default='')
+    rating = models.CharField(max_length=10, blank=True, null=True, default="")
     hidden = models.BooleanField(default=False)
     fjord = models.BooleanField(default=False)
     public = models.BooleanField(default=False)
-    provider = models.CharField('Provider', max_length=50, default='generic')
-    dl_type = models.CharField(max_length=100, default='')
-    reason = models.CharField(max_length=200, blank=True, null=True, default='backup')
+    provider = models.CharField("Provider", max_length=50, default="generic")
+    dl_type = models.CharField(max_length=100, default="")
+    reason = models.CharField(max_length=200, blank=True, null=True, default="backup")
     create_date = models.DateTimeField(auto_now_add=True)
     last_modified = models.DateTimeField(auto_now=True, blank=True, null=True)
-    thumbnail_url = models.URLField(
-        max_length=2000, blank=True, null=True, default='')
+    thumbnail_url = models.URLField(max_length=2000, blank=True, null=True, default="")
     thumbnail_height = models.PositiveIntegerField(blank=True, null=True)
     thumbnail_width = models.PositiveIntegerField(blank=True, null=True)
     thumbnail = models.ImageField(
         blank=True,
-        upload_to=gallery_thumb_path_handler, default='', max_length=500,
-        height_field='thumbnail_height',
-        width_field='thumbnail_width')
-    status = models.SmallIntegerField(
-        choices=StatusChoices, db_index=True, default=StatusChoices.NORMAL
+        upload_to=gallery_thumb_path_handler,
+        default="",
+        max_length=500,
+        height_field="thumbnail_height",
+        width_field="thumbnail_width",
     )
-    origin = models.SmallIntegerField(
-        choices=OriginChoices, db_index=True, default=OriginChoices.ORIGIN_NORMAL
-    )
-    provider_metadata = models.TextField(blank=True, default='')
+    status = models.SmallIntegerField(choices=StatusChoices, db_index=True, default=StatusChoices.NORMAL)
+    origin = models.SmallIntegerField(choices=OriginChoices, db_index=True, default=OriginChoices.ORIGIN_NORMAL)
+    provider_metadata = models.TextField(blank=True, default="")
 
     history = HistoricalRecords(
         excluded_fields=[
-            'origin', 'thumbnail', 'thumbnail_height', 'thumbnail_width', 'last_modified', 'create_date',
-            'provider'
+            "origin",
+            "thumbnail",
+            "thumbnail_height",
+            "thumbnail_width",
+            "last_modified",
+            "create_date",
+            "provider",
         ],
-        m2m_fields=[tags]
+        m2m_fields=[tags],
     )
 
     objects = GalleryManager()
@@ -747,47 +733,47 @@ class Gallery(models.Model):
     class Meta:
         es_index_name = settings.ES_GALLERY_INDEX_NAME
         es_mapping = {
-            'properties': {
-                'gid': {'type': 'keyword'},
-                'title': {'type': 'text'},
-                'title_jpn': {'type': 'text'},
-                'title_complete': {
-                    'type': 'completion',
-                    'analyzer': 'simple',
-                    'preserve_separators': True,
-                    'preserve_position_increments': True,
-                    'max_input_length': 50,
+            "properties": {
+                "gid": {"type": "keyword"},
+                "title": {"type": "text"},
+                "title_jpn": {"type": "text"},
+                "title_complete": {
+                    "type": "completion",
+                    "analyzer": "simple",
+                    "preserve_separators": True,
+                    "preserve_position_increments": True,
+                    "max_input_length": 50,
                 },
-                'title_suggest': {
-                    'type': 'text',
-                    'analyzer': 'edge_ngram_analyzer',
-                    'search_analyzer': 'standard',
+                "title_suggest": {
+                    "type": "text",
+                    "analyzer": "edge_ngram_analyzer",
+                    "search_analyzer": "standard",
                 },
-                'tags': {
-                    'type': 'object',
-                    'properties': {
-                        'scope': {'type': 'keyword', 'store': True},
-                        'name': {'type': 'keyword', 'store': True},
-                        'full': {'type': 'keyword'},
-                    }
+                "tags": {
+                    "type": "object",
+                    "properties": {
+                        "scope": {"type": "keyword", "store": True},
+                        "name": {"type": "keyword", "store": True},
+                        "full": {"type": "keyword"},
+                    },
                 },
-                'size': {'type': 'long'},
-                'image_count': {'type': 'integer'},
-                'create_date': {'type': 'date'},
-                'posted_date': {'type': 'date'},
-                'provider': {'type': 'keyword'},
-                'reason': {'type': 'keyword'},
-                'public': {'type': 'boolean'},
-                'category': {'type': 'keyword'},
-                'rating': {'type': 'float'},
-                'expunged': {'type': 'boolean'},
-                'disowned': {'type': 'boolean'},
-                'uploader': {'type': 'keyword'},
-                'source_url': {'type': 'text', 'index': False},
-                'last_in_chain': {'type': 'boolean'},
-                'gallery_chain_urls': {'type': 'text', 'index': False},
-                'thumbnail': {'type': 'text', 'index': False},
-                'source_thumbnail': {'type': 'text', 'index': False}
+                "size": {"type": "long"},
+                "image_count": {"type": "integer"},
+                "create_date": {"type": "date"},
+                "posted_date": {"type": "date"},
+                "provider": {"type": "keyword"},
+                "reason": {"type": "keyword"},
+                "public": {"type": "boolean"},
+                "category": {"type": "keyword"},
+                "rating": {"type": "float"},
+                "expunged": {"type": "boolean"},
+                "disowned": {"type": "boolean"},
+                "uploader": {"type": "keyword"},
+                "source_url": {"type": "text", "index": False},
+                "last_in_chain": {"type": "boolean"},
+                "gallery_chain_urls": {"type": "text", "index": False},
+                "thumbnail": {"type": "text", "index": False},
+                "source_thumbnail": {"type": "text", "index": False},
             }
         }
         verbose_name_plural = "galleries"
@@ -806,28 +792,26 @@ class Gallery(models.Model):
             ("read_gallery_change_log", "Can read the Gallery change log"),
             ("manage_gallery", "Can manage available galleries"),
         )
-        constraints = [
-            models.UniqueConstraint(fields=['gid', 'provider'], name='unique_gallery')
-        ]
+        constraints = [models.UniqueConstraint(fields=["gid", "provider"], name="unique_gallery")]
 
     def es_repr(self) -> DataDict:
         data = {}
         mapping = self._meta.es_mapping  # type: ignore
-        data['_id'] = self.pk
-        for field_name in mapping['properties'].keys():
+        data["_id"] = self.pk
+        for field_name in mapping["properties"].keys():
             data[field_name] = self.field_es_repr(field_name)
         return data
 
     def field_es_repr(self, field_name: str) -> typing.Any:
-        config = self._meta.es_mapping['properties'][field_name]  # type: ignore
-        if hasattr(self, 'get_es_%s' % field_name):
-            field_es_value = getattr(self, 'get_es_%s' % field_name)()
+        config = self._meta.es_mapping["properties"][field_name]  # type: ignore
+        if hasattr(self, "get_es_%s" % field_name):
+            field_es_value = getattr(self, "get_es_%s" % field_name)()
         else:
-            if config['type'] == 'object':
+            if config["type"] == "object":
                 related_object = getattr(self, field_name)
                 if related_object:
-                    field_es_value = {'_id': related_object.pk}
-                    for prop in config['properties'].keys():
+                    field_es_value = {"_id": related_object.pk}
+                    for prop in config["properties"].keys():
                         field_es_value[prop] = getattr(related_object, prop)
                 else:
                     field_es_value = None
@@ -837,12 +821,16 @@ class Gallery(models.Model):
 
     def get_es_last_in_chain(self):
         if self.first_gallery:
-            gallery_filters = Q(first_gallery=self.first_gallery) | Q(first_gallery=self) | Q(pk=self.pk) | Q(
-                pk=self.first_gallery.pk)
+            gallery_filters = (
+                Q(first_gallery=self.first_gallery)
+                | Q(first_gallery=self)
+                | Q(pk=self.pk)
+                | Q(pk=self.first_gallery.pk)
+            )
         else:
             gallery_filters = Q(first_gallery=self) | Q(pk=self.pk)
 
-        gallery_chain = Gallery.objects.filter(gallery_filters, provider=self.provider).order_by('gid')
+        gallery_chain = Gallery.objects.filter(gallery_filters, provider=self.provider).order_by("gid")
 
         last_in_chain = gallery_chain.last()
 
@@ -855,12 +843,16 @@ class Gallery(models.Model):
 
     def get_es_gallery_chain_urls(self):
         if self.first_gallery:
-            gallery_filters = Q(first_gallery=self.first_gallery) | Q(first_gallery=self) | Q(pk=self.pk) | Q(
-                pk=self.first_gallery.pk)
+            gallery_filters = (
+                Q(first_gallery=self.first_gallery)
+                | Q(first_gallery=self)
+                | Q(pk=self.pk)
+                | Q(pk=self.first_gallery.pk)
+            )
         else:
             gallery_filters = Q(first_gallery=self) | Q(pk=self.pk)
 
-        gallery_chain = Gallery.objects.filter(gallery_filters, provider=self.provider).order_by('gid')
+        gallery_chain = Gallery.objects.filter(gallery_filters, provider=self.provider).order_by("gid")
 
         return [x.get_link() for x in gallery_chain]
 
@@ -890,19 +882,19 @@ class Gallery(models.Model):
     def get_es_posted_date(self) -> typing.Optional[str]:
         data = None
         if self.posted:
-            data = self.posted.replace(tzinfo=timezone.utc).strftime('%Y-%m-%dT%H:%M:%S%z')
+            data = self.posted.replace(tzinfo=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S%z")
         return data
 
     def get_es_create_date(self) -> typing.Optional[str]:
         if self.create_date:
-            return self.create_date.replace(tzinfo=timezone.utc).strftime('%Y-%m-%dT%H:%M:%S%z')
+            return self.create_date.replace(tzinfo=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S%z")
         else:
             return None
 
     def get_es_tags(self) -> list[DataDict]:
         data: list[DataDict] = []
         if self.tags.exists():
-            data += [{'scope': c.scope, 'name': c.name, 'full': str(c)} for c in self.tags.all()]
+            data += [{"scope": c.scope, "name": c.name, "full": str(c)} for c in self.tags.all()]
         return data
 
     def get_es_tag_names(self) -> list[str]:
@@ -933,7 +925,7 @@ class Gallery(models.Model):
         return self.get_link()
 
     def __str__(self) -> str:
-        return self.title or self.title_jpn or ''
+        return self.title or self.title_jpn or ""
 
     @property
     def best_title(self) -> str:
@@ -945,7 +937,7 @@ class Gallery(models.Model):
 
     def tags_str(self) -> str:
         lst = [str(x) for x in self.tags.all()]
-        return ', '.join(lst)
+        return ", ".join(lst)
 
     def tag_list(self) -> list[str]:
         lst = [str(x) for x in self.tags.all()]
@@ -954,7 +946,7 @@ class Gallery(models.Model):
     def tag_list_sorted(self) -> list[str]:
         return sort_tags_str(self.tags.all())
 
-    def tag_lists(self) -> list[tuple[str, list['Tag']]]:
+    def tag_lists(self) -> list[tuple[str, list["Tag"]]]:
         return sort_tags(self.tags.all())
 
     def get_available_thumbnail_plus_size(self) -> tuple[str, Optional[int], Optional[int]]:
@@ -989,13 +981,18 @@ class Gallery(models.Model):
 
     # Kinda not optimal
     def is_submitted(self) -> bool:
-        return self.origin == self.OriginChoices.ORIGIN_SUBMITTED and self.status != self.StatusChoices.DENIED and self.status != self.StatusChoices.DELETED and not self.archive_set.all()
+        return (
+            self.origin == self.OriginChoices.ORIGIN_SUBMITTED
+            and self.status != self.StatusChoices.DENIED
+            and self.status != self.StatusChoices.DELETED
+            and not self.archive_set.all()
+        )
 
     def get_link(self) -> str:
         return settings.PROVIDER_CONTEXT.resolve_all_urls(self)
 
     def get_absolute_url(self) -> str:
-        return reverse('viewer:gallery', args=[str(self.id)])
+        return reverse("viewer:gallery", args=[str(self.id)])
 
     def as_gallery_data(self) -> GalleryData:
         gallery_data = GalleryData(
@@ -1008,10 +1005,10 @@ class Gallery(models.Model):
             title_jpn=self.title_jpn,
             comment=self.comment,
             gallery_container_gid=self.gallery_container.gid if self.gallery_container else None,
-            gallery_contains_gids=list(self.gallery_contains.all().values_list('gid', flat=True)),
+            gallery_contains_gids=list(self.gallery_contains.all().values_list("gid", flat=True)),
             magazine_gid=self.magazine.gid if self.magazine else None,
-            magazine_chapters_gids=list(self.magazine_chapters.all().values_list('gid', flat=True)),
-            gallery_parent_gid=self.parent_gallery.gid if self.parent_gallery else None,
+            magazine_chapters_gids=list(self.magazine_chapters.all().values_list("gid", flat=True)),
+            parent_gallery_gid=self.parent_gallery.gid if self.parent_gallery else None,
             first_gallery_gid=self.first_gallery.gid if self.first_gallery else None,
             category=self.category,
             posted=self.posted,
@@ -1028,7 +1025,7 @@ class Gallery(models.Model):
             public=self.public,
             status=self.status,
             origin=self.origin,
-            reason=self.reason
+            reason=self.reason,
         )
         return gallery_data
 
@@ -1043,26 +1040,22 @@ class Gallery(models.Model):
             if (settings.ES_ONLY_INDEX_PUBLIC and self.public) or not settings.ES_ONLY_INDEX_PUBLIC:
                 payload = self.es_repr()
                 if is_new is not None:
-                    del payload['_id']
+                    del payload["_id"]
                     try:
                         settings.ES_CLIENT.update(
                             index=self._meta.es_index_name,  # type: ignore
                             id=str(self.pk),
                             refresh=True,
-                            body={
-                                'doc': payload
-                            },
-                            request_timeout=30
+                            body={"doc": payload},
+                            request_timeout=30,
                         )
                     except elasticsearch.exceptions.NotFoundError:
                         settings.ES_CLIENT.create(
                             index=self._meta.es_index_name,  # type: ignore
                             id=str(self.pk),
                             refresh=True,
-                            body={
-                                'doc': payload
-                            },
-                            request_timeout=30
+                            body={"doc": payload},
+                            request_timeout=30,
                         )
 
                 else:
@@ -1070,19 +1063,17 @@ class Gallery(models.Model):
                         index=self._meta.es_index_name,  # type: ignore
                         id=self.pk,
                         refresh=True,
-                        body={
-                            'doc': payload
-                        },
-                        request_timeout=30
+                        body={"doc": payload},
+                        request_timeout=30,
                     )
         self.fetch_thumbnail()
 
     def fetch_thumbnail(self, force_redownload: bool = False, force_provider: Optional[str] = None) -> bool:
         if self.thumbnail_url and (not self.thumbnail or force_redownload):
             request_dict = {
-                'stream': True,
-                'headers': settings.CRAWLER_SETTINGS.requests_headers,
-                'timeout': settings.CRAWLER_SETTINGS.timeout_timer,
+                "stream": True,
+                "headers": settings.CRAWLER_SETTINGS.requests_headers,
+                "timeout": settings.CRAWLER_SETTINGS.timeout_timer,
             }
 
             if force_provider:
@@ -1092,11 +1083,11 @@ class Gallery(models.Model):
 
             if self.provider in settings.CRAWLER_SETTINGS.providers:
                 if settings.CRAWLER_SETTINGS.providers[provider_to_use].cookies:
-                    request_dict['cookies'] = settings.CRAWLER_SETTINGS.providers[provider_to_use].cookies
+                    request_dict["cookies"] = settings.CRAWLER_SETTINGS.providers[provider_to_use].cookies
                 if settings.CRAWLER_SETTINGS.providers[provider_to_use].proxies:
-                    request_dict['proxies'] = settings.CRAWLER_SETTINGS.providers[provider_to_use].proxies
+                    request_dict["proxies"] = settings.CRAWLER_SETTINGS.providers[provider_to_use].proxies
                 if settings.CRAWLER_SETTINGS.providers[provider_to_use].timeout_timer:
-                    request_dict['timeout'] = settings.CRAWLER_SETTINGS.providers[provider_to_use].timeout_timer
+                    request_dict["timeout"] = settings.CRAWLER_SETTINGS.providers[provider_to_use].timeout_timer
             response = request_with_retries(
                 self.thumbnail_url,
                 request_dict,
@@ -1106,7 +1097,7 @@ class Gallery(models.Model):
                 disassembled = urlparse(self.thumbnail_url)
                 file_name = basename(disassembled.path)
                 if not file_name:
-                    file_name = 'g_thumbnail'
+                    file_name = "g_thumbnail"
                 lf = NamedTemporaryFile()
                 if response.status_code == requests.codes.ok:
                     for chunk in response.iter_content(chunk_size=1024):
@@ -1118,7 +1109,7 @@ class Gallery(models.Model):
                 super(Gallery, self).save(force_update=True)
 
                 if settings.CRAWLER_SETTINGS.auto_phash_images:
-                    self.create_or_update_thumbnail_hash('phash')
+                    self.create_or_update_thumbnail_hash("phash")
 
                 return True
 
@@ -1132,37 +1123,33 @@ class Gallery(models.Model):
             hash_result = CompareObjectsService.hash_thumbnail(self.thumbnail.path, algorithm)
             if hash_result:
                 hash_object, _ = ItemProperties.objects.update_or_create(
-                    content_type=gallery_type, object_id=self.pk, tag='hash-compare',
+                    content_type=gallery_type,
+                    object_id=self.pk,
+                    tag="hash-compare",
                     name=algorithm,
-                    defaults = {
-                        'value': hash_result
-                    }
+                    defaults={"value": hash_result},
                 )
 
     def update_index(self) -> None:
         if settings.ES_CLIENT and settings.ES_AUTOREFRESH_GALLERY:
             if (settings.ES_ONLY_INDEX_PUBLIC and self.public) or not settings.ES_ONLY_INDEX_PUBLIC:
                 payload = self.es_repr()
-                del payload['_id']
+                del payload["_id"]
                 try:
                     settings.ES_CLIENT.update(
                         index=self._meta.es_index_name,  # type: ignore
                         id=str(self.pk),
                         refresh=True,
-                        body={
-                            'doc': payload
-                        },
-                        request_timeout=30
+                        body={"doc": payload},
+                        request_timeout=30,
                     )
                 except elasticsearch.exceptions.NotFoundError:
                     settings.ES_CLIENT.create(
                         index=self._meta.es_index_name,  # type: ignore
                         id=str(self.pk),
                         refresh=True,
-                        body={
-                            'doc': payload
-                        },
-                        request_timeout=30
+                        body={"doc": payload},
+                        request_timeout=30,
                     )
 
     def delete(self, *args: typing.Any, **kwargs: typing.Any) -> tuple[int, dict[str, int]]:
@@ -1173,10 +1160,7 @@ class Gallery(models.Model):
         if settings.ES_CLIENT and settings.ES_AUTOREFRESH_GALLERY:
             try:
                 settings.ES_CLIENT.delete(
-                    index=self._meta.es_index_name,  # type: ignore
-                    id=str(prev_pk),
-                    refresh=True,
-                    request_timeout=30
+                    index=self._meta.es_index_name, id=str(prev_pk), refresh=True, request_timeout=30  # type: ignore
                 )
             except elasticsearch.exceptions.NotFoundError:
                 pass
@@ -1212,7 +1196,9 @@ class Gallery(models.Model):
         self.status = self.StatusChoices.NORMAL
         self.save()
 
-    def match_against_wanted_galleries(self, wanted_filters: Optional['QuerySet[WantedGallery]'] = None, skip_already_found: bool = True) -> 'list[WantedGallery]':
+    def match_against_wanted_galleries(
+        self, wanted_filters: Optional["QuerySet[WantedGallery]"] = None, skip_already_found: bool = True
+    ) -> "list[WantedGallery]":
 
         found_wanted_galleries = []
 
@@ -1232,57 +1218,84 @@ class Gallery(models.Model):
             if self.title:
                 wanted_filters = wanted_filters.annotate(g_title=Value(self.title, output_field=CharField()))
 
-                q_objects.add(Q(g_title__ss=Concat(Value('%'), Replace(F('search_title'), Value(' '), Value('%')), Value('%'))), Q.OR)
-                q_objects_unwanted.add(~Q(g_title__ss=Concat(Value('%'), Replace(F('unwanted_title'), Value(' '), Value('%')), Value('%'))), Q.AND)
+                q_objects.add(
+                    Q(g_title__ss=Concat(Value("%"), Replace(F("search_title"), Value(" "), Value("%")), Value("%"))),
+                    Q.OR,
+                )
+                q_objects_unwanted.add(
+                    ~Q(
+                        g_title__ss=Concat(Value("%"), Replace(F("unwanted_title"), Value(" "), Value("%")), Value("%"))
+                    ),
+                    Q.AND,
+                )
 
-                q_objects_regexp.add(Q(g_title__regex=F('search_title')), Q.OR)
-                q_objects_regexp_icase.add(Q(g_title__iregex=F('search_title')), Q.OR)
-                q_objects_unwanted_regexp.add(~Q(g_title__regex=F('unwanted_title')), Q.AND)
-                q_objects_unwanted_regexp_icase.add(~Q(g_title__iregex=F('unwanted_title')), Q.AND)
+                q_objects_regexp.add(Q(g_title__regex=F("search_title")), Q.OR)
+                q_objects_regexp_icase.add(Q(g_title__iregex=F("search_title")), Q.OR)
+                q_objects_unwanted_regexp.add(~Q(g_title__regex=F("unwanted_title")), Q.AND)
+                q_objects_unwanted_regexp_icase.add(~Q(g_title__iregex=F("unwanted_title")), Q.AND)
 
             if self.title_jpn:
                 wanted_filters = wanted_filters.annotate(g_title_jpn=Value(self.title_jpn, output_field=CharField()))
-                q_objects.add(Q(g_title_jpn__ss=Concat(Value('%'), Replace(F('search_title'), Value(' '), Value('%')), Value('%'))), Q.OR)
-                q_objects_unwanted.add(~Q(g_title_jpn__ss=Concat(Value('%'), Replace(F('unwanted_title'), Value(' '), Value('%')), Value('%'))), Q.AND)
+                q_objects.add(
+                    Q(
+                        g_title_jpn__ss=Concat(
+                            Value("%"), Replace(F("search_title"), Value(" "), Value("%")), Value("%")
+                        )
+                    ),
+                    Q.OR,
+                )
+                q_objects_unwanted.add(
+                    ~Q(
+                        g_title_jpn__ss=Concat(
+                            Value("%"), Replace(F("unwanted_title"), Value(" "), Value("%")), Value("%")
+                        )
+                    ),
+                    Q.AND,
+                )
 
-                q_objects_regexp.add(Q(g_title_jpn__regex=F('search_title')), Q.OR)
-                q_objects_regexp_icase.add(Q(g_title_jpn__iregex=F('search_title')), Q.OR)
-                q_objects_unwanted_regexp.add(~Q(g_title_jpn__regex=F('unwanted_title')), Q.AND)
-                q_objects_unwanted_regexp_icase.add(~Q(g_title_jpn__iregex=F('unwanted_title')), Q.AND)
+                q_objects_regexp.add(Q(g_title_jpn__regex=F("search_title")), Q.OR)
+                q_objects_regexp_icase.add(Q(g_title_jpn__iregex=F("search_title")), Q.OR)
+                q_objects_unwanted_regexp.add(~Q(g_title_jpn__regex=F("unwanted_title")), Q.AND)
+                q_objects_unwanted_regexp_icase.add(~Q(g_title_jpn__iregex=F("unwanted_title")), Q.AND)
 
             filtered_wanted = wanted_filters.filter(
                 Q(search_title__isnull=True)
-                | Q(search_title='')
+                | Q(search_title="")
                 | Q(Q(regexp_search_title=False), q_objects)
                 | Q(Q(regexp_search_title=True, regexp_search_title_icase=False), q_objects_regexp)
                 | Q(Q(regexp_search_title=True, regexp_search_title_icase=True), q_objects_regexp_icase)
             ).filter(
                 Q(unwanted_title__isnull=True)
-                | Q(unwanted_title='')
+                | Q(unwanted_title="")
                 | Q(Q(regexp_unwanted_title=False), q_objects_unwanted)
                 | Q(Q(regexp_unwanted_title=True, regexp_unwanted_title_icase=False), q_objects_unwanted_regexp)
                 | Q(Q(regexp_unwanted_title=True, regexp_unwanted_title_icase=True), q_objects_unwanted_regexp_icase)
             )
 
         else:
-            filtered_wanted = wanted_filters.filter(
-                Q(search_title__isnull=True) | Q(search_title='')
-            ).filter(
-                Q(unwanted_title__isnull=True) | Q(unwanted_title='')
+            filtered_wanted = wanted_filters.filter(Q(search_title__isnull=True) | Q(search_title="")).filter(
+                Q(unwanted_title__isnull=True) | Q(unwanted_title="")
             )
 
         if self.category:
-            filtered_wanted = filtered_wanted.filter(Q(category__isnull=True) | Q(category='') | Q(category__iexact=self.category))
+            filtered_wanted = filtered_wanted.filter(
+                Q(category__isnull=True) | Q(category="") | Q(category__iexact=self.category)
+            )
+            filtered_wanted = filtered_wanted.filter(Q(categories=None) | Q(categories__name=self.category))
 
         if self.filecount:
             filtered_wanted = filtered_wanted.filter(
-                Q(wanted_page_count_upper=0) | Q(wanted_page_count_upper__gt=self.filecount))
+                Q(wanted_page_count_upper=0) | Q(wanted_page_count_upper__gte=self.filecount)
+            )
             filtered_wanted = filtered_wanted.filter(
-                Q(wanted_page_count_lower=0) | Q(wanted_page_count_lower__lt=self.filecount))
+                Q(wanted_page_count_lower=0) | Q(wanted_page_count_lower__lte=self.filecount)
+            )
 
         if self.provider:
             filtered_wanted = filtered_wanted.filter(Q(wanted_providers=None) | Q(wanted_providers__slug=self.provider))
-            filtered_wanted = filtered_wanted.filter(Q(unwanted_providers=None) | ~Q(unwanted_providers__slug=self.provider))
+            filtered_wanted = filtered_wanted.filter(
+                Q(unwanted_providers=None) | ~Q(unwanted_providers__slug=self.provider)
+            )
 
         if self.posted:
             filtered_wanted = filtered_wanted.filter(
@@ -1303,8 +1316,9 @@ class Gallery(models.Model):
                     # If all the missing tags start with the parameter,
                     # and no other tag is in gallery with this parameter, mark as accepted
                     scope_formatted = wanted_filter.wanted_tags_accept_if_none_scope + ":"
-                    if all(x.startswith(scope_formatted) for x in missing_tags)\
-                            and not any(x.startswith(scope_formatted) for x in self.tag_list()):
+                    if all(x.startswith(scope_formatted) for x in missing_tags) and not any(
+                        x.startswith(scope_formatted) for x in self.tag_list()
+                    ):
                         accepted = True
                 # Do not accept galleries that have more than 1 tag in the same wanted tag scope.
                 if accepted & wanted_filter.wanted_tags_exclusive_scope:
@@ -1346,17 +1360,17 @@ class GalleryProviderData(models.Model):
     ORIGIN_OTHER = 3
 
     ORIGIN_CHOICES = (
-        (ORIGIN_NATIVE, 'Native'),
-        (ORIGIN_PROCESSED, 'Processed'),
-        (ORIGIN_OTHER, 'Other'),
+        (ORIGIN_NATIVE, "Native"),
+        (ORIGIN_PROCESSED, "Processed"),
+        (ORIGIN_OTHER, "Other"),
     )
 
-    TYPE_TEXT = 'text'
-    TYPE_FLOAT = 'float'
-    TYPE_INT = 'int'
-    TYPE_DATE = 'date'
-    TYPE_DURATION = 'duration'
-    TYPE_BOOLEAN = 'bool'
+    TYPE_TEXT = "text"
+    TYPE_FLOAT = "float"
+    TYPE_INT = "int"
+    TYPE_DATE = "date"
+    TYPE_DURATION = "duration"
+    TYPE_BOOLEAN = "bool"
 
     DATA_TYPES_CHOICES = (
         (TYPE_TEXT, _("Text")),
@@ -1377,7 +1391,7 @@ class GalleryProviderData(models.Model):
     )
 
     class Meta:
-        unique_together = ('gallery', 'name')
+        unique_together = ("gallery", "name")
         verbose_name_plural = "Gallery provider datas"
 
     name = models.CharField(max_length=100)
@@ -1394,18 +1408,18 @@ class GalleryProviderData(models.Model):
     gallery = models.ForeignKey(Gallery, blank=True, null=True, on_delete=models.CASCADE)
 
     def _get_value(self) -> FetchTypes:
-        return getattr(self, 'value_%s' % self.data_type)
+        return getattr(self, "value_%s" % self.data_type)
 
     def _set_value(self, new_value: FetchTypes) -> None:
-        setattr(self, 'value_%s' % self.data_type, new_value)
+        setattr(self, "value_%s" % self.data_type, new_value)
 
     def clean(self) -> None:
         # Only allowed types
         if self.data_type not in self.DATA_TYPES:
-            raise ValidationError('{} must be one of: {}'.format(self.data_type, self.DATA_TYPES))
+            raise ValidationError("{} must be one of: {}".format(self.data_type, self.DATA_TYPES))
         # Don't allow empty string for all but text.
-        if self.value == '' and self.data_type is not self.TYPE_TEXT:
-            raise ValidationError('value_{0} cannot be blank when data type is {0}'.format(self.data_type))
+        if self.value == "" and self.data_type is not self.TYPE_TEXT:
+            raise ValidationError("value_{0} cannot be blank when data type is {0}".format(self.data_type))
 
     def save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
         self.full_clean()
@@ -1416,13 +1430,10 @@ class GalleryProviderData(models.Model):
 
 class GallerySubmitEntryQuerySet(models.QuerySet):
     def to_be_resolved(self, *args: typing.Any, **kwargs: typing.Any) -> QuerySet:
-        return self.filter(
-            Q(resolved_status=GallerySubmitEntry.RESOLVED_SUBMITTED),
-            **kwargs
-        )
+        return self.filter(Q(resolved_status=GallerySubmitEntry.RESOLVED_SUBMITTED), **kwargs)
 
 
-class GallerySubmitEntryManager(models.Manager['GallerySubmitEntry']):
+class GallerySubmitEntryManager(models.Manager["GallerySubmitEntry"]):
     def get_queryset(self) -> GallerySubmitEntryQuerySet:
         return GallerySubmitEntryQuerySet(self.model, using=self._db)
 
@@ -1439,20 +1450,20 @@ class GallerySubmitEntry(models.Model):
     RESOLVED_ALREADY_PRESENT = 4
 
     RESOLVED_STATUS_CHOICES = (
-        (RESOLVED_SUBMITTED, 'Submitted'),
-        (RESOLVED_APPROVED, 'Approved'),
-        (RESOLVED_DENIED, 'Denied'),
-        (RESOLVED_ALREADY_PRESENT, 'Already present'),
+        (RESOLVED_SUBMITTED, "Submitted"),
+        (RESOLVED_APPROVED, "Approved"),
+        (RESOLVED_DENIED, "Denied"),
+        (RESOLVED_ALREADY_PRESENT, "Already present"),
     )
 
     class Meta:
         verbose_name_plural = "Gallery submit entries"
 
     gallery = models.ForeignKey(Gallery, blank=True, null=True, on_delete=models.SET_NULL)
-    submit_url = models.TextField(blank=True, null=True, default='')
-    submit_reason = models.TextField(blank=True, null=True, default='')
-    submit_extra = models.TextField(blank=True, null=True, default='')
-    submit_result = models.CharField(blank=True, null=True, default='', max_length=200)
+    submit_url = models.TextField(blank=True, null=True, default="")
+    submit_reason = models.TextField(blank=True, null=True, default="")
+    submit_extra = models.TextField(blank=True, null=True, default="")
+    submit_result = models.CharField(blank=True, null=True, default="", max_length=200)
     submit_date = models.DateTimeField(blank=True, default=django_tz.now)
     submit_group = models.UUIDField(blank=True, null=True)
     create_date = models.DateTimeField(auto_now_add=True)
@@ -1460,12 +1471,12 @@ class GallerySubmitEntry(models.Model):
     resolved_status = models.SmallIntegerField(
         choices=RESOLVED_STATUS_CHOICES, db_index=True, default=RESOLVED_SUBMITTED
     )
-    resolved_reason = models.CharField('Reason', max_length=200, blank=True, null=True, default='backup')
-    resolved_comment = models.TextField(blank=True, null=True, default='')
+    resolved_reason = models.CharField("Reason", max_length=200, blank=True, null=True, default="backup")
+    resolved_comment = models.TextField(blank=True, null=True, default="")
     # Related name set to + to avoid clutter on Gallery model
-    similar_galleries = models.ManyToManyField(Gallery, related_name='+', blank=True, default='')
+    similar_galleries = models.ManyToManyField(Gallery, related_name="+", blank=True, default="")
 
-    def mark_as_denied(self, reason='', comment='') -> None:
+    def mark_as_denied(self, reason="", comment="") -> None:
         self.resolved_status = self.RESOLVED_DENIED
         if reason:
             self.resolved_reason = reason
@@ -1474,7 +1485,7 @@ class GallerySubmitEntry(models.Model):
         self.resolved_date = django_tz.now()
         self.save()
 
-    def mark_as_approved(self, reason='', comment='') -> None:
+    def mark_as_approved(self, reason="", comment="") -> None:
         self.resolved_status = self.RESOLVED_APPROVED
         if reason:
             self.resolved_reason = reason
@@ -1484,16 +1495,19 @@ class GallerySubmitEntry(models.Model):
         self.save()
 
     def __str__(self) -> str:
-        return self.submit_url or 'Empty url'
+        return self.submit_url or "Empty url"
 
     def save(self, *args, **kwargs):
         # Only calculate similar galleries for similar galleries
         if self.gallery and self.resolved_status == self.RESOLVED_SUBMITTED:
-            similar_galleries = Gallery.objects.\
-                filter(filesize=self.gallery.filesize, filecount=self.gallery.filecount).\
-                exclude(filesize__isnull=True).exclude(filecount__isnull=True).\
-                exclude(filesize=0).exclude(filecount=0).\
-                exclude(gid=self.gallery.gid, provider=self.gallery.provider)
+            similar_galleries = (
+                Gallery.objects.filter(filesize=self.gallery.filesize, filecount=self.gallery.filecount)
+                .exclude(filesize__isnull=True)
+                .exclude(filecount__isnull=True)
+                .exclude(filesize=0)
+                .exclude(filecount=0)
+                .exclude(gid=self.gallery.gid, provider=self.gallery.provider)
+            )
             self.similar_galleries.set(similar_galleries)
         # Clear similar galleries for resolved galleries (will add more code to galleries without similar galleries)
         if self.pk is not None and self.resolved_status != self.RESOLVED_SUBMITTED:
@@ -1503,17 +1517,16 @@ class GallerySubmitEntry(models.Model):
 
 @receiver(post_delete, sender=Gallery)
 def thumbnail_post_delete_handler(sender: typing.Any, **kwargs: typing.Any) -> None:
-    gallery = kwargs['instance']
+    gallery = kwargs["instance"]
     gallery.thumbnail.delete(save=False)
 
 
-def archive_path_handler(instance: 'Archive', filename: str) -> str:
+def archive_path_handler(instance: "Archive", filename: str) -> str:
     return "galleries/archive_uploads/{file}".format(file=filename)
 
 
-def thumb_path_handler(instance: 'Archive', filename: str) -> str:
-    return "images/thumbs/archive_{id}/{file}".format(id=instance.id,
-                                                      file=filename)
+def thumb_path_handler(instance: "Archive", filename: str) -> str:
+    return "images/thumbs/archive_{id}/{file}".format(id=instance.id, file=filename)
 
 
 class Archive(models.Model):
@@ -1526,68 +1539,72 @@ class Archive(models.Model):
     ORIGIN_FOLDER_SCAN = 6
 
     ORIGIN_CHOICES = (
-        (ORIGIN_DEFAULT, 'Default'),
-        (ORIGIN_ACCEPT_SUBMITTED, 'Accept Submitted'),
-        (ORIGIN_ADD_URL, 'Add URL'),
-        (ORIGIN_UPLOAD_ARCHIVE, 'Upload Archive'),
-        (ORIGIN_WANTED_GALLERY, 'Wanted Gallery'),
-        (ORIGIN_FOLDER_SCAN, 'Folder Scan'),
+        (ORIGIN_DEFAULT, "Default"),
+        (ORIGIN_ACCEPT_SUBMITTED, "Accept Submitted"),
+        (ORIGIN_ADD_URL, "Add URL"),
+        (ORIGIN_UPLOAD_ARCHIVE, "Upload Archive"),
+        (ORIGIN_WANTED_GALLERY, "Wanted Gallery"),
+        (ORIGIN_FOLDER_SCAN, "Folder Scan"),
     )
 
     gallery = models.ForeignKey(Gallery, blank=True, null=True, on_delete=models.SET_NULL)
     title = models.CharField(max_length=500, blank=True, null=True)
-    title_jpn = models.CharField(max_length=500, blank=True, null=True, default='')
-    zipped = models.FileField(verbose_name='File', upload_to=archive_path_handler, max_length=500, storage=fs)
-    original_filename = models.CharField('Original Filename', max_length=500, blank=True, null=True)
-    crc32 = models.CharField('CRC32', max_length=10, blank=True)
-    match_type = models.CharField(
-        'Match type', max_length=40, blank=True, null=True, default='')
-    filesize = models.BigIntegerField('Size', blank=True, null=True)
-    filecount = models.IntegerField('File count', blank=True, null=True)
+    title_jpn = models.CharField(max_length=500, blank=True, null=True, default="")
+    zipped = models.FileField(verbose_name="File", upload_to=archive_path_handler, max_length=500, storage=fs)
+    original_filename = models.CharField("Original Filename", max_length=500, blank=True, null=True)
+    crc32 = models.CharField("CRC32", max_length=10, blank=True)
+    match_type = models.CharField("Match type", max_length=40, blank=True, null=True, default="")
+    filesize = models.BigIntegerField("Size", blank=True, null=True)
+    filecount = models.IntegerField("File count", blank=True, null=True)
     public_date = models.DateTimeField(blank=True, null=True)
     create_date = models.DateTimeField(auto_now_add=True)
     last_modified = models.DateTimeField(auto_now=True, blank=True, null=True)
     user = models.ForeignKey(User, default=1, on_delete=models.SET_NULL, null=True)
-    source_type = models.CharField(
-        'Source type', max_length=50, blank=True, null=True, default='')
-    reason = models.CharField(
-        'Reason', max_length=200, blank=True, null=True, default='backup')
+    source_type = models.CharField("Source type", max_length=50, blank=True, null=True, default="")
+    reason = models.CharField("Reason", max_length=200, blank=True, null=True, default="backup")
     public = models.BooleanField(default=False)
     thumbnail_height = models.PositiveIntegerField(blank=True, null=True)
     thumbnail_width = models.PositiveIntegerField(blank=True, null=True)
     thumbnail = models.ImageField(
         blank=True,
-        upload_to=thumb_path_handler, default='', max_length=500,
-        height_field='thumbnail_height',
-        width_field='thumbnail_width')
+        upload_to=thumb_path_handler,
+        default="",
+        max_length=500,
+        height_field="thumbnail_height",
+        width_field="thumbnail_width",
+    )
     possible_matches: models.ManyToManyField = models.ManyToManyField(
-        Gallery, related_name="possible_matches",
-        blank=True, default='',
-        through='ArchiveMatches', through_fields=('archive', 'gallery'))
+        Gallery,
+        related_name="possible_matches",
+        blank=True,
+        default="",
+        through="ArchiveMatches",
+        through_fields=("archive", "gallery"),
+    )
     extracted = models.BooleanField(default=False)
     binned = models.BooleanField(default=False)
 
-    tags: models.ManyToManyField = models.ManyToManyField(
-        Tag, related_name="archive_tags",
-        blank=True,
-        through='ArchiveTag', through_fields=('archive', 'tag')
+    tags: 'models.ManyToManyField[Tag, models.Model]' = models.ManyToManyField(
+        Tag, related_name="archive_tags", blank=True, through="ArchiveTag", through_fields=("archive", "tag")
     )
 
     alternative_sources: models.ManyToManyField = models.ManyToManyField(
-        Gallery, related_name="alternative_sources",
-        blank=True, default='')
-
-    details = models.TextField(
-        blank=True, null=True, default='')
-
-    origin = models.SmallIntegerField(
-        choices=ORIGIN_CHOICES, db_index=True, default=ORIGIN_DEFAULT
+        Gallery, related_name="alternative_sources", blank=True, default=""
     )
+
+    details = models.TextField(blank=True, null=True, default="")
+
+    origin = models.SmallIntegerField(choices=ORIGIN_CHOICES, db_index=True, default=ORIGIN_DEFAULT)
 
     history = HistoricalRecords(
         excluded_fields=[
-            'origin', 'thumbnail', 'thumbnail_height', 'thumbnail_width', 'last_modified', 'create_date',
-            'original_filename'
+            "origin",
+            "thumbnail",
+            "thumbnail_height",
+            "thumbnail_width",
+            "last_modified",
+            "create_date",
+            "original_filename",
         ]
     )
 
@@ -1596,39 +1613,39 @@ class Archive(models.Model):
     class Meta:
         es_index_name = settings.ES_INDEX_NAME
         es_mapping = {
-            'properties': {
-                'title': {'type': 'text'},
-                'title_jpn': {'type': 'text'},
-                'title_complete': {
-                    'type': 'completion',
-                    'analyzer': 'simple',
-                    'preserve_separators': True,
-                    'preserve_position_increments': True,
-                    'max_input_length': 50,
+            "properties": {
+                "title": {"type": "text"},
+                "title_jpn": {"type": "text"},
+                "title_complete": {
+                    "type": "completion",
+                    "analyzer": "simple",
+                    "preserve_separators": True,
+                    "preserve_position_increments": True,
+                    "max_input_length": 50,
                 },
-                'title_suggest': {
-                    'type': 'text',
-                    'analyzer': 'edge_ngram_analyzer',
-                    'search_analyzer': 'standard',
+                "title_suggest": {
+                    "type": "text",
+                    "analyzer": "edge_ngram_analyzer",
+                    "search_analyzer": "standard",
                 },
-                'tags': {
-                    'type': 'object',
-                    'properties': {
-                        'scope': {'type': 'keyword', 'store': True},
-                        'name': {'type': 'keyword', 'store': True},
-                        'full': {'type': 'keyword'},
-                    }
+                "tags": {
+                    "type": "object",
+                    "properties": {
+                        "scope": {"type": "keyword", "store": True},
+                        "name": {"type": "keyword", "store": True},
+                        "full": {"type": "keyword"},
+                    },
                 },
-                'size': {'type': 'long'},
-                'image_count': {'type': 'integer'},
-                'create_date': {'type': 'date'},
-                'public_date': {'type': 'date'},
-                'original_date': {'type': 'date'},
-                'source_type': {'type': 'keyword'},
-                'reason': {'type': 'keyword'},
-                'public': {'type': 'boolean'},
-                'category': {'type': 'keyword'},
-                'thumbnail': {'type': 'text', 'index': False},
+                "size": {"type": "long"},
+                "image_count": {"type": "integer"},
+                "create_date": {"type": "date"},
+                "public_date": {"type": "date"},
+                "original_date": {"type": "date"},
+                "source_type": {"type": "keyword"},
+                "reason": {"type": "keyword"},
+                "public": {"type": "boolean"},
+                "category": {"type": "keyword"},
+                "thumbnail": {"type": "text", "index": False},
             }
         }
         permissions = (
@@ -1651,46 +1668,39 @@ class Archive(models.Model):
 
         indexes = [
             models.Index(
-                F('create_date').desc(nulls_last=True),
-                F('public').asc(nulls_last=True),
-                'binned',
-                name='archive_pub_binned'
+                F("create_date").desc(nulls_last=True),
+                F("public").asc(nulls_last=True),
+                "binned",
+                name="archive_pub_binned",
             ),
+            models.Index(F("create_date").desc(nulls_last=True), "binned", name="archive_binned"),
+            models.Index("binned", name="archive_binned_only"),
             models.Index(
-                F('create_date').desc(nulls_last=True),
-                'binned',
-                name='archive_binned'
-            ),
-            models.Index(
-                'binned',
-                name='archive_binned_only'
-            ),
-            models.Index(
-                F('public_date').desc(nulls_last=True),
-                F('public').asc(nulls_last=True),
-                'binned',
-                name='archive_pub2_binned'
+                F("public_date").desc(nulls_last=True),
+                F("public").asc(nulls_last=True),
+                "binned",
+                name="archive_pub2_binned",
             ),
         ]
 
     def es_repr(self) -> DataDict:
         data = {}
         mapping = self._meta.es_mapping  # type: ignore
-        data['_id'] = self.pk
-        for field_name in mapping['properties'].keys():
+        data["_id"] = self.pk
+        for field_name in mapping["properties"].keys():
             data[field_name] = self.field_es_repr(field_name)
         return data
 
     def field_es_repr(self, field_name: str) -> typing.Any:
-        config = self._meta.es_mapping['properties'][field_name]  # type: ignore
-        if hasattr(self, 'get_es_%s' % field_name):
-            field_es_value = getattr(self, 'get_es_%s' % field_name)()
+        config = self._meta.es_mapping["properties"][field_name]  # type: ignore
+        if hasattr(self, "get_es_%s" % field_name):
+            field_es_value = getattr(self, "get_es_%s" % field_name)()
         else:
-            if config['type'] == 'object':
+            if config["type"] == "object":
                 related_object = getattr(self, field_name)
                 if related_object:
-                    field_es_value = {'_id': related_object.pk}
-                    for prop in config['properties'].keys():
+                    field_es_value = {"_id": related_object.pk}
+                    for prop in config["properties"].keys():
                         field_es_value[prop] = getattr(related_object, prop)
                 else:
                     field_es_value = None
@@ -1734,25 +1744,25 @@ class Archive(models.Model):
     def get_es_original_date(self) -> typing.Optional[str]:
         data = None
         if self.gallery and self.gallery.posted:
-            data = self.gallery.posted.replace(tzinfo=timezone.utc).strftime('%Y-%m-%dT%H:%M:%S%z')
+            data = self.gallery.posted.replace(tzinfo=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S%z")
         return data
 
     def get_es_public_date(self) -> typing.Optional[str]:
         if self.public_date:
-            return self.public_date.replace(tzinfo=timezone.utc).strftime('%Y-%m-%dT%H:%M:%S%z')
+            return self.public_date.replace(tzinfo=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S%z")
         else:
             return None
 
     def get_es_create_date(self) -> typing.Optional[str]:
         if self.create_date:
-            return self.create_date.replace(tzinfo=timezone.utc).strftime('%Y-%m-%dT%H:%M:%S%z')
+            return self.create_date.replace(tzinfo=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S%z")
         else:
             return None
 
     def get_es_tags(self) -> list[DataDict]:
         data: list[DataDict] = []
         if self.tags.exists():
-            data += [{'scope': c.scope, 'name': c.name, 'full': str(c)} for c in self.tags.all()]
+            data += [{"scope": c.scope, "name": c.name, "full": str(c)} for c in self.tags.all()]
         return data
 
     def get_es_tag_names(self) -> list[str]:
@@ -1774,16 +1784,16 @@ class Archive(models.Model):
             return None
 
     def __str__(self) -> str:
-        return self.title or self.title_jpn or ''
+        return self.title or self.title_jpn or ""
 
     def get_absolute_url(self) -> str:
-        return reverse('viewer:archive', args=[str(self.id)])
+        return reverse("viewer:archive", args=[str(self.id)])
 
     @property
     def pretty_name(self) -> str:
         return "{0}{1}".format(
             quote(replace_illegal_name(self.title or self.title_jpn or self.zipped.name)),
-            os.path.splitext(self.zipped.name)[1]
+            os.path.splitext(self.zipped.name)[1],
         )
 
     @property
@@ -1799,7 +1809,7 @@ class Archive(models.Model):
 
     def tags_str(self) -> str:
         lst = [str(x) for x in self.tags.all()]
-        return ', '.join(lst)
+        return ", ".join(lst)
 
     def tag_list(self) -> list[str]:
         lst = [str(x) for x in self.tags.all()]
@@ -1830,44 +1840,47 @@ class Archive(models.Model):
         return self.binned
 
     def delete_text_report(self) -> str:
-        data: dict[str, typing.Any] = {
-        }
+        data: dict[str, typing.Any] = {}
         if self.details:
-            data['details'] = self.details
+            data["details"] = self.details
         if self.reason:
-            data['reason'] = self.reason
+            data["reason"] = self.reason
         if self.filecount:
-            data['filecount'] = self.filecount
+            data["filecount"] = self.filecount
         if self.title:
-            data['title'] = self.title
-        data['binned'] = self.binned
+            data["title"] = self.title
+        data["binned"] = self.binned
         if self.binned:
-            data['binned_reason'] = self.recycle_entry.reason
+            data["binned_reason"] = self.recycle_entry.reason
 
         try:
             for count, manage_entry in enumerate(self.manage_entries.all(), start=1):
                 mark_name = "mark_{}".format(count)
                 data[mark_name] = {}
                 if manage_entry.mark_user:
-                    data[mark_name]['mark_user'] = 'ServiceAccount' if manage_entry.mark_user.pk == 1 else str(manage_entry.mark_user)
+                    data[mark_name]["mark_user"] = (
+                        "ServiceAccount" if manage_entry.mark_user.pk == 1 else str(manage_entry.mark_user)
+                    )
                 if manage_entry.mark_reason:
-                    data[mark_name]['mark_reason'] = manage_entry.mark_reason
+                    data[mark_name]["mark_reason"] = manage_entry.mark_reason
                 if manage_entry.mark_comment:
-                    data[mark_name]['mark_comment'] = manage_entry.mark_comment
+                    data[mark_name]["mark_comment"] = manage_entry.mark_comment
         except ArchiveManageEntry.DoesNotExist:
             pass
         if not data:
-            return ''
+            return ""
         return json.dumps(data, ensure_ascii=False)
 
     def check_and_convert_to_zip(self) -> tuple[str, int]:
         if os.path.isfile(self.zipped.path):
-            extension, result = check_and_convert_to_zip(self.zipped.path, settings.CRAWLER_SETTINGS.temp_directory_path)
+            extension, result = check_and_convert_to_zip(
+                self.zipped.path, settings.CRAWLER_SETTINGS.temp_directory_path
+            )
             return extension, result
         else:
-            return 'unknown', 0
+            return "unknown", 0
 
-    def set_public(self, reason: str = '') -> None:
+    def set_public(self, reason: str = "") -> None:
 
         if not os.path.isfile(self.zipped.path) or not self.crc32:
             return
@@ -1892,7 +1905,7 @@ class Archive(models.Model):
             alt_gallery.public = True
             alt_gallery.save()
 
-    def set_private(self, reason: str = '') -> None:
+    def set_private(self, reason: str = "") -> None:
 
         if not os.path.isfile(self.zipped.path) or not self.crc32:
             return
@@ -1944,60 +1957,56 @@ class Archive(models.Model):
         else:
             return ""
 
-    def create_new_archive_ordered_by_sha1(self, sha1s: list[str]) -> 'tuple[Optional[Archive], str]':
+    def create_new_archive_ordered_by_sha1(self, sha1s: list[str]) -> "tuple[Optional[Archive], str]":
         images = self.image_set.filter(sha1__isnull=False)
         if images.count() != self.filecount:
-            return None, 'Image count different from filecount'
+            return None, "Image count different from filecount"
 
         if images.count() != len(sha1s):
-            return None, 'Image count different from SHA1 values'
+            return None, "Image count different from SHA1 values"
 
         try:
-            my_zip = zipfile.ZipFile(self.zipped.path, 'r')
+            my_zip = zipfile.ZipFile(self.zipped.path, "r")
         except (zipfile.BadZipFile, NotImplementedError):
-            return None, 'Bad original zip file'
+            return None, "Bad original zip file"
 
         if my_zip.testzip():
-            return None, 'Bad original zip file'
+            return None, "Bad original zip file"
 
         filtered_files = get_images_from_zip(my_zip)
 
         if len(sha1s) != len(filtered_files):
-            return None, 'SHA1 values count different from filtered files from zip file'
+            return None, "SHA1 values count different from filtered files from zip file"
 
         new_file_name = available_filename(settings.MEDIA_ROOT, self.zipped.name)
 
         new_file_path = os.path.join(settings.MEDIA_ROOT, new_file_name)
 
-        new_zipfile = zipfile.ZipFile(new_file_path, 'w')
+        new_zipfile = zipfile.ZipFile(new_file_path, "w")
 
         for count, sha1 in enumerate(sha1s, start=1):
 
             try:
                 current_image = images.filter(sha1=sha1).first()
             except Image.DoesNotExist:
-                return None, 'Image from SHA1 value: {} does not exist'.format(sha1)
+                return None, "Image from SHA1 value: {} does not exist".format(sha1)
 
             if current_image is None:
-                return None, 'Image from SHA1 value: {} does not exist'.format(sha1)
+                return None, "Image from SHA1 value: {} does not exist".format(sha1)
 
             archive_position = current_image.archive_position
             current_file_tuple = filtered_files[archive_position - 1]
             if current_file_tuple[1] is None:
                 with my_zip.open(current_file_tuple[0]) as current_zip_img:
                     current_basename = os.path.basename(current_file_tuple[0])
-                    new_zipfile.writestr(
-                        "{}_{}".format(str(count).zfill(4), current_basename),
-                        current_zip_img.read()
-                    )
+                    new_zipfile.writestr("{}_{}".format(str(count).zfill(4), current_basename), current_zip_img.read())
             else:
                 with my_zip.open(current_file_tuple[1]) as current_zip:
                     with zipfile.ZipFile(current_zip) as my_nested_zip:
                         with my_nested_zip.open(current_file_tuple[0]) as current_zip_img:
                             current_basename = os.path.basename(current_file_tuple[0])
                             new_zipfile.writestr(
-                                "{}_{}".format(str(count).zfill(4), current_basename),
-                                current_zip_img.read()
+                                "{}_{}".format(str(count).zfill(4), current_basename), current_zip_img.read()
                             )
 
         new_zipfile.close()
@@ -2014,49 +2023,51 @@ class Archive(models.Model):
         new_archive.extracted = False
         new_archive.public = False
         new_archive.public_date = None
-        new_archive.crc32 = ''
-        new_archive.thumbnail = ''
+        new_archive.crc32 = ""
+        new_archive.thumbnail = ""
         new_archive.zipped = new_file_name
         new_archive.save()
         new_archive.possible_matches.set(possible_matches)
         new_archive.tags.set(tags)
         new_archive.alternative_sources.set(alternative_sources)
 
-        return new_archive, ''
-    
-    def clone_archive_plus(self, sha1s: Optional[list[str]] = None, image_tool: Optional['CloningImageToolSettings'] = None) -> 'tuple[Optional[Archive], str]':
-        
+        return new_archive, ""
+
+    def clone_archive_plus(
+        self, sha1s: Optional[list[str]] = None, image_tool: Optional["CloningImageToolSettings"] = None
+    ) -> "tuple[Optional[Archive], str]":
+
         images = self.image_set.filter(sha1__isnull=False)
         if images.count() != self.filecount:
-            return None, 'Image count different from filecount'
+            return None, "Image count different from filecount"
 
         if sha1s:
             local_sha1s = sha1s
         else:
             # Technically we shouldn't need to check for null, mostly to follow type checking.
-            local_sha1s = [x for x in images.values_list('sha1', flat=True) if x is not None]
+            local_sha1s = [x for x in images.values_list("sha1", flat=True) if x is not None]
 
         if images.count() != len(local_sha1s):
-            return None, 'Image count different from SHA1 values'
+            return None, "Image count different from SHA1 values"
 
         try:
-            my_zip = zipfile.ZipFile(self.zipped.path, 'r')
+            my_zip = zipfile.ZipFile(self.zipped.path, "r")
         except (zipfile.BadZipFile, NotImplementedError):
-            return None, 'Bad original zip file'
+            return None, "Bad original zip file"
 
         if my_zip.testzip():
-            return None, 'Bad original zip file'
+            return None, "Bad original zip file"
 
         filtered_files = get_images_from_zip(my_zip)
 
         if len(local_sha1s) != len(filtered_files):
-            return None, 'SHA1 values count different from filtered files from zip file'
+            return None, "SHA1 values count different from filtered files from zip file"
 
         new_file_name = available_filename(settings.MEDIA_ROOT, self.zipped.name)
 
         new_file_path = os.path.join(settings.MEDIA_ROOT, new_file_name)
 
-        new_zipfile = zipfile.ZipFile(new_file_path, 'w')
+        new_zipfile = zipfile.ZipFile(new_file_path, "w")
         dir_path = mkdtemp(dir=settings.CRAWLER_SETTINGS.temp_directory_path)
 
         for count, sha1 in enumerate(local_sha1s, start=1):
@@ -2065,27 +2076,27 @@ class Archive(models.Model):
                 current_image = images.get(sha1=sha1)
             except Image.DoesNotExist:
                 shutil.rmtree(dir_path, ignore_errors=True)
-                return None, 'Image from SHA1 value: {} does not exist'.format(sha1)
+                return None, "Image from SHA1 value: {} does not exist".format(sha1)
 
             archive_position = current_image.archive_position
             current_file_tuple = filtered_files[archive_position - 1]
             if current_file_tuple[1] is None:
                 my_zip.extract(current_file_tuple[0], path=dir_path)
 
-                extracted_file = os.path.join(dir_path, current_file_tuple[0].replace('\\', '/'))
-                
+                extracted_file = os.path.join(dir_path, current_file_tuple[0].replace("\\", "/"))
+
                 if image_tool and file_matches_any_filter(current_file_tuple[0], image_tool.file_filters):
                     mod_file = os.path.join(dir_path, "mod_file_{}.tmp".format(count))
-                    
+
                     final_command = image_tool.executable_path.format(input=extracted_file, output=mod_file)
-                    
+
                     try:
                         process_result = subprocess.run(
                             final_command,
                             stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE,
                             universal_newlines=True,
-                            shell=True
+                            shell=True,
                         )
                     except FileNotFoundError:
                         shutil.rmtree(dir_path, ignore_errors=True)
@@ -2093,18 +2104,20 @@ class Archive(models.Model):
 
                     if process_result.returncode != 0:
                         shutil.rmtree(dir_path, ignore_errors=True)
-                        return None, "An error was captured when running {}: {}".format(image_tool.name, process_result.stderr)
+                        return None, "An error was captured when running {}: {}".format(
+                            image_tool.name, process_result.stderr
+                        )
                     out_file = mod_file
                 else:
                     out_file = extracted_file
-                
+
                 current_basename = os.path.basename(current_file_tuple[0])
-                
+
                 if sha1s:
-                    out_name = "{}_{}".format(str(count).zfill(4), current_basename) 
+                    out_name = "{}_{}".format(str(count).zfill(4), current_basename)
                 else:
                     out_name = current_basename
-                
+
                 new_zipfile.write(
                     out_file,
                     arcname=out_name,
@@ -2114,20 +2127,20 @@ class Archive(models.Model):
                     with zipfile.ZipFile(current_zip) as my_nested_zip:
                         my_nested_zip.extract(current_file_tuple[0], path=dir_path)
 
-                        extracted_file = os.path.join(dir_path, current_file_tuple[0].replace('\\', '/'))
+                        extracted_file = os.path.join(dir_path, current_file_tuple[0].replace("\\", "/"))
 
                         if image_tool and file_matches_any_filter(current_file_tuple[0], image_tool.file_filters):
                             mod_file = os.path.join(dir_path, "mod_file_{}.tmp".format(count))
 
                             final_command = image_tool.executable_path.format(input=extracted_file, output=mod_file)
-                            
+
                             try:
                                 process_result = subprocess.run(
                                     final_command,
                                     stdout=subprocess.PIPE,
                                     stderr=subprocess.PIPE,
                                     universal_newlines=True,
-                                    shell=True
+                                    shell=True,
                                 )
                             except FileNotFoundError:
                                 shutil.rmtree(dir_path, ignore_errors=True)
@@ -2135,8 +2148,9 @@ class Archive(models.Model):
 
                             if process_result.returncode != 0:
                                 shutil.rmtree(dir_path, ignore_errors=True)
-                                return None, "An error was captured when running {}: {}".format(image_tool.name,
-                                                                                                process_result.stderr)
+                                return None, "An error was captured when running {}: {}".format(
+                                    image_tool.name, process_result.stderr
+                                )
                             out_file = mod_file
                         else:
                             out_file = extracted_file
@@ -2167,8 +2181,8 @@ class Archive(models.Model):
         new_archive._state.adding = True
         new_archive.public = False
         new_archive.public_date = None
-        new_archive.crc32 = ''
-        new_archive.thumbnail = ''
+        new_archive.crc32 = ""
+        new_archive.thumbnail = ""
         if image_tool:
             new_archive.filesize = None
         new_archive.extracted = False
@@ -2178,21 +2192,23 @@ class Archive(models.Model):
         new_archive.tags.set(tags)
         new_archive.alternative_sources.set(alternative_sources)
 
-        return new_archive, ''
+        return new_archive, ""
 
-    def split_archive(self, split_data: list[tuple[int, int, Optional[str], bool]], split_from_nested: bool = False) -> 'tuple[Optional[list[Archive]], str]':
+    def split_archive(
+        self, split_data: list[tuple[int, int, Optional[str], bool]], split_from_nested: bool = False
+    ) -> "tuple[Optional[list[Archive]], str]":
 
         images = self.image_set.all()
         if images.count() != self.filecount:
-            return None, 'Image count different from filecount'
+            return None, "Image count different from filecount"
 
         try:
-            my_zip = zipfile.ZipFile(self.zipped.path, 'r')
+            my_zip = zipfile.ZipFile(self.zipped.path, "r")
         except (zipfile.BadZipFile, NotImplementedError):
-            return None, 'Bad original zip file'
+            return None, "Bad original zip file"
 
         if my_zip.testzip():
-            return None, 'Bad original zip file'
+            return None, "Bad original zip file"
 
         filtered_files = get_images_from_zip(my_zip)
 
@@ -2207,7 +2223,7 @@ class Archive(models.Model):
                     image_list = list(image_group)
                     split_data_to_use.append((image_list[0][3], image_list[-1][3], nested_file, True))
             else:
-                return None, 'Not all images are nested'
+                return None, "Not all images are nested"
         else:
             split_data_to_use = split_data
 
@@ -2224,10 +2240,10 @@ class Archive(models.Model):
 
             new_file_path = os.path.join(settings.MEDIA_ROOT, new_file_name)
 
-            new_zipfile = zipfile.ZipFile(new_file_path, 'w')
+            new_zipfile = zipfile.ZipFile(new_file_path, "w")
             dir_path = mkdtemp(dir=settings.CRAWLER_SETTINGS.temp_directory_path)
 
-            for position in range(starting_position, ending_position+1):
+            for position in range(starting_position, ending_position + 1):
 
                 try:
                     if split_from_nested:
@@ -2236,14 +2252,14 @@ class Archive(models.Model):
                         current_image = images.get(position=position)
                 except Image.DoesNotExist:
                     shutil.rmtree(dir_path, ignore_errors=True)
-                    return None, 'Image from position: {} does not exist'.format(position)
+                    return None, "Image from position: {} does not exist".format(position)
 
                 archive_position = current_image.archive_position
                 current_file_tuple = filtered_files[archive_position - 1]
                 if current_file_tuple[1] is None:
                     my_zip.extract(current_file_tuple[0], path=dir_path)
 
-                    extracted_file = os.path.join(dir_path, current_file_tuple[0].replace('\\', '/'))
+                    extracted_file = os.path.join(dir_path, current_file_tuple[0].replace("\\", "/"))
 
                     out_file = extracted_file
 
@@ -2260,7 +2276,7 @@ class Archive(models.Model):
                         with zipfile.ZipFile(current_zip) as my_nested_zip:
                             my_nested_zip.extract(current_file_tuple[0], path=dir_path)
 
-                            extracted_file = os.path.join(dir_path, current_file_tuple[0].replace('\\', '/'))
+                            extracted_file = os.path.join(dir_path, current_file_tuple[0].replace("\\", "/"))
 
                             out_file = extracted_file
 
@@ -2287,8 +2303,8 @@ class Archive(models.Model):
             new_archive.public = False
             new_archive.public_date = None
             new_archive.title = new_name.replace(".zip", "")
-            new_archive.crc32 = ''
-            new_archive.thumbnail = ''
+            new_archive.crc32 = ""
+            new_archive.thumbnail = ""
             new_archive.filesize = None
             new_archive.extracted = False
             new_archive.zipped = new_file_name
@@ -2304,7 +2320,7 @@ class Archive(models.Model):
 
         my_zip.close()
 
-        return new_archives, ''
+        return new_archives, ""
 
     def get_available_thumbnail_plus_size(self) -> tuple[str, Optional[int], Optional[int]]:
         if self.thumbnail.name and self.thumbnail.url:
@@ -2319,7 +2335,7 @@ class Archive(models.Model):
         image_set = self.image_set.all()
 
         try:
-            my_zip = zipfile.ZipFile(self.zipped.path, 'r')
+            my_zip = zipfile.ZipFile(self.zipped.path, "r")
         except (zipfile.BadZipFile, NotImplementedError):
             return False
 
@@ -2333,34 +2349,48 @@ class Archive(models.Model):
         for count, filename_tuple in enumerate(filtered_files, start=1):
             image = image_set.get(archive_position=count)
             if filename_tuple[1] is None:
+
                 with my_zip.open(filename_tuple[0]) as current_zip_img:
+
                     image.sha1 = sha1_from_file_object(current_zip_img)
-                    image.set_attributes_from_image(current_zip_img, my_zip.getinfo(filename_tuple[0]).file_size, os.path.basename(filename_tuple[0]))
+
+                    image.set_attributes_from_image(
+                        current_zip_img,
+                        my_zip.getinfo(filename_tuple[0]).file_size,
+                        os.path.basename(filename_tuple[0]),
+                    )
+
                     if settings.CRAWLER_SETTINGS.auto_phash_images:
-                        hash_result = CompareObjectsService.hash_thumbnail(current_zip_img, 'phash')
+
+                        hash_result = CompareObjectsService.hash_thumbnail(current_zip_img, "phash")
                         if hash_result:
                             hash_object, _ = ItemProperties.objects.update_or_create(
-                                content_type=image_type, object_id=image.pk, tag='hash-compare',
-                                name='phash',
-                                defaults={
-                                    'value': hash_result
-                                }
+                                content_type=image_type,
+                                object_id=image.pk,
+                                tag="hash-compare",
+                                name="phash",
+                                defaults={"value": hash_result},
                             )
+
             else:
                 with my_zip.open(filename_tuple[1]) as current_zip:
                     with zipfile.ZipFile(current_zip) as my_nested_zip:
                         with my_nested_zip.open(filename_tuple[0]) as current_zip_img:
                             image.sha1 = sha1_from_file_object(current_zip_img)
-                            image.set_attributes_from_image(current_zip_img, my_nested_zip.getinfo(filename_tuple[0]).file_size, os.path.basename(filename_tuple[0]))
+                            image.set_attributes_from_image(
+                                current_zip_img,
+                                my_nested_zip.getinfo(filename_tuple[0]).file_size,
+                                os.path.basename(filename_tuple[0]),
+                            )
                             if settings.CRAWLER_SETTINGS.auto_phash_images:
-                                hash_result = CompareObjectsService.hash_thumbnail(current_zip_img, 'phash')
+                                hash_result = CompareObjectsService.hash_thumbnail(current_zip_img, "phash")
                                 if hash_result:
                                     hash_object, _ = ItemProperties.objects.update_or_create(
-                                        content_type=image_type, object_id=image.pk, tag='hash-compare',
-                                        name='phash',
-                                        defaults={
-                                            'value': hash_result
-                                        }
+                                        content_type=image_type,
+                                        object_id=image.pk,
+                                        tag="hash-compare",
+                                        name="phash",
+                                        defaults={"value": hash_result},
                                     )
             image.save()
 
@@ -2382,8 +2412,7 @@ class Archive(models.Model):
         image_result: dict[int, str] = {}
 
         try:
-            my_zip = zipfile.ZipFile(
-                self.zipped.path, 'r')
+            my_zip = zipfile.ZipFile(self.zipped.path, "r")
         except (zipfile.BadZipFile, NotImplementedError):
             return image_result
 
@@ -2395,7 +2424,7 @@ class Archive(models.Model):
         for count, filename_tuple in enumerate(filtered_files, start=1):
             image = image_set.get(archive_position=count)
             if image.extracted:
-                with open(image.image.path, 'rb') as current_img:
+                with open(image.image.path, "rb") as current_img:
                     image_result[count] = hashing_function(current_img)
             else:
                 if filename_tuple[1] is None:
@@ -2459,8 +2488,7 @@ class Archive(models.Model):
         if self.extracted:
             return False
         try:
-            my_zip = zipfile.ZipFile(
-                self.zipped.path, 'r')
+            my_zip = zipfile.ZipFile(self.zipped.path, "r")
         except (zipfile.BadZipFile, NotImplementedError):
             return False
 
@@ -2469,14 +2497,15 @@ class Archive(models.Model):
             return False
 
         os.makedirs(pjoin(settings.MEDIA_ROOT, "images/extracted/archive_{id}/full/".format(id=self.pk)), exist_ok=True)
-        os.makedirs(pjoin(settings.MEDIA_ROOT, "images/extracted/archive_{id}/thumb/".format(id=self.pk)),
-                    exist_ok=True)
+        os.makedirs(
+            pjoin(settings.MEDIA_ROOT, "images/extracted/archive_{id}/thumb/".format(id=self.pk)), exist_ok=True
+        )
 
         non_extracted_images = self.image_set.filter(extracted=False)
         if not non_extracted_images:
             self.generate_image_set()
             non_extracted_images = self.image_set.filter(extracted=False)
-        non_extracted_positions = non_extracted_images.values_list('archive_position', flat=True)
+        non_extracted_positions = non_extracted_images.values_list("archive_position", flat=True)
 
         filtered_files = get_images_from_zip(my_zip)
 
@@ -2488,40 +2517,52 @@ class Archive(models.Model):
             except Image.DoesNotExist:
                 self.generate_image_set()
                 image = non_extracted_images.get(archive_position=count)
-            image_name = os.path.split(filename_tuple[2].replace('\\', os.sep))[1]
+            image_name = os.path.split(filename_tuple[2].replace("\\", os.sep))[1]
 
             # Image
             img_path = upload_imgpath(self, image_name)
             full_img_name = pjoin(settings.MEDIA_ROOT, img_path)
             thumb_img_name = upload_thumbpath_handler(image, image_name)
 
-            with open(full_img_name, "wb") as current_new_img, my_zip.open(
-                    filename_tuple[1] or filename_tuple[0]) as current_file:
+            with (
+                open(full_img_name, "wb") as current_new_img,
+                my_zip.open(filename_tuple[1] or filename_tuple[0]) as current_file,
+            ):
                 if filename_tuple[1]:
                     with zipfile.ZipFile(current_file) as my_nested_zip:
                         with my_nested_zip.open(filename_tuple[0]) as current_img:
                             if resized:
                                 im_resized = PImage.open(current_img)
-                                if im_resized.mode != 'RGB':
-                                    im_resized = im_resized.convert('RGB')
+                                if im_resized.mode != "RGB":
+                                    im_resized = im_resized.convert("RGB")
                                 im_w, im_h = im_resized.size
                                 if im_w > im_h:
-                                    im_resized.thumbnail((settings.CRAWLER_SETTINGS.horizontal_image_max_width, 9999), PImage.Resampling.LANCZOS)
+                                    im_resized.thumbnail(
+                                        (settings.CRAWLER_SETTINGS.horizontal_image_max_width, 9999),
+                                        PImage.Resampling.LANCZOS,
+                                    )
                                 else:
-                                    im_resized.thumbnail((settings.CRAWLER_SETTINGS.vertical_image_max_width, 9999), PImage.Resampling.LANCZOS)
+                                    im_resized.thumbnail(
+                                        (settings.CRAWLER_SETTINGS.vertical_image_max_width, 9999),
+                                        PImage.Resampling.LANCZOS,
+                                    )
                                 im_resized.save(current_new_img, "JPEG")
                             else:
                                 shutil.copyfileobj(current_img, current_new_img)
                 else:
                     if resized:
                         im_resized = PImage.open(current_file)
-                        if im_resized.mode != 'RGB':
-                            im_resized = im_resized.convert('RGB')
+                        if im_resized.mode != "RGB":
+                            im_resized = im_resized.convert("RGB")
                         im_w, im_h = im_resized.size
                         if im_w > im_h:
-                            im_resized.thumbnail((settings.CRAWLER_SETTINGS.horizontal_image_max_width, 9999), PImage.Resampling.LANCZOS)
+                            im_resized.thumbnail(
+                                (settings.CRAWLER_SETTINGS.horizontal_image_max_width, 9999), PImage.Resampling.LANCZOS
+                            )
                         else:
-                            im_resized.thumbnail((settings.CRAWLER_SETTINGS.vertical_image_max_width, 9999), PImage.Resampling.LANCZOS)
+                            im_resized.thumbnail(
+                                (settings.CRAWLER_SETTINGS.vertical_image_max_width, 9999), PImage.Resampling.LANCZOS
+                            )
                         im_resized.save(current_new_img, "JPEG")
                     else:
                         shutil.copyfileobj(current_file, current_new_img)
@@ -2542,20 +2583,19 @@ class Archive(models.Model):
         self.simple_save()
         return True
 
-    def generate_image_set(self, force: bool = False, ignore_files: bool = False) -> None:
+    def generate_image_set(self, force: bool = False, ignore_files: bool = False) -> bool:
 
         if not os.path.isfile(self.zipped.path):
-            return
+            return False
         # large thumbnail and image set
         if force or not bool(self.image_set.all()):
             try:
-                my_zip = zipfile.ZipFile(
-                    self.zipped.path, 'r')
+                my_zip = zipfile.ZipFile(self.zipped.path, "r")
             except (zipfile.BadZipFile, NotImplementedError):
-                return
+                return False
             if my_zip.testzip():
                 my_zip.close()
-                return
+                return False
 
             filtered_files = get_images_from_zip(my_zip)
 
@@ -2574,6 +2614,8 @@ class Archive(models.Model):
 
             my_zip.close()
 
+        return True
+
     def fix_image_positions(self) -> None:
         image_set_present = bool(self.image_set.all())
         # large thumbnail and image set
@@ -2589,10 +2631,7 @@ class Archive(models.Model):
         if settings.ES_CLIENT and settings.ES_AUTOREFRESH:
             try:
                 settings.ES_CLIENT.delete(
-                    index=self._meta.es_index_name,  # type: ignore
-                    id=str(prev_pk),
-                    refresh=True,
-                    request_timeout=30
+                    index=self._meta.es_index_name, id=str(prev_pk), refresh=True, request_timeout=30  # type: ignore
                 )
             except elasticsearch.exceptions.NotFoundError:
                 pass
@@ -2605,26 +2644,22 @@ class Archive(models.Model):
             if (settings.ES_ONLY_INDEX_PUBLIC and self.public) or not settings.ES_ONLY_INDEX_PUBLIC:
                 payload = self.es_repr()
                 if is_new is not None:
-                    del payload['_id']
+                    del payload["_id"]
                     try:
                         settings.ES_CLIENT.update(
                             index=self._meta.es_index_name,  # type: ignore
                             id=str(self.pk),
                             refresh=True,
-                            body={
-                                'doc': payload
-                            },
-                            request_timeout=30
+                            body={"doc": payload},
+                            request_timeout=30,
                         )
                     except elasticsearch.exceptions.NotFoundError:
                         settings.ES_CLIENT.create(
                             index=self._meta.es_index_name,  # type: ignore
                             id=str(self.pk),
                             refresh=True,
-                            body={
-                                'doc': payload
-                            },
-                            request_timeout=30
+                            body={"doc": payload},
+                            request_timeout=30,
                         )
 
                 else:
@@ -2632,10 +2667,8 @@ class Archive(models.Model):
                         index=self._meta.es_index_name,  # type: ignore
                         id=str(self.pk),
                         refresh=True,
-                        body={
-                            'doc': payload
-                        },
-                        request_timeout=30
+                        body={"doc": payload},
+                        request_timeout=30,
                     )
 
     def save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
@@ -2648,8 +2681,7 @@ class Archive(models.Model):
         # large thumbnail and image set
         if not self.thumbnail or not image_set_present:
             try:
-                my_zip = zipfile.ZipFile(
-                    self.zipped.path, 'r')
+                my_zip = zipfile.ZipFile(self.zipped.path, "r")
             except (zipfile.BadZipFile, NotImplementedError):
                 return
             if my_zip.testzip():
@@ -2667,8 +2699,10 @@ class Archive(models.Model):
                     archive=self,
                     mark_reason="found_nested_files",
                     defaults={
-                        'mark_comment': mark_comment, 'mark_priority': 1.0, 'mark_check': True,
-                        'origin': ArchiveManageEntry.ORIGIN_SYSTEM
+                        "mark_comment": mark_comment,
+                        "mark_priority": 1.0,
+                        "mark_check": True,
+                        "origin": ArchiveManageEntry.ORIGIN_SYSTEM,
                     },
                 )
 
@@ -2689,32 +2723,40 @@ class Archive(models.Model):
                     if filename_tuple[1] is None:
                         with my_zip.open(filename_tuple[0]) as current_zip_img:
                             image.sha1 = sha1_from_file_object(current_zip_img)
-                            image.set_attributes_from_image(current_zip_img, my_zip.getinfo(filename_tuple[0]).file_size, os.path.basename(filename_tuple[0]))
+                            image.set_attributes_from_image(
+                                current_zip_img,
+                                my_zip.getinfo(filename_tuple[0]).file_size,
+                                os.path.basename(filename_tuple[0]),
+                            )
                             if settings.CRAWLER_SETTINGS.auto_phash_images:
-                                hash_result = CompareObjectsService.hash_thumbnail(current_zip_img, 'phash')
+                                hash_result = CompareObjectsService.hash_thumbnail(current_zip_img, "phash")
                                 if hash_result:
                                     hash_object, _ = ItemProperties.objects.update_or_create(
-                                        content_type=image_type, object_id=image.pk, tag='hash-compare',
-                                        name='phash',
-                                        defaults={
-                                            'value': hash_result
-                                        }
+                                        content_type=image_type,
+                                        object_id=image.pk,
+                                        tag="hash-compare",
+                                        name="phash",
+                                        defaults={"value": hash_result},
                                     )
                     else:
                         with my_zip.open(filename_tuple[1]) as current_zip:
                             with zipfile.ZipFile(current_zip) as my_nested_zip:
                                 with my_nested_zip.open(filename_tuple[0]) as current_zip_img:
                                     image.sha1 = sha1_from_file_object(current_zip_img)
-                                    image.set_attributes_from_image(current_zip_img, my_nested_zip.getinfo(filename_tuple[0]).file_size, os.path.basename(filename_tuple[0]))
+                                    image.set_attributes_from_image(
+                                        current_zip_img,
+                                        my_nested_zip.getinfo(filename_tuple[0]).file_size,
+                                        os.path.basename(filename_tuple[0]),
+                                    )
                                     if settings.CRAWLER_SETTINGS.auto_phash_images:
-                                        hash_result = CompareObjectsService.hash_thumbnail(current_zip_img, 'phash')
+                                        hash_result = CompareObjectsService.hash_thumbnail(current_zip_img, "phash")
                                         if hash_result:
                                             hash_object, _ = ItemProperties.objects.update_or_create(
-                                                content_type=image_type, object_id=image.pk, tag='hash-compare',
-                                                name='phash',
-                                                defaults={
-                                                    'value': hash_result
-                                                }
+                                                content_type=image_type,
+                                                object_id=image.pk,
+                                                tag="hash-compare",
+                                                name="phash",
+                                                defaults={"value": hash_result},
                                             )
 
                     image.save()
@@ -2729,14 +2771,14 @@ class Archive(models.Model):
                     with my_zip.open(first_file[0]) as current_img:
                         self.create_thumbnail_from_io_image(current_img)
                         if settings.CRAWLER_SETTINGS.auto_phash_images:
-                            self.create_or_update_thumbnail_hash('phash')
+                            self.create_or_update_thumbnail_hash("phash")
                 else:
                     with my_zip.open(first_file[1]) as current_zip:
                         with zipfile.ZipFile(current_zip) as my_nested_zip:
                             with my_nested_zip.open(first_file[0]) as current_img:
                                 self.create_thumbnail_from_io_image(current_img)
                                 if settings.CRAWLER_SETTINGS.auto_phash_images:
-                                    self.create_or_update_thumbnail_hash('phash')
+                                    self.create_or_update_thumbnail_hash("phash")
 
             my_zip.close()
 
@@ -2747,10 +2789,7 @@ class Archive(models.Model):
             self.title = self.gallery.title
             self.possible_matches.clear()
         elif self.title is None:
-            self.title = re.sub(
-                '[_]',
-                ' ',
-                os.path.splitext(os.path.basename(self.zipped.name))[0])
+            self.title = re.sub("[_]", " ", os.path.splitext(os.path.basename(self.zipped.name))[0])
 
         # tags
         if self.gallery and self.gallery.tags.all():
@@ -2766,11 +2805,11 @@ class Archive(models.Model):
             self.fill_other_file_data(other_file_datas)
 
         # crc32
-        if self.crc32 is None or self.crc32 == '':
+        if self.crc32 is None or self.crc32 == "":
             self.crc32 = calc_crc32(self.zipped.path)
 
         # original_filename
-        if self.original_filename is None or self.original_filename == '':
+        if self.original_filename is None or self.original_filename == "":
             self.original_filename = os.path.basename(self.zipped.name)
 
         self.create_mark_if_parent_gallery()
@@ -2778,22 +2817,35 @@ class Archive(models.Model):
         self.simple_save(force_update=True)
 
     def create_mark_if_parent_gallery(self):
-        if (self.gallery and self.gallery.parent_gallery and
-                (self.gallery.parent_gallery.archive_set.filter(binned=True).count() > 0 or self.gallery.parent_gallery.alternative_sources.filter(binned=True).count() > 0)):
-            mark_comment = "Linked gallery: (special-link):({})({}), has a parent gallery: (special-link):({})({})".format(self.gallery.id, self.gallery.get_absolute_url(), self.gallery.parent_gallery.id, self.gallery.parent_gallery.get_absolute_url())
+        if (
+            self.gallery
+            and self.gallery.parent_gallery
+            and (
+                self.gallery.parent_gallery.archive_set.filter(binned=True).count() > 0
+                or self.gallery.parent_gallery.alternative_sources.filter(binned=True).count() > 0
+            )
+        ):
+            mark_comment = (
+                "Linked gallery: (special-link):({})({}), has a parent gallery: (special-link):({})({})".format(
+                    self.gallery.id,
+                    self.gallery.get_absolute_url(),
+                    self.gallery.parent_gallery.id,
+                    self.gallery.parent_gallery.get_absolute_url(),
+                )
+            )
             manager_entry, _ = ArchiveManageEntry.objects.update_or_create(
                 archive=self,
                 mark_reason="gallery_with_parent",
                 defaults={
-                    'mark_comment': mark_comment, 'mark_priority': 1.0, 'mark_check': True,
-                    'origin': ArchiveManageEntry.ORIGIN_SYSTEM
+                    "mark_comment": mark_comment,
+                    "mark_priority": 1.0,
+                    "mark_check": True,
+                    "origin": ArchiveManageEntry.ORIGIN_SYSTEM,
                 },
             )
         else:
             ArchiveManageEntry.objects.filter(
-                archive=self,
-                mark_reason="gallery_with_parent",
-                mark_user__isnull=True
+                archive=self, mark_reason="gallery_with_parent", mark_user__isnull=True
             ).delete()
 
     def create_or_update_thumbnail_hash(self, algorithm: str):
@@ -2804,11 +2856,11 @@ class Archive(models.Model):
             hash_result = CompareObjectsService.hash_thumbnail(self.thumbnail.path, algorithm)
             if hash_result:
                 hash_object, _ = ItemProperties.objects.update_or_create(
-                    content_type=archive_type, object_id=self.pk, tag='hash-compare',
+                    content_type=archive_type,
+                    object_id=self.pk,
+                    tag="hash-compare",
                     name=algorithm,
-                    defaults={
-                        'value': hash_result
-                    }
+                    defaults={"value": hash_result},
                 )
 
     def fill_other_file_data(self, other_file_datas: Optional[list[ArchiveGenericFile]]):
@@ -2821,7 +2873,7 @@ class Archive(models.Model):
                     position=other_file_data.position,
                     file_name=other_file_data.file_name,
                     file_size=other_file_data.file_size,
-                    file_type=os.path.splitext(other_file_data.file_name)[1]
+                    file_type=os.path.splitext(other_file_data.file_name)[1],
                 )
                 file_entry.save()
 
@@ -2856,8 +2908,10 @@ class Archive(models.Model):
         self.simple_save()
         return True
 
-    def generate_possible_matches(self, cutoff: float = 0.4, max_matches: int = 20, clear_title: bool = False, provider_filter: str = '') -> None:
-        if not self.match_type == 'non-match':
+    def generate_possible_matches(
+        self, cutoff: float = 0.4, max_matches: int = 20, clear_title: bool = False, provider_filter: str = ""
+    ) -> None:
+        if not self.match_type == "non-match":
             return
 
         galleries_title_id = []
@@ -2868,16 +2922,13 @@ class Archive(models.Model):
             galleries = Gallery.objects.eligible_for_use()
         for gallery in galleries:
             if gallery.title:
-                galleries_title_id.append(
-                    (replace_illegal_name(gallery.title), gallery.pk))
+                galleries_title_id.append((replace_illegal_name(gallery.title), gallery.pk))
             if gallery.title_jpn:
-                galleries_title_id.append(
-                    (replace_illegal_name(gallery.title_jpn), gallery.pk))
+                galleries_title_id.append((replace_illegal_name(gallery.title_jpn), gallery.pk))
 
         if provider_filter:
             matchers = settings.PROVIDER_CONTEXT.get_matchers(
-                settings.CRAWLER_SETTINGS,
-                filter_name="{}_title".format(provider_filter), force=True
+                settings.CRAWLER_SETTINGS, filter_name="{}_title".format(provider_filter), force=True
             )
             if matchers:
                 adj_title = matchers[0][0].format_to_compare_title(self.zipped.name)
@@ -2889,8 +2940,7 @@ class Archive(models.Model):
         if clear_title:
             adj_title = clean_title(adj_title)
 
-        similar_list = get_list_closer_gallery_titles_from_list(
-            adj_title, galleries_title_id, cutoff, max_matches)
+        similar_list = get_list_closer_gallery_titles_from_list(adj_title, galleries_title_id, cutoff, max_matches)
 
         if similar_list is not None:
 
@@ -2899,10 +2949,9 @@ class Archive(models.Model):
             for similar in similar_list:
                 gallery = Gallery.objects.get(pk=similar[1])
 
-                ArchiveMatches.objects.create(archive=self,
-                                              gallery=gallery,
-                                              match_type='title',
-                                              match_accuracy=similar[2])
+                ArchiveMatches.objects.create(
+                    archive=self, gallery=gallery, match_type="title", match_accuracy=similar[2]
+                )
 
         if self.filesize is None or self.filesize <= 0:
             return
@@ -2912,10 +2961,7 @@ class Archive(models.Model):
             for similar_gallery in galleries_same_size:
                 gallery = Gallery.objects.get(pk=similar_gallery.pk)
 
-                ArchiveMatches.objects.create(archive=self,
-                                              gallery=gallery,
-                                              match_type='size',
-                                              match_accuracy=1)
+                ArchiveMatches.objects.create(archive=self, gallery=gallery, match_type="size", match_accuracy=1)
 
     def create_marks_for_similar_archives(self, excluded_archives: Optional[list[int]] = None) -> None:
         if self.crc32:
@@ -2929,19 +2975,23 @@ class Archive(models.Model):
                     archive=self,
                     mark_reason="same_crc32",
                     defaults={
-                        'mark_comment': mark_comment, 'mark_priority': 4.2, 'mark_check': True,
-                        'origin': ArchiveManageEntry.ORIGIN_SYSTEM
+                        "mark_comment": mark_comment,
+                        "mark_priority": 4.2,
+                        "mark_check": True,
+                        "origin": ArchiveManageEntry.ORIGIN_SYSTEM,
                     },
                 )
             else:
                 ArchiveManageEntry.objects.filter(
-                    archive=self,
-                    mark_reason="same_crc32",
-                    mark_user__isnull=True
+                    archive=self, mark_reason="same_crc32", mark_user__isnull=True
                 ).delete()
 
         if self.filesize and self.filecount:
-            similar_fileinfo = Archive.objects.filter(filesize=self.filesize, filecount=self.filecount).exclude(pk=self.pk).exclude(binned=True)
+            similar_fileinfo = (
+                Archive.objects.filter(filesize=self.filesize, filecount=self.filecount)
+                .exclude(pk=self.pk)
+                .exclude(binned=True)
+            )
 
             # 4.1 means high level priority
             if similar_fileinfo.count() > 0:
@@ -2951,15 +3001,15 @@ class Archive(models.Model):
                     archive=self,
                     mark_reason="same_file_info",
                     defaults={
-                        'mark_comment': mark_comment, 'mark_priority': 4.1, 'mark_check': True,
-                        'origin': ArchiveManageEntry.ORIGIN_SYSTEM
+                        "mark_comment": mark_comment,
+                        "mark_priority": 4.1,
+                        "mark_check": True,
+                        "origin": ArchiveManageEntry.ORIGIN_SYSTEM,
                     },
                 )
             else:
                 ArchiveManageEntry.objects.filter(
-                    archive=self,
-                    mark_reason="same_file_info",
-                    mark_user__isnull=True
+                    archive=self, mark_reason="same_file_info", mark_user__isnull=True
                 ).delete()
 
         if self.title:
@@ -2974,15 +3024,15 @@ class Archive(models.Model):
                     archive=self,
                     mark_reason="same_title",
                     defaults={
-                        'mark_comment': mark_comment, 'mark_priority': 0.5, 'mark_check': True,
-                        'origin': ArchiveManageEntry.ORIGIN_SYSTEM
+                        "mark_comment": mark_comment,
+                        "mark_priority": 0.5,
+                        "mark_check": True,
+                        "origin": ArchiveManageEntry.ORIGIN_SYSTEM,
                     },
                 )
             else:
                 ArchiveManageEntry.objects.filter(
-                    archive=self,
-                    mark_reason="same_title",
-                    mark_user__isnull=True
+                    archive=self, mark_reason="same_title", mark_user__isnull=True
                 ).delete()
 
         self.create_sha1_similarity_mark(excluded_archives)
@@ -2994,23 +3044,28 @@ class Archive(models.Model):
         images_from_archive = self.image_set.filter(sha1__isnull=False)
 
         if images_from_archive:
-            images_sha1 = images_from_archive.values_list('sha1', flat=True)
+            images_sha1 = images_from_archive.values_list("sha1", flat=True)
 
-            similar_images = Image.objects.filter(sha1__in=images_sha1)\
-                .exclude(pk__in=images_from_archive).filter(archive__filecount__gte=self.filecount).exclude(archive__binned=True).distinct()
+            similar_images = (
+                Image.objects.filter(sha1__in=images_sha1)
+                .exclude(pk__in=images_from_archive)
+                .filter(archive__filecount__gte=self.filecount)
+                .exclude(archive__binned=True)
+                .distinct()
+            )
 
             if excluded_archives:
                 similar_images = similar_images.exclude(archive__pk__in=excluded_archives)
 
             if similar_images:
-                similar_images_pk = similar_images.values_list('pk', flat=True)
+                similar_images_pk = similar_images.values_list("pk", flat=True)
                 archives_sha1 = Archive.objects.filter(image__in=similar_images_pk).distinct()
                 per_archives_comment = []
 
                 mark_priority = 0.0
 
                 for archive_sha1 in archives_sha1:
-                    other_images_sha1 = archive_sha1.image_set.filter(sha1__isnull=False).values_list('sha1', flat=True)
+                    other_images_sha1 = archive_sha1.image_set.filter(sha1__isnull=False).values_list("sha1", flat=True)
                     found_sha1 = list((Counter(images_sha1) & Counter(other_images_sha1)).elements())
 
                     if self.filecount:
@@ -3025,8 +3080,9 @@ class Archive(models.Model):
                                 archive_sha1.get_absolute_url(),
                                 len(found_sha1),
                                 archive_sha1.filecount,
-                                reverse('viewer:compare-archives-viewer') + '?archives={}&archives={}'.format(self.pk, archive_sha1.pk)
-                            )
+                                reverse("viewer:compare-archives-viewer")
+                                + "?archives={}&archives={}".format(self.pk, archive_sha1.pk),
+                            ),
                         )
                     )
 
@@ -3040,16 +3096,16 @@ class Archive(models.Model):
                         archive=self,
                         mark_reason="images_sha1_similarity",
                         defaults={
-                            'mark_comment': mark_comment, 'mark_priority': mark_priority, 'mark_check': True,
-                            'origin': ArchiveManageEntry.ORIGIN_SYSTEM
+                            "mark_comment": mark_comment,
+                            "mark_priority": mark_priority,
+                            "mark_check": True,
+                            "origin": ArchiveManageEntry.ORIGIN_SYSTEM,
                         },
                     )
                     return
 
         ArchiveManageEntry.objects.filter(
-            archive=self,
-            mark_reason="images_sha1_similarity",
-            mark_user__isnull=True
+            archive=self, mark_reason="images_sha1_similarity", mark_user__isnull=True
         ).delete()
 
     def create_phash_similarity_mark(self, excluded_archives: Optional[list[int]] = None) -> None:
@@ -3058,19 +3114,22 @@ class Archive(models.Model):
         image_type = ContentType.objects.get_for_model(Image)
 
         images_phashes = ItemProperties.objects.filter(
-            content_type=image_type, object_id__in=images_from_archive, tag='hash-compare',
-            name='phash'
+            content_type=image_type, object_id__in=images_from_archive, tag="hash-compare", name="phash"
         )
 
         if images_phashes:
-            images_phashes_values = images_phashes.values_list('value', flat=True)
+            images_phashes_values = images_phashes.values_list("value", flat=True)
 
-            similar_images = ItemProperties.objects.filter(
-                tag='hash-compare', name='phash', content_type=image_type, value__in=images_phashes_values)\
-                .exclude(pk__in=images_phashes).distinct()
+            similar_images = (
+                ItemProperties.objects.filter(
+                    tag="hash-compare", name="phash", content_type=image_type, value__in=images_phashes_values
+                )
+                .exclude(pk__in=images_phashes)
+                .distinct()
+            )
 
             if similar_images:
-                similar_images_pk = similar_images.values_list('object_id', flat=True)
+                similar_images_pk = similar_images.values_list("object_id", flat=True)
                 archives_phash = Archive.objects.filter(image__in=similar_images_pk).exclude(binned=True).distinct()
                 if excluded_archives:
                     archives_phash = archives_phash.exclude(pk__in=excluded_archives)
@@ -3080,13 +3139,18 @@ class Archive(models.Model):
 
                 for archive_phash in archives_phash:
                     other_images_phash = ItemProperties.objects.filter(
-                        tag='hash-compare', name='phash', content_type=image_type, object_id__in=archive_phash.image_set.all())\
-                        .values_list('value', flat=True)
+                        tag="hash-compare",
+                        name="phash",
+                        content_type=image_type,
+                        object_id__in=archive_phash.image_set.all(),
+                    ).values_list("value", flat=True)
                     found_phash = list((Counter(images_phashes_values) & Counter(other_images_phash)).elements())
 
                     # Special case: if all match images are 0000000000000000 or 8000000000000000 (black or white),
                     # Skip
-                    if all([x == IMAGE_PHASH_BLACK for x in found_phash]) or all([x == IMAGE_PHASH_WHITE for x in found_phash]):
+                    if all([x == IMAGE_PHASH_BLACK for x in found_phash]) or all(
+                        [x == IMAGE_PHASH_WHITE for x in found_phash]
+                    ):
                         continue
 
                     if self.filecount:
@@ -3101,8 +3165,9 @@ class Archive(models.Model):
                                 archive_phash.get_absolute_url(),
                                 len(found_phash),
                                 archive_phash.filecount,
-                                reverse('viewer:compare-archives-viewer') + '?archives={}&archives={}&algos=phash'.format(self.pk, archive_phash.pk)
-                            )
+                                reverse("viewer:compare-archives-viewer")
+                                + "?archives={}&archives={}&algos=phash".format(self.pk, archive_phash.pk),
+                            ),
                         )
                     )
 
@@ -3116,20 +3181,24 @@ class Archive(models.Model):
                         archive=self,
                         mark_reason="images_phash_similarity",
                         defaults={
-                            'mark_comment': mark_comment, 'mark_priority': mark_priority, 'mark_check': True,
-                            'origin': ArchiveManageEntry.ORIGIN_SYSTEM
+                            "mark_comment": mark_comment,
+                            "mark_priority": mark_priority,
+                            "mark_check": True,
+                            "origin": ArchiveManageEntry.ORIGIN_SYSTEM,
                         },
                     )
                     return
 
         ArchiveManageEntry.objects.filter(
-            archive=self,
-            mark_reason="images_phash_similarity",
-            mark_user__isnull=True
+            archive=self, mark_reason="images_phash_similarity", mark_user__isnull=True
         ).delete()
 
     def create_wanted_image_similarity_mark(self) -> None:
-        if image_processing.CAN_USE_IMAGE_MATCH and settings.CRAWLER_SETTINGS.auto_match_wanted_images and self.thumbnail:
+        if (
+            image_processing.CAN_USE_IMAGE_MATCH
+            and settings.CRAWLER_SETTINGS.auto_match_wanted_images
+            and self.thumbnail
+        ):
 
             wanted_images = WantedImage.objects.filter(active=True)
 
@@ -3149,10 +3218,11 @@ class Archive(models.Model):
                             highest_priority = wanted_image.mark_priority
 
                         found_image, created = FoundWantedImageOnArchive.objects.get_or_create(
-                            wanted_image=wanted_image, archive=self,
+                            wanted_image=wanted_image,
+                            archive=self,
                             defaults={
-                                'comment': django_tz.now(),
-                            }
+                                "comment": django_tz.now(),
+                            },
                         )
 
                         if im_result is not None:
@@ -3163,7 +3233,7 @@ class Archive(models.Model):
                                 wanted_image.image_name,
                                 wanted_image.get_image_url(),
                                 n_good_matches,
-                                found_image.get_image_url()
+                                found_image.get_image_url(),
                             )
                         )
 
@@ -3174,19 +3244,19 @@ class Archive(models.Model):
                         archive=self,
                         mark_reason="wanted_images_found",
                         defaults={
-                            'mark_comment': mark_comment, 'mark_priority': highest_priority, 'mark_check': True,
-                            'origin': ArchiveManageEntry.ORIGIN_SYSTEM
+                            "mark_comment": mark_comment,
+                            "mark_priority": highest_priority,
+                            "mark_check": True,
+                            "origin": ArchiveManageEntry.ORIGIN_SYSTEM,
                         },
                     )
                     return
 
         ArchiveManageEntry.objects.filter(
-            archive=self,
-            mark_reason="wanted_images_found",
-            mark_user__isnull=True
+            archive=self, mark_reason="wanted_images_found", mark_user__isnull=True
         ).delete()
 
-    def get_wanted_images_similarity_mark(self) -> tuple[int, list[tuple['WantedImage', int, bool, Optional[bytes]]]]:
+    def get_wanted_images_similarity_mark(self) -> tuple[int, list[tuple["WantedImage", int, bool, Optional[bytes]]]]:
         per_wanted_data = []
 
         if image_processing.CAN_USE_IMAGE_MATCH and self.thumbnail:
@@ -3208,14 +3278,7 @@ class Archive(models.Model):
                     else:
                         img_str = None
 
-                    per_wanted_data.append(
-                        (
-                            wanted_image,
-                            n_good_matches,
-                            found_match,
-                            img_str
-                        )
-                    )
+                    per_wanted_data.append((wanted_image, n_good_matches, found_match, img_str))
 
                 return 0, per_wanted_data
             else:
@@ -3235,6 +3298,20 @@ class Archive(models.Model):
             self.crc32 = calc_crc32(self.zipped.path)
             super(Archive, self).save()
 
+    def test_zip_file(self) -> None:
+        if not os.path.exists(self.zipped.path):
+            raise FileNotFoundError("Zipped file not found: {}.".format(self.zipped.path))
+        try:
+            my_zip = zipfile.ZipFile(self.zipped.path, "r")
+        except (zipfile.BadZipFile, NotImplementedError):
+            raise zipfile.BadZipFile("Bad ZIP file: {}.".format(self.zipped.path))
+
+        bad_files = my_zip.testzip()
+
+        if bad_files:
+            my_zip.close()
+            raise zipfile.BadZipFile("Bad CRC check on files: {}.".format(bad_files))
+
     def set_original_filename(self) -> None:
         if os.path.isfile(self.zipped.path):
             self.original_filename = os.path.basename(self.zipped.name)
@@ -3245,7 +3322,7 @@ class Archive(models.Model):
         if not os.path.exists(self.zipped.path):
             return False
         try:
-            my_zip = zipfile.ZipFile(self.zipped.path, 'r')
+            my_zip = zipfile.ZipFile(self.zipped.path, "r")
         except (zipfile.BadZipFile, NotImplementedError):
             return False
 
@@ -3271,8 +3348,10 @@ class Archive(models.Model):
                 archive=self,
                 mark_reason="found_nested_files",
                 defaults={
-                    'mark_comment': mark_comment, 'mark_priority': 1.0, 'mark_check': True,
-                    'origin': ArchiveManageEntry.ORIGIN_SYSTEM
+                    "mark_comment": mark_comment,
+                    "mark_priority": 1.0,
+                    "mark_check": True,
+                    "origin": ArchiveManageEntry.ORIGIN_SYSTEM,
                 },
             )
 
@@ -3303,7 +3382,7 @@ class Archive(models.Model):
         if not os.path.exists(self.zipped.path):
             return None
         try:
-            with zipfile.ZipFile(self.zipped.path, 'r') as my_zip:
+            with zipfile.ZipFile(self.zipped.path, "r") as my_zip:
                 if my_zip.testzip():
                     return None
 
@@ -3340,11 +3419,7 @@ class Archive(models.Model):
         if self.gallery:
             self.gallery.archive_set.remove(self)
 
-            ArchiveManageEntry.objects.filter(
-                archive=self,
-                mark_reason="wrong_file",
-                mark_user__isnull=True
-            ).delete()
+            ArchiveManageEntry.objects.filter(archive=self, mark_reason="wrong_file", mark_user__isnull=True).delete()
 
     def select_as_match(self, gallery_id: int) -> None:
         try:
@@ -3366,8 +3441,18 @@ class Archive(models.Model):
             matched_gallery.public = True
             matched_gallery.save()
 
+    def set_reason(self, reason: str) -> None:
+        self.reason = reason
+
+        self.simple_save()
+
     def mark_if_different_size_from_gallery(self):
-        if self.gallery and self.gallery.filesize is not None and self.gallery.filesize != 0 and self.filesize != self.gallery.filesize:
+        if (
+            self.gallery
+            and self.gallery.filesize is not None
+            and self.gallery.filesize != 0
+            and self.filesize != self.gallery.filesize
+        ):
             mark_comment = (
                 "Torrent downloaded has not the same file as the matched gallery"
                 " (different filesize or filecount). This file must be replaced if the correct one"
@@ -3377,21 +3462,22 @@ class Archive(models.Model):
                 archive=self,
                 mark_reason="wrong_file",
                 defaults={
-                    'mark_comment': mark_comment, 'mark_priority': 4.3, 'mark_check': True,
-                    'origin': ArchiveManageEntry.ORIGIN_SYSTEM
+                    "mark_comment": mark_comment,
+                    "mark_priority": 4.3,
+                    "mark_check": True,
+                    "origin": ArchiveManageEntry.ORIGIN_SYSTEM,
                 },
             )
         else:
-            ArchiveManageEntry.objects.filter(
-                archive=self,
-                mark_reason="wrong_file",
-                mark_user__isnull=True
-            ).delete()
+            ArchiveManageEntry.objects.filter(archive=self, mark_reason="wrong_file", mark_user__isnull=True).delete()
 
-    def similar_archives(self, num_common_tags: int = 0, **kwargs: typing.Any) -> 'QuerySet[Archive]':
-        return Archive.objects.filter(tags__in=self.tags.all(), **kwargs).exclude(pk=self.pk).\
-            annotate(num_common_tags=Count('pk')).filter(num_common_tags__gt=num_common_tags).distinct().\
-            order_by('-num_common_tags')
+    def similar_archives(self, num_common_tags: int = 0, **kwargs: typing.Any) -> "QuerySet[Archive]":
+        return Archive.objects.filter(tags__in=self.tags.all(), **kwargs)\
+            .exclude(pk=self.pk)\
+            .annotate(num_common_tags=Count("pk"))\
+            .filter(num_common_tags__gt=num_common_tags)\
+            .distinct()\
+            .order_by("-num_common_tags")
 
     def set_tags_from_gallery(self, gallery: Gallery, preserve_custom: bool = True, force: bool = False):
         archive_option = ArchiveOption.objects.filter(archive=self).first()
@@ -3412,13 +3498,13 @@ class Archive(models.Model):
                 self.simple_save()
 
     def do_freeze_titles(self):
-        archive_option, created = ArchiveOption.objects.get_or_create(archive=self, defaults={'freeze_titles': True})
+        archive_option, created = ArchiveOption.objects.get_or_create(archive=self, defaults={"freeze_titles": True})
         if not created:
             archive_option.freeze_titles = True
             archive_option.save()
 
     def do_freeze_tags(self):
-        archive_option, created = ArchiveOption.objects.get_or_create(archive=self, defaults={'freeze_tags': True})
+        archive_option, created = ArchiveOption.objects.get_or_create(archive=self, defaults={"freeze_tags": True})
         if not created:
             archive_option.freeze_tags = True
             archive_option.save()
@@ -3437,6 +3523,16 @@ class Archive(models.Model):
         archive_option.freeze_tags = False
         archive_option.save()
 
+    def move_gallery_to_alternative(self) -> None:
+        """Move the current gallery to alternative_sources and release the association."""
+        if self.gallery:
+            # Add to alternative_sources if not already there
+            if not self.alternative_sources.filter(id=self.gallery.id).exists():
+                self.alternative_sources.add(self.gallery)
+            # Release the current gallery association
+            self.gallery = None
+            self.save()
+
 
 class ArchiveTag(models.Model):
 
@@ -3444,19 +3540,17 @@ class ArchiveTag(models.Model):
     ORIGIN_USER = 2
 
     ORIGIN_CHOICES = (
-        (ORIGIN_SYSTEM, 'System'),
-        (ORIGIN_USER, 'User'),
+        (ORIGIN_SYSTEM, "System"),
+        (ORIGIN_USER, "User"),
     )
 
     archive = models.ForeignKey(Archive, on_delete=models.CASCADE)
     tag = models.ForeignKey(Tag, on_delete=models.CASCADE)
-    origin = models.SmallIntegerField(
-        choices=ORIGIN_CHOICES, db_index=True, default=ORIGIN_SYSTEM, blank=True
-    )
+    origin = models.SmallIntegerField(choices=ORIGIN_CHOICES, db_index=True, default=ORIGIN_SYSTEM, blank=True)
 
     class Meta:
         verbose_name_plural = "Archive Tags"
-        ordering = ['-origin']
+        ordering = ["-origin"]
 
 
 class ArchiveManageEntry(models.Model):
@@ -3465,36 +3559,38 @@ class ArchiveManageEntry(models.Model):
     ORIGIN_USER = 2
 
     ORIGIN_CHOICES = (
-        (ORIGIN_SYSTEM, 'System'),
-        (ORIGIN_USER, 'User'),
+        (ORIGIN_SYSTEM, "System"),
+        (ORIGIN_USER, "User"),
     )
 
     class Meta:
         verbose_name_plural = "Archive manage entries"
-        ordering = ['-mark_priority']
+        ordering = ["-mark_priority"]
 
-    archive = models.ForeignKey(Archive, on_delete=models.CASCADE, related_name='manage_entries')
+    archive = models.ForeignKey(Archive, on_delete=models.CASCADE, related_name="manage_entries")
     mark_check = models.BooleanField(default=False)
     mark_priority = models.FloatField(blank=True, null=True, default=1.0)
-    mark_reason = models.CharField(blank=True, default='', max_length=200)
-    mark_user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='archive_entry_mark')
-    mark_comment = models.TextField(blank=True, default='')
-    mark_extra = models.CharField(blank=True, default='', max_length=200)
-    mark_date = models.DateTimeField(default=django_tz.now)
-    origin = models.SmallIntegerField(
-        choices=ORIGIN_CHOICES, db_index=True, default=ORIGIN_SYSTEM, blank=True
+    mark_reason = models.CharField(blank=True, default="", max_length=200)
+    mark_user = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="archive_entry_mark"
     )
+    mark_comment = models.TextField(blank=True, default="")
+    mark_extra = models.CharField(blank=True, default="", max_length=200)
+    mark_date = models.DateTimeField(default=django_tz.now)
+    origin = models.SmallIntegerField(choices=ORIGIN_CHOICES, db_index=True, default=ORIGIN_SYSTEM, blank=True)
 
     resolve_check = models.BooleanField(default=False)
-    resolve_user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='archive_entry_resolver')
-    resolve_comment = models.TextField(blank=True, null=True, default='')
+    resolve_user = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="archive_entry_resolver"
+    )
+    resolve_comment = models.TextField(blank=True, null=True, default="")
 
     def mark_as_json_string(self) -> str:
         data = {
-            'mark_user': self.mark_user.username if self.mark_user else None,
-            'mark_reason': self.mark_reason,
-            'mark_comment': self.mark_comment,
-            'mark_date': self.mark_date.timestamp()
+            "mark_user": self.mark_user.username if self.mark_user else None,
+            "mark_reason": self.mark_reason,
+            "mark_comment": self.mark_comment,
+            "mark_date": self.mark_date.timestamp(),
         }
         return json.dumps(data)
 
@@ -3512,34 +3608,29 @@ class ArchiveRecycleEntry(models.Model):
     ORIGIN_USER = 2
 
     ORIGIN_CHOICES = (
-        (ORIGIN_SYSTEM, 'System'),
-        (ORIGIN_USER, 'User'),
+        (ORIGIN_SYSTEM, "System"),
+        (ORIGIN_USER, "User"),
     )
 
     class Meta:
         verbose_name_plural = "Archive recycle entries"
-        ordering = ['-date_deleted']
+        ordering = ["-date_deleted"]
 
-    archive = models.OneToOneField(
-        Archive,
-        on_delete=models.CASCADE,
-        primary_key=True,
-        related_name='recycle_entry'
+    archive = models.OneToOneField(Archive, on_delete=models.CASCADE, primary_key=True, related_name="recycle_entry")
+    reason = models.CharField(blank=True, default="", max_length=200)
+    user = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="archive_recycle_entry"
     )
-    reason = models.CharField(blank=True, default='', max_length=200)
-    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='archive_recycle_entry')
-    comment = models.TextField(blank=True, default='')
+    comment = models.TextField(blank=True, default="")
     date_deleted = models.DateTimeField(default=django_tz.now)
-    origin = models.SmallIntegerField(
-        choices=ORIGIN_CHOICES, db_index=True, default=ORIGIN_SYSTEM, blank=True
-    )
+    origin = models.SmallIntegerField(choices=ORIGIN_CHOICES, db_index=True, default=ORIGIN_SYSTEM, blank=True)
 
     def as_json_string(self) -> str:
         data = {
-            'user': self.user.username if self.user else None,
-            'reason': self.reason,
-            'comment': self.comment,
-            'date': self.date_deleted.timestamp()
+            "user": self.user.username if self.user else None,
+            "reason": self.reason,
+            "comment": self.comment,
+            "date": self.date_deleted.timestamp(),
         }
         return json.dumps(data)
 
@@ -3547,12 +3638,15 @@ class ArchiveRecycleEntry(models.Model):
 class ArchiveGroup(models.Model):
     title = models.CharField(max_length=500, blank=False, null=False)
     title_slug = models.SlugField(unique=True)
-    details = models.TextField(
-        blank=True, null=True, default='')
+    details = models.TextField(blank=True, null=True, default="")
     archives: models.ManyToManyField = models.ManyToManyField(
-        Archive, related_name="archive_groups",
-        blank=True, default='',
-        through='ArchiveGroupEntry', through_fields=('archive_group', 'archive'))
+        Archive,
+        related_name="archive_groups",
+        blank=True,
+        default="",
+        through="ArchiveGroupEntry",
+        through_fields=("archive_group", "archive"),
+    )
     position = models.PositiveIntegerField(default=1)
     public = models.BooleanField(default=False)
     create_date = models.DateTimeField(auto_now_add=True)
@@ -3560,13 +3654,13 @@ class ArchiveGroup(models.Model):
 
     class Meta:
         verbose_name_plural = "Archive groups"
-        ordering = ['position']
+        ordering = ["position"]
 
     def __str__(self) -> str:
         return self.title
 
     def get_absolute_url(self) -> str:
-        return reverse('viewer:archive-group', args=[str(self.title_slug)])
+        return reverse("viewer:archive-group", args=[str(self.title_slug)])
 
     def save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
         if not self.title_slug:
@@ -3575,24 +3669,23 @@ class ArchiveGroup(models.Model):
             for i in itertools.count(1):
                 if not ArchiveGroup.objects.filter(title_slug=slug_candidate).exists():
                     break
-                slug_candidate = slugify('{}-{}'.format(self.title, i), allow_unicode=True)
+                slug_candidate = slugify("{}-{}".format(self.title, i), allow_unicode=True)
 
             self.title_slug = slug_candidate
         super().save(*args, **kwargs)
 
     def delete_text_report(self) -> str:
-        data: dict[str, typing.Any] = {
-        }
+        data: dict[str, typing.Any] = {}
         if self.title:
-            data['title'] = self.title
+            data["title"] = self.title
         if self.details:
-            data['details'] = self.details
+            data["details"] = self.details
         if not data:
-            return ''
+            return ""
         return json.dumps(data, ensure_ascii=False)
 
 
-class ArchiveGroupEntryManager(models.Manager['ArchiveGroupEntry']):
+class ArchiveGroupEntryManager(models.Manager["ArchiveGroupEntry"]):
     def get_queryset(self) -> models.QuerySet:
         return models.QuerySet(self.model, using=self._db)
 
@@ -3606,20 +3699,23 @@ class ArchiveGroupEntryManager(models.Manager['ArchiveGroupEntry']):
 class ArchiveGroupEntry(models.Model):
     archive_group = models.ForeignKey(ArchiveGroup, on_delete=models.CASCADE)
     archive = models.ForeignKey(Archive, on_delete=models.CASCADE)
-    title = models.CharField(max_length=500, blank=True, default='')
+    title = models.CharField(max_length=500, blank=True, default="")
     position = models.PositiveIntegerField(blank=True, null=True)
 
     objects = ArchiveGroupEntryManager()
 
     class Meta:
         verbose_name_plural = "Archive group entries"
-        ordering = ['position']
+        ordering = ["position"]
 
     def save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
         if not self.position:
-            last_position = ArchiveGroupEntry.objects.filter(
-                archive_group=self.archive_group
-            ).exclude(position__isnull=True).order_by('-position').first()
+            last_position = (
+                ArchiveGroupEntry.objects.filter(archive_group=self.archive_group)
+                .exclude(position__isnull=True)
+                .order_by("-position")
+                .first()
+            )
 
             if last_position is None or last_position.position is None:
                 position_candidate = 1
@@ -3628,7 +3724,7 @@ class ArchiveGroupEntry(models.Model):
 
             self.position = position_candidate
 
-        self.title = self.title or self.archive.title or self.archive.title or ''
+        self.title = self.title or self.archive.title or self.archive.title or ""
 
         super().save(*args, **kwargs)
 
@@ -3636,14 +3732,12 @@ class ArchiveGroupEntry(models.Model):
 class ArchiveMatches(models.Model):
     archive = models.ForeignKey(Archive, on_delete=models.CASCADE)
     gallery = models.ForeignKey(Gallery, on_delete=models.CASCADE)
-    match_type = models.CharField(
-        'Match type', max_length=40, blank=True, null=True, default='')
-    match_accuracy = models.FloatField(
-        'Match accuracy', blank=True, null=True, default=0.0)
+    match_type = models.CharField("Match type", max_length=40, blank=True, null=True, default="")
+    match_accuracy = models.FloatField("Match accuracy", blank=True, null=True, default=0.0)
 
     class Meta:
         verbose_name_plural = "Archive matches"
-        ordering = ['-match_accuracy']
+        ordering = ["-match_accuracy"]
 
 
 class ArchiveFileEntry(models.Model):
@@ -3651,17 +3745,17 @@ class ArchiveFileEntry(models.Model):
     archive_position = models.PositiveIntegerField(default=1)
     position = models.PositiveIntegerField(default=1)
     sha1 = models.CharField(max_length=50, blank=True, null=True)
-    file_name = models.CharField(max_length=500, blank=True, default='')
-    file_type = models.CharField(max_length=40, blank=True, default='')
+    file_name = models.CharField(max_length=500, blank=True, default="")
+    file_type = models.CharField(max_length=40, blank=True, default="")
     file_size = models.PositiveIntegerField(default=0)
-    description = models.CharField(max_length=500, blank=True, default='')
+    description = models.CharField(max_length=500, blank=True, default="")
 
     class Meta:
         verbose_name_plural = "Archive file entries"
-        ordering = ['-position']
+        ordering = ["-position"]
 
 
-def upload_imgpath(instance: 'Archive', filename: str) -> str:
+def upload_imgpath(instance: "Archive", filename: str) -> str:
     file_name, file_extension = os.path.splitext(filename)
     return "images/extracted/archive_{id}/full/{uuid}{extension}".format(
         uuid=uuid.uuid4(),
@@ -3670,7 +3764,7 @@ def upload_imgpath(instance: 'Archive', filename: str) -> str:
     )
 
 
-def upload_imgpath_handler(instance: 'Image', filename: str) -> str:
+def upload_imgpath_handler(instance: "Image", filename: str) -> str:
     file_name, file_extension = os.path.splitext(filename)
     return "images/extracted/archive_{id}/full/{uuid}{extension}".format(
         uuid=uuid.uuid4(),
@@ -3679,7 +3773,7 @@ def upload_imgpath_handler(instance: 'Image', filename: str) -> str:
     )
 
 
-def upload_thumbpath_handler(instance: 'Image', filename: str) -> str:
+def upload_thumbpath_handler(instance: "Image", filename: str) -> str:
     file_name, file_extension = os.path.splitext(filename)
     return "images/extracted/archive_{id}/thumb/{uuid}{extension}".format(
         uuid=uuid.uuid4(),
@@ -3690,10 +3784,12 @@ def upload_thumbpath_handler(instance: 'Image', filename: str) -> str:
 
 class Image(models.Model):
     image = models.ImageField(
-        upload_to=upload_imgpath_handler, blank=True,
-        null=True, max_length=500,
-        height_field='image_height',
-        width_field='image_width'
+        upload_to=upload_imgpath_handler,
+        blank=True,
+        null=True,
+        max_length=500,
+        height_field="image_height",
+        width_field="image_width",
     )
     image_name = models.CharField(max_length=500, blank=True, null=True)
     image_height = models.PositiveIntegerField(blank=True, null=True)
@@ -3706,10 +3802,12 @@ class Image(models.Model):
     thumbnail_height = models.PositiveIntegerField(blank=True, null=True)
     thumbnail_width = models.PositiveIntegerField(blank=True, null=True)
     thumbnail = models.ImageField(
-        upload_to=upload_thumbpath_handler, blank=True,
-        null=True, max_length=500,
-        height_field='thumbnail_height',
-        width_field='thumbnail_width'
+        upload_to=upload_thumbpath_handler,
+        blank=True,
+        null=True,
+        max_length=500,
+        height_field="thumbnail_height",
+        width_field="thumbnail_width",
     )
     archive = models.ForeignKey(Archive, on_delete=models.CASCADE)
     archive_position = models.PositiveIntegerField(default=1)
@@ -3718,7 +3816,7 @@ class Image(models.Model):
     extracted = models.BooleanField(default=False)
 
     class Meta:
-        ordering = ['position']
+        ordering = ["position"]
         indexes = [
             models.Index(fields=["sha1"], name="image_sha1"),
         ]
@@ -3736,11 +3834,13 @@ class Image(models.Model):
 
     def dump_image(self, request: HttpRequest) -> DataDict:
         image_dict: dict[str, typing.Any] = {
-            'position': self.position,
-            'url': request.build_absolute_uri(self.image.url),
-            'is_horizontal': self.image_width / self.image_height > 1 if self.image_width and self.image_height else False,
-            'width': self.image_width,
-            'height': self.image_height
+            "position": self.position,
+            "url": request.build_absolute_uri(self.image.url),
+            "is_horizontal": (
+                self.image_width / self.image_height > 1 if self.image_width and self.image_height else False
+            ),
+            "width": self.image_width,
+            "height": self.image_height,
         }
 
         return image_dict
@@ -3762,11 +3862,11 @@ class Image(models.Model):
             else:
                 if full_image:
                     im: PImage.Image | ImageFile.ImageFile = PImage.open(io.BytesIO(full_image))
-                    if im.mode != 'RGB':
-                        im = im.convert('RGB')
+                    if im.mode != "RGB":
+                        im = im.convert("RGB")
                     im.thumbnail((200, 290), PImage.Resampling.LANCZOS)
                     img_bytes = io.BytesIO()
-                    im.save(img_bytes, format='JPEG')
+                    im.save(img_bytes, format="JPEG")
                     return img_bytes.getvalue()
                 else:
                     return None
@@ -3781,20 +3881,22 @@ class Image(models.Model):
             hash_result = CompareObjectsService.hash_thumbnail(io.BytesIO(image_data), algorithm)
             if hash_result:
                 hash_object, _ = ItemProperties.objects.update_or_create(
-                    content_type=image_type, object_id=self.pk, tag='hash-compare',
+                    content_type=image_type,
+                    object_id=self.pk,
+                    tag="hash-compare",
                     name=algorithm,
-                    defaults={
-                        'value': hash_result
-                    }
+                    defaults={"value": hash_result},
                 )
 
     def get_absolute_url(self) -> str:
-        return reverse('viewer:image', args=[str(self.id)])
+        return reverse("viewer:image", args=[str(self.id)])
 
     def get_image_url(self) -> str:
         return self.image.url
 
-    def set_attributes_from_image(self, image_object: typing.IO[bytes], image_size: Optional[int] = None, image_name: Optional[str] = None) -> None:
+    def set_attributes_from_image(
+        self, image_object: typing.IO[bytes], image_size: Optional[int] = None, image_name: Optional[str] = None
+    ) -> None:
         im = PImage.open(image_object)
         size = im.size
         self.original_width = size[0]
@@ -3823,11 +3925,11 @@ class ItemProperties(models.Model):
         indexes = [
             models.Index(fields=["content_type", "object_id"]),
         ]
-        unique_together = ('content_type', 'object_id', 'name')
+        unique_together = ("content_type", "object_id", "name")
 
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
     object_id = models.PositiveIntegerField()
-    content_object = GenericForeignKey('content_type', 'object_id')
+    content_object = GenericForeignKey("content_type", "object_id")
     name = models.CharField(max_length=50)
     tag = models.SlugField()
     value = models.CharField(max_length=100)
@@ -3836,13 +3938,11 @@ class ItemProperties(models.Model):
 class UserArchivePrefs(models.Model):
 
     class Meta:
-        constraints = [
-            models.UniqueConstraint(fields=['user', 'archive'], name='unique_user_archive')
-        ]
+        constraints = [models.UniqueConstraint(fields=["user", "archive"], name="unique_user_archive")]
 
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     archive = models.ForeignKey(Archive, on_delete=models.CASCADE)
-    favorite_group = models.IntegerField('Favorite Group', default=1)
+    favorite_group = models.IntegerField("Favorite Group", default=1)
 
 
 class Profile(models.Model):
@@ -3854,7 +3954,7 @@ class Profile(models.Model):
         )
 
     user = models.OneToOneField(User, on_delete=models.CASCADE)
-    bio = models.TextField(max_length=500, blank=True, default='')
+    bio = models.TextField(max_length=500, blank=True, default="")
     notify_new_submissions = models.BooleanField(default=False, blank=True)
     notify_new_private_archive = models.BooleanField(default=False, blank=True)
     notify_wanted_gallery_found = models.BooleanField(default=False, blank=True)
@@ -3878,15 +3978,15 @@ class UserLongLivedToken(models.Model):
     @staticmethod
     def create_salted_key_from_key(secret_key):
         salted_key = salted_hmac(
-            'panda.backup.py',
+            "panda.backup.py",
             secret_key,
             secret=settings.SECRET_KEY,
-            algorithm='sha256',
+            algorithm="sha256",
         ).hexdigest()
 
         return salted_key
 
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='long_lived_tokens')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="long_lived_tokens")
     name = models.CharField(max_length=100, unique=True)
     key = models.CharField(max_length=256, null=False, blank=False, unique=True)
     expire_date = models.DateTimeField(null=False, blank=False, default=in_10_years)
@@ -3900,49 +4000,52 @@ def create_profile(sender, instance, created, **kwargs):
 
 
 def users_with_perm(app: str, perm_name: str, *args: typing.Any, **kwargs: typing.Any):
-    return User.objects.filter(
-        Q(is_superuser=True)
-        | Q(user_permissions__codename=perm_name, user_permissions__content_type__app_label=app)
-        | Q(groups__permissions__codename=perm_name, groups__permissions__content_type__app_label=app)
-    ).filter(is_active=True).filter(*args, **kwargs).distinct()
+    return (
+        User.objects.filter(
+            Q(is_superuser=True)
+            | Q(user_permissions__codename=perm_name, user_permissions__content_type__app_label=app)
+            | Q(groups__permissions__codename=perm_name, groups__permissions__content_type__app_label=app)
+        )
+        .filter(is_active=True)
+        .filter(*args, **kwargs)
+        .distinct()
+    )
 
 
-def upload_mention_handler(instance: 'Mention', filename: str) -> str:
-    return "mentions/{id}/fn_{file}{ext}".format(
-        id=instance.id,
-        file=uuid.uuid4(),
-        ext=filename)
+def upload_mention_handler(instance: "Mention", filename: str) -> str:
+    return "mentions/{id}/fn_{file}{ext}".format(id=instance.id, file=uuid.uuid4(), ext=filename)
 
 
-def upload_mention_thumb_handler(instance: 'Mention', filename: str) -> str:
-    return "mentions/{id}/tn_{file}{ext}".format(
-        id=instance.id,
-        file=uuid.uuid4(),
-        ext=filename)
+def upload_mention_thumb_handler(instance: "Mention", filename: str) -> str:
+    return "mentions/{id}/tn_{file}{ext}".format(id=instance.id, file=uuid.uuid4(), ext=filename)
 
 
 class Mention(models.Model):
-    mention_date = models.DateTimeField('Mention date', blank=True, null=True)
-    release_date = models.DateTimeField('Release date', blank=True, null=True)
-    type = models.CharField(
-        max_length=50, blank=True, null=True, default='')
-    source = models.CharField(
-        max_length=50, blank=True, null=True, default='')
-    comment = models.CharField(
-        max_length=100, blank=True, null=True, default='')
-    image = models.ImageField(upload_to=upload_mention_handler, blank=True,
-                              null=True, max_length=500,
-                              height_field='image_height',
-                              width_field='image_width')
+    mention_date = models.DateTimeField("Mention date", blank=True, null=True)
+    release_date = models.DateTimeField("Release date", blank=True, null=True)
+    type = models.CharField(max_length=50, blank=True, null=True, default="")
+    source = models.CharField(max_length=50, blank=True, null=True, default="")
+    comment = models.CharField(max_length=100, blank=True, null=True, default="")
+    image = models.ImageField(
+        upload_to=upload_mention_handler,
+        blank=True,
+        null=True,
+        max_length=500,
+        height_field="image_height",
+        width_field="image_width",
+    )
     image_height = models.PositiveIntegerField(blank=True, null=True)
     image_width = models.PositiveIntegerField(blank=True, null=True)
     thumbnail_height = models.PositiveIntegerField(blank=True, null=True)
     thumbnail_width = models.PositiveIntegerField(blank=True, null=True)
     thumbnail = models.ImageField(
-        upload_to=upload_mention_thumb_handler, blank=True,
-        null=True, max_length=500,
-        height_field='thumbnail_height',
-        width_field='thumbnail_width')
+        upload_to=upload_mention_thumb_handler,
+        blank=True,
+        null=True,
+        max_length=500,
+        height_field="thumbnail_height",
+        width_field="thumbnail_width",
+    )
 
     def __str__(self) -> str:
         return str(self.mention_date)
@@ -3951,9 +4054,9 @@ class Mention(models.Model):
         tf2 = NamedTemporaryFile()
 
         request_dict = {
-            'stream': True,
-            'headers': settings.CRAWLER_SETTINGS.requests_headers,
-            'timeout': settings.CRAWLER_SETTINGS.timeout_timer,
+            "stream": True,
+            "headers": settings.CRAWLER_SETTINGS.requests_headers,
+            "timeout": settings.CRAWLER_SETTINGS.timeout_timer,
         }
 
         response = request_with_retries(
@@ -3997,39 +4100,33 @@ class Mention(models.Model):
 
 
 class Artist(models.Model):
-    name = models.CharField(
-        max_length=50, blank=True, null=True, default='')
-    name_jpn = models.CharField(
-        max_length=50, blank=True, null=True, default='')
-    twitter_handle = models.CharField(
-        max_length=50, blank=True, null=True, default='')
+    name = models.CharField(max_length=50, blank=True, null=True, default="")
+    name_jpn = models.CharField(max_length=50, blank=True, null=True, default="")
+    twitter_handle = models.CharField(max_length=50, blank=True, null=True, default="")
 
     def __str__(self) -> str:
-        return self.name or self.name_jpn or self.twitter_handle or ''
+        return self.name or self.name_jpn or self.twitter_handle or ""
 
 
-class WantedGalleryManager(models.Manager['WantedGallery']):
+class WantedGalleryManager(models.Manager["WantedGallery"]):
     def not_found(self) -> QuerySet:
         return self.filter(found=False)
 
     def eligible_to_search(self) -> QuerySet:
         return self.filter(
             Q(Q(Q(release_date__lte=django_tz.now()) | Q(release_date__isnull=True)), should_search=True)
-            & (
-                Q(found=False)
-                | Q(found=True, keep_searching=True)
-            )
+            & (Q(found=False) | Q(found=True, keep_searching=True))
             & Q(restricted_to_links=False)
         )
 
 
 class ProcessedLinks(models.Model):
-    provider = models.ForeignKey('Provider', on_delete=models.SET_NULL, null=True, blank=True)
-    source_id = models.CharField('Source Id', max_length=200, unique=True)
+    provider = models.ForeignKey("Provider", on_delete=models.SET_NULL, null=True, blank=True)
+    source_id = models.CharField("Source Id", max_length=200, unique=True)
     url = models.URLField(max_length=2000)
-    title = models.CharField(max_length=500, blank=True, null=True, default='')
-    link_date = models.DateTimeField('Link date', blank=True, null=True)
-    content = models.TextField(blank=True, default='')
+    title = models.CharField(max_length=500, blank=True, null=True, default="")
+    link_date = models.DateTimeField("Link date", blank=True, null=True)
+    content = models.TextField(blank=True, default="")
     create_date = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -4039,66 +4136,72 @@ class ProcessedLinks(models.Model):
 class WantedGallery(models.Model):
     objects = WantedGalleryManager()
 
-    title = models.CharField(max_length=500, blank=True, null=True, default='')
-    title_jpn = models.CharField(
-        max_length=500, blank=True, null=True, default='')
-    book_type = models.CharField(
-        'Book type', max_length=20, blank=True, null=True, default='')
-    publisher = models.CharField(
-        'Publisher', max_length=20, blank=True, null=True, default='')
+    title = models.CharField(max_length=500, blank=True, null=True, default="")
+    title_jpn = models.CharField(max_length=500, blank=True, null=True, default="")
+    book_type = models.CharField("Book type", max_length=20, blank=True, null=True, default="")
+    publisher = models.CharField("Publisher", max_length=20, blank=True, null=True, default="")
     public = models.BooleanField(default=False)
-    release_date = models.DateTimeField('Release date', blank=True, null=True, default=django_tz.now)
+    release_date = models.DateTimeField("Release date", blank=True, null=True, default=django_tz.now)
     mentions = models.ManyToManyField(Mention, blank=True)
     artists = models.ManyToManyField(Artist, blank=True)
     cover_artist = models.ForeignKey(
-        Artist, blank=True, null=True, related_name="cover_artist", on_delete=models.SET_NULL)
-    should_search = models.BooleanField('Should search', blank=True, default=False)
-    keep_searching = models.BooleanField('Keep searching', blank=True, default=False)
-    notify_when_found = models.BooleanField('Notify when found', default=True)
-    reason = models.CharField(
-        'Reason', max_length=200, blank=True, null=True, default='backup')
-    search_title = models.CharField(max_length=500, blank=True, default='')
-    regexp_search_title = models.BooleanField('Regexp search title', blank=True, default=False)
-    regexp_search_title_icase = models.BooleanField('Regexp search title case-insensitive', blank=True, default=False)
-    unwanted_title = models.CharField(max_length=500, blank=True, default='')
-    regexp_unwanted_title = models.BooleanField('Regexp unwanted title', blank=True, default=False)
-    regexp_unwanted_title_icase = models.BooleanField('Regexp unwanted title case-insensitive', blank=True, default=False)
+        Artist, blank=True, null=True, related_name="cover_artist", on_delete=models.SET_NULL
+    )
+    should_search = models.BooleanField("Should search", blank=True, default=False)
+    keep_searching = models.BooleanField("Keep searching", blank=True, default=False)
+    notify_when_found = models.BooleanField("Notify when found", default=True)
+    reason = models.CharField("Reason", max_length=200, blank=True, null=True, default="backup")
+    search_title = models.CharField(max_length=500, blank=True, default="")
+    regexp_search_title = models.BooleanField("Regexp search title", blank=True, default=False)
+    regexp_search_title_icase = models.BooleanField("Regexp search title case-insensitive", blank=True, default=False)
+    unwanted_title = models.CharField(max_length=500, blank=True, default="")
+    regexp_unwanted_title = models.BooleanField("Regexp unwanted title", blank=True, default=False)
+    regexp_unwanted_title_icase = models.BooleanField(
+        "Regexp unwanted title case-insensitive", blank=True, default=False
+    )
     wanted_page_count_lower = models.IntegerField(blank=True, default=0)
     wanted_page_count_upper = models.IntegerField(blank=True, default=0)
     wanted_tags = models.ManyToManyField(Tag, blank=True)
     wanted_tags_exclusive_scope = models.BooleanField(blank=True, default=False)
-    exclusive_scope_name = models.CharField(max_length=200, blank=True, default='')
-    wanted_tags_accept_if_none_scope = models.CharField(max_length=200, blank=True, default='')
+    exclusive_scope_name = models.CharField(max_length=200, blank=True, default="")
+    wanted_tags_accept_if_none_scope = models.CharField(max_length=200, blank=True, default="")
     unwanted_tags: models.ManyToManyField = models.ManyToManyField(Tag, blank=True, related_name="unwanted_tags")
-    category = models.CharField(max_length=20, blank=True, null=True, default='')
-    categories: models.ManyToManyField = models.ManyToManyField('Category', blank=True)
-    wanted_providers: models.ManyToManyField = models.ManyToManyField('Provider', blank=True)
-    unwanted_providers: models.ManyToManyField = models.ManyToManyField('Provider', blank=True, related_name="unwanted_providers")
-    wait_for_time = models.DurationField('Wait for time', blank=True, null=True)
+    category = models.CharField(max_length=20, blank=True, null=True, default="")
+    categories: models.ManyToManyField = models.ManyToManyField("Category", blank=True)
+    wanted_providers: models.ManyToManyField = models.ManyToManyField("Provider", blank=True)
+    unwanted_providers: models.ManyToManyField = models.ManyToManyField(
+        "Provider", blank=True, related_name="unwanted_providers"
+    )
+    wait_for_time = models.DurationField("Wait for time", blank=True, null=True)
     found_galleries: models.ManyToManyField = models.ManyToManyField(
-        Gallery, related_name="found_galleries",
+        Gallery,
+        related_name="found_galleries",
         blank=True,
-        through='FoundGallery', through_fields=('wanted_gallery', 'gallery'))
+        through="FoundGallery",
+        through_fields=("wanted_gallery", "gallery"),
+    )
 
     possible_matches: models.ManyToManyField = models.ManyToManyField(
-        Gallery, related_name="gallery_matches",
+        Gallery,
+        related_name="gallery_matches",
         blank=True,
-        through='GalleryMatch', through_fields=('wanted_gallery', 'gallery'))
-    found = models.BooleanField('Found', blank=True, default=False)
-    date_found = models.DateTimeField('Date found', blank=True, null=True)
+        through="GalleryMatch",
+        through_fields=("wanted_gallery", "gallery"),
+    )
+    found = models.BooleanField("Found", blank=True, default=False)
+    date_found = models.DateTimeField("Date found", blank=True, null=True)
 
-    page_count = models.IntegerField(
-        'Page count', blank=True, null=True, default=0)
+    page_count = models.IntegerField("Page count", blank=True, null=True, default=0)
     create_date = models.DateTimeField(auto_now_add=True)
     last_modified = models.DateTimeField(auto_now=True, blank=True, null=True)
 
     add_to_archive_group = models.ForeignKey(ArchiveGroup, blank=True, null=True, on_delete=models.SET_NULL)
 
-    restricted_to_links = models.BooleanField('Restricted to MonitoredLinks', blank=True, default=False)
+    restricted_to_links = models.BooleanField("Restricted to MonitoredLinks", blank=True, default=False)
 
     class Meta:
         verbose_name_plural = "Wanted galleries"
-        ordering = ['-release_date']
+        ordering = ["-release_date"]
         permissions = (
             ("edit_search_filter_wanted_gallery", "Can edit wanted galleries search filter parameters"),
             ("edit_search_dates_wanted_gallery", "Can edit wanted galleries search date parameters"),
@@ -4106,11 +4209,11 @@ class WantedGallery(models.Model):
         )
 
     def __str__(self) -> str:
-        return self.title or self.title_jpn or ''
+        return self.title or self.title_jpn or ""
 
     def mentions_str(self) -> str:
         lst = [str(x) for x in self.mentions.all()]
-        return ', '.join(lst)
+        return ", ".join(lst)
 
     def mentions_list(self) -> list[str]:
         lst = [str(x) for x in self.mentions.all()]
@@ -4131,7 +4234,7 @@ class WantedGallery(models.Model):
     def calculate_nearest_release_date(self) -> None:
         if not self.mentions:
             return
-        mention_dates_objs = self.mentions.exclude(release_date=None).values_list('release_date', flat=True)
+        mention_dates_objs = self.mentions.exclude(release_date=None).values_list("release_date", flat=True)
         if not mention_dates_objs:
             return
         mention_dates = [x.date() for x in mention_dates_objs if x is not None]
@@ -4140,15 +4243,13 @@ class WantedGallery(models.Model):
         self.release_date = datetime.combine(most_occurring_date, datetime.min.time())
         self.save()
 
-    def create_gallery_matches_internally(self, provider_filter: str = '') -> None:
+    def create_gallery_matches_internally(self, provider_filter: str = "") -> None:
 
         matched_galleries = self.get_matching_galleries(provider_filter)
 
         for matched_gallery in matched_galleries:
             GalleryMatch.objects.get_or_create(
-                wanted_gallery=self,
-                gallery=matched_gallery,
-                defaults={'match_accuracy': 1}
+                wanted_gallery=self, gallery=matched_gallery, defaults={"match_accuracy": 1}
             )
 
     def create_found_galleries_internally(self) -> None:
@@ -4159,14 +4260,11 @@ class WantedGallery(models.Model):
             self.found = True
             self.date_found = django_tz.now()
             self.save()
-            FoundGallery.objects.get_or_create(
-                wanted_gallery=self,
-                gallery=matched_gallery
-            )
+            FoundGallery.objects.get_or_create(wanted_gallery=self, gallery=matched_gallery)
 
-    def get_matching_galleries(self, provider_filter: str = '') -> list['Gallery']:
+    def get_matching_galleries(self, provider_filter: str = "") -> list["Gallery"]:
 
-        matching_galleries: list['Gallery'] = []
+        matching_galleries: list["Gallery"] = []
 
         galleries = Gallery.objects.eligible_for_use().filter(~Q(foundgallery__wanted_gallery=self))
 
@@ -4185,83 +4283,37 @@ class WantedGallery(models.Model):
             if self.search_title:
                 if self.regexp_search_title:
                     if self.regexp_search_title_icase:
-                        q_objects_search_title.add(
-                            Q(title__iregex=self.search_title),
-                            Q.OR
-                        )
-                        q_objects_search_title.add(
-                            Q(title_jpn__iregex=self.search_title),
-                            Q.OR
-                        )
+                        q_objects_search_title.add(Q(title__iregex=self.search_title), Q.OR)
+                        q_objects_search_title.add(Q(title_jpn__iregex=self.search_title), Q.OR)
                     else:
-                        q_objects_search_title.add(
-                            Q(title__regex=self.search_title),
-                            Q.OR
-                        )
-                        q_objects_search_title.add(
-                            Q(title_jpn__regex=self.search_title),
-                            Q.OR
-                        )
+                        q_objects_search_title.add(Q(title__regex=self.search_title), Q.OR)
+                        q_objects_search_title.add(Q(title_jpn__regex=self.search_title), Q.OR)
                 else:
-                    q_formatted = '%' + self.search_title.replace(' ', '%') + '%'
+                    q_formatted = "%" + self.search_title.replace(" ", "%") + "%"
                     q_objects_search_title.add(
-                        Q(
-                            Q(title__ss=q_formatted),
-                            ~Q(title__exact=''),
-                            Q(title__isnull=False)
-                        ),
-                        Q.OR
+                        Q(Q(title__ss=q_formatted), ~Q(title__exact=""), Q(title__isnull=False)), Q.OR
                     )
                     q_objects_search_title.add(
-                        Q(
-                            Q(title_jpn__ss=q_formatted),
-                            ~Q(title_jpn__exact=''),
-                            Q(title_jpn__isnull=False)
-                        ),
-                        Q.OR
+                        Q(Q(title_jpn__ss=q_formatted), ~Q(title_jpn__exact=""), Q(title_jpn__isnull=False)), Q.OR
                     )
 
             if self.unwanted_title:
                 if self.regexp_unwanted_title:
                     if self.regexp_unwanted_title_icase:
-                        q_objects_unwanted_title.add(
-                            ~Q(title__iregex=self.unwanted_title),
-                            Q.AND
-                        )
-                        q_objects_unwanted_title.add(
-                            ~Q(title_jpn__iregex=self.unwanted_title),
-                            Q.AND
-                        )
+                        q_objects_unwanted_title.add(~Q(title__iregex=self.unwanted_title), Q.AND)
+                        q_objects_unwanted_title.add(~Q(title_jpn__iregex=self.unwanted_title), Q.AND)
                     else:
-                        q_objects_unwanted_title.add(
-                            ~Q(title__regex=self.unwanted_title),
-                            Q.AND
-                        )
-                        q_objects_unwanted_title.add(
-                            ~Q(title_jpn__regex=self.unwanted_title),
-                            Q.AND
-                        )
+                        q_objects_unwanted_title.add(~Q(title__regex=self.unwanted_title), Q.AND)
+                        q_objects_unwanted_title.add(~Q(title_jpn__regex=self.unwanted_title), Q.AND)
                 else:
-                    q_formatted = '%' + self.unwanted_title.replace(' ', '%') + '%'
-                    q_objects_unwanted_title.add(
-                        ~Q(title__ss=q_formatted),
-                        Q.AND
-                    )
-                    q_objects_unwanted_title.add(
-                        ~Q(title_jpn__ss=q_formatted),
-                        Q.AND
-                    )
+                    q_formatted = "%" + self.unwanted_title.replace(" ", "%") + "%"
+                    q_objects_unwanted_title.add(~Q(title__ss=q_formatted), Q.AND)
+                    q_objects_unwanted_title.add(~Q(title_jpn__ss=q_formatted), Q.AND)
 
-            galleries = galleries.filter(
-                q_objects_search_title
-            ).filter(
-                q_objects_unwanted_title
-            )
+            galleries = galleries.filter(q_objects_search_title).filter(q_objects_unwanted_title)
 
         if self.wait_for_time:
-            galleries = galleries.filter(
-                Q(posted__isnull=True) | Q(posted__lte=django_tz.now() - self.wait_for_time)
-            )
+            galleries = galleries.filter(Q(posted__isnull=True) | Q(posted__lte=django_tz.now() - self.wait_for_time))
 
         # if has_wanted_tags:
         #     galleries = galleries.filter(tags__in=self.wanted_tags.all())
@@ -4282,7 +4334,7 @@ class WantedGallery(models.Model):
         # if self.provider:
         #     galleries = galleries.filter(provider__iexact=self.provider)
         if categories_count:
-            galleries = galleries.filter(category__in=self.categories.all().values_list('name', flat=True))
+            galleries = galleries.filter(category__in=self.categories.all().values_list("name", flat=True))
 
         if wanted_providers_count:
             galleries = galleries.filter(provider__in=[x.slug for x in self.wanted_providers.all()])
@@ -4325,8 +4377,9 @@ class WantedGallery(models.Model):
                     # If all the missing tags start with the parameter,
                     # and no other tag is in gallery with this parameter, mark as accepted
                     scope_formatted = self.wanted_tags_accept_if_none_scope + ":"
-                    if all(x.startswith(scope_formatted) for x in missing_tags)\
-                            and not any(x.startswith(scope_formatted) for x in gallery.tag_list()):
+                    if all(x.startswith(scope_formatted) for x in missing_tags) and not any(
+                        x.startswith(scope_formatted) for x in gallery.tag_list()
+                    ):
                         accepted = True
             if accepted & has_unwanted_tags:
                 if any(item in gallery.tag_list() for item in self.unwanted_tags_list()):
@@ -4353,10 +4406,10 @@ class WantedGallery(models.Model):
         self.save()
 
     def get_absolute_url(self) -> str:
-        return reverse('viewer:wanted-gallery', args=[str(self.id)])
+        return reverse("viewer:wanted-gallery", args=[str(self.id)])
 
     def get_col_absolute_url(self) -> str:
-        return reverse('viewer:col-wanted-gallery', args=[str(self.id)])
+        return reverse("viewer:col-wanted-gallery", args=[str(self.id)])
 
     def save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
         super(WantedGallery, self).save(*args, **kwargs)
@@ -4365,50 +4418,42 @@ class WantedGallery(models.Model):
 class FoundGallery(models.Model):
     wanted_gallery = models.ForeignKey(WantedGallery, on_delete=models.CASCADE)
     gallery = models.ForeignKey(Gallery, on_delete=models.CASCADE)
-    match_accuracy = models.FloatField(
-        'Match accuracy', blank=True, null=True, default=0.0)
-    source = models.CharField(
-        'Source', max_length=50, blank=True, null=True)
+    match_accuracy = models.FloatField("Match accuracy", blank=True, null=True, default=0.0)
+    source = models.CharField("Source", max_length=50, blank=True, null=True)
     create_date = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         verbose_name_plural = "Found galleries"
-        ordering = ['-create_date']
+        ordering = ["-create_date"]
 
 
 class GalleryMatch(models.Model):
     wanted_gallery = models.ForeignKey(WantedGallery, on_delete=models.CASCADE)
     gallery = models.ForeignKey(Gallery, on_delete=models.CASCADE)
-    match_accuracy = models.FloatField(
-        'Match accuracy', blank=True, null=True, default=0.0)
+    match_accuracy = models.FloatField("Match accuracy", blank=True, null=True, default=0.0)
 
     class Meta:
         verbose_name_plural = "Gallery matches"
-        ordering = ['-match_accuracy']
+        ordering = ["-match_accuracy"]
 
 
 class TweetPost(models.Model):
     tweet_id = models.BigIntegerField(blank=True, null=True)
-    text = models.CharField(
-        max_length=200, blank=True, null=True, default='')
-    user = models.CharField(
-        max_length=200, blank=True, null=True, default='')
-    posted_date = models.DateTimeField('Posted date', blank=True, null=True, default=django_tz.now)
-    media_url = models.CharField(
-        max_length=200, blank=True, null=True, default='')
+    text = models.CharField(max_length=200, blank=True, null=True, default="")
+    user = models.CharField(max_length=200, blank=True, null=True, default="")
+    posted_date = models.DateTimeField("Posted date", blank=True, null=True, default=django_tz.now)
+    media_url = models.CharField(max_length=200, blank=True, null=True, default="")
 
 
 class Scheduler(models.Model):
-    name = models.CharField(
-        max_length=50)
-    description = models.CharField(
-        max_length=200, default='', blank=True)
+    name = models.CharField(max_length=50)
+    description = models.CharField(max_length=200, default="", blank=True)
     # module_location = models.CharField(max_length=500, default='')
     # class_name = models.CharField(max_length=50, default='')
     # enabled = models.BooleanField(default=False)
     # auto_start = models.BooleanField(default=False)
     # uses_web_queue = models.BooleanField(default=False)
-    last_run = models.DateTimeField('last run', blank=True, null=True, default=django_tz.now)
+    last_run = models.DateTimeField("last run", blank=True, null=True, default=django_tz.now)
     # timer = models.FloatField('Timer')
     # create_date = models.DateTimeField(auto_now_add=True)
     # last_modified = models.DateTimeField(auto_now=True, blank=True, null=True)
@@ -4420,9 +4465,9 @@ class Scheduler(models.Model):
 class Provider(models.Model):
     name = models.CharField(max_length=100, help_text=_("User friendly name"))
     slug = models.SlugField(unique=True)
-    home_page = models.URLField(blank=True, default='')
-    description = models.CharField(max_length=500, blank=True, default='')
-    information = models.TextField(blank=True, default='')
+    home_page = models.URLField(blank=True, default="")
+    description = models.CharField(max_length=500, blank=True, default="")
+    information = models.TextField(blank=True, default="")
 
     create_date = models.DateTimeField(auto_now_add=True)
     last_modified = models.DateTimeField(auto_now=True, blank=True, null=True)
@@ -4452,7 +4497,7 @@ class Category(models.Model):
             for i in itertools.count(1):
                 if not Category.objects.filter(slug=slug_candidate).exists():
                     break
-                slug_candidate = slugify('{}-{}'.format(self.name, i), allow_unicode=True)
+                slug_candidate = slugify("{}-{}".format(self.name, i), allow_unicode=True)
 
             self.slug = slug_candidate
         super(Category, self).save(*args, **kwargs)
@@ -4468,7 +4513,7 @@ class AttributeQuerySet(models.QuerySet):
             return None
 
 
-class AttributeManager(models.Manager['Attribute']):
+class AttributeManager(models.Manager["Attribute"]):
     def get_queryset(self) -> AttributeQuerySet:
         return AttributeQuerySet(self.model, using=self._db)
 
@@ -4480,15 +4525,15 @@ class Attribute(models.Model):
     objects = AttributeManager()
 
     class Meta:
-        unique_together = ('name', 'provider')
+        unique_together = ("name", "provider")
         verbose_name_plural = "Provider attributes"
 
-    TYPE_TEXT = 'text'
-    TYPE_FLOAT = 'float'
-    TYPE_INT = 'int'
-    TYPE_DATE = 'date'
-    TYPE_DURATION = 'duration'
-    TYPE_BOOLEAN = 'bool'
+    TYPE_TEXT = "text"
+    TYPE_FLOAT = "float"
+    TYPE_INT = "int"
+    TYPE_DATE = "date"
+    TYPE_DURATION = "duration"
+    TYPE_BOOLEAN = "bool"
 
     DATA_TYPES_CHOICES = (
         (TYPE_TEXT, _("Text")),
@@ -4523,18 +4568,18 @@ class Attribute(models.Model):
     last_modified = models.DateTimeField(auto_now=True, blank=True, null=True)
 
     def _get_value(self) -> typing.Any:
-        return getattr(self, 'value_%s' % self.data_type)
+        return getattr(self, "value_%s" % self.data_type)
 
     def _set_value(self, new_value: str) -> None:
-        setattr(self, 'value_%s' % self.data_type, new_value)
+        setattr(self, "value_%s" % self.data_type, new_value)
 
     def clean(self) -> None:
         # Only allowed types
         if self.data_type not in self.DATA_TYPES:
-            raise ValidationError('{} must be one of: {}'.format(self.data_type, self.DATA_TYPES))
+            raise ValidationError("{} must be one of: {}".format(self.data_type, self.DATA_TYPES))
         # Don't allow empty string for all but text.
-        if self.value == '' and self.data_type is not self.TYPE_TEXT:
-            raise ValidationError('value_{0} cannot be blank when data type is {0}'.format(self.data_type))
+        if self.value == "" and self.data_type is not self.TYPE_TEXT:
+            raise ValidationError("value_{0} cannot be blank when data type is {0}".format(self.data_type))
 
     def save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
         self.full_clean()
@@ -4546,17 +4591,17 @@ class Attribute(models.Model):
 class EventLog(models.Model):
     content_type = models.ForeignKey(ContentType, null=True, on_delete=models.SET_NULL)
     object_id = models.PositiveIntegerField(null=True)
-    content_object = GenericForeignKey('content_type', 'object_id')
+    content_object = GenericForeignKey("content_type", "object_id")
     action = models.CharField(max_length=50, db_index=True)
-    reason = models.CharField(max_length=200, blank=True, null=True, default='')
-    data = models.CharField(max_length=2000, blank=True, null=True, default='')
-    result = models.CharField(max_length=200, blank=True, null=True, default='')
+    reason = models.CharField(max_length=200, blank=True, null=True, default="")
+    data = models.CharField(max_length=2000, blank=True, null=True, default="")
+    result = models.CharField(max_length=200, blank=True, null=True, default="")
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     create_date = models.DateTimeField(default=django_tz.now, db_index=True)
 
     class Meta:
         verbose_name_plural = "Event logs"
-        ordering = ['-create_date']
+        ordering = ["-create_date"]
         permissions = (
             ("read_all_logs", "Can view a general log from all users"),
             ("read_activity_logs", "Can view a general log for all activity, no users"),
@@ -4572,7 +4617,7 @@ class EventLog(models.Model):
 class MonitoredLink(models.Model):
     name = models.CharField(max_length=200)
     url = models.URLField(max_length=2000)
-    description = models.TextField(blank=True, default='')
+    description = models.TextField(blank=True, default="")
     # Disabled until a generic handler for this parameters is implemented.
     # query_object = models.JSONField(blank=True, null=True)
     # post_request = models.BooleanField(default=False)
@@ -4597,10 +4642,8 @@ class MonitoredLink(models.Model):
 
     class Meta:
         verbose_name_plural = "Monitored Links"
-        ordering = ['-create_date']
-        permissions = (
-            ("view_monitored_links", "Can view a general view of all monitored links"),
-        )
+        ordering = ["-create_date"]
+        permissions = (("view_monitored_links", "Can view a general view of all monitored links"),)
 
     def __str__(self) -> str:
         return self.name
@@ -4650,31 +4693,28 @@ class MonitoredLink(models.Model):
         for timed_link_monitor in settings.WORKERS.timed_link_monitors:
             if timed_link_monitor.monitored_link.pk == self.pk:
                 timed_link_monitor.stop_running()
-        settings.WORKERS.timed_link_monitors = list(filter(lambda x: x.monitored_link.pk != self.pk, settings.WORKERS.timed_link_monitors))
+        settings.WORKERS.timed_link_monitors = list(
+            filter(lambda x: x.monitored_link.pk != self.pk, settings.WORKERS.timed_link_monitors)
+        )
         deleted = super(MonitoredLink, self).delete(*args, **kwargs)
         return deleted
 
 
-def upload_wanted_image_handler(instance: 'WantedImage', filename: str) -> str:
+def upload_wanted_image_handler(instance: "WantedImage", filename: str) -> str:
     return "images/wanted_images/{uuid}_{file}".format(
         file=filename,
         uuid=uuid.uuid4(),
     )
 
 
-def upload_wanted_image_thumbnail_handler(instance: 'WantedImage', filename: str) -> str:
-    return "images/wanted_images/{id}/tn/{file}".format(
-        id=instance.id,
-        file=filename
-    )
+def upload_wanted_image_thumbnail_handler(instance: "WantedImage", filename: str) -> str:
+    return "images/wanted_images/{id}/tn/{file}".format(id=instance.id, file=filename)
 
 
 class WantedImage(models.Model):
 
     image = models.ImageField(
-        upload_to=upload_wanted_image_handler, max_length=500,
-        height_field='image_height',
-        width_field='image_width'
+        upload_to=upload_wanted_image_handler, max_length=500, height_field="image_height", width_field="image_width"
     )
     active = models.BooleanField(default=True)
     image_name = models.CharField(max_length=500, blank=True, null=True)
@@ -4686,19 +4726,15 @@ class WantedImage(models.Model):
     thumbnail_height = models.PositiveIntegerField(blank=True, null=True)
     thumbnail_width = models.PositiveIntegerField(blank=True, null=True)
     thumbnail = models.ImageField(
-        upload_to=upload_wanted_image_thumbnail_handler, blank=True,
-        null=True, max_length=500,
-        height_field='thumbnail_height',
-        width_field='thumbnail_width'
+        upload_to=upload_wanted_image_thumbnail_handler,
+        blank=True,
+        null=True,
+        max_length=500,
+        height_field="thumbnail_height",
+        width_field="thumbnail_width",
     )
     sha1 = models.CharField(max_length=50, blank=True, null=True)
-    match_threshold = models.FloatField(
-        default=0.8,
-        validators=[
-            MaxValueValidator(1.0),
-            MinValueValidator(0.0)
-        ]
-    )
+    match_threshold = models.FloatField(default=0.8, validators=[MaxValueValidator(1.0), MinValueValidator(0.0)])
 
     minimum_features = models.PositiveIntegerField(
         default=0,
@@ -4769,7 +4805,7 @@ class WantedImage(models.Model):
         super(WantedImage, self).save(*args, **kwargs)
 
 
-def upload_found_wanted_image_thumbnail_handler(instance: 'FoundWantedImageOnArchive', filename: str) -> str:
+def upload_found_wanted_image_thumbnail_handler(instance: "FoundWantedImageOnArchive", filename: str) -> str:
     return "images/wanted_images_result/{id}/{filename}".format(
         id=instance.id,
         filename=filename,
@@ -4786,10 +4822,12 @@ class FoundWantedImageOnArchive(models.Model):
     result_image_height = models.PositiveIntegerField(blank=True, null=True)
     result_image_width = models.PositiveIntegerField(blank=True, null=True)
     result_image = models.ImageField(
-        upload_to=upload_found_wanted_image_thumbnail_handler, blank=True,
-        null=True, max_length=500,
-        height_field='result_image_height',
-        width_field='result_image_width'
+        upload_to=upload_found_wanted_image_thumbnail_handler,
+        blank=True,
+        null=True,
+        max_length=500,
+        height_field="result_image_height",
+        width_field="result_image_width",
     )
 
     def __str__(self) -> str:
@@ -4826,7 +4864,7 @@ class DownloadEventQuerySet(models.QuerySet):
         return self.filter(completed=False, **kwargs)
 
 
-class DownloadEventManager(models.Manager['DownloadEvent']):
+class DownloadEventManager(models.Manager["DownloadEvent"]):
     def get_queryset(self) -> DownloadEventQuerySet:
         return DownloadEventQuerySet(self.model, using=self._db)
 
@@ -4846,7 +4884,7 @@ class DownloadEvent(models.Model):
     agent = models.CharField()
     download_id = models.CharField()
     create_date = models.DateTimeField(auto_now_add=True)
-    completed_date = models.DateTimeField('Posted date', blank=True, null=True)
+    completed_date = models.DateTimeField("Posted date", blank=True, null=True)
 
     objects = DownloadEventManager()
 

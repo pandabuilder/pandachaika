@@ -18,15 +18,15 @@ def compare_archives(request: HttpRequest) -> HttpResponse:
 
     authenticated, actual_user = double_check_auth(request)
 
-    if not actual_user or not actual_user.has_perm('viewer.download_gallery'):
-        algos = request.GET.getlist("algos", ['phash'])
+    if not actual_user or not actual_user.has_perm("viewer.download_gallery"):
+        algos = request.GET.getlist("algos", ["phash"])
         thumbs = False
         no_images = False
         archive_pks: list[str] = request.GET.getlist("pk", [])
         no_live_data = True
         archives = Archive.objects.filter(pk__in=archive_pks, public=True)
     else:
-        algos = request.GET.getlist("algos", ['phash'])
+        algos = request.GET.getlist("algos", ["phash"])
         thumbs = bool(request.GET.get("thumbs", False))
         no_images = bool(request.GET.get("no-imgs", False))
         archive_pks = request.GET.getlist("pk", [])
@@ -36,11 +36,16 @@ def compare_archives(request: HttpRequest) -> HttpResponse:
     response: dict = {}
 
     results = CompareObjectsService.hash_archives(
-        archives, algos, thumbnails=thumbs, images=not no_images, item_model=ItemProperties, image_model=Image,
-        no_live_data=no_live_data
+        archives,
+        algos,
+        thumbnails=thumbs,
+        images=not no_images,
+        item_model=ItemProperties,
+        image_model=Image,
+        no_live_data=no_live_data,
     )
 
-    response['results'] = results
+    response["results"] = results
 
     return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
 
@@ -52,7 +57,8 @@ def compare_archives_viewer(request: HttpRequest) -> HttpResponse:
     else:
         return render(request, "viewer/collaborators/compare_archives_public.html")
 
-@permission_required('viewer.change_archivegroup', raise_exception=True)
+
+@permission_required("viewer.change_archivegroup", raise_exception=True)
 def archive_group_editor(request: HttpRequest) -> HttpResponse:
 
     return render(request, "viewer/collaborators/archive_group_editor.html")

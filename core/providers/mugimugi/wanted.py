@@ -18,42 +18,37 @@ if typing.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def wanted_generator(settings: 'Settings', attrs: 'AttributeManager'):
+def wanted_generator(settings: "Settings", attrs: "AttributeManager"):
     own_settings = settings.providers[constants.provider_name]
 
     if not own_settings.api_key:
-        logger.error("Can't use {} API without an api key. Check {}/API_MANUAL.txt".format(
-            constants.provider_name,
-            constants.main_page
-        ))
+        logger.error(
+            "Can't use {} API without an api key. Check {}/API_MANUAL.txt".format(
+                constants.provider_name, constants.main_page
+            )
+        )
         return False
 
     queries: DataDict = {}
     queries_slist_params: DataDict = {}
 
-    for attr in attrs.filter(name__startswith='wanted_params_'):
+    for attr in attrs.filter(name__startswith="wanted_params_"):
 
-        attr_info = attr.name.replace('wanted_params_', '')
+        attr_info = attr.name.replace("wanted_params_", "")
         query_name, attr_name = attr_info.split("_", maxsplit=1)
 
         if query_name not in queries:
-            queries[query_name] = {
-                'page': 1,
-                'S': 'objectSearch',
-                'match': 0,
-                'order': 'added',
-                'flow': 'DESC'
-            }
+            queries[query_name] = {"page": 1, "S": "objectSearch", "match": 0, "order": "added", "flow": "DESC"}
 
-        if attr_name.startswith('slist_'):
+        if attr_name.startswith("slist_"):
             if query_name not in queries_slist_params:
                 queries_slist_params[query_name] = []
-            queries_slist_params[query_name].append('{}:{}'.format(attr_name.replace('slist_', ''), attr.value))
+            queries_slist_params[query_name].append("{}:{}".format(attr_name.replace("slist_", ""), attr.value))
         else:
             queries[query_name].update({attr_name: attr.value})
 
     for query_name, slist_params in queries_slist_params.items():
-        queries[query_name].update({'slist': '|'.join(slist_params)})
+        queries[query_name].update({"slist": "|".join(slist_params)})
 
     for query_name, query_values in queries.items():
 
@@ -123,50 +118,50 @@ def wanted_generator(settings: 'Settings', attrs: 'AttributeManager'):
 
             new_query = urllib.parse.urlencode(query_values, doseq=True)
 
-            logger.info('Querying {} for auto wanted galleries, page: {}, query name: {}, query: {}'.format(
-                constants.provider_name, query_values['page'], query_name, new_query)
+            logger.info(
+                "Querying {} for auto wanted galleries, page: {}, query name: {}, query: {}".format(
+                    constants.provider_name, query_values["page"], query_name, new_query
+                )
             )
 
-            link = '{}/api/{}/?{}'.format(
-                constants.main_page,
-                own_settings.api_key,
-                new_query
-            )
+            link = "{}/api/{}/?{}".format(constants.main_page, own_settings.api_key, new_query)
 
             provider, provider_created = Provider.objects.get_or_create(
-                slug=constants.provider_name, defaults={'name': constants.provider_name}
+                slug=constants.provider_name, defaults={"name": constants.provider_name}
             )
 
             remaining_queries, int_created = attrs.get_or_create(
                 provider=provider,
-                name='remaining_queries',
-                data_type='int',
+                name="remaining_queries",
+                data_type="int",
                 defaults={
-                    'value_int': constants.daily_requests,
-                }
+                    "value_int": constants.daily_requests,
+                },
             )
 
             last_query_date, date_created = attrs.get_or_create(
                 provider=provider,
-                name='last_query_date',
-                data_type='date',
+                name="last_query_date",
+                data_type="date",
                 defaults={
-                    'value_date': django_tz.now(),
-                }
-
+                    "value_date": django_tz.now(),
+                },
             )
 
             if not date_created:
-                limit_time = datetime.time(tzinfo=datetime.timezone(datetime.timedelta(hours=1)))  # GMT+1 is when server resets
+                limit_time = datetime.time(
+                    tzinfo=datetime.timezone(datetime.timedelta(hours=1))
+                )  # GMT+1 is when server resets
                 if last_query_date.value.timetz() < limit_time < django_tz.now().timetz():
                     remaining_queries.value = constants.daily_requests
                     remaining_queries.save()
 
             if remaining_queries.value <= 0:
-                logger.warning("Daily queries quota {} reached for {}. It resets at 00:00 GMT+1".format(
-                    constants.daily_requests,
-                    constants.provider_name
-                ))
+                logger.warning(
+                    "Daily queries quota {} reached for {}. It resets at 00:00 GMT+1".format(
+                        constants.daily_requests, constants.provider_name
+                    )
+                )
                 return
 
             request_dict = construct_request_dict(settings, own_settings)
@@ -184,24 +179,22 @@ def wanted_generator(settings: 'Settings', attrs: 'AttributeManager'):
 
             if not response:
                 logger.error(
-                    'For provider {}: Got to page {}, but did not get a response, stopping'.format(
-                        constants.provider_name,
-                        query_values['page']
+                    "For provider {}: Got to page {}, but did not get a response, stopping".format(
+                        constants.provider_name, query_values["page"]
                     )
                 )
                 break
 
-            response.encoding = 'utf-8'
+            response.encoding = "utf-8"
             # Based on: https://www.doujinshi.org/API_MANUAL.txt
 
             api_galleries = convert_api_response_text_to_gallery_dicts(response.text)
 
             if not api_galleries:
-                logger.error('Server response: {}'.format(response.text))
+                logger.error("Server response: {}".format(response.text))
                 logger.error(
-                    'For provider {}: Got to page {}, but could not parse the response into galleries, stopping'.format(
-                        constants.provider_name,
-                        query_values['page']
+                    "For provider {}: Got to page {}, but could not parse the response into galleries, stopping".format(
+                        constants.provider_name, query_values["page"]
                     )
                 )
                 break
@@ -216,44 +209,41 @@ def wanted_generator(settings: 'Settings', attrs: 'AttributeManager'):
             # we assume we already processed everything. You can force to process everything by using:
             force_process, force_created = attrs.get_or_create(
                 provider=provider,
-                name='force_process',
-                data_type='bool',
+                name="force_process",
+                data_type="bool",
                 defaults={
-                    'value_bool': False,
-                }
+                    "value_bool": False,
+                },
             )
 
             logger.info(
-                'For provider {}: Page has {} galleries, from which {} are already present in the database.'.format(
-                    constants.provider_name,
-                    len(api_galleries),
-                    used.count()
+                "For provider {}: Page has {} galleries, from which {} are already present in the database.".format(
+                    constants.provider_name, len(api_galleries), used.count()
                 )
             )
 
             if not force_process.value and used.count() == len(api_galleries):
                 logger.info(
-                    'For provider {}: Got to page {}, it has already been processed entirely, stopping'.format(
-                        constants.provider_name,
-                        query_values['page']
+                    "For provider {}: Got to page {}, it has already been processed entirely, stopping".format(
+                        constants.provider_name, query_values["page"]
                     )
                 )
                 break
 
-            used_gids = used.values_list('gid', flat=True)
+            used_gids = used.values_list("gid", flat=True)
 
             for gallery_data in api_galleries:
                 if gallery_data.gid not in used_gids:
                     if not gallery_data.dl_type:
-                        gallery_data.dl_type = 'auto_wanted'
-                    wanted_reason = attrs.fetch_value('wanted_reason_{}'.format(query_name))
+                        gallery_data.dl_type = "auto_wanted"
+                    wanted_reason = attrs.fetch_value("wanted_reason_{}".format(query_name))
                     if isinstance(wanted_reason, str):
-                        gallery_data.reason = wanted_reason or 'backup'
+                        gallery_data.reason = wanted_reason or "backup"
                     gallery = Gallery.objects.add_from_values(gallery_data)
                     # We match anyways in case there's a previous WantedGallery.
                     # Actually, we don't match since we only get metadata here, so it should not count as found.
-                    publisher_name = ''
-                    publisher = gallery.tags.filter(scope='publisher').first()
+                    publisher_name = ""
+                    publisher = gallery.tags.filter(scope="publisher").first()
                     if publisher:
                         publisher_name = publisher.name
 
@@ -271,23 +261,23 @@ def wanted_generator(settings: 'Settings', attrs: 'AttributeManager'):
                         if isinstance(wanted_reason, str):
                             new_wanted_reason = wanted_reason
                         else:
-                            new_wanted_reason = ''
+                            new_wanted_reason = ""
 
-                        new_public = attrs.fetch_value('wanted_public_{}'.format(query_name))
+                        new_public = attrs.fetch_value("wanted_public_{}".format(query_name))
 
                         if isinstance(new_public, bool):
                             new_public = new_public
                         else:
                             new_public = False
 
-                        new_should_search = attrs.fetch_value('wanted_should_search_{}'.format(query_name))
+                        new_should_search = attrs.fetch_value("wanted_should_search_{}".format(query_name))
 
                         if isinstance(new_should_search, bool):
                             new_should_search = new_should_search
                         else:
                             new_should_search = True
 
-                        new_keep_searching = attrs.fetch_value('wanted_keep_searching_{}'.format(query_name))
+                        new_keep_searching = attrs.fetch_value("wanted_keep_searching_{}".format(query_name))
 
                         if isinstance(new_keep_searching, bool):
                             new_keep_searching = new_keep_searching
@@ -305,15 +295,15 @@ def wanted_generator(settings: 'Settings', attrs: 'AttributeManager'):
                             public=new_public,
                             should_search=new_should_search,
                             keep_searching=new_keep_searching,
-                            category='Manga',
-                            unwanted_title=own_settings.unwanted_title or settings.auto_wanted.unwanted_title
+                            category="Manga",
+                            unwanted_title=own_settings.unwanted_title or settings.auto_wanted.unwanted_title,
                         )
-                        wanted_provider_string = attrs.fetch_value('wanted_provider_{}'.format(query_name))
+                        wanted_provider_string = attrs.fetch_value("wanted_provider_{}".format(query_name))
                         if wanted_provider_string and isinstance(wanted_provider_string, str):
                             wanted_provider_instance = Provider.objects.filter(slug=wanted_provider_string).first()
                             if wanted_provider_instance:
                                 wanted_gallery.wanted_providers.add(wanted_provider_instance)
-                        wanted_providers_string = attrs.fetch_value('wanted_providers_{}'.format(query_name))
+                        wanted_providers_string = attrs.fetch_value("wanted_providers_{}".format(query_name))
                         if wanted_providers_string and isinstance(wanted_providers_string, str):
                             for wanted_provider in wanted_providers_string.split():
                                 wanted_provider = wanted_provider.strip()
@@ -321,16 +311,14 @@ def wanted_generator(settings: 'Settings', attrs: 'AttributeManager'):
                                 if wanted_provider_instance:
                                     wanted_gallery.wanted_providers.add(wanted_provider_instance)
 
-                        for artist in gallery.tags.filter(scope='artist'):
+                        for artist in gallery.tags.filter(scope="artist"):
                             artist_obj = Artist.objects.filter(name_jpn=artist.name).first()
                             if not artist_obj:
                                 artist_obj = Artist.objects.create(name=artist.name, name_jpn=artist.name)
                             wanted_gallery.artists.add(artist_obj)
                         logger.info(
                             "Created wanted gallery ({}): {}, search title: {}".format(
-                                wanted_gallery.book_type,
-                                wanted_gallery.get_absolute_url(),
-                                gallery.title_jpn
+                                wanted_gallery.book_type, wanted_gallery.get_absolute_url(), gallery.title_jpn
                             )
                         )
 
@@ -341,7 +329,7 @@ def wanted_generator(settings: 'Settings', attrs: 'AttributeManager'):
                         mention, mention_created = wanted_gallery.mentions.get_or_create(
                             mention_date=gallery.create_date,
                             release_date=gallery.posted,
-                            type='release_date',
+                            type="release_date",
                             source=constants.provider_name,
                         )
                         if mention_created and gallery.thumbnail:
@@ -354,13 +342,11 @@ def wanted_generator(settings: 'Settings', attrs: 'AttributeManager'):
             # API Manual says 25, but we get 50 results normally!
             if len(api_galleries) < 50:
                 logger.info(
-                    'Got to page {}, and we got less than 50 galleries, '
-                    'meaning there is no more pages, stopping'.format(query_values['page'])
+                    "Got to page {}, and we got less than 50 galleries, "
+                    "meaning there is no more pages, stopping".format(query_values["page"])
                 )
                 break
 
-            query_values['page'] += 1
+            query_values["page"] += 1
 
-    logger.info("{} Auto wanted ended.".format(
-        constants.provider_name
-    ))
+    logger.info("{} Auto wanted ended.".format(constants.provider_name))

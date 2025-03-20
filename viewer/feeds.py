@@ -23,8 +23,8 @@ class LatestArchivesFeed(Feed):
         args = request.GET.copy()
 
         params = {
-            'sort': 'create_date',
-            'asc_desc': 'desc',
+            "sort": "create_date",
+            "asc_desc": "desc",
         }
 
         for k, v in args.items():
@@ -33,16 +33,16 @@ class LatestArchivesFeed(Feed):
 
         for k in archive_filter_keys:
             if k not in params:
-                params[k] = ''
+                params[k] = ""
 
         results = filter_archives_simple(params, authenticated=request.user.is_authenticated)
 
         if not request.user.is_authenticated:
-            results = results.filter(public=True).order_by('-public_date')
+            results = results.filter(public=True).order_by("-public_date")
 
         paginator = Paginator(results, 50)
         try:
-            page = int(request.GET.get("page", '1'))
+            page = int(request.GET.get("page", "1"))
         except ValueError:
             page = 1
         try:
@@ -54,7 +54,7 @@ class LatestArchivesFeed(Feed):
         return archives
 
     def item_title(self, item: Archive) -> str:
-        return item.title or item.title_jpn or ''
+        return item.title or item.title_jpn or ""
 
     def item_description(self, item: Archive) -> str:
         return item.tags_str()

@@ -12,7 +12,6 @@ logger = logging.getLogger(__name__)
 
 
 class ArchiveWorker(object):
-
     """description of class"""
 
     def __init__(self, worker_number: int) -> None:
@@ -67,7 +66,8 @@ class ArchiveWorker(object):
 
         for x in range(1, self.worker_number):
             generic_archive_thread = threading.Thread(
-                name='generic_archive_worker_' + str(x), target=self.generic_archive_method_worker)
+                name="generic_archive_worker_" + str(x), target=self.generic_archive_method_worker
+            )
             generic_archive_thread.daemon = True
             generic_archive_thread.start()
             thread_array.append(generic_archive_thread)
@@ -82,8 +82,7 @@ class ArchiveWorker(object):
         thread_array = []
 
         for x in range(1, self.worker_number):
-            file_info_thread = threading.Thread(
-                name='fi_worker_' + str(x), target=self.file_info_worker)
+            file_info_thread = threading.Thread(name="fi_worker_" + str(x), target=self.file_info_worker)
             file_info_thread.daemon = True
             file_info_thread.start()
             thread_array.append(file_info_thread)
@@ -98,8 +97,7 @@ class ArchiveWorker(object):
         thread_array = []
 
         for x in range(1, self.worker_number):
-            thumbnail_thread = threading.Thread(
-                name='tn_worker_' + str(x), target=self.thumbnails_worker)
+            thumbnail_thread = threading.Thread(name="tn_worker_" + str(x), target=self.thumbnails_worker)
             thumbnail_thread.daemon = True
             thumbnail_thread.start()
             thread_array.append(thumbnail_thread)
@@ -109,10 +107,10 @@ class ArchiveWorker(object):
 
         logger.info("All thumbnail threads finished")
 
-    def enqueue_archive_method_call(self, archive: 'Archive', method_name: str, args, kwargs) -> None:
+    def enqueue_archive_method_call(self, archive: "Archive", method_name: str, args, kwargs) -> None:
 
         self.web_queue.put((archive, method_name, args, kwargs))
 
-    def enqueue_archive(self, archive: 'Archive') -> None:
+    def enqueue_archive(self, archive: "Archive") -> None:
 
         self.web_queue.put(archive)

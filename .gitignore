@@ -28,3 +28,5 @@ __pycache__/
 aux_*.py
 aux_*.txt
 aux_*.json
+.env
+docker-compose.*.yml

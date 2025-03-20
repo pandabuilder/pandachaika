@@ -8,9 +8,14 @@ from urllib.parse import urljoin
 from core.base.matchers import Matcher
 from core.base.types import MatchesValues, DataDict, GalleryData
 from core.base.utilities import (
-    get_zip_fileinfo, file_matches_any_filter,
-    get_zip_filesize, clean_title,
-    request_with_retries, construct_request_dict, calc_crc32)
+    get_zip_fileinfo,
+    file_matches_any_filter,
+    get_zip_filesize,
+    clean_title,
+    request_with_retries,
+    construct_request_dict,
+    calc_crc32,
+)
 from . import constants
 from .utilities import clean_title as chaika_clean_title
 from core.base.comparison import get_gallery_closer_title_from_gallery_values
@@ -37,12 +42,15 @@ class BaseExactMatcher(Matcher):
             self.values_array = []
             if not galleries_data:
                 return 0
-            galleries_data = [x for x in galleries_data if not self.general_utils.discard_by_gallery_data(x.tags, x.uploader)[0]]
+            galleries_data = [
+                x for x in galleries_data if not self.general_utils.discard_by_gallery_data(x.tags, x.uploader)[0]
+            ]
             if not galleries_data:
                 return 0
             result = get_gallery_closer_title_from_gallery_values(
-                self.format_to_compare_title(file_path), galleries_data, self.default_cutoff)
-            if result.match_title == '':
+                self.format_to_compare_title(file_path), galleries_data, self.default_cutoff
+            )
+            if result.match_title == "":
                 return 0
             self.match_link = result.match_link
             self.match_count = len(self.gallery_links)
@@ -52,7 +60,9 @@ class BaseExactMatcher(Matcher):
         else:
             return 0
 
-    def create_closer_matches_values(self, zip_path: str, cutoff: Optional[float] = None, max_matches: int = 20) -> list[MatchesValues]:
+    def create_closer_matches_values(
+        self, zip_path: str, cutoff: Optional[float] = None, max_matches: int = 20
+    ) -> list[MatchesValues]:
 
         self.values_array = []
         results: list[MatchesValues] = []
@@ -63,12 +73,14 @@ class BaseExactMatcher(Matcher):
             galleries_data = self.values_array
             self.values_array = []
             if galleries_data:
-                galleries_data = [x for x in galleries_data if not self.general_utils.discard_by_gallery_data(x.tags, x.uploader)[0]]
+                galleries_data = [
+                    x for x in galleries_data if not self.general_utils.discard_by_gallery_data(x.tags, x.uploader)[0]
+                ]
                 # We don't call get_list_closer_gallery_titles_from_dict
                 # because we assume that a hash match is correct already
                 if galleries_data:
                     self.values_array = galleries_data
-                    results = [(gallery.title or gallery.title_jpn or '', gallery, 1) for gallery in galleries_data]
+                    results = [(gallery.title or gallery.title_jpn or "", gallery, 1) for gallery in galleries_data]
         return results
 
     def format_match_values(self) -> Optional[DataDict]:
@@ -79,14 +91,14 @@ class BaseExactMatcher(Matcher):
         self.match_provider = self.match_values.provider
         filesize, filecount, _ = get_zip_fileinfo(os.path.join(self.settings.MEDIA_ROOT, self.file_path))
         values = {
-            'title': self.match_values.title,
-            'title_jpn': self.match_values.title_jpn,
-            'zipped': self.file_path,
-            'crc32': self.crc32,
-            'match_type': self.found_by,
-            'filesize': filesize,
-            'filecount': filecount,
-            'source_type': self.match_provider or self.provider
+            "title": self.match_values.title,
+            "title_jpn": self.match_values.title_jpn,
+            "zipped": self.file_path,
+            "crc32": self.crc32,
+            "match_type": self.found_by,
+            "filesize": filesize,
+            "filecount": filecount,
+            "source_type": self.match_provider or self.provider,
         }
 
         return values
@@ -94,9 +106,9 @@ class BaseExactMatcher(Matcher):
 
 class HashMatcher(BaseExactMatcher):
 
-    name = 'hash'
+    name = "hash"
     provider = constants.provider_name
-    type = 'hash'
+    type = "hash"
     time_to_wait_after_compare = 0
     default_cutoff = 0.0
 
@@ -114,13 +126,9 @@ class HashMatcher(BaseExactMatcher):
         logger.info("Querying URL: {}".format(api_url))
 
         request_dict = construct_request_dict(self.settings, self.own_settings)
-        request_dict['params'] = {'match': True, 'crc32': crc32}
+        request_dict["params"] = {"match": True, "crc32": crc32}
 
-        response = request_with_retries(
-            api_url,
-            request_dict,
-            post=False, retries=3
-        )
+        response = request_with_retries(api_url, request_dict, post=False, retries=3)
 
         if not response:
             logger.info("Got no response from server")
@@ -130,34 +138,34 @@ class HashMatcher(BaseExactMatcher):
 
         matches_links = set()
 
-        if 'error' in response_data:
-            logger.info("Got error from server: {}".format(response_data['error']))
+        if "error" in response_data:
+            logger.info("Got error from server: {}".format(response_data["error"]))
             return False
 
         for gallery in response_data:
-            if 'link' in gallery:
-                matches_links.add(gallery['link'])
-                if 'gallery_container' in gallery and gallery['gallery_container']:
+            if "link" in gallery:
+                matches_links.add(gallery["link"])
+                if "gallery_container" in gallery and gallery["gallery_container"]:
                     if self.settings.gallery_model:
                         gallery_container = self.settings.gallery_model.objects.filter(
-                            gid=gallery['gallery_container'], provider=gallery['provider']
+                            gid=gallery["gallery_container"], provider=gallery["provider"]
                         )
                         first_gallery = gallery_container.first()
                         if first_gallery:
-                            gallery['gallery_container_gid'] = first_gallery.gid
-                if 'magazine' in gallery and gallery['magazine']:
+                            gallery["gallery_container_gid"] = first_gallery.gid
+                if "magazine" in gallery and gallery["magazine"]:
                     if self.settings.gallery_model:
                         magazine = self.settings.gallery_model.objects.filter(
-                            gid=gallery['magazine'], provider=gallery['provider']
+                            gid=gallery["magazine"], provider=gallery["provider"]
                         )
                         first_magazine = magazine.first()
                         if first_magazine:
-                            gallery['magazine_gid'] = first_magazine.gid
-                if 'posted' in gallery:
-                    if gallery['posted'] != 0:
-                        gallery['posted'] = datetime.fromtimestamp(int(gallery['posted']), timezone.utc)
+                            gallery["magazine_gid"] = first_magazine.gid
+                if "posted" in gallery:
+                    if gallery["posted"] != 0:
+                        gallery["posted"] = datetime.fromtimestamp(int(gallery["posted"]), timezone.utc)
                     else:
-                        gallery['posted'] = None
+                        gallery["posted"] = None
                 self.values_array.append(GalleryData(**gallery))
 
         self.gallery_links = list(matches_links)
@@ -170,9 +178,9 @@ class HashMatcher(BaseExactMatcher):
 
 class TitleMatcher(Matcher):
 
-    name = 'main_title'
+    name = "main_title"
     provider = constants.provider_name
-    type = 'title'
+    type = "title"
     time_to_wait_after_compare = 0
     default_cutoff = 0.6
 
@@ -202,14 +210,14 @@ class TitleMatcher(Matcher):
         self.match_provider = self.match_values.provider
         filesize, filecount, _ = get_zip_fileinfo(os.path.join(self.settings.MEDIA_ROOT, self.file_path))
         values = {
-            'title': self.match_values.title,
-            'title_jpn': self.match_values.title_jpn,
-            'zipped': self.file_path,
-            'crc32': self.crc32,
-            'match_type': self.found_by,
-            'filesize': filesize,
-            'filecount': filecount,
-            'source_type': self.match_provider or self.provider
+            "title": self.match_values.title,
+            "title_jpn": self.match_values.title_jpn,
+            "zipped": self.file_path,
+            "crc32": self.crc32,
+            "match_type": self.found_by,
+            "filesize": filesize,
+            "filecount": filecount,
+            "source_type": self.match_provider or self.provider,
         }
 
         return values
@@ -220,13 +228,9 @@ class TitleMatcher(Matcher):
         logger.info("Querying URL: {}".format(api_url))
 
         request_dict = construct_request_dict(self.settings, self.own_settings)
-        request_dict['params'] = {'match': True, 'title': gallery_title}
+        request_dict["params"] = {"match": True, "title": gallery_title}
 
-        response = request_with_retries(
-            api_url,
-            request_dict,
-            post=False, retries=3
-        )
+        response = request_with_retries(api_url, request_dict, post=False, retries=3)
 
         if not response:
             logger.info("Got no response from server")
@@ -236,34 +240,34 @@ class TitleMatcher(Matcher):
 
         matches_links = set()
 
-        if 'error' in response_data:
-            logger.info("Got error from server: {}".format(response_data['error']))
+        if "error" in response_data:
+            logger.info("Got error from server: {}".format(response_data["error"]))
             return False
 
         for gallery in response_data:
-            if 'link' in gallery:
-                matches_links.add(gallery['link'])
-                if 'gallery_container' in gallery and gallery['gallery_container']:
+            if "link" in gallery:
+                matches_links.add(gallery["link"])
+                if "gallery_container" in gallery and gallery["gallery_container"]:
                     if self.settings.gallery_model:
                         gallery_container = self.settings.gallery_model.objects.filter(
-                            gid=gallery['gallery_container'], provider=gallery['provider']
+                            gid=gallery["gallery_container"], provider=gallery["provider"]
                         )
                         first_gallery_container = gallery_container.first()
                         if first_gallery_container:
-                            gallery['gallery_container_gid'] = first_gallery_container.gid
-                if 'magazine' in gallery and gallery['magazine']:
+                            gallery["gallery_container_gid"] = first_gallery_container.gid
+                if "magazine" in gallery and gallery["magazine"]:
                     if self.settings.gallery_model:
                         magazine = self.settings.gallery_model.objects.filter(
-                            gid=gallery['magazine'], provider=gallery['provider']
+                            gid=gallery["magazine"], provider=gallery["provider"]
                         )
                         first_magazine = magazine.first()
                         if first_magazine:
-                            gallery['magazine_gid'] = first_magazine.gid
-                if 'posted' in gallery:
-                    if gallery['posted'] != 0:
-                        gallery['posted'] = datetime.fromtimestamp(int(gallery['posted']), timezone.utc)
+                            gallery["magazine_gid"] = first_magazine.gid
+                if "posted" in gallery:
+                    if gallery["posted"] != 0:
+                        gallery["posted"] = datetime.fromtimestamp(int(gallery["posted"]), timezone.utc)
                     else:
-                        gallery['posted'] = None
+                        gallery["posted"] = None
                 self.values_array.append(GalleryData(**gallery))
 
         self.gallery_links = list(matches_links)
@@ -275,7 +279,7 @@ class TitleMatcher(Matcher):
 
 
 class CleanTitleMatcher(TitleMatcher):
-    name = 'main_clean_title'
+    name = "main_clean_title"
 
     def format_to_search_title(self, file_name: str) -> str:
         if file_matches_any_filter(file_name, self.settings.filename_filter):
@@ -292,9 +296,9 @@ class CleanTitleMatcher(TitleMatcher):
 
 class TitleMetaMatcher(Matcher):
 
-    name = 'meta_title'
+    name = "meta_title"
     provider = constants.provider_name
-    type = 'title'
+    type = "title"
     time_to_wait_after_compare = 0
     default_cutoff = 0.6
 
@@ -324,14 +328,14 @@ class TitleMetaMatcher(Matcher):
         self.match_provider = self.match_values.provider
         filesize, filecount, _ = get_zip_fileinfo(os.path.join(self.settings.MEDIA_ROOT, self.file_path))
         values = {
-            'title': self.match_values.title,
-            'title_jpn': self.match_values.title_jpn,
-            'zipped': self.file_path,
-            'crc32': self.crc32,
-            'match_type': self.found_by,
-            'filesize': filesize,
-            'filecount': filecount,
-            'source_type': self.match_provider or self.provider
+            "title": self.match_values.title,
+            "title_jpn": self.match_values.title_jpn,
+            "zipped": self.file_path,
+            "crc32": self.crc32,
+            "match_type": self.found_by,
+            "filesize": filesize,
+            "filecount": filecount,
+            "source_type": self.match_provider or self.provider,
         }
 
         return values
@@ -342,13 +346,9 @@ class TitleMetaMatcher(Matcher):
         logger.info("Querying URL: {}".format(api_url))
 
         request_dict = construct_request_dict(self.settings, self.own_settings)
-        request_dict['params'] = {'match': True, 'title': gallery_title}
+        request_dict["params"] = {"match": True, "title": gallery_title}
 
-        response = request_with_retries(
-            api_url,
-            request_dict,
-            post=False, retries=3
-        )
+        response = request_with_retries(api_url, request_dict, post=False, retries=3)
 
         if not response:
             logger.info("Got no response from server")
@@ -358,34 +358,34 @@ class TitleMetaMatcher(Matcher):
 
         matches_links = set()
 
-        if 'error' in response_data:
-            logger.info("Got error from server: {}".format(response_data['error']))
+        if "error" in response_data:
+            logger.info("Got error from server: {}".format(response_data["error"]))
             return False
 
         for gallery in response_data:
-            if 'link' in gallery:
-                matches_links.add(gallery['link'])
-                if 'gallery_container' in gallery and gallery['gallery_container']:
+            if "link" in gallery:
+                matches_links.add(gallery["link"])
+                if "gallery_container" in gallery and gallery["gallery_container"]:
                     if self.settings.gallery_model:
                         gallery_container = self.settings.gallery_model.objects.filter(
-                            gid=gallery['gallery_container'], provider=gallery['provider']
+                            gid=gallery["gallery_container"], provider=gallery["provider"]
                         )
                         first_gallery_container = gallery_container.first()
                         if first_gallery_container:
-                            gallery['gallery_container_gid'] = first_gallery_container.gid
-                if 'magazine' in gallery and gallery['magazine']:
+                            gallery["gallery_container_gid"] = first_gallery_container.gid
+                if "magazine" in gallery and gallery["magazine"]:
                     if self.settings.gallery_model:
                         magazine = self.settings.gallery_model.objects.filter(
-                            gid=gallery['magazine'], provider=gallery['provider']
+                            gid=gallery["magazine"], provider=gallery["provider"]
                         )
                         first_magazine = magazine.first()
                         if first_magazine:
-                            gallery['magazine_gid'] = first_magazine.gid
-                if 'posted' in gallery:
-                    if gallery['posted'] != 0:
-                        gallery['posted'] = datetime.fromtimestamp(int(gallery['posted']), timezone.utc)
+                            gallery["magazine_gid"] = first_magazine.gid
+                if "posted" in gallery:
+                    if gallery["posted"] != 0:
+                        gallery["posted"] = datetime.fromtimestamp(int(gallery["posted"]), timezone.utc)
                     else:
-                        gallery['posted'] = None
+                        gallery["posted"] = None
                 self.values_array.append(GalleryData(**gallery))
 
         self.gallery_links = list(matches_links)
@@ -398,9 +398,9 @@ class TitleMetaMatcher(Matcher):
 
 class FileSizeMatcher(BaseExactMatcher):
 
-    name = 'size'
+    name = "size"
     provider = constants.provider_name
-    type = 'size'
+    type = "size"
     time_to_wait_after_compare = 0
     default_cutoff = 0.0
 
@@ -418,13 +418,9 @@ class FileSizeMatcher(BaseExactMatcher):
         logger.info("Querying URL: {}".format(api_url))
 
         request_dict = construct_request_dict(self.settings, self.own_settings)
-        request_dict['params'] = {'match': True, 'filesize_from': filesize, 'filesize_to': filesize}
+        request_dict["params"] = {"match": True, "filesize_from": filesize, "filesize_to": filesize}
 
-        response = request_with_retries(
-            api_url,
-            request_dict,
-            post=False, retries=3
-        )
+        response = request_with_retries(api_url, request_dict, post=False, retries=3)
 
         if not response:
             logger.info("Got no response from server")
@@ -434,34 +430,34 @@ class FileSizeMatcher(BaseExactMatcher):
 
         matches_links = set()
 
-        if 'error' in response_data:
-            logger.info("Got error from server: {}".format(response_data['error']))
+        if "error" in response_data:
+            logger.info("Got error from server: {}".format(response_data["error"]))
             return False
 
         for gallery in response_data:
-            if 'link' in gallery:
-                matches_links.add(gallery['link'])
-                if 'gallery_container' in gallery and gallery['gallery_container']:
+            if "link" in gallery:
+                matches_links.add(gallery["link"])
+                if "gallery_container" in gallery and gallery["gallery_container"]:
                     if self.settings.gallery_model:
                         gallery_container = self.settings.gallery_model.objects.filter(
-                            gid=gallery['gallery_container'], provider=gallery['provider']
+                            gid=gallery["gallery_container"], provider=gallery["provider"]
                         )
                         first_gallery_container = gallery_container.first()
                         if first_gallery_container:
-                            gallery['gallery_container_gid'] = first_gallery_container.gid
-                if 'magazine' in gallery and gallery['magazine']:
+                            gallery["gallery_container_gid"] = first_gallery_container.gid
+                if "magazine" in gallery and gallery["magazine"]:
                     if self.settings.gallery_model:
                         magazine = self.settings.gallery_model.objects.filter(
-                            gid=gallery['magazine'], provider=gallery['provider']
+                            gid=gallery["magazine"], provider=gallery["provider"]
                         )
                         first_magazine = magazine.first()
                         if first_magazine:
-                            gallery['magazine_gid'] = first_magazine.gid
-                if 'posted' in gallery:
-                    if gallery['posted'] != 0:
-                        gallery['posted'] = datetime.fromtimestamp(int(gallery['posted']), timezone.utc)
+                            gallery["magazine_gid"] = first_magazine.gid
+                if "posted" in gallery:
+                    if gallery["posted"] != 0:
+                        gallery["posted"] = datetime.fromtimestamp(int(gallery["posted"]), timezone.utc)
                     else:
-                        gallery['posted'] = None
+                        gallery["posted"] = None
                 self.values_array.append(GalleryData(**gallery))
 
         self.gallery_links = list(matches_links)

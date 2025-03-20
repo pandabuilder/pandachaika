@@ -6,6 +6,7 @@ import typing
 from collections import defaultdict
 from typing import Optional
 
+import bs4
 import dateutil.parser
 from bs4 import BeautifulSoup
 from django.db.models import QuerySet
@@ -38,39 +39,55 @@ class Parser(BaseParser):
         if not response:
             return None
 
-        response.encoding = 'utf-8'
-        soup = BeautifulSoup(response.text, 'html.parser')
+        response.encoding = "utf-8"
+        soup = BeautifulSoup(response.text, "html.parser")
 
         if soup:
-            title_jpn_match = soup.find("div", id=re.compile("info")).h2
+            jpn_title_container = soup.find("div", id=re.compile("info"))
+            if isinstance(jpn_title_container, bs4.element.Tag):
+                title_jpn_match = jpn_title_container.h2
+            else:
+                title_jpn_match = None
 
-            gallery_id_match = re.search(r'{}(\d+)'.format(constants.gallery_container_url), link)
+            gallery_id_match = re.search(r"{}(\d+)".format(constants.gallery_container_url), link)
 
             if not gallery_id_match:
                 return None
-            gallery_id = 'nh-' + gallery_id_match.group(1)
+            gallery_id = "nh-" + gallery_id_match.group(1)
 
             gallery = GalleryData(gallery_id, self.name)
-            gallery.title = soup.h1.get_text()
-            gallery.title_jpn = title_jpn_match.get_text() if title_jpn_match else ''
-            gallery_filecount_match = re.search(r'<div>(\d+) page(s*)</div>', response.text)
+            title_h1 = soup.h1
+            if title_h1:
+                gallery.title = title_h1.get_text()
+            gallery.title_jpn = title_jpn_match.get_text() if title_jpn_match else ""
+            gallery_filecount_match = re.search(r"<div>(\d+) page(s*)</div>", response.text)
             if gallery_filecount_match:
                 gallery.filecount = int(gallery_filecount_match.group(1))
             else:
                 gallery.filecount = 0
             gallery.tags = []
             gallery.link = link
-            gallery.posted = dateutil.parser.parse(soup.find("time")['datetime'])
+            posted_container = soup.find("time")
+            if isinstance(posted_container, bs4.element.Tag) and isinstance(posted_container["datetime"], str):
+                gallery.posted = dateutil.parser.parse(posted_container["datetime"])
 
             for tag_container in soup.find_all("a", {"class": "tag"}):
                 tag_name = [text for text in tag_container.stripped_strings][0]
                 tag_name = tag_name.split(" | ")[0]
-                tag_scope = tag_container.parent.parent.get_text()
-                tag_ext = tag_container.parent.get_text()
+                if tag_container.parent:
+                    tag_ext = tag_container.parent.get_text()
+                    if tag_container.parent.parent:
+                        tag_scope = tag_container.parent.parent.get_text()
+                    else:
+                        tag_scope = "tags"
+                else:
+                    tag_scope = "tags"
+                    tag_ext = ""
+
                 tag_scope = tag_scope.replace(tag_ext, "").replace("\t", "").replace("\n", "").replace(":", "").lower()
-                if tag_scope == 'tags':
+                if tag_scope == "tags":
                     gallery.tags.append(translate_tag(tag_name))
-                elif tag_scope == 'categories':
+                elif tag_scope == "categories":
                     gallery.category = tag_name.capitalize()
                 else:
                     gallery.tags.append(translate_tag(tag_scope + ":" + tag_name))
@@ -87,14 +104,7 @@ class Parser(BaseParser):
             if i > 0:
                 time.sleep(self.own_settings.wait_timer)
 
-            logger.info(
-                "Calling API ({}). "
-                "Gallery: {}, total galleries: {}".format(
-                    self.name,
-                    i + 1,
-                    len(links)
-                )
-            )
+            logger.info("Calling API ({}). " "Gallery: {}, total galleries: {}".format(self.name, i + 1, len(links)))
 
             values = self.fetch_gallery_data(element)
             if values:
@@ -112,22 +122,27 @@ class Parser(BaseParser):
 
     @staticmethod
     def id_from_url(url: str) -> Optional[str]:
-        m = re.search(r'(.+)/g/(\d+)/*(\d*)', url)
+        m = re.search(r"(.+)/g/(\d+)/*(\d*)", url)
         if m and m.group(2):
-            return 'nh-' + m.group(2)
+            return "nh-" + m.group(2)
         else:
             return None
 
-    def crawl_urls(self, urls: list[str], wanted_filters: Optional[QuerySet] = None, wanted_only: bool = False,
-                   preselected_wanted_matches: Optional[dict[str, list['WantedGallery']]] = None) -> None:
+    def crawl_urls(
+        self,
+        urls: list[str],
+        wanted_filters: Optional[QuerySet] = None,
+        wanted_only: bool = False,
+        preselected_wanted_matches: Optional[dict[str, list["WantedGallery"]]] = None,
+    ) -> None:
 
         unique_urls = set()
         gallery_data_list = []
         fetch_format_galleries = []
-        gallery_wanted_lists: dict[str, list['WantedGallery']] = preselected_wanted_matches or defaultdict(list)
+        gallery_wanted_lists: dict[str, list["WantedGallery"]] = preselected_wanted_matches or defaultdict(list)
 
         if not self.downloaders:
-            logger.warning('No downloaders enabled, returning.')
+            logger.warning("No downloaders enabled, returning.")
             return
 
         for url in urls:
@@ -162,24 +177,22 @@ class Parser(BaseParser):
             if not internal_gallery_data.link:
                 continue
 
-            banned_result, banned_reasons = self.general_utils.discard_by_gallery_data(internal_gallery_data.tags, internal_gallery_data.uploader)
+            banned_result, banned_reasons = self.general_utils.discard_by_gallery_data(
+                internal_gallery_data.tags, internal_gallery_data.uploader
+            )
 
             if banned_result:
                 if not self.settings.silent_processing:
                     logger.info(
                         "Skipping gallery link {}, discarded reasons: {}".format(
-                            internal_gallery_data.link,
-                            banned_reasons
+                            internal_gallery_data.link, banned_reasons
                         )
                     )
                 continue
 
             if wanted_filters:
                 self.compare_gallery_with_wanted_filters(
-                    internal_gallery_data,
-                    internal_gallery_data.link,
-                    wanted_filters,
-                    gallery_wanted_lists
+                    internal_gallery_data, internal_gallery_data.link, wanted_filters, gallery_wanted_lists
                 )
                 if wanted_only and not gallery_wanted_lists[internal_gallery_data.gid]:
                     continue
@@ -189,6 +202,4 @@ class Parser(BaseParser):
         self.pass_gallery_data_to_downloaders(gallery_data_list, gallery_wanted_lists)
 
 
-API = (
-    Parser,
-)
+API = (Parser,)

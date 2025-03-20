@@ -20,22 +20,22 @@ crawler_settings = settings.CRAWLER_SETTINGS
 # This handler is handling email notifications and ArchiveGroup, maybe it should be separated in 2 signals.
 @receiver(wanted_gallery_found, sender=Gallery)
 def wanted_gallery_found_handler(sender: typing.Any, **kwargs: typing.Any) -> None:
-    gallery: Gallery = kwargs['gallery']
-    archive: typing.Optional[Archive] = kwargs['archive']
-    wanted_gallery_list: list[WantedGallery] = kwargs['wanted_gallery_list']
+    gallery: Gallery = kwargs["gallery"]
+    archive: typing.Optional[Archive] = kwargs["archive"]
+    wanted_gallery_list: list[WantedGallery] = kwargs["wanted_gallery_list"]
 
     if archive:
         for wanted_gallery in wanted_gallery_list:
             if wanted_gallery.add_to_archive_group:
                 archive_group_entry = ArchiveGroupEntry(
-                    archive=archive,
-                    archive_group=wanted_gallery.add_to_archive_group
+                    archive=archive, archive_group=wanted_gallery.add_to_archive_group
                 )
                 archive_group_entry.save()
 
     notify_wanted_filters = [
-        "({}, {})".format((x.title or 'not set'), (x.reason or 'not set')) for x in
-        wanted_gallery_list if x.notify_when_found
+        "({}, {})".format((x.title or "not set"), (x.reason or "not set"))
+        for x in wanted_gallery_list
+        if x.notify_when_found
     ]
 
     if not notify_wanted_filters:
@@ -43,10 +43,10 @@ def wanted_gallery_found_handler(sender: typing.Any, **kwargs: typing.Any) -> No
 
     # Mail users
     users_to_mail = users_with_perm(
-        'viewer',
-        'wanted_gallery_found',
-        Q(email__isnull=False) | ~Q(email__exact=''),
-        profile__notify_wanted_gallery_found=True
+        "viewer",
+        "wanted_gallery_found",
+        Q(email__isnull=False) | ~Q(email__exact=""),
+        profile__notify_wanted_gallery_found=True,
     )
 
     if not users_to_mail.count():
@@ -58,26 +58,29 @@ def wanted_gallery_found_handler(sender: typing.Any, **kwargs: typing.Any) -> No
         gallery.title,
         gallery.get_link(),
         urljoin(main_url, gallery.get_absolute_url()),
-        ', '.join(notify_wanted_filters),
-        '\n'.join(gallery.tag_list_sorted())
+        ", ".join(notify_wanted_filters),
+        "\n".join(gallery.tag_list_sorted()),
     )
 
-    message += '\nYou can manage the archives in: {}'.format(
-        urljoin(main_url, reverse('viewer:manage-archives'))
-    )
+    message += "\nYou can manage the archives in: {}".format(urljoin(main_url, reverse("viewer:manage-archives")))
 
-    mails = users_to_mail.values_list('email', flat=True)
+    mails = users_to_mail.values_list("email", flat=True)
 
     try:
-        logger.info('Wanted Gallery found: sending emails to enabled users.')
+        logger.info("Wanted Gallery found: sending emails to enabled users.")
         # (subject, message, from_email, recipient_list)
-        datatuples = tuple([(
-            "Wanted Gallery match found",
-            message,
-            urlize(linebreaks(message)),
-            crawler_settings.mail_logging.from_,
-            (mail,)
-        ) for mail in mails])
+        datatuples = tuple(
+            [
+                (
+                    "Wanted Gallery match found",
+                    message,
+                    urlize(linebreaks(message)),
+                    crawler_settings.mail_logging.from_,
+                    (mail,),
+                )
+                for mail in mails
+            ]
+        )
         send_mass_html_mail(datatuples, fail_silently=True)
     except BadHeaderError:
-        logger.error('Failed sending emails: Invalid header found.')
+        logger.error("Failed sending emails: Invalid header found.")

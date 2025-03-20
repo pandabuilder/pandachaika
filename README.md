@@ -24,7 +24,7 @@ Requirements
 
 Know how to run a Python program and how to install packages.
 
-Python [3.9, 3.10, 3.11] are the target versions, it won't work on Python 2.
+Python [3.10, 3.11, 3.12, 3.13] are the tested versions, it won't work on Python 2.
 
 See requirements.txt.
 
@@ -37,9 +37,9 @@ How to run
 
 Clone/download.
 
-Read defaults.ini for explanations on most configurable options.
+Read defaults.yaml for explanations on most configurable options.
 
-Copy defaults.ini to settings.ini. Edit settings.ini (before running it!).
+Copy defaults.yaml to settings.yaml. Edit settings.yaml (before running it!).
 
 Install the requirements:
 
@@ -57,7 +57,7 @@ Run "python manage.py compress", to compress js/css static files.
 
 Run "python manage.py providers --scan-register", to register starting information to the database.
 
-To use Elasticsearch, after you install it correctly, check settings.ini accordingly and run "python manage.py push-to-index -r -p".
+To use Elasticsearch, after you install it correctly, check settings.yaml accordingly and run "python manage.py push-to-index -r -rg".
 
 Start the webserver with "python server.py".
 

@@ -23,258 +23,238 @@ crawler_settings = settings.CRAWLER_SETTINGS
 class ArchiveAutocomplete(ListView):
     model = Archive
 
-    choice_html_format = u'''
+    choice_html_format = """
         <a class="block choice" data-value="%s" href="%s">%s</a>
-    '''
+    """
     empty_html_format = '<span class="block"><em>%s</em></span>'
-    autocomplete_html_format = '%s'
+    autocomplete_html_format = "%s"
     limit_choices = 10
 
     def choice_html(self, choice: Archive) -> str:
-        return self.choice_html_format % (choice.title,
-                                          choice.get_absolute_url(),
-                                          choice.title)
+        return self.choice_html_format % (choice.title, choice.get_absolute_url(), choice.title)
 
     def render_to_response(self, context: dict[str, Any], **response_kwargs: Any) -> HttpResponse:
 
-        html = ''.join(
-            [self.choice_html(c) for c in self.choices_for_request()])
+        html = "".join([self.choice_html(c) for c in self.choices_for_request()])
 
         if not html:
-            html = self.empty_html_format % 'No matches found'
+            html = self.empty_html_format % "No matches found"
 
         return HttpResponse(self.autocomplete_html_format % html)
 
     def choices_for_request(self) -> Iterable[Archive]:
-        qs = Archive.objects.all().order_by('pk')
+        qs = Archive.objects.all().order_by("pk")
 
-        q = self.request.GET.get('q', '')
-        q_formatted = '%' + q.replace(' ', '%') + '%'
+        q = self.request.GET.get("q", "")
+        q_formatted = "%" + q.replace(" ", "%") + "%"
         if self.request.user.is_authenticated:
-            qs = qs.filter(
-                Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted)
-            )
+            qs = qs.filter(Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted))
         else:
-            qs = qs.filter(public=True).order_by('-public_date').filter(
-                Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted)
+            qs = (
+                qs.filter(public=True)
+                .order_by("-public_date")
+                .filter(Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted))
             )
 
-        return qs[0:self.limit_choices]
+        return qs[0 : self.limit_choices]
 
 
 class GalleryAutocomplete(ListView):
 
     model = Gallery
 
-    choice_html_format = u'''
+    choice_html_format = """
         <a class="block choice" data-value="%s" href="%s">%s</a>
-    '''
+    """
     empty_html_format = '<span class="block"><em>%s</em></span>'
-    autocomplete_html_format = '%s'
+    autocomplete_html_format = "%s"
     limit_choices = 10
 
     def choice_html(self, choice: Gallery) -> str:
-        return self.choice_html_format % (choice.title,
-                                          choice.get_absolute_url(),
-                                          choice.title)
+        return self.choice_html_format % (choice.title, choice.get_absolute_url(), choice.title)
 
     def render_to_response(self, context: dict[str, Any], **response_kwargs: Any) -> HttpResponse:
 
-        html = ''.join(
-            [self.choice_html(c) for c in self.choices_for_request()])
+        html = "".join([self.choice_html(c) for c in self.choices_for_request()])
 
         if not html:
-            html = self.empty_html_format % 'No matches found'
+            html = self.empty_html_format % "No matches found"
 
         return HttpResponse(self.autocomplete_html_format % html)
 
     def choices_for_request(self) -> Iterable[Gallery]:
-        qs = Gallery.objects.eligible_for_use().order_by('pk')
+        qs = Gallery.objects.eligible_for_use().order_by("pk")
 
-        q = self.request.GET.get('q', '')
-        q_formatted = '%' + q.replace(' ', '%') + '%'
-        m = re.search(r'(\d+)', q)
+        q = self.request.GET.get("q", "")
+        q_formatted = "%" + q.replace(" ", "%") + "%"
+        m = re.search(r"(\d+)", q)
         if m:
             q_object = Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted) | Q(gid__exact=m.group(1))
         else:
             q_object = Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted)
         if self.request.user.is_authenticated:
-            qs = qs.filter(
-                q_object
-            )
+            qs = qs.filter(q_object)
         else:
-            qs = qs.filter(public=True).filter(
-                q_object
-            )
+            qs = qs.filter(public=True).filter(q_object)
 
-        return qs[0:self.limit_choices]
+        return qs[0 : self.limit_choices]
 
 
 class GalleryAllAutocomplete(GalleryAutocomplete):
 
     def choices_for_request(self) -> Iterable[Gallery]:
-        qs = Gallery.objects.all().order_by('pk')
+        qs = Gallery.objects.all().order_by("pk")
 
-        q = self.request.GET.get('q', '')
-        q_formatted = '%' + q.replace(' ', '%') + '%'
-        m = re.search(r'(\d+)', q)
+        q = self.request.GET.get("q", "")
+        q_formatted = "%" + q.replace(" ", "%") + "%"
+        m = re.search(r"(\d+)", q)
         if m:
             q_object = Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted) | Q(gid__exact=m.group(1))
         else:
             q_object = Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted)
         if self.request.user.is_authenticated:
-            qs = qs.filter(
-                q_object
-            )
+            qs = qs.filter(q_object)
         else:
-            qs = qs.filter(public=True).filter(
-                q_object
-            )
+            qs = qs.filter(public=True).filter(q_object)
 
-        return qs[0:self.limit_choices]
+        return qs[0 : self.limit_choices]
 
 
 class WantedGalleryAutocomplete(ListView):
 
     model = WantedGallery
 
-    choice_html_format = u'''
+    choice_html_format = """
         <a class="block choice" data-value="%s" href="%s">%s</a>
-    '''
+    """
     empty_html_format = '<span class="block"><em>%s</em></span>'
-    autocomplete_html_format = '%s'
+    autocomplete_html_format = "%s"
     limit_choices = 10
 
     def choice_html(self, choice: WantedGallery) -> str:
-        return self.choice_html_format % (choice.title,
-                                          choice.get_absolute_url(),
-                                          choice.title)
+        return self.choice_html_format % (choice.title, choice.get_absolute_url(), choice.title)
 
     def render_to_response(self, context: dict[str, Any], **response_kwargs: Any) -> HttpResponse:
 
-        html = ''.join(
-            [self.choice_html(c) for c in self.choices_for_request()])
+        html = "".join([self.choice_html(c) for c in self.choices_for_request()])
 
         if not html:
-            html = self.empty_html_format % 'No matches found'
+            html = self.empty_html_format % "No matches found"
 
         return HttpResponse(self.autocomplete_html_format % html)
 
     def choices_for_request(self) -> Iterable[WantedGallery]:
-        qs = WantedGallery.objects.all().order_by('pk')
+        qs = WantedGallery.objects.all().order_by("pk")
 
-        q = self.request.GET.get('q', '')
-        q_formatted = '%' + q.replace(' ', '%') + '%'
-        q_object = Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted) | Q(search_title__ss=q_formatted) | Q(unwanted_title__ss=q_formatted)
+        q = self.request.GET.get("q", "")
+        q_formatted = "%" + q.replace(" ", "%") + "%"
+        q_object = (
+            Q(title__ss=q_formatted)
+            | Q(title_jpn__ss=q_formatted)
+            | Q(search_title__ss=q_formatted)
+            | Q(unwanted_title__ss=q_formatted)
+        )
         if self.request.user.is_authenticated:
-            qs = qs.filter(
-                q_object
-            )
+            qs = qs.filter(q_object)
         else:
             return []
 
-        return qs[0:self.limit_choices]
+        return qs[0 : self.limit_choices]
 
 
 class WantedGalleryColAutocomplete(WantedGalleryAutocomplete):
     def choice_html(self, choice: WantedGallery) -> str:
-        return self.choice_html_format % (choice.title,
-                                          choice.get_col_absolute_url(),
-                                          choice.title)
+        return self.choice_html_format % (choice.title, choice.get_col_absolute_url(), choice.title)
 
 
 class ArchiveGroupAutocomplete(ListView):
     model = ArchiveGroup
 
-    choice_html_format = u'''
+    choice_html_format = """
         <a class="block choice" data-value="%s" href="%s">%s</a>
-    '''
+    """
     empty_html_format = '<span class="block"><em>%s</em></span>'
-    autocomplete_html_format = '%s'
+    autocomplete_html_format = "%s"
     limit_choices = 10
 
     def choice_html(self, choice: ArchiveGroup) -> str:
-        return self.choice_html_format % (choice.title,
-                                          choice.get_absolute_url(),
-                                          choice.title)
+        return self.choice_html_format % (choice.title, choice.get_absolute_url(), choice.title)
 
     def render_to_response(self, context: dict[str, Any], **response_kwargs: Any) -> HttpResponse:
 
-        html = ''.join(
-            [self.choice_html(c) for c in self.choices_for_request()])
+        html = "".join([self.choice_html(c) for c in self.choices_for_request()])
 
         if not html:
-            html = self.empty_html_format % 'No matches found'
+            html = self.empty_html_format % "No matches found"
 
         return HttpResponse(self.autocomplete_html_format % html)
 
     def choices_for_request(self) -> Iterable[ArchiveGroup]:
-        qs = ArchiveGroup.objects.all().order_by('position')
+        qs = ArchiveGroup.objects.all().order_by("position")
 
-        q = self.request.GET.get('q', '')
-        q_formatted = '%' + q.replace(' ', '%') + '%'
+        q = self.request.GET.get("q", "")
+        q_formatted = "%" + q.replace(" ", "%") + "%"
         if self.request.user.is_authenticated:
-            qs = qs.filter(
-                Q(title__ss=q_formatted)
-            )
+            qs = qs.filter(Q(title__ss=q_formatted))
         else:
-            qs = qs.filter(public=True).filter(
-                Q(title__ss=q_formatted)
-            )
+            qs = qs.filter(public=True).filter(Q(title__ss=q_formatted))
 
-        return qs[0:self.limit_choices]
+        return qs[0 : self.limit_choices]
 
 
 class ArchiveManageEntryFieldAutocomplete(ListView):
     model = ArchiveManageEntry
 
-    choice_html_format = u'''
+    choice_html_format = """
         <a class="block choice" data-value="%s">%s</a>
-    '''
+    """
     empty_html_format = '<span class="block"><em>%s</em></span>'
-    autocomplete_html_format = '%s'
+    autocomplete_html_format = "%s"
     limit_choices = 10
 
     def render_to_response(self, context: dict[str, Any], **response_kwargs: Any) -> HttpResponse:
 
-        html = ''.join(
-            [self.choice_html(c) for c in self.choices_for_request()])
+        html = "".join([self.choice_html(c) for c in self.choices_for_request()])
 
         if not html:
-            html = self.empty_html_format % 'No matches found'
+            html = self.empty_html_format % "No matches found"
 
         return HttpResponse(self.autocomplete_html_format % html)
 
     def choice_html(self, choice: Optional[str]) -> str:
-        return self.choice_html_format % (self.get_result_value(choice),
-                                          self.get_result_label(choice))
+        return self.choice_html_format % (self.get_result_value(choice), self.get_result_label(choice))
 
     @staticmethod
     def get_result_value(result: Optional[str]) -> str:
         if result:
             return result
         else:
-            return ''
+            return ""
 
     @staticmethod
     def get_result_label(result: Optional[str]) -> str:
         if result:
             return result
         else:
-            return ''
+            return ""
 
-    def choices_for_request(self) -> 'Iterable[Optional[str]]':
+    def choices_for_request(self) -> "Iterable[Optional[str]]":
         raise NotImplementedError
 
 
 class ArchiveManageEntryMarkReasonAutocomplete(ArchiveManageEntryFieldAutocomplete):
-    def choices_for_request(self) -> 'Iterable[Optional[str]]':
+    def choices_for_request(self) -> "Iterable[Optional[str]]":
 
-        q = self.request.GET.get('q', '')
+        q = self.request.GET.get("q", "")
 
         if self.request.user.is_authenticated:
-            mark_reasons = ArchiveManageEntry.objects.filter(mark_reason__contains=q).order_by('mark_reason').values_list('mark_reason', flat=True).distinct()
-            return mark_reasons[0:self.limit_choices]
+            mark_reasons = (
+                ArchiveManageEntry.objects.filter(mark_reason__contains=q)
+                .order_by("mark_reason")
+                .values_list("mark_reason", flat=True)
+                .distinct()
+            )
+            return mark_reasons[0 : self.limit_choices]
         return []
 
 
@@ -282,42 +262,40 @@ class ArchiveFieldAutocomplete(ListView):
 
     model = Archive
 
-    choice_html_format = u'''
+    choice_html_format = """
         <a class="block choice" data-value="%s">%s</a>
-    '''
+    """
     empty_html_format = '<span class="block"><em>%s</em></span>'
-    autocomplete_html_format = '%s'
+    autocomplete_html_format = "%s"
     limit_choices = 10
 
     def render_to_response(self, context: dict[str, Any], **response_kwargs: Any) -> HttpResponse:
 
-        html = ''.join(
-            [self.choice_html(c) for c in self.choices_for_request()])
+        html = "".join([self.choice_html(c) for c in self.choices_for_request()])
 
         if not html:
-            html = self.empty_html_format % 'No matches found'
+            html = self.empty_html_format % "No matches found"
 
         return HttpResponse(self.autocomplete_html_format % html)
 
     def choice_html(self, choice: Optional[str]) -> str:
-        return self.choice_html_format % (self.get_result_value(choice),
-                                          self.get_result_label(choice))
+        return self.choice_html_format % (self.get_result_value(choice), self.get_result_label(choice))
 
     @staticmethod
     def get_result_value(result: Optional[str]) -> str:
         if result:
             return result
         else:
-            return ''
+            return ""
 
     @staticmethod
     def get_result_label(result: Optional[str]) -> str:
         if result:
             return result
         else:
-            return ''
+            return ""
 
-    def choices_for_request(self) -> 'ValuesQuerySet[Archive, Optional[str]]':
+    def choices_for_request(self) -> "ValuesQuerySet[Archive, Optional[str]]":
         raise NotImplementedError
 
 
@@ -325,200 +303,286 @@ class GalleryFieldAutocomplete(ListView):
 
     model = Gallery
 
-    choice_html_format = u'''
+    choice_html_format = """
         <a class="block choice" data-value="%s">%s</a>
-    '''
+    """
     empty_html_format = '<span class="block"><em>%s</em></span>'
-    autocomplete_html_format = '%s'
+    autocomplete_html_format = "%s"
     limit_choices = 10
 
     def render_to_response(self, context: dict[str, Any], **response_kwargs: Any) -> HttpResponse:
 
-        html = ''.join(
-            [self.choice_html(c) for c in self.choices_for_request()])
+        html = "".join([self.choice_html(c) for c in self.choices_for_request()])
 
         if not html:
-            html = self.empty_html_format % 'No matches found'
+            html = self.empty_html_format % "No matches found"
 
         return HttpResponse(self.autocomplete_html_format % html)
 
     def choice_html(self, choice: Optional[str]) -> str:
-        return self.choice_html_format % (self.get_result_value(choice),
-                                          self.get_result_label(choice))
+        return self.choice_html_format % (self.get_result_value(choice), self.get_result_label(choice))
 
     @staticmethod
     def get_result_value(result: Optional[str]) -> str:
         if result:
             return result
         else:
-            return ''
+            return ""
 
     @staticmethod
     def get_result_label(result: Optional[str]) -> str:
         if result:
             return result
         else:
-            return ''
+            return ""
 
-    def choices_for_request(self) -> 'ValuesQuerySet[Gallery, Optional[str]]':
+    def choices_for_request(self) -> "ValuesQuerySet[Gallery, Optional[str]]":
         raise NotImplementedError
 
 
 class SourceAutocomplete(ArchiveFieldAutocomplete):
 
-    def choices_for_request(self) -> 'ValuesQuerySet[Archive, Optional[str]]':
+    def choices_for_request(self) -> "ValuesQuerySet[Archive, Optional[str]]":
 
-        q = self.request.GET.get('q', '')
+        q = self.request.GET.get("q", "")
 
         if self.request.user.is_authenticated:
-            sources = Archive.objects.filter(source_type__contains=q).order_by('source_type').values_list('source_type', flat=True).distinct()
+            sources = (
+                Archive.objects.filter(source_type__contains=q)
+                .order_by("source_type")
+                .values_list("source_type", flat=True)
+                .distinct()
+            )
         else:
-            sources = Archive.objects.filter(source_type__contains=q, public=True).order_by('source_type').values_list('source_type', flat=True).distinct()
+            sources = (
+                Archive.objects.filter(source_type__contains=q, public=True)
+                .order_by("source_type")
+                .values_list("source_type", flat=True)
+                .distinct()
+            )
 
-        return sources[0:self.limit_choices]
+        return sources[0 : self.limit_choices]
 
 
 class ProviderAutocomplete(ArchiveFieldAutocomplete):
 
-    def choices_for_request(self) -> 'ValuesQuerySet[Archive, Optional[str]]':
+    def choices_for_request(self) -> "ValuesQuerySet[Archive, Optional[str]]":
 
-        q = self.request.GET.get('q', '')
+        q = self.request.GET.get("q", "")
 
         if self.request.user.is_authenticated:
-            sources = Archive.objects.filter(gallery__provider__icontains=q).order_by('gallery__provider').values_list('gallery__provider', flat=True).distinct()
+            sources = (
+                Archive.objects.filter(gallery__provider__icontains=q)
+                .order_by("gallery__provider")
+                .values_list("gallery__provider", flat=True)
+                .distinct()
+            )
         else:
-            sources = Archive.objects.filter(gallery__provider__icontains=q, public=True).order_by('gallery__provider').values_list('gallery__provider', flat=True).distinct()
+            sources = (
+                Archive.objects.filter(gallery__provider__icontains=q, public=True)
+                .order_by("gallery__provider")
+                .values_list("gallery__provider", flat=True)
+                .distinct()
+            )
 
-        return sources[0:self.limit_choices]
+        return sources[0 : self.limit_choices]
 
 
 class ReasonAutocomplete(ArchiveFieldAutocomplete):
 
-    def choices_for_request(self) -> 'ValuesQuerySet[Archive, Optional[str]]':
+    def choices_for_request(self) -> "ValuesQuerySet[Archive, Optional[str]]":
 
-        q = self.request.GET.get('q', '')
+        q = self.request.GET.get("q", "")
 
         if self.request.user.is_authenticated:
-            sources = Archive.objects.filter(reason__contains=q).order_by('reason').values_list('reason', flat=True).distinct()
+            sources = (
+                Archive.objects.filter(reason__contains=q)
+                .order_by("reason")
+                .values_list("reason", flat=True)
+                .distinct()
+            )
         else:
-            sources = Archive.objects.filter(reason__contains=q, public=True).order_by('reason').values_list('reason', flat=True).distinct()
+            sources = (
+                Archive.objects.filter(reason__contains=q, public=True)
+                .order_by("reason")
+                .values_list("reason", flat=True)
+                .distinct()
+            )
 
-        return sources[0:self.limit_choices]
+        return sources[0 : self.limit_choices]
 
 
 class UploaderAutocomplete(ArchiveFieldAutocomplete):
 
-    def choices_for_request(self) -> 'ValuesQuerySet[Archive, Optional[str]]':
+    def choices_for_request(self) -> "ValuesQuerySet[Archive, Optional[str]]":
 
-        q = self.request.GET.get('q', '')
+        q = self.request.GET.get("q", "")
 
         if self.request.user.is_authenticated:
-            sources = Archive.objects.filter(gallery__uploader__icontains=q).order_by('gallery__uploader').values_list('gallery__uploader', flat=True).distinct()
+            sources = (
+                Archive.objects.filter(gallery__uploader__icontains=q)
+                .order_by("gallery__uploader")
+                .values_list("gallery__uploader", flat=True)
+                .distinct()
+            )
         else:
-            sources = Archive.objects.filter(gallery__uploader__icontains=q, public=True).order_by('gallery__uploader').values_list('gallery__uploader', flat=True).distinct()
+            sources = (
+                Archive.objects.filter(gallery__uploader__icontains=q, public=True)
+                .order_by("gallery__uploader")
+                .values_list("gallery__uploader", flat=True)
+                .distinct()
+            )
 
-        return sources[0:self.limit_choices]
+        return sources[0 : self.limit_choices]
 
 
 class CategoryAutocomplete(ArchiveFieldAutocomplete):
 
-    def choices_for_request(self) -> 'ValuesQuerySet[Archive, Optional[str]]':
+    def choices_for_request(self) -> "ValuesQuerySet[Archive, Optional[str]]":
 
-        q = self.request.GET.get('q', '')
+        q = self.request.GET.get("q", "")
 
         if self.request.user.is_authenticated:
-            sources = Archive.objects.filter(gallery__category__icontains=q).order_by('gallery__category').values_list('gallery__category', flat=True).distinct()
+            sources = (
+                Archive.objects.filter(gallery__category__icontains=q)
+                .order_by("gallery__category")
+                .values_list("gallery__category", flat=True)
+                .distinct()
+            )
         else:
-            sources = Archive.objects.filter(gallery__category__icontains=q, public=True).order_by('gallery__category').values_list('gallery__category', flat=True).distinct()
+            sources = (
+                Archive.objects.filter(gallery__category__icontains=q, public=True)
+                .order_by("gallery__category")
+                .values_list("gallery__category", flat=True)
+                .distinct()
+            )
 
-        return sources[0:self.limit_choices]
+        return sources[0 : self.limit_choices]
 
 
 # Gallery-based autocompletes
 class GalleryProviderAutocomplete(GalleryFieldAutocomplete):
 
-    def choices_for_request(self) -> 'ValuesQuerySet[Gallery, Optional[str]]':
+    def choices_for_request(self) -> "ValuesQuerySet[Gallery, Optional[str]]":
 
-        q = self.request.GET.get('q', '')
+        q = self.request.GET.get("q", "")
 
         if self.request.user.is_authenticated:
-            providers = Gallery.objects.filter(provider__icontains=q).order_by('provider').distinct().values_list('provider', flat=True)
+            providers = (
+                Gallery.objects.filter(provider__icontains=q)
+                .order_by("provider")
+                .distinct()
+                .values_list("provider", flat=True)
+            )
         else:
-            providers = Gallery.objects.filter(provider__icontains=q, public=True).order_by('provider').distinct().values_list('provider', flat=True)
+            providers = (
+                Gallery.objects.filter(provider__icontains=q, public=True)
+                .order_by("provider")
+                .distinct()
+                .values_list("provider", flat=True)
+            )
 
-        return providers[0:self.limit_choices]
+        return providers[0 : self.limit_choices]
 
 
 class GalleryCategoryAutocomplete(GalleryFieldAutocomplete):
 
-    def choices_for_request(self) -> 'ValuesQuerySet[Gallery, Optional[str]]':
+    def choices_for_request(self) -> "ValuesQuerySet[Gallery, Optional[str]]":
 
-        q = self.request.GET.get('q', '')
+        q = self.request.GET.get("q", "")
 
         if self.request.user.is_authenticated:
-            categories = Gallery.objects.filter(category__icontains=q).order_by('category').distinct().values_list('category', flat=True)
+            categories = (
+                Gallery.objects.filter(category__icontains=q)
+                .order_by("category")
+                .distinct()
+                .values_list("category", flat=True)
+            )
         else:
-            categories = Gallery.objects.filter(category__icontains=q, public=True).order_by('category').distinct().values_list('category', flat=True)
+            categories = (
+                Gallery.objects.filter(category__icontains=q, public=True)
+                .order_by("category")
+                .distinct()
+                .values_list("category", flat=True)
+            )
 
-        return categories[0:self.limit_choices]
+        return categories[0 : self.limit_choices]
 
 
 class GalleryUploaderAutocomplete(GalleryFieldAutocomplete):
 
-    def choices_for_request(self) -> 'ValuesQuerySet[Gallery, Optional[str]]':
+    def choices_for_request(self) -> "ValuesQuerySet[Gallery, Optional[str]]":
 
-        q = self.request.GET.get('q', '')
+        q = self.request.GET.get("q", "")
 
         if self.request.user.is_authenticated:
-            uploaders = Gallery.objects.filter(uploader__icontains=q).order_by('uploader').distinct().values_list('uploader', flat=True)
+            uploaders = (
+                Gallery.objects.filter(uploader__icontains=q)
+                .order_by("uploader")
+                .distinct()
+                .values_list("uploader", flat=True)
+            )
         else:
-            uploaders = Gallery.objects.filter(uploader__icontains=q, public=True).order_by('uploader').distinct().values_list('uploader', flat=True)
+            uploaders = (
+                Gallery.objects.filter(uploader__icontains=q, public=True)
+                .order_by("uploader")
+                .distinct()
+                .values_list("uploader", flat=True)
+            )
 
-        return uploaders[0:self.limit_choices]
+        return uploaders[0 : self.limit_choices]
 
 
 class GalleryReasonAutocomplete(GalleryFieldAutocomplete):
 
-    def choices_for_request(self) -> 'ValuesQuerySet[Gallery, Optional[str]]':
+    def choices_for_request(self) -> "ValuesQuerySet[Gallery, Optional[str]]":
 
-        q = self.request.GET.get('q', '')
+        q = self.request.GET.get("q", "")
 
         if self.request.user.is_authenticated:
-            reasons = Gallery.objects.filter(reason__icontains=q).order_by('reason').distinct().values_list('reason', flat=True)
+            reasons = (
+                Gallery.objects.filter(reason__icontains=q)
+                .order_by("reason")
+                .distinct()
+                .values_list("reason", flat=True)
+            )
         else:
-            reasons = Gallery.objects.filter(reason__icontains=q, public=True).order_by('reason').distinct().values_list('reason', flat=True)
+            reasons = (
+                Gallery.objects.filter(reason__icontains=q, public=True)
+                .order_by("reason")
+                .distinct()
+                .values_list("reason", flat=True)
+            )
 
-        return reasons[0:self.limit_choices]
+        return reasons[0 : self.limit_choices]
 
 
 class TagAutocomplete(ListView):
 
     model = Tag
 
-    choice_html_format = u'''
+    choice_html_format = """
         <a class="block choice" data-value="%s">%s</a>
-    '''
+    """
     empty_html_format = '<span class="block"><em>%s</em></span>'
-    autocomplete_html_format = '%s'
+    autocomplete_html_format = "%s"
     limit_choices = 10
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self.modifier = ''
+        self.modifier = ""
 
     def render_to_response(self, context: dict[str, Any], **response_kwargs: Any) -> HttpResponse:
 
-        html = ''.join(
-            [self.choice_html(c) for c in self.choices_for_request()])
+        html = "".join([self.choice_html(c) for c in self.choices_for_request()])
 
         if not html:
-            html = self.empty_html_format % 'No matches found'
+            html = self.empty_html_format % "No matches found"
 
         return HttpResponse(self.autocomplete_html_format % html)
 
     def choice_html(self, choice: Tag) -> str:
-        return self.choice_html_format % (self.get_result_value(choice),
-                                          self.get_result_label(choice))
+        return self.choice_html_format % (self.get_result_value(choice), self.get_result_label(choice))
 
     def get_result_value(self, result: Tag) -> str:
         return self.modifier + str(result)
@@ -528,25 +592,21 @@ class TagAutocomplete(ListView):
 
     def choices_for_request(self) -> Iterable[Tag]:
 
-        tag_clean = self.request.GET.get('q', '').replace(" ", "_")
+        tag_clean = self.request.GET.get("q", "").replace(" ", "_")
         m = re.match(r"^([-^])", tag_clean)
         if m:
             self.modifier = m.group(1)
             tag_clean = tag_clean.replace(self.modifier, "")
         else:
-            self.modifier = ''
+            self.modifier = ""
         scope_name = tag_clean.split(":", maxsplit=1)
 
         if len(scope_name) > 1:
-            results = Tag.objects.filter(
-                Q(name__contains=scope_name[1]),
-                Q(scope__contains=scope_name[0]))
+            results = Tag.objects.filter(Q(name__contains=scope_name[1]), Q(scope__contains=scope_name[0]))
         else:
-            results = Tag.objects.filter(
-                Q(name__contains=tag_clean)
-                | Q(scope__contains=tag_clean))
+            results = Tag.objects.filter(Q(name__contains=tag_clean) | Q(scope__contains=tag_clean))
 
-        return results.order_by('pk')[0:self.limit_choices]
+        return results.order_by("pk")[0 : self.limit_choices]
 
 
 class TagAutocompleteJson(ListView):
@@ -557,46 +617,40 @@ class TagAutocompleteJson(ListView):
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self.modifier = ''
+        self.modifier = ""
 
     def render_to_response(self, context: dict[str, Any], **response_kwargs: Any) -> HttpResponse:
 
-        tag_list = [
-            self.choice_json(c) for c in self.choices_for_request()
-        ]
+        tag_list = [self.choice_json(c) for c in self.choices_for_request()]
 
-        return http.JsonResponse({'results': tag_list})
+        return http.JsonResponse({"results": tag_list})
 
     def choice_json(self, choice: Tag) -> dict:
         return {
-            'id': choice.pk,
-            'modifier': self.modifier,
+            "id": choice.pk,
+            "modifier": self.modifier,
             # 'source': str(choice.source),
-            'scope': str(choice.scope),
-            'name': str(choice.name),
+            "scope": str(choice.scope),
+            "name": str(choice.name),
         }
 
     def choices_for_request(self) -> Iterable[Tag]:
 
-        tag_clean = self.request.GET.get('q', '').replace(" ", "_")
+        tag_clean = self.request.GET.get("q", "").replace(" ", "_")
         m = re.match(r"^([-^])", tag_clean)
         if m:
             self.modifier = m.group(1)
             tag_clean = tag_clean.replace(self.modifier, "")
         else:
-            self.modifier = ''
+            self.modifier = ""
         scope_name = tag_clean.split(":", maxsplit=1)
 
         if len(scope_name) > 1:
-            results = Tag.objects.filter(
-                Q(name__contains=scope_name[1]),
-                Q(scope__contains=scope_name[0]))
+            results = Tag.objects.filter(Q(name__contains=scope_name[1]), Q(scope__contains=scope_name[0]))
         else:
-            results = Tag.objects.filter(
-                Q(name__contains=tag_clean)
-                | Q(scope__contains=tag_clean))
+            results = Tag.objects.filter(Q(name__contains=tag_clean) | Q(scope__contains=tag_clean))
 
-        return results.order_by('pk')[0:self.limit_choices]
+        return results.order_by("pk")[0 : self.limit_choices]
 
 
 class TagPkAutocomplete(autocomplete.Select2QuerySetView):
@@ -616,7 +670,7 @@ class NonCustomTagAutocomplete(autocomplete.Select2QuerySetView):
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self.modifier = ''
+        self.modifier = ""
 
     def get_result_value(self, result: Tag) -> str:
         return self.modifier + str(result)
@@ -626,25 +680,25 @@ class NonCustomTagAutocomplete(autocomplete.Select2QuerySetView):
 
     def get_queryset(self) -> QuerySet:
 
-        tag_clean = self.request.GET.get('q', '').replace(" ", "_")
+        tag_clean = self.request.GET.get("q", "").replace(" ", "_")
         m = re.match(r"^([-^])", tag_clean)
         if m:
             self.modifier = m.group(1)
             tag_clean = tag_clean.replace(self.modifier, "")
         else:
-            self.modifier = ''
+            self.modifier = ""
         scope_name = tag_clean.split(":", maxsplit=1)
 
         if len(scope_name) > 1:
-            results = Tag.objects.exclude(source='user').filter(
-                Q(name__contains=scope_name[1]),
-                Q(scope__contains=scope_name[0]))
+            results = Tag.objects.exclude(source="user").filter(
+                Q(name__contains=scope_name[1]), Q(scope__contains=scope_name[0])
+            )
         else:
-            results = Tag.objects.exclude(source='user').filter(
-                Q(name__contains=tag_clean)
-                | Q(scope__contains=tag_clean))
+            results = Tag.objects.exclude(source="user").filter(
+                Q(name__contains=tag_clean) | Q(scope__contains=tag_clean)
+            )
 
-        return results.order_by('pk')
+        return results.order_by("pk")
 
 
 class CustomTagAutocomplete(autocomplete.Select2QuerySetView):
@@ -655,7 +709,7 @@ class CustomTagAutocomplete(autocomplete.Select2QuerySetView):
         if not self.has_add_permission(request):
             return http.HttpResponseForbidden()
 
-        t = request.POST.get('text', None)
+        t = request.POST.get("text", None)
 
         if t is None:
             return http.HttpResponseBadRequest()
@@ -668,29 +722,27 @@ class CustomTagAutocomplete(autocomplete.Select2QuerySetView):
             scope = scope_name[0]
         else:
             name = t
-            scope = ''
-        custom_tag = Tag.objects.get_or_create(name=name, scope=scope, defaults={'source': 'user'})[0]
-        return http.JsonResponse({
-            'id': custom_tag.pk,
-            'text': str(custom_tag),
-        })
+            scope = ""
+        custom_tag = Tag.objects.get_or_create(name=name, scope=scope, defaults={"source": "user"})[0]
+        return http.JsonResponse(
+            {
+                "id": custom_tag.pk,
+                "text": str(custom_tag),
+            }
+        )
 
     def get_queryset(self) -> QuerySet:
 
-        tag_clean = self.request.GET.get('q', '').replace(" ", "_")
+        tag_clean = self.request.GET.get("q", "").replace(" ", "_")
 
         scope_name = tag_clean.split(":", maxsplit=1)
 
         if len(scope_name) > 1:
-            results = Tag.objects.filter(
-                Q(name__contains=scope_name[1]),
-                Q(scope__contains=scope_name[0]))
+            results = Tag.objects.filter(Q(name__contains=scope_name[1]), Q(scope__contains=scope_name[0]))
         else:
-            results = Tag.objects.filter(
-                Q(name__contains=tag_clean)
-                | Q(scope__contains=tag_clean))
+            results = Tag.objects.filter(Q(name__contains=tag_clean) | Q(scope__contains=tag_clean))
 
-        return results.order_by('source')
+        return results.order_by("source")
 
 
 class GallerySelectAutocomplete(autocomplete.Select2QuerySetView):
@@ -701,10 +753,10 @@ class GallerySelectAutocomplete(autocomplete.Select2QuerySetView):
         return "({}) ({}) {}".format(result.pk, result.title, result.provider)
 
     def get_queryset(self) -> QuerySet:
-        qs = Gallery.objects.eligible_for_use().order_by('pk')
+        qs = Gallery.objects.eligible_for_use().order_by("pk")
 
         q = self.q
-        q_formatted = '%' + q.replace(' ', '%') + '%'
+        q_formatted = "%" + q.replace(" ", "%") + "%"
 
         gallery_id_provider = None
 
@@ -722,15 +774,11 @@ class GallerySelectAutocomplete(autocomplete.Select2QuerySetView):
         else:
             q_object = Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted)
         if self.request.user.is_authenticated:
-            qs = qs.filter(
-                q_object
-            )
+            qs = qs.filter(q_object)
         else:
-            qs = qs.filter(public=True).filter(
-                q_object
-            )
+            qs = qs.filter(public=True).filter(q_object)
 
-        return qs[0:self.limit_choices]
+        return qs[0 : self.limit_choices]
 
 
 class ArchiveSelectSimpleAutocomplete(autocomplete.Select2QuerySetView):
@@ -741,23 +789,19 @@ class ArchiveSelectSimpleAutocomplete(autocomplete.Select2QuerySetView):
         return "({}) ({}) {}".format(result.pk, result.title, result.source_type)
 
     def get_queryset(self) -> QuerySet:
-        qs = Archive.objects.all().order_by('pk')
+        qs = Archive.objects.all().order_by("pk")
 
         q = self.q
-        q_formatted = '%' + q.replace(' ', '%') + '%'
+        q_formatted = "%" + q.replace(" ", "%") + "%"
 
         q_object = Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted)
 
         if self.request.user.is_authenticated:
-            qs = qs.filter(
-                q_object
-            )
+            qs = qs.filter(q_object)
         else:
-            qs = qs.filter(public=True).filter(
-                q_object
-            )
+            qs = qs.filter(public=True).filter(q_object)
 
-        return qs[0:self.limit_choices]
+        return qs[0 : self.limit_choices]
 
 
 class ArchiveSelectAutocomplete(autocomplete.Select2QuerySetView):
@@ -765,26 +809,26 @@ class ArchiveSelectAutocomplete(autocomplete.Select2QuerySetView):
     limit_choices = 10
 
     def get_result_label(self, result: Archive) -> str:
-        return format_html('<div class="archive-complete-container"><div class="archive-complete-title">{}</div><img src="{}"></div>', result.title, result.thumbnail.url)
+        return format_html(
+            '<div class="archive-complete-container"><div class="archive-complete-title">{}</div><img src="{}"></div>',
+            result.title,
+            result.thumbnail.url,
+        )
 
     def get_queryset(self) -> QuerySet:
-        qs = Archive.objects.all().order_by('pk')
+        qs = Archive.objects.all().order_by("pk")
 
         q = self.q
-        q_formatted = '%' + q.replace(' ', '%') + '%'
+        q_formatted = "%" + q.replace(" ", "%") + "%"
 
         q_object = Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted)
 
         if self.request.user.is_authenticated:
-            qs = qs.filter(
-                q_object
-            )
+            qs = qs.filter(q_object)
         else:
-            qs = qs.filter(public=True).filter(
-                q_object
-            )
+            qs = qs.filter(public=True).filter(q_object)
 
-        return qs[0:self.limit_choices]
+        return qs[0 : self.limit_choices]
 
 
 class ArchiveGroupSelectAutocomplete(autocomplete.Select2QuerySetView):
@@ -796,39 +840,37 @@ class ArchiveGroupSelectAutocomplete(autocomplete.Select2QuerySetView):
         if not self.has_add_permission(request):
             return http.HttpResponseForbidden()
 
-        t = request.POST.get('text', None)
+        t = request.POST.get("text", None)
 
         if t is None:
             return http.HttpResponseBadRequest()
 
         archive_group_name = t
 
-        archive_group_position = ArchiveGroup.objects.all().aggregate(Max('position', default=1))['position__max']
+        archive_group_position = ArchiveGroup.objects.all().aggregate(Max("position", default=1))["position__max"]
 
         archive_group = ArchiveGroup.objects.get_or_create(
-            title=archive_group_name, defaults={'position': archive_group_position+1}
+            title=archive_group_name, defaults={"position": archive_group_position + 1}
         )[0]
 
-        return http.JsonResponse({
-            'id': archive_group.pk,
-            'text': str(archive_group),
-        })
+        return http.JsonResponse(
+            {
+                "id": archive_group.pk,
+                "text": str(archive_group),
+            }
+        )
 
     def get_result_label(self, result: ArchiveGroup) -> str:
         return "({}) ({})".format(result.pk, result.title)
 
     def get_queryset(self) -> QuerySet:
-        qs = ArchiveGroup.objects.all().order_by('position')
+        qs = ArchiveGroup.objects.all().order_by("position")
 
         q = self.q
-        q_formatted = '%' + q.replace(' ', '%') + '%'
+        q_formatted = "%" + q.replace(" ", "%") + "%"
         if self.request.user.is_authenticated:
-            qs = qs.filter(
-                Q(title__ss=q_formatted)
-            )
+            qs = qs.filter(Q(title__ss=q_formatted))
         else:
-            qs = qs.filter(public=True).filter(
-                Q(title__ss=q_formatted)
-            )
+            qs = qs.filter(public=True).filter(Q(title__ss=q_formatted))
 
-        return qs[0:self.limit_choices]
+        return qs[0 : self.limit_choices]

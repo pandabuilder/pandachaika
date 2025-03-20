@@ -9,39 +9,35 @@ crawler_settings = settings.CRAWLER_SETTINGS
 
 
 class Command(BaseCommand):
-    help = 'Batch process for Archives.'
+    help = "Batch process for Archives."
 
     def add_arguments(self, parser):
-        parser.add_argument('-id', '--id',
-                            required=False,
-                            action="extend", nargs="+", type=int,
-                            help=(
-                                'Process specific Archive ID. '))
+        parser.add_argument(
+            "-id", "--id", required=False, action="extend", nargs="+", type=int, help=("Process specific Archive ID. ")
+        )
 
-        parser.add_argument('-a', '--all',
-                            required=False,
-                            action='store_true',
-                            help=(
-                                'Process all Archives. '))
+        parser.add_argument("-a", "--all", required=False, action="store_true", help=("Process all Archives. "))
 
-        parser.add_argument('-data', '--data',
-                            required=False,
-                            action='store_true',
-                            help=(
-                                'Run the SHA1 and Data process for Archive Images. '))
+        parser.add_argument(
+            "-data",
+            "--data",
+            required=False,
+            action="store_true",
+            help=("Run the SHA1 and Data process for Archive Images. "),
+        )
 
     def handle(self, *args, **options):
         start = time.perf_counter()
 
-        run_data = options['data']
+        run_data = options["data"]
 
         archives = None
 
-        if options['id']:
-            archives = Archive.objects.exclude(crc32='').filter(pk__in=options['id'])
+        if options["id"]:
+            archives = Archive.objects.exclude(crc32="").filter(pk__in=options["id"])
 
-        if options['all']:
-            archives = Archive.objects.exclude(crc32='').all()
+        if options["all"]:
+            archives = Archive.objects.exclude(crc32="").all()
 
         if run_data and archives:
             self.stdout.write(

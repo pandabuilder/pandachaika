@@ -6,6 +6,7 @@ import ssl
 import time
 import traceback
 from collections.abc import Iterable, Callable
+from dataclasses import dataclass
 from ftplib import FTP_TLS
 from tempfile import mkdtemp
 from typing import Any, Optional, TypeVar
@@ -19,47 +20,53 @@ from django.template.defaultfilters import filesizeformat
 import re
 
 from core.base.setup import Settings
-from core.base.types import DataDict
-from core.base.utilities import (
-    convert_rar_to_zip,
-    replace_illegal_name,
-    convert_7z_to_zip)
+from core.base.utilities import convert_rar_to_zip, replace_illegal_name, convert_7z_to_zip
 from core.workers.schedulers import BaseScheduler
 from viewer.models import Archive, ArchiveManageEntry
 
 logger = logging.getLogger(__name__)
 
-ArchiveKey = TypeVar('ArchiveKey')
+ArchiveKey = TypeVar("ArchiveKey")
+
+
+@dataclass
+class CurrentDownload:
+    filename: str = ""
+    speed: float = 0.0
+    index: int = 0
+    total: int = 0
+    downloaded: int = 0
+    filesize: int = 0
+
+
+@dataclass
+class FTPData:
+    ftps: Optional[FTP_TLS] = None
+    current_ftp_dir: Optional[str] = None
 
 
 class PostDownloader(object):
 
-    def __init__(self, settings: 'Settings', web_queue=None) -> None:
+    def __init__(self, settings: "Settings", web_queue=None) -> None:
         self.settings = settings
         self.web_queue = web_queue
-        self.ftps: Optional[FTP_TLS] = None
-        self.current_ftp_dir: Optional[str] = None
-        self.current_download: DataDict = {
-            'filename': '',
-            'blocksize': 0,
-            'speed': 0,
-            'index': 0,
-            'total': 0,
-        }
+        self.ftp_datas: dict[str, FTPData] = {}
+        self.current_download: CurrentDownload = CurrentDownload()
+        self.ftp_key_torrent = self.settings.download_ftp_torrent
+        self.ftp_key_hath = self.settings.download_ftp_hath
 
     def process_downloaded_archive(self, archive: Archive) -> None:
         if os.path.isfile(archive.zipped.path):
             except_at_open = False
             return_error = None
             try:
-                my_zip = ZipFile(
-                    archive.zipped.path, 'r')
+                my_zip = ZipFile(archive.zipped.path, "r")
                 return_error = my_zip.testzip()
                 my_zip.close()
             except (BadZipFile, NotImplementedError):
                 except_at_open = True
             if except_at_open or return_error:
-                if archive.source_type and 'panda' in archive.source_type:
+                if archive.source_type and "panda" in archive.source_type:
                     logger.error(
                         "For archive: {}, file check on downloaded zipfile failed on file: {}, "
                         "forcing download as panda_archive to fix it.".format(archive, archive.zipped.path)
@@ -67,7 +74,7 @@ class PostDownloader(object):
                     archive.save()
                     if self.web_queue and archive.gallery:
                         temp_settings = Settings(load_from_config=self.settings.config)
-                        temp_settings.allow_downloaders_only(['panda_archive'], True, True, True)
+                        temp_settings.allow_downloaders_only(["panda_archive"], True, True, True)
                         if archive.reason:
                             temp_settings.archive_reason = archive.reason
                         self.web_queue.enqueue_args_list((archive.gallery.get_link(),), override_options=temp_settings)
@@ -94,16 +101,18 @@ class PostDownloader(object):
 
             if archive.gallery and archive.filesize != archive.gallery.filesize:
                 mark_comment = (
-                    "Torrent downloaded has not the same file as the matched gallery" 
-                    " (different filesize or filecount). This file must be replaced if the correct one" 
+                    "Torrent downloaded has not the same file as the matched gallery"
+                    " (different filesize or filecount). This file must be replaced if the correct one"
                     " is found."
                 )
                 manager_entry, _ = ArchiveManageEntry.objects.update_or_create(
                     archive=archive,
                     mark_reason="wrong_file",
                     defaults={
-                        'mark_comment': mark_comment, 'mark_priority': 4.3, 'mark_check': True,
-                        'origin': ArchiveManageEntry.ORIGIN_SYSTEM
+                        "mark_comment": mark_comment,
+                        "mark_priority": 4.3,
+                        "mark_check": True,
+                        "origin": ArchiveManageEntry.ORIGIN_SYSTEM,
                     },
                 )
                 if Archive.objects.filter(gallery=archive.gallery, filesize=archive.gallery.filesize):
@@ -112,88 +121,104 @@ class PostDownloader(object):
                         "but there's already another archive that matches.".format(archive)
                     )
                     return
-                if archive.source_type and 'panda' in archive.source_type:
+                if archive.source_type and "panda" in archive.source_type:
                     logger.info(
                         "For archive: {} size does not match gallery, "
                         "downloading again from panda_archive.".format(archive)
                     )
                     if self.web_queue:
                         temp_settings = Settings(load_from_config=self.settings.config)
-                        temp_settings.allow_downloaders_only(['panda_archive'], True, True, True)
+                        temp_settings.allow_downloaders_only(["panda_archive"], True, True, True)
                         if archive.reason:
                             temp_settings.archive_reason = archive.reason
-                        self.web_queue.enqueue_args_list(
-                            (archive.gallery.get_link(), ),
-                            override_options=temp_settings
-                        )
+                        self.web_queue.enqueue_args_list((archive.gallery.get_link(),), override_options=temp_settings)
                 else:
                     logger.warning(
                         "For archive: {} size does not match gallery. Check the file manually.".format(archive)
                     )
 
-    def write_file_update_progress(self, cmd: str, callback: Callable, filesize: int = 0, blocksize: int = 8192, rest: Optional[bool] = None) -> str:
-        if self.ftps is None:
+    def write_file_update_progress(
+        self,
+        cmd: str,
+        callback: Callable,
+        ftp_key: str,
+        filesize: int = 0,
+        blocksize: int = 8192,
+        rest: Optional[bool] = None,
+    ) -> str:
+        ftp_data = self.ftp_datas[ftp_key]
+        if ftp_data.ftps is None:
             raise ConnectionError
-        self.ftps.voidcmd('TYPE I')
-        with self.ftps.transfercmd(cmd, rest) as conn:
-            self.current_download['filesize'] = filesize
-            self.current_download['downloaded'] = 0
-            self.current_download['filename'] = cmd.replace('RETR ', '')
+        ftp_data.ftps.voidcmd("TYPE I")
+        with ftp_data.ftps.transfercmd(cmd, rest) as conn:
+            self.current_download.filesize = filesize
+            self.current_download.downloaded = 0
+            self.current_download.filename = cmd.replace("RETR ", "")
             start = time.perf_counter()
             while 1:
                 data = conn.recv(blocksize)
                 if not data:
                     break
                 downloaded = len(data)
-                self.current_download['downloaded'] += downloaded
+                self.current_download.downloaded += downloaded
                 current = time.perf_counter()
                 if current > start:
-                    self.current_download['speed'] = self.current_download['downloaded'] / (current - start)
+                    self.current_download.speed = self.current_download.downloaded / (current - start)
                 callback(data)
-            self.current_download['filename'] = ''
-            self.current_download['speed'] = 0
-            self.current_download['filesize'] = 0
+            self.current_download.filename = ""
+            self.current_download.speed = 0
+            self.current_download.filesize = 0
             # shutdown ssl layer
             if isinstance(conn, ssl.SSLSocket):
                 conn.unwrap()
-        return self.ftps.voidresp()
+        return ftp_data.ftps.voidresp()
 
-    def start_connection(self) -> None:
-        if self.settings.ftps['no_certificate_check']:
+    def start_connection(self, ftp_config_name: str) -> None:
+
+        ftp_config = self.settings.ftp_configs[ftp_config_name]
+        if ftp_config["no_certificate_check"]:
             context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
             context.verify_mode = ssl.CERT_NONE
             context.check_hostname = False
         else:
             context = ssl.create_default_context()
 
-        if 'bind_host' in self.settings.ftps and self.settings.ftps['bind_host']:
-            if self.settings.ftps['bind_port'] is None:
+        if "bind_host" in ftp_config and ftp_config["bind_host"]:
+            if ftp_config["bind_port"] is None:
                 bind_port = 0
             else:
-                bind_port = self.settings.ftps['bind_port']
-            source_address = (self.settings.ftps['bind_host'], bind_port)
+                bind_port = ftp_config["bind_port"]
+            source_address = (ftp_config["bind_host"], bind_port)
         else:
             source_address = None
 
-        self.ftps = FTP_TLS(
-            host=self.settings.ftps['address'],
-            user=self.settings.ftps['user'],
-            passwd=self.settings.ftps['passwd'],
+        ftp_data = FTPData()
+
+        ftp_data.ftps = FTP_TLS(
+            host=ftp_config["address"],
+            user=ftp_config["user"],
+            passwd=ftp_config["passwd"],
             context=context,
             source_address=source_address,
-            timeout=self.settings.timeout_timer
+            timeout=self.settings.timeout_timer,
         )
 
         # Hath downloads
-        self.ftps.prot_p()
+        ftp_data.ftps.prot_p()
 
-    def set_current_dir(self, self_dir: str) -> None:
-        self.current_ftp_dir = self_dir
-        if not self.ftps:
+        self.ftp_datas[ftp_config_name] = ftp_data
+
+    def set_current_dir(self, ftp_key: str, self_dir: str) -> None:
+        ftp_data = self.ftp_datas[ftp_key]
+        ftp_data.current_ftp_dir = self_dir
+        if not ftp_data.ftps:
             return None
-        self.ftps.cwd(self_dir)
+        ftp_data.ftps.cwd(self_dir)
 
     def download_all_missing(self, archives: Optional[Iterable[Archive]] = None) -> None:
+
+        ftp_key_torrent = self.ftp_key_torrent
+        ftp_key_hath = self.ftp_key_hath
 
         files_torrent = []
         files_hath = []
@@ -204,47 +229,50 @@ class PostDownloader(object):
             found_archives = archives
 
         if not found_archives:
-            return
+            return None
 
         for archive in found_archives:
             if archive.match_type:
-                if 'torrent' in archive.match_type:
+                if "torrent" in archive.match_type:
                     files_torrent.append(archive)
-                elif 'hath' in archive.match_type:
+                elif "hath" in archive.match_type:
                     files_hath.append(archive)
 
         if len(files_torrent) + len(files_hath) == 0:
-            return
-
-        self.start_connection()
-
-        if not self.ftps:
-            logger.error(
-                "Cannot download the archives, the FTP connection is not initialized."
-            )
             return None
+
+        if ftp_key_hath == ftp_key_torrent:
+            self.start_connection(ftp_key_hath)
 
         # Hath downloads
         if len(files_hath) > 0:
-            self.set_current_dir(self.settings.providers['panda'].remote_hath_dir)
+
+            if ftp_key_hath != ftp_key_torrent:
+                self.start_connection(ftp_key_hath)
+
+            ftp_data_hath = self.ftp_datas[ftp_key_hath]
+            if not ftp_data_hath.ftps:
+                logger.error("Cannot download the archives, the Hath FTP connection is not initialized.")
+                return None
+
+            self.set_current_dir(ftp_key_hath, self.settings.providers["panda"].remote_hath_dir)
             # self.ftps.encoding = 'utf8'
 
             files_matched_hath = []
-            for line in self.ftps.mlsd(facts=["type"]):
-                if line[1]["type"] != 'dir':
+            for line in ftp_data_hath.ftps.mlsd(facts=["type"]):
+                if line[1]["type"] != "dir":
                     continue
-                m = re.search(r'.*?\[(\d+)\]$', line[0])
+                m = re.search(r".*?\[(\d+)]$", line[0])
                 if m:
                     for archive in files_hath:
                         if archive.gallery and archive.filesize and m.group(1) == archive.gallery.gid:
-                            files_matched_hath.append(
-                                (line[0], archive.zipped.path, int(archive.filesize), archive))
+                            files_matched_hath.append((line[0], archive.zipped.path, int(archive.filesize), archive))
 
             for matched_file_hath in files_matched_hath:
                 total_remote_size = 0
                 remote_ftp_tuples = []
-                for img_file_tuple in self.ftps.mlsd(path=matched_file_hath[0], facts=["type", "size"]):
-                    if img_file_tuple[1]["type"] != 'file' or img_file_tuple[0] == 'galleryinfo.txt':
+                for img_file_tuple in ftp_data_hath.ftps.mlsd(path=matched_file_hath[0], facts=["type", "size"]):
+                    if img_file_tuple[1]["type"] != "file" or img_file_tuple[0] == "galleryinfo.txt":
                         continue
                     total_remote_size += int(img_file_tuple[1]["size"])
                     remote_ftp_tuples.append((img_file_tuple[0], img_file_tuple[1]["size"]))
@@ -255,153 +283,189 @@ class PostDownloader(object):
                             archive=matched_file_hath[3],
                             folder=matched_file_hath[0],
                             current=filesizeformat(total_remote_size),
-                            total=filesizeformat(matched_file_hath[2])
+                            total=filesizeformat(matched_file_hath[2]),
                         )
                     )
                     continue
                 logger.info(
                     "For archive: {archive}, downloading and creating zip "
                     "for folder {filename}, {image_count} images".format(
-                        archive=matched_file_hath[3],
-                        filename=matched_file_hath[1],
-                        image_count=len(remote_ftp_tuples)
-                    ))
+                        archive=matched_file_hath[3], filename=matched_file_hath[1], image_count=len(remote_ftp_tuples)
+                    )
+                )
                 dir_path = mkdtemp(dir=self.settings.temp_directory_path)
-                self.current_download['total'] = len(remote_ftp_tuples)
+                self.current_download.total = len(remote_ftp_tuples)
                 for count, remote_file in enumerate(sorted(remote_ftp_tuples), start=1):
                     for retry_count in range(10):
                         try:
                             with open(os.path.join(dir_path, remote_file[0]), "wb") as file:
-                                self.current_download['index'] = count
+                                self.current_download.index = count
                                 self.write_file_update_progress(
-                                    'RETR %s' % (str(matched_file_hath[0]) + "/" + remote_file[0]),
+                                    "RETR %s" % (str(matched_file_hath[0]) + "/" + remote_file[0]),
                                     file.write,
-                                    int(remote_file[1])
+                                    ftp_key_hath,
+                                    int(remote_file[1]),
                                 )
                         except (ConnectionResetError, socket.timeout, TimeoutError):
-                            logger.warning("Hath download failed for file {} of {}, restarting connection...".format(
-                                count,
-                                len(remote_ftp_tuples))
+                            logger.warning(
+                                "Hath download failed for file {} of {}, restarting connection...".format(
+                                    count, len(remote_ftp_tuples)
+                                )
                             )
-                            self.ftps.close()
-                            self.start_connection()
-                            self.set_current_dir(self.settings.providers['panda'].remote_hath_dir)
+                            ftp_data_hath.ftps.close()
+                            self.start_connection(ftp_key_hath)
+                            self.set_current_dir(ftp_key_hath, self.settings.providers["panda"].remote_hath_dir)
                         else:
                             break
-                with ZipFile(os.path.join(self.settings.MEDIA_ROOT,
-                                          matched_file_hath[1]),
-                             'w') as archive_file:
-                    for (root_path, _, file_names) in os.walk(dir_path):
+                with ZipFile(os.path.join(self.settings.MEDIA_ROOT, matched_file_hath[1]), "w") as archive_file:
+                    for root_path, _, file_names in os.walk(dir_path):
                         for current_file in file_names:
                             archive_file.write(
-                                os.path.join(root_path, current_file), arcname=os.path.basename(current_file))
+                                os.path.join(root_path, current_file), arcname=os.path.basename(current_file)
+                            )
                 shutil.rmtree(dir_path, ignore_errors=True)
 
                 self.process_downloaded_archive(matched_file_hath[3])
 
+            if ftp_key_hath != ftp_key_torrent:
+                ftp_data_hath.ftps.close()
+
+            if ftp_key_hath == ftp_key_torrent and ftp_data_hath.ftps is not None and len(files_torrent) == 0:
+                ftp_data_hath.ftps.close()
+
         # Torrent downloads
+
         if len(files_torrent) > 0:
-            self.set_current_dir(self.settings.ftps['remote_torrent_dir'])
-            self.ftps.encoding = 'utf8'
+
+            if ftp_key_hath != ftp_key_torrent:
+                self.start_connection(ftp_key_torrent)
+
+            ftp_data_torrent = self.ftp_datas[ftp_key_torrent]
+
+            if not ftp_data_torrent.ftps:
+                logger.error("Cannot download the archives, the Hath FTP connection is not initialized.")
+                return None
+
+            self.set_current_dir(ftp_key_torrent, self.settings.ftps["remote_torrent_dir"])
+            ftp_data_torrent.ftps.encoding = "utf8"
             files_matched_torrent = []
-            for line in self.ftps.mlsd(facts=["type", "size"]):
+            for line in ftp_data_torrent.ftps.mlsd(facts=["type", "size"]):
                 if not line[0]:
                     continue
-                if 'type' not in line[1]:
+                if "type" not in line[1]:
                     continue
-                if line[1]["type"] != 'dir' and line[1]["type"] != 'file':
+                if line[1]["type"] != "dir" and line[1]["type"] != "file":
                     continue
                 for archive in files_torrent:
                     if archive.gallery:
-                        cleaned_torrent_name = os.path.splitext(
-                            os.path.basename(archive.zipped.path))[0].replace(' [' + archive.gallery.gid + ']', '')
+                        cleaned_torrent_name = os.path.splitext(os.path.basename(archive.zipped.path))[0].replace(
+                            " [" + archive.gallery.gid + "]", ""
+                        )
                     else:
                         cleaned_torrent_name = os.path.splitext(os.path.basename(archive.zipped.path))[0]
                     if replace_illegal_name(os.path.splitext(line[0])[0]) == cleaned_torrent_name:
-                        if line[1]["type"] == 'dir':
+                        if line[1]["type"] == "dir":
                             files_matched_torrent.append((line[0], line[1]["type"], 0, archive))
                         else:
                             files_matched_torrent.append((line[0], line[1]["type"], int(line[1]["size"]), archive))
             for matched_file_torrent in files_matched_torrent:
-                if matched_file_torrent[1] == 'dir':
+                if matched_file_torrent[1] == "dir":
                     dir_path = mkdtemp(dir=self.settings.temp_directory_path)
-                    remote_ftp_files = list(self.ftps.mlsd(path=matched_file_torrent[0], facts=["type", "size"]))
-                    self.current_download['total'] = len(remote_ftp_files)
+                    remote_ftp_files = list(
+                        ftp_data_torrent.ftps.mlsd(path=matched_file_torrent[0], facts=["type", "size"])
+                    )
+                    self.current_download.total = len(remote_ftp_files)
                     logger.info(
                         "For archive: {archive}, downloading and creating zip "
                         "for folder {filename}, {image_count} images".format(
                             archive=matched_file_torrent[3],
                             filename=matched_file_torrent[0],
-                            image_count=len(remote_ftp_files)
-                        ))
+                            image_count=len(remote_ftp_files),
+                        )
+                    )
                     for count, img_file_tuple in enumerate(remote_ftp_files):
-                        if img_file_tuple[1]["type"] != 'file':
+                        if img_file_tuple[1]["type"] != "file":
                             continue
                         for retry_count in range(10):
                             try:
                                 with open(os.path.join(dir_path, img_file_tuple[0]), "wb") as file:
-                                    self.current_download['index'] = count
+                                    self.current_download.index = count
                                     self.write_file_update_progress(
-                                        'RETR %s' % (str(matched_file_torrent[0]) + "/" + img_file_tuple[0]),
+                                        "RETR %s" % (str(matched_file_torrent[0]) + "/" + img_file_tuple[0]),
                                         file.write,
-                                        int(img_file_tuple[1]["size"])
+                                        ftp_key_torrent,
+                                        int(img_file_tuple[1]["size"]),
                                     )
                             except (ConnectionResetError, socket.timeout, TimeoutError):
                                 logger.warning("Torrent download failed for folder, restarting connection...")
-                                self.ftps.close()
-                                self.start_connection()
-                                self.set_current_dir(self.settings.ftps['remote_torrent_dir'])
+                                ftp_data_torrent.ftps.close()
+                                self.start_connection(ftp_key_torrent)
+                                self.set_current_dir(ftp_key_torrent, self.settings.ftps["remote_torrent_dir"])
                             else:
                                 break
-                    with ZipFile(matched_file_torrent[3].zipped.path, 'w') as archive_file:
-                        for (root_path, _, file_names) in os.walk(dir_path):
+                    with ZipFile(matched_file_torrent[3].zipped.path, "w") as archive_file:
+                        for root_path, _, file_names in os.walk(dir_path):
                             for current_file in file_names:
                                 archive_file.write(
-                                    os.path.join(root_path, current_file), arcname=os.path.basename(current_file))
+                                    os.path.join(root_path, current_file), arcname=os.path.basename(current_file)
+                                )
                     shutil.rmtree(dir_path, ignore_errors=True)
                 else:
                     logger.info(
                         "For archive: {archive} downloading remote file: {remote} to local file: {local}".format(
                             archive=matched_file_torrent[3],
                             remote=matched_file_torrent[0],
-                            local=matched_file_torrent[3].zipped.path
+                            local=matched_file_torrent[3].zipped.path,
                         )
                     )
-                    self.current_download['total'] = 1
+                    self.current_download.total = 1
                     for retry_count in range(10):
                         try:
                             with open(matched_file_torrent[3].zipped.path, "wb") as file:
-                                self.current_download['index'] = 1
+                                self.current_download.index = 1
                                 self.write_file_update_progress(
-                                    'RETR %s' % matched_file_torrent[0], file.write, matched_file_torrent[2])
+                                    "RETR %s" % matched_file_torrent[0],
+                                    file.write,
+                                    ftp_key_torrent,
+                                    matched_file_torrent[2],
+                                )
                         except (ConnectionResetError, socket.timeout, TimeoutError):
                             logger.warning("Torrent download failed for archive, restarting connection...")
-                            self.ftps.close()
-                            self.start_connection()
-                            self.set_current_dir(self.settings.ftps['remote_torrent_dir'])
+                            ftp_data_torrent.ftps.close()
+                            self.start_connection(ftp_key_torrent)
+                            self.set_current_dir(ftp_key_torrent, self.settings.ftps["remote_torrent_dir"])
                         else:
                             break
                     if self.settings.convert_others_to_zip:
                         if os.path.splitext(matched_file_torrent[0])[1].lower() == ".rar":
                             logger.info(
                                 "For archive: {}, converting rar: {} to zip".format(
-                                    matched_file_torrent[3],
-                                    matched_file_torrent[3].zipped.path
+                                    matched_file_torrent[3], matched_file_torrent[3].zipped.path
                                 )
                             )
-                            convert_rar_to_zip(matched_file_torrent[3].zipped.path, temp_path=self.settings.temp_directory_path)
+                            convert_rar_to_zip(
+                                matched_file_torrent[3].zipped.path, temp_path=self.settings.temp_directory_path
+                            )
                         elif os.path.splitext(matched_file_torrent[0])[1].lower() == ".7z":
                             logger.info(
                                 "For archive: {}, converting 7z: {} to zip".format(
-                                    matched_file_torrent[3],
-                                    matched_file_torrent[3].zipped.path
+                                    matched_file_torrent[3], matched_file_torrent[3].zipped.path
                                 )
                             )
-                            convert_7z_to_zip(matched_file_torrent[3].zipped.path, temp_path=self.settings.temp_directory_path)
+                            convert_7z_to_zip(
+                                matched_file_torrent[3].zipped.path, temp_path=self.settings.temp_directory_path
+                            )
 
                 self.process_downloaded_archive(matched_file_torrent[3])
 
-        self.ftps.close()
+            if ftp_key_hath != ftp_key_torrent:
+                ftp_data_torrent.ftps.close()
+
+            if ftp_key_hath == ftp_key_torrent and ftp_data_torrent.ftps is not None:
+                ftp_data_torrent.ftps.close()
+                return None
+            return None
+        return None
 
     def copy_all_missing(self, mode, archives: Optional[Iterable[Archive]] = None):
         files_torrent = []
@@ -419,9 +483,9 @@ class PostDownloader(object):
 
         for archive in found_archives:
             if not os.path.isfile(archive.zipped.path) and archive.match_type:
-                if 'torrent' in archive.match_type:
+                if "torrent" in archive.match_type:
                     files_torrent.append(archive)
-                elif 'hath' in archive.match_type:
+                elif "hath" in archive.match_type:
                     files_hath.append(archive)
 
         logger.debug("{} torrent-based, {} hath-based.".format(len(files_torrent), len(files_hath)))
@@ -431,28 +495,27 @@ class PostDownloader(object):
 
         # Hath downloads
         if len(files_hath) > 0:
-            files_matched_hath = []
-            for matched_file in os.listdir(self.settings.providers['panda'].local_hath_folder):
-                if os.path.isfile(os.path.join(self.settings.providers['panda'].local_hath_folder, matched_file)):
+            files_matched_hath: list[tuple[str, str, int, Archive]] = []
+            for matched_file in os.listdir(self.settings.providers["panda"].local_hath_folder):
+                if os.path.isfile(os.path.join(self.settings.providers["panda"].local_hath_folder, matched_file)):
                     continue
-                m = re.search(r'.*?\[(\d+)\]$', matched_file)
+                m = re.search(r".*?\[(\d+)]$", matched_file)
                 if m:
                     for archive in files_hath:
                         if archive.gallery and archive.filesize and m.group(1) == archive.gallery.gid:
                             files_matched_hath.append(
-                                [matched_file, archive.zipped.path, int(archive.filesize), archive])
+                                (matched_file, archive.zipped.path, int(archive.filesize), archive)
+                            )
 
             for img_dir in files_matched_hath:
                 total_remote_size = 0
                 remote_files = []
-                directory = os.path.join(self.settings.providers['panda'].local_hath_folder, img_dir[0])
+                directory = os.path.join(self.settings.providers["panda"].local_hath_folder, img_dir[0])
                 for img_file in os.listdir(directory):
-                    if not os.path.isfile(os.path.join(directory, img_file)) or img_file == 'galleryinfo.txt':
+                    if not os.path.isfile(os.path.join(directory, img_file)) or img_file == "galleryinfo.txt":
                         continue
-                    total_remote_size += os.stat(
-                        os.path.join(directory, img_file)).st_size
-                    remote_files.append(
-                        os.path.join(directory, img_file))
+                    total_remote_size += os.stat(os.path.join(directory, img_file)).st_size
+                    remote_files.append(os.path.join(directory, img_file))
                 if total_remote_size != img_dir[2]:
                     logger.info(
                         "For archive: {archive}, folder: {folder} "
@@ -460,97 +523,108 @@ class PostDownloader(object):
                             archive=img_dir[3],
                             folder=img_dir[0],
                             current=filesizeformat(total_remote_size),
-                            total=filesizeformat(img_dir[2])
+                            total=filesizeformat(img_dir[2]),
                         )
                     )
                     continue
                 logger.info(
                     "For archive: {archive}, creating zip "
                     "for folder {filename}, {image_count} images".format(
-                        archive=img_dir[3],
-                        filename=img_dir[1],
-                        image_count=len(remote_files)
-                    ))
+                        archive=img_dir[3], filename=img_dir[1], image_count=len(remote_files)
+                    )
+                )
                 dir_path = mkdtemp(dir=self.settings.temp_directory_path)
                 for img_file_original in remote_files:
                     img_file = os.path.split(img_file_original)[1]
-                    if mode == 'local_move':
+                    if mode == "local_move":
                         shutil.move(img_file_original, os.path.join(dir_path, img_file))
                     # Disabled since we can't hardlink to a temp filesystem
-                    elif mode == 'local_hardlink':
+                    elif mode == "local_hardlink":
                         # os.link(img_file_original, os.path.join(dir_path, img_file))
                         shutil.copy(img_file_original, os.path.join(dir_path, img_file))
                     else:
                         shutil.copy(img_file_original, os.path.join(dir_path, img_file))
-                with ZipFile(os.path.join(self.settings.MEDIA_ROOT, img_dir[1]), 'w') as archive_file:
-                    for (root_path, _, file_names) in os.walk(dir_path):
+                with ZipFile(os.path.join(self.settings.MEDIA_ROOT, img_dir[1]), "w") as archive_file:
+                    for root_path, _, file_names in os.walk(dir_path):
                         for current_file in file_names:
                             archive_file.write(
-                                os.path.join(root_path, current_file), arcname=os.path.basename(current_file))
+                                os.path.join(root_path, current_file), arcname=os.path.basename(current_file)
+                            )
                 shutil.rmtree(dir_path, ignore_errors=True)
 
                 self.process_downloaded_archive(img_dir[3])
 
         # Torrent downloads
         if len(files_torrent) > 0:
-            files_matched_torrent = []
-            logger.debug("Looking for {} torrent downloaded files on folder {}.".format(files_torrent, self.settings.torrent['download_dir']))
-            for filename in os.listdir(self.settings.torrent['download_dir']):
+            files_matched_torrent: list[tuple[str, bool, Archive]] = []
+            logger.debug(
+                "Looking for {} torrent downloaded files on folder {}.".format(
+                    files_torrent, self.settings.torrent["download_dir"]
+                )
+            )
+            for filename in os.listdir(self.settings.torrent["download_dir"]):
                 for archive in files_torrent:
                     if archive.gallery:
-                        cleaned_torrent_name = os.path.splitext(
-                            os.path.basename(archive.zipped.path))[0].replace(' [' + archive.gallery.gid + ']', '')
+                        cleaned_torrent_name = os.path.splitext(os.path.basename(archive.zipped.path))[0].replace(
+                            " [" + archive.gallery.gid + "]", ""
+                        )
 
                     else:
                         cleaned_torrent_name = os.path.splitext(os.path.basename(archive.zipped.path))[0]
                     logger.debug(
                         "Checking if cleaned expected file name {0} is equal to found "
                         "torrent name, with replaced illegal characters (original name: {1}): {2}.".format(
-                            cleaned_torrent_name,
-                            filename,
-                            replace_illegal_name(os.path.splitext(filename)[0])
+                            cleaned_torrent_name, filename, replace_illegal_name(os.path.splitext(filename)[0])
                         )
                     )
                     if replace_illegal_name(os.path.splitext(filename)[0]) == cleaned_torrent_name:
-                        files_matched_torrent.append((filename, not os.path.isfile(
-                            os.path.join(self.settings.torrent['download_dir'], filename)), archive))
+                        files_matched_torrent.append(
+                            (
+                                filename,
+                                not os.path.isfile(os.path.join(self.settings.torrent["download_dir"], filename)),
+                                archive,
+                            )
+                        )
 
             for matched_name, matched_bool, matched_archive in files_matched_torrent:
-                target = os.path.join(self.settings.torrent['download_dir'], matched_name)
+                target = os.path.join(self.settings.torrent["download_dir"], matched_name)
                 if matched_bool:
                     logger.info(
                         "For archive: {archive}, creating zip for folder: {filename}".format(
                             archive=matched_archive,
                             filename=matched_name,
-                        ))
+                        )
+                    )
                     dir_path = mkdtemp(dir=self.settings.temp_directory_path)
                     for img_file in os.listdir(target):
                         if not os.path.isfile(os.path.join(target, img_file)):
                             continue
-                        if mode == 'local_move':
+                        if mode == "local_move":
                             shutil.move(os.path.join(target, img_file), os.path.join(dir_path, img_file))
                         # Disabled since we can't hardlink to a temp filesystem
-                        elif mode == 'local_hardlink':
+                        elif mode == "local_hardlink":
                             # os.link(os.path.join(target, img_file), os.path.join(dir_path, img_file))
                             shutil.copy(os.path.join(target, img_file), os.path.join(dir_path, img_file))
                         else:
                             shutil.copy(os.path.join(target, img_file), os.path.join(dir_path, img_file))
 
-                    with ZipFile(matched_archive.zipped.path, 'w') as archive_file:
-                        for (root_path, _, file_names) in os.walk(dir_path):
+                    with ZipFile(matched_archive.zipped.path, "w") as archive_file:
+                        for root_path, _, file_names in os.walk(dir_path):
                             for current_file in file_names:
                                 archive_file.write(
-                                    os.path.join(root_path, current_file), arcname=os.path.basename(current_file))
+                                    os.path.join(root_path, current_file), arcname=os.path.basename(current_file)
+                                )
                     shutil.rmtree(dir_path, ignore_errors=True)
                 else:
                     logger.info(
                         "For archive: {archive}, downloading file: {filename}".format(
                             archive=matched_archive,
                             filename=matched_name,
-                        ))
-                    if mode == 'local_move':
+                        )
+                    )
+                    if mode == "local_move":
                         shutil.move(target, matched_archive.zipped.path)
-                    elif mode == 'local_hardlink':
+                    elif mode == "local_hardlink":
                         os.link(target, matched_archive.zipped.path)
                     else:
                         shutil.copy(target, matched_archive.zipped.path)
@@ -558,16 +632,14 @@ class PostDownloader(object):
                         if os.path.splitext(matched_name)[1].lower() == ".rar":
                             logger.info(
                                 "For archive: {}, converting rar: {} to zip".format(
-                                    matched_archive,
-                                    matched_archive.zipped.path
+                                    matched_archive, matched_archive.zipped.path
                                 )
                             )
                             convert_rar_to_zip(matched_archive.zipped.path, temp_path=self.settings.temp_directory_path)
                         elif os.path.splitext(matched_name)[1].lower() == ".7z":
                             logger.info(
                                 "For archive: {}, converting 7z: {} to zip".format(
-                                    matched_archive,
-                                    matched_archive.zipped.path
+                                    matched_archive, matched_archive.zipped.path
                                 )
                             )
                             convert_7z_to_zip(matched_archive.zipped.path, temp_path=self.settings.temp_directory_path)
@@ -580,8 +652,8 @@ class PostDownloader(object):
         method_for_hath = self.settings.download_handler_hath or self.settings.download_handler
 
         if method_for_torrents != method_for_hath and archives is not None:
-            archives_from_torrents = [x for x in archives if x.match_type and 'torrent' in x.match_type]
-            archives_from_haths = [x for x in archives if x.match_type and 'hath' in x.match_type]
+            archives_from_torrents = [x for x in archives if x.match_type and "torrent" in x.match_type]
+            archives_from_haths = [x for x in archives if x.match_type and "hath" in x.match_type]
 
             if archives_from_torrents:
                 self.do_transfer_by_method(method_for_torrents, archives_from_torrents)
@@ -592,7 +664,7 @@ class PostDownloader(object):
             self.do_transfer_by_method(method_for_torrents, archives)
 
     def do_transfer_by_method(self, method_to_use: str, archives: Optional[Iterable[Archive]] = None) -> None:
-        if method_to_use.startswith('local'):
+        if method_to_use.startswith("local"):
             self.copy_all_missing(method_to_use, archives)
         else:
             for retry_count in range(3):
@@ -606,48 +678,48 @@ class PostDownloader(object):
                     return
             logger.error("Download failed, restart limit reached (3), ending")
 
-    def check_download_progress_archives(self, archives: Iterable[tuple[Archive, ArchiveKey]]) -> dict[ArchiveKey, float]:
+    def check_download_progress_archives(
+        self, archives: Iterable[tuple[Archive, ArchiveKey]]
+    ) -> dict[ArchiveKey, float]:
 
         progress_per_archive: dict[ArchiveKey, float] = {}
 
-        self.start_connection()
+        self.start_connection(self.ftp_key_hath)
 
-        if not self.ftps:
-            logger.error(
-                "Cannot download the archives, the FTP connection is not initialized."
-            )
+        ftp_data_hath = self.ftp_datas[self.ftp_key_hath]
+        if not ftp_data_hath.ftps:
+            logger.error("Cannot download the archives, the FTP connection is not initialized.")
             return progress_per_archive
 
-        self.set_current_dir(self.settings.providers['panda'].remote_hath_dir)
+        self.set_current_dir(self.ftp_key_hath, self.settings.providers["panda"].remote_hath_dir)
         # self.ftps.encoding = 'utf8'
 
         files_matched_hath = []
-        for line in self.ftps.mlsd(facts=["type"]):
-            if line[1]["type"] != 'dir':
+        for line in ftp_data_hath.ftps.mlsd(facts=["type"]):
+            if line[1]["type"] != "dir":
                 continue
-            m = re.search(r'.*?\[(\d+)\]$', line[0])
+            m = re.search(r".*?\[(\d+)]$", line[0])
             if m:
                 for archive, key in archives:
                     if archive.gallery and archive.filesize and m.group(1) == archive.gallery.gid:
-                        files_matched_hath.append(
-                            (line[0], archive.zipped.path, int(archive.filesize), key))
+                        files_matched_hath.append((line[0], archive.zipped.path, int(archive.filesize), key))
 
         for matched_file_hath in files_matched_hath:
             total_remote_size = 0
             remote_ftp_tuples = []
-            for img_file_tuple in self.ftps.mlsd(path=matched_file_hath[0], facts=["type", "size"]):
-                if img_file_tuple[1]["type"] != 'file' or img_file_tuple[0] == 'galleryinfo.txt':
+            for img_file_tuple in ftp_data_hath.ftps.mlsd(path=matched_file_hath[0], facts=["type", "size"]):
+                if img_file_tuple[1]["type"] != "file" or img_file_tuple[0] == "galleryinfo.txt":
                     continue
                 total_remote_size += int(img_file_tuple[1]["size"])
                 remote_ftp_tuples.append((img_file_tuple[0], img_file_tuple[1]["size"]))
-            progress_per_archive[matched_file_hath[3]] = total_remote_size/matched_file_hath[2]
+            progress_per_archive[matched_file_hath[3]] = total_remote_size / matched_file_hath[2]
 
         return progress_per_archive
 
 
 class TimedPostDownloader(BaseScheduler):
 
-    thread_name = 'post_downloader'
+    thread_name = "post_downloader"
 
     def __init__(self, *args: Any, parallel_post_downloaders: int = 4, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -671,8 +743,8 @@ class TimedPostDownloader(BaseScheduler):
 
                 logger.info(
                     "Looking for missing files downloaded by hath ({:d}) and torrent ({:d}).".format(
-                        len([x for x in found_archives if 'hath' in x.match_type]),
-                        len([x for x in found_archives if 'torrent' in x.match_type]),
+                        len([x for x in found_archives if "hath" in x.match_type]),
+                        len([x for x in found_archives if "torrent" in x.match_type]),
                     )
                 )
                 for archive in found_archives:
@@ -685,7 +757,7 @@ class TimedPostDownloader(BaseScheduler):
                     post_download_thread = threading.Thread(
                         name="{}-{}".format(self.thread_name, x),
                         target=self.start_post_downloader,
-                        args=(post_downloader, )
+                        args=(post_downloader,),
                     )
                     post_download_thread.daemon = True
                     post_download_thread.start()
@@ -695,9 +767,7 @@ class TimedPostDownloader(BaseScheduler):
                     thread.join()
 
                 self.post_downloader = {}
-                logger.info(
-                    "All downloader threads finished."
-                )
+                logger.info("All downloader threads finished.")
 
             self.update_last_run(django_tz.now())
 
@@ -708,10 +778,10 @@ class TimedPostDownloader(BaseScheduler):
             except queue.Empty:
                 return
             try:
-                post_downloader.transfer_all_missing((item, ))
+                post_downloader.transfer_all_missing((item,))
                 self.post_queue.task_done()
             except BaseException:
                 logger.critical("Error downloading Archive: {}\n{}".format(item.title, traceback.format_exc()))
 
-    def current_download(self) -> list[dict[str, Any]]:
+    def current_download(self) -> list[CurrentDownload]:
         return [x.current_download for x in self.post_downloader.values()]

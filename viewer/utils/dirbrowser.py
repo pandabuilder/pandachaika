@@ -24,17 +24,14 @@ class DirBrowser(object):
             p = self.path
         return os.path.isdir(p)
 
-    def files(self, path: str = '') -> list[tuple[str, bool]]:
+    def files(self, path: str = "") -> list[tuple[str, bool]]:
         p = os.path.normpath(os.path.join(self.path, path))
         if not p.startswith(self.path):
             p = self.path
         dir_list = os.listdir(p)
-        files = sorted([
-            (f, os.path.isdir(os.path.join(p, f)))
-            for f in dir_list
-        ], key=lambda x: (not x[1], x[0]))
+        files = sorted([(f, os.path.isdir(os.path.join(p, f))) for f in dir_list], key=lambda x: (not x[1], x[0]))
         if not self.path == p:
-            files.insert(0, ('..', os.path.isdir(os.path.join(p, '..'))))
+            files.insert(0, ("..", os.path.isdir(os.path.join(p, ".."))))
         return files
 
     def file(self, path: str) -> str:

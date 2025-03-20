@@ -40,33 +40,26 @@ class NyaaTorrentDownloader(GenericTorrentDownloader):
 
         logger.info("Adding torrent to client.")
         client.connect()
-        if client.send_url or torrent_link.startswith('magnet:'):
-            result, torrent_id = client.add_url(
-                torrent_link,
-                download_dir=self.settings.torrent['download_dir']
-            )
+        if client.send_url or torrent_link.startswith("magnet:"):
+            result, torrent_id = client.add_url(torrent_link, download_dir=self.settings.torrent["download_dir"])
         else:
             torrent_data = self.general_utils.get_torrent(
-                torrent_link,
-                self.own_settings.cookies,
-                convert_to_base64=client.convert_to_base64
+                torrent_link, self.own_settings.cookies, convert_to_base64=client.convert_to_base64
             )
 
-            result, torrent_id = client.add_torrent(
-                torrent_data,
-                download_dir=self.settings.torrent['download_dir']
-            )
-            if client.expected_torrent_name == '':
+            result, torrent_id = client.add_torrent(torrent_data, download_dir=self.settings.torrent["download_dir"])
+            if client.expected_torrent_name == "":
                 from core.libs.bencoding import Decoder
+
                 try:
                     if client.convert_to_base64 and isinstance(torrent_data, str):
                         torrent_data = cast(str, torrent_data)
-                        torrent_metadata = Decoder(base64.decodebytes(torrent_data.encode('utf-8'))).decode()
+                        torrent_metadata = Decoder(base64.decodebytes(torrent_data.encode("utf-8"))).decode()
                     else:
                         torrent_data = cast(bytes, torrent_data)
                         torrent_metadata = Decoder(torrent_data).decode()
-                    client.expected_torrent_name = os.path.splitext(torrent_metadata[b'info'][b'name'])[0]
-                    client.expected_torrent_extension = os.path.splitext(torrent_metadata[b'info'][b'name'])[1]
+                    client.expected_torrent_name = os.path.splitext(torrent_metadata[b"info"][b"name"])[0]
+                    client.expected_torrent_extension = os.path.splitext(torrent_metadata[b"info"][b"name"])[1]
                 except (RuntimeError, EOFError):
                     self.return_code = 0
                     logger.error("Error decoding torrent data: {!r}".format(torrent_data))
@@ -77,9 +70,7 @@ class NyaaTorrentDownloader(GenericTorrentDownloader):
             if client.expected_torrent_name:
                 self.expected_torrent_name = "{}".format(client.expected_torrent_name)
             else:
-                self.expected_torrent_name = "{}".format(
-                    replace_illegal_name(self.gallery.link)
-                )
+                self.expected_torrent_name = "{}".format(replace_illegal_name(self.gallery.link))
             if client.expected_torrent_extension:
                 self.expected_torrent_extension = client.expected_torrent_extension
             self.fileDownloaded = 1
@@ -94,11 +85,7 @@ class NyaaTorrentDownloader(GenericTorrentDownloader):
             else:
                 final_name = replace_illegal_name(self.expected_torrent_name)
             self.gallery.filename = available_filename(
-                self.settings.MEDIA_ROOT,
-                os.path.join(
-                    self.own_settings.torrent_dl_folder,
-                    final_name
-                )
+                self.settings.MEDIA_ROOT, os.path.join(self.own_settings.torrent_dl_folder, final_name)
             )
             # This being a no_metadata downloader, we force the Gallery fields from the Archive
             if self.original_gallery:
@@ -106,9 +93,11 @@ class NyaaTorrentDownloader(GenericTorrentDownloader):
                 self.original_gallery.filesize = self.gallery.filesize
         else:
             self.return_code = 0
-            logger.error("There was an error adding the torrent to the client, torrent link: {}, error in client {}:".format(torrent_link, client.error))
+            logger.error(
+                "There was an error adding the torrent to the client, torrent link: {}, error in client {}:".format(
+                    torrent_link, client.error
+                )
+            )
 
 
-API = (
-    NyaaTorrentDownloader,
-)
+API = (NyaaTorrentDownloader,)

@@ -139,6 +139,9 @@
           <div class="col-md-auto">
             <button type="submit" name="apply" class="btn btn-info me-sm-1">Search</button>
             <a class="btn btn-light" href="{% url 'viewer:manage-archives' %}">Clear</a>
+            <a href="#archive-operations" class="btn btn-primary">
+              <i class="fas fa-arrow-down"></i> Jump to Archive Operations
+            </a>
           </div>
       </div>
     </form>
@@ -247,94 +250,162 @@
           </span>
         </div>
       {% endif %}
-    <div class="mb-3">
-      <input size="10" class="form-control" name="reason" value="" placeholder="Reason" maxlength="200"/>
-    </div>
-    {% if perms.viewer.change_archivegroup %}
-        <div class="row g-1 align-items-center">
-            <div class="col-md-auto">
-            <table class="table">
-              {{ group_form }}
-            </table>
-            </div>
-            <div class="col-md-auto">
-                <button name="add_to_group" class="btn btn-light">Add to Group</button>
-            </div>
+
+      <div class="card panel mt-4" id="archive-operations">
+        <div class="card-header">
+          <h5 class="mb-0">Archive Operations</h5>
         </div>
-    {% endif %}
-    <div class="row g-1 align-items-center">
-        {% if perms.viewer.publish_archive %}
-            <div class="col-md-auto">
-                <button name="publish_archives" class="btn btn-light">Publish</button>
+        <div class="card-body">
+          <div class="row g-3">
+            <!-- Reason Input -->
+            <div class="col-12">
+              <div class="input-group">
+                <input type="text" class="form-control" name="reason" placeholder="Operation reason" maxlength="200">
+                <button type="button" class="btn btn-outline-secondary" data-bs-toggle="tooltip" title="Required for most operations">
+                  <i class="fas fa-info-circle"></i>
+                </button>
+              </div>
             </div>
-            <div class="col-md-auto">
-                <button name="unpublish_archives" class="btn btn-light">Unpublish</button>
-            </div>
-        {% endif %}
-        {% if perms.viewer.update_metadata %}
-            <div class="col-md-auto">
-                <button name="update_metadata" class="btn btn-light">Update metadata</button>
-            </div>
-        {% endif %}
-        {% if perms.viewer.recalc_fileinfo %}
-            <div class="col-md-auto">
-                <button name="recalc_fileinfo" class="btn btn-light">Recalc file info</button>
-            </div>
-        {% endif %}
-        {% if perms.viewer.mark_similar_archive %}
-            <div class="col-md-auto">
-                <button name="mark_similar" class="btn btn-light">Mark similar</button>
-            </div>
-        {% endif %}
-        {% if perms.viewer.recycle_archive %}
-            <div class="col-md-auto">
-                <button name="recycle_archives" class="btn btn-light">Move to Recycle Bin</button>
-            </div>
-        {% endif %}
-        {% if perms.viewer.expand_archive %}
-            <div class="col-md-auto">
-                <button name="reduce_archives" class="btn btn-light">Reduce</button>
-            </div>
-        {% endif %}
-        {% if perms.viewer.match_archive %}
-            <div class="col-md-auto">
-                <button name="release_gallery" class="btn btn-light" title="Release associated Gallery">Release Gallery</button>
-            </div>
-        {% endif %}
-        {% if perms.viewer.delete_archive %}
-            <div class="col-md-auto">
-                <button name="delete_archives" class="btn btn-light">Delete (WARNING!)</button>
-            </div>
-        {% endif %}
-        {% if perms.viewer.delete_archive and perms.viewer.mark_delete_gallery %}
-            <div class="col-md-auto">
-                <div class="form-check">
-                    <input id="checkbox7" class="form-check-input" type="checkbox" name="mark_delete_galleries" value="1"><label class="form-check-label" for="checkbox7">Mark galleries as deleted</label>
+
+            <!-- Group Management -->
+            {% if perms.viewer.change_archivegroup %}
+            <div class="col-12">
+              <div class="card panel">
+                <div class="card-header">
+                  <h6 class="mb-0">Group Operations</h6>
                 </div>
-            </div>
-        {% endif %}
-        {% if perms.viewer.delete_archive and perms.viewer.delete_gallery %}
-            <div class="col-md-auto">
-                <div class="form-check">
-                    <input id="checkbox6" class="form-check-input" type="checkbox" name="delete_galleries" value="1"><label class="form-check-label" for="checkbox6">Delete galleries</label>
+                <div class="card-body">
+                  <div class="row align-items-center">
+                    <div class="col-md-2">
+                      {% for field in group_form %}
+                      <div class="fieldWrapper">
+                          {{ field.errors }}
+                          {{ field }}
+                        </div>
+                      {% endfor %}
+                    </div>
+                    <div class="col-md-1">
+                      <button name="add_to_group" class="btn btn-primary w-100">Add to Group</button>
+                    </div>
+                  </div>
                 </div>
+              </div>
             </div>
-        {% endif %}
-        {% if perms.viewer.delete_archive and perms.viewer.approve_gallery %}
-            <div class="col-md-auto">
-                <div class="form-check">
-                    <input id="checkbox13" class="form-check-input" type="checkbox" name="deny_galleries" value="1"><label class="form-check-label" for="checkbox13">Deny galleries</label>
+            {% endif %}
+
+            <!-- Main Operations -->
+            <div class="col-12">
+              <div class="d-flex flex-wrap gap-2">
+                {% if perms.viewer.publish_archive %}
+                <button name="publish_archives" class="btn btn-success">Publish</button>
+                <button name="unpublish_archives" class="btn btn-warning">Unpublish</button>
+                {% endif %}
+                {% if perms.viewer.update_metadata %}
+                <button name="update_metadata" class="btn btn-primary">Update metadata</button>
+                {% endif %}
+                {% if perms.viewer.recalc_fileinfo %}
+                <button name="recalc_fileinfo" class="btn btn-primary">Recalc file info</button>
+                {% endif %}
+                {% if perms.viewer.mark_similar_archive %}
+                <button name="mark_similar" class="btn btn-primary">Mark similar</button>
+                {% endif %}
+                {% if perms.viewer.recycle_archive %}
+                <button name="recycle_archives" class="btn btn-warning">Move to Recycle Bin</button>
+                {% endif %}
+                {% if perms.viewer.expand_archive %}
+                <button name="reduce_archives" class="btn btn-primary">Reduce</button>
+                {% endif %}
+              </div>
+            </div>
+
+            <!-- Gallery Operations -->
+            {% if perms.viewer.match_archive %}
+            <div class="col-12">
+              <div class="card panel">
+                <div class="card-header">
+                  <h6 class="mb-0">Gallery Operations</h6>
                 </div>
-            </div>
-        {% endif %}
-        {% if user.is_staff %}
-            <div class="col-md-auto">
-                <div class="form-check">
-                    <input id="checkbox11" class="form-check-input" type="checkbox" name="run_for_all" value="1"><label class="form-check-label" for="checkbox11">Select all Archives</label>
+                <div class="card-body">
+                  <div class="d-flex flex-wrap gap-2">
+                    <button name="release_gallery" class="btn btn-primary" title="Release associated Gallery">Release Gallery</button>
+                    <button name="gallery_to_alternative" class="btn btn-primary" title="Gallery to Alternative">Gallery to Alternative</button>
+                  </div>
                 </div>
+              </div>
             </div>
-        {% endif %}
-    </div>
+            {% endif %}
+
+            <!-- Archive Reason Change -->
+            {% if perms.viewer.change_archive %}
+            <div class="col-12">
+              <div class="card panel">
+                <div class="card-header">
+                  <h6 class="mb-0">Change Archive Reason</h6>
+                </div>
+                <div class="card-body">
+                  <div class="d-flex gap-2 align-items-center">
+                    <div class="input-group archive-reason-input">
+                      <input type="text" class="form-control" name="archive_reason" placeholder="New reason" maxlength="200">
+                      <button name="change_archive_reason" class="btn btn-primary">Update Reason</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+
+            <!-- Delete Operations -->
+            {% if perms.viewer.delete_archive %}
+            <div class="col-12">
+              <div class="card panel border-danger">
+                <div class="card-header bg-danger text-white">
+                  <h6 class="mb-0">Danger Zone</h6>
+                </div>
+                <div class="card-body">
+                  <div class="row g-2">
+                    <div class="col-12 mb-2">
+                      <button name="delete_archives" class="btn btn-danger">Delete Archives (WARNING!)</button>
+                    </div>
+                    <div class="col-12">
+                      <div class="d-flex flex-wrap gap-4">
+                        {% if perms.viewer.mark_delete_gallery %}
+                        <div class="form-check">
+                          <input id="checkbox7" class="form-check-input" type="checkbox" name="mark_delete_galleries" value="1">
+                          <label class="form-check-label" for="checkbox7">Mark galleries as deleted</label>
+                        </div>
+                        {% endif %}
+                        {% if perms.viewer.delete_gallery %}
+                        <div class="form-check">
+                          <input id="checkbox6" class="form-check-input" type="checkbox" name="delete_galleries" value="1">
+                          <label class="form-check-label" for="checkbox6">Delete galleries</label>
+                        </div>
+                        {% endif %}
+                        {% if perms.viewer.approve_gallery %}
+                        <div class="form-check">
+                          <input id="checkbox13" class="form-check-input" type="checkbox" name="deny_galleries" value="1">
+                          <label class="form-check-label" for="checkbox13">Deny galleries</label>
+                        </div>
+                        {% endif %}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+
+            <!-- Staff Options -->
+            {% if user.is_staff %}
+            <div class="col-12">
+              <div class="form-check">
+                <input id="checkbox11" class="form-check-input" type="checkbox" name="run_for_all" value="1">
+                <label class="form-check-label" for="checkbox11">Select all Archives</label>
+              </div>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
     </form>
 {% endblock %}
 {% block afterJQ %}
@@ -349,4 +420,13 @@
     <script src="{% static 'js/vendor/jquery.autocomplete-light.min.js' %}"></script>
   {% endcompress %}
   <script type="text/javascript" src="{% static 'js/list_operations.js' %}"></script>
+  <script>
+    // Initialize tooltips
+    document.addEventListener('DOMContentLoaded', function() {
+      var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+      var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl)
+      });
+    });
+  </script>
 {% endblock %}

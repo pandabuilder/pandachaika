@@ -20,7 +20,6 @@ logger = logging.getLogger(__name__)
 
 
 class WebQueue(object):
-
     """Queue handler for downloads."""
 
     def __init__(self, settings: Settings) -> None:
@@ -28,7 +27,7 @@ class WebQueue(object):
         self.queue: deque = deque()
         self.web_queue_thread: Optional[threading.Thread] = None
         self.current_processing_items: list[QueueItem] = []
-        self.thread_name = 'web_queue'
+        self.thread_name = "web_queue"
 
     def web_worker(self) -> None:
         while True:
@@ -41,11 +40,11 @@ class WebQueue(object):
                 self.current_processing_items = item
                 web_crawler = WebCrawler(self.settings)
                 web_crawler.start_crawling(
-                    item['args'],
-                    override_options=item['override_options'],
-                    archive_callback=item.get('archive_callback', None),
-                    gallery_callback=item.get('gallery_callback', None),
-                    use_argparser=item.get('use_argparser', True)
+                    item["args"],
+                    override_options=item["override_options"],
+                    archive_callback=item.get("archive_callback", None),
+                    gallery_callback=item.get("gallery_callback", None),
+                    use_argparser=item.get("use_argparser", True),
                 )
                 self.current_processing_items = []
             except BaseException:
@@ -58,8 +57,7 @@ class WebQueue(object):
         if self.current_processing_items:
             self.queue.append(self.current_processing_items)
             self.current_processing_items = []
-        self.web_queue_thread = threading.Thread(
-            name=self.thread_name, target=self.web_worker)
+        self.web_queue_thread = threading.Thread(name=self.thread_name, target=self.web_worker)
         self.web_queue_thread.daemon = True
         self.web_queue_thread.start()
 
@@ -85,20 +83,21 @@ class WebQueue(object):
             return False
 
     def enqueue_args_list(
-            self, args: Iterable[str],
-            override_options: 'Optional[Settings]' = None,
-            archive_callback: 'Optional[Callable[[Optional[Archive], Optional[str], str], None]]' = None,
-            gallery_callback: 'Optional[Callable[[Optional[Gallery], Optional[str], str], None]]' = None,
-            use_argparser: bool = True
+        self,
+        args: Iterable[str],
+        override_options: "Optional[Settings]" = None,
+        archive_callback: "Optional[Callable[[Optional[Archive], Optional[str], str], None]]" = None,
+        gallery_callback: "Optional[Callable[[Optional[Gallery], Optional[str], str], None]]" = None,
+        use_argparser: bool = True,
     ) -> None:
 
         self.queue.append(
             {
-                'args': args,
-                'override_options': override_options,
-                'archive_callback': archive_callback,
-                'gallery_callback': gallery_callback,
-                'use_argparser': use_argparser,
+                "args": args,
+                "override_options": override_options,
+                "archive_callback": archive_callback,
+                "gallery_callback": gallery_callback,
+                "use_argparser": use_argparser,
             }
         )
         self.start_running()

@@ -8,6 +8,7 @@ from collections import defaultdict
 from typing import Optional
 from urllib.parse import urlparse, urljoin
 
+import bs4
 from bs4 import BeautifulSoup
 from django.db.models import QuerySet
 from dateutil import parser as date_parser
@@ -41,78 +42,80 @@ class Parser(BaseParser):
         if not response:
             return None
 
-        response.encoding = 'utf-8'
+        response.encoding = "utf-8"
 
         return self.process_regular_gallery_page_v2(link, response.text)
 
-    PAGES_REGEX = re.compile(r'Pages:\s+(\d+)', re.IGNORECASE)
-    JP_TITLE_REGEX = re.compile(r'Japanese Title:\s+(.+)', re.IGNORECASE)
-    DATE_CONVENTION_REGEX = re.compile(r'Date/Convention:\s+(.+)', re.IGNORECASE)
-    OTHER_LANGUAGE_REGEX = re.compile(r'\*This work is in (\w+). For the English version', re.IGNORECASE)
+    PAGES_REGEX = re.compile(r"Pages:\s+(\d+)", re.IGNORECASE)
+    JP_TITLE_REGEX = re.compile(r"Japanese Title:\s+(.+)", re.IGNORECASE)
+    DATE_CONVENTION_REGEX = re.compile(r"Date/Convention:\s+(.+)", re.IGNORECASE)
+    OTHER_LANGUAGE_REGEX = re.compile(r"\*This work is in (\w+). For the English version", re.IGNORECASE)
 
     def process_regular_gallery_page_v2(self, link: str, response_text: str) -> Optional[GalleryData]:
 
-        soup = BeautifulSoup(response_text, 'html.parser')
-        gallery = GalleryData(link.replace(constants.main_url + '/', ''), self.name)
+        soup = BeautifulSoup(response_text, "html.parser")
+        gallery = GalleryData(link.replace(constants.main_url + "/", ""), self.name)
         gallery.link = link
         gallery.tags = []
         title_container = soup.find("meta", property="og:title")
-        gallery.title = title_container['content'] if title_container else ''
+        if isinstance(title_container, bs4.element.Tag) and isinstance(title_container["content"], str):
+            gallery.title = title_container["content"]
+        else:
+            gallery.title = ""
 
         # Defaulting to Doujinshi (might need to change later)
-        gallery.category = 'Doujinshi'
+        gallery.category = "Doujinshi"
 
         # gallery.title = parsed_json.get('title', '')
         # gallery.posted = date_parser.parse(parsed_json.get('published_at', None))
 
         img_container = soup.find("div", class_="product-left")
 
-        if img_container:
+        if isinstance(img_container, bs4.element.Tag):
             img_link_container_0 = img_container.find("div", {"class": "main-image"})
-            if img_link_container_0:
+            if isinstance(img_link_container_0, bs4.element.Tag):
                 img_link_container_1 = img_link_container_0.find("div", {"data-index": "0"})
-                if img_link_container_1:
+                if isinstance(img_link_container_1, bs4.element.Tag):
                     img_link_container_2 = img_link_container_1.find("img")
-                    if img_link_container_2:
-                        img_link_line = img_link_container_2['srcset']
-                        img_links = img_link_line.split(" ")
-                        for img in img_links:
-                            if img.startswith('https://'):
-                                gallery.thumbnail_url = img
+                    if isinstance(img_link_container_2, bs4.element.Tag):
+                        img_link_line = img_link_container_2["srcset"]
+                        if isinstance(img_link_line, str):
+                            img_links = img_link_line.split(" ")
+                            for img in img_links:
+                                if img.startswith("https://"):
+                                    gallery.thumbnail_url = img
 
         product_container = soup.find("div", id="product", class_="product-details")
 
-        if product_container:
+        if isinstance(product_container, bs4.element.Tag):
 
             description_text = product_container.find("div", class_="block-content")
             if description_text:
                 gallery.comment = description_text.get_text().strip()
 
             stats_container = product_container.find("div", class_="product-stats")
-            if stats_container:
+            if isinstance(stats_container, bs4.element.Tag):
                 artist_container = stats_container.find("li", class_="product-manufacturer")
-                if artist_container:
+                if isinstance(artist_container, bs4.element.Tag):
                     name_container = artist_container.find("a")
-                    if name_container:
-                        gallery.tags.append(
-                            translate_tag("artist:" + name_container.get_text())
-                        )
+                    if isinstance(name_container, bs4.element.Tag):
+                        gallery.tags.append(translate_tag("artist:" + name_container.get_text()))
                 pages_container = stats_container.find("li", class_="product-upc")
-                if pages_container:
+                if isinstance(pages_container, bs4.element.Tag):
                     int_container = pages_container.find("span")
-                    if int_container:
+                    if isinstance(int_container, bs4.element.Tag):
                         gallery.filecount = int(int_container.get_text())
                 jpn_title_container = stats_container.find("li", class_="product-mpn")
-                if jpn_title_container:
+                if isinstance(jpn_title_container, bs4.element.Tag):
                     text_container = jpn_title_container.find("span")
-                    if text_container:
+                    if isinstance(text_container, bs4.element.Tag):
                         gallery.title_jpn = text_container.get_text()
 
-        product_id_container = soup.find("input", {'id': "product-id", 'name': "product_id"})
+        product_id_container = soup.find("input", {"id": "product-id", "name": "product_id"})
 
-        if product_id_container:
-            product_id = product_id_container['value']
-            tag_link = 'index.php?route=product/product/cattags&product_id={}'.format(product_id)
+        if isinstance(product_id_container, bs4.element.Tag):
+            product_id = product_id_container["value"]
+            tag_link = "index.php?route=product/product/cattags&product_id={}".format(product_id)
             tags_request_dict = construct_request_dict(self.settings, self.own_settings)
 
             tag_link = urljoin(constants.main_url, tag_link)
@@ -124,74 +127,73 @@ class Parser(BaseParser):
             )
 
             if response:
-                response.encoding = 'utf-8'
-                tags_soup = BeautifulSoup(response.text, 'html.parser')
+                response.encoding = "utf-8"
+                tags_soup = BeautifulSoup(response.text, "html.parser")
                 tags_container = tags_soup.find("ul", class_="ctagList")
-                if tags_container:
+                if isinstance(tags_container, bs4.element.Tag):
                     for tag_container in tags_container.find_all("span", {"class": "post-ctag"}):
-                        tag_text = tag_container.get_text()
-                        gallery.tags.append(
-                            translate_tag(tag_text.strip())
-                        )
+                        if isinstance(tag_container, bs4.element.Tag):
+                            tag_text = tag_container.get_text()
+                            gallery.tags.append(translate_tag(tag_text.strip()))
 
         return gallery
 
     def process_regular_gallery_page(self, link: str, response_text: str) -> Optional[GalleryData]:
 
-        soup = BeautifulSoup(response_text, 'html.parser')
-        gallery = GalleryData(link.replace(constants.main_url + '/', ''), self.name)
+        soup = BeautifulSoup(response_text, "html.parser")
+        gallery = GalleryData(link.replace(constants.main_url + "/", ""), self.name)
         gallery.link = link
         gallery.tags = []
         title_container = soup.find("meta", property="og:title")
-        gallery.title = title_container['content'] if title_container else ''
+        if isinstance(title_container, bs4.element.Tag) and isinstance(title_container["content"], str):
+            gallery.title = title_container["content"]
+        else:
+            gallery.title = ""
 
         # Defaulting to Doujinshi (might need to change later)
-        gallery.category = 'Doujinshi'
+        gallery.category = "Doujinshi"
 
         description_container = soup.find("script", id="ProductJson-product-template")
+
+        if not isinstance(description_container, bs4.element.Tag) or not description_container.string:
+            return gallery
 
         # We can get most data from this object
         parsed_json = json.loads(description_container.string)
 
         # gallery.title = parsed_json.get('title', '')
-        gallery.posted = date_parser.parse(parsed_json.get('published_at', None))
+        gallery.posted = date_parser.parse(parsed_json.get("published_at", None))
 
-        thumbnail_url = parsed_json.get('featured_image', None)
+        thumbnail_url = parsed_json.get("featured_image", None)
         if thumbnail_url:
             gallery.thumbnail_url = urljoin(thumbnail_url, urlparse(thumbnail_url).path)
-            if gallery.thumbnail_url and gallery.thumbnail_url.startswith('//'):
-                gallery.thumbnail_url = 'https:' + gallery.thumbnail_url
+            if gallery.thumbnail_url and gallery.thumbnail_url.startswith("//"):
+                gallery.thumbnail_url = "https:" + gallery.thumbnail_url
 
-        if 'vendor' in parsed_json:
-            gallery.tags.append(
-                translate_tag("artist:" + parsed_json['vendor'])
-            )
+        if "vendor" in parsed_json:
+            gallery.tags.append(translate_tag("artist:" + parsed_json["vendor"]))
 
-        if 'tags' in parsed_json:
-            for tag in parsed_json['tags']:
+        if "tags" in parsed_json:
+            for tag in parsed_json["tags"]:
                 gallery.tags.append(translate_tag(tag))
 
-        if 'description' in parsed_json:
-            description_soup = BeautifulSoup(parsed_json['description'], 'html.parser')
+        if "description" in parsed_json:
+            description_soup = BeautifulSoup(parsed_json["description"], "html.parser")
 
             description_text = description_soup.get_text().replace("Synopsis:", "")
             description_text_newline = description_soup.get_text("\n").replace("Synopsis:", "")
 
             description_text_remove = description_text
 
-            description_text_remove = self.PAGES_REGEX.sub('', description_text_remove)
-            description_text_remove = self.JP_TITLE_REGEX.sub('', description_text_remove)
-            description_text_remove = self.DATE_CONVENTION_REGEX.sub('', description_text_remove)
+            description_text_remove = self.PAGES_REGEX.sub("", description_text_remove)
+            description_text_remove = self.JP_TITLE_REGEX.sub("", description_text_remove)
+            description_text_remove = self.DATE_CONVENTION_REGEX.sub("", description_text_remove)
 
             other_language_found = self.OTHER_LANGUAGE_REGEX.search(description_text_newline)
             if other_language_found:
-                gallery.tags.append(
-                    translate_tag("language:" + other_language_found.group(1))
-                )
+                gallery.tags.append(translate_tag("language:" + other_language_found.group(1)))
             else:
-                gallery.tags.append(
-                    translate_tag("language:english")
-                )
+                gallery.tags.append(translate_tag("language:english"))
 
             pages_text_found = self.PAGES_REGEX.search(description_text_newline)
             if pages_text_found:
@@ -203,11 +205,9 @@ class Parser(BaseParser):
 
             convention_text_found = self.DATE_CONVENTION_REGEX.search(description_text_newline)
             if convention_text_found:
-                gallery.tags.append(
-                    translate_tag("event:" + convention_text_found.group(1))
-                )
+                gallery.tags.append(translate_tag("event:" + convention_text_found.group(1)))
 
-            reparsed_text = ''
+            reparsed_text = ""
 
             # roundabout way to remove all after the used regexs.
             for char_count, char in enumerate(description_text_remove):
@@ -221,21 +221,14 @@ class Parser(BaseParser):
         return gallery
 
     # Even if we just call the single method, it allows to upgrade this easily in case group calls are supported
-    # afterwards. Also, we can add a wait_timer here.
+    # afterward. Also, we can add a wait_timer here.
     def get_values_from_gallery_link_list(self, links: list[str]) -> list[GalleryData]:
         response = []
         for i, element in enumerate(links):
             if i > 0:
                 time.sleep(self.own_settings.wait_timer)
 
-            logger.info(
-                "Calling API ({}). "
-                "Gallery: {}, total galleries: {}".format(
-                    self.name,
-                    i + 1,
-                    len(links)
-                )
-            )
+            logger.info("Calling API ({}). " "Gallery: {}, total galleries: {}".format(self.name, i + 1, len(links)))
 
             values = self.fetch_gallery_data(element)
             if values:
@@ -253,22 +246,27 @@ class Parser(BaseParser):
 
     @staticmethod
     def id_from_url(url: str) -> Optional[str]:
-        m = re.search(constants.main_url + '/(.+)', url)
+        m = re.search(constants.main_url + "/(.+)", url)
         if m and m.group(1):
             return m.group(1)
         else:
             return None
 
-    def crawl_urls(self, urls: list[str], wanted_filters: Optional[QuerySet] = None, wanted_only: bool = False,
-                   preselected_wanted_matches: Optional[dict[str, list['WantedGallery']]] = None) -> None:
+    def crawl_urls(
+        self,
+        urls: list[str],
+        wanted_filters: Optional[QuerySet] = None,
+        wanted_only: bool = False,
+        preselected_wanted_matches: Optional[dict[str, list["WantedGallery"]]] = None,
+    ) -> None:
 
         unique_urls = set()
         gallery_data_list = []
         fetch_format_galleries = []
-        gallery_wanted_lists: dict[str, list['WantedGallery']] = preselected_wanted_matches or defaultdict(list)
+        gallery_wanted_lists: dict[str, list["WantedGallery"]] = preselected_wanted_matches or defaultdict(list)
 
         if not self.downloaders:
-            logger.warning('No downloaders enabled, returning.')
+            logger.warning("No downloaders enabled, returning.")
             return
 
         for url in urls:
@@ -283,10 +281,7 @@ class Parser(BaseParser):
             if not gid:
                 continue
 
-            discard_approved, discard_message = self.discard_gallery_by_internal_checks(
-                gallery_id=gid,
-                link=gallery
-            )
+            discard_approved, discard_message = self.discard_gallery_by_internal_checks(gallery_id=gid, link=gallery)
 
             if discard_approved:
                 if not self.settings.silent_processing:
@@ -309,24 +304,22 @@ class Parser(BaseParser):
             if not internal_gallery_data.link:
                 continue
 
-            banned_result, banned_reasons = self.general_utils.discard_by_gallery_data(internal_gallery_data.tags, internal_gallery_data.uploader)
+            banned_result, banned_reasons = self.general_utils.discard_by_gallery_data(
+                internal_gallery_data.tags, internal_gallery_data.uploader
+            )
 
             if banned_result:
                 if not self.settings.silent_processing:
                     logger.info(
                         "Skipping gallery link {}, discarded reasons: {}".format(
-                            internal_gallery_data.link,
-                            banned_reasons
+                            internal_gallery_data.link, banned_reasons
                         )
                     )
                 continue
 
             if wanted_filters:
                 self.compare_gallery_with_wanted_filters(
-                    internal_gallery_data,
-                    internal_gallery_data.link,
-                    wanted_filters,
-                    gallery_wanted_lists
+                    internal_gallery_data, internal_gallery_data.link, wanted_filters, gallery_wanted_lists
                 )
                 if wanted_only and not gallery_wanted_lists[internal_gallery_data.gid]:
                     continue
@@ -336,6 +329,4 @@ class Parser(BaseParser):
         self.pass_gallery_data_to_downloaders(gallery_data_list, gallery_wanted_lists)
 
 
-API = (
-    Parser,
-)
+API = (Parser,)

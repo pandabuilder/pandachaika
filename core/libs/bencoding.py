@@ -19,25 +19,26 @@ from collections import OrderedDict
 
 
 # Indicates start of integers
-TOKEN_INTEGER = b'i'
+TOKEN_INTEGER = b"i"
 
 # Indicates start of list
-TOKEN_LIST = b'l'
+TOKEN_LIST = b"l"
 
 # Indicates start of dict
-TOKEN_DICT = b'd'
+TOKEN_DICT = b"d"
 
 # Indicate end of lists, dicts and integer values
-TOKEN_END = b'e'
+TOKEN_END = b"e"
 
 # Delimits string length from string data
-TOKEN_STRING_SEPARATOR = b':'
+TOKEN_STRING_SEPARATOR = b":"
 
 
 class Decoder:
     """
     Decodes a bencoded sequence of bytes.
     """
+
     def __init__(self, data: bytes):
         if not isinstance(data, bytes):
             raise TypeError('Argument "data" must be of type bytes')
@@ -52,7 +53,7 @@ class Decoder:
         """
         c = self._peek()
         if c is None:
-            raise EOFError('Unexpected end-of-file')
+            raise EOFError("Unexpected end-of-file")
         elif c == TOKEN_INTEGER:
             self._consume()  # The token
             return self._decode_int()
@@ -64,11 +65,10 @@ class Decoder:
             return self._decode_dict()
         elif c == TOKEN_END:
             return None
-        elif c in b'01234567899':
+        elif c in b"01234567899":
             return self._decode_string()
         else:
-            raise RuntimeError('Invalid token read at {0}'.format(
-                str(self._index)))
+            raise RuntimeError("Invalid token read at {0}".format(str(self._index)))
 
     def _peek(self):
         """
@@ -76,7 +76,7 @@ class Decoder:
         """
         if self._index + 1 >= len(self._data):
             return None
-        return self._data[self._index:self._index + 1]
+        return self._data[self._index : self._index + 1]
 
     def _consume(self) -> None:
         """
@@ -89,9 +89,8 @@ class Decoder:
         Read the `length` number of bytes from data and return the result
         """
         if self._index + length > len(self._data):
-            raise IndexError('Cannot read {0} bytes from current position {1}'
-                             .format(str(length), str(self._index)))
-        res = self._data[self._index:self._index + length]
+            raise IndexError("Cannot read {0} bytes from current position {1}".format(str(length), str(self._index)))
+        res = self._data[self._index : self._index + length]
         self._index += length
         return res
 
@@ -102,12 +101,11 @@ class Decoder:
         """
         try:
             occurrence = self._data.index(token, self._index)
-            result = self._data[self._index:occurrence]
+            result = self._data[self._index : occurrence]
             self._index = occurrence + 1
             return result
         except ValueError:
-            raise RuntimeError('Unable to find token {0}'.format(
-                str(token)))
+            raise RuntimeError("Unable to find token {0}".format(str(token)))
 
     def _decode_int(self):
         return int(self._read_until(TOKEN_END))
@@ -115,14 +113,14 @@ class Decoder:
     def _decode_list(self):
         res = []
         # Recursive decode the content of the list
-        while self._data[self._index: self._index + 1] != TOKEN_END:
+        while self._data[self._index : self._index + 1] != TOKEN_END:
             res.append(self.decode())
         self._consume()  # The END token
         return res
 
     def _decode_dict(self):
         res = OrderedDict()
-        while self._data[self._index: self._index + 1] != TOKEN_END:
+        while self._data[self._index : self._index + 1] != TOKEN_END:
             key = self.decode()
             obj = self.decode()
             res[key] = obj
@@ -148,6 +146,7 @@ class Encoder:
 
     Any other type will simply be ignored.
     """
+
     def __init__(self, data):
         self._data = data
 
@@ -174,27 +173,27 @@ class Encoder:
             return None
 
     def _encode_int(self, value):
-        return str.encode('i' + str(value) + 'e')
+        return str.encode("i" + str(value) + "e")
 
     def _encode_string(self, value: str):
-        res = str(len(value)) + ':' + value
+        res = str(len(value)) + ":" + value
         return str.encode(res)
 
     def _encode_bytes(self, value):
         result = bytearray()
         result += str.encode(str(len(value)))
-        result += b':'
+        result += b":"
         result += value
         return result
 
     def _encode_list(self, data):
-        result = bytearray('l', 'utf-8')
-        result += b''.join([self.encode_next(item) for item in data])
-        result += b'e'
+        result = bytearray("l", "utf-8")
+        result += b"".join([self.encode_next(item) for item in data])
+        result += b"e"
         return result
 
     def _encode_dict(self, data: dict) -> bytes:
-        result = bytearray('d', 'utf-8')
+        result = bytearray("d", "utf-8")
         for k, v in data.items():
             key = self.encode_next(k)
             value = self.encode_next(v)
@@ -202,6 +201,6 @@ class Encoder:
                 result += key
                 result += value
             else:
-                raise RuntimeError('Bad dict')
-        result += b'e'
+                raise RuntimeError("Bad dict")
+        result += b"e"
         return result

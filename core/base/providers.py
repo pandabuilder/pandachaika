@@ -18,20 +18,20 @@ if typing.TYPE_CHECKING:
     from core.base import setup
 
 
-AcceptableModules = Union[type['BaseParser'], type['Matcher'], type['BaseDownloader']]
+AcceptableModules = Union[type["BaseParser"], type["Matcher"], type["BaseDownloader"]]
 logger = logging.getLogger(__name__)
 
 
 def _get_provider_submodule_api(module_name: str, submodule_name: str) -> list[AcceptableModules]:
     sub_module = "{}.{}".format(module_name, submodule_name)
     try:
-        importlib.import_module(module_name, package='__path__')
+        importlib.import_module(module_name, package="__path__")
     except ImportError:
         return []
     if importlib.util.find_spec(sub_module):  # type: ignore
         site = importlib.import_module(sub_module, package=module_name)
-        if hasattr(site, 'API'):
-            return list(getattr(site, 'API'))
+        if hasattr(site, "API"):
+            return list(getattr(site, "API"))
 
     return []
 
@@ -39,7 +39,7 @@ def _get_provider_submodule_api(module_name: str, submodule_name: str) -> list[A
 def _get_provider_submodule_method(module_name: str, submodule_name: str, method_name: str) -> Optional[Callable]:
     sub_module = "{}.{}".format(module_name, submodule_name)
     try:
-        importlib.import_module(module_name, package='__path__')
+        importlib.import_module(module_name, package="__path__")
     except ImportError:
         return None
     if importlib.util.find_spec(sub_module):  # type: ignore
@@ -54,7 +54,7 @@ def _get_provider_submodule_method(module_name: str, submodule_name: str, method
 def _get_provider_submodule(module_name: str, submodule_name: str) -> Optional[ModuleType]:
     sub_module = "{}.{}".format(module_name, submodule_name)
     try:
-        importlib.import_module(module_name, package='__path__')
+        importlib.import_module(module_name, package="__path__")
     except ImportError:
         return None
     if importlib.util.find_spec(sub_module):  # type: ignore
@@ -68,10 +68,10 @@ def _get_provider_submodule(module_name: str, submodule_name: str) -> Optional[M
 # This is why this should be outside Settings
 class ProviderContext:
 
-    parsers: list[type['BaseParser']] = []
-    matchers: list[type['Matcher']] = []
-    downloaders: list[type['BaseDownloader']] = []
-    resolvers: list[tuple[str, Callable[['setup.Settings'], ProviderSettings]]] = []
+    parsers: list[type["BaseParser"]] = []
+    matchers: list[type["Matcher"]] = []
+    downloaders: list[type["BaseDownloader"]] = []
+    resolvers: list[tuple[str, Callable[["setup.Settings"], ProviderSettings]]] = []
     settings_parsers: list[tuple[str, Callable]] = []
     wanted_generators: list[tuple[str, Callable]] = []
     constants: list[tuple[str, ModuleType]] = []
@@ -113,17 +113,17 @@ class ProviderContext:
             # logger.debug("For provider: {}, registering constants".format(provider_name))
             self.register_constants(provider_name, constants_module)
 
-    def register_parser(self, obj: type['BaseParser']) -> None:
+    def register_parser(self, obj: type["BaseParser"]) -> None:
         if inspect.isclass(obj):
             if obj.name and not obj.ignore:
                 self.parsers.append(obj)
 
-    def register_matcher(self, obj: type['Matcher']) -> None:
+    def register_matcher(self, obj: type["Matcher"]) -> None:
         if inspect.isclass(obj):
             if obj.provider and obj.name:
                 self.matchers.append(obj)
 
-    def register_downloader(self, obj: type['BaseDownloader']) -> None:
+    def register_downloader(self, obj: type["BaseDownloader"]) -> None:
         if inspect.isclass(obj):
             if obj.provider and obj.type:
                 self.downloaders.append(obj)
@@ -140,14 +140,16 @@ class ProviderContext:
     def register_constants(self, provider_name: str, obj: ModuleType) -> None:
         self.constants.append((provider_name, obj))
 
-    def get_parsers(self, settings: 'setup.Settings', filter_name: Optional[str] = None, filter_names: Optional[list[str]] = None) -> list['BaseParser']:
+    def get_parsers(
+        self, settings: "setup.Settings", filter_name: Optional[str] = None, filter_names: Optional[list[str]] = None
+    ) -> list["BaseParser"]:
         parsers_list = list()
         for parser in self.parsers:
-            parser_name = getattr(parser, 'name')
+            parser_name = getattr(parser, "name")
             if filter_name:
                 if filter_name in parser_name:
                     parser_instance = parser(settings)
-                    if parser_name == 'generic':
+                    if parser_name == "generic":
                         parsers_list.append(parser_instance)
                     else:
                         parsers_list.insert(0, parser_instance)
@@ -155,31 +157,31 @@ class ProviderContext:
                 for current_filter_name in filter_names:
                     if current_filter_name in parser_name:
                         parser_instance = parser(settings)
-                        if parser_name == 'generic':
+                        if parser_name == "generic":
                             parsers_list.append(parser_instance)
                         else:
                             parsers_list.insert(0, parser_instance)
             else:
                 parser_instance = parser(settings)
-                if parser_name == 'generic':
+                if parser_name == "generic":
                     parsers_list.append(parser_instance)
                 else:
                     parsers_list.insert(0, parser_instance)
 
         return parsers_list
 
-    def get_parsers_classes(self, filter_name: Optional[str] = None) -> list[type['BaseParser']]:
+    def get_parsers_classes(self, filter_name: Optional[str] = None) -> list[type["BaseParser"]]:
         parsers_list = list()
         for parser in self.parsers:
-            parser_name = getattr(parser, 'name')
+            parser_name = getattr(parser, "name")
             if filter_name:
                 if filter_name in parser_name:
-                    if parser_name == 'generic':
+                    if parser_name == "generic":
                         parsers_list.append(parser)
                     else:
                         parsers_list.insert(0, parser)
             else:
-                if parser_name == 'generic':
+                if parser_name == "generic":
                     parsers_list.append(parser)
                 else:
                     parsers_list.insert(0, parser)
@@ -187,9 +189,13 @@ class ProviderContext:
         return parsers_list
 
     def get_downloaders(
-            self, settings: 'setup.Settings',
-            general_utils: GeneralUtils, filter_name: Optional[str] = None,
-            force: bool = False, priorities: Optional[dict[str, int]] = None) -> list[tuple['BaseDownloader', int]]:
+        self,
+        settings: "setup.Settings",
+        general_utils: GeneralUtils,
+        filter_name: Optional[str] = None,
+        force: bool = False,
+        priorities: Optional[dict[str, int]] = None,
+    ) -> list[tuple["BaseDownloader", int]]:
 
         if priorities:
             priorities_to_use = priorities
@@ -203,59 +209,45 @@ class ProviderContext:
                 if filter_name in handler_name:
                     if force:
                         downloader_instance = downloader(settings, general_utils)
-                        downloaders.append(
-                            (downloader_instance, 1)
-                        )
+                        downloaders.append((downloader_instance, 1))
                     else:
                         if handler_name in priorities_to_use and priorities_to_use[handler_name] >= 0:
                             downloader_instance = downloader(settings, general_utils)
-                            downloaders.append(
-                                (downloader_instance, priorities_to_use[handler_name])
-                            )
+                            downloaders.append((downloader_instance, priorities_to_use[handler_name]))
             else:
                 if force:
                     downloader_instance = downloader(settings, general_utils)
-                    downloaders.append(
-                        (downloader_instance, 1)
-                    )
+                    downloaders.append((downloader_instance, 1))
                 else:
                     if handler_name in priorities_to_use and priorities_to_use[handler_name] >= 0:
                         downloader_instance = downloader(settings, general_utils)
-                        downloaders.append(
-                            (downloader_instance, priorities_to_use[handler_name])
-                        )
+                        downloaders.append((downloader_instance, priorities_to_use[handler_name]))
 
         return sorted(downloaders, key=itemgetter(1))
 
-    def get_downloaders_name_priority(self, settings: 'setup.Settings', filter_name: Optional[str] = None) -> list[tuple[str, int]]:
+    def get_downloaders_name_priority(
+        self, settings: "setup.Settings", filter_name: Optional[str] = None
+    ) -> list[tuple[str, int]]:
         downloaders = list()
         for downloader in self.downloaders:
             handler_name = str(downloader)
             if filter_name:
                 if filter_name in handler_name:
                     if handler_name in settings.downloaders:
-                        downloaders.append(
-                            (handler_name, settings.downloaders[handler_name])
-                        )
+                        downloaders.append((handler_name, settings.downloaders[handler_name]))
                     else:
-                        downloaders.append(
-                            (handler_name, -1)
-                        )
+                        downloaders.append((handler_name, -1))
             else:
                 if handler_name in settings.downloaders:
-                    downloaders.append(
-                        (handler_name, settings.downloaders[handler_name])
-                    )
+                    downloaders.append((handler_name, settings.downloaders[handler_name]))
                 else:
-                    downloaders.append(
-                        (handler_name, -1)
-                    )
+                    downloaders.append((handler_name, -1))
 
         return sorted(downloaders, key=itemgetter(1), reverse=True)
 
-    def get_matchers(self, settings: 'setup.Settings',
-                     filter_name: Optional[str] = None, force: bool = False,
-                     matcher_type: str = '') -> list[tuple['Matcher', int]]:
+    def get_matchers(
+        self, settings: "setup.Settings", filter_name: Optional[str] = None, force: bool = False, matcher_type: str = ""
+    ) -> list[tuple["Matcher", int]]:
         matchers_list = list()
         if matcher_type:
             packages_filtered = [x for x in self.matchers if x.type == matcher_type]
@@ -283,8 +275,9 @@ class ProviderContext:
 
         return sorted(matchers_list, key=itemgetter(1))
 
-    def get_matchers_name_priority(self, settings: 'setup.Settings',
-                                   filter_name: Optional[str] = None, matcher_type: str = '') -> list[tuple[str, int]]:
+    def get_matchers_name_priority(
+        self, settings: "setup.Settings", filter_name: Optional[str] = None, matcher_type: str = ""
+    ) -> list[tuple[str, int]]:
         matchers_list = list()
         if matcher_type:
             packages_filtered = [x for x in self.matchers if x.type == matcher_type]
@@ -295,26 +288,18 @@ class ProviderContext:
             if filter_name:
                 if filter_name in matcher_name:
                     if matcher_name in settings.matchers:
-                        matchers_list.append(
-                            (matcher_name, settings.matchers[matcher_name])
-                        )
+                        matchers_list.append((matcher_name, settings.matchers[matcher_name]))
                     else:
-                        matchers_list.append(
-                            (matcher_name, -1)
-                        )
+                        matchers_list.append((matcher_name, -1))
             else:
                 if matcher_name in settings.matchers:
-                    matchers_list.append(
-                        (matcher_name, settings.matchers[matcher_name])
-                    )
+                    matchers_list.append((matcher_name, settings.matchers[matcher_name]))
                 else:
-                    matchers_list.append(
-                        (matcher_name, -1)
-                    )
+                    matchers_list.append((matcher_name, -1))
 
         return sorted(matchers_list, key=itemgetter(1), reverse=True)
 
-    def resolve_all_urls(self, gallery: 'models.Gallery') -> str:
+    def resolve_all_urls(self, gallery: "models.Gallery") -> str:
         methods = self.get_resolve_methods(gallery.provider)
         for method in methods:
             return method(gallery)

@@ -12,11 +12,12 @@
     "src": "src/assets/no_cover.png"
   },
   "src/main.tsx": {
-    "file": "assets/main-DtZplwK3.js",
+    "file": "assets/main-BBr3w2R0.js",
+    "name": "main",
     "src": "src/main.tsx",
     "isEntry": true,
     "css": [
-      "assets/main-W-NGe8_v.css"
+      "assets/main-CX1VgVPC.css"
     ],
     "assets": [
       "assets/no_cover-eEdCbnFG.png",

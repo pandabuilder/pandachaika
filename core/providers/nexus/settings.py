@@ -8,18 +8,18 @@ if typing.TYPE_CHECKING:
 
 
 class OwnSettings(ProviderSettings):
-    def __init__(self, global_settings: 'Settings', config: dict[str, typing.Any]) -> None:
+    def __init__(self, global_settings: "Settings", config: dict[str, typing.Any]) -> None:
         super().__init__(global_settings, config)
-        self.archive_dl_folder = ''
+        self.archive_dl_folder = ""
 
 
-def parse_config(global_settings: 'Settings', config: dict[str, typing.Any]) -> 'OwnSettings':
+def parse_config(global_settings: "Settings", config: dict[str, typing.Any]) -> "OwnSettings":
 
     settings = OwnSettings(global_settings, config)
 
-    if 'locations' in config:
-        if 'archive_dl_folder' in config['locations']:
-            settings.archive_dl_folder = config['locations']['archive_dl_folder']
+    if "locations" in config:
+        if "archive_dl_folder" in config["locations"]:
+            settings.archive_dl_folder = config["locations"]["archive_dl_folder"]
             if not os.path.exists(os.path.join(global_settings.MEDIA_ROOT, settings.archive_dl_folder)):
                 os.makedirs(os.path.join(global_settings.MEDIA_ROOT, settings.archive_dl_folder))
         else:

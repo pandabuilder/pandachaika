@@ -95,6 +95,10 @@
           <td><span class="align-middle">{{ archive.filesize|filesizeformat }}, {{ archive.filesize }}</span><span class="align-middle mx-2">{% if file_entry_total %}| <span class="fw-bold">Non-images total size:</span> {{ file_entry_total|filesizeformat }}, {{ file_entry_total }}</span><a class="btn btn-sm btn-light other-preview" tabindex="0" role="button" data-bs-toggle="popover" data-bs-pk="{{ archive.pk }}">Non-Images Details</a>{% endif %}</td>
         </tr>
         <tr>
+          <th>CRC32</th>
+          <td>{{ archive.crc32 }}</td>
+        </tr>
+        <tr>
           <th>Source type</th>
           <td><a href="{% url 'viewer:archive-search' %}?source_type={{ archive.source_type }}">{{ archive.source_type }}</a></td>
         </tr>
@@ -167,11 +171,11 @@
     {% endif %}
     </div>
     </li>
-    {% if archive.gallery %}
       <li class="subtitle line-top">
       <div class="row">
       <div class="col-sm-6">
         <table>
+        {% if archive.gallery %}
           <tr>
             <th>Source metadata</th>
             <td>{{ archive.get_link|urlize_all_rel }}</td>
@@ -196,6 +200,13 @@
             <th>Metadata</th>
             <td><a href="{% url 'viewer:gallery' archive.gallery_id %}">{% url 'viewer:gallery' archive.gallery_id %}</a></td>
           </tr>
+        {% else %}
+            <tr>
+                <th>Metadata</th>
+                <td>No associated Gallery</td>
+            </tr>
+        {% endif %}
+
           <tr>
             <th>Alternative sources</th>
             <td>
@@ -246,7 +257,6 @@
 
       </div>
       </li>
-    {% endif %}
     {% if tag_count %}
       <li class="subtitle">
         <ul class="tags">

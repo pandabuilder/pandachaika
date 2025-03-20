@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 
 class FolderCrawlerThread(threading.Thread):
 
-    def __init__(self, settings: 'Settings', argv: list[str]) -> None:
-        threading.Thread.__init__(self, name='foldercrawler')
+    def __init__(self, settings: "Settings", argv: list[str]) -> None:
+        threading.Thread.__init__(self, name="foldercrawler")
         self.settings = settings
         self.argv = argv
 

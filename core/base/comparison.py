@@ -5,7 +5,9 @@ from core.base.utilities import get_scored_matches
 from core.base.types import GalleryData
 
 
-def get_closer_gallery_title_from_list(original: str, titles: list[tuple[str, str]], cutoff: float) -> Optional[tuple[str, str]]:
+def get_closer_gallery_title_from_list(
+    original: str, titles: list[tuple[str, str]], cutoff: float
+) -> Optional[tuple[str, str]]:
 
     compare_titles = []
     compare_ids = []
@@ -26,7 +28,9 @@ def get_closer_gallery_title_from_list(original: str, titles: list[tuple[str, st
     return None
 
 
-def get_list_closer_gallery_titles_from_list(original: str, titles: list[tuple[str, str]], cutoff: float, max_matches: int) -> Optional[list[tuple[str, str, float]]]:
+def get_list_closer_gallery_titles_from_list(
+    original: str, titles: list[tuple[str, str]], cutoff: float, max_matches: int
+) -> Optional[list[tuple[str, str, float]]]:
 
     compare_titles = []
     compare_ids = []
@@ -45,15 +49,16 @@ def get_list_closer_gallery_titles_from_list(original: str, titles: list[tuple[s
     for i, compare_title in enumerate(compare_titles):
         for match in matches:
             if compare_title == match[1]:
-                results.append(
-                    (compare_ids[i][0], compare_ids[i][1], match[0]))
+                results.append((compare_ids[i][0], compare_ids[i][1], match[0]))
                 break
 
     return results
 
 
 # Returns: list(gallery_title, gallery_dict, match_score)
-def get_list_closer_gallery_titles_from_dict(original: str, gallery_datas: list[GalleryData], cutoff: float, max_matches: int) -> list[tuple[str, GalleryData, float]]:
+def get_list_closer_gallery_titles_from_dict(
+    original: str, gallery_datas: list[GalleryData], cutoff: float, max_matches: int
+) -> list[tuple[str, GalleryData, float]]:
 
     compare_titles = []
     compare_ids = []
@@ -83,12 +88,14 @@ def get_list_closer_gallery_titles_from_dict(original: str, gallery_datas: list[
 
 class ResultContainer:
     def __init__(self) -> None:
-        self.match_title: Optional[str] = ''
-        self.match_link: Optional[str] = ''
+        self.match_title: Optional[str] = ""
+        self.match_link: Optional[str] = ""
         self.match_values: Optional[GalleryData] = None
 
 
-def get_gallery_closer_title_from_gallery_values(original: str, gallery_datas: list[GalleryData], cutoff: float) -> ResultContainer:
+def get_gallery_closer_title_from_gallery_values(
+    original: str, gallery_datas: list[GalleryData], cutoff: float
+) -> ResultContainer:
 
     result = ResultContainer()
     compare_titles = []

@@ -27,15 +27,17 @@ logger = logging.getLogger(__name__)
 class Parser(BaseParser):
     name = constants.provider_name
     ignore = False
-    accepted_urls = ['gs=', 'as=', 'gsp=', 'gd=', '/archive/', '/gallery/', '/es-gallery-json/']
+    accepted_urls = ["gs=", "as=", "gsp=", "gd=", "/archive/", "/gallery/", "/es-gallery-json/"]
 
     def filter_accepted_urls(self, urls: Iterable[str]) -> list[str]:
         return [x for x in urls if any(word in x for word in self.accepted_urls) and self.own_settings.url in x]
 
     def get_feed_urls(self) -> list[str]:
-        return [self.own_settings.feed_url, ]
+        return [
+            self.own_settings.feed_url,
+        ]
 
-    def crawl_feed(self, feed_url: str = '') -> list[ChaikaGalleryData]:
+    def crawl_feed(self, feed_url: str = "") -> list[ChaikaGalleryData]:
 
         request_dict = construct_request_dict(self.settings, self.own_settings)
 
@@ -57,8 +59,8 @@ class Parser(BaseParser):
             return []
 
         if isinstance(json_decoded, dict):
-            if 'galleries' in json_decoded:
-                dict_list = json_decoded['galleries']
+            if "galleries" in json_decoded:
+                dict_list = json_decoded["galleries"]
             else:
                 dict_list.append(json_decoded)
         elif isinstance(json_decoded, list):
@@ -67,15 +69,15 @@ class Parser(BaseParser):
         total_galleries_filtered: list[ChaikaGalleryData] = []
 
         for gallery in dict_list:
-            if 'result' in gallery:
+            if "result" in gallery:
                 continue
-            gallery['posted'] = datetime.fromtimestamp(int(gallery['posted']), timezone.utc)
+            gallery["posted"] = datetime.fromtimestamp(int(gallery["posted"]), timezone.utc)
             gallery_data = ChaikaGalleryData(**gallery)
             total_galleries_filtered.append(gallery_data)
 
         return total_galleries_filtered
 
-    def crawl_elastic_json_paginated(self, feed_url: str = '') -> list[ChaikaGalleryData]:
+    def crawl_elastic_json_paginated(self, feed_url: str = "") -> list[ChaikaGalleryData]:
 
         unique_urls: dict[str, ChaikaGalleryData] = dict()
 
@@ -83,10 +85,10 @@ class Parser(BaseParser):
 
             parsed = urllib.parse.urlparse(feed_url)
             query = urllib.parse.parse_qs(parsed.query)
-            if 'page' in query:
-                current_page = int(query['page'][0])
+            if "page" in query:
+                current_page = int(query["page"][0])
             else:
-                params = {'page': ['1']}
+                params = {"page": ["1"]}
                 query.update(params)
                 new_query = urllib.parse.urlencode(query, doseq=True)
                 feed_url = urllib.parse.urlunparse(list(parsed[0:4]) + [new_query] + list(parsed[5:]))
@@ -109,24 +111,24 @@ class Parser(BaseParser):
                 logger.error("Could not parse response to JSON: {}".format(response.text))
                 break
 
-            dict_list = json_decoded['hits']
+            dict_list = json_decoded["hits"]
 
             for gallery in dict_list:
-                gallery['posted'] = datetime.fromisoformat(gallery['posted_date'].replace("+0000", "+00:00"))
-                gallery['link'] = gallery['source_url']
-                parser = self.settings.provider_context.get_parsers(self.settings, filter_name=gallery['provider'])[0]
-                gid = parser.id_from_url(gallery['source_url'])
+                gallery["posted"] = datetime.fromisoformat(gallery["posted_date"].replace("+0000", "+00:00"))
+                gallery["link"] = gallery["source_url"]
+                parser = self.settings.provider_context.get_parsers(self.settings, filter_name=gallery["provider"])[0]
+                gid = parser.id_from_url(gallery["source_url"])
                 if gid:
-                    token = parser.token_from_url(gallery['source_url'])
-                    gallery['token'] = token
-                    gallery['tags'] = [x['full'] for x in gallery['tags']]
-                    if 'gid' in gallery:
-                        del gallery['gid']
+                    token = parser.token_from_url(gallery["source_url"])
+                    gallery["token"] = token
+                    gallery["tags"] = [x["full"] for x in gallery["tags"]]
+                    if "gid" in gallery:
+                        del gallery["gid"]
                     gallery_data = ChaikaGalleryData(gid, **gallery)
-                    if 'source_thumbnail' in gallery:
-                        gallery_data.thumbnail_url = gallery['source_thumbnail']
-                    if gallery['source_url'] not in unique_urls:
-                        unique_urls[gallery['source_url']] = gallery_data
+                    if "source_thumbnail" in gallery:
+                        gallery_data.thumbnail_url = gallery["source_thumbnail"]
+                    if gallery["source_url"] not in unique_urls:
+                        unique_urls[gallery["source_url"]] = gallery_data
 
             if self.own_settings.stop_page_number is not None:
                 if current_page >= self.own_settings.stop_page_number:
@@ -136,18 +138,17 @@ class Parser(BaseParser):
                     )
                     break
             current_page += 1
-            params = {'page': [str(current_page)]}
+            params = {"page": [str(current_page)]}
             query.update(params)
             new_query = urllib.parse.urlencode(query, doseq=True)
-            feed_url = urllib.parse.urlunparse(
-                list(parsed[0:4]) + [new_query] + list(parsed[5:]))
+            feed_url = urllib.parse.urlunparse(list(parsed[0:4]) + [new_query] + list(parsed[5:]))
             time.sleep(self.own_settings.wait_timer)
 
         total_galleries_filtered: list[ChaikaGalleryData] = list(unique_urls.values())
 
         return total_galleries_filtered
 
-    def crawl_elastic_json(self, feed_url: str = '') -> list[ChaikaGalleryData]:
+    def crawl_elastic_json(self, feed_url: str = "") -> list[ChaikaGalleryData]:
 
         # Since this source only has metadata, we re-enable other downloaders
 
@@ -168,28 +169,33 @@ class Parser(BaseParser):
             logger.error("Could not parse response to JSON: {}".format(response.text))
             return []
 
-        dict_list = json_decoded['hits']
+        dict_list = json_decoded["hits"]
 
         total_galleries_filtered: list[ChaikaGalleryData] = []
 
         for gallery in dict_list:
-            gallery['posted'] = datetime.fromisoformat(gallery['posted_date'].replace("+0000", "+00:00"))
-            gallery['link'] = gallery['source_url']
-            parser = self.settings.provider_context.get_parsers(self.settings, filter_name=gallery['provider'])[0]
-            gid = parser.id_from_url(gallery['source_url'])
+            gallery["posted"] = datetime.fromisoformat(gallery["posted_date"].replace("+0000", "+00:00"))
+            gallery["link"] = gallery["source_url"]
+            parser = self.settings.provider_context.get_parsers(self.settings, filter_name=gallery["provider"])[0]
+            gid = parser.id_from_url(gallery["source_url"])
             if gid:
-                token = parser.token_from_url(gallery['source_url']),
-                gallery['token'] = token
-                gallery['tags'] = [x['full'] for x in gallery['tags']]
-                if 'gid' in gallery:
-                    del gallery['gid']
+                token = (parser.token_from_url(gallery["source_url"]),)
+                gallery["token"] = token
+                gallery["tags"] = [x["full"] for x in gallery["tags"]]
+                if "gid" in gallery:
+                    del gallery["gid"]
                 gallery_data = ChaikaGalleryData(gid, **gallery)
                 total_galleries_filtered.append(gallery_data)
 
         return total_galleries_filtered
 
-    def crawl_urls(self, urls: list[str], wanted_filters=None, wanted_only: bool = False,
-                   preselected_wanted_matches: Optional[dict[str, list['WantedGallery']]] = None) -> None:
+    def crawl_urls(
+        self,
+        urls: list[str],
+        wanted_filters=None,
+        wanted_only: bool = False,
+        preselected_wanted_matches: Optional[dict[str, list["WantedGallery"]]] = None,
+    ) -> None:
 
         # If we are crawling an url from a Wanted source (MonitoredLinks), force download using default downloaders
         # from each gallery's original provider, instead of just downloading the archive from chaika
@@ -212,11 +218,11 @@ class Parser(BaseParser):
             request_dict = construct_request_dict(self.settings, self.own_settings)
             total_galleries_filtered: list[ChaikaGalleryData] = []
 
-            if '/archive/' in url:
-                match_archive_pk = re.search(r'/archive/(\d+)/', url)
+            if "/archive/" in url:
+                match_archive_pk = re.search(r"/archive/(\d+)/", url)
                 if match_archive_pk:
                     api_url = urljoin(self.own_settings.url, constants.api_path)
-                    request_dict['params'] = {'archive': match_archive_pk.group(1)}
+                    request_dict["params"] = {"archive": match_archive_pk.group(1)}
                     archive_response = request_with_retries(
                         api_url,
                         request_dict,
@@ -230,8 +236,8 @@ class Parser(BaseParser):
                     except (ValueError, KeyError):
                         logger.error("Could not parse response to JSON: {}".format(archive_response.text))
                         continue
-                    if json_decoded['gallery']:
-                        request_dict['params'] = {'gd': json_decoded['gallery']}
+                    if json_decoded["gallery"]:
+                        request_dict["params"] = {"gd": json_decoded["gallery"]}
                         gallery_response = request_with_retries(
                             api_url,
                             request_dict,
@@ -249,11 +255,11 @@ class Parser(BaseParser):
                     else:
                         logger.error("Archive: {} does not have an associated Gallery".format(url))
                         continue
-            elif '/gallery/' in url:
-                match_gallery_pk = re.search(r'/gallery/(\d+)/', url)
+            elif "/gallery/" in url:
+                match_gallery_pk = re.search(r"/gallery/(\d+)/", url)
                 if match_gallery_pk:
                     api_url = urljoin(self.own_settings.url, constants.api_path)
-                    request_dict['params'] = {'gd': match_gallery_pk.group(1)}
+                    request_dict["params"] = {"gd": match_gallery_pk.group(1)}
                     gallery_response = request_with_retries(
                         api_url,
                         request_dict,
@@ -268,15 +274,16 @@ class Parser(BaseParser):
                     except (ValueError, KeyError):
                         logger.error("Could not parse response to JSON: {}".format(gallery_response.text))
                         continue
-            elif '/es-gallery-json/' in url:
+            elif "/es-gallery-json/" in url:
                 parse_results = self.crawl_elastic_json_paginated(url)
                 if parse_results:
                     galleries_gids.extend([x.gid for x in parse_results])
                     total_galleries_filtered.extend(parse_results)
 
-                    logger.info("Provided JSON URL for provider ({}), found {} links".format(
-                        self.name,
-                        len(total_galleries_filtered))
+                    logger.info(
+                        "Provided JSON URL for provider ({}), found {} links".format(
+                            self.name, len(total_galleries_filtered)
+                        )
                     )
             else:
                 response = request_with_retries(
@@ -296,29 +303,28 @@ class Parser(BaseParser):
                     continue
 
                 if isinstance(json_decoded, dict):
-                    if 'galleries' in json_decoded:
-                        dict_list = json_decoded['galleries']
+                    if "galleries" in json_decoded:
+                        dict_list = json_decoded["galleries"]
                     else:
                         dict_list.append(json_decoded)
                 elif isinstance(json_decoded, list):
                     dict_list = json_decoded
 
             found_galleries = set()
-            gallery_wanted_lists: dict[str, list['WantedGallery']] = preselected_wanted_matches or defaultdict(list)
+            gallery_wanted_lists: dict[str, list["WantedGallery"]] = preselected_wanted_matches or defaultdict(list)
 
             for gallery in dict_list:
-                if 'result' in gallery:
+                if "result" in gallery:
                     continue
-                galleries_gids.append(gallery['gid'])
-                gallery['posted'] = datetime.fromtimestamp(int(gallery['posted']), timezone.utc)
+                galleries_gids.append(gallery["gid"])
+                gallery["posted"] = datetime.fromtimestamp(int(gallery["posted"]), timezone.utc)
                 gallery_data = ChaikaGalleryData(**gallery)
                 total_galleries_filtered.append(gallery_data)
 
             for galleries_gid_group in list(chunks(galleries_gids, 900)):
                 for found_gallery in Gallery.objects.filter(gid__in=galleries_gid_group):
                     discard_approved, discard_message = self.discard_gallery_by_internal_checks(
-                        gallery=found_gallery,
-                        link=found_gallery.get_link()
+                        gallery=found_gallery, link=found_gallery.get_link()
                     )
 
                     if discard_approved:
@@ -333,24 +339,20 @@ class Parser(BaseParser):
                 if gallery.gid in found_galleries:
                     continue
 
-                banned_result, banned_reasons = self.general_utils.discard_by_gallery_data(gallery.tags, gallery.uploader)
+                banned_result, banned_reasons = self.general_utils.discard_by_gallery_data(
+                    gallery.tags, gallery.uploader
+                )
 
                 if banned_result:
                     if not self.settings.silent_processing:
                         logger.info(
-                            "Skipping gallery link {}, discarded reasons: {}".format(
-                                gallery.title,
-                                banned_reasons
-                            )
+                            "Skipping gallery link {}, discarded reasons: {}".format(gallery.title, banned_reasons)
                         )
                     continue
 
                 if wanted_filters:
                     self.compare_gallery_with_wanted_filters(
-                        gallery,
-                        gallery.link,
-                        wanted_filters,
-                        gallery_wanted_lists
+                        gallery, gallery.link, wanted_filters, gallery_wanted_lists
                     )
 
                     if wanted_only and not gallery_wanted_lists[gallery.gid]:
@@ -358,10 +360,7 @@ class Parser(BaseParser):
 
                 logger.info(
                     "Gallery {} of {}: Gallery {} (Real GID: {}) will be processed.".format(
-                        count,
-                        len(total_galleries_filtered),
-                        gallery.title,
-                        gallery.gid
+                        count, len(total_galleries_filtered), gallery.title, gallery.gid
                     )
                 )
 
@@ -373,8 +372,8 @@ class Parser(BaseParser):
                         original_thumbnail_url = gallery.thumbnail_url
                         chaika_thumbnail_url = gallery.thumbnail
 
-                        gallery.thumbnail_url = ''
-                        gallery.thumbnail = ''
+                        gallery.thumbnail_url = ""
+                        gallery.thumbnail = ""
 
                         gallery_obj = Gallery.objects.update_or_create_from_values(gallery)
 
@@ -406,13 +405,13 @@ class Parser(BaseParser):
 
                 gallery_links = [x.link for x in gallery_data_list if x.link]
 
-                gallery_links.append('--no-wanted-check')
+                gallery_links.append("--no-wanted-check")
 
                 prev_matched = []
 
                 for matched_gallery_id, matched_gallery_wgs in gallery_wanted_lists.items():
                     for gallery_wg in matched_gallery_wgs:
-                        prev_matched.append('{},{}'.format(matched_gallery_id, gallery_wg.pk))
+                        prev_matched.append("{},{}".format(matched_gallery_id, gallery_wg.pk))
 
                 if len(prev_matched) > 0:
                     gallery_links.append("--preselect-wanted-match")
@@ -423,6 +422,4 @@ class Parser(BaseParser):
                     self.settings.workers.web_queue.enqueue_args_list(gallery_links)
 
 
-API = (
-    Parser,
-)
+API = (Parser,)

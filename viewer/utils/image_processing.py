@@ -8,6 +8,7 @@ if typing.TYPE_CHECKING:
 
 try:
     import cv2 as cv
+
     CAN_USE_IMAGE_MATCH = True
 except ModuleNotFoundError:
     # Error handling
@@ -19,13 +20,15 @@ FLANN_N_TREES = 5
 FLANN_N_CHECKS = 50
 
 
-def get_image_thumbnail_and_grayscale(archive: 'Archive') -> tuple[np.ndarray, np.ndarray]:
+def get_image_thumbnail_and_grayscale(archive: "Archive") -> tuple[np.ndarray, np.ndarray]:
     img_thumbnail = cv.imread(archive.thumbnail.path)
     img_gray = cv.cvtColor(img_thumbnail, cv.COLOR_BGR2GRAY)
     return img_thumbnail, img_gray
 
 
-def compare_wanted_with_image(img_gray: np.ndarray, img_thumbnail: np.ndarray, wanted_image: 'WantedImage', skip_minimum: bool = False) -> tuple[bool, int, typing.Optional[PImage.Image]]:
+def compare_wanted_with_image(
+    img_gray: np.ndarray, img_thumbnail: np.ndarray, wanted_image: "WantedImage", skip_minimum: bool = False
+) -> tuple[bool, int, typing.Optional[PImage.Image]]:
     template_img = cv.imread(wanted_image.thumbnail.path)
     template_gray = cv.cvtColor(template_img, cv.COLOR_BGR2GRAY)
     sift = cv.SIFT.create()
@@ -52,7 +55,8 @@ def compare_wanted_with_image(img_gray: np.ndarray, img_thumbnail: np.ndarray, w
             slopes_mean = np.mean(slopes, axis=0)
             slopes_compared = np.abs((slopes / slopes_mean) - 1)
             distances = np.sqrt(
-                (dst_pts[:, 1] - src_pts[:, 1]) ** 2 + (dst_pts[:, 0] + template_img.shape[0] - src_pts[:, 0]) ** 2)
+                (dst_pts[:, 1] - src_pts[:, 1]) ** 2 + (dst_pts[:, 0] + template_img.shape[0] - src_pts[:, 0]) ** 2
+            )
             distances_mean = np.mean(distances, axis=0)
             distances_compared = np.abs((distances / distances_mean) - 1)
 

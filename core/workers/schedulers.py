@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 class BaseScheduler(object):
 
-    thread_name = 'task'
+    thread_name = "task"
 
     def __init__(self, settings: Settings, web_queue=None, timer=1, pk=None) -> None:
         self.settings = settings
@@ -74,8 +74,7 @@ class BaseScheduler(object):
         if timer:
             self.timer = self.timer_to_seconds(timer)
         self.stop.clear()
-        self.job_thread = threading.Thread(
-            name=self.thread_name, target=self.job_container)
+        self.job_thread = threading.Thread(name=self.thread_name, target=self.job_container)
         self.job_thread.daemon = True
         self.job_thread.start()
 
