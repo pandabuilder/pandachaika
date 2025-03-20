@@ -57,9 +57,8 @@ docker-compose.build.yml
 /init
 /docs
 .gitlab-ci.yml
-.env.sample
+sample.env
 .stylelintrc
-default.yaml
 dev-requirements.txt
 pyproject.toml
 renovate.json

@@ -9,7 +9,7 @@ cd pandachaika
 
 Docker Compose (recommended)
 ---------------------
-The recommended way to run the stack is using Docker Compose, using the provided [docker-compose.yaml](../docker-compose.yaml), and editing as needed. Depending on your infrastructure, you could turn off the database or the reverse proxy services. Copy the [.env.sample](../.env.sample) file to .env, and edit it (specially if exposing the server to the internet)
+The recommended way to run the stack is using Docker Compose, using the provided [docker-compose.yaml](../docker-compose.yaml), and editing as needed. Depending on your infrastructure, you could turn off the database or the reverse proxy services. Copy the [sample.env](../sample.env) file to .env, and edit it (specially if exposing the server to the internet)
 
 It is preferred to copy docker-compose.yml to a new file docker-compose.local.yml, for example, and edit it there.
 Use [docker-compose.build.yaml](../docker-compose.build.yaml) instead for building the image locally.
