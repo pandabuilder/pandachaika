@@ -614,15 +614,18 @@ class BaseParser:
                                 for x in gallery.magazine_chapters_gids
                                 if x not in existing_gids
                             ]
-                            gallery_urls.append("--stop-nested")
 
-                            logger.info(
-                                "Gallery: {} is a magazine and contains galleries: {}, adding to queue".format(
-                                    downloader[0].gallery_db_entry.get_absolute_url(), gallery_urls
+                            if gallery_urls:
+
+                                gallery_urls.append("--stop-nested")
+
+                                logger.info(
+                                    "Gallery: {} is a magazine and contains galleries: {}, adding to queue".format(
+                                        downloader[0].gallery_db_entry.get_absolute_url(), gallery_urls
+                                    )
                                 )
-                            )
 
-                            self.settings.workers.web_queue.enqueue_args_list(gallery_urls)
+                                self.settings.workers.web_queue.enqueue_args_list(gallery_urls)
 
                         if gallery.magazine_gid and not self.settings.gallery_model.objects.filter(
                             gid=gallery.magazine_gid, provider=gallery.provider

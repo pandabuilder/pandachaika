@@ -1367,7 +1367,8 @@ def delete_archive(request: HttpRequest, pk: int) -> HttpResponse:
                     result="deleted",
                 )
             if "delete-file" in p:
-                archive.delete_all_files()
+                create_delete_mark = True if "delete-archive" in p else False
+                archive.delete_all_files(create_mark=create_delete_mark)
             if "delete-archive" in p:
                 archive.delete_files_but_archive()
                 archive.delete()

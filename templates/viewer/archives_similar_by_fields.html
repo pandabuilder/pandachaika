@@ -100,9 +100,9 @@
               </td>
               <td>
               {% if archive.thumbnail.name %}
-                <a href="{% url 'viewer:archive' archive.pk %}" data-image-url="{{ archive.thumbnail.url }}" class="img-preview" rel="popover">{{ archive.title }}</a>
+                <a href="{% url 'viewer:archive' archive.pk %}" data-image-url="{{ archive.thumbnail.url }}" class="img-preview{% if not archive.crc32 %} archive-incomplete{% endif %}" rel="popover">{{ archive.title }}</a>
               {% else %}
-                <a href="{% url 'viewer:archive' archive.pk %}">{{ archive.title }}</a>
+                <a href="{% url 'viewer:archive' archive.pk %}"{% if not archive.crc32 %} class="archive-incomplete"{% endif %}>{{ archive.title }}</a>
               {% endif %}
               </td>
               <td>

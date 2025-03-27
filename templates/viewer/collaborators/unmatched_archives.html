@@ -87,7 +87,8 @@
           {% if archive.thumbnail.name and inline_thumbnails %}
               <p>
               {% include 'viewer/include/archive_cover.html' with show_artist=1 %}
-              {% with matches=archive.possible_galleries %}
+              {% with matches=archive.possible_galleries|dictsort:"gallery.pk" %}
+                  {{ matches }}
                 {% if matches|length > 0 %}
                     {% regroup matches by gallery as matches_list %}
                     {% for gallery, gallery_matches in matches_list %}
@@ -97,7 +98,7 @@
               {% endwith %}
               </p>
           {% else %}
-              {% with matches=archive.possible_galleries %}
+              {% with matches=archive.possible_galleries|dictsort:"gallery.pk" %}
                 {% if matches|length > 0 %}
                   {% regroup matches by gallery as matches_list %}
                   <table class="table table-bordered table-sm generic-table">

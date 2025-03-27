@@ -83,7 +83,7 @@
         {% if user.is_staff %}
         <tr>
           <th>File path</th>
-          <td>{{ archive.zipped }}</td>
+          <td>{{ archive.zipped|default:'No file in filesystem'  }}</td>
         </tr>
         {% endif %}
         <tr>

@@ -1,11 +1,9 @@
+import json
 import logging
 import os.path
-import re
 import signal
 import threading
 import typing
-from collections import defaultdict
-from functools import reduce
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -15,9 +13,11 @@ from django.db.models import Avg, Max, Min, Sum, Count
 from django.http import HttpResponseRedirect, HttpRequest, HttpResponse
 from django.shortcuts import render
 from django.utils.dateparse import parse_date
+from django_db_logger.models import StatusLog
 
 from core.base.setup import Settings
-from core.base.utilities import get_thread_status, get_thread_status_bool, thread_exists, get_schedulers_status
+from core.base.utilities import get_thread_status, get_thread_status_bool, thread_exists, get_schedulers_status, \
+    timestamp_or_zero
 from core.local.foldercrawlerthread import FolderCrawlerThread
 from core.web.crawlerthread import CrawlerThread
 
@@ -542,64 +542,26 @@ def logs(request: HttpRequest, tool: str = "all") -> HttpResponse:
     if not request.user.is_staff:
         return render_error(request, "You need to be an admin to see logs.")
 
-    lines_info: dict[int, dict] = defaultdict(dict)
+    status_logs = StatusLog.objects.all()
 
-    f = open(MAIN_LOGGER, "rt", encoding="utf8")
-    log_lines: list[str] = f.read().split("[0m\n")
-    f.close()
-    log_lines.pop()
-    log_lines.reverse()
+    json_request = request.GET.get("json", "")
 
-    log_filter = request.GET.get("filter", "")
-    prev_lines = int(request.GET.get("prev-lines", "10") or "10")
-    next_lines = int(request.GET.get("next-lines", "10") or "10")
+    log_filter_text = request.GET.get("filter", "")
+    log_filter_level = request.GET.get("log-level", "")
+    log_filter_logger = request.GET.get("logger-name", "")
 
-    if log_filter:
-        # log_lines = [x for x in log_lines if log_filter.lower() in x.lower()]
-        max_len = len(log_lines)
-        found_indices = set()
+    if log_filter_text:
+        status_logs = status_logs.filter(msg__icontains=log_filter_text)
 
-        for i, log_line in enumerate(log_lines):
-            if log_filter.lower() in log_line.lower():
-                found_indices.update(list(range(max(i - prev_lines, 0), min(i + next_lines + 1, max_len))))
-                lines_info[i]["highlighted"] = True
+    if log_filter_logger:
+        status_logs = status_logs.filter(logger_name__icontains=log_filter_logger)
 
-        log_lines_extended: list[tuple[str, dict]] = [
-            (x, lines_info[i]) for i, x in enumerate(log_lines) if i in found_indices
-        ]
-    else:
-        log_lines_extended = [(x, lines_info[i]) for i, x in enumerate(log_lines)]
+    if log_filter_level:
+        int_level = logging.getLevelName(log_filter_level)
+        if isinstance(int_level, int):
+            status_logs = status_logs.filter(level__gte=int_level)
 
-    current_base_uri = re.escape("{scheme}://{host}".format(scheme=request.scheme, host=request.get_host()))
-    # Build complete URL for relative internal URLs (some)
-    if crawler_settings.urls.viewer_main_url:
-        patterns = [
-            r"(?!" + current_base_uri + r")/" + crawler_settings.urls.viewer_main_url + r"archive/\d+/?",
-            r"(?!" + current_base_uri + r")/" + crawler_settings.urls.viewer_main_url + r"gallery/\d+/?",
-            r"(?!" + current_base_uri + r")/" + crawler_settings.urls.viewer_main_url + r"wanted-gallery/\d+/?",
-            r"(?!"
-            + current_base_uri
-            + r")/"
-            + crawler_settings.urls.viewer_main_url
-            + r"archive-group/[a-z0-9]+(?:-[a-z0-9]+)*/?",
-        ]
-    else:
-        patterns = [
-            r"(?<!" + current_base_uri + r")/archive/\d+/?",
-            r"(?<!" + current_base_uri + r")/gallery/\d+/?",
-            r"(?<!" + current_base_uri + r")/wanted-gallery/\d+/?",
-            r"(?<!" + current_base_uri + r")/archive-group/[a-z0-9]+(?:-[a-z0-9]+)*/?",
-        ]
-
-    def build_request(match_obj: typing.Match) -> str:
-        return request.build_absolute_uri(match_obj.group(0))
-
-    log_lines_extended = [
-        (reduce(lambda v, pattern: re.sub(pattern, build_request, v), patterns, line[0]), line[1])
-        for line in log_lines_extended
-    ]
-
-    paginator = Paginator(log_lines_extended, 100)
+    paginator = Paginator(status_logs, 100)
     try:
         page = int(request.GET.get("page", "1"))
     except ValueError:
@@ -609,6 +571,32 @@ def logs(request: HttpRequest, tool: str = "all") -> HttpResponse:
         log_lines_paginated = paginator.page(page)
     except (InvalidPage, EmptyPage):
         log_lines_paginated = paginator.page(paginator.num_pages)
+
+    if json_request:
+        response = json.dumps(
+            {
+                "results": [
+                    {
+                        "id": x.id,
+                        "logger_name": x.logger_name,
+                        "level": x.get_level_display(),
+                        "msg": x.msg,
+                        "trace": x.trace,
+                        "create_datetime_timestamp": int(timestamp_or_zero(x.create_datetime)),
+                        "create_datetime": x.create_datetime.strftime("%Y-%m-%d %H:%M:%S.%f")
+                    } for x in log_lines_paginated
+                ],
+                "has_previous": log_lines_paginated.has_previous(),
+                "has_next": log_lines_paginated.has_next(),
+                "num_pages": paginator.num_pages,
+                "count": paginator.count,
+                "number": log_lines_paginated.number,
+            },
+            # indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        return HttpResponse(response, content_type="application/json; charset=utf-8")
 
     d = {"log_lines": log_lines_paginated}
     return render(request, "viewer/logs.html", d)

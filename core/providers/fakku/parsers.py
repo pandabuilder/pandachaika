@@ -17,7 +17,7 @@ from core.base.parsers import BaseParser
 from core.base.utilities import request_with_retries, construct_request_dict, get_oldest_entry_from_wayback
 from core.base.types import GalleryData
 from core.base.utilities import translate_tag
-from . import constants
+from . import constants, utilities
 
 if typing.TYPE_CHECKING:
     from viewer.models import WantedGallery
@@ -39,16 +39,23 @@ class Parser(BaseParser):
             post=False,
         )
 
-        if not response:
+        if response is None:
+            logger.error("Could not get a valid response for link: {}".format(link))
+            return None
+        elif not response:
+            logger.error("Could not get a valid response for link: {}, status code: {}, text: {}".format(link, response.status_code, response.text))
             return None
 
         response.encoding = "utf-8"
         new_text = re.sub(r'(<div class="right">\d+?)</b>', r"\1", response.text)
 
         if constants.main_url + "/magazines/" in link:
-            return self.process_magazine_page(link, new_text)
+            gallery_data = self.process_magazine_page(link, new_text)
         else:
-            return self.process_regular_gallery_page(link, new_text)
+            gallery_data = self.process_regular_gallery_page(link, new_text)
+        if gallery_data is None:
+            logger.error("Could not parse link: {} into GalleryData, status code: {}, text: {}".format(link, response.status_code, response.text))
+        return gallery_data
 
     # This is the next best thing, since we don't have a different way to get the posted date.
     # Will only work if we crawl the gallery early.
@@ -75,7 +82,7 @@ class Parser(BaseParser):
 
     def process_magazine_page(self, link: str, response_text: str) -> Optional[GalleryData]:
         soup = BeautifulSoup(response_text, "html.parser")
-        magazine_container = soup.find("div", class_="grid")
+        magazine_container = soup.select_one("div.grid-container.w-full")
 
         comic_regex = re.compile("col-comic")
 
@@ -90,7 +97,7 @@ class Parser(BaseParser):
             gallery.provider_metadata = response_text
             gallery.tags = []
             gallery.magazine_chapters_gids = []
-            gallery_title_container = magazine_container.find("ol", class_="table-cell")
+            gallery_title_container = magazine_container.find("ol", itemtype="https://schema.org/BreadcrumbList")
             if isinstance(gallery_title_container, bs4.element.Tag):
                 possible_titles = list(gallery_title_container.find_all("li", itemprop="itemListElement"))
                 if possible_titles and isinstance(possible_titles[-1], bs4.element.Tag):
@@ -107,7 +114,7 @@ class Parser(BaseParser):
                     if gallery.thumbnail_url and gallery.thumbnail_url.startswith("//"):
                         gallery.thumbnail_url = "https:" + gallery.thumbnail_url
 
-            description_container = soup.find("div", class_=re.compile("flex-auto align-top space-y-4 text-left"))
+            description_container = soup.find("div", class_=re.compile("align-top space-y-4 text-left"))
 
             if isinstance(description_container, bs4.element.Tag):
                 comment_text = description_container.decode_contents().replace("\n", "").replace("<br/>", "\n")
@@ -127,7 +134,7 @@ class Parser(BaseParser):
                 )
                 if isinstance(chapter_title_container, bs4.element.Tag):
                     chapter_href = chapter_title_container.get("href")
-                    if isinstance(chapter_href, bs4.element.Tag):
+                    if isinstance(chapter_href, str):
                         chapter_link = chapter_href.replace(constants.main_url + "/", "")
                         chapter_gid = chapter_link[1:] if chapter_link[0] == "/" else chapter_link
                         gallery.magazine_chapters_gids.append(chapter_gid)
@@ -321,7 +328,7 @@ class Parser(BaseParser):
                 continue
             url = url.replace("/manga/", "/hentai/")
 
-            if "/hentai/" in url or "/magazines/" in url:
+            if utilities.detect_gallery_or_magazine_url(url):
                 unique_urls.add(url)
             else:
                 logger.warning(
@@ -406,7 +413,7 @@ class Parser(BaseParser):
             if isinstance(href, bs4.element.Tag):
                 href_url = href["href"]
                 if isinstance(href_url, str) and (
-                    href_url.startswith("/magazines/") or href_url.startswith("/hentai/")
+                    utilities.detect_gallery_or_magazine_url(href_url)
                 ):
                     found_urls.add(href_url)
 

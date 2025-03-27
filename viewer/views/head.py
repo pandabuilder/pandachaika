@@ -343,7 +343,10 @@ def image_url(request: HttpRequest, pk: int) -> HttpResponse:
 
 def process_gallery_page(request: HttpRequest, gallery: Gallery, tool: Optional[str] = None) -> HttpResponse:
 
-    response = HttpResponseRedirect(gallery.get_absolute_url())
+    if "HTTP_REFERER" in request.META:
+        response = HttpResponseRedirect(request.META["HTTP_REFERER"])
+    else:
+        response = HttpResponseRedirect(gallery.get_absolute_url())
 
     if request.user.has_perm("viewer.download_gallery") and tool == "download":
         if "downloader" in request.GET and request.user.is_staff:

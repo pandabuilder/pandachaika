@@ -217,7 +217,12 @@ class WantedGalleryTest(TestCase):
 
         gallery_wanted_lists: dict[str, list["WantedGallery"]] = defaultdict(list)
 
-        with self.assertNumQueries(5):
+        # 5 viewer related queries, 1 log related query
+        if settings.disable_sql_log:
+            expected_queries = 5
+        else:
+            expected_queries = 6
+        with self.assertNumQueries(expected_queries):
             parser.compare_gallery_with_wanted_filters(
                 incoming_gallery, gallery_link, wanted_galleries, gallery_wanted_lists
             )

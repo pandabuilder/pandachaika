@@ -306,6 +306,7 @@ class Settings:
         self.torrent_dl_folder: str = ""
         self.log_location = ""
         self.log_level: str = "INFO"
+        self.disable_sql_log: bool = False
 
         self.convert_others_to_zip = False
         self.mark_similar_new_archives = False
@@ -560,6 +561,8 @@ class Settings:
                 self.recheck_wanted_on_update = config["general"]["recheck_wanted_on_update"]
             if "force_log_level" in config["general"]:
                 self.log_level = config["general"]["force_log_level"]
+            if "disable_sql_log" in config["general"]:
+                self.disable_sql_log = config["general"]["disable_sql_log"]
             if "vertical_image_max_width" in config["general"]:
                 self.vertical_image_max_width = config["general"]["vertical_image_max_width"]
             if "horizontal_image_max_width" in config["general"]:

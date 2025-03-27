@@ -1924,7 +1924,7 @@ class Archive(models.Model):
             alt_gallery.public = False
             alt_gallery.save()
 
-    def delete_all_files(self) -> None:
+    def delete_all_files(self, create_mark: bool = False) -> None:
 
         results = self.image_set.filter(extracted=True)
 
@@ -1936,6 +1936,17 @@ class Archive(models.Model):
         self.zipped.delete(save=False)
         self.image_set.all().delete()
         self.extracted = False
+        if create_mark:
+            manager_entry, _ = ArchiveManageEntry.objects.update_or_create(
+                archive=self,
+                mark_reason="deleted_file",
+                defaults={
+                    "mark_comment": "This Archive's file has been deleted",
+                    "mark_priority": 5.0,
+                    "mark_check": True,
+                    "origin": ArchiveManageEntry.ORIGIN_SYSTEM,
+                },
+            )
         self.simple_save()
 
     def delete_files_but_archive(self) -> None:

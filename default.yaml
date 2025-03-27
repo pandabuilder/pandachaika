@@ -61,6 +61,10 @@ general:
   # Sizes to apply when using the resized extract option.
   vertical_image_max_width: 900
   horizontal_image_max_width: 1500
+  # Force the minimum log level to send to logs (database, file). Defaults to INFO if not present, DEBUG in debug mode.
+  force_log_level: INFO
+  # Disable SQL log
+  disable_sql_log: false
 # Extra tool to apply to images when using the cloning tool, use 'input' and 'output' kwargs on executable_path to replace on runtime
 cloning_image_tool:
   enable: false

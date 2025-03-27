@@ -10,80 +10,292 @@
       <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
     {% endfor %}
   {% endif %}
-  <div class="page-header">
-    <h2>Server logs</h2>
-    <p class="lead">Current server time: {% now "y-m-d, H:i:s" %}</p>
+  
+  <div class="page-header mb-4">
+    <div class="d-flex justify-content-between align-items-center">
+      <div>
+        <h2>Server logs</h2>
+        <p class="lead mb-0">Current server time: {% now "y-m-d, H:i:s" %}</p>
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-outline-light" id="copy-logs" title="Copy visible logs to clipboard">
+          <i class="fas fa-copy"></i> Copy
+        </button>
+        <button class="btn btn-outline-light" id="auto-refresh" title="Auto-refresh logs every 5 seconds">
+          <i class="fas fa-sync"></i> Auto-refresh
+        </button>
+      </div>
+    </div>
   </div>
-  <form action="{% url 'viewer:logs' %}" method="GET">
-  <div class="row g-1">
-    <div class="col-md-3">
-        <div class="input-group align-items-center">
-            <label for="filter">Filter:</label>
-            <input type="search" class="form-control" id="filter" name="filter" value="{{ request.GET.filter }}">
+
+  <div class="card bg-dark mb-4">
+    <div class="card-body">
+      <form action="{% url 'viewer:logs' %}" method="GET" id="log-filter-form">
+        <div class="row g-3">
+          <div class="col-md-3 gy-1">
+            <div class="form-group">
+              <label for="filter" class="form-label filter-options">Filter logs:</label>
+              <input type="search" class="form-control" id="filter" name="filter" value="{{ request.GET.filter }}" 
+                     placeholder="Search in logs...">
+            </div>
+          </div>
+          <div class="col-md-2 gy-1">
+            <div class="form-group">
+              <label for="logger-name" class="form-label filter-options">Logger name:</label>
+              <input type="text" class="form-control" id="logger-name" name="logger-name" value="{{ request.GET|dict_key:'logger-name' }}">
+            </div>
+          </div>
+          <div class="col-md-1 gy-1">
+            <div class="form-group">
+              <label class="form-label filter-options">Log level:</label>
+              <select class="form-select" id="log-level" name="log-level" aria-label="Select log level">
+              {% with log_level=request.GET|dict_key:'log-level' %}
+                <option{% if log_level == "" %} selected{% endif %} value="">All levels</option>
+                <option{% if log_level == "DEBUG" %} selected{% endif %} value="DEBUG">Debug</option>
+                <option{% if log_level == "INFO" %} selected{% endif %} value="INFO">Info</option>
+                <option{% if log_level == "WARNING" %} selected{% endif %} value="WARNING">Warning</option>
+                <option{% if log_level == "ERROR" %} selected{% endif %} value="ERROR">Error</option>
+                <option{% if log_level == "CRITICAL" %} selected{% endif %} value="CRITICAL">Critical</option>
+              {% endwith %}
+              </select>
+            </div>
+          </div>
         </div>
-    </div>
-    <div class="col-md-3">
-        <div class="input-group align-items-center">
-            <label for="prev-lines">Previous lines:</label>
-            <input title="Previous lines" size="10" type="number" step="1" class="form-control" name="prev-lines" value="{{ request.GET|dict_key:"prev-lines" }}" id="prev-lines" placeholder="10"/>
-            <label for="next-lines">Next lines:</label>
-            <input title="Next lines" size="10" type="number" step="1" class="form-control" name="next-lines" value="{{ request.GET|dict_key:"next-lines" }}" id="next-lines" placeholder="10"/>
+        <div class="row mt-3">
+          <div class="col-12">
+            <button type="submit" class="btn btn-primary">
+              <i class="fas fa-search"></i> Apply filter
+            </button>
+            <a class="btn btn-secondary" href="{% url 'viewer:logs' %}" role="button">
+              <i class="fas fa-times"></i> Clear
+            </a>
+          </div>
         </div>
-    </div>
-    <div class="col-md-4">
-      <button type="submit" class="btn btn-info">Apply filter</button>
-      <a class="btn btn-light" href="{% url 'viewer:logs' %}" role="button">Clear</a>
+      </form>
     </div>
   </div>
-  </form>
-  <!-- Next/Prev page links  -->
+
+  <!-- Pagination -->
   {% if log_lines.object_list and log_lines.paginator.num_pages > 1 %}
-    <div>
-        <span class="step-links">
-          <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
-          {% if log_lines.has_previous %}
-            <a href= "?{% url_replace 'page' log_lines.previous_page_number %}"> previous &lt;&lt; </a>
-          {% else %}
-            <span> previous &lt;&lt; </span>
-          {% endif %}
-          <span class="current">
-                &nbsp;Page {{ log_lines.number }} of {{ log_lines.paginator.num_pages }}
-            </span>
-          {% if log_lines.has_next %}
-            <a href="?{% url_replace 'page' log_lines.next_page_number %}"> &gt;&gt; next</a>
-          {% else %}
-            <span> &gt;&gt; next</span>
-          {% endif %}
-          <a href="?{% url_replace 'page' log_lines.paginator.num_pages %}"> &gt;&gt; last</a>
-        </span>
-    </div>
+    <nav aria-label="Log pagination" class="mb-4">
+      <ul class="pagination justify-content-center">
+        <li class="page-item {% if not log_lines.has_previous %}disabled{% endif %}">
+          <a class="page-link" href="?{% url_replace 'page' '1' %}">
+            <i class="fas fa-angle-double-left"></i>
+          </a>
+        </li>
+        <li class="page-item {% if not log_lines.has_previous %}disabled{% endif %}">
+          <a class="page-link" href="{% if log_lines.has_previous %}?{% url_replace 'page' log_lines.previous_page_number %}{% endif %}">
+            <i class="fas fa-angle-left"></i>
+          </a>
+        </li>
+        <li class="page-item active">
+          <span class="page-link">
+            Page {{ log_lines.number }} of {{ log_lines.paginator.num_pages }}
+          </span>
+        </li>
+        <li class="page-item {% if not log_lines.has_next %}disabled{% endif %}">
+          <a class="page-link" href="{% if log_lines.has_next %}?{% url_replace 'page' log_lines.next_page_number %}{% endif %}">
+            <i class="fas fa-angle-right"></i>
+          </a>
+        </li>
+        <li class="page-item {% if not log_lines.has_next %}disabled{% endif %}">
+          <a class="page-link" href="?{% url_replace 'page' log_lines.paginator.num_pages %}">
+            <i class="fas fa-angle-double-right"></i>
+          </a>
+        </li>
+      </ul>
+    </nav>
   {% endif %}
-  <!-- Logs  -->
-  <div class="table-responsive">
-    <table class="table table-sm table-bordered table-striped">
-      {% for log_line, log_info in log_lines %}<tr class="result-list{% if log_info.highlighted %} highlight-row{% endif %}"><td>{{ log_line|linebreaksbr|urlize_all_rel }}</td></tr>{% endfor %}
-    </table>
+
+  <!-- Logs -->
+  <div class="card bg-dark">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered mb-0">
+          <thead>
+            <tr>
+              <th style="width: 230px;">Timestamp</th>
+              <th style="width: 80px;">Level</th>
+              <th style="width: 200px;">Logger</th>
+              <th>Content</th>
+            </tr>
+          </thead>
+          <tbody id="log-table">
+            {% for log_line in log_lines %}
+              <tr class="result-list log-line" id="log-{{ log_line.id }}"><td class="log-timestamp">{{ log_line.create_datetime|date:"Y-m-d H:i:s.u" }}</td>	<td class="log-content log-{{ log_line.get_level_display.lower }}">{{ log_line.get_level_display }}</td>	<td class="log-content">{{ log_line.logger_name }}</td>	<td class="log-content">{{ log_line.msg }}{% if log_line.trace %} {{ log_line.trace }}{% endif %}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
   </div>
-  <!-- Next/Prev page links  -->
+
+  <!-- Bottom Pagination -->
   {% if log_lines.object_list and log_lines.paginator.num_pages > 1 %}
-    <div>
-        <span class="step-links">
-          <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
-          {% if log_lines.has_previous %}
-            <a href= "?{% url_replace 'page' log_lines.previous_page_number %}"> previous &lt;&lt; </a>
-          {% else %}
-            <span> previous &lt;&lt; </span>
-          {% endif %}
-          <span class="current">
-                &nbsp;Page {{ log_lines.number }} of {{ log_lines.paginator.num_pages }}
-            </span>
-          {% if log_lines.has_next %}
-            <a href="?{% url_replace 'page' log_lines.next_page_number %}"> &gt;&gt; next</a>
-          {% else %}
-            <span> &gt;&gt; next</span>
-          {% endif %}
-          <a href="?{% url_replace 'page' log_lines.paginator.num_pages %}"> &gt;&gt; last</a>
-        </span>
-    </div>
+    <nav aria-label="Log pagination" class="mt-4">
+      <ul class="pagination justify-content-center">
+        <li class="page-item {% if not log_lines.has_previous %}disabled{% endif %}">
+          <a class="page-link" href="?{% url_replace 'page' '1' %}">
+            <i class="fas fa-angle-double-left"></i>
+          </a>
+        </li>
+        <li class="page-item {% if not log_lines.has_previous %}disabled{% endif %}">
+          <a class="page-link" href="{% if log_lines.has_previous %}?{% url_replace 'page' log_lines.previous_page_number %}{% endif %}">
+            <i class="fas fa-angle-left"></i>
+          </a>
+        </li>
+        <li class="page-item active">
+          <span class="page-link">
+            Page {{ log_lines.number }} of {{ log_lines.paginator.num_pages }}
+          </span>
+        </li>
+        <li class="page-item {% if not log_lines.has_next %}disabled{% endif %}">
+          <a class="page-link" href="{% if log_lines.has_next %}?{% url_replace 'page' log_lines.next_page_number %}{% endif %}">
+            <i class="fas fa-angle-right"></i>
+          </a>
+        </li>
+        <li class="page-item {% if not log_lines.has_next %}disabled{% endif %}">
+          <a class="page-link" href="?{% url_replace 'page' log_lines.paginator.num_pages %}">
+            <i class="fas fa-angle-double-right"></i>
+          </a>
+        </li>
+      </ul>
+    </nav>
   {% endif %}
+{% endblock %}
+
+{% block extra_head %}
+<style>
+.log-line {
+  font-family: 'Consolas', 'Monaco', monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.log-timestamp {
+  color: #888;
+  margin-right: 10px;
+}
+
+.log-content {
+    color: #fff;
+}
+
+.log-debug {
+    color: #fff !important;
+}
+
+.log-info {
+    color: #fff !important;
+}
+
+.log-warning {
+    color: yellow !important;
+}
+
+.log-error {
+    color: #f00 !important;
+}
+
+.log-fatal {
+    color: #f00 !important;
+    font-weight: bold;
+}
+
+.table > :not(caption) > * > * {
+  padding: 0.5rem;
+}
+
+.card {
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+.form-control:focus, .form-select:focus {
+  background-color: #122963;
+  color: lightgrey;
+  border-color: #0d6efd;
+}
+
+.btn-outline-light:hover {
+  background-color: rgba(255,255,255,0.1);
+}
+
+
+</style>
+{% endblock %}
+{% block afterJQ %}
+{% load compress %}
+{% compress js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // Copy logs functionality
+  document.getElementById('copy-logs').addEventListener('click', function() {
+    const logLines = Array.from(document.querySelectorAll('.log-line'))
+      .map(line => line.textContent)
+      .join('\n');
+    
+    navigator.clipboard.writeText(logLines).then(() => {
+      const originalText = this.innerHTML;
+      this.innerHTML = '<i class="fas fa-check"></i> Copied!';
+      setTimeout(() => {
+        this.innerHTML = originalText;
+      }, 2000);
+    });
+  });
+
+  // Auto-refresh functionality
+  const autoRefreshBtn = document.getElementById('auto-refresh');
+  let refreshInterval = null;
+  let isRefreshing = false;
+
+  autoRefreshBtn.addEventListener('click', function() {
+    if (refreshInterval) {
+      // Stop refreshing
+      clearInterval(refreshInterval);
+      refreshInterval = null;
+      this.classList.remove('active');
+      this.innerHTML = '<i class="fas fa-sync"></i> Auto-refresh';
+    } else {
+      // Start refreshing
+      refreshLogs(); // Call immediately
+      refreshInterval = setInterval(refreshLogs, 5000);
+      this.classList.add('active');
+      this.innerHTML = '<i class="fas fa-stop"></i> Stop refresh';
+    }
+  });
+
+  async function refreshLogs() {
+    if (isRefreshing) return;
+    isRefreshing = true;
+
+    try {
+      const currentURL =new URL(window.location.href);
+      currentURL.searchParams.set("json", "1");
+      const fetchURL = currentURL.toString()
+
+      const response = await fetch(fetchURL);
+      const data = await response.json();
+      
+      const logTable = document.getElementById('log-table');
+      const existingIds = new Set(Array.from(logTable.children).map(row => row.id));
+
+      data.results.reverse().forEach(log => {
+        if (!existingIds.has(`log-${log.id}`)) {
+          const newRow = document.createElement('tr');
+          newRow.id = `log-${log.id}`;
+          newRow.className = 'result-list log-line';
+          newRow.innerHTML = `<td class="log-timestamp">${log.create_datetime}</td>	<td class="log-content log-${log.level.toLowerCase()}">${log.level}</td>	<td class="log-content">${log.logger_name}</td>	<td class="log-content">${log.msg}${log.trace ? ' ' + log.trace : ''}</td>`;
+          logTable.insertBefore(newRow, logTable.firstChild);
+        }
+      });
+    } catch (error) {
+      console.error('Error refreshing logs:', error);
+    } finally {
+      isRefreshing = false;
+    }
+  }
+});
+</script>
+{% endcompress %}
 {% endblock %}

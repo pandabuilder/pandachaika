@@ -8,6 +8,7 @@ beautifulsoup4==4.13.3
 CherryPy==18.10.0
 Django==5.1.7
 django-compressor==4.5.1
+django-db-logger==0.1.13
 Pillow==11.1.0
 # Temporary plugin to handle AVIF images
 pillow-avif-plugin==1.5.0

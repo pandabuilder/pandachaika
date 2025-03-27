@@ -124,7 +124,17 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "django_vite",
+    "django_db_logger"
 ]
+
+if not crawler_settings.disable_sql_log:
+    LOGGING["handlers"]["db_log"] = {
+        "level": "DEBUG",
+        "class": "django_db_logger.db_log_handler.DatabaseLogHandler"
+    }
+    LOGGING["loggers"]["viewer"]["handlers"].append("db_log")
+    LOGGING["loggers"]["core"]["handlers"].append("db_log")
+    LOGGING["loggers"]["django"]["handlers"].append("db_log")
 
 if DEBUG and module_exists("corsheaders"):
     INSTALLED_APPS += ["corsheaders"]
@@ -371,6 +381,7 @@ PROVIDERS = [
     "core.providers.nyaa",
     "core.providers.irodori",
     "core.providers.wanimagazine",
+    "core.providers.j18",
 ]
 
 PROVIDER_CONTEXT: "ProviderContext" = crawler_settings.provider_context

@@ -15,7 +15,7 @@ def resolve_url(gallery: "Gallery") -> str:
 def clean_for_online_search_title(title: str) -> str:
     # Remove parenthesis
     adjusted_title = re.sub(r"\s+\(.+?\)", r"", re.sub(r"\[.+?\]\s*", r"", title))
-    # Remove non words, non whitespace
+    # Remove non-words, non whitespace
     adjusted_title = re.sub(r"[^\w\s]", r" ", adjusted_title)
     return adjusted_title
 
@@ -23,6 +23,13 @@ def clean_for_online_search_title(title: str) -> str:
 def clean_title(title: str) -> str:
     # Remove parenthesis
     adjusted_title = re.sub(r"\s+\(.+?\)", r"", re.sub(r"\[.+?\]\s*", r"", title))
-    # Remove non words, non whitespace
+    # Remove non-words, non whitespace
     # adjusted_title = re.sub(r'[^\w\s]', r' ', adjusted_title)
     return adjusted_title
+
+def detect_gallery_or_magazine_url(url: str) -> bool:
+    if ("/hentai/" in url or "/magazines/" in url) and ("/magazines/page/" not in url and not url.endswith("/magazines/") and not url.endswith("/magazines")):
+        return True
+    else:
+        return False
+
