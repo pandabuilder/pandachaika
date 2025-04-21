@@ -92,6 +92,11 @@
                 <input id="checkbox8" class="form-check-input" type="checkbox" name="recycled" value="1" {% if request.GET.recycled == '1' %}checked{% endif %}><label for="checkbox8" title="Unchecked won't show Archives on Recycle Bin">Recycled (only)</label>
             </div>
         </div>
+        <div class="col-md-auto">
+            <div class="form-check">
+                <input id="checkbox88" class="form-check-input" type="checkbox" name="file_deleted" value="1" {% if request.GET.file_deleted == '1' %}checked{% endif %}><label for="checkbox88" title="Archives where the file has been deleted">File Deleted (only)</label>
+            </div>
+        </div>
         {% endif %}
       <div class="col-md-auto">
         <div class="form-check">

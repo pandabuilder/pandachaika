@@ -265,6 +265,7 @@ GALLERY_INCLUDED_FIELDS = (
     "reason",
     "thumbnail_url",
     "status",
+    "tags"
 )
 
 GALLERY_PUBLIC_INCLUDED_FIELDS = (
@@ -279,6 +280,7 @@ GALLERY_PUBLIC_INCLUDED_FIELDS = (
     "expunged",
     "disowned",
     "rating",
+    "tags"
 )
 
 
@@ -288,7 +290,8 @@ def changes_gallery_delta(new_record, is_authenticated=False):
     if prev_record is None:
         return []
     delta = new_record.diff_against(
-        prev_record, included_fields=GALLERY_INCLUDED_FIELDS if is_authenticated else GALLERY_PUBLIC_INCLUDED_FIELDS
+        prev_record, included_fields=GALLERY_INCLUDED_FIELDS if is_authenticated else GALLERY_PUBLIC_INCLUDED_FIELDS,
+        foreign_keys_are_objs=True
     )
     return delta.changes
 

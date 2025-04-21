@@ -67,7 +67,7 @@ from core.base.utilities import (
     available_filename,
     file_matches_any_filter,
 )
-from core.base.types import GalleryData, DataDict, ArchiveGenericFile
+from core.base.types import GalleryData, DataDict, ArchiveGenericFile, ArchiveStatisticsCalculator
 from core.base.utilities import get_dict_allowed_fields, replace_illegal_name
 from viewer.services import CompareObjectsService
 from viewer.utils import image_processing
@@ -541,7 +541,7 @@ class ArchiveQuerySet(models.QuerySet):
     def filter_non_existent(self, root: str, **kwargs: typing.Any) -> list["Archive"]:
         archives = self.filter(**kwargs).order_by("-id")
 
-        return [archive for archive in archives if not os.path.isfile(os.path.join(root, archive.zipped.path))]
+        return [archive for archive in archives if (not archive.zipped) or (not os.path.isfile(os.path.join(root, archive.zipped.path)))]
 
 
 class ArchiveManager(models.Manager["Archive"]):
@@ -774,6 +774,10 @@ class Gallery(models.Model):
                 "gallery_chain_urls": {"type": "text", "index": False},
                 "thumbnail": {"type": "text", "index": False},
                 "source_thumbnail": {"type": "text", "index": False},
+                "has_container": {"type": "boolean"},
+                "has_magazine": {"type": "boolean"},
+                "has_contained": {"type": "boolean"},
+                "has_chapters": {"type": "boolean"},
             }
         }
         verbose_name_plural = "galleries"
@@ -923,6 +927,25 @@ class Gallery(models.Model):
 
     def get_es_source_url(self) -> str:
         return self.get_link()
+
+    def get_es_has_container(self) -> bool:
+        return self.gallery_container is not None
+
+    def get_es_has_magazine(self) -> bool:
+        return self.magazine is not None
+
+    def get_es_has_contained(self) -> bool:
+        if self.gallery_contains.count() == 0:
+            return False
+        else:
+            return True
+
+    def get_es_has_chapters(self) -> bool:
+        if self.magazine_chapters.count() == 0:
+            return False
+        else:
+            return True
+
 
     def __str__(self) -> str:
         return self.title or self.title_jpn or ""
@@ -1583,6 +1606,7 @@ class Archive(models.Model):
     )
     extracted = models.BooleanField(default=False)
     binned = models.BooleanField(default=False)
+    file_deleted = models.BooleanField(default=False)
 
     tags: 'models.ManyToManyField[Tag, models.Model]' = models.ManyToManyField(
         Tag, related_name="archive_tags", blank=True, through="ArchiveTag", through_fields=("archive", "tag")
@@ -1839,6 +1863,9 @@ class Archive(models.Model):
     def is_recycled(self) -> bool:
         return self.binned
 
+    def is_file_deleted(self) -> bool:
+        return self.file_deleted
+
     def delete_text_report(self) -> str:
         data: dict[str, typing.Any] = {}
         if self.details:
@@ -1947,6 +1974,7 @@ class Archive(models.Model):
                     "origin": ArchiveManageEntry.ORIGIN_SYSTEM,
                 },
             )
+        self.file_deleted = True
         self.simple_save()
 
     def delete_files_but_archive(self) -> None:
@@ -2341,7 +2369,7 @@ class Archive(models.Model):
         else:
             return static("imgs/no_cover.png"), 290, 196
 
-    def calculate_sha1_and_data_for_images(self, process_other_data: bool = True) -> bool:
+    def calculate_sha1_and_data_for_images(self, process_image_data: bool = True, process_other_data: bool = True, process_archive_statistics: bool = True) -> bool:
 
         image_set = self.image_set.all()
 
@@ -2357,21 +2385,44 @@ class Archive(models.Model):
 
         image_type = ContentType.objects.get_for_model(Image)
 
+        if process_archive_statistics:
+
+            archive_statistics, _ = ArchiveStatistics.objects.get_or_create(archive=self)
+
+            archive_stats_calc = ArchiveStatisticsCalculator()
+
+        else:
+            archive_statistics = None
+            archive_stats_calc = None
+
         for count, filename_tuple in enumerate(filtered_files, start=1):
             image = image_set.get(archive_position=count)
             if filename_tuple[1] is None:
 
                 with my_zip.open(filename_tuple[0]) as current_zip_img:
 
-                    image.sha1 = sha1_from_file_object(current_zip_img)
+                    if process_image_data:
 
-                    image.set_attributes_from_image(
-                        current_zip_img,
-                        my_zip.getinfo(filename_tuple[0]).file_size,
-                        os.path.basename(filename_tuple[0]),
-                    )
+                        image.sha1 = sha1_from_file_object(current_zip_img)
 
-                    if settings.CRAWLER_SETTINGS.auto_phash_images:
+                        image.set_attributes_from_image(
+                            current_zip_img,
+                            my_zip.getinfo(filename_tuple[0]).file_size,
+                            os.path.basename(filename_tuple[0]),
+                        )
+
+                    if process_archive_statistics and archive_stats_calc is not None:
+
+                        archive_stats_calc.set_values(
+                            filesize=image.image_size,
+                            height=image.original_height,
+                            width=image.original_width,
+                            image_mode=image.image_mode,
+                            is_horizontal=image.image_width / image.image_height > 1 if image.image_width and image.image_height else False,
+                            file_type=os.path.splitext(filename_tuple[0])[1]
+                        )
+
+                    if process_image_data and settings.CRAWLER_SETTINGS.auto_phash_images:
 
                         hash_result = CompareObjectsService.hash_thumbnail(current_zip_img, "phash")
                         if hash_result:
@@ -2387,13 +2438,29 @@ class Archive(models.Model):
                 with my_zip.open(filename_tuple[1]) as current_zip:
                     with zipfile.ZipFile(current_zip) as my_nested_zip:
                         with my_nested_zip.open(filename_tuple[0]) as current_zip_img:
-                            image.sha1 = sha1_from_file_object(current_zip_img)
-                            image.set_attributes_from_image(
-                                current_zip_img,
-                                my_nested_zip.getinfo(filename_tuple[0]).file_size,
-                                os.path.basename(filename_tuple[0]),
-                            )
-                            if settings.CRAWLER_SETTINGS.auto_phash_images:
+
+                            if process_image_data:
+                                image.sha1 = sha1_from_file_object(current_zip_img)
+
+                                image.set_attributes_from_image(
+                                    current_zip_img,
+                                    my_nested_zip.getinfo(filename_tuple[0]).file_size,
+                                    os.path.basename(filename_tuple[0]),
+                                )
+
+                            if process_archive_statistics and archive_stats_calc is not None:
+
+                                archive_stats_calc.set_values(
+                                    filesize=image.image_size,
+                                    height=image.original_height,
+                                    width=image.original_width,
+                                    image_mode=image.image_mode,
+                                    is_horizontal=image.image_width / image.image_height > 1
+                                    if image.image_width and image.image_height else False,
+                                    file_type=os.path.splitext(filename_tuple[0])[1],
+                                )
+
+                            if process_image_data and settings.CRAWLER_SETTINGS.auto_phash_images:
                                 hash_result = CompareObjectsService.hash_thumbnail(current_zip_img, "phash")
                                 if hash_result:
                                     hash_object, _ = ItemProperties.objects.update_or_create(
@@ -2403,7 +2470,24 @@ class Archive(models.Model):
                                         name="phash",
                                         defaults={"value": hash_result},
                                     )
-            image.save()
+            if process_image_data:
+                image.save()
+
+        if process_archive_statistics and archive_stats_calc is not None and archive_statistics is not None:
+
+            archive_statistics.filesize_average = archive_stats_calc.mean('filesize')
+            archive_statistics.height_average = archive_stats_calc.mean('height')
+            archive_statistics.width_average = archive_stats_calc.mean('width')
+            archive_statistics.height_mode = archive_stats_calc.mode('height')
+            archive_statistics.width_mode = archive_stats_calc.mode('width')
+            archive_statistics.height_stddev = archive_stats_calc.stddev('height')
+            archive_statistics.width_stddev = archive_stats_calc.stddev('width')
+            archive_statistics.is_horizontal_mode = archive_stats_calc.mode('is_horizontal')
+            archive_statistics.image_mode_mode = archive_stats_calc.mode('image_mode')
+            archive_statistics.file_type_mode = archive_stats_calc.mode("file_type")
+            archive_statistics.file_type_match = archive_stats_calc.eq_to_value("file_type", archive_statistics.file_type_mode)
+
+            archive_statistics.save()
 
         # Calculate other data:
         if process_other_data and self.archivefileentry_set.count() > 0:
@@ -2727,6 +2811,11 @@ class Archive(models.Model):
 
             if settings.CRAWLER_SETTINGS.auto_hash_images and not self.thumbnail:
                 image_type = ContentType.objects.get_for_model(Image)
+
+                archive_statistics, _ = ArchiveStatistics.objects.get_or_create(archive=self)
+
+                archive_stats_calc = ArchiveStatisticsCalculator()
+
                 for count, filename_tuple in enumerate(filtered_files, start=1):
                     # image_name = os.path.split(filename.replace('\\', os.sep))[1]
                     image = Image.objects.get(archive=self, archive_position=count)
@@ -2739,6 +2828,17 @@ class Archive(models.Model):
                                 my_zip.getinfo(filename_tuple[0]).file_size,
                                 os.path.basename(filename_tuple[0]),
                             )
+
+                            archive_stats_calc.set_values(
+                                filesize=image.image_size,
+                                height=image.original_height,
+                                width=image.original_width,
+                                image_mode=image.image_mode,
+                                is_horizontal=image.image_width / image.image_height > 1
+                                if image.image_width and image.image_height else False,
+                                file_type=os.path.splitext(filename_tuple[0])[1]
+                            )
+
                             if settings.CRAWLER_SETTINGS.auto_phash_images:
                                 hash_result = CompareObjectsService.hash_thumbnail(current_zip_img, "phash")
                                 if hash_result:
@@ -2759,6 +2859,17 @@ class Archive(models.Model):
                                         my_nested_zip.getinfo(filename_tuple[0]).file_size,
                                         os.path.basename(filename_tuple[0]),
                                     )
+
+                                    archive_stats_calc.set_values(
+                                        filesize=image.image_size,
+                                        height=image.original_height,
+                                        width=image.original_width,
+                                        image_mode=image.image_mode,
+                                        is_horizontal=image.image_width / image.image_height > 1
+                                        if image.image_width and image.image_height else False,
+                                        file_type=os.path.splitext(filename_tuple[0])[1]
+                                    )
+
                                     if settings.CRAWLER_SETTINGS.auto_phash_images:
                                         hash_result = CompareObjectsService.hash_thumbnail(current_zip_img, "phash")
                                         if hash_result:
@@ -2771,6 +2882,22 @@ class Archive(models.Model):
                                             )
 
                     image.save()
+
+                archive_statistics.filesize_average = archive_stats_calc.mean('filesize')
+                archive_statistics.height_average = archive_stats_calc.mean('height')
+                archive_statistics.width_average = archive_stats_calc.mean('width')
+                archive_statistics.height_mode = archive_stats_calc.mode('height')
+                archive_statistics.width_mode = archive_stats_calc.mode('width')
+                archive_statistics.height_stddev = archive_stats_calc.stddev('height')
+                archive_statistics.width_stddev = archive_stats_calc.stddev('width')
+                archive_statistics.is_horizontal_mode = archive_stats_calc.mode('is_horizontal')
+                archive_statistics.image_mode_mode = archive_stats_calc.mode('image_mode')
+                archive_statistics.file_type_mode = archive_stats_calc.mode('file_type')
+                archive_statistics.file_type_match = archive_stats_calc.eq_to_value(
+                    "file_type", archive_statistics.file_type_mode
+                )
+
+                archive_statistics.save()
 
             if not self.thumbnail and filtered_files:
                 if image_set_present:
@@ -3764,6 +3891,25 @@ class ArchiveFileEntry(models.Model):
     class Meta:
         verbose_name_plural = "Archive file entries"
         ordering = ["-position"]
+
+
+class ArchiveStatistics(models.Model):
+    archive = models.ForeignKey(Archive, on_delete=models.CASCADE)
+    filesize_average = models.FloatField(blank=True, null=True)
+    height_mode = models.PositiveIntegerField(blank=True, null=True)
+    width_mode = models.PositiveIntegerField(blank=True, null=True)
+    height_average = models.FloatField(blank=True, null=True)
+    width_average = models.FloatField(blank=True, null=True)
+    height_stddev = models.FloatField(blank=True, null=True)
+    width_stddev = models.FloatField(blank=True, null=True)
+    image_mode_mode = models.CharField(max_length=50, blank=True, null=True)
+    file_type_mode = models.CharField(max_length=40, blank=True, null=True)
+    file_type_match = models.FloatField(blank=True, null=True)
+    is_horizontal_mode = models.BooleanField(default=False)
+
+    class Meta:
+        verbose_name_plural = "Archive file statistics"
+        # ordering = ["-position"]
 
 
 def upload_imgpath(instance: "Archive", filename: str) -> str:

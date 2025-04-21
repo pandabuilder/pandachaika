@@ -1198,7 +1198,7 @@ class EventSearchForm(forms.Form):
 
 
 class SplitArchiveForm(forms.ModelForm):
-    new_file_name = forms.CharField(widget=forms.widgets.TextInput(attrs={"class": "form-control", "size": 100}))
+    new_file_name = forms.CharField(required=False, widget=forms.widgets.TextInput(attrs={"class": "form-control", "size": 100}))
     starting_position = forms.IntegerField(
         required=True, widget=forms.NumberInput(attrs={"size": 10, "min": 0, "class": "form-control"})
     )

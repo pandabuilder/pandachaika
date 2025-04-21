@@ -10,362 +10,426 @@
       <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
     {% endfor %}
   {% endif %}
-  <!-- Form  -->
-  <form action="{% url 'viewer:gallery-list' %}" method="GET" role="form">
-    <div id="main-search" class="collapse{% if prm.main_filters %} show{% endif %}">
-      {% for field in form %}
-        <div class="page-line">
-          {{ field.errors }}
-          {{ field }}
+
+    <!-- Main Search Form -->
+    <div class="row">
+        <div class="col-md-12">
+        <form id="main-form" action="{% url 'viewer:gallery-list' %}" method="GET" role="form">
+          <div class="row">
+            <div class="col-md-12">
+                <div id="main-search" class="collapse{% if prm.main_filters %} show{% endif %}">
+                  {% for field in form %}
+                    <div class="page-line">
+                      {{ field.errors }}
+                      {{ field }}
+                    </div>
+                  {% endfor %}
+                </div>
+            </div>
+              <div class="col-md-12 page-line">
+                <button type="submit" name="apply" class="btn btn-info">Search</button>
+                <button type="submit" name="clear" class="btn btn-light">Clear</button>
+                <button type="button" class="btn btn-secondary js-instant-toggle d-lg-none" data-toggle-target="#advancedFilters">More filters</button>
+              </div>
+          </div>
+          </form>
         </div>
-      {% endfor %}
-      <div id="extra_filters" class="page-line collapse{% if prm.extra_filters %} show{% endif %}">
-      <div class="row g-1 align-items-center">
-      <div class="col-md-auto">
-        <input type="text" class="form-control me-sm-1" name="category" size="15" value="{{ display_prms.category }}" placeholder="Category"/>
-      </div>
-      <div class="col-md-auto">
-        <input type="text" class="form-control me-sm-1" name="provider" size="10" value="{{ display_prms.provider }}" placeholder="Provider"/>
-      </div>
-      <div class="col-md-auto">
-        <input type="text" class="form-control me-sm-1" name="uploader" size="15" value="{{ display_prms.uploader }}" placeholder="Uploader"/>
-      </div>
-      <div class="col-md-auto">
-        <label>Rating</label>
-      </div>
-      <div class="col-md-auto">
-        <input size="3" type="text" class="form-control me-sm-1" name="rating_from" value="{{ display_prms.rating_from }}" placeholder="from"/>
-      </div>
-      <div class="col-md-auto">
-        <input size="3" type="text" class="form-control me-sm-1" name="rating_to" value="{{ display_prms.rating_to }}" placeholder="to"/>
-      </div>
-      <div class="col-md-auto">
-        <label>Filesize</label>
-      </div>
-      <div class="col-md-auto">
-        <input size="3" type="text" class="form-control me-sm-1" name="filesize_from" value="{{ display_prms.filesize_from }}" placeholder="from"/>
-      </div>
-      <div class="col-md-auto">
-        <input size="3" type="text" class="form-control me-sm-1" name="filesize_to" value="{{ display_prms.filesize_to }}" placeholder="to"/>
-      </div>
-      <div class="col-md-auto">
-        <label>Filecount</label>
-      </div>
-      <div class="col-md-auto">
-        <input size="2" type="text" class="form-control me-sm-1" name="filecount_from" value="{{ display_prms.filecount_from }}" placeholder="from"/>
-      </div>
-      <div class="col-md-auto">
-        <input size="2" type="text" class="form-control me-sm-1" name="filecount_to" value="{{ display_prms.filecount_to }}" placeholder="to"/>
-      </div>
-      <div class="col-md-auto">
-          <div class="form-check">
-            <input id="checkbox1" class="form-check-input" type="checkbox" name="expunged" value="1" {% if display_prms.expunged == '1' %}checked{% endif %}><label for="checkbox1">Expunged</label>
-          </div>
-      </div>
-      <div class="col-md-auto">
-          <div class="form-check">
-            <input id="checkbox11" class="form-check-input" type="checkbox" name="disowned" value="1" {% if display_prms.disowned == '1' %}checked{% endif %}><label for="checkbox11">Disowned</label>
-          </div>
-      </div>
-        {% if user.is_authenticated %}
-          <div class="col-md-auto">
-              <div class="form-check">
-                  <input id="checkbox2" class="form-check-input" type="checkbox" name="hidden" value="1" {% if display_prms.hidden == '1' %}checked{% endif %}><label for="checkbox2">Hidden</label>
+    </div>
+
+  <div class="row justify-content-center">
+    <!-- Advanced Filters Panel -->
+    <div class="col-md-2 d-none d-lg-block" id="advancedFilters">
+      <div class="card">
+        <div class="card-header">
+          <h5 class="mb-0">Advanced Filters</h5>
+        </div>
+        <div class="card-body">
+            <!-- Basic Info Group -->
+            <div class="mb-3">
+              <h6 class="border-bottom pb-2">Basic Information</h6>
+              <div class="mb-2">
+                <input form="main-form" type="text" class="form-control" name="category" value="{{ display_prms.category }}" placeholder="Category"/>
               </div>
-          </div>
-          <div class="col-md-auto">
-              <div class="form-check">
-                  <input id="checkbox55" class="form-check-input" type="checkbox" name="only_used" value="1" {% if display_prms.only_used == '1' %}checked{% endif %}><label for="checkbox55">Only used</label>
+              <div class="mb-2">
+                <input form="main-form" type="text" class="form-control" name="provider" value="{{ display_prms.provider }}" placeholder="Provider"/>
               </div>
-          </div>
-          <div class="col-md-auto">
-              <div class="form-check">
-                  <input id="checkbox4" class="form-check-input" type="checkbox" name="not_used" value="1" {% if display_prms.not_used == '1' %}checked{% endif %}><label for="checkbox4">Not used</label>
-              </div>
-          </div>
-          <div class="col-md-auto">
-              <div class="form-check">
-                  <input id="checkbox7" class="form-check-input" type="checkbox" name="not_normal" value="1" {% if display_prms.not_normal == '1' %}checked{% endif %}><label for="checkbox7">Show not normal</label>
-              </div>
-          </div>
-        {% endif %}
-            <div class="col-md-auto">
-              <div class="form-check">
-                <input id="checkbox3" class="form-check-input" type="checkbox" name="fjord" value="1" {% if display_prms.fjord == '1' %}checked{% endif %}><label for="checkbox3">Fjord</label>
+              <div class="mb-2">
+                <input form="main-form" type="text" class="form-control" name="uploader" value="{{ display_prms.uploader }}" placeholder="Uploader"/>
               </div>
             </div>
-            <div class="col-md-auto">
-              <div class="form-check">
-                <input id="checkbox5" class="form-check-input" type="checkbox" name="contained" value="1" {% if display_prms.contained == '1' %}checked{% endif %}><label for="checkbox5">Contained</label>
+
+            <!-- Rating Group -->
+            <div class="mb-3">
+              <h6 class="border-bottom pb-2">Rating</h6>
+              <div class="row g-2">
+                <div class="col-6">
+                  <input form="main-form" type="text" class="form-control" name="rating_from" value="{{ display_prms.rating_from }}" placeholder="From"/>
+                </div>
+                <div class="col-6">
+                  <input form="main-form" type="text" class="form-control" name="rating_to" value="{{ display_prms.rating_to }}" placeholder="To"/>
+                </div>
               </div>
             </div>
-            <div class="col-md-auto">
-              <div class="form-check">
-                <input id="checkbox6" class="form-check-input" type="checkbox" name="contains" value="1" {% if display_prms.contains == '1' %}checked{% endif %}><label for="checkbox6">Contains</label>
+
+            <!-- File Info Group -->
+            <div class="mb-3">
+              <h6 class="border-bottom pb-2">File Information</h6>
+              <div class="row g-2 mb-2">
+                <div class="col-6">
+                  <input form="main-form" type="text" class="form-control" name="filesize_from" value="{{ display_prms.filesize_from }}" placeholder="Size from"/>
+                </div>
+                <div class="col-6">
+                  <input form="main-form" type="text" class="form-control" name="filesize_to" value="{{ display_prms.filesize_to }}" placeholder="Size to"/>
+                </div>
+              </div>
+              <div class="row g-2">
+                <div class="col-6">
+                  <input form="main-form" type="text" class="form-control" name="filecount_from" value="{{ display_prms.filecount_from }}" placeholder="Count from"/>
+                </div>
+                <div class="col-6">
+                  <input form="main-form" type="text" class="form-control" name="filecount_to" value="{{ display_prms.filecount_to }}" placeholder="Count to"/>
+                </div>
               </div>
             </div>
-      </div>
-      </div>
-      <div class="page-line row g-1 align-items-center">
-        <div class="col-md-auto">
-            <div class="input-group align-items-center">
-                <label for="sort">Sort </label>
-                <select id="sort" name="sort" class="form-control">
-                  <option value="title" {% if prm.sort == "title" %}selected{% endif %}>title</option>
-                  <option value="title_jpn" {% if prm.sort == "title_jpn" %}selected{% endif %}>title_jpn</option>
-                  <option value="posted" {% if prm.sort == "posted" %}selected{% endif %}>posted date</option>
-                  <option value="create_date" {% if prm.sort == "create_date" %}selected{% endif %}>create date</option>
-                  <option value="rating" {% if prm.sort == "rating" %}selected{% endif %}>rating</option>
-                  <option value="filecount" {% if prm.sort == "filecount" %}selected{% endif %}>filecount</option>
-                  <option value="filesize" {% if prm.sort == "filesize" %}selected{% endif %}>filesize</option>
+
+            <!-- Status Group -->
+            <div class="mb-3">
+              <h6 class="border-bottom pb-2">Status</h6>
+              <div class="form-check mb-2">
+                <input form="main-form" id="checkbox1" class="form-check-input" type="checkbox" name="expunged" value="1" {% if display_prms.expunged == '1' %}checked{% endif %}>
+                <label for="checkbox1" class="form-check-label">Expunged</label>
+              </div>
+              <div class="form-check mb-2">
+                <input form="main-form" id="checkbox11" class="form-check-input" type="checkbox" name="disowned" value="1" {% if display_prms.disowned == '1' %}checked{% endif %}>
+                <label for="checkbox11" class="form-check-label">Disowned</label>
+              </div>
+                <div class="form-check mb-2">
+                  <input form="main-form" id="checkbox3" class="form-check-input" type="checkbox" name="fjord" value="1" {% if display_prms.fjord == '1' %}checked{% endif %}>
+                  <label for="checkbox3" class="form-check-label">Fjord</label>
+                </div>
+              {% if user.is_authenticated %}
+                <div class="form-check mb-2">
+                  <input form="main-form" id="checkbox2" class="form-check-input" type="checkbox" name="hidden" value="1" {% if display_prms.hidden == '1' %}checked{% endif %}>
+                  <label for="checkbox2" class="form-check-label">Hidden</label>
+                </div>
+                <div class="form-check mb-2">
+                  <input form="main-form" id="checkbox55" class="form-check-input" type="checkbox" name="only_used" value="1" {% if display_prms.only_used == '1' %}checked{% endif %}>
+                  <label for="checkbox55" class="form-check-label">Only used</label>
+                </div>
+                <div class="form-check mb-2">
+                  <input form="main-form" id="checkbox4" class="form-check-input" type="checkbox" name="not_used" value="1" {% if display_prms.not_used == '1' %}checked{% endif %}>
+                  <label for="checkbox4" class="form-check-label">Not used</label>
+                </div>
+                <div class="form-check mb-2">
+                  <input form="main-form" id="checkbox7" class="form-check-input" type="checkbox" name="not_normal" value="1" {% if display_prms.not_normal == '1' %}checked{% endif %}>
+                  <label for="checkbox7" class="form-check-label">Show not normal</label>
+                </div>
+              {% endif %}
+            </div>
+
+            <!-- Gallery Relations Group -->
+            <div class="mb-3">
+              <h6 class="border-bottom pb-2">Gallery Relations</h6>
+              <div class="form-check mb-2">
+                <input form="main-form" id="checkbox5" class="form-check-input" type="checkbox" name="contained" value="1" {% if display_prms.contained == '1' %}checked{% endif %}>
+                <label for="checkbox5" class="form-check-label">Contained (any, OR)</label>
+              </div>
+              <div class="form-check mb-2">
+                <input form="main-form" id="checkbox52" class="form-check-input" type="checkbox" name="contained_container" value="1" {% if display_prms.contained_container == '1' %}checked{% endif %}>
+                <label for="checkbox52" class="form-check-label">Contained in container</label>
+              </div>
+              <div class="form-check mb-2">
+                <input form="main-form" id="checkbox53" class="form-check-input" type="checkbox" name="contained_magazine" value="1" {% if display_prms.contained_magazine == '1' %}checked{% endif %}>
+                <label for="checkbox53" class="form-check-label">Contained in magazine</label>
+              </div>
+              <div class="form-check mb-2">
+                <input form="main-form" id="checkbox-nc" class="form-check-input" type="checkbox" name="not_contained" value="1" {% if display_prms.not_contained == '1' %}checked{% endif %}>
+                <label for="checkbox-nc" class="form-check-label">Not contained (any, AND)</label>
+              </div>
+              <div class="form-check mb-2">
+                <input form="main-form" id="checkbox-ncc" class="form-check-input" type="checkbox" name="not_contained_container" value="1" {% if display_prms.not_contained_container == '1' %}checked{% endif %}>
+                <label for="checkbox-ncc" class="form-check-label">Not contained in container</label>
+              </div>
+              <div class="form-check mb-2">
+                <input form="main-form" id="checkbox-ncm" class="form-check-input" type="checkbox" name="not_contained_magazine" value="1" {% if display_prms.not_contained_magazine == '1' %}checked{% endif %}>
+                <label for="checkbox-ncm" class="form-check-label">Not contained in magazine</label>
+              </div>
+              <div class="form-check mb-2">
+                <input form="main-form" id="checkbox6" class="form-check-input" type="checkbox" name="contains" value="1" {% if display_prms.contains == '1' %}checked{% endif %}>
+                <label for="checkbox6" class="form-check-label">Contains</label>
+              </div>
+            </div>
+
+            <!-- Show Options -->
+            <div class="mb-3">
+              <h6 class="border-bottom pb-2">Show Options</h6>
+              <div class="form-check mb-2">
+                <input form="main-form" id="checkbox8" class="form-check-input" type="checkbox" name="show_source" value="1" {% if prm.show_source == '1' %}checked{% endif %}>
+                <label for="checkbox8" class="form-check-label">Show source</label>
+              </div>
+            </div>
+
+            <!-- Sort Options -->
+            <div class="mb-3">
+              <h6 class="border-bottom pb-2">Sort Options</h6>
+              <div class="mb-2">
+                <select form="main-form" name="sort" class="form-select">
+                  <option value="title" {% if prm.sort == "title" %}selected{% endif %}>Title</option>
+                  <option value="title_jpn" {% if prm.sort == "title_jpn" %}selected{% endif %}>Japanese Title</option>
+                  <option value="posted" {% if prm.sort == "posted" %}selected{% endif %}>Posted Date</option>
+                  <option value="create_date" {% if prm.sort == "create_date" %}selected{% endif %}>Create Date</option>
+                  <option value="rating" {% if prm.sort == "rating" %}selected{% endif %}>Rating</option>
+                  <option value="filecount" {% if prm.sort == "filecount" %}selected{% endif %}>File Count</option>
+                  <option value="filesize" {% if prm.sort == "filesize" %}selected{% endif %}>File Size</option>
                 </select>
+              </div>
+              <div class="mb-2">
+                <select form="main-form" name="asc_desc" class="form-select">
+                  <option value="asc" {% if prm.asc_desc == "asc" %}selected{% endif %}>Ascending</option>
+                  <option value="desc" {% if prm.asc_desc == "desc" %}selected{% endif %}>Descending</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="d-grid gap-2">
+              <button form="main-form" type="submit" name="apply" class="btn btn-info">Search</button>
+              <button form="main-form" type="submit" name="clear" class="btn btn-light">Clear</button>
+              <button form="main-form" type="submit" name="json" class="btn btn-light">As JSON</button>
             </div>
         </div>
-        <div class="col-md-auto">
-            <select name="asc_desc" class="form-control" title="sort_order" aria-label="sort_order">
-              <option value="asc" {% if prm.asc_desc == "asc" %}selected{% endif %}>ascending</option>
-              <option value="desc" {% if prm.asc_desc == "desc" %}selected{% endif %}>descending</option>
-            </select>
-        </div>
-      <div class="col-md-auto">
-        <button type="submit" name="apply" class="btn btn-info">Search</button>
-        <button type="submit" name="clear" class="btn btn-light">Clear</button>
-        <button type="button" class="btn btn-secondary" data-bs-toggle="collapse" data-bs-target="#extra_filters">More filters</button>
-        <button type="submit" name="json" class="btn btn-light">As JSON</button>
-      </div>
-      <div class="col-md-auto">
-        <div class="form-check">
-            <input id="checkbox8" class="form-check-input" type="checkbox" name="show_source" value="1" {% if prm.show_source == '1' %}checked{% endif %}><label for="checkbox8">Show source</label>
-        </div>
-      </div>
       </div>
     </div>
-  </form>
-  {% if results %}
-    <!-- Next/Prev page links  -->
-    <div class="row">
-      <div class="col-md-4">
-        {% if results.paginator.num_pages > 1 %}
-          <nav>
-            <ul class="pagination mb-0">
-              <li class="page-item{% if results.number == 1 %} disabled{% endif %}">
-                <a class="page-link" href="?{% url_replace 'page' '1' %}" aria-label="First">
-                  <span aria-hidden="true">&laquo;</span>
-                </a>
-              </li>
-              {% for p in display_prms.page_range %}
-                <li class="page-item{% if p == results.number %} active{% endif %}">
-                  <a class="page-link" href="?{% url_replace 'page' p %}">{{ p }}</a>
-                </li>
-              {% empty %}
-                <li class="page-item active"><a class="page-link" href="?{% url_replace 'page' '1' %}">1</a></li>
-              {% endfor %}
-              <li class="page-item{% if results.number == results.paginator.num_pages %} disabled{% endif %}">
-                <a class="page-link" href="?{% url_replace 'page' results.paginator.num_pages %}"
-                   aria-label="Last">
-                  <span aria-hidden="true">&raquo;</span>
-                </a>
-              </li>
-            </ul>
-          </nav>
-        {% endif %}
-      </div>
-      <div class="col-md-4">
-        <nav aria-label="Middle navigation">
-          <ul class="pagination justify-content-center mb-0">
-            {% if results.has_previous %}
-              <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.previous_page_number %}">Previous</a></li>
-            {% else %}
-              <li class="page-item disabled"><a class="page-link" href="#">Previous</a></li>
+
+    <!-- Main Content Area -->
+    <div class="col-md-10">
+
+      <!-- Results Section -->
+      {% if results %}
+        <!-- Next/Prev page links  -->
+        <div class="row">
+          <div class="col-md-4">
+            {% if results.paginator.num_pages > 1 %}
+              <nav>
+                <ul class="pagination mb-0">
+                  <li class="page-item{% if results.number == 1 %} disabled{% endif %}">
+                    <a class="page-link" href="?{% url_replace 'page' '1' %}" aria-label="First">
+                      <span aria-hidden="true">&laquo;</span>
+                    </a>
+                  </li>
+                  {% for p in display_prms.page_range %}
+                    <li class="page-item{% if p == results.number %} active{% endif %}">
+                      <a class="page-link" href="?{% url_replace 'page' p %}">{{ p }}</a>
+                    </li>
+                  {% empty %}
+                    <li class="page-item active"><a class="page-link" href="?{% url_replace 'page' '1' %}">1</a></li>
+                  {% endfor %}
+                  <li class="page-item{% if results.number == results.paginator.num_pages %} disabled{% endif %}">
+                    <a class="page-link" href="?{% url_replace 'page' results.paginator.num_pages %}" aria-label="Last">
+                      <span aria-hidden="true">&raquo;</span>
+                    </a>
+                  </li>
+                </ul>
+              </nav>
             {% endif %}
-            <li class="page-item">
-              <div class="mid-item">{{ results.paginator.count }} results</div>
-            </li>
-            {% if results.has_next %}
-              <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.next_page_number %}">Next</a></li>
-            {% else %}
-              <li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
-            {% endif %}
-          </ul>
-        </nav>
-      </div>
-        {% if extra_options %}
-          <div class="col-md-4 justify-content-end">
-            <nav>
-              <ul class="pagination justify-content-end mb-0">
-              {% for option in extra_options %}
-                <li class="page-item{% if option == prm.view %} active{% endif %}">
-                  <a class="page-link" href="?{% url_replace 'view' option %}">{{ option }}</a>
+          </div>
+          <div class="col-md-4">
+            <nav aria-label="Middle navigation">
+              <ul class="pagination justify-content-center mb-0">
+                {% if results.has_previous %}
+                  <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.previous_page_number %}">Previous</a></li>
+                {% else %}
+                  <li class="page-item disabled"><a class="page-link" href="#">Previous</a></li>
+                {% endif %}
+                <li class="page-item">
+                  <div class="mid-item">{{ results.paginator.count }} results</div>
                 </li>
-              {% endfor %}
+                {% if results.has_next %}
+                  <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.next_page_number %}">Next</a></li>
+                {% else %}
+                  <li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
+                {% endif %}
               </ul>
             </nav>
           </div>
-        {% endif %}
-    </div>
-    <!-- Results  -->
-    {% if prm.view == "extended" %}
-        <table class="table table-sm result-table">
-          <tbody>
-          {% for gallery in results.object_list %}
-            <tr>
-              <td class="td-extended">
-                <a href="{% url 'viewer:gallery' gallery.pk %}">
-                  {% with thumbnail_details=gallery.get_available_thumbnail_plus_size %}
-                  <img alt="" title="{{ gallery.title }}"
-                      width="{{ thumbnail_details.2 }}" height="{{ thumbnail_details.1 }}" src="{{ thumbnail_details.0 }}"/>
-                  {% endwith %}
-                </a>
-              </td>
-              <td class="td-extended">
-                <h5>{{ gallery.best_title }}</h5>
-                <h6>{{ gallery.title_jpn|default_if_none:"" }}</h6>
-                <h6>{{ gallery.comment|safe|default:"" }}</h6>
-                {% if user.is_staff %}
-                  <div>
-                    <a class="btn btn-sm btn-light" href="{% url 'viewer:api' %}?gallery={{ gallery.pk }}">JSON info</a>
-                    <a class="btn btn-sm btn-light" href="{% url 'viewer:gallery-change-log' gallery.pk %}">Change Log</a>
-                    {% if perms.viewer.read_activity_logs %}
-                        <a class="btn btn-sm btn-light" href="{% url 'viewer:activity-event-log' %}?content_type=gallery&content_id={{ gallery.pk }}">Activity Log</a>
-                    {% endif %}
-                  </div>
-                {% else %}
-                  <div>
-                    <a class="btn btn-sm btn-light" href="{% url 'viewer:gallery-change-log' gallery.pk %}">Change Log</a>
-                    <a class="btn btn-sm btn-light" href="{% url 'viewer:api' %}?gallery={{ gallery.pk }}">JSON info</a>
-                  </div>
-                {% endif %}
-                <div>
-                  {% with both_tag_lists=gallery.tag_lists %}
-                  {% if both_tag_lists %}
-                    <ul class="tags">
-                      {% for tag_list in both_tag_lists %}
-                        <li>
-                          {% if tag_list.0 %}
-                            <label class="label-extended">{{ tag_list.0 }}:</label>
-                          {% endif %}
-                          {% for tag in tag_list.1 %}
-                            <a href="{% url 'viewer:gallery-tag-search' 'gallery-tag' tag %}">
-                              {% if tag_list.0 %}{{ tag.name }}{% else %}
-                                {{ tag }}{% endif %}</a>
-                          {% endfor %}
-                        </li>{% endfor %}
-                    </ul>
-                  {% endif %}
-                {% endwith %}
-                </div>
-                <div><label class="label-extended">Source URL:</label>{{ gallery.get_link|urlize_all_rel }}</div>
-                {% if gallery.gallery_container %}<div><label class="label-extended">Contained in:</label><a href="{% url 'viewer:gallery' gallery.gallery_container.id %}">{{ gallery.gallery_container }}</a></div>{% endif %}
-                {% if gallery.magazine %}<div><label class="label-extended">Magazine:</label><a href="{% url 'viewer:gallery' gallery.magazine.id %}">{{ gallery.magazine }}</a></div>{% endif %}
-                {% if gallery.parent_gallery %}<div><label class="label-extended">Parent:</label><a href="{% url 'viewer:gallery' gallery.parent_gallery.id %}">{{ gallery.parent_gallery }}</a></div>{% endif %}
-                {% if gallery.first_gallery %}<div><label class="label-extended">First:</label><a href="{% url 'viewer:gallery' gallery.first_gallery.id %}">{{ gallery.first_gallery }}</a></div>{% endif %}
-              </td>
-              <td class="td-extended">
-                <div><label class="label-extended">Count:</label>{{ gallery.filecount }}</div>
-                <div><label class="label-extended">Size:</label>{{ gallery.filesize|filesizeformat }}</div>
-                <div><label class="label-extended">Category:</label>{{ gallery.category }}</div>
-                <div><label class="label-extended">Posted:</label>{{ gallery.posted|date:"SHORT_DATE_FORMAT" }}</div>
-                {% if user.is_authenticated %}
-                  <div><label class="label-extended">Created:</label>{{ gallery.create_date|date:"SHORT_DATE_FORMAT" }}</div>
-                  <div><label class="label-extended">Published:</label>{{ gallery.public_date|date:"SHORT_DATE_FORMAT" }}</div>
-                {% else %}
-                  <div><label class="label-extended">Added:</label>{{ gallery.public_date|date:"SHORT_DATE_FORMAT" }}</div>
-                {% endif %}
-              </td>
-              <td class="td-extended">
-                <div><label class="label-extended">Provider:</label>{{ gallery.provider }}</div>
-                <div><label class="label-extended">Reason:</label>{{ gallery.reason }}</div>
-                <div><label class="label-extended">Uploader:</label>{{ gallery.uploader }}</div>
-                <div><label class="label-extended">Rating:</label>{{ gallery.rating }}</div>
-                <div><label class="label-extended">Fjord:</label>{{ gallery.fjord|yesno }}</div>
-                {% if user.is_authenticated %}
-                    <div><label class="label-extended">Hidden:</label>{{ gallery.hidden|yesno }}</div>
-                    <div><label class="label-extended">Status:</label>{{ gallery.get_status_display }}</div>
-                    <div><label class="label-extended">Origin:</label>{{ gallery.get_origin_display }}</div>
-                    <div><label class="label-extended">DL type:</label>{{ gallery.dl_type }}</div>
-                {% endif %}
-              </td>
-            </tr>
-          {% endfor %}
-          </tbody>
-        </table>
-    {% else %}
-        <div class="table-responsive">
-          <table class="table table-sm table-bordered result-table mb-0">
-            <thead>
-            <tr>
-              {% if prm.sort == "create_date" %}
-                <th class="w-5" scope="col"><a href="?{% url_replace 'sort' 'create_date' %}">Created</a></th>
-              {% else %}
-                <th class="w-5" scope="col"><a href="?{% url_replace 'sort' 'posted' %}">Posted</a></th>
-              {% endif %}
-              <th scope="col"><a href="?{% url_replace 'sort' 'title' %}">Title</a></th>
-              {% if prm.show_source %}
-                <th class="w-20" scope="col">Source</th>
-              {% endif %}
-              <th class="w-5" scope="col"><a href="?{% url_replace 'sort' 'provider' %}">Provider</a></th>
-              <th class="w-5" scope="col"><a href="?{% url_replace 'sort' 'category' %}">Category</a></th>
-              <th class="w-3" scope="col"><a href="?{% url_replace 'sort' 'filecount' %}">Images</a></th>
-              <th class="w-3" scope="col"><a href="?{% url_replace 'sort' 'filesize' %}">Size</a></th>
-            </tr>
-            </thead>
+          {% if extra_options %}
+            <div class="col-md-4 justify-content-end">
+              <nav>
+                <ul class="pagination justify-content-end mb-0">
+                  {% for option in extra_options %}
+                    <li class="page-item{% if option == prm.view %} active{% endif %}">
+                      <a class="page-link" href="?{% url_replace 'view' option %}">{{ option }}</a>
+                    </li>
+                  {% endfor %}
+                </ul>
+              </nav>
+            </div>
+          {% endif %}
+        </div>
+
+        <!-- Results Table -->
+        {% if prm.view == "extended" %}
+          <table class="table table-sm result-table">
             <tbody>
-            {% for gallery in results.object_list %}
-              <tr class="result-list">
-                {% if prm.sort == "create_date" %}
-                  <td>{{ gallery.create_date|date:"SHORT_DATE_FORMAT" }}</td>
-                {% else %}
-                  <td>{{ gallery.posted|date:"SHORT_DATE_FORMAT" }}</td>
-                {% endif %}
-                <td><a href="{% url 'viewer:gallery' gallery.pk %}" {% if gallery.thumbnail.name %} data-image-url="{{ gallery.thumbnail.url }}" class="img-preview" rel="popover"{% else %} title ="{{ gallery.title_jpn }}"{% endif %}>{{ gallery.best_title }}</a></td>
-              {% if prm.show_source %}
-                <td>{{ gallery.get_link|urlize_all_rel }}</td>
-              {% endif %}
-                <td>{{ gallery.provider }}</td>
-                <td>{{ gallery.category }}</td>
-                <td>{{ gallery.filecount }}</td>
-                <td>{{ gallery.filesize|filesizeformat }}</td>
-              </tr>
-            {% endfor %}
+              {% for gallery in results.object_list %}
+                <tr>
+                  <td class="td-extended">
+                    <a href="{% url 'viewer:gallery' gallery.pk %}">
+                      {% with thumbnail_details=gallery.get_available_thumbnail_plus_size %}
+                      <img alt="" title="{{ gallery.title }}" width="{{ thumbnail_details.2 }}" height="{{ thumbnail_details.1 }}" src="{{ thumbnail_details.0 }}"/>
+                      {% endwith %}
+                    </a>
+                  </td>
+                  <td class="td-extended">
+                    <h5>{{ gallery.best_title }}</h5>
+                    <h6>{{ gallery.title_jpn|default_if_none:"" }}</h6>
+                    <h6>{{ gallery.comment|safe|default:"" }}</h6>
+                    {% if user.is_staff %}
+                      <div>
+                        <a class="btn btn-sm btn-light" href="{% url 'viewer:api' %}?gallery={{ gallery.pk }}">JSON info</a>
+                        <a class="btn btn-sm btn-light" href="{% url 'viewer:gallery-change-log' gallery.pk %}">Change Log</a>
+                        {% if perms.viewer.read_activity_logs %}
+                          <a class="btn btn-sm btn-light" href="{% url 'viewer:activity-event-log' %}?content_type=gallery&content_id={{ gallery.pk }}">Activity Log</a>
+                        {% endif %}
+                      </div>
+                    {% else %}
+                      <div>
+                        <a class="btn btn-sm btn-light" href="{% url 'viewer:gallery-change-log' gallery.pk %}">Change Log</a>
+                        <a class="btn btn-sm btn-light" href="{% url 'viewer:api' %}?gallery={{ gallery.pk }}">JSON info</a>
+                      </div>
+                    {% endif %}
+                    <div>
+                      {% with both_tag_lists=gallery.tag_lists %}
+                      {% if both_tag_lists %}
+                        <ul class="tags">
+                          {% for tag_list in both_tag_lists %}
+                            <li>
+                              {% if tag_list.0 %}
+                                <label class="label-extended">{{ tag_list.0 }}:</label>
+                              {% endif %}
+                              {% for tag in tag_list.1 %}
+                                <a href="{% url 'viewer:gallery-tag-search' 'gallery-tag' tag %}">
+                                  {% if tag_list.0 %}{{ tag.name }}{% else %}{{ tag }}{% endif %}</a>
+                              {% endfor %}
+                            </li>
+                          {% endfor %}
+                        </ul>
+                      {% endif %}
+                      {% endwith %}
+                    </div>
+                    <div><label class="label-extended">Source URL:</label>{{ gallery.get_link|urlize_all_rel }}</div>
+                    {% if gallery.gallery_container %}<div><label class="label-extended">Contained in:</label><a href="{% url 'viewer:gallery' gallery.gallery_container.id %}">{{ gallery.gallery_container }}</a></div>{% endif %}
+                    {% if gallery.magazine %}<div><label class="label-extended">Magazine:</label><a href="{% url 'viewer:gallery' gallery.magazine.id %}">{{ gallery.magazine }}</a></div>{% endif %}
+                    {% if gallery.parent_gallery %}<div><label class="label-extended">Parent:</label><a href="{% url 'viewer:gallery' gallery.parent_gallery.id %}">{{ gallery.parent_gallery }}</a></div>{% endif %}
+                    {% if gallery.first_gallery %}<div><label class="label-extended">First:</label><a href="{% url 'viewer:gallery' gallery.first_gallery.id %}">{{ gallery.first_gallery }}</a></div>{% endif %}
+                  </td>
+                  <td class="td-extended">
+                    <div><label class="label-extended">Count:</label>{{ gallery.filecount }}</div>
+                    <div><label class="label-extended">Size:</label>{{ gallery.filesize|filesizeformat }}</div>
+                    <div><label class="label-extended">Category:</label>{{ gallery.category }}</div>
+                    <div><label class="label-extended">Posted:</label>{{ gallery.posted|date:"SHORT_DATE_FORMAT" }}</div>
+                    {% if user.is_authenticated %}
+                      <div><label class="label-extended">Created:</label>{{ gallery.create_date|date:"SHORT_DATE_FORMAT" }}</div>
+                      <div><label class="label-extended">Published:</label>{{ gallery.public_date|date:"SHORT_DATE_FORMAT" }}</div>
+                    {% else %}
+                      <div><label class="label-extended">Added:</label>{{ gallery.public_date|date:"SHORT_DATE_FORMAT" }}</div>
+                    {% endif %}
+                  </td>
+                  <td class="td-extended">
+                    <div><label class="label-extended">Provider:</label>{{ gallery.provider }}</div>
+                    <div><label class="label-extended">Reason:</label>{{ gallery.reason }}</div>
+                    <div><label class="label-extended">Uploader:</label>{{ gallery.uploader }}</div>
+                    <div><label class="label-extended">Rating:</label>{{ gallery.rating }}</div>
+                    <div><label class="label-extended">Fjord:</label>{{ gallery.fjord|yesno }}</div>
+                    {% if user.is_authenticated %}
+                      <div><label class="label-extended">Hidden:</label>{{ gallery.hidden|yesno }}</div>
+                      <div><label class="label-extended">Status:</label>{{ gallery.get_status_display }}</div>
+                      <div><label class="label-extended">Origin:</label>{{ gallery.get_origin_display }}</div>
+                      <div><label class="label-extended">DL type:</label>{{ gallery.dl_type }}</div>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
             </tbody>
           </table>
-        </div>
-    {% endif %}
-    <!-- Next/Prev page links  -->
-    <div class="row">
-     <div class="col-md-4">
-        {% if results.paginator.num_pages > 1 %}
-          <nav>
-            <ul class="pagination mb-0">
-              <li class="page-item{% if results.number == 1 %} disabled{% endif %}">
-                <a class="page-link" href="?{% url_replace 'page' '1' %}" aria-label="First">
-                  <span aria-hidden="true">&laquo;</span>
-                </a>
-              </li>
-              {% for p in display_prms.page_range %}
-                <li class="page-item{% if p == results.number %} active{% endif %}">
-                  <a class="page-link" href="?{% url_replace 'page' p %}">{{ p }}</a>
-                </li>
-              {% empty %}
-                <li class="page-item active"><a class="page-link" href="?{% url_replace 'page' '1' %}">1</a></li>
-              {% endfor %}
-              <li class="page-item{% if results.number == results.paginator.num_pages %} disabled{% endif %}">
-                <a class="page-link" href="?{% url_replace 'page' results.paginator.num_pages %}"
-                   aria-label="Last">
-                  <span aria-hidden="true">&raquo;</span>
-                </a>
-              </li>
-            </ul>
-          </nav>
+        {% else %}
+          <div class="table-responsive">
+            <table class="table table-sm table-bordered result-table mb-0">
+              <thead>
+                <tr>
+                  {% if prm.sort == "create_date" %}
+                    <th class="w-5" scope="col"><a href="?{% url_replace 'sort' 'create_date' %}">Created</a></th>
+                  {% else %}
+                    <th class="w-5" scope="col"><a href="?{% url_replace 'sort' 'posted' %}">Posted</a></th>
+                  {% endif %}
+                  <th scope="col"><a href="?{% url_replace 'sort' 'title' %}">Title</a></th>
+                  {% if prm.show_source %}
+                    <th class="w-20" scope="col">Source</th>
+                  {% endif %}
+                  <th class="w-5" scope="col"><a href="?{% url_replace 'sort' 'provider' %}">Provider</a></th>
+                  <th class="w-5" scope="col"><a href="?{% url_replace 'sort' 'category' %}">Category</a></th>
+                  <th class="w-3" scope="col"><a href="?{% url_replace 'sort' 'filecount' %}">Images</a></th>
+                  <th class="w-3" scope="col"><a href="?{% url_replace 'sort' 'filesize' %}">Size</a></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for gallery in results.object_list %}
+                  <tr class="result-list">
+                    {% if prm.sort == "create_date" %}
+                      <td>{{ gallery.create_date|date:"SHORT_DATE_FORMAT" }}</td>
+                    {% else %}
+                      <td>{{ gallery.posted|date:"SHORT_DATE_FORMAT" }}</td>
+                    {% endif %}
+                    <td><a href="{% url 'viewer:gallery' gallery.pk %}" {% if gallery.thumbnail.name %} data-image-url="{{ gallery.thumbnail.url }}" class="img-preview" rel="popover"{% else %} title ="{{ gallery.title_jpn }}"{% endif %}>{{ gallery.best_title }}</a></td>
+                    {% if prm.show_source %}
+                      <td>{{ gallery.get_link|urlize_all_rel }}</td>
+                    {% endif %}
+                    <td>{{ gallery.provider }}</td>
+                    <td>{{ gallery.category }}</td>
+                    <td>{{ gallery.filecount }}</td>
+                    <td>{{ gallery.filesize|filesizeformat }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
         {% endif %}
-      </div>
 
+        <!-- Bottom Pagination -->
+        <div class="row mt-3">
+          <div class="col-md-4">
+            {% if results.paginator.num_pages > 1 %}
+              <nav>
+                <ul class="pagination mb-0">
+                  <li class="page-item{% if results.number == 1 %} disabled{% endif %}">
+                    <a class="page-link" href="?{% url_replace 'page' '1' %}" aria-label="First">
+                      <span aria-hidden="true">&laquo;</span>
+                    </a>
+                  </li>
+                  {% for p in display_prms.page_range %}
+                    <li class="page-item{% if p == results.number %} active{% endif %}">
+                      <a class="page-link" href="?{% url_replace 'page' p %}">{{ p }}</a>
+                    </li>
+                  {% empty %}
+                    <li class="page-item active"><a class="page-link" href="?{% url_replace 'page' '1' %}">1</a></li>
+                  {% endfor %}
+                  <li class="page-item{% if results.number == results.paginator.num_pages %} disabled{% endif %}">
+                    <a class="page-link" href="?{% url_replace 'page' results.paginator.num_pages %}" aria-label="Last">
+                      <span aria-hidden="true">&raquo;</span>
+                    </a>
+                  </li>
+                </ul>
+              </nav>
+            {% endif %}
+          </div>
+        </div>
+      {% else %}
+        <h4 class="text-center">
+          <strong>No results</strong>
+        </h4>
+      {% endif %}
     </div>
-  {% else %}
-    <h4 class="text-center">
-      <strong>No results</strong>
-    </h4>
-  {% endif %}
+  </div>
 {% endblock %}
 {% block afterJQ %}
   {% load compress %}

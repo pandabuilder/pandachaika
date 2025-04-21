@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+import statistics
+from dataclasses import dataclass, field
 from datetime import datetime
 import typing
 from typing import Optional, Union, Any
@@ -195,3 +196,67 @@ class ArchiveGenericFile:
     file_name: str
     file_size: float = 0
     position: int = 1
+
+
+@dataclass
+class ArchiveStatisticsCalculator:
+    filesize: list[int] = field(default_factory=list)
+    height: list[int] = field(default_factory=list)
+    width: list[int] = field(default_factory=list)
+    image_mode: list[str] = field(default_factory=list)
+    is_horizontal: list[bool] = field(default_factory=list)
+    file_type: list[str] = field(default_factory=list)
+
+    def set_values(
+        self,
+        filesize: int | None,
+        height: int | None,
+        width: int | None,
+        image_mode: str | None,
+        is_horizontal: bool | None,
+        file_type: str | None
+    ) -> None:
+        if filesize is not None:
+            self.filesize.append(filesize)
+        if height is not None:
+            self.height.append(height)
+        if width is not None:
+            self.width.append(width)
+        if image_mode is not None:
+            self.image_mode.append(image_mode)
+        if is_horizontal is not None:
+            self.is_horizontal.append(is_horizontal)
+        if file_type is not None:
+            self.file_type.append(file_type)
+
+    def mean(self, attr: str) -> float | None:
+        if hasattr(self, attr):
+            value = getattr(self, attr)
+            if len(value) < 1:
+                return None
+            return statistics.mean(value)
+        raise TypeError("Invalid attribute")
+
+    def mode(self, attr: str) -> typing.Any:
+        if hasattr(self, attr):
+            value = getattr(self, attr)
+            if len(value) < 1:
+                return None
+            return statistics.mode(value)
+        raise TypeError("Invalid attribute")
+
+    def stddev(self, attr: str) -> typing.Any:
+        if hasattr(self, attr):
+            value = getattr(self, attr)
+            if len(value) < 1:
+                return None
+            return statistics.pstdev(value)
+        raise TypeError("Invalid attribute")
+
+    def eq_to_value(self, attr: str, compare: typing.Any) -> typing.Any:
+        if hasattr(self, attr):
+            value = getattr(self, attr)
+            if len(value) < 1:
+                return None
+            return len([x for x in value if x == compare])/len(value)
+        raise TypeError("Invalid attribute")

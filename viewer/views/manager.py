@@ -275,19 +275,35 @@ def archives_not_present_in_filesystem(request: HttpRequest) -> HttpResponse:
         form = ArchiveSearchForm(initial={"title": title, "tags": tags})
 
     if p:
-        pks = []
-        for k, v in p.items():
-            if k.startswith("del-"):
-                # k, pk = k.split('-')
-                # results[pk][k] = v
-                pks.append(v)
-        results_archive = Archive.objects.filter(id__in=pks).order_by("-pk")
+        if "delete_archives" in p:
+            pks = []
+            for k, v in p.items():
+                if k.startswith("del-"):
+                    # k, pk = k.split('-')
+                    # results[pk][k] = v
+                    pks.append(v)
+            results_archive = Archive.objects.filter(id__in=pks).order_by("-pk")
 
-        for archive in results_archive:
-            message = "Removing archive missing in filesystem: {}, path: {}".format(archive.title, archive.zipped.path)
+            for archive in results_archive:
+                message = "Removing archive missing in filesystem: {}, path: {}".format(archive.title, archive.zipped.path)
+                logger.info(message)
+                messages.success(request, message)
+                archive.delete()
+        elif "mark_deleted" in p:
+            pks = []
+            for k, v in p.items():
+                if k.startswith("del-"):
+                    # k, pk = k.split('-')
+                    # results[pk][k] = v
+                    pks.append(v)
+            results_archive = Archive.objects.filter(id__in=pks).order_by("-pk")
+
+            message = "Marking Archives as deleted: {}".format(len(pks))
+
             logger.info(message)
             messages.success(request, message)
-            archive.delete()
+
+            results_archive.update(file_deleted=True)
 
     params = {
         "sort": "create_date",
@@ -302,7 +318,7 @@ def archives_not_present_in_filesystem(request: HttpRequest) -> HttpResponse:
         if k not in params:
             params[k] = ""
 
-    results = filter_archives_simple(params, True)
+    results = filter_archives_simple(params, authenticated=True, show_binned=True)
 
     results = results.filter_non_existent(crawler_settings.MEDIA_ROOT)  # type: ignore
 

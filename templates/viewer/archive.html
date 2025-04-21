@@ -130,7 +130,7 @@
       </table>
     </div>
     {% if perms.viewer.archive_internal_info %}
-    <div class="col-sm-6">
+    <div class="col-sm-3">
       <table class="private-info-table">
         <caption>Private information</caption>
         <tr>
@@ -166,12 +166,57 @@
           </td>
         </tr>
           {% endif %}
+        <tr>
+          <th>Is file deleted?</th>
+          <td>
+              {{ archive.is_file_deleted|yesno }}
+          </td>
+        </tr>
       </table>
     </div>
     {% endif %}
+{% if archive_statistics %}
+        <div class="col-sm-3">
+          <table>
+            <caption class="">Image Statistics</caption>
+            <tr>
+              <th>Average File Size</th>
+              <td>{{ archive_statistics.filesize_average|filesizeformat }}</td>
+            </tr>
+            <tr>
+              <th>Average Height, std dev</th>
+              <td{% if archive_statistics.height_stddev == 0 %} class="acc-total"{% endif %}>{{ archive_statistics.height_average|floatformat:1 }}px, {{ archive_statistics.height_stddev|floatformat:1 }}</td>
+            </tr>
+            <tr>
+              <th>Average Width, std dev</th>
+              <td{% if archive_statistics.width_stddev == 0 %} class="acc-total"{% endif %}>{{ archive_statistics.width_average|floatformat:1 }}px, {{ archive_statistics.width_stddev|floatformat:1 }}</td>
+            </tr>
+            <tr>
+              <th>Most Common Height</th>
+              <td>{{ archive_statistics.height_mode }}px</td>
+            </tr>
+            <tr>
+              <th>Most Common Width</th>
+              <td>{{ archive_statistics.width_mode }}px</td>
+            </tr>
+            <tr>
+              <th>Most Common Image Format</th>
+              <td>{{ archive_statistics.image_mode_mode|default:"N/A" }}</td>
+            </tr>
+            <tr>
+              <th>Most Common File Type</th>
+              <td{% if archive_statistics.file_type_match == 1 %} class="acc-total"{% endif %}>{{ archive_statistics.file_type_mode|default:"N/A" }}</td>
+            </tr>
+            <tr>
+              <th>Orientation</th>
+              <td>{% if archive_statistics.is_horizontal_mode %}Horizontal{% else %}Vertical{% endif %}</td>
+            </tr>
+          </table>
+        </div>
+    {% endif %}
     </div>
     </li>
-      <li class="subtitle line-top">
+    <li class="subtitle line-top">
       <div class="row">
       <div class="col-sm-6">
         <table>

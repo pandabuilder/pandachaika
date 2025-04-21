@@ -182,6 +182,8 @@ class UrlSettings:
         "main_webserver_url",
         "external_as_main_download",
         "elasticsearch_as_main_urls",
+        "cors_allowed_origins",
+        "cors_allow_all_origins",
     ]
 
     def __init__(self) -> None:
@@ -197,6 +199,8 @@ class UrlSettings:
         self.external_media_server = ""
         self.external_as_main_download = False
         self.main_webserver_url = ""
+        self.cors_allowed_origins: list[str] = []
+        self.cors_allow_all_origins: bool = False
 
 
 class Settings:
@@ -376,13 +380,21 @@ class Settings:
                 self.database['mysql_port'] = os.environ['DATABASE_PORT']
 
         if 'DEBUG' in os.environ:
-            self.django_debug_mode = os.getenv("DEBUG", 'False').lower() in ('true', '1', 't')
+            self.django_debug_mode = os.getenv("DEBUG", "False").lower() in ('true', '1', 't')
 
         if 'DJANGO_SECRET_KEY' in os.environ:
             self.django_secret_key = os.environ.get("DJANGO_SECRET_KEY")
 
         if 'USING_REVERSE_PROXY' in os.environ:
             self.urls.behind_proxy = bool(os.environ.get("USING_REVERSE_PROXY"))
+
+        if 'CORS_ALLOWED_ORIGINS' in os.environ:
+            cors_allowed_origins = os.getenv("CORS_ALLOWED_ORIGINS", "")
+            if cors_allowed_origins:
+                self.urls.cors_allowed_origins = cors_allowed_origins.split(",")
+
+        if 'CORS_ALLOW_ALL_ORIGINS' in os.environ:
+            self.urls.cors_allow_all_origins = os.getenv("CORS_ALLOW_ALL_ORIGINS", "False").lower() in ('true', '1', 't')
 
     def load_config_from_file(self, default_dir: Optional[str] = None) -> None:
         if default_dir:
@@ -732,6 +744,12 @@ class Settings:
                 self.urls.static_url = config["urls"]["static_url"]
             if "viewer_main_url" in config["urls"]:
                 self.urls.viewer_main_url = config["urls"]["viewer_main_url"]
+            if "behind_proxy" in config["urls"]:
+                self.urls.behind_proxy = config["urls"]["behind_proxy"]
+            if "cors_allowed_origins" in config["urls"]:
+                self.urls.cors_allowed_origins = config["urls"]["cors_allowed_origins"]
+            if "cors_allow_all_origins" in config["urls"]:
+                self.urls.cors_allow_all_origins = config["urls"]["cors_allow_all_origins"]
             if "behind_proxy" in config["urls"]:
                 self.urls.behind_proxy = config["urls"]["behind_proxy"]
             if "enable_public_submit" in config["urls"]:

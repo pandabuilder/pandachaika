@@ -650,6 +650,9 @@ def crawler(request: HttpRequest) -> HttpResponse:
         if "gallery_only" in p:
             current_settings.allow_type_downloaders_only("info")
 
+        if "wanted_only" in p:
+            urls.insert(0, "--wanted-only")
+
         if "skip-non-current" in p:
             current_settings.non_current_links_as_deleted = True
 

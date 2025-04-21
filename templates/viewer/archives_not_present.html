@@ -56,11 +56,12 @@
               </span>
               <a href="{{ archive.get_absolute_url }}">{{ archive.pk }}</a> >> {{ archive.title }}
           </p>
-          <p>{{ archive.zipped.path }} >> {{ archive.filesize|filesizeformat }} >> {{ archive.filesize }} >> {{ archive.filecount }} >> {{ archive.source_type }}</p>
+          <p>{% if archive.zipped %}{{ archive.zipped.path }}{% else %}No file present{% endif %} >> {{ archive.filesize|filesizeformat }} >> {{ archive.filesize }} >> {{ archive.filecount }} >> {{ archive.source_type }}</p>
         </li>
       {% endfor %}
     </ul>
     <button type="submit" name="delete_archives" class="btn btn-light">Delete (WARNING!) selected archives</button>
+    <button type="submit" name="mark_deleted" class="btn btn-light">Mark selected archives as deleted</button>
   </form>
   <!-- Next/Prev page links  -->
   {% if results.object_list and results.paginator.num_pages > 1 %}

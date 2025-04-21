@@ -26,8 +26,8 @@ logger = logging.getLogger(__name__)
 
 if es_client:
     import elasticsearch
-    from elasticsearch_dsl import Search, Q
-    from elasticsearch_dsl.response import AggResponse
+    from elasticsearch.dsl import Search, Q
+    from elasticsearch.dsl.response import AggResponse
 
 
 ES_SKIP_FIELDS = ("page", "q", "order", "sort", "metrics", "show_url", "count", "no_agg", "view")

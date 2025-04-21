@@ -85,6 +85,11 @@ gallery_filter_keys = (
     "only_used",
     "contains",
     "contained",
+    "contained_container",
+    "contained_magazine",
+    "not_contained",
+    "not_contained_container",
+    "not_contained_magazine",
     "not_normal",
     "crc32",
     "used",
@@ -862,6 +867,16 @@ def filter_galleries(
 
     if request_filters["contained"]:
         results = results.filter(Q(gallery_container__isnull=False) | Q(magazine__isnull=False))
+    if request_filters["contained_container"]:
+        results = results.filter(Q(gallery_container__isnull=False))
+    if request_filters["contained_magazine"]:
+        results = results.filter(Q(magazine__isnull=False))
+    if request_filters["not_contained"]:
+        results = results.filter(Q(gallery_container__isnull=True) & Q(magazine__isnull=True))
+    if request_filters["not_contained_container"]:
+        results = results.filter(Q(gallery_container__isnull=True))
+    if request_filters["not_contained_magazine"]:
+        results = results.filter(Q(magazine__isnull=True))
     if request_filters["contains"]:
         results = results.annotate(
             num_contains=Count("gallery_contains"), num_chapters=Count("magazine_chapters")
@@ -2047,6 +2062,16 @@ def filter_galleries_simple(params: dict[str, str]) -> QuerySet[Gallery]:
 
     if "contained" in params and params["contained"]:
         results = results.filter(Q(gallery_container__isnull=False) | Q(magazine__isnull=False))
+    if "contained_container" in params and params["contained_container"]:
+        results = results.filter(Q(gallery_container__isnull=False))
+    if "contained_magazine" in params and params["contained_magazine"]:
+        results = results.filter(Q(magazine__isnull=False))
+    if "not_contained" in params and params["not_contained"]:
+        results = results.filter(Q(gallery_container__isnull=True) & Q(magazine__isnull=True))
+    if "not_contained_container" in params and params["not_contained_container"]:
+        results = results.filter(Q(gallery_container__isnull=True))
+    if "not_contained_magazine" in params and params["not_contained_magazine"]:
+        results = results.filter(Q(magazine__isnull=True))
     if "contains" in params and params["contains"]:
         results = results.annotate(
             num_contains=Count("gallery_contains"), num_chapters=Count("magazine_chapters")

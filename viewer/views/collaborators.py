@@ -482,6 +482,11 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
             else:
                 archives = archives.filter(binned=False)
 
+            if "file_deleted" in get and request.user.has_perm("viewer.recycle_archive"):
+                archives = archives.filter(file_deleted=True)
+            else:
+                archives = archives.filter(file_deleted=False)
+
             if "downloading" in get:
                 archives = archives.filter(crc32="")
         else:
@@ -819,6 +824,11 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
         results = results.filter(binned=True)
     else:
         results = results.filter(binned=False)
+
+    if "file_deleted" in get and actual_user is not None and actual_user.has_perm("viewer.recycle_archive"):
+        results = results.filter(file_deleted=True)
+    else:
+        results = results.filter(file_deleted=False)
 
     if "downloading" in get:
         results = results.filter(crc32="")

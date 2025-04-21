@@ -35,6 +35,7 @@ from viewer.models import (
     ArchiveGroupEntry,
     ArchiveTag,
     ArchiveOption,
+    ArchiveStatistics,
 )
 from viewer.utils.requests import double_check_auth
 from viewer.views.head import render_error
@@ -249,6 +250,8 @@ def archive_details(request: HttpRequest, pk: int, mode: str = "view") -> HttpRe
     if archive.gallery:
         gallery_provider_data = GalleryProviderData.objects.filter(gallery=archive.gallery)
         d.update({"gallery_provider_data": gallery_provider_data})
+
+    d.update({"archive_statistics": ArchiveStatistics.objects.filter(archive=archive).first()})
 
     return render(request, "viewer/archive.html", d)
 
@@ -1367,7 +1370,7 @@ def delete_archive(request: HttpRequest, pk: int) -> HttpResponse:
                     result="deleted",
                 )
             if "delete-file" in p:
-                create_delete_mark = True if "delete-archive" in p else False
+                create_delete_mark = False if "delete-archive" in p else True
                 archive.delete_all_files(create_mark=create_delete_mark)
             if "delete-archive" in p:
                 archive.delete_files_but_archive()

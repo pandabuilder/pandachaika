@@ -197,7 +197,7 @@
       <ul>
         {% for archive in gallery.archive_set.all %}
           {% if archive.public or user.is_authenticated %}
-          <li><a href="{% url 'viewer:archive' archive.id %}" class="{{ archive|archive_title_class }}">{{ archive }}</a>, images: {{ archive.filecount }}, size: {{ archive.filesize|filesizeformat }}</li>
+          <li><a href="{% url 'viewer:archive' archive.id %}" class="{{ archive|archive_title_class }}">{{ archive }}</a>, images: {{ archive.filecount }}, size: {{ archive.filesize|filesizeformat }}, recycled?: {{ archive.is_recycled|yesno }}, file deleted?: {{ archive.is_file_deleted|yesno }}</li>
           {% endif %}
         {% endfor %}
       </ul>

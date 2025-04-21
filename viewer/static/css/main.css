@@ -650,6 +650,10 @@ img {
   background-color: rgb(13, 110, 253);
 }
 
+caption {
+  color: cornsilk;
+}
+
 /* Page number overlay */
 
 .overlay {

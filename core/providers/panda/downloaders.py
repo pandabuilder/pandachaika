@@ -98,10 +98,11 @@ class ArchiveDownloader(BaseDownloader):
                 logger.info("Got link: {}, from url: {}".format(archive_link, r.url))
 
                 request_dict = construct_request_dict(self.settings, self.own_settings)
+                request_dict['stream'] = True
 
-                request_file = requests.get(archive_link + "?start=1", stream=True, **request_dict)
+                request_file = request_with_retries(archive_link + "?start=1", request_dict)
 
-                if r and r.status_code == 200:
+                if r and r.status_code == 200 and request_file:
                     logger.info("Downloading gallery: {}.zip".format(to_use_filename))
                     filepath = os.path.join(self.settings.MEDIA_ROOT, self.gallery.filename)
                     total_size = int(request_file.headers.get("Content-Length", 0))

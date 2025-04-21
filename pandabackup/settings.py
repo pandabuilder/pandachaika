@@ -136,10 +136,18 @@ if not crawler_settings.disable_sql_log:
     LOGGING["loggers"]["core"]["handlers"].append("db_log")
     LOGGING["loggers"]["django"]["handlers"].append("db_log")
 
-if DEBUG and module_exists("corsheaders"):
+CORS_ALLOW_CREDENTIALS = False
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOWED_ORIGINS = []
+
+if module_exists("corsheaders"):
     INSTALLED_APPS += ["corsheaders"]
-    CORS_ORIGIN_ALLOW_ALL = True
-    CORS_ALLOW_CREDENTIALS = True
+    if DEBUG:
+        CORS_ALLOW_ALL_ORIGINS = True
+        CORS_ALLOW_CREDENTIALS = True
+    else:
+        CORS_ALLOWED_ORIGINS = crawler_settings.urls.cors_allowed_origins
+        CORS_ALLOW_ALL_ORIGINS = crawler_settings.urls.cors_allow_all_origins
 
 INSTALLED_APPS += ["viewer"]
 
@@ -223,7 +231,7 @@ if DEBUG and not TESTING and module_exists("debug_toolbar"):
 #     MIDDLEWARE = ['django_cprofile_middleware.middleware.ProfilerMiddleware'] + \
 #         MIDDLEWARE
 
-if DEBUG and module_exists("corsheaders"):
+if (CORS_ALLOW_ALL_ORIGINS or CORS_ALLOWED_ORIGINS) and module_exists("corsheaders"):
     MIDDLEWARE = ["corsheaders.middleware.CorsMiddleware"] + MIDDLEWARE
 
 # Database

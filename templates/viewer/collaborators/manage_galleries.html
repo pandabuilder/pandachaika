@@ -91,6 +91,11 @@
         </div>
         <div class="col-md-auto">
           <div class="form-check">
+            <input id="checkbox77" class="form-check-input" type="checkbox" name="not_contained" value="1" {% if display_prms.not_contained == '1' %}checked{% endif %}><label for="checkbox77">Not Contained</label>
+          </div>
+        </div>
+        <div class="col-md-auto">
+          <div class="form-check">
             <input id="checkbox8" class="form-check-input" type="checkbox" name="contains" value="1" {% if display_prms.contains == '1' %}checked{% endif %}><label for="checkbox8">Contains</label>
           </div>
         </div>

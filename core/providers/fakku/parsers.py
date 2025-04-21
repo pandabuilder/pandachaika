@@ -187,12 +187,17 @@ class Parser(BaseParser):
                     if gallery.thumbnail_url and gallery.thumbnail_url.startswith("//"):
                         gallery.thumbnail_url = "https:" + gallery.thumbnail_url
 
-            if gallery.gid.startswith("manga") or gallery.gid.startswith("hentai"):
-                gallery.category = "Manga"
-            elif gallery.gid.startswith("doujinshi"):
-                gallery.category = "Doujinshi"
+            gallery.category = "Manga"
+            # We first check for category using this span, since the tags might not be set when the gallery is new
+            category_container = soup.find("span", itemprop="name")
+            if isinstance(category_container, bs4.element.Tag):
+                if category_container.get_text() == "Hentai Doujin":
+                    gallery.category = "Doujinshi"
+                if category_container.get_text() == "Hentai Games":
+                    gallery.category = "Game"
 
             is_doujinshi = False
+            is_game = False
             for gallery_row in gallery_container.find_all("div", {"class": "table text-sm w-full"}):
                 if not isinstance(gallery_row, bs4.element.Tag):
                     continue
@@ -203,6 +208,18 @@ class Parser(BaseParser):
                     left_text = ""
                 right_div = gallery_row.find("div", class_=re.compile("table-cell w-full"))
                 if not isinstance(right_div, bs4.element.Tag):
+                    if left_text == "":
+                        right_div_for_tags = gallery_row.find("div", class_=re.compile("flex flex-wrap gap-2 w-full"))
+                        if isinstance(right_div_for_tags, bs4.element.Tag):
+                            for tag_a in right_div_for_tags.find_all("a", href=lambda x: x and "/tags/" in x):
+                                translated_tag = translate_tag(tag_a.get_text().strip())
+                                if translated_tag == "doujin":
+                                    is_doujinshi = True
+                                elif translated_tag == "game":
+                                    is_game = True
+                                gallery.tags.append(translated_tag)
+                            if right_div_for_tags.find_all("a", href=lambda x: x and "/unlimited" == x):
+                                gallery.tags.append(translate_tag("unlimited"))
                     continue
                 if left_text == "Series" or left_text == "Parody":
                     for parody in right_div.find_all("a"):
@@ -249,20 +266,10 @@ class Parser(BaseParser):
                     gallery.uploader, right_date_text = right_div.get_text().strip().split(" on ")
                     right_date_text = re.sub(r"(\d+)(st|nd|rd|th)", r"\1", right_date_text)
                     gallery.posted = datetime.strptime(right_date_text, "%B %d, %Y")
-                elif left_text == "":
-                    right_div_for_tags = gallery_row.find("div", class_=re.compile("flex flex-wrap gap-2 w-full"))
-                    if isinstance(right_div_for_tags, bs4.element.Tag):
-                        for tag_a in right_div_for_tags.find_all("a", href=lambda x: x and "/tags/" in x):
-                            translated_tag = translate_tag(tag_a.get_text().strip())
-                            if translated_tag == "doujin":
-                                is_doujinshi = True
-                            gallery.tags.append(translated_tag)
-                        if right_div_for_tags.find_all("a", href=lambda x: x and "/unlimited" == x):
-                            gallery.tags.append(translate_tag("unlimited"))
             if is_doujinshi:
                 gallery.category = "Doujinshi"
-            else:
-                gallery.category = "Manga"
+            elif is_game:
+                gallery.category = "Game"
 
             return gallery
         else:

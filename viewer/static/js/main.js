@@ -20,3 +20,21 @@ const popoverList = [...popoverTriggerList].map(popoverTriggerEl => new bootstra
             '<img alt="" src="'+popoverTriggerEl.dataset['imageUrl']+'">';
     }
 }))
+
+document.addEventListener('DOMContentLoaded', () => {
+    const toggleButtons = document.querySelectorAll('.js-instant-toggle');
+
+    toggleButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            const targetSelector = button.getAttribute('data-toggle-target');
+
+            if (targetSelector) {
+                const targetElement = document.querySelector(targetSelector);
+
+                if (targetElement) {
+                    targetElement.classList.toggle('d-none');
+                }
+            }
+        });
+    });
+});
