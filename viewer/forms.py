@@ -345,7 +345,7 @@ class ArchiveManageSearchSimpleForm(forms.Form):
     )
 
     gallery__status = forms.ChoiceField(
-        choices=[(0, "--------")] + Gallery.StatusChoices.choices,
+        choices=[(0, "--------")] + Gallery.StatusChoices.choices, # type: ignore
         required=False,
         label="Gallery Status",
         widget=forms.widgets.Select(attrs={"class": "form-control"}),
@@ -561,7 +561,7 @@ class GallerySearchSimpleForm(forms.Form):
     )
 
     status = forms.ChoiceField(
-        choices=[(0, "--------")] + Gallery.StatusChoices.choices,
+        choices=[(0, "--------")] + Gallery.StatusChoices.choices, # type: ignore
         required=False,
         label="Status",
         widget=forms.widgets.Select(attrs={"class": "form-control"}),

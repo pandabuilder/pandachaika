@@ -466,7 +466,7 @@
             <div class="mt-4">The file is still being downloaded, cannot operate it unless it finishes</div>
           </li>
       {% endif %}
-      {% if images and images.paginator.num_pages > 1 %}
+      {% if images %}
         <!-- Next/Prev page links  -->
         <li class="text-center mt-4">
           <span class="step-links">
@@ -572,7 +572,7 @@
         </li>
       {% endif %}
       <!-- Next/Prev page links  -->
-      {% if images and images.paginator.num_pages > 1 %}
+      {% if images %}
         <li class="text-center">
             <span class="step-links">
                 {% if images.has_previous %}

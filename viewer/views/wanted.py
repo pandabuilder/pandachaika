@@ -7,6 +7,7 @@ from django.urls import reverse
 from django.conf import settings
 
 from viewer.models import Gallery, WantedGallery, FoundGallery, GalleryMatch
+from viewer.utils.general import clean_up_referer
 from viewer.utils.tags import sort_tags
 
 
@@ -47,13 +48,13 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
                     wanted_gallery_instance.possible_matches.count(),
                 )
             )
-            return HttpResponseRedirect(request.META["HTTP_REFERER"])
+            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
         elif tool == "clear-possible-matches":
             wanted_gallery_instance.possible_matches.clear()
-            return HttpResponseRedirect(request.META["HTTP_REFERER"])
+            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
         elif tool == "create-matches-internally":
             wanted_gallery_instance.create_found_galleries_internally()
-            return HttpResponseRedirect(request.META["HTTP_REFERER"])
+            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
         elif tool == "select-as-match":
             try:
                 matched_gallery = Gallery.objects.get(pk=tool_use_id)
@@ -75,7 +76,7 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
                     reverse("viewer:gallery", args=(matched_gallery.pk,)),
                 )
             )
-            return HttpResponseRedirect(request.META["HTTP_REFERER"])
+            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
         elif tool == "remove-match":
             try:
                 matched_gallery = Gallery.objects.get(pk=tool_use_id)
@@ -97,15 +98,15 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
                     reverse("viewer:wanted-gallery", args=(wanted_gallery_instance.pk,)),
                 )
             )
-            return HttpResponseRedirect(request.META["HTTP_REFERER"])
+            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
         elif tool == "stop-searching":
             wanted_gallery_instance.should_search = False
             # wanted_gallery_instance.keep_searching = False
             wanted_gallery_instance.save()
-            return HttpResponseRedirect(request.META["HTTP_REFERER"])
+            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
         elif tool == "toggle-public":
             wanted_gallery_instance.public_toggle()
-            return HttpResponseRedirect(request.META["HTTP_REFERER"])
+            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
         wanted_tag_lists = sort_tags(wanted_gallery_instance.wanted_tags.all())
         unwanted_tag_lists = sort_tags(wanted_gallery_instance.unwanted_tags.all())

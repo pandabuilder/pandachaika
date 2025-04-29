@@ -24,6 +24,7 @@ from core.web.crawlerthread import CrawlerThread
 from core.workers.archive_work import ArchiveWorker
 
 from viewer.models import Archive, Tag, Gallery, ArchiveMatches, WantedGallery, FoundGallery, DownloadEvent
+from viewer.utils.general import clean_up_referer
 from viewer.utils.matching import (
     create_matches_wanted_galleries_from_providers,
     create_matches_wanted_galleries_from_providers_internal,
@@ -209,7 +210,7 @@ def queue_operations(request: HttpRequest, operation: str, arguments: str = "") 
     else:
         return render_error(request, "Unknown queue operation.")
 
-    return HttpResponseRedirect(request.META["HTTP_REFERER"])
+    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
 
 @login_required
@@ -221,11 +222,11 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
     if tool == "transfer_missing_downloads":
         crawler_thread = CrawlerThread(crawler_settings, "-tmd".split())
         crawler_thread.start()
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "retry_failed":
         crawler_thread = CrawlerThread(crawler_settings, "--retry-failed".split())
         crawler_thread.start()
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "update_newer_than":
         p = request.GET
         if p and "newer_than" in p:
@@ -238,7 +239,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
                     messages.error(request, "Invalid date format.", extra_tags="danger")
             except ValueError:
                 messages.error(request, "Invalid date.", extra_tags="danger")
-            return HttpResponseRedirect(request.META["HTTP_REFERER"])
+            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "update_missing_thumbnails":
         p = request.GET
         if p and "limit_number" in p and crawler_settings.workers.web_queue:
@@ -257,19 +258,19 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
 
             except ValueError:
                 messages.error(request, "Invalid limit.", extra_tags="danger")
-            return HttpResponseRedirect(request.META["HTTP_REFERER"])
+            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "generate_missing_thumbs":
         archives_no_thumbnail = Archive.objects.filter(thumbnail="")
         for archive in archives_no_thumbnail:
             logger.info("Generating thumbs for file: {}".format(archive.zipped.name))
             archive.generate_thumbnails()
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "calculate_missing_info":
         archives_missing_info = Archive.objects.filter_by_missing_file_info()
         for archive in archives_missing_info:
             logger.info("Calculating file info for file: {}".format(archive.zipped.name))
             archive.recalc_fileinfo()
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "recalc_all_file_info":
         if thread_exists("fileinfo_worker"):
             return render_error(request, "File info worker is already running.")
@@ -283,7 +284,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
                 archive_worker_thread.enqueue_archive(archive)
         fileinfo_thread = threading.Thread(name="fileinfo_worker", target=archive_worker_thread.start_info_thread)
         fileinfo_thread.start()
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "set_all_hidden_as_public":
 
         archives = Archive.objects.filter(gallery__hidden=True)
@@ -296,7 +297,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
                     archive.gallery.public = True
                     archive.gallery.save()
 
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "regenerate_all_thumbs":
         if thread_exists("thumbnails_worker"):
             return render_error(request, "Thumbnails worker is already running.")
@@ -310,7 +311,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
                 archive_worker_thread.enqueue_archive(archive)
         thumbnails_thread = threading.Thread(name="thumbnails_worker", target=archive_worker_thread.start_thumbs_thread)
         thumbnails_thread.start()
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "generate_possible_matches_internally":
         if thread_exists("match_unmatched_worker"):
             return render_error(request, "Matching worker is already running.")
@@ -345,22 +346,22 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         messages.success(
             request, "Looking for possible matches, filtering providers: {}, cutoff: {}.".format(provider, cutoff)
         )
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "clear_all_archive_possible_matches":
         ArchiveMatches.objects.all().delete()
         logger.info("Clearing all possible matches for archives.")
         messages.success(request, "Clearing all possible matches for archives.")
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "search_wanted_galleries_provider_titles":
         if thread_exists("web_search_worker"):
             messages.error(request, "Web search worker is already running.", extra_tags="danger")
-            return HttpResponseRedirect(request.META["HTTP_REFERER"])
+            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
         results = WantedGallery.objects.eligible_to_search()
 
         if not results:
             logger.info("No wanted galleries eligible to search.")
             messages.success(request, "No wanted galleries eligible to search.")
-            return HttpResponseRedirect(request.META["HTTP_REFERER"])
+            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
         provider = request.GET.get("provider", "")
 
@@ -374,7 +375,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         )
         panda_search_thread.daemon = True
         panda_search_thread.start()
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "wanted_galleries_possible_matches":
         if thread_exists("wanted_local_search_worker"):
             return render_error(request, "Wanted local matching worker is already running.")
@@ -384,7 +385,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         if not non_match_wanted:
             logger.info("No wanted galleries eligible to search.")
             messages.success(request, "No wanted galleries eligible to search.")
-            return HttpResponseRedirect(request.META["HTTP_REFERER"])
+            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
         logger.info("Looking for possible matches in gallery database " "for wanted galleries (fixed 0.4 cutoff)")
 
@@ -407,14 +408,14 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         )
         matching_thread.daemon = True
         matching_thread.start()
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "restart_viewer":
         crawler_settings.workers.stop_workers_and_wait()
         if hasattr(signal, "SIGUSR2"):
             os.kill(os.getpid(), signal.SIGUSR2)
         else:
             return render_error(request, "This OS does not support signal SIGUSR2.")
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "modify_settings":
         p = request.POST
         if p:
@@ -424,7 +425,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
                     f.write(settings_text)
                     logger.info("Modified settings file for Panda Backup")
                     messages.success(request, "Modified settings file for Panda Backup")
-                    return HttpResponseRedirect(request.META["HTTP_REFERER"])
+                    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
         else:
             if os.path.isfile(os.path.join(crawler_settings.default_dir, "settings.yaml")):
                 with open(os.path.join(crawler_settings.default_dir, "settings.yaml"), "r", encoding="utf-8") as f:
@@ -441,21 +442,21 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         crawler_settings.load_config_from_file()
         logger.info("Reloaded settings file for Panda Backup")
         messages.success(request, "Reloaded settings file for Panda Backup")
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "start_timed_dl":
         if crawler_settings.workers.timed_downloader:
             crawler_settings.workers.timed_downloader.start_running(timer=crawler_settings.timed_downloader_cycle_timer)
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "stop_timed_dl":
         if crawler_settings.workers.timed_downloader:
             crawler_settings.workers.timed_downloader.stop_running()
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "force_run_timed_dl":
         if crawler_settings.workers.timed_downloader:
             crawler_settings.workers.timed_downloader.stop_running()
             crawler_settings.workers.timed_downloader.force_run_once = True
             crawler_settings.workers.timed_downloader.start_running(timer=crawler_settings.timed_downloader_cycle_timer)
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "start_timed_updater":
         if tool_arg:
             for provider_auto_updater in crawler_settings.workers.timed_auto_updaters:
@@ -469,7 +470,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
                 provider_auto_updater.start_running(
                     timer=crawler_settings.providers[provider_auto_updater.provider_name].autoupdater_timer
                 )
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "stop_timed_updater":
         if tool_arg:
             for provider_auto_updater in crawler_settings.workers.timed_auto_updaters:
@@ -479,7 +480,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         else:
             for provider_auto_updater in crawler_settings.workers.timed_auto_updaters:
                 provider_auto_updater.stop_running()
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "force_run_timed_updater":
         if tool_arg:
             for provider_auto_updater in crawler_settings.workers.timed_auto_updaters:
@@ -497,25 +498,25 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
                 provider_auto_updater.start_running(
                     timer=crawler_settings.providers[provider_auto_updater.provider_name].autoupdater_timer
                 )
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "start_timed_auto_wanted":
         if crawler_settings.workers.timed_auto_wanted:
             crawler_settings.workers.timed_auto_wanted.start_running(timer=crawler_settings.auto_wanted.cycle_timer)
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "stop_timed_auto_wanted":
         if crawler_settings.workers.timed_auto_wanted:
             crawler_settings.workers.timed_auto_wanted.stop_running()
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "force_run_timed_auto_wanted":
         if crawler_settings.workers.timed_auto_wanted:
             crawler_settings.workers.timed_auto_wanted.stop_running()
             crawler_settings.workers.timed_auto_wanted.force_run_once = True
             crawler_settings.workers.timed_auto_wanted.start_running(timer=crawler_settings.auto_wanted.cycle_timer)
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "start_web_queue":
         if crawler_settings.workers.web_queue:
             crawler_settings.workers.web_queue.start_running()
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
     threads_status = get_thread_status_bool()
 

@@ -922,3 +922,7 @@ def get_oldest_entry_from_wayback(url: str) -> Optional[datetime]:
             if len(json_response[1]) >= 1:
                 return datetime.strptime(json_response[1][0], "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
     return None
+
+
+def hamming_distance(phash1, phash2):
+    return sum(c1 != c2 for c1, c2 in zip(phash1, phash2))

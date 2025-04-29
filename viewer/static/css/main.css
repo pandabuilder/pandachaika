@@ -83,8 +83,16 @@ body a {
   color: rgb(210, 1, 56);
 }
 
-.mark-mid {
-  color: rgb(103, 207, 0);
+.mark-mid-high {
+  color: darkorange;
+}
+
+.mark-mid-mid {
+  color: gold;
+}
+
+.mark-mid-low {
+  color: green;
 }
 
 .mark-low {
@@ -554,6 +562,11 @@ img {
   font-weight: bold;
   margin-bottom: 0;
   margin-right: 0.2em;
+}
+
+.dropdown-text-active {
+  background-color: rgb(13, 110, 253);
+  color: white;
 }
 
 /* Imported from a twitter form example */

@@ -24,6 +24,7 @@ from viewer.utils.functions import (
     galleries_update_metadata,
     gallery_search_results_to_json,
 )
+from viewer.utils.general import clean_up_referer
 from viewer.utils.matching import generate_possible_matches_for_archives
 from viewer.utils.actions import event_log
 from viewer.forms import (
@@ -1338,7 +1339,7 @@ def user_crawler(request: AuthenticatedHttpRequest) -> HttpResponse:
         current_settings = Settings(load_from_config=crawler_settings.config)
         if not current_settings.workers.web_queue:
             messages.error(request, "Cannot submit links currently. Please contact an admin.")
-            return HttpResponseRedirect(request.META["HTTP_REFERER"])
+            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
         url_set = set()
         # create dictionary of properties for each archive
         current_settings.replace_metadata = False
@@ -1361,7 +1362,7 @@ def user_crawler(request: AuthenticatedHttpRequest) -> HttpResponse:
 
         if not urls:
             messages.error(request, "Submission is empty.")
-            return HttpResponseRedirect(request.META["HTTP_REFERER"])
+            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
         if "reason" in p and p["reason"] != "":
             reason = p["reason"]
@@ -1505,7 +1506,7 @@ def user_crawler(request: AuthenticatedHttpRequest) -> HttpResponse:
         # Not really optimal when there's many commands being queued
         # for command in url_list:
         #     messages.success(request, command)
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
     d.update({"downloaders": generic_downloaders})
 
@@ -1625,7 +1626,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                                 result="matched",
                             )
                 except ValueError:
-                    return HttpResponseRedirect(request.META["HTTP_REFERER"])
+                    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
             messages.success(request, "Matching with first possible match.")
 
@@ -1718,8 +1719,8 @@ def archive_update(
                     result="matched",
                 )
         except ValueError:
-            return HttpResponseRedirect(request.META["HTTP_REFERER"])
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "clear-possible-matches" and request.user.has_perm("viewer.match_archive"):
         archive.possible_matches.clear()
         logger.info(
@@ -1729,7 +1730,7 @@ def archive_update(
                 reverse("viewer:archive", args=(archive.pk,)),
             )
         )
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     else:
         return render_error(request, "Unrecognized command")
 
@@ -1764,7 +1765,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
             event_log(request.user, "ADD_WANTED_GALLERY", content_object=new_wanted_gallery, result="created")
         else:
             messages.error(request, "The provided data is not valid", extra_tags="danger")
-            # return HttpResponseRedirect(request.META["HTTP_REFERER"])
+            # return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     else:
         edit_form = WantedGalleryCreateOrEditForm()
 
@@ -1824,10 +1825,10 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
             messages.success(request, message)
             logger.info("User {}: {}".format(request.user.username, message))
             event_log(request.user, "CHANGE_WANTED_GALLERY", content_object=new_wanted_gallery, result="changed")
-            # return HttpResponseRedirect(request.META["HTTP_REFERER"])
+            # return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
         else:
             messages.error(request, "The provided data is not valid", extra_tags="danger")
-            # return HttpResponseRedirect(request.META["HTTP_REFERER"])
+            # return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     else:
         edit_form = WantedGalleryCreateOrEditForm(instance=wanted_gallery_instance)
 
@@ -1861,10 +1862,10 @@ def upload_archive(request: HttpRequest) -> HttpResponse:
             messages.success(request, message.format(request.build_absolute_uri(new_archive.get_absolute_url())))
             logger.info("User {}: {}".format(request.user.username, message.format(new_archive.get_absolute_url())))
             event_log(request.user, "ADD_ARCHIVE", content_object=new_archive, result="added")
-            # return HttpResponseRedirect(request.META["HTTP_REFERER"])
+            # return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
         else:
             messages.error(request, "The provided data is not valid", extra_tags="danger")
-            # return HttpResponseRedirect(request.META["HTTP_REFERER"])
+            # return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
         return render(request, "viewer/include/messages.html")
 
@@ -2265,7 +2266,7 @@ def archives_similar_by_fields(request: HttpRequest) -> HttpResponse:
                     data=archive_report,
                 )
 
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
     params = {
         "sort": "create_date",
@@ -2414,12 +2415,12 @@ def user_token(request: AuthenticatedHttpRequest, operation: str) -> HttpRespons
 
         if not token_name:
             messages.error(request, "Missing parameter 'token-name'.")
-            return HttpResponseRedirect(request.META["HTTP_REFERER"])
+            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
         token_exists = request.user.long_lived_tokens.filter(name=token_name)
         if len(token_exists) > 0:
             messages.error(request, "Cannot create token with name: {}. Already exists.".format(token_name))
-            return HttpResponseRedirect(request.META["HTTP_REFERER"])
+            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
         else:
             secret_key = get_random_string(UserLongLivedToken.TOKEN_LENGTH, UserLongLivedToken.VALID_CHARS)
 
@@ -2442,7 +2443,7 @@ def user_token(request: AuthenticatedHttpRequest, operation: str) -> HttpRespons
 
         if token_id is None:
             messages.error(request, "Missing parameter 'id'.")
-            return HttpResponseRedirect(request.META["HTTP_REFERER"])
+            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
         token_exists = request.user.long_lived_tokens.filter(pk=token_id)
         if len(token_exists) < 1:
@@ -2450,9 +2451,9 @@ def user_token(request: AuthenticatedHttpRequest, operation: str) -> HttpRespons
                 request,
                 "Cannot delete token with ID: {}. It does not exist or does not belong to you.".format(token_id),
             )
-            return HttpResponseRedirect(request.META["HTTP_REFERER"])
+            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
         else:
             token_exists.delete()
             messages.success(request, "Token with ID: {} deleted successfully.".format(token_id))
 
-    return HttpResponseRedirect(request.META["HTTP_REFERER"])
+    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))

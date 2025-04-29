@@ -14,6 +14,7 @@ from core.base.utilities import thread_exists, clamp
 from viewer.forms import GallerySearchForm, ArchiveSearchForm, WantedGallerySearchForm
 from viewer.models import Archive, Gallery, ArchiveMatches, Tag, WantedGallery, GalleryMatch, FoundGallery, ArchiveTag
 from viewer.utils.actions import event_log
+from viewer.utils.general import clean_up_referer
 from viewer.utils.matching import (
     generate_possible_matches_for_archives,
     create_matches_wanted_galleries_from_providers,
@@ -576,7 +577,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
         elif "search_provider_galleries" in p:
             if thread_exists("web_search_worker"):
                 messages.error(request, "Web search worker is already running.", extra_tags="danger")
-                return HttpResponseRedirect(request.META["HTTP_REFERER"])
+                return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
             pks = []
             for k, v in p.items():
                 if k.startswith("sel-"):
@@ -614,7 +615,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
         elif "search_provider_galleries_internal" in p:
             if thread_exists("wanted_local_search_worker"):
                 messages.error(request, "Wanted local matching worker is already running.", extra_tags="danger")
-                return HttpResponseRedirect(request.META["HTTP_REFERER"])
+                return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
             pks = []
             for k, v in p.items():
                 if k.startswith("sel-"):

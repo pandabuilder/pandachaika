@@ -52,7 +52,7 @@ from viewer.models import (
     GalleryProviderData,
 )
 from viewer.utils.functions import send_mass_html_mail, gallery_search_results_to_json, archive_search_result_to_json
-from viewer.utils.general import valid_sha1_string
+from viewer.utils.general import valid_sha1_string, clean_up_referer
 from viewer.utils.tags import sort_tags
 from viewer.utils.types import AuthenticatedHttpRequest
 
@@ -84,6 +84,7 @@ gallery_filter_keys = (
     "reason",
     "only_used",
     "contains",
+    "not_contains",
     "contained",
     "contained_container",
     "contained_magazine",
@@ -93,6 +94,8 @@ gallery_filter_keys = (
     "not_normal",
     "crc32",
     "used",
+    "public",
+    "not_public"
 )
 
 archive_filter_keys = (
@@ -349,7 +352,7 @@ def image_url(request: HttpRequest, pk: int) -> HttpResponse:
 def process_gallery_page(request: HttpRequest, gallery: Gallery, tool: Optional[str] = None) -> HttpResponse:
 
     if "HTTP_REFERER" in request.META:
-        response = HttpResponseRedirect(request.META["HTTP_REFERER"])
+        response = HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     else:
         response = HttpResponseRedirect(gallery.get_absolute_url())
 
@@ -579,6 +582,22 @@ def gallery_enter_reason(request: HttpRequest, pk: int, tool: Optional[str] = No
                 )
 
                 message = "Gallery: {} will be marked as normal, reason: {}".format(
+                    gallery.get_absolute_url(), user_reason
+                )
+
+                logger.info("User {}: {}".format(request.user.username, message))
+                messages.success(request, message)
+
+                return HttpResponseRedirect(gallery.get_absolute_url())
+
+            if request.user.has_perm("viewer.approve_gallery") and tool == "mark-denied":
+                gallery.mark_as_denied()
+
+                event_log(
+                    request.user, "MARK_DENIED_GALLERY", content_object=gallery, result="success", reason=user_reason
+                )
+
+                message = "Gallery: {} will be marked as denied, reason: {}".format(
                     gallery.get_absolute_url(), user_reason
                 )
 
@@ -823,7 +842,7 @@ filter_galleries_defer = (
 def filter_galleries(
     request: HttpRequest, session_filters: dict[str, str], request_filters: dict[str, str], json_request: bool = False
 ) -> Union[GalleryQuerySet, QuerySet[Gallery]]:
-    """Filter gallery results through parameters and return results list."""
+    """Filter gallery results through parameters and return a result list."""
 
     # sort and filter results by parameters
     order = "posted"
@@ -836,6 +855,11 @@ def filter_galleries(
 
     if not request.user.is_authenticated:
         results = results.filter(public=True)
+    else:
+        if request_filters["public"]:
+            results = results.filter(public=True)
+        if request_filters["not_public"]:
+            results = results.filter(public=False)
 
     if request_filters["title"]:
         q_formatted = "%" + request_filters["title"].replace(" ", "%") + "%"
@@ -881,6 +905,10 @@ def filter_galleries(
         results = results.annotate(
             num_contains=Count("gallery_contains"), num_chapters=Count("magazine_chapters")
         ).filter(Q(num_contains__gt=0) | Q(num_chapters__gt=0))
+    if request_filters["not_contains"]:
+        results = results.annotate(
+            num_contains=Count("gallery_contains"), num_chapters=Count("magazine_chapters")
+        ).filter(Q(num_contains=0) & Q(num_chapters=0))
     if request_filters["reason"]:
         results = results.filter(reason__contains=request_filters["reason"])
     if request.user.is_authenticated:
@@ -1766,13 +1794,13 @@ def user_archive_preferences(request: AuthenticatedHttpRequest, archive_pk: int,
     else:
         return render_error(request, "Unknown user preference.")
     return HttpResponseRedirect(
-        request.META["HTTP_REFERER"], {"user_archive_preferences": current_user_archive_preferences}
+        clean_up_referer(request.META["HTTP_REFERER"]), preserve_request=False, content={"user_archive_preferences": current_user_archive_preferences}
     )
 
 
 def filter_archives_simple(params: dict[str, Any], authenticated=False, show_binned=False) -> QuerySet[Archive]:
     """Filter results through parameters
-    and return results list.
+    and return a result list.
     """
     if "sort_by" in params and params["sort_by"]:
         if authenticated:
@@ -1961,6 +1989,7 @@ def filter_archives_simple(params: dict[str, Any], authenticated=False, show_bin
 def filter_galleries_simple(params: dict[str, str]) -> QuerySet[Gallery]:
     """Filter results through parameters
     and return results list.
+    Note: It does not check for auth. Only call it from views that already check for Auth.
     """
     # sort and filter results by parameters
     order = "posted"
@@ -2076,7 +2105,10 @@ def filter_galleries_simple(params: dict[str, str]) -> QuerySet[Gallery]:
         results = results.annotate(
             num_contains=Count("gallery_contains"), num_chapters=Count("magazine_chapters")
         ).filter(Q(num_contains__gt=0) | Q(num_chapters__gt=0))
-
+    if "not_contains" in params and params["not_contains"]:
+        results = results.annotate(
+            num_contains=Count("gallery_contains"), num_chapters=Count("magazine_chapters")
+        ).filter(Q(num_contains__eq=0) & Q(num_chapters__eq=0))
     return results
 
 
@@ -2183,7 +2215,7 @@ def filter_wanted_galleries_simple(params: dict[str, Any]) -> QuerySet[WantedGal
 def render_error(request: HttpRequest, message: str) -> HttpResponseRedirect:
     messages.error(request, message, extra_tags="danger")
     if "HTTP_REFERER" in request.META:
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     else:
         return HttpResponseRedirect(reverse("viewer:main-page"))
 

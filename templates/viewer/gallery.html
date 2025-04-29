@@ -19,13 +19,21 @@
             <div class="me-1">Tools:</div>
 
             {% if perms.viewer.publish_gallery %}<a class="btn btn-sm shrink-btn" href="{% url 'viewer:gallery-tool' gallery.pk 'toggle-public' %}">toggle public</a>{% endif %}
-            {% if perms.viewer.mark_delete_gallery %}
-                {% if gallery.is_normal %}
-                    <a class="btn btn-sm shrink-btn open-modal" href="{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-deleted' %}" data-popup-url="{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-deleted' %}?inline=1" role="button">mark deleted</a>
-                {% else %}
-                    <a class="btn btn-sm shrink-btn open-modal" href="{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-normal' %}" data-popup-url="{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-normal' %}?inline=1" role="button">mark normal</a>
-                {% endif %}
-            {% endif %}
+            <div class="me-1">
+            <div class="dropdown">
+              <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">mark status<span class="caret"></span></button>
+              <ul class="dropdown-menu dropdown-menu-end">
+              {% if perms.viewer.mark_delete_gallery %}
+                <li><span class="dropdown-item-text dropdown-text-active">Status: {{ gallery.get_status_display }}</span></li>
+                <li><a class="open-modal dropdown-item{% if gallery.is_normal %} disabled{% endif %}" href="{% if gallery.is_normal %}#{% else %}{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-normal' %}{% endif %}" data-popup-url="{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-normal' %}?inline=1">normal</a></li>
+                <li><a class="open-modal dropdown-item{% if gallery.is_deleted %} disabled{% endif %}" href="{% if gallery.is_deleted %}#{% else %}{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-deleted' %}{% endif %}" data-popup-url="{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-deleted' %}?inline=1">deleted</a></li>
+              {% endif %}
+              {% if perms.viewer.approve_gallery %}
+                <li><a class="open-modal dropdown-item{% if gallery.is_denied %} disabled{% endif %}" href="{% if gallery.is_denied %}#{% else %}{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-denied' %}{% endif %}" data-popup-url="{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-denied' %}?inline=1">denied</a></li>
+              {% endif %}
+              </ul>
+            </div>
+            </div>
             {% if perms.viewer.update_metadata %}<a class="btn btn-sm shrink-btn" href="{% url 'viewer:gallery-tool' gallery.pk 'recall-api' %}">recall api</a>{% endif %}
             {% if perms.viewer.update_metadata %}<a class="btn btn-sm shrink-btn" href="{% url 'viewer:gallery-tool' gallery.pk 'refetch-thumbnail' %}">refetch thumbnail</a>{% endif %}
             {% if perms.viewer.download_gallery %}<a class="btn btn-sm shrink-btn" href="{% url 'viewer:gallery-tool' gallery.pk 'download' %}">default download</a>{% endif %}

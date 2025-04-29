@@ -7,6 +7,7 @@ from typing import Any, TypeVar, Union, ItemsView, Optional
 from django import template
 from django.template import RequestContext
 from django.template.defaultfilters import stringfilter
+from django.template.defaulttags import GroupedResult
 from django.utils.encoding import punycode
 from django.utils.functional import keep_lazy_text
 from django.utils.html import smart_urlquote, Urlizer, escape
@@ -89,8 +90,12 @@ def color_percent(fraction: int, total: int) -> str:
 def mark_color(mark_priority: float) -> str:
     if mark_priority >= 4:
         return "mark-high"
-    elif 4 > mark_priority >= 1:
-        return "mark-mid"
+    elif 4 > mark_priority >= 3:
+        return "mark-mid-high"
+    elif 3 > mark_priority >= 2:
+        return "mark-mid-mid"
+    elif 2 > mark_priority >= 1:
+        return "mark-mid-low"
     else:
         return "mark-low"
 
@@ -342,3 +347,9 @@ def format_json(maybe_json: Optional[str]) -> str:
 @register.filter
 def escape_colon(word: str):
     return word.replace(":", "%3A")
+
+
+@register.filter
+def sort_regrouped_by_max_value_in_list(elements: list[GroupedResult], field: str) -> list[GroupedResult]:
+    return sorted(elements, key=lambda x:getattr(max(x.list, key=lambda item: getattr(item, field)), field), reverse=True)
+

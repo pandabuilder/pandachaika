@@ -95,6 +95,14 @@
             <!-- Status Group -->
             <div class="mb-3">
               <h6 class="border-bottom pb-2">Status</h6>
+            {% if user.is_authenticated %}
+                <div class="form-check mb-2">
+                    <input form="main-form" id="checkbox-private" class="form-check-input" type="checkbox" name="not_public" value="1" {% if display_prms.not_public == '1' %}checked{% endif %}><label for="checkbox-private">Private</label>
+                </div>
+                <div class="form-check mb-2">
+                    <input form="main-form" id="checkbox-public" class="form-check-input" type="checkbox" name="public" value="1" {% if display_prms.public == '1' %}checked{% endif %}><label for="checkbox-public">Public</label>
+                </div>
+            {% endif %}
               <div class="form-check mb-2">
                 <input form="main-form" id="checkbox1" class="form-check-input" type="checkbox" name="expunged" value="1" {% if display_prms.expunged == '1' %}checked{% endif %}>
                 <label for="checkbox1" class="form-check-label">Expunged</label>
@@ -156,7 +164,11 @@
               </div>
               <div class="form-check mb-2">
                 <input form="main-form" id="checkbox6" class="form-check-input" type="checkbox" name="contains" value="1" {% if display_prms.contains == '1' %}checked{% endif %}>
-                <label for="checkbox6" class="form-check-label">Contains</label>
+                <label for="checkbox6" class="form-check-label">Contains (any, OR)</label>
+              </div>
+              <div class="form-check mb-2">
+                <input form="main-form" id="checkbox6-2" class="form-check-input" type="checkbox" name="not_contains" value="1" {% if display_prms.not_contains == '1' %}checked{% endif %}>
+                <label for="checkbox6-2" class="form-check-label">Not contains (any, AND)</label>
               </div>
             </div>
 

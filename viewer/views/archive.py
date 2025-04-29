@@ -37,6 +37,7 @@ from viewer.models import (
     ArchiveOption,
     ArchiveStatistics,
 )
+from viewer.utils.general import clean_up_referer
 from viewer.utils.requests import double_check_auth
 from viewer.views.head import render_error
 
@@ -173,10 +174,10 @@ def archive_details(request: HttpRequest, pk: int, mode: str = "view") -> HttpRe
                 messages.success(request, message)
                 logger.info("User {}: {}".format(request.user.username, message))
                 event_log(request.user, "CHANGE_ARCHIVE", content_object=new_archive, result="changed")
-                # return HttpResponseRedirect(request.META["HTTP_REFERER"])
+                # return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
             else:
                 messages.error(request, "The provided data is not valid", extra_tags="danger")
-                # return HttpResponseRedirect(request.META["HTTP_REFERER"])
+                # return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
         else:
             archive_option = ArchiveOption.objects.filter(archive=archive).first()
             if not archive_option:
@@ -263,7 +264,7 @@ def archive_update(
     """Update archive title, rating, tags, archives."""
     if not request.user.is_staff:
         messages.error(request, "You need to be an admin to update an archive.")
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     try:
         archive = Archive.objects.get(pk=pk)
     except Archive.DoesNotExist:
@@ -283,11 +284,11 @@ def archive_update(
                     )
                 )
         except ValueError:
-            return HttpResponseRedirect(request.META["HTTP_REFERER"])
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "clear-possible-matches":
         archive.possible_matches.clear()
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
     current_user_archive_preferences, created = UserArchivePrefs.objects.get_or_create(
         user__id=request.user.pk,
@@ -391,7 +392,7 @@ def archive_update(
         }
     )
 
-    return HttpResponseRedirect(request.META["HTTP_REFERER"])
+    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
 
 def archive_auth(request: HttpRequest) -> HttpResponse:
@@ -638,7 +639,7 @@ def extract_toggle(request: HttpRequest, pk: int) -> HttpResponse:
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
 
-    return HttpResponseRedirect(request.META["HTTP_REFERER"])
+    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
 
 @login_required
@@ -666,7 +667,7 @@ def extract(request: HttpRequest, pk: int) -> HttpResponse:
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
 
-    return HttpResponseRedirect(request.META["HTTP_REFERER"])
+    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
 
 @login_required
@@ -689,7 +690,7 @@ def reduce(request: HttpRequest, pk: int) -> HttpResponse:
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
 
-    return HttpResponseRedirect(request.META["HTTP_REFERER"])
+    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
 
 @login_required
@@ -724,7 +725,7 @@ def check_and_convert_filetype(request: HttpRequest, pk: int) -> HttpResponse:
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
 
-    return HttpResponseRedirect(request.META["HTTP_REFERER"])
+    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
 
 @login_required
@@ -748,7 +749,7 @@ def clone_plus(request: HttpRequest, pk: int) -> HttpResponse:
 
         if run_image_tool and not crawler_settings.cloning_image_tool.enable:
             messages.error(request, "Clone image tool is not setup.")
-            return HttpResponseRedirect(request.META["HTTP_REFERER"])
+            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
         if reorder_by_sha1:
             sha1_text = p.get("sha1s", "")
@@ -843,7 +844,7 @@ def clone_plus(request: HttpRequest, pk: int) -> HttpResponse:
         except Archive.DoesNotExist:
             raise Http404("Archive does not exist")
 
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     else:
 
         try:
@@ -940,7 +941,7 @@ def split(request: HttpRequest, pk: int) -> HttpResponse:
                                     request.user, "UNPUBLISH_ARCHIVE", content_object=old_archive, result="unpublished"
                                 )
 
-                        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+                        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
                     else:
                         result_message = "failed"
                         event_log(
@@ -1021,7 +1022,7 @@ def split(request: HttpRequest, pk: int) -> HttpResponse:
                                         result="unpublished",
                                     )
 
-                            return HttpResponseRedirect(request.META["HTTP_REFERER"])
+                            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
                         else:
                             result_message = "failed"
                             event_log(
@@ -1095,14 +1096,14 @@ def public(request: HttpRequest, pk: int) -> HttpResponse:
                 message = "For Archive: {}, {}".format(archive.get_absolute_url(), str(e))
                 logger.error(message)
                 messages.error(request, message)
-                return HttpResponseRedirect(request.META["HTTP_REFERER"])
+                return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
             archive.set_public()
             logger.info("Setting public status to public for Archive: {}".format(archive.get_absolute_url()))
             event_log(request.user, "PUBLISH_ARCHIVE", content_object=archive, result="published")
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
 
-    return HttpResponseRedirect(request.META["HTTP_REFERER"])
+    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
 
 @login_required
@@ -1123,7 +1124,7 @@ def private(request: HttpRequest, pk: int) -> HttpResponse:
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
 
-    return HttpResponseRedirect(request.META["HTTP_REFERER"])
+    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
 
 @login_required
@@ -1149,7 +1150,7 @@ def calculate_images_sha1(request: HttpRequest, pk: int) -> HttpResponse:
 
     logger.info("Calculated images SHA1 for Archive: {}. Time taken: {:.2f} seconds".format(archive.get_absolute_url(), end_time - start_time))
 
-    return HttpResponseRedirect(request.META["HTTP_REFERER"])
+    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
 
 @login_required
@@ -1172,12 +1173,12 @@ def recalc_info(request: HttpRequest, pk: int) -> HttpResponse:
         message = "For Archive: {}, {}".format(archive.get_absolute_url(), str(e))
         logger.error(message)
         messages.error(request, message)
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     archive.generate_image_set(force=False)
     archive.fix_image_positions()
     archive.generate_thumbnails()
 
-    return HttpResponseRedirect(request.META["HTTP_REFERER"])
+    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
 
 @login_required
@@ -1196,7 +1197,7 @@ def mark_similar_archives(request: HttpRequest, pk: int) -> HttpResponse:
     archive.create_marks_for_similar_archives()
 
     if "HTTP_REFERER" in request.META:
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     else:
         return HttpResponseRedirect(reverse("viewer:archive", args=[str(pk)]))
 
@@ -1233,7 +1234,7 @@ def recall_api(request: HttpRequest, pk: int) -> HttpResponse:
 
         logger.info("Updating gallery API data for gallery: {} and related archives".format(gallery.get_absolute_url()))
 
-    return HttpResponseRedirect(request.META["HTTP_REFERER"])
+    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
 
 @login_required
@@ -1270,7 +1271,7 @@ def generate_matches(request: HttpRequest, pk: int) -> HttpResponse:
 
     logger.info("Generated matches for {}, found {}".format(archive.zipped.path, archive.possible_matches.count()))
 
-    return HttpResponseRedirect(request.META["HTTP_REFERER"])
+    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
 
 @login_required
@@ -1293,7 +1294,7 @@ def rematch_archive(request: HttpRequest, pk: int) -> HttpResponse:
 
     logger.info("Rematching archive: {}".format(archive.title))
 
-    return HttpResponseRedirect(request.META["HTTP_REFERER"])
+    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
 
 @login_required
@@ -1411,7 +1412,7 @@ def delete_manage_archive(request: HttpRequest, pk: int) -> HttpResponse:
         archive_manage_entry = ArchiveManageEntry.objects.get(pk=pk)
     except ArchiveManageEntry.DoesNotExist:
         messages.error(request, "ArchiveManageEntry does not exist")
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
     if archive_manage_entry.mark_user != request.user and not request.user.is_staff:
         return render_error(request, "You don't have the permission to delete this mark.")
@@ -1422,4 +1423,4 @@ def delete_manage_archive(request: HttpRequest, pk: int) -> HttpResponse:
 
     archive_manage_entry.delete()
 
-    return HttpResponseRedirect(request.META["HTTP_REFERER"])
+    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))

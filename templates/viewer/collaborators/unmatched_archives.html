@@ -9,7 +9,7 @@
       <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
     {% endfor %}
   {% endif %}
-  <!-- Non matched archives  -->
+  <!-- Non-matched archives  -->
   <div class="page-header">
     <h2>Archive matching</h2>
     <p class="lead">Number of archives (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
@@ -90,9 +90,11 @@
               {% with matches=archive.possible_galleries|dictsort:"gallery.pk" %}
                 {% if matches|length > 0 %}
                     {% regroup matches by gallery as matches_list %}
-                    {% for gallery, gallery_matches in matches_list %}
-                      {% include 'viewer/include/archive_col_match.html' %}
-                    {% endfor %}
+                    {% with matches_list_sorted=matches_list|sort_regrouped_by_max_value_in_list:"match_accuracy" %}
+                        {% for gallery, gallery_matches in matches_list_sorted %}
+                          {% include 'viewer/include/archive_col_match.html' %}
+                        {% endfor %}
+                    {% endwith %}
                 {% endif %}
               {% endwith %}
               </p>
@@ -100,65 +102,67 @@
               {% with matches=archive.possible_galleries|dictsort:"gallery.pk" %}
                 {% if matches|length > 0 %}
                   {% regroup matches by gallery as matches_list %}
-                  <table class="table table-bordered table-sm generic-table">
-                    <thead>
-                    <tr>
-                        <th>Select</th><th>First Artist</th><th>Title</th><th>URL</th>
-                        <th>
-                            <div class="d-flex justify-content-between">
-                            <div>Type</div><div>Accuracy</div>
-                            </div>
-                        </th>
-                        <th>Posted</th><th>Count</th><th>Size</th><th>Linked?</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    {% for gallery, gallery_matches in matches_list %}
-                      <tr>
-                        <td>
-                          <a href="{% url 'viewer:col-archive-update-tool-id' archive.pk 'select-as-match' gallery.pk %}"><i class="fas fa-check"></i></a>
-                        </td>
-                        <td>
-                          {{ gallery.artist_tags.0.name }}
-                        </td>
-                        <td>
-                        {% if gallery.thumbnail.name %}
-                          <a href="{% url 'viewer:gallery' gallery.pk %}" data-image-url="{{ gallery.thumbnail.url }}" class="img-preview" rel="popover">{{ gallery.title }}</a>
-                        {% else %}
-                          <a href="{% url 'viewer:gallery' gallery.pk %}">{{ gallery.title }}</a>
-                        {% endif %}
-                        </td>
-                        <td>
-                          {{ gallery.get_link|urlize_all_rel }}
-                        </td>
-                        <td>
-                        {% for match in gallery_matches %}
-                            <div class="d-flex justify-content-between acc-{{ match.match_accuracy|color_percent:1 }}">
-                            <div>
-                                {{ match.match_type }}
-                            </div>
-                            <div>
-                                {{ match.match_accuracy|floatformat:3 }}
-                            </div>
-                            </div>
+                  {% with matches_list_sorted=matches_list|sort_regrouped_by_max_value_in_list:"match_accuracy" %}
+                      <table class="table table-bordered table-sm generic-table">
+                        <thead>
+                        <tr>
+                            <th>Select</th><th>First Artist</th><th>Title</th><th>URL</th>
+                            <th>
+                                <div class="d-flex justify-content-between">
+                                <div>Type</div><div>Accuracy</div>
+                                </div>
+                            </th>
+                            <th>Posted</th><th>Count</th><th>Size</th><th>Linked?</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for gallery, gallery_matches in matches_list_sorted %}
+                          <tr>
+                            <td>
+                              <a href="{% url 'viewer:col-archive-update-tool-id' archive.pk 'select-as-match' gallery.pk %}"><i class="fas fa-check"></i></a>
+                            </td>
+                            <td>
+                              {{ gallery.artist_tags.0.name }}
+                            </td>
+                            <td>
+                            {% if gallery.thumbnail.name %}
+                              <a href="{% url 'viewer:gallery' gallery.pk %}" data-image-url="{{ gallery.thumbnail.url }}" class="img-preview" rel="popover">{{ gallery.title }}</a>
+                            {% else %}
+                              <a href="{% url 'viewer:gallery' gallery.pk %}">{{ gallery.title }}</a>
+                            {% endif %}
+                            </td>
+                            <td>
+                              {{ gallery.get_link|urlize_all_rel }}
+                            </td>
+                            <td>
+                            {% for match in gallery_matches %}
+                                <div class="d-flex justify-content-between acc-{{ match.match_accuracy|color_percent:1 }}">
+                                <div>
+                                    {{ match.match_type }}
+                                </div>
+                                <div>
+                                    {{ match.match_accuracy|floatformat:3 }}
+                                </div>
+                                </div>
+                            {% endfor %}
+                            </td>
+                            <td>
+                              {{ gallery.posted }}
+                            </td>
+                            <td class="{{ gallery.filecount|color_percent:archive.filecount }}">
+                              {{ gallery.filecount }}
+                            </td>
+                            <td class="{{ gallery.filesize|color_percent:archive.filesize }}">
+                              {{ gallery.filesize }}
+                            </td>
+                            <td>
+                              {{ gallery.archive_set.all|yesno }}
+                            </td>
+                          </tr>
                         {% endfor %}
-                        </td>
-                        <td>
-                          {{ gallery.posted }}
-                        </td>
-                        <td class="{{ gallery.filecount|color_percent:archive.filecount }}">
-                          {{ gallery.filecount }}
-                        </td>
-                        <td class="{{ gallery.filesize|color_percent:archive.filesize }}">
-                          {{ gallery.filesize }}
-                        </td>
-                        <td>
-                          {{ gallery.archive_set.all|yesno }}
-                        </td>
-                      </tr>
-                    {% endfor %}
-                    </tbody>
-                  </table>
+                        </tbody>
+                      </table>
+                  {% endwith %}
                 {% endif %}
               {% endwith %}
           {% endif %}

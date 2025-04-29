@@ -93,6 +93,41 @@
     #id03b {
       color: #66afe9;
     }
+    
+    /* New styles for the folder browser table */
+    .folder-row {
+      display: flex;
+      border: 1px solid lightgrey;
+      padding: 5px;
+      margin-bottom: 2px;
+    }
+    
+    .folder-row.header {
+      font-weight: bold;
+      background-color: #090970;
+    }
+    
+    .folder-name {
+      flex: 1;
+      cursor: pointer;
+    }
+    
+    .folder-action {
+      width: 80px;
+      text-align: center;
+    }
+    
+    .folder-row.id02d {
+      color: rgb(153,204,102);
+    }
+    
+    .folder-row.id02f {
+      color: LightCoral;
+    }
+    
+    .folder-row:hover {
+      background-color: #012c69;
+    }
   </style>
 
 {% endblock %}

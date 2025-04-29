@@ -50,10 +50,10 @@ test-all:
       junit: test-results/TEST-*.xml
 
 build:
-  image: docker:28.0.4
+  image: docker:28.1.1
   when: manual
   services:
-    - docker:28.0.4-dind
+    - docker:28.1.1-dind
   before_script:
     - docker info
   stage: build

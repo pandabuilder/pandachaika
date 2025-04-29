@@ -20,6 +20,7 @@ from viewer.forms import (
     DivErrorList,
 )
 from viewer.models import ArchiveGroup, ArchiveGroupEntry, Archive
+from viewer.utils.general import clean_up_referer
 
 from viewer.views.head import archive_filter_keys, filter_archives_simple
 
@@ -59,7 +60,7 @@ def archive_groups_explorer(request: HttpRequest) -> HttpResponse:
                 event_log(request.user, "ADD_ARCHIVE_GROUP", content_object=new_archive_group, result="created")
             else:
                 messages.error(request, "The provided data is not valid", extra_tags="danger")
-                # return HttpResponseRedirect(request.META["HTTP_REFERER"])
+                # return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
         else:
             edit_form = ArchiveGroupCreateOrEditForm()
 
@@ -122,7 +123,7 @@ def archive_group_details(request: HttpRequest, pk: Optional[int] = None, slug: 
         with transaction.atomic():
             for archive_group_entry in archives_to_extract:
                 archive_group_entry.archive.extract(resized=True)
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
     try:
         page = int(get.get("page", "1"))
@@ -180,7 +181,7 @@ def archive_group_edit(request: HttpRequest, pk: Optional[int] = None, slug: Opt
         with transaction.atomic():
             for archive_group_entry in archives_to_extract:
                 archive_group_entry.archive.extract(resized=True)
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
     if request.POST.get("submit-archive-group"):
         # create a form instance and populate it with data from the request:

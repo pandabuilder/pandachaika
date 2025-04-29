@@ -66,6 +66,7 @@ from core.base.utilities import (
     check_and_convert_to_zip,
     available_filename,
     file_matches_any_filter,
+    hamming_distance,
 )
 from core.base.types import GalleryData, DataDict, ArchiveGenericFile, ArchiveStatisticsCalculator
 from core.base.utilities import get_dict_allowed_fields, replace_illegal_name
@@ -556,7 +557,7 @@ class ArchiveManager(models.Manager["Archive"]):
 
     def filter_by_dl_remote(self) -> ArchiveQuerySet:
         return self.get_queryset().filter(
-            Q(crc32="") & (Q(match_type__startswith="torrent") | Q(match_type__startswith="hath"))
+            Q(crc32="") & (Q(match_type__startswith="torrent") | Q(match_type__startswith="hath")) & Q(binned=False)
         )
 
     def filter_by_missing_file_info(self) -> ArchiveQuerySet:
@@ -652,7 +653,7 @@ class Gallery(models.Model):
 
     class StatusChoices(models.IntegerChoices):
         NORMAL = 1, _("Normal")
-        # Denied status is intended for submitted galleries that were not accepted by a moderator. Different from deleted.
+        # Denied status is intended for submitted galleries not accepted by a moderator. Different from deleted.
         # To remove denied galleries from other lists, an admin should mark as DELETED.
         DENIED = 4, _("Denied")
         # The deleted status hides the gallery from some user facing interfaces, as match galleries, gallery list, etc.
@@ -3175,6 +3176,7 @@ class Archive(models.Model):
 
         self.create_sha1_similarity_mark(excluded_archives)
         self.create_phash_similarity_mark(excluded_archives)
+        self.create_phash_gallery_similarity_mark()
         self.create_wanted_image_similarity_mark()
         # .exclude(pk__in=excluded_archives)
 
@@ -3187,7 +3189,8 @@ class Archive(models.Model):
             similar_images = (
                 Image.objects.filter(sha1__in=images_sha1)
                 .exclude(pk__in=images_from_archive)
-                .filter(archive__filecount__gte=self.filecount)
+                # Remove this filter, does not make sense to remove archives with fewer images.
+                # .filter(archive__filecount__gte=self.filecount)
                 .exclude(archive__binned=True)
                 .distinct()
             )
@@ -3249,10 +3252,12 @@ class Archive(models.Model):
     def create_phash_similarity_mark(self, excluded_archives: Optional[list[int]] = None) -> None:
         images_from_archive = self.image_set.all()
 
+        algorithm = "phash"
+
         image_type = ContentType.objects.get_for_model(Image)
 
         images_phashes = ItemProperties.objects.filter(
-            content_type=image_type, object_id__in=images_from_archive, tag="hash-compare", name="phash"
+            content_type=image_type, object_id__in=images_from_archive, tag="hash-compare", name=algorithm
         )
 
         if images_phashes:
@@ -3260,7 +3265,7 @@ class Archive(models.Model):
 
             similar_images = (
                 ItemProperties.objects.filter(
-                    tag="hash-compare", name="phash", content_type=image_type, value__in=images_phashes_values
+                    tag="hash-compare", name=algorithm, content_type=image_type, value__in=images_phashes_values
                 )
                 .exclude(pk__in=images_phashes)
                 .distinct()
@@ -3278,7 +3283,7 @@ class Archive(models.Model):
                 for archive_phash in archives_phash:
                     other_images_phash = ItemProperties.objects.filter(
                         tag="hash-compare",
-                        name="phash",
+                        name=algorithm,
                         content_type=image_type,
                         object_id__in=archive_phash.image_set.all(),
                     ).values_list("value", flat=True)
@@ -3292,7 +3297,7 @@ class Archive(models.Model):
                         continue
 
                     if self.filecount:
-                        possible_priority = (len(found_phash) / self.filecount) * 4.0
+                        possible_priority = (len(found_phash) / self.filecount) * 3.0
                         if possible_priority > mark_priority:
                             mark_priority = possible_priority
                     per_archives_comment.append(
@@ -3670,6 +3675,53 @@ class Archive(models.Model):
             # Release the current gallery association
             self.gallery = None
             self.save()
+
+    def create_phash_gallery_similarity_mark(self):
+        algorithm = "phash"
+
+        if self.gallery:
+            archive_type = ContentType.objects.get_for_model(Archive)
+            gallery_type = ContentType.objects.get_for_model(Gallery)
+
+            gallery_hash_object = ItemProperties.objects.filter(
+                content_type=gallery_type,
+                object_id=self.gallery.pk,
+                tag="hash-compare",
+                name=algorithm,
+            ).first()
+
+            archive_hash_object = ItemProperties.objects.filter(
+                content_type=archive_type,
+                object_id=self.pk,
+                tag="hash-compare",
+                name=algorithm,
+            ).first()
+
+            if gallery_hash_object and archive_hash_object:
+                hamming_value = hamming_distance(archive_hash_object.value, gallery_hash_object.value)
+
+                if hamming_value > 0:
+                    mark_priority = (hamming_value / len(archive_hash_object.value)) * 2.0
+
+                    manager_entry, _ = ArchiveManageEntry.objects.update_or_create(
+                        archive=self,
+                        mark_reason="gallery_phash_similarity",
+                        defaults={
+                            "mark_comment": "Hamming distance to Gallery (thumbnail to thumbnail) (special-link):({})({}): is high: {}".format(
+                                self.gallery.pk,
+                                self.gallery.get_absolute_url(),
+                                hamming_value,
+                            ),
+                            "mark_priority": mark_priority,
+                            "mark_check": True,
+                            "origin": ArchiveManageEntry.ORIGIN_SYSTEM,
+                        },
+                    )
+
+        else:
+            ArchiveManageEntry.objects.filter(
+                archive=self, mark_reason="gallery_phash_similarity", mark_user__isnull=True
+            ).delete()
 
 
 class ArchiveTag(models.Model):

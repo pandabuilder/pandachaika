@@ -12,7 +12,7 @@ django-db-logger==0.1.13
 django-cors-headers==4.7.0
 Pillow==11.2.1
 # Temporary plugin to handle AVIF images
-pillow-avif-plugin==1.5.1
+pillow-avif-plugin==1.5.2
 rarfile==4.2
 py7zr==0.22.0
 requests==2.32.3
