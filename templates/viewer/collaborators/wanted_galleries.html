@@ -13,6 +13,7 @@
   {% if perms.viewer.add_wantedgallery %}
   <button class="btn btn-secondary collapse-icon" id="add-wanted" data-bs-toggle="collapse" data-bs-target="#add-change-wanted-form" name="add-wanted" type="button" aria-label="toggle add wanted">Add Wanted Gallery <i class="fas fa-chevron-down"></i></button>
   <a class="btn btn-secondary" href="{% url 'viewer:col-create-wanted-gallery' %}" role="button">Add Wanted Gallery page</a>
+  <a class="btn btn-secondary" href="{% url 'viewer:col-create-wanted-galleries-from-command' %}" role="button">Add Wanted Galleries From Command</a>
   {% include 'viewer/include/wanted_gallery_edit.html' %}
   {% endif %}
   <div class="page-header line-top">

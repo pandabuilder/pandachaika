@@ -1,0 +1,23 @@
+<div class="row">
+    <div class="col-md-12">
+        <form id="main-form" action="{% url 'viewer:gallery-list' %}" method="GET" role="form">
+          <div class="row">
+            <div class="col-md-12">
+                <div id="main-search" class="collapse{% if prm.main_filters %} show{% endif %}">
+                  {% for field in gallery_search_form %}
+                    <div class="page-line">
+                      {{ field.errors }}
+                      {{ field }}
+                    </div>
+                  {% endfor %}
+                </div>
+            </div>
+              <div class="col-md-12 page-line">
+                <button type="submit" name="apply" class="btn btn-info">Search</button>
+                <button type="submit" name="clear" class="btn btn-light">Clear</button>
+                <button type="button" class="btn btn-secondary js-instant-toggle d-lg-none" data-toggle-target="#advancedFilters">More filters</button>
+              </div>
+          </div>
+        </form>
+    </div>
+</div>

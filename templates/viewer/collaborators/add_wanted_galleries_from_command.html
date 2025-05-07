@@ -1,0 +1,30 @@
+{% extends "viewer/base.html" %}
+{% block title %}Add new Wanted Gallery | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+
+{% load static %}
+
+{% block content %}
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+  <div class="page-header">
+  <h2>Add new Wanted Galleries from Templated Command</h2>
+  <p class="lead">Add a new Wanted Galleries. It will follow the internal command logic (2 new WantedGalleries, 1 for English, 1 for RAW)</p>
+  </div>
+    <form action="" method="POST">
+      {% csrf_token %}
+      <div class="page-line">
+        <table class="table">
+          {{ wanted_gallery_command_form }}
+        </table>
+        <button type="submit" name="submit-wanted-artist-gallery" value="Submit" class="btn btn-light me-sm-1">Submit</button>
+      </div>
+    </form>
+
+{% endblock %}
+{% block afterJQ %}
+  {{ wanted_gallery_command_form.media }}
+{% endblock %}

@@ -4,12 +4,13 @@ import re
 import threading
 from collections import defaultdict
 from itertools import groupby
-from typing import Optional
+from typing import Optional, Any
 
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import permission_required, login_required
 from django.contrib.contenttypes.models import ContentType
+from django.core import management
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
 from django.db.models import Prefetch, Count, Case, When, QuerySet, Q, F
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect, Http404, QueryDict
@@ -19,6 +20,7 @@ from django.utils.crypto import get_random_string
 
 from core.base.setup import Settings
 from core.base.utilities import thread_exists, clamp, get_schedulers_status
+from viewer.management.commands import update_provider_wanted
 from viewer.utils.functions import (
     archive_manage_results_to_json,
     galleries_update_metadata,
@@ -40,6 +42,9 @@ from viewer.forms import (
     AllGalleriesSearchForm,
     EventSearchForm,
     GallerySearchSimpleForm,
+    ArchiveExtraFileSimpleForm,
+    WantedGalleryCommand,
+    GallerySearchFields,
 )
 from viewer.models import (
     Archive,
@@ -56,6 +61,10 @@ from viewer.models import (
     ArchiveTag,
     UserLongLivedToken,
     DownloadEvent,
+    Category,
+    Provider,
+    GalleryMatchGroup,
+    GalleryMatchGroupEntry,
 )
 from viewer.utils.requests import double_check_auth
 from viewer.utils.tags import sort_tags
@@ -68,6 +77,7 @@ from viewer.views.head import (
     render_error,
     wanted_gallery_filter_keys,
     filter_wanted_galleries_simple,
+    gallery_list_filters_keys,
 )
 
 crawler_settings = settings.CRAWLER_SETTINGS
@@ -387,39 +397,98 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
 def filter_by_marks(archives: QuerySet[Archive], params: QueryDict) -> tuple[QuerySet[Archive], bool]:
     mark_filters = False
 
-    if "marked" in params and params["marked"]:
-        archives = archives.filter(manage_entries__mark_check=True)
-        mark_filters = True
-    if "mark_reason" in params and params["mark_reason"]:
-        archives = archives.filter(manage_entries__mark_reason__contains=str(params["mark_reason"]))
-        mark_filters = True
-    if "mark_comment" in params and params["mark_comment"]:
-        archives = archives.filter(manage_entries__mark_comment__contains=str(params["mark_comment"]))
-        mark_filters = True
-    if "mark_extra" in params and params["mark_extra"]:
-        archives = archives.filter(manage_entries__mark_extra__contains=str(params["mark_extra"]))
-        mark_filters = True
-    if "origin" in params and params["origin"]:
-        archives = archives.filter(manage_entries__origin=str(params["origin"]))
-        mark_filters = True
-    priority_to = params.get("priority_to", None)
-    if priority_to is not None and priority_to != "":
-        archives = archives.filter(manage_entries__mark_priority__lte=float(priority_to))
-        mark_filters = True
-    priority_from = params.get("priority_from", None)
-    if priority_from is not None and priority_from != "":
-        archives = archives.filter(manage_entries__mark_priority__gte=float(priority_from))
-        mark_filters = True
-    elif mark_filters:
-        # By default, don't filter marks with less than 1 priority (low level priorities)
-        archives = archives.annotate(
-            num_manage_total=Count("manage_entries"),
-            num_manage_below_1=Count("manage_entries", filter=Q(manage_entries__mark_priority__lt=1)),
-        ).exclude(num_manage_below_1=F("num_manage_total"))
+    if "and-mark-conditions" in params and params["and-mark-conditions"]:
+
+        q_objects = Q()
+
+        if "marked" in params and params["marked"]:
+            q_objects.add(Q(manage_entries__mark_check=True), Q.AND)
+            mark_filters = True
+        if "mark_reason" in params and params["mark_reason"]:
+            q_objects.add(Q(manage_entries__mark_reason__contains=str(params["mark_reason"])), Q.AND)
+            mark_filters = True
+        if "mark_comment" in params and params["mark_comment"]:
+            q_objects.add(Q(manage_entries__mark_comment__contains=str(params["mark_comment"])), Q.AND)
+            mark_filters = True
+        if "mark_extra" in params and params["mark_extra"]:
+            q_objects.add(Q(manage_entries__mark_extra__contains=str(params["mark_extra"])), Q.AND)
+            mark_filters = True
+        if "origin" in params and params["origin"]:
+            q_objects.add(Q(manage_entries__origin=str(params["origin"])), Q.AND)
+            mark_filters = True
+        priority_to = params.get("priority_to", None)
+        if priority_to is not None and priority_to != "":
+            q_objects.add(Q(manage_entries__mark_priority__lte=float(priority_to)), Q.AND)
+            mark_filters = True
+        priority_from = params.get("priority_from", None)
+        if priority_from is not None and priority_from != "":
+            q_objects.add(Q(manage_entries__mark_priority__gte=float(priority_from)), Q.AND)
+            mark_filters = True
+        elif mark_filters:
+            # By default, don't filter marks with less than 1 priority (low level priorities)
+            archives = archives.annotate(
+                num_manage_total=Count("manage_entries"),
+                num_manage_below_1=Count("manage_entries", filter=Q(manage_entries__mark_priority__lt=1)),
+            )
+            q_objects.add(~Q(num_manage_below_1=F("num_manage_total")), Q.AND)
+        archives = archives.filter(q_objects)
+    else:
+        if "marked" in params and params["marked"]:
+            archives = archives.filter(manage_entries__mark_check=True)
+            mark_filters = True
+        if "mark_reason" in params and params["mark_reason"]:
+            archives = archives.filter(manage_entries__mark_reason__contains=str(params["mark_reason"]))
+            mark_filters = True
+        if "mark_comment" in params and params["mark_comment"]:
+            archives = archives.filter(manage_entries__mark_comment__contains=str(params["mark_comment"]))
+            mark_filters = True
+        if "mark_extra" in params and params["mark_extra"]:
+            archives = archives.filter(manage_entries__mark_extra__contains=str(params["mark_extra"]))
+            mark_filters = True
+        if "origin" in params and params["origin"]:
+            archives = archives.filter(manage_entries__origin=str(params["origin"]))
+            mark_filters = True
+        priority_to = params.get("priority_to", None)
+        if priority_to is not None and priority_to != "":
+            archives = archives.filter(manage_entries__mark_priority__lte=float(priority_to))
+            mark_filters = True
+        priority_from = params.get("priority_from", None)
+        if priority_from is not None and priority_from != "":
+            archives = archives.filter(manage_entries__mark_priority__gte=float(priority_from))
+            mark_filters = True
+        elif mark_filters:
+            # By default, don't filter marks with less than 1 priority (low level priorities)
+            archives = archives.annotate(
+                num_manage_total=Count("manage_entries"),
+                num_manage_below_1=Count("manage_entries", filter=Q(manage_entries__mark_priority__lt=1)),
+            ).exclude(num_manage_below_1=F("num_manage_total"))
 
     archives = archives.distinct()
 
     return archives, mark_filters
+
+
+def filter_by_extra_files(archives: QuerySet[Archive], params: QueryDict) -> tuple[QuerySet[Archive], bool]:
+    extra_file_filters = False
+
+    if "extra_file_name" in params and params["extra_file_name"]:
+        archives = archives.filter(archivefileentry__file_name__icontains=str(params["extra_file_name"]))
+        extra_file_filters = True
+    if "extra_file_type" in params and params["extra_file_type"]:
+        archives = archives.filter(archivefileentry__file_type__icontains=str(params["extra_file_type"]))
+        extra_file_filters = True
+    extra_file_size_to = params.get("extra_file_size_to", None)
+    if extra_file_size_to is not None and extra_file_size_to != "":
+        archives = archives.filter(archivefileentry__file_size__lte=float(extra_file_size_to))
+        extra_file_filters = True
+    extra_file_size_from = params.get("extra_file_size_from", None)
+    if extra_file_size_from is not None and extra_file_size_from != "":
+        archives = archives.filter(archivefileentry__file_size__gte=float(extra_file_size_from))
+        extra_file_filters = True
+
+    archives = archives.distinct()
+
+    return archives, extra_file_filters
 
 
 def manage_archives(request: HttpRequest) -> HttpResponse:
@@ -813,6 +882,8 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
 
     results, mark_filters = filter_by_marks(results, request.GET)
 
+    results, extra_file_filters = filter_by_extra_files(results, request.GET)
+
     if "diff-filesize" in get:
         results = (
             results.exclude(gallery__filesize__isnull=True)
@@ -887,13 +958,16 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
         form = ArchiveSearchForm(initial={"title": title, "tags": tags})
 
     mark_form_simple = ArchiveManageEntrySimpleForm(request.GET)
+    extra_file_form_simple = ArchiveExtraFileSimpleForm(request.GET)
     search_form = ArchiveManageSearchSimpleForm(request.GET)
 
-    d = {
+    d: dict[str, Any] = {
         "results": results_page,
         "form": form,
         "mark_filters": mark_filters,
+        "extra_file_filters": extra_file_filters,
         "mark_form_simple": mark_form_simple,
+        "extra_file_form_simple": extra_file_form_simple,
         "search_form": search_form,
     }
 
@@ -1341,7 +1415,7 @@ def user_crawler(request: AuthenticatedHttpRequest) -> HttpResponse:
             messages.error(request, "Cannot submit links currently. Please contact an admin.")
             return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
         url_set = set()
-        # create dictionary of properties for each archive
+        # create a dictionary of properties for each archive
         current_settings.replace_metadata = False
         current_settings.config["allowed"]["replace_metadata"] = "no"
         # Allow collaborators to readd a gallery if it failed.
@@ -1377,6 +1451,7 @@ def user_crawler(request: AuthenticatedHttpRequest) -> HttpResponse:
         add_as_deleted = "as-deleted" in p and p["as-deleted"] == "1"
 
         skip_non_current = "skip-non-current" in p and p["skip-non-current"] == "1"
+        process_parents_first = "process-parents-first" in p and p["process-parents-first"] == "1"
 
         if add_as_deleted and request.user.has_perm("viewer.add_deleted_gallery"):
             # Use this to download using info
@@ -1406,6 +1481,11 @@ def user_crawler(request: AuthenticatedHttpRequest) -> HttpResponse:
 
         if skip_non_current:
             current_settings.non_current_links_as_deleted = True
+
+        if process_parents_first:
+            if 'panda' in current_settings.providers:
+                current_settings.providers["panda"].auto_process_parent = True
+                current_settings.providers["panda"].auto_process_first = True
 
         parsers = crawler_settings.provider_context.get_parsers(crawler_settings)
 
@@ -1893,23 +1973,72 @@ def upload_archive(request: HttpRequest) -> HttpResponse:
     return render(request, "viewer/collaborators/add_archive.html", d)
 
 
-# This is an alternative way to add Galleries, the preffered way is to crawl a link.
+# This is an alternative way to add Galleries; the preferred way is to crawl a link.
 # Mostly used in scenarios when the metadata is already fetched on another instance or backup.
-# Problem is that it only accepts already created tags, magazine, gallery_container
+# The problem is that it only accepts already created tags, magazine, gallery_container
 @permission_required("viewer.add_gallery")
 def upload_gallery(request: HttpRequest) -> HttpResponse:
     if request.POST.get("submit-gallery"):
         # create a form instance and populate it with data from the request:
-        edit_form = GalleryCreateForm(request.POST, request.FILES)
+        p_local = request.POST.copy()
+        del p_local["tags"]
+        tags = request.POST.get("tags")
+        tag_objects = []
+        if tags:
+            tag_list = tags.split(",")
+            for tag in tag_list:
+                tag = tag.strip().replace(" ", "_")
+
+                scope_name = tag.split(":", maxsplit=1)
+                if len(scope_name) > 1:
+                    tag_name = scope_name[1]
+                    tag_scope = scope_name[0]
+                else:
+                    tag_name = tag
+                    tag_scope = ""
+
+                actual_tag = Tag.objects.get_or_create(name=tag_name, scope=tag_scope, defaults={"source": "user"})[0]
+                tag_objects.append(actual_tag)
+        edit_form = GalleryCreateForm(p_local, request.FILES)
         # check whether it's valid:
         if edit_form.is_valid():
             new_gallery = edit_form.save(commit=False)
-            new_gallery.save()
-            edit_form.save_m2m()
-            message = "Gallery successfully created: {}".format(new_gallery.get_absolute_url())
-            messages.success(request, message)
-            logger.info("User {}: {}".format(request.user.username, message))
-            event_log(request.user, "CREATE_GALLERY", content_object=new_gallery, result="added")
+            parsers = crawler_settings.provider_context.get_parsers(crawler_settings)
+            # for parser in parsers:
+            # urls = parser.filter_accepted_urls(list(to_use_urls))
+
+            continue_processing = True
+
+            if 'url' in p_local:
+                for parser in parsers:
+                    if parser.id_from_url_implemented():
+                        urls_filtered = parser.filter_accepted_urls([str(p_local["url"])])
+                        for url_filtered in urls_filtered:
+                            gallery_gid = parser.id_from_url(url_filtered)
+                            if gallery_gid:
+                                gallery_exists = Gallery.objects.filter(
+                                    gid=gallery_gid, provider=parser.name
+                                ).first()
+                                if gallery_exists:
+                                    continue_processing = False
+                                    messages.error(request, "The provided data maps to an already existing Gallery: {}".format(gallery_exists.get_absolute_url()), extra_tags="danger")
+                                else:
+                                    new_gallery.gid = gallery_gid
+                                    new_gallery.provider = parser.name
+            if continue_processing:
+                if not new_gallery.gid or not new_gallery.provider:
+                    messages.error(request, "The provided data is missing the GID and Provider fields that are mandatory", extra_tags="danger")
+                else:
+                    new_gallery.dl_type = "info"
+                    if not new_gallery.uploader:
+                        new_gallery.uploader = ""
+                    new_gallery.save()
+                    new_gallery.tags.set(tag_objects)
+                    # edit_form.save_m2m()
+                    message = "Gallery successfully created: {}".format(new_gallery.get_absolute_url())
+                    messages.success(request, message)
+                    logger.info("User {}: {}".format(request.user.username, message))
+                    event_log(request.user, "CREATE_GALLERY", content_object=new_gallery, result="added")
         else:
             messages.error(request, "The provided data is not valid", extra_tags="danger")
     else:
@@ -1972,6 +2101,47 @@ def create_wanted_gallery(request: HttpRequest) -> HttpResponse:
 
     d = {"edit_form": edit_form}
     return render(request, "viewer/collaborators/add_wanted_gallery.html", d)
+
+
+@permission_required("viewer.add_wantedgallery")
+def create_wanted_galleries_from_command(request: HttpRequest) -> HttpResponse:
+    if request.POST.get("submit-wanted-artist-gallery"):
+        wanted_publisher = request.POST.get("wanted_publisher")
+        artist_or_group_tag = request.POST.getlist("artist_or_group_tag")
+        wanted_providers_pk = request.POST.getlist("wanted_providers")
+        categories_pk = request.POST.getlist("categories")
+
+        artist_or_group_tag = [x.strip() for x in artist_or_group_tag]
+
+        wanted_providers = list(Provider.objects.filter(pk__in=wanted_providers_pk).values_list('slug', flat=True))
+        categories = list(Category.objects.filter(pk__in=categories_pk).values_list('name', flat=True))
+
+        command = "wanted_publisher: {}, artist_or_group_tag: {}, wanted_providers: {}, categories: {}".format(wanted_publisher, artist_or_group_tag, wanted_providers, categories)
+        management.call_command(update_provider_wanted.Command(), wanted_publisher, wanted_providers=wanted_providers, categories=categories, artist_list=artist_or_group_tag, should_search=True)
+        message = "WantedGallery command successfully run: {}".format(command)
+        messages.success(request, message)
+        logger.info("User {}: {}".format(request.user.username, message))
+        event_log(request.user, "CREATE_WANTED_GALLERY_FROM_COMMAND", data=command, result="run")
+        wanted_gallery_command_form = WantedGalleryCommand()
+    else:
+
+        categories_objects = []
+        for category in crawler_settings.default_wanted_categories:
+            category_obj, _ = Category.objects.get_or_create(name=category)
+            categories_objects.append(category_obj)
+
+        providers = Provider.objects.filter(slug__in=crawler_settings.default_wanted_providers)
+
+        default_fields = {
+            'categories': categories_objects,
+            'wanted_providers': providers,
+            'wanted_publisher': crawler_settings.default_wanted_publisher,
+        }
+
+        wanted_gallery_command_form = WantedGalleryCommand(initial=default_fields)
+
+    d = {"wanted_gallery_command_form": wanted_gallery_command_form}
+    return render(request, "viewer/collaborators/add_wanted_galleries_from_command.html", d)
 
 
 @permission_required("viewer.manage_missing_archives")
@@ -2375,6 +2545,154 @@ def archives_similar_by_fields(request: HttpRequest) -> HttpResponse:
 
     d = {"by_size_count": by_size_count, "by_crc32": by_crc32, "by_title": by_title, "form": form}
     return render(request, "viewer/archives_similar_by_fields.html", d)
+
+
+@permission_required("viewer.manage_gallery")
+def repeated_galleries_by_field(request: HttpRequest) -> HttpResponse:
+    p = request.POST
+    get = request.GET
+
+    title = get.get("title", "")
+    tags = get.get("tags", "")
+
+    providers =  get.getlist("providers")
+    categories =  get.getlist("categories")
+
+    if "clear" in get:
+        form = GallerySearchForm()
+        fields_form = GallerySearchFields()
+    else:
+        form = GallerySearchForm(initial={"title": title, "tags": tags})
+        fields_form = GallerySearchFields(initial={"providers": providers, "categories": categories})
+
+    if p:
+        user_reason = p.get("reason", "")
+        if "delete_galleries" in p and request.user.has_perm("viewer.mark_delete_gallery"):
+            pks = []
+            for k in p:
+                if k.startswith("sel-"):
+                    # k, pk = k.split('-')
+                    # results[pk][k] = v
+                    v_keys = [int(x) for x in p.getlist(k)]
+                    pks.extend(v_keys)
+            results_gallery = Gallery.objects.filter(id__in=pks).order_by("-create_date")
+
+            for gallery in results_gallery:
+                message = "Removing gallery: {}, link: {}".format(gallery.title, gallery.get_link())
+                logger.info(message)
+                messages.success(request, message)
+                gallery.mark_as_deleted()
+
+                event_log(
+                    request.user, "MARK_DELETE_GALLERY", reason=user_reason, content_object=gallery, result="deleted"
+                )
+        elif "create_gallery_match_groups" in p and request.user.has_perm("viewer.add_gallerymatchgroup"):
+            groups = []
+            pks = []
+            order_by_pk = {}
+            for k in p:
+                if k.startswith("sel-"):
+                    # k, pk = k.split('-')
+                    # results[pk][k] = v
+                    v_keys = [int(x) for x in p.getlist(k)]
+                    groups.append(v_keys)
+                    pks.extend(v_keys)
+                elif k.startswith("ord-"):
+                    k_value = p.get(k)
+                    if k_value is not None:
+                        order_by_pk[int(k.replace("ord-", ""))] = int(k_value)
+
+            results_gallery = Gallery.objects.filter(id__in=pks)
+            gallery_mappings = {x.pk: x for x in results_gallery}
+
+            gallery_groups = [sorted([gallery_mappings[y] for y in x], key=lambda x: order_by_pk[x.pk]) for x in groups]
+
+            for gallery_group in gallery_groups:
+                GalleryMatchGroup.objects.filter(galleries__in=gallery_group).delete()
+                gallery_match_group = GalleryMatchGroup()
+                gallery_match_group.save()
+                for count, gallery in enumerate(gallery_group, start=1):
+                    gallery_match_group_entry, _ = GalleryMatchGroupEntry.objects.update_or_create(
+                        gallery=gallery,
+                        defaults={"gallery_match_group": gallery_match_group, "gallery_position": count}
+                    )
+                # Save again to make sure it gets the title
+                gallery_match_group.save()
+                message = "Created gallery match group: {}, galleries: {}".format(gallery_match_group.pk, [x.get_absolute_url() for x in gallery_match_group.galleries.all()])
+                logger.info(message)
+                messages.success(request, message)
+                event_log(
+                    request.user, "CREATE_GALLERY_MATCH_GROUP", reason=user_reason, content_object=gallery_match_group, result="created"
+                )
+
+
+    params: dict[str, list[str] | str] = {
+        "sort": "create_date",
+        "asc_desc": "desc",
+    }
+
+    for k in get:
+        if k in gallery_list_filters_keys:
+            v: list[str] | str = get.getlist(k)
+        else:
+            v = get[k]
+        if isinstance(v, str) or isinstance(v, list):
+            params[k] = v
+
+    for k in gallery_filter_keys:
+        if k not in params:
+            params[k] = ""
+
+    results = filter_galleries_simple(params)
+
+    results = results.eligible_for_use().exclude(title__exact="")  # type: ignore
+
+    if "has-archives" in get:
+        results = results.annotate(archives=Count("archive")).filter(archives__gt=0)
+
+    if "is-not-in-groups" in get:
+        results = results.annotate(gallery_groups=Count("gallery_group")).filter(gallery_group=0)
+
+    if "has-size" in get:
+        results = results.filter(filesize__gt=0)
+
+    by_title = {}
+    by_filesize = {}
+
+    if "ignore-case" in get:
+        title_function = lambda x: x.lower()
+    else:
+        title_function = lambda x: x
+
+    if "by-title" in get:
+        if "same-uploader" in get:
+            for k_tu, v_tu in groupby(results.order_by("title", "uploader"), lambda x: (title_function(x.title), x.uploader)):
+                objects = list(v_tu)
+                if len(objects) > 1:
+                    by_title[str(k_tu)] = objects
+        if "same-description" in get:
+            for k_tu, v_tu in groupby(results.order_by("title", "comment"), lambda x: (title_function(x.title), x.comment)):
+                objects = list(v_tu)
+                if len(objects) > 1:
+                    by_title[str(k_tu)] = objects
+        else:
+            for k_title, v_title in groupby(results.order_by("title"), lambda x: title_function(x.title or "")):
+                objects = list(v_title)
+                if len(objects) > 1:
+                    by_title[k_title] = objects
+
+    if "by-filesize" in get:
+        for k_filesize, v_filesize in groupby(results.order_by("filesize"), lambda x: str(x.filesize or "")):
+            objects = list(v_filesize)
+            if len(objects) > 1:
+                by_filesize[k_filesize] = objects
+
+    d = {
+        "by_title": by_title, "by_filesize": by_filesize, "form": form,
+        "fields_form": fields_form
+    }
+
+    return render(request, "viewer/galleries_repeated_by_fields.html", d)
 
 
 @permission_required("viewer.view_monitored_links")

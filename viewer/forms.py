@@ -35,6 +35,8 @@ from viewer.models import (
     ArchiveGroupEntry,
     Tag,
     ArchiveManageEntry,
+    GalleryMatchGroup,
+    GalleryMatchGroupEntry,
 )
 
 from dal.widgets import WidgetMixin
@@ -151,7 +153,7 @@ class ArchiveSearchForm(forms.Form):
         ),
     )
 
-    # For some reason some search request include this NULL character, remove it here.
+    # For some reason, some search requests include this NULL character, remove it here.
     def clean_title(self):
         data = self.cleaned_data["title"]
         return data.replace("\x00", "")
@@ -169,7 +171,7 @@ class ArchiveSearchSimpleForm(forms.Form):
         label="",
         widget=forms.NumberInput(attrs={"class": "form-control number-input mr-sm-1", "placeholder": "to"}),
     )
-    # Search by rating: is it really needed?
+    # Search by rating: is it really necessary?
     # rating_from = forms.IntegerField(
     #     required=False,
     #     label='Rating',
@@ -685,6 +687,32 @@ class ArchiveManageEntrySimpleForm(forms.Form):
     )
 
 
+class ArchiveExtraFileSimpleForm(forms.Form):
+
+    extra_file_name = forms.CharField(
+        required=False,
+        label="Name",
+        widget=forms.widgets.TextInput(attrs={"class": "form-control"}),
+    )
+
+    extra_file_type = forms.CharField(
+        required=False,
+        label="Type",
+        widget=forms.widgets.TextInput(attrs={"class": "form-control"}),
+    )
+
+    extra_file_size_from = forms.IntegerField(
+        required=False,
+        label="Size",
+        widget=forms.NumberInput(attrs={"class": "form-control mr-sm-1", "placeholder": "from", "size": 9}),
+    )
+    extra_file_size_to = forms.IntegerField(
+        required=False,
+        label="",
+        widget=forms.NumberInput(attrs={"class": "form-control mr-sm-1", "placeholder": "to", "size": 9}),
+    )
+
+
 class Html5DateInput(forms.DateInput):
     input_type = "date"
 
@@ -806,6 +834,44 @@ class WantedGalleryCreateOrEditForm(ModelForm):
                 attrs={"size": 1, "data-placeholder": "Archive Group", "class": "form-control"},
             ),
             "restricted_to_links": forms.widgets.CheckboxInput(attrs={"class": "form-check-input"}),
+        }
+
+
+class WantedGalleryCommand(forms.ModelForm):
+    field_order = [
+        "artist_or_group_tag",
+        "wanted_publisher",
+        "categories",
+        "wanted_providers",
+    ]
+
+    artist_or_group_tag = forms.CharField(
+        required=True,
+        widget=forms.widgets.TextInput(attrs={"class": "form-control","data-width": "100%"}),
+        help_text="Must use the full syntax, for either a artist or a group. It will be created if it doesn't exist."
+    )
+
+    wanted_publisher = forms.CharField(
+        required=True,
+        widget=forms.widgets.TextInput(attrs={"class": "form-control", "data-width": "100%"}),
+    )
+
+    class Meta:
+        model = WantedGallery
+        fields = [
+            'categories',
+            'wanted_providers',
+        ]
+
+        widgets = {
+            "categories": autocomplete.ModelSelect2Multiple(
+                url="category-pk-autocomplete",
+                attrs={"data-placeholder": "Category", "class": "form-control", "data-width": "100%"},
+            ),
+            "wanted_providers": autocomplete.ModelSelect2Multiple(
+                url="provider-pk-autocomplete",
+                attrs={"data-placeholder": "Provider name", "class": "form-control", "data-width": "100%"},
+            ),
         }
 
 
@@ -1048,6 +1114,39 @@ class ProfileChangeForm(forms.ModelForm):
 
 class GalleryCreateForm(ModelForm):
 
+    url = forms.URLField(
+        required=False, help_text="Either enter an URL (which the system will determine the GID and Provider), or enter a GID and provider",
+        widget=forms.URLInput(attrs={"class": "form-control"}),
+    )
+
+    gid = forms.CharField(required=False, widget=forms.widgets.TextInput(attrs={"class": "form-control"}))
+    provider = forms.CharField(required=False, widget=forms.widgets.TextInput(attrs={"class": "form-control"}))
+
+    field_order = [
+        "url",
+        "gid",
+        "provider",
+        "token",
+        "title",
+        "title_jpn",
+        "tags",
+        "gallery_container",
+        "magazine",
+        "category",
+        "uploader",
+        "comment",
+        "posted",
+        "filecount",
+        "filesize",
+        "expunged",
+        "disowned",
+        "hidden",
+        "fjord",
+        "reason",
+        "thumbnail_url",
+        "thumbnail",
+    ]
+
     class Meta:
         model = Gallery
         fields = [
@@ -1074,8 +1173,6 @@ class GalleryCreateForm(ModelForm):
             "thumbnail",
         ]
         widgets = {
-            "gid": forms.widgets.TextInput(attrs={"class": "form-control"}),
-            "provider": forms.widgets.TextInput(attrs={"class": "form-control"}),
             "token": forms.widgets.TextInput(attrs={"class": "form-control"}),
             "title": forms.widgets.TextInput(attrs={"class": "form-control"}),
             "title_jpn": forms.widgets.TextInput(attrs={"class": "form-control"}),
@@ -1087,9 +1184,14 @@ class GalleryCreateForm(ModelForm):
                 url="gallery-select-autocomplete",
                 attrs={"size": 1, "data-placeholder": "Gallery", "class": "form-control", "data-width": "100%"},
             ),
-            "tags": autocomplete.ModelSelect2Multiple(
-                url="tag-pk-autocomplete",
-                attrs={"data-placeholder": "Tag name", "class": "form-control", "data-width": "100%"},
+            "tags": JalTextWidget(
+                url="tag-autocomplete",
+                attrs={
+                    "class": "form-control",
+                    "aria-label": "tags",
+                    "placeholder": "Comma separated tags. It will create new tags once posted.",
+                    "data-autocomplete-minimum-characters": 3,
+                },
             ),
             "category": forms.widgets.TextInput(attrs={"class": "form-control"}),
             "uploader": forms.widgets.TextInput(attrs={"class": "form-control"}),
@@ -1245,4 +1347,112 @@ class BaseSplitArchiveFormSet(BaseModelFormSet):
 
 SplitArchiveFormSet = modelformset_factory(
     Archive, form=SplitArchiveForm, extra=5, formset=BaseSplitArchiveFormSet, can_delete=False
+)
+
+
+class GallerySearchFields(forms.Form):
+    field_order = [
+        "providers",
+        "categories"
+    ]
+
+    providers = forms.MultipleChoiceField(
+        required=False,
+        widget=autocomplete.Select2Multiple(
+            url="gallery-provider-json-autocomplete",
+            attrs={"data-placeholder": "Providers", "class": "form-control mr-sm-1", "data-width": "80%"},
+        )
+    )
+
+    categories = forms.MultipleChoiceField(
+        required=False,
+        widget=autocomplete.Select2Multiple(
+            url="gallery-category-json-autocomplete",
+            attrs={"data-placeholder": "Categories", "class": "form-control mr-sm-1", "data-width": "80%"},
+        ),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super(GallerySearchFields, self).__init__(*args, **kwargs)
+        if 'providers' in self.initial:
+            for field_name, field_value in self.initial.items():
+                if field_name in self.fields:
+                    if isinstance(self.fields[field_name], forms.MultipleChoiceField):
+                        self.fields[field_name].choices = [(x, x) for x in self.initial[field_name]]
+
+
+class GalleryMatchGroupSearchForm(forms.Form):
+
+    title = forms.CharField(
+        required=False,
+        widget=JalTextWidget(
+            url="gallery-match-group-autocomplete",
+            attrs={
+                "class": "form-control",
+                "aria-label": "title",
+                "placeholder": "Title, mouse click on autocomplete opens it",
+                "data-autocomplete-minimum-characters": 3,
+                "data-autocomplete-xhr-wait": 50,
+                "data-autocomplete-auto-hilight-first": 0,
+                "data-autocomplete-bind-mouse-down": 0,
+            },
+        ),
+    )
+
+
+class GalleryMatchGroupCreateOrEditForm(ModelForm):
+
+    class Meta:
+        model = GalleryMatchGroup
+        fields = ["title"]
+        widgets = {
+            "title": forms.widgets.TextInput(attrs={"class": "form-control"})
+        }
+
+    def save(self, commit=True):
+        gallery_match_group = super(GalleryMatchGroupCreateOrEditForm, self).save(commit=commit)
+
+        for gallery_match_group_entry in gallery_match_group.gallerymatchgroupentry_set.all():
+            gallery_match_group_entry.save()
+        return gallery_match_group
+
+
+class GalleryMatchGroupEntryForm(ModelForm):
+    # template_name_div = "form_snippet.html"
+    class Meta:
+        model = GalleryMatchGroupEntry
+        fields = ["gallery"]
+        widgets = {
+            "gallery": autocomplete.ModelSelect2(
+                url="gallery-select-autocomplete",
+                attrs={"size": 1, "data-placeholder": "Gallery", "class": "form-control", "data-width": "100%"},
+            ),
+        }
+
+
+class BaseGalleryMatchGroupEntryFormSet(BaseInlineFormSet):
+    def get_ordering_widget(self):
+        return forms.widgets.NumberInput(attrs={"min": 0, "class": "form-control"})
+
+    def clean(self) -> None:
+        super().clean()
+        if any(self.errors):
+            return
+        positions: list[int] = []
+        for form in self.forms:
+            if "ORDER" in form.cleaned_data:
+                position = form.cleaned_data["ORDER"]
+                if position in positions:
+                    raise forms.ValidationError("Positions must be unique: {}".format(position))
+                positions.append(position)
+
+
+GalleryMatchGroupEntryFormSet = inlineformset_factory(
+    GalleryMatchGroup,
+    GalleryMatchGroupEntry,
+    form=GalleryMatchGroupEntryForm,
+    extra=2,
+    formset=BaseGalleryMatchGroupEntryFormSet,
+    can_delete=True,
+    can_order=True,
 )

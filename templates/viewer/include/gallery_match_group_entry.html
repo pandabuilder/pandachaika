@@ -1,0 +1,15 @@
+{% load viewer_extras %}
+{% with gallery=gallery_match_entry.gallery %}
+<div class="gallery">
+  <a class="cover" href="{% url 'viewer:gallery' gallery.pk %}">
+    <div class="cover-title" title="{{ gallery.title }}">{{ gallery.title }}</div>
+    {% with thumbnail_details=gallery.get_available_thumbnail_plus_size %}
+    <img class="image-container mx-auto" alt="" title="{{ gallery.title }}"
+        width="{{ thumbnail_details.2 }}" height="{{ thumbnail_details.1 }}" src="{{ thumbnail_details.0 }}"/>
+    {% endwith %}
+  </a>
+  <div class="caption">
+    {{ gallery.filecount }} | {{ gallery.filesize|filesizeformat }} | <a class="tag-preview" tabindex="0" role="button" data-bs-toggle="popover" data-bs-trigger="focus" data-bs-pk="{{ gallery.pk }}">Tags</a>
+  </div>
+</div>
+{% endwith %}

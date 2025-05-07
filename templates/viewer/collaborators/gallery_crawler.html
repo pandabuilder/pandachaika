@@ -46,6 +46,11 @@
     <label class="form-check-label" for="checkbox5">Add non-current galleries as deleted</label>
     <small id="skipNonCurrentHelp" class="form-text text-muted">For panda links, when a gallery is detected as part of a chain, and it's not the final one, it will be marked as deleted.</small>
   </div>
+  <div class="form-check ms-sm-2 mb-sm-3">
+    <input id="checkbox5-2" type="checkbox" class="form-check-input" name="process-parents-first" value="1">
+    <label class="form-check-label" for="checkbox5-2">Crawl parent and first galleries for each link found</label>
+    <small id="crawlParentFirst" class="form-text text-muted">For panda links, when a gallery is detected as part of a chain, and it has parent or first galleries, those galleries will also be crawled (recommended to use with "Add non-current galleries as deleted").</small>
+  </div>
   {% endif %}
   <div class="mb-3">
     <button class="btn btn-light">Submit URLs to Web Crawler</button>

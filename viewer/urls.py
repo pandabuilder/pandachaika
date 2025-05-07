@@ -12,11 +12,12 @@ from viewer.views import (
     admin,
     manager,
     collaborators,
-    groups,
+    archive_groups,
     admin_api,
     tools,
     elasticsearch,
     gallery,
+    gallery_match_groups,
 )
 from viewer.feeds import LatestArchivesFeed
 from viewer.views.elasticsearch import (
@@ -119,7 +120,7 @@ else:
 # Manager lists.
 urlpatterns += [
     re_path(r"^repeated-archives/$", manager.repeated_archives_for_galleries, name="repeated-archives"),
-    re_path(r"^galleries-by-field/$", manager.repeated_galleries_by_field, name="galleries-by-field"),
+    # re_path(r"^galleries-by-field/$", manager.repeated_galleries_by_field, name="galleries-by-field"),
     re_path(
         r"^archive-filesize-different/$",
         manager.archive_filesize_different_from_gallery,
@@ -165,6 +166,7 @@ urlpatterns += [
     re_path(r"^col-wanted-galleries/$", collaborators.wanted_galleries, name="col-wanted-galleries"),
     re_path(r"^col-wanted-gallery/(\d+)/$", collaborators.wanted_gallery, name="col-wanted-gallery"),
     re_path(r"^col-create-wanted-gallery/$", collaborators.create_wanted_gallery, name="col-create-wanted-gallery"),
+    re_path(r"^col-create-wanted-galleries-from-command/$", collaborators.create_wanted_galleries_from_command, name="col-create-wanted-galleries-from-command"),
     re_path(r"^user-crawler/$", collaborators.user_crawler, name="user-crawler"),
     re_path(r"^download-history/$", collaborators.download_history, name="download-history"),
     re_path(r"^match-archives/$", collaborators.archives_not_matched_with_gallery, name="match-archives"),
@@ -178,24 +180,35 @@ urlpatterns += [
     re_path(r"^activity-event-log/$", collaborators.activity_event_log, name="activity-event-log"),
     re_path(r"^monitored-links$", collaborators.monitored_links, name="monitored-links"),
     re_path(r"^archives-by-field/$", collaborators.archives_similar_by_fields, name="archives-by-field"),
+    re_path(r"^galleries-by-field/$", collaborators.repeated_galleries_by_field, name="galleries-by-field"),
     re_path(r"^user-token/([\w-]+)/$", collaborators.user_token, name="user-token"),
 ]
 
 # Archive groups.
 urlpatterns += [
-    re_path(r"^archive-groups/$", groups.archive_groups_explorer, name="archive-groups"),
-    path("archive-group/<slug:slug>/", groups.archive_group_details, name="archive-group"),
-    path("archive-group/<int:pk>/", groups.archive_group_details, name="archive-group"),
-    path("archive-group-edit/<int:pk>/", groups.archive_group_edit, name="archive-group-edit"),
-    path("archive-group-edit/<slug:slug>/", groups.archive_group_edit, name="archive-group-edit"),
+    re_path(r"^archive-groups/$", archive_groups.archive_groups_explorer, name="archive-groups"),
+    path("archive-group/<slug:slug>/", archive_groups.archive_group_details, name="archive-group"),
+    path("archive-group/<int:pk>/", archive_groups.archive_group_details, name="archive-group"),
+    path("archive-group-edit/<int:pk>/", archive_groups.archive_group_edit, name="archive-group-edit"),
+    path("archive-group-edit/<slug:slug>/", archive_groups.archive_group_edit, name="archive-group-edit"),
     path(
-        "archive-group-reason/<int:pk>/<str:tool>/", groups.archive_group_enter_reason, name="archive-group-tool-reason"
+        "archive-group-reason/<int:pk>/<str:tool>/", archive_groups.archive_group_enter_reason, name="archive-group-tool-reason"
     ),
     path(
         "archive-group-reason/<slug:slug>/<str:tool>/",
-        groups.archive_group_enter_reason,
+        archive_groups.archive_group_enter_reason,
         name="archive-group-tool-reason",
     ),
+]
+
+# Gallery match groups.
+urlpatterns += [
+    re_path(r"^gallery-match-groups/$", gallery_match_groups.gallery_match_groups_explorer, name="gallery-match-groups"),
+    path("gallery-match-group/<int:pk>/", gallery_match_groups.gallery_match_group_details, name="gallery-match-group"),
+    path("gallery-match-group-edit/<int:pk>/", gallery_match_groups.gallery_match_group_edit, name="gallery-match-group-edit"),
+    path(
+        "gallery-match-group-reason/<int:pk>/<str:tool>/", gallery_match_groups.gallery_match_group_enter_reason, name="gallery-match-group-tool-reason"
+    )
 ]
 
 urlpatterns += [

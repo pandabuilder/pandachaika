@@ -72,6 +72,8 @@
                 {% endif %}
                 {% if perms.viewer.manage_gallery %}
                   <a class="dropdown-item" href="{% url 'viewer:manage-galleries' %}">Manage galleries</a>
+                  <a class="dropdown-item" href="{% url 'viewer:galleries-by-field' %}">Similar galleries by field</a>
+                  <a class="dropdown-item" href="{% url 'viewer:gallery-match-groups' %}">Gallery Match Groups</a>
                 {% endif %}
                 {% if perms.viewer.crawler_adder %}
                   <a class="dropdown-item" href="{% url 'viewer:user-crawler' %}">Add URLs</a>
@@ -81,6 +83,9 @@
                 {% endif %}
                 {% if perms.viewer.upload_with_metadata_archive %}
                   <a class="dropdown-item" href="{% url 'viewer:upload-archive' %}">Upload archive</a>
+                {% endif %}
+                {% if perms.viewer.add_gallery %}
+                  <a class="dropdown-item" href="{% url 'viewer:upload-gallery' %}">Add gallery</a>
                 {% endif %}
                 {% if perms.viewer.match_archive %}
                   <a class="dropdown-item" href="{% url 'viewer:match-archives' %}">Match archives</a>
@@ -115,13 +120,14 @@
             <li class="nav-item dropdown">
               <a href="#" class="nav-link dropdown-toggle" data-bs-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Lists</a>
               <ul class="dropdown-menu">
-                <a class="dropdown-item" href="{% url 'viewer:repeated-archives' %}">Repeated archives (same gallery)</a>
-                <a class="dropdown-item" href="{% url 'viewer:archives-by-field' %}">Similar archives by field</a>
-                <a class="dropdown-item" href="{% url 'viewer:galleries-by-field' %}">Repeated galleries by field</a>
-                <a class="dropdown-item" href="{% url 'viewer:archive-filesize-different' %}">Archives not matching gallery filesize</a>
-                <a class="dropdown-item" href="{% url 'viewer:archive-not-present' %}">Archives with file not present in filesystem</a>
-                <a class="dropdown-item" href="{% url 'viewer:archives-not-matched' %}">Archives without gallery matches</a>
-                <div class="dropdown-divider"></div>
+                <li><a class="dropdown-item" href="{% url 'viewer:repeated-archives' %}">Repeated archives (same gallery)</a></li>
+                <li><a class="dropdown-item" href="{% url 'viewer:archives-by-field' %}">Similar archives by field</a></li>
+                <li><a class="dropdown-item" href="{% url 'viewer:galleries-by-field' %}">Similar galleries by field</a></li>
+                <li><a class="dropdown-item" href="{% url 'viewer:gallery-match-groups' %}">Gallery Match Groups</a></li>
+                <li><a class="dropdown-item" href="{% url 'viewer:archive-filesize-different' %}">Archives not matching gallery filesize</a></li>
+                <li><a class="dropdown-item" href="{% url 'viewer:archive-not-present' %}">Archives with file not present in filesystem</a></li>
+                <li><a class="dropdown-item" href="{% url 'viewer:archives-not-matched' %}">Archives without gallery matches</a></li>
+                <li><div class="dropdown-divider"></div></li>
                 <a class="dropdown-item" href="{% url 'viewer:wanted-galleries' %}?{% url_replace 'wanted-not-found' '1' %}">Wanted galleries</a>
                 <a class="dropdown-item" href="{% url 'viewer:found-galleries' %}">Found galleries log</a>
                 <div class="dropdown-divider"></div>
@@ -131,6 +137,7 @@
                 <a class="dropdown-item" href="{% url 'viewer:user-crawler' %}">Add URLs</a>
                 <a class="dropdown-item" href="{% url 'viewer:download-history' %}">Download History</a>
                 <a class="dropdown-item" href="{% url 'viewer:upload-archive' %}">Upload archive</a>
+                <a class="dropdown-item" href="{% url 'viewer:upload-gallery' %}">Add gallery</a>
                 <a class="dropdown-item" href="{% url 'viewer:match-archives' %}">Match archives</a>
                 <a class="dropdown-item" href="{% url 'viewer:col-wanted-galleries' %}">Wanted galleries</a>
                 <a class="dropdown-item" href="{% url 'viewer:col-missing-archives' %}?provider=panda">Manage missing archives</a>

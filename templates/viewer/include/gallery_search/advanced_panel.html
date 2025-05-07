@@ -1,0 +1,174 @@
+<div class="col-md-2 d-none d-lg-block" id="advancedFilters">
+  <div class="card">
+    <div class="card-header">
+      <h5 class="mb-0">Advanced Filters</h5>
+    </div>
+    <div class="card-body">
+        <!-- Basic Info Group -->
+        <div class="mb-3">
+          <h6 class="border-bottom pb-2">Basic Information</h6>
+          <div class="mb-2">
+            <input form="main-form" type="text" class="form-control" name="category" value="{{ display_prms.category }}" placeholder="Category"/>
+          </div>
+          <div class="mb-2">
+            <input form="main-form" type="text" class="form-control" name="provider" value="{{ display_prms.provider }}" placeholder="Provider"/>
+          </div>
+          <div class="mb-2">
+            <input form="main-form" type="text" class="form-control" name="uploader" value="{{ display_prms.uploader }}" placeholder="Uploader"/>
+          </div>
+        </div>
+
+        <!-- Rating Group -->
+        <div class="mb-3">
+          <h6 class="border-bottom pb-2">Rating</h6>
+          <div class="row g-2">
+            <div class="col-6">
+              <input form="main-form" type="text" class="form-control" name="rating_from" value="{{ display_prms.rating_from }}" placeholder="From"/>
+            </div>
+            <div class="col-6">
+              <input form="main-form" type="text" class="form-control" name="rating_to" value="{{ display_prms.rating_to }}" placeholder="To"/>
+            </div>
+          </div>
+        </div>
+
+        <!-- File Info Group -->
+        <div class="mb-3">
+          <h6 class="border-bottom pb-2">File Information</h6>
+          <div class="row g-2 mb-2">
+            <div class="col-6">
+              <input form="main-form" type="text" class="form-control" name="filesize_from" value="{{ display_prms.filesize_from }}" placeholder="Size from"/>
+            </div>
+            <div class="col-6">
+              <input form="main-form" type="text" class="form-control" name="filesize_to" value="{{ display_prms.filesize_to }}" placeholder="Size to"/>
+            </div>
+          </div>
+          <div class="row g-2">
+            <div class="col-6">
+              <input form="main-form" type="text" class="form-control" name="filecount_from" value="{{ display_prms.filecount_from }}" placeholder="Count from"/>
+            </div>
+            <div class="col-6">
+              <input form="main-form" type="text" class="form-control" name="filecount_to" value="{{ display_prms.filecount_to }}" placeholder="Count to"/>
+            </div>
+          </div>
+        </div>
+
+        <!-- Status Group -->
+        <div class="mb-3">
+          <h6 class="border-bottom pb-2">Status</h6>
+        {% if user.is_authenticated %}
+            <div class="form-check mb-2">
+                <input form="main-form" id="id-private" class="form-check-input" type="checkbox" name="not_public" value="1" {% if display_prms.not_public == '1' %}checked{% endif %}><label for="id-private">Private</label>
+            </div>
+            <div class="form-check mb-2">
+                <input form="main-form" id="id-public" class="form-check-input" type="checkbox" name="public" value="1" {% if display_prms.public == '1' %}checked{% endif %}><label for="id-public">Public</label>
+            </div>
+        {% endif %}
+          <div class="form-check mb-2">
+            <input form="main-form" id="id-expunged" class="form-check-input" type="checkbox" name="expunged" value="1" {% if display_prms.expunged == '1' %}checked{% endif %}>
+            <label for="id-expunged" class="form-check-label">Expunged</label>
+          </div>
+          <div class="form-check mb-2">
+            <input form="main-form" id="id-disowned" class="form-check-input" type="checkbox" name="disowned" value="1" {% if display_prms.disowned == '1' %}checked{% endif %}>
+            <label for="id-disowned" class="form-check-label">Disowned</label>
+          </div>
+            <div class="form-check mb-2">
+              <input form="main-form" id="id-fjord" class="form-check-input" type="checkbox" name="fjord" value="1" {% if display_prms.fjord == '1' %}checked{% endif %}>
+              <label for="id-fjord" class="form-check-label">Fjord</label>
+            </div>
+          {% if user.is_authenticated %}
+            <div class="form-check mb-2">
+              <input form="main-form" id="id-hidden" class="form-check-input" type="checkbox" name="hidden" value="1" {% if display_prms.hidden == '1' %}checked{% endif %}>
+              <label for="id-hidden" class="form-check-label">Hidden</label>
+            </div>
+            <div class="form-check mb-2">
+              <input form="main-form" id="id-only_used" class="form-check-input" type="checkbox" name="only_used" value="1" {% if display_prms.only_used == '1' %}checked{% endif %}>
+              <label for="id-only_used" class="form-check-label">Only used</label>
+            </div>
+            <div class="form-check mb-2">
+              <input form="main-form" id="id-not_used" class="form-check-input" type="checkbox" name="not_used" value="1" {% if display_prms.not_used == '1' %}checked{% endif %}>
+              <label for="id-not_used" class="form-check-label">Not used</label>
+            </div>
+            <div class="form-check mb-2">
+              <input form="main-form" id="id-not_normal" class="form-check-input" type="checkbox" name="not_normal" value="1" {% if display_prms.not_normal == '1' %}checked{% endif %}>
+              <label for="id-not_normal" class="form-check-label">Show not normal</label>
+            </div>
+          {% endif %}
+        </div>
+
+        <!-- Gallery Relations Group -->
+        <div class="mb-3">
+          <h6 class="border-bottom pb-2">Gallery Relations</h6>
+          <div class="form-check mb-2">
+            <input form="main-form" id="id-contained" class="form-check-input" type="checkbox" name="contained" value="1" {% if display_prms.contained == '1' %}checked{% endif %}>
+            <label for="id-contained" class="form-check-label">Contained (any, OR)</label>
+          </div>
+          <div class="form-check mb-2">
+            <input form="main-form" id="id-contained_container" class="form-check-input" type="checkbox" name="contained_container" value="1" {% if display_prms.contained_container == '1' %}checked{% endif %}>
+            <label for="id-contained_container" class="form-check-label">Contained in container</label>
+          </div>
+          <div class="form-check mb-2">
+            <input form="main-form" id="id-contained_magazine" class="form-check-input" type="checkbox" name="contained_magazine" value="1" {% if display_prms.contained_magazine == '1' %}checked{% endif %}>
+            <label for="id-contained_magazine" class="form-check-label">Contained in magazine</label>
+          </div>
+          <div class="form-check mb-2">
+            <input form="main-form" id="id-not_contained" class="form-check-input" type="checkbox" name="not_contained" value="1" {% if display_prms.not_contained == '1' %}checked{% endif %}>
+            <label for="id-not_contained" class="form-check-label">Not contained (any, AND)</label>
+          </div>
+          <div class="form-check mb-2">
+            <input form="main-form" id="id-not_contained_container" class="form-check-input" type="checkbox" name="not_contained_container" value="1" {% if display_prms.not_contained_container == '1' %}checked{% endif %}>
+            <label for="id-not_contained_container" class="form-check-label">Not contained in container</label>
+          </div>
+          <div class="form-check mb-2">
+            <input form="main-form" id="id-not_contained_magazine" class="form-check-input" type="checkbox" name="not_contained_magazine" value="1" {% if display_prms.not_contained_magazine == '1' %}checked{% endif %}>
+            <label for="id-not_contained_magazine" class="form-check-label">Not contained in magazine</label>
+          </div>
+          <div class="form-check mb-2">
+            <input form="main-form" id="id-contains" class="form-check-input" type="checkbox" name="contains" value="1" {% if display_prms.contains == '1' %}checked{% endif %}>
+            <label for="id-contains" class="form-check-label">Contains (any, OR)</label>
+          </div>
+          <div class="form-check mb-2">
+            <input form="main-form" id="id-not_contains" class="form-check-input" type="checkbox" name="not_contains" value="1" {% if display_prms.not_contains == '1' %}checked{% endif %}>
+            <label for="id-not_contains" class="form-check-label">Not contains (any, AND)</label>
+          </div>
+        </div>
+
+        <!-- Show Options -->
+        <div class="mb-3">
+          <h6 class="border-bottom pb-2">Show Options</h6>
+          <div class="form-check mb-2">
+            <input form="main-form" id="id-show_source" class="form-check-input" type="checkbox" name="show_source" value="1" {% if prm.show_source == '1' %}checked{% endif %}>
+            <label for="id-show_source" class="form-check-label">Show source</label>
+          </div>
+        </div>
+
+        <!-- Sort Options -->
+        <div class="mb-3">
+          <h6 class="border-bottom pb-2">Sort Options</h6>
+          <div class="mb-2">
+            <select form="main-form" name="sort" class="form-select">
+              <option value="title" {% if prm.sort == "title" %}selected{% endif %}>Title</option>
+              <option value="title_jpn" {% if prm.sort == "title_jpn" %}selected{% endif %}>Japanese Title</option>
+              <option value="posted" {% if prm.sort == "posted" %}selected{% endif %}>Posted Date</option>
+              <option value="create_date" {% if prm.sort == "create_date" %}selected{% endif %}>Create Date</option>
+              <option value="rating" {% if prm.sort == "rating" %}selected{% endif %}>Rating</option>
+              <option value="filecount" {% if prm.sort == "filecount" %}selected{% endif %}>File Count</option>
+              <option value="filesize" {% if prm.sort == "filesize" %}selected{% endif %}>File Size</option>
+            </select>
+          </div>
+          <div class="mb-2">
+            <select form="main-form" name="asc_desc" class="form-select">
+              <option value="asc" {% if prm.asc_desc == "asc" %}selected{% endif %}>Ascending</option>
+              <option value="desc" {% if prm.asc_desc == "desc" %}selected{% endif %}>Descending</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="d-grid gap-2">
+          <button form="main-form" type="submit" name="apply" class="btn btn-info">Search</button>
+          <button form="main-form" type="submit" name="clear" class="btn btn-light">Clear</button>
+          <button form="main-form" type="submit" name="json" class="btn btn-light">As JSON</button>
+        </div>
+    </div>
+  </div>
+</div>

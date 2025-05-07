@@ -34,6 +34,9 @@ from viewer.views.complete import (
     GalleryAllAutocomplete,
     TagAutocompleteJson,
     CategoryPkAutocomplete,
+    GalleryCategoryJSONAutocomplete,
+    GalleryProviderJSONAutocomplete,
+    GalleryMatchGroupAutocomplete,
 )
 
 admin.autodiscover()
@@ -57,6 +60,11 @@ urlpatterns += [
         r"^" + settings.MAIN_URL + r"archive-group-select-autocomplete/$",
         ArchiveGroupSelectAutocomplete.as_view(create_field="title"),
         name="archive-group-select-autocomplete",
+    ),
+    re_path(
+        r"^" + settings.MAIN_URL + r"gallery-match-group-autocomplete/$",
+        GalleryMatchGroupAutocomplete.as_view(),
+        name="gallery-match-group-autocomplete",
     ),
     re_path(
         r"^" + settings.MAIN_URL + r"archive-select-simple-autocomplete/$",
@@ -173,6 +181,16 @@ urlpatterns += [
         r"^" + settings.MAIN_URL + r"gallery-reason-autocomplete/$",
         GalleryReasonAutocomplete.as_view(),
         name="gallery-reason-autocomplete",
+    ),
+    re_path(
+        r"^" + settings.MAIN_URL + r"gallery-category-json-autocomplete/$",
+        GalleryCategoryJSONAutocomplete.as_view(),
+        name="gallery-category-json-autocomplete",
+    ),
+    re_path(
+        r"^" + settings.MAIN_URL + r"gallery-provider-json-autocomplete/$",
+        GalleryProviderJSONAutocomplete.as_view(),
+        name="gallery-provider-json-autocomplete",
     ),
     # Other
     re_path(

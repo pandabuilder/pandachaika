@@ -1,0 +1,162 @@
+<div id="search-gallery-form">
+<form action="{{ request.get_full_path }}" method="GET">
+  {% for field in search_form %}
+    <div class="page-line">
+      {{ field.errors }}
+      {{ field }}
+    </div>
+  {% endfor %}
+  <div class="page-line row g-1 align-items-center">
+  {% for field in form_simple %}
+      <div class="col-md-auto">
+      <div class="input-group align-items-center">
+        {{ field.label_tag }}{{ field }}
+      </div>
+      </div>
+  {% endfor %}
+    <div class="col-md-auto">
+      <div class="input-group align-items-center">
+        <label for="sort">Sort</label>
+        <select id="sort" name="sort" class="form-control">
+          <option value="posted" {% if prm.sort == "posted" %} selected{% endif %}>posted date</option>
+          {% if user.is_authenticated %}
+            <option value="create_date" {% if prm.sort == "create_date" %} selected{% endif %}>create date</option>
+            <option value="last_modified" {% if prm.sort == "last_modified" %} selected{% endif %}>last modified</option>
+            <option value="public_date" {% if prm.sort == "public_date" %} selected{% endif %}>public date</option>
+          {% else %}
+            <option value="public_date" {% if prm.sort == "public_date" %} selected{% endif %}>public date</option>
+          {% endif %}
+          <option value="title" {% if prm.sort == "title" %} selected{% endif %}>title</option>
+          <option value="title_jpn" {% if prm.sort == "title_jpn" %} selected{% endif %}>title jpn</option>
+          <option value="rating" {% if prm.sort == "rating" %} selected{% endif %}>rating</option>
+          <option value="filecount" {% if prm.sort == "filecount" %} selected{% endif %}>images</option>
+          <option value="filesize" {% if prm.sort == "filesize" %} selected{% endif %}>size</option>
+          <option value="category" {% if prm.sort == "category" %} selected{% endif %}>category</option>
+        </select>
+      </div>
+  </div>
+  <div class="col-md-auto">
+    <select id="asc_desc" name="asc_desc" class="form-control me-sm-1" title="sort_order" aria-label="sort_order">
+      <option value="asc" {% if request.GET.asc_desc == "asc" %} selected{% endif %}>ascending</option>
+      <option value="desc" {% if request.GET.asc_desc == "desc" %} selected{% endif %}>descending</option>
+    </select>
+  </div>
+  <div class="col-md-auto">
+    <div class="form-check">
+        <input id="checkbox2" class="form-check-input" type="checkbox" name="non_public" value="1" {% if request.GET.non_public == '1' %}checked{% endif %}><label for="checkbox2">Private</label>
+    </div>
+  </div>
+  <div class="col-md-auto">
+    <div class="form-check">
+        <input id="checkbox3" class="form-check-input" type="checkbox" name="public" value="1" {% if request.GET.public == '1' %}checked{% endif %}><label for="checkbox3">Public</label>
+    </div>
+  </div>
+  <div class="col-md-auto">
+    <div class="form-check">
+        <input id="checkbox4" class="form-check-input" type="checkbox" name="groupless" value="1" {% if request.GET.groupless == '1' %}checked{% endif %}><label for="checkbox4">Groupless</label>
+    </div>
+  </div>
+  </div>
+  <div class="page-line g-1 row">
+    <div class="col-md-auto">
+        <button id="toggle-all" class="btn btn-secondary" type="button">Toggle All</button>
+    </div>
+    <div class="col-md-auto">
+        <button type="submit" name="apply" class="btn btn-info">Search</button>
+        <a class="btn btn-light" href="{{ request.path }}?add_multiple=">Clear</a>
+    </div>
+  </div>
+  <input id="add_multiple" name="add_multiple" type="hidden" value="">
+</form>
+<form action="{{ request.get_full_path }}" method="POST">{% csrf_token %}
+{% load viewer_extras %}
+<!-- Next/Prev page links  -->
+{% if search_results.object_list and search_results.paginator.num_pages > 1 %}
+  <div>
+      <span class="step-links">
+          <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
+        {% if search_results.has_previous %}
+          <a href= "?{% url_replace 'page' search_results.previous_page_number %}"> previous &lt;&lt; </a>
+        {% endif %}
+        <span class="current">
+              &nbsp;Page {{ search_results.number }} of {{ search_results.paginator.num_pages }}
+          </span>
+        {% if search_results.has_next %}
+          <a href="?{% url_replace 'page' search_results.next_page_number %}"> &gt;&gt; next</a>
+        {% endif %}
+        <a href="?{% url_replace 'page' search_results.paginator.num_pages %}"> &gt;&gt; last</a>
+      </span>
+  </div>
+{% endif %}
+  <table class="table table-bordered table-sm generic-table">
+    <thead>
+    <tr>
+      <th>Select</th><th>Title</th><th>ID</th><th>Source</th><th>Size</th><th>Images</th><th>Category</th><th>Reason</th><th>Added</th><th>Public</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for gallery in search_results %}
+      <tr>
+        <td class="text-center">
+          <input id="checkbox-{{ gallery.id }}" class="toggle-list form-check-input" type="checkbox" name="sel-{{ gallery.id }}" value="{{ gallery.pk }}"><label for="checkbox-{{ gallery.id }}"></label>
+        </td>
+        <td>
+          {{ gallery.title }}
+        </td>
+        <td>
+          {% if gallery.thumbnail.name %}
+            <a href="{% url 'viewer:gallery' gallery.pk %}" class="img-preview" data-image-url="{{ gallery.thumbnail.url }}" rel="popover">{{ gallery.pk }}</a>
+          {% else %}
+            <a href="{% url 'viewer:gallery' gallery.pk %}">{{ gallery.pk }}</a>
+          {% endif %}
+        </td>
+        <td>
+          {{ gallery.get_link|urlize_all_rel }}
+        </td>
+        <td>
+          {{ gallery.filesize }} ({{ gallery.filesize|filesizeformat }})
+        </td>
+        <td>
+          {{ gallery.filecount }}
+        </td>
+        <td>
+          {{ gallery.category }}
+        </td>
+        <td>
+          {{ gallery.reason }}
+        </td>
+        <td>
+          {{ gallery.create_date|date:"DATETIME_FORMAT" }}
+        </td>
+        <td>
+          {{ gallery.public|yesno }}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+<!-- Next/Prev page links  -->
+  {% if search_results.object_list and search_results.paginator.num_pages > 1 %}
+    <div>
+        <span class="step-links">
+            <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
+          {% if search_results.has_previous %}
+            <a href= "?{% url_replace 'page' search_results.previous_page_number %}"> previous &lt;&lt; </a>
+          {% endif %}
+          <span class="current">
+                &nbsp;Page {{ search_results.number }} of {{ search_results.paginator.num_pages }}
+            </span>
+          {% if search_results.has_next %}
+            <a href="?{% url_replace 'page' search_results.next_page_number %}"> &gt;&gt; next</a>
+          {% endif %}
+          <a href="?{% url_replace 'page' search_results.paginator.num_pages %}"> &gt;&gt; last</a>
+        </span>
+    </div>
+  {% endif %}
+<div class="mb-3">
+  <input size="10" class="form-control" name="reason" value="" placeholder="Reason" maxlength="200"/>
+</div>
+<input id="add_multiple" name="add_multiple" type="hidden" value="">
+<button name="add_to_group" class="btn btn-light">Add Multiple to Group</button>
+</form>
+</div>

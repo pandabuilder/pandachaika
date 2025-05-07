@@ -1,0 +1,128 @@
+{% extends "viewer/base.html" %}
+{% block title %}Gallery match groups | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+{% load static %}
+
+{% block content %}
+  {% load viewer_extras %}
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+  <!-- Gallery match groups  -->
+  {% if perms.viewer.add_gallerymatchgroup %}
+  <button class="btn btn-secondary collapse-icon" id="add-gallery-match-group" data-bs-toggle="collapse" data-bs-target="#add-change-gallery-match-group-form" name="add-gallery-match-group" type="button" aria-label="toggle add wanted">Add Gallery Match Group <i class="fas fa-chevron-down"></i></button>
+  {% include 'viewer/include/gallery_match_group_edit.html' %}
+  {% endif %}
+  <div class="page-header">
+    <h2>Gallery match groups (showing the first six galleries)</h2>
+    <p class="lead">Number of gallery match groups (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
+  </div>
+  <form action="{% url 'viewer:gallery-match-groups' %}" method="GET">
+    {% for field in form %}
+      <div class="page-line">
+        {{ field.errors }}
+        {{ field }}
+      </div>
+    {% endfor %}
+    <div class="page-line row g-1">
+    <div class="col-md-auto">
+      <button type="submit" name="apply" class="btn btn-info">Search</button>
+    </div>
+    <div class="col-md-auto">
+      <a class="btn btn-light" href="{% url 'viewer:gallery-match-groups' %}">Clear</a>
+    </div>
+    </div>
+  </form>
+  <!-- Next/Prev page links  -->
+  {% if results.object_list and results.paginator.num_pages > 1 %}
+    <div>
+        <span class="step-links">
+            <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
+          {% if results.has_previous %}
+            <a href= "?{% url_replace 'page' results.previous_page_number %}"> previous &lt;&lt; </a>
+          {% endif %}
+          <span class="current">
+                &nbsp;Page {{ results.number }} of {{ results.paginator.num_pages }}
+            </span>
+          {% if results.has_next %}
+            <a href="?{% url_replace 'page' results.next_page_number %}"> &gt;&gt; next</a>
+          {% endif %}
+          <a href="?{% url_replace 'page' results.paginator.num_pages %}"> &gt;&gt; last</a>
+        </span>
+    </div>
+  {% endif %}
+  <ul class="list-group">
+    {% for gallery_match_group in results %}
+      <hr class="mt-2 mb-2">
+        <div class="arch-cont">
+        <h4><a href="{% url 'viewer:gallery-match-group' gallery_match_group.pk %}">{{ gallery_match_group.title|default:gallery_match_group.pk }}</a></h4>
+        {% for gallery_match_entry in gallery_match_group.gallerymatchgroup_entries|slice:":6" %}
+          {% include 'viewer/include/gallery_match_group_entry.html' with gallery_match_entry=gallery_match_entry %}
+        {% endfor %}
+        </div>
+    {% endfor %}
+  </ul>
+  <!-- Next/Prev page links  -->
+  {% if results.object_list and results.paginator.num_pages > 1 %}
+    <div>
+        <span class="step-links">
+            {% if results.has_previous %}
+              <a href= "?page={{ results.previous_page_number }}">previous &lt;&lt; </a>
+            {% endif %}
+          <span class="current">
+                &nbsp;Page {{ results.number }} of {{ results.paginator.num_pages }}
+            </span>
+          {% if results.has_next %}
+            <a href="?page={{ results.next_page_number }}"> &gt;&gt; next</a>
+          {% endif %}
+        </span>
+    </div>
+  {% endif %}
+{% endblock %}
+{% block afterJQ %}
+  {% load compress %}
+  {% if perms.viewer.add_gallerymatchgroup %}
+  {{ edit_form.media }}
+  {% endif %}
+  {% compress css %}
+    <link href="{% static 'css/vendor/jal/style.css' %}" type="text/css" media="all" rel="stylesheet" />
+  {% endcompress %}
+    {{ form.media }}
+  {% compress js %}
+    <script>
+    let tagData = {};
+    const tagUrl = '{% url 'viewer:api' %}?gt=';
+    function tagToHtml (tag) {
+        return '<div class="tag">' + tag + '</div>'
+    }
+    document.addEventListener("DOMContentLoaded", function() {
+        document.querySelectorAll('.tag-preview')?.forEach((element) => {
+            element.addEventListener("click", function (event) {
+                let el = event.currentTarget;
+                let pk = event.currentTarget.dataset['bsPk'];
+                if (tagData[pk]) {
+                    return tagData[pk];
+                } else {
+                    fetch(tagUrl + pk).then(function (response) {
+                        return response.json();
+                    }).then(function (body) {
+                        if (body.tags) {
+                            tagData[pk] = body.tags.map(tagToHtml);
+
+                            const popover = new bootstrap.Popover(el, {
+                                content: tagData[pk].join(""),
+                                html: true,
+                            })
+                            popover.show();
+
+                        }
+                    });
+                }
+            });
+        });
+    });
+    </script>
+  {% endcompress %}
+{% endblock %}

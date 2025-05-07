@@ -3707,7 +3707,7 @@ class Archive(models.Model):
                         archive=self,
                         mark_reason="gallery_phash_similarity",
                         defaults={
-                            "mark_comment": "Hamming distance to Gallery (thumbnail to thumbnail) (special-link):({})({}): is high: {}".format(
+                            "mark_comment": "Hamming distance to Gallery (thumbnail to thumbnail) (special-link):({})({}): is greater than 0 (max is 16): {}".format(
                                 self.gallery.pk,
                                 self.gallery.get_absolute_url(),
                                 hamming_value,
@@ -5106,3 +5106,68 @@ class DownloadEvent(models.Model):
         self.failed = True
         self.completed = True
         self.completed_date = django_tz.now()
+
+
+class GalleryMatchGroup(models.Model):
+    title = models.CharField(max_length=500, blank=True, null=False, default="")
+    galleries: models.ManyToManyField = models.ManyToManyField(
+        Gallery, related_name="gallery_group", blank=True, default="",
+        through="GalleryMatchGroupEntry",
+        through_fields=("gallery_match_group", "gallery"),
+    )
+
+    create_date = models.DateTimeField(auto_now_add=True)
+    last_modified = models.DateTimeField(auto_now=True, blank=True, null=True)
+
+    def save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
+        if not self.title and self.pk:
+            first_post_gallery = self.galleries.all().first()
+            if first_post_gallery:
+                self.title = first_post_gallery.best_title
+        super(GalleryMatchGroup, self).save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return self.title
+
+    def get_absolute_url(self) -> str:
+        return reverse("viewer:gallery-match-group", args=[str(self.pk)])
+
+    def delete_text_report(self) -> str:
+        data: dict[str, typing.Any] = {}
+        if self.title:
+            data["title"] = self.title
+        if not data:
+            return ""
+        return json.dumps(data, ensure_ascii=False)
+
+    def process_group(self):
+        first_post_gallery = self.galleries.all().first()
+        if first_post_gallery:
+            other_galleries = self.galleries.exclude(gallerymatchgroupentry__gallery=first_post_gallery)
+            for other_gallery in other_galleries:
+                for archive in other_gallery.archive_set.all():
+                    if archive.gallery != first_post_gallery:
+                        archive.gallery = first_post_gallery
+                        archive.save()
+
+
+class GalleryMatchGroupEntry(models.Model):
+    gallery_match_group = models.ForeignKey(GalleryMatchGroup, on_delete=models.CASCADE)
+    gallery = models.OneToOneField(Gallery, on_delete=models.CASCADE)
+    gallery_position = models.PositiveIntegerField(default=1)
+    create_date = models.DateTimeField(auto_now_add=True)
+    last_modified = models.DateTimeField(auto_now=True, blank=True, null=True)
+
+    class Meta:
+        verbose_name_plural = "Gallery match group entries"
+        constraints = [models.UniqueConstraint(fields=["gallery_match_group", "gallery_position"], name="unique_position_in_group")]
+        ordering = ["gallery_position"]
+
+    def save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
+        super(GalleryMatchGroupEntry, self).save(*args, **kwargs)
+        first_post_gallery = GalleryMatchGroupEntry.objects.filter(gallery_match_group=self.gallery_match_group).first()
+        if first_post_gallery:
+            for archive in self.gallery.archive_set.all():
+                if archive.gallery != first_post_gallery.gallery:
+                    archive.gallery = first_post_gallery.gallery
+                    archive.save()

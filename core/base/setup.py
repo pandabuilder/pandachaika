@@ -317,6 +317,9 @@ class Settings:
         self.auto_hash_images = False
         self.auto_phash_images = False
         self.auto_match_wanted_images = False
+        self.default_wanted_publisher = ''
+        self.default_wanted_categories = ["Doujinshi", "Artist CG"]
+        self.default_wanted_providers = ["panda"]
         self.cloning_image_tool = CloningImageToolSettings()
 
         self.requests_headers: dict[str, Any] = {}
@@ -569,6 +572,12 @@ class Settings:
                 self.auto_phash_images = config["general"]["auto_phash_images"]
             if "auto_match_wanted_images" in config["general"]:
                 self.auto_match_wanted_images = config["general"]["auto_match_wanted_images"]
+            if "default_wanted_publisher" in config["general"]:
+                self.default_wanted_publisher = config["general"]["default_wanted_publisher"]
+            if "default_wanted_categories" in config["general"]:
+                self.default_wanted_categories = config["general"]["default_wanted_categories"]
+            if "default_wanted_providers" in config["general"]:
+                self.default_wanted_providers = config["general"]["default_wanted_providers"]
             if "recheck_wanted_on_update" in config["general"]:
                 self.recheck_wanted_on_update = config["general"]["recheck_wanted_on_update"]
             if "force_log_level" in config["general"]:

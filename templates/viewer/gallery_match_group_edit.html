@@ -1,0 +1,134 @@
+{% extends "viewer/base.html" %}
+{% block title %}{{ gallery_match_group.title|default:gallery_match_group.pk }} | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+
+{% load static %}
+
+{% block content %}
+  {% load viewer_extras %}
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+  <!-- GalleryMatchGroup  -->
+  <div class="container">
+    <div class="row">
+    <div class="col-md-7 col-sm-12">
+        <h3>{{ gallery_match_group.title|default:gallery_match_group.pk }}</h3>
+    </div>
+      <div class="col-md-5 col-sm-12">
+        <button class="btn btn-secondary float-end collapse-icon" id="edit-gallery-match-group" data-bs-toggle="collapse" data-bs-target="#add-change-gallery-match-group-form" name="edit-gallery-match-group" type="button" aria-label="toggle edit gallery match group">Edit <i class="fas fa-chevron-down"></i></button>
+        <a class="btn {% if 'add_multiple' in request.GET %}btn-info{% else %}btn-secondary{% endif %} float-end" href="?{% url_toggle 'add_multiple' %}" role="button">Add Multiple Galleries</a>
+        <a class="btn btn-secondary float-end" href="{% url 'viewer:gallery-match-group' gallery_match_group.pk %}" role="button">View</a>
+      </div>
+    </div>
+  </div>
+  <div class="page-line">
+    {% include 'viewer/include/gallery_match_group_edit.html' %}
+    {% if 'add_multiple' in request.GET %}
+    {% include 'viewer/include/search_gallery_form.html' %}
+    {% endif %}
+    </div>
+  <div class="arch-cont">
+  <!-- Next/Prev page links  -->
+    {% if results.object_list and results.paginator.num_pages > 1 %}
+      <div>
+          <span class="step-links">
+              <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
+            {% if results.has_previous %}
+              <a href= "?{% url_replace 'page' results.previous_page_number %}"> previous &lt;&lt; </a>
+            {% endif %}
+            <span class="current">
+                  &nbsp;Page {{ results.number }} of {{ results.paginator.num_pages }}, {{ results.paginator.count }} galleries
+              </span>
+            {% if results.has_next %}
+              <a href="?{% url_replace 'page' results.next_page_number %}"> &gt;&gt; next</a>
+            {% endif %}
+            <a href="?{% url_replace 'page' results.paginator.num_pages %}"> &gt;&gt; last</a>
+          </span>
+      </div>
+    {% endif %}
+  {% for gallery_entry in results %}
+    {% with gallery=gallery_entry.gallery %}
+    <div class="gallery">
+      <a class="cover" href="{% url 'viewer:gallery' gallery.pk %}">
+        <div class="cover-title" title="{{ gallery.title }}">{{ gallery.title }}</div>
+        {% with thumbnail_details=gallery.get_available_thumbnail_plus_size %}
+        <img class="image-container mx-auto" alt="" title="{{ gallery.title }}"
+            width="{{ thumbnail_details.2 }}" height="{{ thumbnail_details.1 }}" src="{{ thumbnail_details.0 }}"/>
+        {% endwith %}
+      </a>
+      <div class="caption">
+        {{ gallery.filecount }} | {{ gallery.filesize|filesizeformat }} | <a class="tag-preview" tabindex="0" role="button" data-bs-toggle="popover" data-bs-trigger="focus" data-bs-pk="{{ gallery.pk }}">Tags</a>
+      </div>
+    </div>
+    {% endwith %}
+  {% endfor %}
+  <!-- Next/Prev page links  -->
+    {% if results.object_list and results.paginator.num_pages > 1 %}
+      <div>
+          <span class="step-links">
+              <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
+            {% if results.has_previous %}
+              <a href= "?{% url_replace 'page' results.previous_page_number %}"> previous &lt;&lt; </a>
+            {% endif %}
+            <span class="current">
+                  &nbsp;Page {{ results.number }} of {{ results.paginator.num_pages }}, {{ results.paginator.count }} galleries
+              </span>
+            {% if results.has_next %}
+              <a href="?{% url_replace 'page' results.next_page_number %}"> &gt;&gt; next</a>
+            {% endif %}
+            <a href="?{% url_replace 'page' results.paginator.num_pages %}"> &gt;&gt; last</a>
+          </span>
+      </div>
+    {% endif %}
+  </div>
+
+{% endblock %}
+{% block afterJQ %}
+  {% load compress %}
+  {{ gallery_match_group_entry_formset.media }}
+  {% compress css %}
+    <link href="{% static 'css/vendor/jal/style.css' %}" type="text/css" media="all" rel="stylesheet" />
+  {% endcompress %}
+  {% compress js %}
+    <script src="{% static 'js/vendor/jquery.autocomplete-light.min.js' %}"></script>
+  {% endcompress %}
+  {% compress js %}
+    <script type="text/javascript" src="{% static 'js/list_operations.js' %}"></script>
+    <script>
+    var tagData = {};
+    var tagUrl = '{% url 'viewer:api' %}?gt=';
+    function tagToHtml (tag) {
+        return '<div class="tag">' + tag + '</div>'
+    }
+    document.addEventListener("DOMContentLoaded", function() {
+        document.querySelectorAll('.tag-preview')?.forEach((element) => {
+            element.addEventListener("click", function (event) {
+                let el = event.currentTarget;
+                const pk = event.currentTarget.dataset['bsPk'];
+                if (tagData[pk]) {
+                    return tagData[pk];
+                } else {
+                    fetch(tagUrl + pk).then(function (response) {
+                        return response.json();
+                    }).then(function (body) {
+                        if (body.tags) {
+                            tagData[pk] = body.tags.map(tagToHtml);
+
+                            const popover = new bootstrap.Popover(el, {
+                                content: tagData[pk].join(""),
+                                html: true,
+                            })
+                            popover.show();
+
+                        }
+                    });
+                }
+            });
+        })
+    });
+    </script>
+  {% endcompress %}
+{% endblock %}

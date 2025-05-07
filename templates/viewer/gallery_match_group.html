@@ -1,0 +1,110 @@
+{% extends "viewer/base.html" %}
+{% block title %}{{ gallery_match_group.title|default:gallery_match_group.pk }} | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+
+{% load static %}
+
+{% block content %}
+  {% load viewer_extras %}
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+  <!-- GalleryMatchGroup  -->
+  <div class="container">
+    <div class="row">
+    <div class="col-md-9 col-sm-12">
+        <h3>{{ gallery_match_group.title|default:gallery_match_group.pk }}</h3>
+    </div>
+      {% if perms.viewer.change_gallerymatchgroup %}
+      <div class="col-md-3 col-sm-12">
+        {% if perms.viewer.delete_gallerymatchgroup %}<a class="btn btn-danger float-end open-modal" href="{% url 'viewer:gallery-match-group-tool-reason' gallery_match_group.pk 'delete' %}" data-popup-url="{% url 'viewer:gallery-match-group-tool-reason' gallery_match_group.pk 'delete' %}?inline=1" role="button">Delete</a>{% endif %}
+        {% if perms.viewer.change_gallerymatchgroup %}<a class="btn btn-secondary float-end" href="{% url 'viewer:gallery-match-group-edit' gallery_match_group.pk %}" role="button">Edit</a>{% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  <div class="arch-cont">
+
+  <!-- Next/Prev page links  -->
+    {% if results.object_list and results.paginator.num_pages > 1 %}
+      <div>
+          <span class="step-links">
+              <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
+            {% if results.has_previous %}
+              <a href= "?{% url_replace 'page' results.previous_page_number %}"> previous &lt;&lt; </a>
+            {% endif %}
+            <span class="current">
+                  &nbsp;Page {{ results.number }} of {{ results.paginator.num_pages }}, {{ results.paginator.count }} galleries
+              </span>
+            {% if results.has_next %}
+              <a href="?{% url_replace 'page' results.next_page_number %}"> &gt;&gt; next</a>
+            {% endif %}
+            <a href="?{% url_replace 'page' results.paginator.num_pages %}"> &gt;&gt; last</a>
+          </span>
+      </div>
+    {% endif %}
+  {% for gallery_match_entry in results %}
+    {% include 'viewer/include/gallery_match_group_entry.html' with gallery_match_entry=gallery_match_entry %}
+  {% endfor %}
+  <!-- Next/Prev page links  -->
+    {% if results.object_list and results.paginator.num_pages > 1 %}
+      <div>
+          <span class="step-links">
+              <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
+            {% if results.has_previous %}
+              <a href= "?{% url_replace 'page' results.previous_page_number %}"> previous &lt;&lt; </a>
+            {% endif %}
+            <span class="current">
+                  &nbsp;Page {{ results.number }} of {{ results.paginator.num_pages }}, {{ results.paginator.count }} galleries
+              </span>
+            {% if results.has_next %}
+              <a href="?{% url_replace 'page' results.next_page_number %}"> &gt;&gt; next</a>
+            {% endif %}
+            <a href="?{% url_replace 'page' results.paginator.num_pages %}"> &gt;&gt; last</a>
+          </span>
+      </div>
+    {% endif %}
+  </div>
+
+{% endblock %}
+{% block afterJQ %}
+  {% load compress %}
+  {% compress js %}
+    <script>
+    var tagData = {};
+    var tagUrl = '{% url 'viewer:api' %}?gt=';
+    function tagToHtml (tag) {
+        return '<div class="tag">' + tag + '</div>'
+    }
+    document.addEventListener("DOMContentLoaded", function() {
+        document.querySelectorAll('.tag-preview')?.forEach((element) => {
+            element.addEventListener("click", function (event) {
+                let el = event.currentTarget;
+                const pk = event.currentTarget.dataset['bsPk'];
+                if (tagData[pk]) {
+                    return tagData[pk];
+                } else {
+                    fetch(tagUrl + pk).then(function (response) {
+                        return response.json();
+                    }).then(function (body) {
+                        if (body.tags) {
+                            tagData[pk] = body.tags.map(tagToHtml);
+
+                            const popover = new bootstrap.Popover(el, {
+                                content: tagData[pk].join(""),
+                                html: true,
+                            })
+                            popover.show();
+
+                        }
+                    });
+                }
+            });
+        })
+    });
+    </script>
+  {% endcompress %}
+  {% include "viewer/include/viewer_modal.html" %}
+{% endblock %}

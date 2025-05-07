@@ -12,7 +12,6 @@ services:
       - "8090"
 #    ports:
 #     - "8090:8090"
-    user: ${PUID}:${PGID}
     environment:
      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
      DEBUG: ${DEBUG}

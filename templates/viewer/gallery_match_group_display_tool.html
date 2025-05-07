@@ -1,0 +1,13 @@
+{% extends "viewer/base.html" %}
+{% block title %}{{ gallery_match_group.title|default:gallery_match_group.pk }} | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+
+{% block content %}
+{% load viewer_extras %}
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+    {% include 'viewer/include/modals/gallery_match_group_tool_reason.html' %}
+{% endblock %}

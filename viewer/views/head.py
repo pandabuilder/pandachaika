@@ -59,7 +59,7 @@ from viewer.utils.types import AuthenticatedHttpRequest
 logger = logging.getLogger(__name__)
 crawler_settings = settings.CRAWLER_SETTINGS
 
-gallery_filter_keys = (
+gallery_filter_keys = [
     "title",
     "rating_from",
     "rating_to",
@@ -72,7 +72,9 @@ gallery_filter_keys = (
     "create_from",
     "create_to",
     "category",
+    "categories",
     "provider",
+    "providers",
     "dl_type",
     "expunged",
     "disowned",
@@ -96,9 +98,14 @@ gallery_filter_keys = (
     "used",
     "public",
     "not_public"
-)
+]
 
-archive_filter_keys = (
+gallery_list_filters_keys = [
+    "categories",
+    "providers",
+]
+
+archive_filter_keys = [
     "title",
     "filename",
     "filecount_from",
@@ -122,7 +129,7 @@ archive_filter_keys = (
     "hidden",
     "qsearch",
     "extracted",
-)
+]
 
 archive_order_fields = [
     "title",
@@ -735,9 +742,13 @@ def gallery_list(request: HttpRequest, mode: str = "none", tag: Optional[str] = 
         if mode == "gallery-tag" and tag:
             display_prms["tags"] = "^" + tag
         else:
-            # create dictionary of properties for each archive and a dict of
+            # create a dictionary of properties for each archive and a dict of
             # search/filter parameters
-            for k, v in get.items():
+            for k in get:
+                if k in gallery_list_filters_keys:
+                    v: list[str] | str = get.getlist(k)
+                else:
+                    v = get[k]
                 if k in parameters:
                     parameters[k] = v
                 elif k in display_prms:
@@ -805,7 +816,7 @@ def gallery_list(request: HttpRequest, mode: str = "none", tag: Optional[str] = 
         )
     )
 
-    form = GallerySearchForm(initial={"title": display_prms["title"], "tags": display_prms["tags"]})
+    gallery_search_form = GallerySearchForm(initial={"title": display_prms["title"], "tags": display_prms["tags"]})
 
     view_options = ("list", "extended")
 
@@ -813,7 +824,7 @@ def gallery_list(request: HttpRequest, mode: str = "none", tag: Optional[str] = 
         "results": results_page,
         "prm": parameters,
         "display_prms": display_prms,
-        "form": form,
+        "gallery_search_form": gallery_search_form,
         "extra_options": view_options,
     }
 
@@ -878,6 +889,8 @@ def filter_galleries(
         results = results.filter(filesize__lte=float(request_filters["filesize_to"]))
     if request_filters["category"]:
         results = results.filter(category__icontains=request_filters["category"])
+    if request_filters["categories"]:
+        results = results.filter(category__in=request_filters["categories"])
     if request_filters["expunged"]:
         results = results.filter(expunged=bool(request_filters["expunged"]))
     if request_filters["disowned"]:
@@ -888,6 +901,8 @@ def filter_galleries(
         results = results.filter(uploader=request_filters["uploader"])
     if request_filters["provider"]:
         results = results.filter(provider=request_filters["provider"])
+    if request_filters["providers"]:
+        results = results.filter(provider__in=request_filters["providers"])
 
     if request_filters["contained"]:
         results = results.filter(Q(gallery_container__isnull=False) | Q(magazine__isnull=False))
@@ -1986,7 +2001,7 @@ def filter_archives_simple(params: dict[str, Any], authenticated=False, show_bin
     return results
 
 
-def filter_galleries_simple(params: dict[str, str]) -> QuerySet[Gallery]:
+def filter_galleries_simple(params: dict[str, Any]) -> QuerySet[Gallery]:
     """Filter results through parameters
     and return results list.
     Note: It does not check for auth. Only call it from views that already check for Auth.
@@ -2017,6 +2032,8 @@ def filter_galleries_simple(params: dict[str, str]) -> QuerySet[Gallery]:
         results = results.filter(filesize__lte=float(params["filesize_to"]))
     if params["category"]:
         results = results.filter(category__icontains=params["category"])
+    if params["categories"]:
+        results = results.filter(category__in=params["categories"])
     if params["expunged"]:
         results = results.filter(expunged=bool(params["expunged"]))
     if params["disowned"]:
@@ -2033,12 +2050,14 @@ def filter_galleries_simple(params: dict[str, str]) -> QuerySet[Gallery]:
         results = results.filter(reason__contains=params["reason"])
     if params["provider"]:
         results = results.filter(provider=params["provider"])
+    if params["providers"]:
+        results = results.filter(provider__in=params["providers"])
     if params["not_used"]:
         results = results.filter(Q(archive__isnull=True))
     if params["reason"]:
         results = results.filter(reason__contains=params["reason"])
 
-    if params["tags"]:
+    if "tags" in params["tags"]:
         tags = params["tags"].split(",")
         for tag in tags:
             tag = tag.strip().replace(" ", "_")

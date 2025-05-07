@@ -429,7 +429,7 @@
               <h5 class="card-title">{{ archive_manage_instance.mark_reason }}</h5>
               <p class="card-text">{{ archive_manage_instance.mark_comment|urlize_all_rel|convert_special_urls|linebreaks }}</p>
               <p class="card-text">{{ archive_manage_instance.mark_extra }}</p>
-              {% if archive_manage_instance.mark_user == user or user.is_staff %}<a href="{% url 'viewer:archive-manage-delete' archive_manage_instance.pk %}" class="btn btn-primary">Delete mark</a>{% endif %}
+              {% if archive_manage_instance.mark_user == user or perms.viewer.delete_archivemanageentry %}<a href="{% url 'viewer:archive-manage-delete' archive_manage_instance.pk %}" class="btn btn-primary">Delete mark</a>{% endif %}
             </div>
           </div>
         </div>

@@ -11,7 +11,8 @@ from django.utils.html import format_html
 from django.conf import settings
 from django.views.generic import ListView
 
-from viewer.models import Archive, Tag, Gallery, WantedGallery, ArchiveGroup, Provider, ArchiveManageEntry, Category
+from viewer.models import Archive, Tag, Gallery, WantedGallery, ArchiveGroup, Provider, ArchiveManageEntry, Category, \
+    GalleryMatchGroup
 
 if typing.TYPE_CHECKING:
     from django_stubs_ext import ValuesQuerySet
@@ -202,6 +203,40 @@ class ArchiveGroupAutocomplete(ListView):
         return qs[0 : self.limit_choices]
 
 
+class GalleryMatchGroupAutocomplete(ListView):
+    model = GalleryMatchGroup
+
+    choice_html_format = """
+        <a class="block choice" data-value="%s" href="%s">%s</a>
+    """
+    empty_html_format = '<span class="block"><em>%s</em></span>'
+    autocomplete_html_format = "%s"
+    limit_choices = 10
+
+    def choice_html(self, choice: GalleryMatchGroup) -> str:
+        return self.choice_html_format % (choice.title, choice.get_absolute_url(), choice.title)
+
+    def render_to_response(self, context: dict[str, Any], **response_kwargs: Any) -> HttpResponse:
+
+        html = "".join([self.choice_html(c) for c in self.choices_for_request()])
+
+        if not html:
+            html = self.empty_html_format % "No matches found"
+
+        return HttpResponse(self.autocomplete_html_format % html)
+
+    def choices_for_request(self) -> Iterable[GalleryMatchGroup]:
+        if not self.request.user.is_authenticated:
+            return []
+        qs = GalleryMatchGroup.objects.all()
+
+        q = self.request.GET.get("q", "")
+        q_formatted = "%" + q.replace(" ", "%") + "%"
+        qs = qs.filter(Q(title__ss=q_formatted))
+
+        return qs[0 : self.limit_choices]
+
+
 class ArchiveManageEntryFieldAutocomplete(ListView):
     model = ArchiveManageEntry
 
@@ -338,6 +373,32 @@ class GalleryFieldAutocomplete(ListView):
 
     def choices_for_request(self) -> "ValuesQuerySet[Gallery, Optional[str]]":
         raise NotImplementedError
+
+
+class GalleryFieldJSONAutocompleteMixin:
+
+    limit_choices = 10
+
+    def get_results(self, context):
+        """Return data for the 'results' key of the response."""
+        return [
+            {
+                'id': self.get_result_value(result),
+                'text': self.get_result_label(result),
+                'selected_text': self.get_result_label(result),
+            } for result in self.choices_for_request()
+        ]
+
+    def render_to_response(self, context: dict[str, Any], **response_kwargs: Any) -> HttpResponse:
+        """Return a JSON response in Select2 format."""
+
+        return http.JsonResponse(
+            {
+                'results': self.get_results(context),
+                'pagination': {
+                    'more': False
+                }
+            })
 
 
 class SourceAutocomplete(ArchiveFieldAutocomplete):
@@ -556,6 +617,13 @@ class GalleryReasonAutocomplete(GalleryFieldAutocomplete):
 
         return reasons[0 : self.limit_choices]
 
+
+class GalleryCategoryJSONAutocomplete(GalleryFieldJSONAutocompleteMixin, GalleryCategoryAutocomplete):
+    pass
+
+
+class GalleryProviderJSONAutocomplete(GalleryFieldJSONAutocompleteMixin, GalleryProviderAutocomplete):
+    pass
 
 class TagAutocomplete(ListView):
 

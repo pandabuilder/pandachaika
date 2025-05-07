@@ -409,7 +409,7 @@ class WebCrawler(object):
         if args.force_failed:
             current_settings.retry_failed = True
 
-        # This parser get imported directly since it's for JSON data, not for crawling URLs yet.
+        # This parser gets imported directly since it's for JSON data, not for crawling URLs yet.
         if args.json_source:
             self.crawl_json_source(args, current_settings, wanted_filters)
 

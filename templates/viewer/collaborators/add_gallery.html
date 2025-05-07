@@ -10,11 +10,47 @@
       <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
     {% endfor %}
   {% endif %}
+  
   <div class="page-header">
-  <h2>Add new Gallery</h2>
-  <p class="lead">Add a new Gallery (Metadata). It will be added as a private Gallery</p>
-  <p class="lead">If no thumbnail is provided, it will be fetched by the server</p>
+    <h2>Add new Gallery</h2>
+    <p class="lead">Add a new Gallery (Metadata). It will be added as a private Gallery. Differs from "Add URLs" since all data is entered manually</p>
+    <p class="lead">If no thumbnail is provided, it will be fetched by the server</p>
   </div>
+  
+  <!-- JSON Upload and Field Mapping Section -->
+  <div class="card mb-4 page-line">
+    <div class="card-header">
+      <h4>Import from JSON</h4>
+    </div>
+    <div class="card-body">
+      <form id="json-upload-form" class="mb-3">
+        <div class="mb-3">
+          <label for="json-file" class="form-label">Upload JSON File</label>
+          <input type="file" class="form-control" id="json-file" accept=".json">
+        </div>
+        <button type="button" id="process-json" class="btn btn-primary">Process JSON</button>
+      </form>
+      
+      <div id="json-preview" class="mb-3" style="display: none;">
+        <h5>JSON Preview</h5>
+        <pre id="json-content" class="bg-light p-3 rounded" style="max-height: 200px; overflow-y: auto;"></pre>
+      </div>
+      
+      <div id="field-mapping" style="display: none;">
+        <h5>Field Mapping</h5>
+        <p class="text-muted">JSON fields are automatically mapped to form fields when names match. You can modify these mappings or add new ones.</p>
+        
+        <div id="mapping-container">
+          <!-- Mapping rows will be added here -->
+        </div>
+        
+        <button type="button" id="add-mapping" class="btn btn-outline-primary mt-3">Add Another Mapping</button>
+        <button type="button" id="apply-mapping" class="btn btn-success mt-3 ms-2">Apply Mapping</button>
+        <button type="button" id="clear-fields" class="btn btn-danger mt-3 ms-2">Clear All Fields</button>
+      </div>
+    </div>
+  </div>
+  
   {% if perms.viewer.add_gallery %}
   {% include 'viewer/include/gallery_add.html' %}
   {% endif %}
@@ -22,4 +58,400 @@
 {% endblock %}
 {% block afterJQ %}
   {{ edit_form.media }}
+  {% load compress %}
+  {% compress css %}
+    <link href="{% static 'css/vendor/jal/style.css' %}" type="text/css" media="all" rel="stylesheet" />
+  {% endcompress %}
+  {% compress js %}
+    <script src="{% static 'js/vendor/jquery.autocomplete-light.min.js' %}"></script>
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        // Available form field IDs
+        const availableFields = [
+          { id: 'id_gid', label: 'Gallery ID' },
+          { id: 'id_provider', label: 'Provider' },
+          { id: 'id_token', label: 'Token' },
+          { id: 'id_title', label: 'Title' },
+          { id: 'id_title_jpn', label: 'Japanese Title' },
+          { id: 'id_tags', label: 'Tags' },
+          { id: 'id_category', label: 'Category' },
+          { id: 'id_uploader', label: 'Uploader' },
+          { id: 'id_comment', label: 'Comment' },
+          { id: 'id_posted', label: 'Posted Date' },
+          { id: 'id_filecount', label: 'File Count' },
+          { id: 'id_filesize', label: 'File Size' },
+          { id: 'id_expunged', label: 'Expunged' },
+          { id: 'id_disowned', label: 'Disowned' },
+          { id: 'id_hidden', label: 'Hidden' },
+          { id: 'id_fjord', label: 'Fjord' },
+          { id: 'id_reason', label: 'Reason' },
+          { id: 'id_thumbnail_url', label: 'Thumbnail URL' },
+          { id: 'id_url', label: 'URL' }
+        ];
+        
+        let jsonData = null;
+        let jsonFields = [];
+        let mappingCount = 0;
+        
+        // Process JSON button click handler
+        document.getElementById('process-json').addEventListener('click', function() {
+          const fileInput = document.getElementById('json-file');
+          const file = fileInput.files[0];
+          
+          if (!file) {
+            alert('Please select a JSON file first.');
+            return;
+          }
+          
+          const reader = new FileReader();
+          reader.onload = function(e) {
+            try {
+              jsonData = JSON.parse(e.target.result);
+              displayJsonPreview(jsonData);
+              extractJsonFields(jsonData);
+              document.getElementById('field-mapping').style.display = 'block';
+              
+              // Clear existing mappings
+              document.getElementById('mapping-container').innerHTML = '';
+              
+              // Create default mappings for each JSON field
+              createDefaultMappings();
+            } catch (error) {
+              alert('Error parsing JSON: ' + error.message);
+            }
+          };
+          reader.readAsText(file);
+        });
+        
+        // Display JSON preview
+        function displayJsonPreview(data) {
+          const jsonPreview = document.getElementById('json-preview');
+          const jsonContent = document.getElementById('json-content');
+          jsonContent.textContent = JSON.stringify(data, null, 2);
+          jsonPreview.style.display = 'block';
+        }
+        
+        // Extract fields from JSON
+        function extractJsonFields(data) {
+          jsonFields = [];
+          
+          // Handle different JSON structures
+          if (Array.isArray(data)) {
+            // If it's an array, use the first item
+            if (data.length > 0) {
+              extractFieldsFromObject(data[0]);
+            }
+          } else if (typeof data === 'object') {
+            extractFieldsFromObject(data);
+          }
+          
+          // Sort fields alphabetically
+          jsonFields.sort();
+        }
+        
+        // Extract fields from an object
+        function extractFieldsFromObject(obj) {
+          for (const key in obj) {
+            if (obj.hasOwnProperty(key)) {
+              jsonFields.push(key);
+            }
+          }
+        }
+        
+        // Create default mappings for each JSON field
+        function createDefaultMappings() {
+          jsonFields.forEach(jsonField => {
+            // Find matching form field (case-insensitive)
+            const matchingField = availableFields.find(field => {
+              // Remove 'id_' prefix and compare
+              const fieldName = field.id.replace('id_', '').toLowerCase();
+              return fieldName === jsonField.toLowerCase();
+            });
+            
+            // Create mapping row with default selection
+            addMappingRow(jsonField, matchingField ? matchingField.id : '');
+          });
+        }
+        
+        // Add mapping row button click handler
+        document.getElementById('add-mapping').addEventListener('click', function() {
+          addMappingRow();
+        });
+        
+        // Add a new mapping row
+        function addMappingRow(defaultJsonField = '', defaultTargetField = '') {
+          const mappingContainer = document.getElementById('mapping-container');
+          const rowId = `mapping-row-${mappingCount++}`;
+          
+          const row = document.createElement('div');
+          row.className = 'row mb-2 mapping-row';
+          row.id = rowId;
+          
+          // JSON field select
+          const jsonFieldCol = document.createElement('div');
+          jsonFieldCol.className = 'col-md-5';
+          
+          const jsonFieldLabel = document.createElement('label');
+          jsonFieldLabel.className = 'form-label';
+          jsonFieldLabel.htmlFor = `json-field-${rowId}`;
+          jsonFieldLabel.textContent = 'JSON Field';
+          
+          const jsonFieldSelect = document.createElement('select');
+          jsonFieldSelect.className = 'form-select json-field-select';
+          jsonFieldSelect.id = `json-field-${rowId}`;
+          
+          // Add empty option
+          const emptyOption = document.createElement('option');
+          emptyOption.value = '';
+          emptyOption.textContent = '-- Select JSON Field --';
+          jsonFieldSelect.appendChild(emptyOption);
+          
+          // Add JSON fields as options
+          jsonFields.forEach(jsonField => {
+            const option = document.createElement('option');
+            option.value = jsonField;
+            option.textContent = jsonField;
+            
+            // Set default selection if provided
+            if (jsonField === defaultJsonField) {
+              option.selected = true;
+            }
+            
+            jsonFieldSelect.appendChild(option);
+          });
+          
+          jsonFieldCol.appendChild(jsonFieldLabel);
+          jsonFieldCol.appendChild(jsonFieldSelect);
+          
+          // Target field select
+          const targetFieldCol = document.createElement('div');
+          targetFieldCol.className = 'col-md-5';
+          
+          const targetFieldLabel = document.createElement('label');
+          targetFieldLabel.className = 'form-label';
+          targetFieldLabel.htmlFor = `target-field-${rowId}`;
+          targetFieldLabel.textContent = 'Target Form Field';
+          
+          const targetFieldSelect = document.createElement('select');
+          targetFieldSelect.className = 'form-select target-field-select';
+          targetFieldSelect.id = `target-field-${rowId}`;
+          
+          // Add empty option
+          const targetEmptyOption = document.createElement('option');
+          targetEmptyOption.value = '';
+          targetEmptyOption.textContent = '-- Ignore this field --';
+          targetFieldSelect.appendChild(targetEmptyOption);
+          
+          // Add special option for tag conversion
+          const convertToTagOption = document.createElement('option');
+          convertToTagOption.value = 'convert_to_tag';
+          convertToTagOption.textContent = 'Convert to Tag';
+          targetFieldSelect.appendChild(convertToTagOption);
+          
+          // Add form fields as options
+          availableFields.forEach(field => {
+            const option = document.createElement('option');
+            option.value = field.id;
+            option.textContent = field.label;
+            
+            // Set default selection if provided
+            if (field.id === defaultTargetField) {
+              option.selected = true;
+            }
+            
+            targetFieldSelect.appendChild(option);
+          });
+          
+          targetFieldCol.appendChild(targetFieldLabel);
+          targetFieldCol.appendChild(targetFieldSelect);
+          
+          // Remove button
+          const removeCol = document.createElement('div');
+          removeCol.className = 'col-md-2 d-flex align-items-end';
+          
+          const removeButton = document.createElement('button');
+          removeButton.type = 'button';
+          removeButton.className = 'btn btn-outline-danger remove-mapping';
+          removeButton.innerHTML = '<i class="bi bi-trash"></i> Remove';
+          removeButton.addEventListener('click', function() {
+            row.remove();
+          });
+          
+          removeCol.appendChild(removeButton);
+          
+          // Add all columns to the row
+          row.appendChild(jsonFieldCol);
+          row.appendChild(targetFieldCol);
+          row.appendChild(removeCol);
+          
+          // Add row to container
+          mappingContainer.appendChild(row);
+        }
+        
+        // Apply mapping button click handler
+        document.getElementById('apply-mapping').addEventListener('click', function() {
+          const mappings = {};
+          
+          // Collect all mappings
+          document.querySelectorAll('.mapping-row').forEach(row => {
+            const jsonField = row.querySelector('.json-field-select').value;
+            const targetField = row.querySelector('.target-field-select').value;
+            
+            if (jsonField && targetField) {
+              if (!mappings[targetField]) {
+                mappings[targetField] = [];
+              }
+              mappings[targetField].push(jsonField);
+            }
+          });
+          
+          // Apply mappings to form
+          applyMappingsToForm(mappings);
+        });
+        
+        // Clear all fields button click handler
+        document.getElementById('clear-fields').addEventListener('click', function() {
+          if (confirm('Are you sure you want to clear all form fields? This action cannot be undone.')) {
+            clearAllFormFields();
+          }
+        });
+        
+        // Clear all form fields
+        function clearAllFormFields() {
+          // Clear all input fields
+          availableFields.forEach(field => {
+            const formField = document.getElementById(field.id);
+            if (!formField) return;
+            
+            // Handle different field types
+            if (formField.type === 'checkbox') {
+              formField.checked = false;
+            } else {
+              formField.value = '';
+            }
+            
+            // Trigger change event to update any dependent fields
+            const event = new Event('change', { bubbles: true });
+            formField.dispatchEvent(event);
+          });
+        }
+        
+        // Apply mappings to form
+        function applyMappingsToForm(mappings) {
+          for (const [formFieldId, jsonFields] of Object.entries(mappings)) {
+            // Special handling for "convert_to_tag" option
+            if (formFieldId === 'convert_to_tag') {
+              // Get the tags input field
+              const tagsField = document.getElementById('id_tags');
+              if (!tagsField) continue;
+              
+              // Get current tags value
+              let currentTags = tagsField.value.trim();
+              
+              // Process each JSON field
+              jsonFields.forEach(jsonField => {
+                let value = '';
+                if (Array.isArray(jsonData)) {
+                  value = jsonData[0][jsonField];
+                } else {
+                  value = jsonData[jsonField];
+                }
+                
+                // Handle arrays by joining with commas
+                if (Array.isArray(value)) {
+                  value = value.join(', ');
+                }
+                
+                // Skip empty values
+                if (!value) return;
+                
+                // Process the value: lowercase and replace spaces with underscores
+                const processedValue = value.toLowerCase().replace(/\s+/g, '_');
+                
+                // Process the field name: lowercase and replace spaces with underscores
+                const processedField = jsonField.toLowerCase().replace(/\s+/g, '_');
+                
+                // Create the tag in format "field:value"
+                const newTag = `${processedField}:${processedValue}`;
+                
+                // Add to current tags if not empty
+                if (currentTags) {
+                  currentTags += ', ' + newTag;
+                } else {
+                  currentTags = newTag;
+                }
+              });
+              
+              // Update the tags field
+              tagsField.value = currentTags;
+              
+              // Trigger change event
+              const event = new Event('change', { bubbles: true });
+              tagsField.dispatchEvent(event);
+              
+              continue;
+            }
+            
+            const formField = document.getElementById(formFieldId);
+            if (!formField) continue;
+            
+            // Get values from JSON for all mapped fields
+            const values = jsonFields.map(jsonField => {
+              let value = '';
+              if (Array.isArray(jsonData)) {
+                value = jsonData[0][jsonField];
+              } else {
+                value = jsonData[jsonField];
+              }
+              
+              // Handle arrays by joining with commas
+              if (Array.isArray(value)) {
+                return value.join(', ');
+              }
+              
+              return value;
+            });
+            
+            // Join multiple values with commas
+            let finalValue = values.join(', ');
+            
+            // Special handling for tags field
+            if (formFieldId === 'id_tags') {
+              // Get current tags value
+              let currentTags = formField.value.trim();
+              
+              // Split by commas and process each tag
+              const tags = finalValue.split(',').map(tag => tag.trim()).filter(tag => tag);
+              
+              // Process each tag: lowercase and replace spaces with underscores
+              const processedTags = tags.map(tag => {
+                return tag.toLowerCase().replace(/\s+/g, '_');
+              });
+              
+              // Join processed tags with commas
+              const newTags = processedTags.join(', ');
+              
+              // Append to current tags if not empty
+              if (currentTags) {
+                finalValue = currentTags + ', ' + newTags;
+              } else {
+                finalValue = newTags;
+              }
+            }
+            
+            // Handle different field types
+            if (formField.type === 'checkbox') {
+              formField.checked = Boolean(finalValue);
+            } else {
+              formField.value = finalValue;
+            }
+            
+            // Trigger change event to update any dependent fields
+            const event = new Event('change', { bubbles: true });
+            formField.dispatchEvent(event);
+          }
+        }
+      });
+    </script>
+  {% endcompress %}
 {% endblock %}

@@ -569,7 +569,7 @@ class BaseParser:
                         self.gallery_callback(downloader[0].gallery_db_entry, gallery.link, "success")
 
                     # Process possible nested galleries (contained, magazine)
-                    # To avoid downloading extra Archives, it will only be possible to autoadd Gallery only downloads
+                    # To avoid downloading extra Archives, it will only be possible to auto add Gallery only downloads
                     # Second, to avoid keeping check of already processed galleries, considering they could be
                     # downloaded from different queues, it will only work with 1 level deep, so that no infinite
                     # nesting happens

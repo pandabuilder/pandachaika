@@ -11,8 +11,19 @@ from django.shortcuts import render
 from django.conf import settings
 
 from core.base.utilities import thread_exists, clamp
-from viewer.forms import GallerySearchForm, ArchiveSearchForm, WantedGallerySearchForm
-from viewer.models import Archive, Gallery, ArchiveMatches, Tag, WantedGallery, GalleryMatch, FoundGallery, ArchiveTag
+from viewer.forms import GallerySearchForm, ArchiveSearchForm, WantedGallerySearchForm, GallerySearchFields
+from viewer.models import (
+    Archive,
+    Gallery,
+    ArchiveMatches,
+    Tag,
+    WantedGallery,
+    GalleryMatch,
+    FoundGallery,
+    ArchiveTag,
+    GalleryMatchGroup,
+    GalleryMatchGroupEntry,
+)
 from viewer.utils.actions import event_log
 from viewer.utils.general import clean_up_referer
 from viewer.utils.matching import (
@@ -28,6 +39,7 @@ from viewer.views.head import (
     filter_archives_simple,
     wanted_gallery_filter_keys,
     filter_wanted_galleries_simple,
+    gallery_list_filters_keys,
 )
 
 crawler_settings = settings.CRAWLER_SETTINGS
@@ -108,23 +120,27 @@ def repeated_galleries_by_field(request: HttpRequest) -> HttpResponse:
     title = get.get("title", "")
     tags = get.get("tags", "")
 
+    providers =  get.getlist("providers")
+    categories =  get.getlist("categories")
+
     if "clear" in get:
         form = GallerySearchForm()
+        fields_form = GallerySearchFields()
     else:
         form = GallerySearchForm(initial={"title": title, "tags": tags})
+        fields_form = GallerySearchFields(initial={"providers": providers, "categories": categories})
 
     if p:
-        pks = []
-        for k, v in p.items():
-            if k.startswith("del-"):
-                # k, pk = k.split('-')
-                # results[pk][k] = v
-                pks.append(v)
-        results_gallery = Gallery.objects.filter(id__in=pks).order_by("-create_date")
-
+        user_reason = p.get("reason", "")
         if "delete_galleries" in p:
-
-            user_reason = p.get("reason", "")
+            pks = []
+            for k in p:
+                if k.startswith("sel-"):
+                    # k, pk = k.split('-')
+                    # results[pk][k] = v
+                    v_keys = [int(x) for x in p.getlist(k)]
+                    pks.extend(v_keys)
+            results_gallery = Gallery.objects.filter(id__in=pks).order_by("-create_date")
 
             for gallery in results_gallery:
                 message = "Removing gallery: {}, link: {}".format(gallery.title, gallery.get_link())
@@ -135,14 +151,55 @@ def repeated_galleries_by_field(request: HttpRequest) -> HttpResponse:
                 event_log(
                     request.user, "MARK_DELETE_GALLERY", reason=user_reason, content_object=gallery, result="deleted"
                 )
+        elif "create_gallery_match_groups" in p:
+            groups = []
+            pks = []
+            order_by_pk = {}
+            for k in p:
+                if k.startswith("sel-"):
+                    # k, pk = k.split('-')
+                    # results[pk][k] = v
+                    v_keys = [int(x) for x in p.getlist(k)]
+                    groups.append(v_keys)
+                    pks.extend(v_keys)
+                elif k.startswith("ord-"):
+                    k_value = p.get(k)
+                    if k_value is not None:
+                        order_by_pk[int(k.replace("ord-", ""))] = int(k_value)
 
-    params = {
+            results_gallery = Gallery.objects.filter(id__in=pks)
+            gallery_mappings = {x.pk: x for x in results_gallery}
+
+            gallery_groups = [sorted([gallery_mappings[y] for y in x], key=lambda x: order_by_pk[x.pk]) for x in groups]
+
+            for gallery_group in gallery_groups:
+                GalleryMatchGroup.objects.filter(galleries__in=gallery_group).delete()
+                gallery_match_group = GalleryMatchGroup()
+                gallery_match_group.save()
+                for count, gallery in enumerate(gallery_group, start=1):
+                    gallery_match_group_entry, _ = GalleryMatchGroupEntry.objects.update_or_create(
+                        gallery=gallery,
+                        defaults={"gallery_match_group": gallery_match_group, "gallery_position": count}
+                    )
+                message = "Created gallery match group: {}, galleries: {}".format(gallery_match_group.pk, [x.get_absolute_url() for x in gallery_match_group.galleries.all()])
+                logger.info(message)
+                messages.success(request, message)
+                event_log(
+                    request.user, "CREATE_GALLERY_MATCH_GROUP", reason=user_reason, content_object=gallery_match_group, result="created"
+                )
+
+
+    params: dict[str, list[str] | str] = {
         "sort": "create_date",
         "asc_desc": "desc",
     }
 
-    for k, v in get.items():
-        if isinstance(v, str):
+    for k in get:
+        if k in gallery_list_filters_keys:
+            v: list[str] | str = get.getlist(k)
+        else:
+            v = get[k]
+        if isinstance(v, str) or isinstance(v, list):
             params[k] = v
 
     for k in gallery_filter_keys:
@@ -180,9 +237,10 @@ def repeated_galleries_by_field(request: HttpRequest) -> HttpResponse:
             if len(objects) > 1:
                 by_filesize[k_filesize] = objects
 
-    providers = Gallery.objects.all().values_list("provider", flat=True).distinct()
-
-    d = {"by_title": by_title, "by_filesize": by_filesize, "form": form, "providers": providers}
+    d = {
+        "by_title": by_title, "by_filesize": by_filesize, "form": form,
+        "fields_form": fields_form
+    }
 
     return render(request, "viewer/galleries_repeated_by_fields.html", d)
 

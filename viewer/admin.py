@@ -3,7 +3,9 @@ from typing import Optional
 from django.db.models import F, QuerySet, Count
 from django.forms import ModelForm, BaseFormSet
 from django.http import HttpRequest
+from django.urls import reverse
 from django.utils.dateparse import parse_duration
+from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 from django.conf import settings
 from simple_history.admin import SimpleHistoryAdmin
@@ -43,6 +45,8 @@ from viewer.models import (
     WantedImage,
     DownloadEvent,
     Category,
+    GalleryMatchGroupEntry,
+    GalleryMatchGroup,
 )
 from django.contrib import admin
 from django.contrib.admin.helpers import ActionForm
@@ -159,7 +163,7 @@ class ArchiveGroupEntryInline(admin.TabularInline):
 
 
 class ArchiveGroupAdmin(admin.ModelAdmin):
-    search_fields = ["title", "archive_group__title"]
+    search_fields = ["title", "archives__title"]
     list_display = ["id", "title", "position", "public", "create_date"]
     list_filter = ["public"]
 
@@ -717,7 +721,7 @@ class ItemPropertiesAdmin(admin.ModelAdmin):
 
     list_filter = ["name", "tag", "content_type"]
     list_display = ["name", "tag", "value", "content_type", "object_id"]
-    search_fields = ["name", "tag", "value"]
+    search_fields = ["name", "tag", "value", "object_id"]
 
 
 class GallerySubmitEntryAdmin(admin.ModelAdmin):
@@ -844,9 +848,65 @@ class DownloadEventAdmin(admin.ModelAdmin):
     mark_as_failed_completed.short_description = "Mark as failed, completed"  # type: ignore
 
 
+class GalleryMatchGroupEntryInline(admin.TabularInline):
+    model = GalleryMatchGroupEntry
+    extra = 2
+    raw_id_fields = (
+        "gallery_match_group",
+        "gallery",
+    )
+
+
+class GalleryMatchGroupAdmin(admin.ModelAdmin):
+    search_fields = ["title", "galleries__title"]
+    list_display = ["id", "title", "create_date"]
+
+    inlines = (GalleryMatchGroupEntryInline,)
+    actions = ["process_group"]
+
+    def process_group(self, request: HttpRequest, queryset: "QuerySet[GalleryMatchGroup]") -> None:
+        rows_updated = queryset.count()
+        for group in queryset:
+            group.process_group()
+        if rows_updated == 1:
+            message_bit = "1 gallery match group was"
+        else:
+            message_bit = "%s gallery match groups were" % rows_updated
+        self.message_user(request, "%s successfully processed." % message_bit)
+
+    process_group.short_description = "Process selected gallery match groups"  # type: ignore
+
+
+class GalleryMatchGroupEntryAdmin(admin.ModelAdmin):
+    search_fields = ["gallery__title"]
+    raw_id_fields = ("gallery",)
+    list_display = ["id", "gallery_match_group", "gallery_link", "gallery_url", "gallery_position", "create_date"]
+
+    def gallery_url(self, obj):
+        # link = reverse("admin:viewer", args=[obj.customer.id])
+        return format_html(
+            '<a href="{}">{}</a>',
+            obj.gallery.get_link(),
+            obj.gallery.get_link(),
+        )
+
+    gallery_url.short_description = "Gallery URL"  # type: ignore
+
+    def gallery_link(self, obj):
+        link = reverse("admin:viewer_gallery_change", args=[obj.gallery.id])
+        return format_html(
+            '<a href="{}">{}</a>',
+            link,
+            obj.gallery.title,
+        )
+
+    gallery_link.short_description = "Gallery"  # type: ignore
+
 admin.site.register(Archive, ArchiveAdmin)
 admin.site.register(ArchiveGroup, ArchiveGroupAdmin)
 admin.site.register(ArchiveGroupEntry, ArchiveGroupEntryAdmin)
+admin.site.register(GalleryMatchGroup, GalleryMatchGroupAdmin)
+admin.site.register(GalleryMatchGroupEntry, GalleryMatchGroupEntryAdmin)
 admin.site.register(Tag, TagAdmin)
 admin.site.register(Gallery, GalleryAdmin)
 admin.site.register(Image, ImageAdmin)

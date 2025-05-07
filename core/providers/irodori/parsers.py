@@ -50,6 +50,7 @@ class Parser(BaseParser):
     JP_TITLE_REGEX = re.compile(r"Japanese Title:\s+(.+)", re.IGNORECASE)
     DATE_CONVENTION_REGEX = re.compile(r"Date/Convention:\s+(.+)", re.IGNORECASE)
     OTHER_LANGUAGE_REGEX = re.compile(r"\*This work is in (\w+). For the English version", re.IGNORECASE)
+    ID_NUM_REGEX = re.compile(r"product/product/cattags&product_id=(\d+)", re.IGNORECASE)
 
     def process_regular_gallery_page_v2(self, link: str, response_text: str) -> Optional[GalleryData]:
 
@@ -78,12 +79,18 @@ class Parser(BaseParser):
                 if isinstance(img_link_container_1, bs4.element.Tag):
                     img_link_container_2 = img_link_container_1.find("img")
                     if isinstance(img_link_container_2, bs4.element.Tag):
-                        img_link_line = img_link_container_2["srcset"]
-                        if isinstance(img_link_line, str):
-                            img_links = img_link_line.split(" ")
-                            for img in img_links:
-                                if img.startswith("https://"):
-                                    gallery.thumbnail_url = img
+                        img_big_link_line = img_link_container_2["data-largeimg"]
+                        if isinstance(img_big_link_line, str) and img_big_link_line:
+                            gallery.thumbnail_url = img_big_link_line
+                        else:
+                            img_link_line = img_link_container_2["srcset"]
+                            if isinstance(img_link_line, str):
+                                img_entries = img_link_line.split(", ")
+                                for img_entry in img_entries:
+                                    img_links = img_entry.split(" ")
+                                    for img in img_links:
+                                        if img.startswith("https://"):
+                                            gallery.thumbnail_url = img
 
         product_container = soup.find("div", id="product", class_="product-details")
 
@@ -111,30 +118,29 @@ class Parser(BaseParser):
                     if isinstance(text_container, bs4.element.Tag):
                         gallery.title_jpn = text_container.get_text()
 
-        product_id_container = soup.find("input", {"id": "product-id", "name": "product_id"})
+        tags_container = soup.find("meta", {"name": "keywords"})
 
-        if isinstance(product_id_container, bs4.element.Tag):
-            product_id = product_id_container["value"]
-            tag_link = "index.php?route=product/product/cattags&product_id={}".format(product_id)
-            tags_request_dict = construct_request_dict(self.settings, self.own_settings)
+        if isinstance(tags_container, bs4.element.Tag):
+            tags_text = tags_container['content']
+            if isinstance(tags_text, str):
+                tags = tags_text.split(",")
+                for tag in tags:
+                    gallery.tags.append(translate_tag(tag.strip()))
 
-            tag_link = urljoin(constants.main_url, tag_link)
+        all_js = soup.find_all("script", type="application/ld+json")
 
-            response = request_with_retries(
-                tag_link,
-                tags_request_dict,
-                post=False,
-            )
-
-            if response:
-                response.encoding = "utf-8"
-                tags_soup = BeautifulSoup(response.text, "html.parser")
-                tags_container = tags_soup.find("ul", class_="ctagList")
-                if isinstance(tags_container, bs4.element.Tag):
-                    for tag_container in tags_container.find_all("span", {"class": "post-ctag"}):
-                        if isinstance(tag_container, bs4.element.Tag):
-                            tag_text = tag_container.get_text()
-                            gallery.tags.append(translate_tag(tag_text.strip()))
+        for js_block in all_js:
+            try:
+                json_data = json.loads(js_block.text)
+                if "image" in json_data:
+                    gallery.thumbnail_url = json_data.get("image")
+                if "mpn" in json_data:
+                    gallery.title_jpn = json_data.get("mpn")
+                if "aggregateRating" in json_data:
+                    if "ratingValue" in json_data["aggregateRating"]:
+                        gallery.rating = json_data["aggregateRating"]["ratingValue"]
+            except json.JSONDecodeError:
+                continue
 
         return gallery
 

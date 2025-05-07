@@ -81,6 +81,8 @@ class Command(BaseCommand):
 
         categories = []
 
+        artists = [x.replace(" ", "_") for x in artists]
+
         for category in options["categories"]:
             category_obj, _ = Category.objects.get_or_create(name=category)
             categories.append(category_obj)
@@ -88,7 +90,6 @@ class Command(BaseCommand):
         for artist in artists:
             self.stdout.write("Analyzing artist/group: {}".format(artist))
             # Some artists are group in panda, others artist
-            # We expect the tag to already exist, it is not created from here
             artist_tag = None
 
             scope_name = artist.split(":", maxsplit=1)
