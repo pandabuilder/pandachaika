@@ -388,6 +388,12 @@ class Settings:
         if 'DJANGO_SECRET_KEY' in os.environ:
             self.django_secret_key = os.environ.get("DJANGO_SECRET_KEY")
 
+        if 'MEDIA_ROOT' in os.environ:
+            self.MEDIA_ROOT = os.environ.get("MEDIA_ROOT")
+
+        if 'STATIC_ROOT' in os.environ:
+            self.STATIC_ROOT = os.environ.get("STATIC_ROOT")
+
         if 'USING_REVERSE_PROXY' in os.environ:
             self.urls.behind_proxy = bool(os.environ.get("USING_REVERSE_PROXY"))
 

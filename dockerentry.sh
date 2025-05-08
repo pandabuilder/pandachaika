@@ -12,6 +12,8 @@ usermod -o -u "$PUID" $USER
 chown -R $USER:$GROUP /config/
 chown -R $USER:$GROUP /app/
 
+export MEDIA_ROOT=/media/
+export STATIC_ROOT=/static/
 export PANDA_CONFIG_DIR=/config/
 echo "Apply database migrations"
 gosu $USER:$GROUP python manage.py migrate

@@ -178,6 +178,8 @@ match_params:
 locations:
   # Absolute location in the filesystem where the media will be stored. Includes archives, thumbnails, and extracted archives.
   media_root: ''
+  # Absolute location in the filesystem where the static files will be stored.
+  static_root: ''
   # Relative location where archive (HTTP) downloads will be stored. Can be replaced by each provider.
   archive_dl_folder: galleries/archive_dls
   # Relative location where torrent downloads will be stored. Can be replaced by each provider.
