@@ -2681,6 +2681,22 @@ def repeated_galleries_by_field(request: HttpRequest) -> HttpResponse:
                 if len(objects) > 1:
                     by_title[k_title] = objects
 
+    if 'range-per-group-provider' in get:
+        if 'min-group' in get and get['min-group']:
+            min_group = int(get.get('min-group', 0))
+            if min_group < 0:
+                min_group = 0
+        else:
+            min_group = 0
+        if 'max-group' in get and get['max-group']:
+            max_group = float(get.get('max-group', 0))
+            if max_group <= 0:
+                max_group = float('inf')
+        else:
+            max_group = float('inf')
+        by_title = {x[0]: x[1] for x in by_title.items() if all([max_group >= len(list(y[1])) >= min_group for y in groupby(x[1], lambda x: x.provider)])}
+        # by_title = {x[0]: x[1] for x in by_title.items() if max_group >= len(x[1]) >= min_group}
+
     if "by-filesize" in get:
         for k_filesize, v_filesize in groupby(results.order_by("filesize"), lambda x: str(x.filesize or "")):
             objects = list(v_filesize)

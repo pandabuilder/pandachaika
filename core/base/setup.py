@@ -395,7 +395,7 @@ class Settings:
             self.STATIC_ROOT = os.environ.get("STATIC_ROOT")
 
         if 'USING_REVERSE_PROXY' in os.environ:
-            self.urls.behind_proxy = bool(os.environ.get("USING_REVERSE_PROXY"))
+            self.urls.behind_proxy = os.getenv("USING_REVERSE_PROXY", "False").lower() in ('true', '1', 't')
 
         if 'CORS_ALLOWED_ORIGINS' in os.environ:
             cors_allowed_origins = os.getenv("CORS_ALLOWED_ORIGINS", "")

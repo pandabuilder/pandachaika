@@ -53,7 +53,7 @@ docker compose -f docker-compose.local.yml up --build
 
 ### Post execution commands
 ```bash
-docker compose exec -e PANDA_CONFIG_DIR=/config/ pandachaika python manage.py createsuperuser # Creates the super user
+docker compose exec -e PANDA_CONFIG_DIR=/config/ -e DJANGO_SUPERUSER_USERNAME=pandauser -e DJANGO_SUPERUSER_PASSWORD=SECRET_PASSWORD pandachaika python manage.py createsuperuser --email some@email.com --noinput # Creates the super user. Remember to replace user, password and emai with actual secure credentials
 docker compose exec -e PANDA_CONFIG_DIR=/config/ pandachaika python manage.py push-to-index -r -rg # Only needed if running the ElasticSearch integration
 ```
 
@@ -65,14 +65,14 @@ docker build -t pandachaika .
 
 ## Start Container
 
-The following command will start the backend, using the 3 specified folders, from which /config should contain the settings.yaml file. You can create this file copying default.yaml and editing as needed.
+The following command will start the backend, using the three specified folders, from which /config should contain the settings.yaml file. You can create this file copying default.yaml and editing as needed.
 
-This way of running, will only run the backend (no database, no reverse proxy). Only recommended for development.
+This way of running will only run the backend (no database, no reverse proxy). Only recommended for development.
 
 Note: it is mandatory to map a local directory/volume to the container /config path, since this path must contain the settings.yaml file.
 This file configures the entire application (database, paths, etc.).
 
-Should also at least map 2 extra directories to use as the media and static folder.
+Should also at least map two extra directories to use as the media and static folder.
 
 To ensure the folders are writeable, change the user to match the UID+GUID of the host that has write permissions for the config and media folders.
 ```bash
@@ -86,6 +86,6 @@ docker run -it -p 8090:8090 \
 
 ### Post execution commands
 ```bash
-docker exec -d pandachaika python manage.py createsuperuser # Creates the super user
+docker exec -d pandachaika -e DJANGO_SUPERUSER_USERNAME=pandauser -e DJANGO_SUPERUSER_PASSWORD=SECRET_PASSWORD pandachaika python manage.py createsuperuser --email some@email.com --noinput # Creates the super user. Remember to replace user, password and emai with actual secure credentials
 docker exec -d pandachaika python manage.py push-to-index -r -rg # Only needed if running the ElasticSearch integration
 ```

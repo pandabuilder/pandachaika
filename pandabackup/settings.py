@@ -149,6 +149,9 @@ if module_exists("corsheaders"):
         CORS_ALLOWED_ORIGINS = crawler_settings.urls.cors_allowed_origins
         CORS_ALLOW_ALL_ORIGINS = crawler_settings.urls.cors_allow_all_origins
 
+
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 10000
+
 INSTALLED_APPS += ["viewer"]
 
 if module_exists("compressor"):
