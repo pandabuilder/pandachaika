@@ -1,12 +1,12 @@
 # Chose one depending on database backend
 # mysqlclient
-psycopg==3.2.7
+psycopg==3.2.9
 # Main
 python-dateutil==2.9.0.post0
 twitter==1.19.6
 beautifulsoup4==4.13.4
 CherryPy==18.10.0
-Django==5.2
+Django==5.2.1
 django-compressor==4.5.1
 django-db-logger==0.1.13
 django-cors-headers==4.7.0
