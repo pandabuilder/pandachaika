@@ -2057,7 +2057,7 @@ def filter_galleries_simple(params: dict[str, Any]) -> QuerySet[Gallery]:
     if params["reason"]:
         results = results.filter(reason__contains=params["reason"])
 
-    if "tags" in params["tags"]:
+    if "tags" in params:
         tags = params["tags"].split(",")
         for tag in tags:
             tag = tag.strip().replace(" ", "_")
