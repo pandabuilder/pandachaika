@@ -627,7 +627,11 @@ class Parser(BaseParser):
         if self.settings.workers.web_queue and galleries_to_add:
             list_galleries_to_add = [[x] + galleries_to_add[x] for x in galleries_to_add.keys()]
             for gallery_to_add in list_galleries_to_add:
-                self.settings.workers.web_queue.enqueue_args_list(gallery_to_add)
+                self.settings.workers.web_queue.enqueue_args_list(
+                    gallery_to_add,
+                    gallery_callback=self.gallery_callback,
+                    archive_callback=self.archive_callback
+                )
 
     def is_current_link_non_current(self, gallery_data: "GalleryData") -> bool:
         if "current_gid" in gallery_data.extra_data:

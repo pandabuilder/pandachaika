@@ -26,7 +26,7 @@ PyYAML==6.0.2
 deckar01-ratelimit==3.0.2
 pytz==2025.2
 # For image operations in edge cases
-numpy==2.2.5
+numpy==2.2.6
 # Optional packages (depending on features wanted):
 imagehash==4.3.2
 # PySocks==1.7.1

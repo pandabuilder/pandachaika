@@ -97,7 +97,9 @@ gallery_filter_keys = [
     "crc32",
     "used",
     "public",
-    "not_public"
+    "not_public",
+    "comment",
+    "empty_comment"
 ]
 
 gallery_list_filters_keys = [
@@ -903,7 +905,11 @@ def filter_galleries(
         results = results.filter(provider=request_filters["provider"])
     if request_filters["providers"]:
         results = results.filter(provider__in=request_filters["providers"])
-
+    if request_filters["empty_comment"]:
+        results = results.filter(comment="")
+    else:
+        if request_filters["comment"]:
+            results = results.filter(comment__contains=request_filters["comment"])
     if request_filters["contained"]:
         results = results.filter(Q(gallery_container__isnull=False) | Q(magazine__isnull=False))
     if request_filters["contained_container"]:
@@ -2056,8 +2062,13 @@ def filter_galleries_simple(params: dict[str, Any]) -> QuerySet[Gallery]:
         results = results.filter(Q(archive__isnull=True))
     if params["reason"]:
         results = results.filter(reason__contains=params["reason"])
+    if params["empty_comment"]:
+        results = results.filter(comment="")
+    else:
+        if params["comment"]:
+            results = results.filter(comment__contains=params["comment"])
 
-    if "tags" in params:
+    if "tags" in params and params["tags"]:
         tags = params["tags"].split(",")
         for tag in tags:
             tag = tag.strip().replace(" ", "_")

@@ -1,10 +1,10 @@
 -r requirements.txt
 django-debug-toolbar==5.2.0
 django-unused-media==0.2.2
-mypy==1.15.0
-ruff==0.11.8
+mypy==1.16.0
+ruff==0.11.12
 django-stubs==5.2.0
-types-requests==2.32.0.20250328
-types-pytz==2025.2.0.20250326
-types-python-dateutil==2.9.0.20241206
+types-requests==2.32.0.20250515
+types-pytz==2025.2.0.20250516
+types-python-dateutil==2.9.0.20250516
 # django-cprofile-middleware

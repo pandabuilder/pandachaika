@@ -2651,7 +2651,7 @@ def repeated_galleries_by_field(request: HttpRequest) -> HttpResponse:
         results = results.annotate(archives=Count("archive")).filter(archives__gt=0)
 
     if "is-not-in-groups" in get:
-        results = results.annotate(gallery_groups=Count("gallery_group")).filter(gallery_group=0)
+        results = results.annotate(gallery_groups=Count("gallery_group")).filter(gallery_groups=0)
 
     if "has-size" in get:
         results = results.filter(filesize__gt=0)
@@ -2659,24 +2659,26 @@ def repeated_galleries_by_field(request: HttpRequest) -> HttpResponse:
     by_title = {}
     by_filesize = {}
 
+    if "clear-fields" in get:
+        clear_function = lambda x: re.sub(r"[^A-Za-z0-9 ]+", "", re.sub(r"\s+\(.+?\)", r"", re.sub(r"\[.+?]\s*", r"", x))).lower().strip()
     if "ignore-case" in get:
-        title_function = lambda x: x.lower()
-    else:
-        title_function = lambda x: x
+        clear_function = lambda x: x.lower()
+    if "clear-fields" not in get and "ignore-case" not in get:
+        clear_function = lambda x: x
 
     if "by-title" in get:
         if "same-uploader" in get:
-            for k_tu, v_tu in groupby(results.order_by("title", "uploader"), lambda x: (title_function(x.title), x.uploader)):
+            for k_tu, v_tu in groupby(results.order_by("title", "uploader"), lambda x: (clear_function(x.title or ""), clear_function(x.uploader or ""))):
                 objects = list(v_tu)
                 if len(objects) > 1:
                     by_title[str(k_tu)] = objects
         if "same-description" in get:
-            for k_tu, v_tu in groupby(results.order_by("title", "comment"), lambda x: (title_function(x.title), x.comment)):
+            for k_tu, v_tu in groupby(results.exclude(comment="").order_by("title", "comment"), lambda x: (clear_function(x.title or ""), clear_function(x.comment or ""))):
                 objects = list(v_tu)
                 if len(objects) > 1:
                     by_title[str(k_tu)] = objects
         else:
-            for k_title, v_title in groupby(results.order_by("title"), lambda x: title_function(x.title or "")):
+            for k_title, v_title in groupby(results.order_by("title"), lambda x: clear_function(x.title or "")):
                 objects = list(v_title)
                 if len(objects) > 1:
                     by_title[k_title] = objects

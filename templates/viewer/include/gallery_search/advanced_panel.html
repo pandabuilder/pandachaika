@@ -16,6 +16,17 @@
           <div class="mb-2">
             <input form="main-form" type="text" class="form-control" name="uploader" value="{{ display_prms.uploader }}" placeholder="Uploader"/>
           </div>
+          <div class="row">
+            <div class="col-8 pe-0">
+              <input form="main-form" type="text" class="form-control" name="comment" value="{{ display_prms.comment }}" placeholder="Comment"/>
+            </div>
+            <div class="col-4 d-flex justify-content-center align-items-center">
+                <div class="form-check">
+                  <input form="main-form" id="id-empty-comment" class="form-check-input" type="checkbox" name="empty_comment" value="1" {% if display_prms.empty_comment == '1' %}checked{% endif %}>
+                  <label for="id-empty-comment" class="form-check-label">Empty</label>
+                </div>
+            </div>
+          </div>
         </div>
 
         <!-- Rating Group -->

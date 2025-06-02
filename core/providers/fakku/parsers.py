@@ -176,7 +176,7 @@ class Parser(BaseParser):
             if isinstance(title_h1, bs4.element.Tag):
                 gallery.title = title_h1.get_text()
 
-            description_container = soup.find("meta", property="og:description")
+            description_container = soup.find("meta", attrs={'name': 'description'})
             if isinstance(description_container, bs4.element.Tag) and isinstance(description_container["content"], str):
                 gallery.comment = description_container["content"].strip()
             thumbnail_container = gallery_container.find("img", class_="max-w-full")

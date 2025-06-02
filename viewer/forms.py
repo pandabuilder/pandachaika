@@ -562,6 +562,19 @@ class GallerySearchSimpleForm(forms.Form):
         required=False, label="", widget=forms.NumberInput(attrs={"class": "form-control mr-sm-1", "placeholder": "to"})
     )
 
+    comment = forms.CharField(
+        required=False,
+        label="Comment",
+        widget=forms.widgets.TextInput(attrs={"class": "form-control"}),
+    )
+
+    empty_comment = forms.BooleanField(
+        initial=False,
+        required=False,
+        help_text="Match empty comment",
+        widget=forms.widgets.CheckboxInput(attrs={"class": "form-check-input"})
+    )
+
     status = forms.ChoiceField(
         choices=[(0, "--------")] + Gallery.StatusChoices.choices, # type: ignore
         required=False,

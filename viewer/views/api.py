@@ -1622,7 +1622,7 @@ def json_parser(request: HttpRequest) -> HttpResponse:
 
             # args = data
             # Already authorized by api key.
-            args["public"] = False
+            args["public"] = ""
 
             results = filter_galleries_no_request(args).prefetch_related("tags")
             if not results:

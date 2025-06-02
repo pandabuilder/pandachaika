@@ -78,26 +78,21 @@
     </div>
     <div class="page-line row g-0 align-items-center">
         <div class="col-md-auto g-1">
-            <h6 class="form-check">Grouping options: </h6>
+            <h6 class="form-check">Grouping options (title): </h6>
         </div>
         <div class="col-md-auto g-1">
             <div class="form-check">
-            <input id="checkbox-f1" class="form-check-input" type="checkbox" name="same-uploader" value="1" {% if "same-uploader" in request.GET %}checked{% endif %}><label for="checkbox-f1">Same uploader (title)</label>
+            <input id="checkbox-f1" class="form-check-input" type="checkbox" name="same-uploader" value="1" {% if "same-uploader" in request.GET %}checked{% endif %}><label for="checkbox-f1">Same uploader</label>
             </div>
         </div>
         <div class="col-md-auto g-1">
             <div class="form-check">
-            <input id="checkbox-f11" class="form-check-input" type="checkbox" name="same-description" value="1" {% if "same-description" in request.GET %}checked{% endif %}><label for="checkbox-f11">Same description (title)</label>
+            <input id="checkbox-f11" class="form-check-input" type="checkbox" name="same-description" title="Excludes empty descriptions" value="1" {% if "same-description" in request.GET %}checked{% endif %}><label for="checkbox-f11">Same description</label>
             </div>
         </div>
         <div class="col-md-auto g-1">
             <div class="form-check">
-            <input id="checkbox-f12" class="form-check-input" type="checkbox" name="ignore-case" value="1" {% if "ignore-case" in request.GET %}checked{% endif %}><label for="checkbox-f12">Ignore case (title)</label>
-            </div>
-        </div>
-        <div class="col-md-auto g-1">
-            <div class="form-check">
-            <input id="checkbox-f13" class="form-check-input" type="checkbox" name="range-per-group-provider" value="1" {% if "range-per-group-provider" in request.GET %}checked{% endif %}><label for="checkbox-f13">Define min-max (including) per group per provider (title)</label>
+            <input id="checkbox-f13" class="form-check-input" type="checkbox" name="range-per-group-provider" value="1" {% if "range-per-group-provider" in request.GET %}checked{% endif %}><label for="checkbox-f13">Define min-max (including) per group per provider</label>
             </div>
         </div>
         <div class="col-md-1 g-1">
@@ -109,6 +104,21 @@
             <label>
                 <input type="text" class="form-control" name="max-group" min="0" step="1" value="{{ request.GET|dict_key:'max-group' }}" placeholder="Max"/>
             </label>
+        </div>
+    </div>
+    <div class="page-line row g-0 align-items-center">
+        <div class="col-md-auto g-1">
+            <h6 class="form-check">Field processing (title, uploader, description) for "by title": </h6>
+        </div>
+        <div class="col-md-auto g-1">
+            <div class="form-check">
+            <input id="checkbox-f12" class="form-check-input" type="checkbox" name="ignore-case" value="1" {% if "ignore-case" in request.GET %}checked{% endif %}><label for="checkbox-f12">Ignore case</label>
+            </div>
+        </div>
+        <div class="col-md-auto g-1">
+            <div class="form-check">
+            <input id="checkbox-clear-fields" class="form-check-input" type="checkbox" name="clear-fields" value="1" {% if "clear-fields" in request.GET %}checked{% endif %}><label for="checkbox-clear-fields">Only alphanumeric and space, strip whitespaces, lowercase</label>
+            </div>
         </div>
     </div>
     <div class="page-line row g-1">

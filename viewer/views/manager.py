@@ -102,6 +102,8 @@ def repeated_archives_for_galleries(request: HttpRequest) -> HttpResponse:
 
     results = results.several_archives()  # type: ignore
 
+    results = results.distinct()
+
     paginator = Paginator(results, 50)
     try:
         results_page = paginator.page(page)
