@@ -2659,10 +2659,10 @@ def repeated_galleries_by_field(request: HttpRequest) -> HttpResponse:
     by_title = {}
     by_filesize = {}
 
-    if "clear-fields" in get:
-        clear_function = lambda x: re.sub(r"[^A-Za-z0-9 ]+", "", re.sub(r"\s+\(.+?\)", r"", re.sub(r"\[.+?]\s*", r"", x))).lower().strip()
     if "ignore-case" in get:
         clear_function = lambda x: x.lower()
+    if "clear-fields" in get:
+        clear_function = lambda x: re.sub(r"[^A-Za-z0-9 ]+", "", re.sub(r"\s+\(.+?\)", r"", re.sub(r"\[.+?]\s*", r"", x))).lower().strip()
     if "clear-fields" not in get and "ignore-case" not in get:
         clear_function = lambda x: x
 
