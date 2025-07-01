@@ -445,7 +445,7 @@
                               {% endif %}
                           {% endif %}
                       {% endif %}
-                    {% if archive_manage_instance.mark_user == user or perms.viewer.delete_archivemanageentry %}<a href="{% url 'viewer:archive-manage-delete' archive_manage_instance.pk %}" class="btn btn-sm btn-primary justify-content-end ms-1">Delete mark</a>{% endif %}
+                    {% if archive_manage_instance.mark_user == user or perms.viewer.delete_archivemanageentry %}<a href="{% url 'viewer:archive-manage-delete' archive_manage_instance.pk %}" class="btn btn-sm btn-primary justify-content-end ms-1">Delete</a>{% endif %}
                 </div>
             </div>
           </div>
