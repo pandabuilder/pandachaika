@@ -1,0 +1,14 @@
+{% load viewer_extras %}
+<div class="gallery">
+  <a class="cover" href="{% url 'viewer:gallery' gallery.pk %}">
+    <div class="cover-title" title="{{ gallery.title }}">{{ gallery.best_title }}</div>
+    {% with thumbnail_details=gallery.get_available_thumbnail_plus_size %}
+    <img class="image-container mx-auto" alt="" title="{{ gallery.best_title }}"
+        width="{{ thumbnail_details.2 }}" height="{{ thumbnail_details.1 }}" src="{{ thumbnail_details.0 }}"/>
+    {% endwith %}
+  </a>
+  <div class="caption">
+    <span title="Image count">{{ gallery.filecount }}</span> | <a class="tag-preview-g" tabindex="0" role="button" data-bs-toggle="popover" data-bs-trigger="focus" data-bs-pk="{{ gallery.pk }}">Tags</a> | <a href="{% url 'viewer:api' %}?gallery={{ gallery.pk }}">JSON</a>
+  </div>
+  {% if show_artist %}<div>{{ gallery.title|artist_name_from_str }}</div>{% endif %}
+</div>

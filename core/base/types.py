@@ -117,6 +117,7 @@ class ProviderSettings:
         self.cookies: DataDict = {}
         self.proxy: str = ""
         self.proxies: DataDict = {}
+        self.headers: DataDict = {}
         self.timeout_timer: int = global_settings.timeout_timer
         self.wait_timer: int = global_settings.wait_timer
         self.stop_page_number: Optional[int] = None
@@ -129,6 +130,8 @@ class ProviderSettings:
 
         if "cookies" in config:
             self.cookies.update(config["cookies"])
+        if "headers" in config:
+            self.headers.update(config["headers"])
         if "general" in config:
             if "proxy" in config["general"]:
                 self.proxy = config["general"]["proxy"]

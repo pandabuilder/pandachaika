@@ -60,6 +60,16 @@
         <input id="checkbox-f-groups" class="form-check-input" type="checkbox" name="is-not-in-groups" value="1" {% if "is-not-in-groups" in request.GET %}checked{% endif %}><label for="checkbox-f-groups">Is not in Match Groups</label>
         </div>
     </div>
+    <div class="col-md-auto g-1">
+        <div class="form-check">
+        <input id="checkbox-f-single-group" class="form-check-input" type="checkbox" name="is-in-single-group" value="1" {% if "is-in-single-group" in request.GET %}checked{% endif %}><label for="checkbox-f-single-group">Is in Single Match Groups</label>
+        </div>
+    </div>
+    <div class="col-md-auto g-1">
+        <div class="form-check">
+        <input id="checkbox-f-inline" class="form-check-input" type="checkbox" name="inline-thumbnails" value="1" {% if "inline-thumbnails" in request.GET %}checked{% endif %}><label for="checkbox-f-inline">Inline thumbnails</label>
+        </div>
+    </div>
     </div>
   <div class="page-line row g-0 align-items-center">
         <div class="col-md-auto g-1">
@@ -97,12 +107,22 @@
         </div>
         <div class="col-md-1 g-1">
             <label>
-                <input type="text" class="form-control" name="min-group" min="0" step="1" value="{{ request.GET|dict_key:'min-group' }}" placeholder="Min"/>
+                <input type="number" class="form-control" name="min-group" min="0" step="1" value="{{ request.GET|dict_key:'min-group' }}" placeholder="Min"/>
             </label>
         </div>
         <div class="col-md-1 g-1">
             <label>
-                <input type="text" class="form-control" name="max-group" min="0" step="1" value="{{ request.GET|dict_key:'max-group' }}" placeholder="Max"/>
+                <input type="number" class="form-control" name="max-group" min="0" step="1" value="{{ request.GET|dict_key:'max-group' }}" placeholder="Max"/>
+            </label>
+        </div>
+        <div class="col-md-auto g-1">
+            <div class="form-check">
+            <input id="checkbox-limit-diff-filecount" class="form-check-input" type="checkbox" name="limit-diff-filecount" value="1" {% if "limit-diff-filecount" in request.GET %}checked{% endif %}><label for="checkbox-limit-diff-filecount">Define max difference in filecount</label>
+            </div>
+        </div>
+        <div class="col-md-1 g-1">
+            <label>
+                <input type="number" class="form-control" name="max-diff-filecount" min="0" step="1" value="{{ request.GET|dict_key:'max-diff-filecount' }}" placeholder="Max"/>
             </label>
         </div>
     </div>
@@ -137,8 +157,8 @@
             <label for="sort-by">Sort by:</label>
             <select id="sort-by" class="form-select">
                 <option value="0">----</option>
-                <option value="1">Provider</option>
-                <option value="2">URL</option>
+                <option value="1">URL</option>
+                <option value="2">Provider</option>
                 <option value="3">Title</option>
                 <option value="4">Size</option>
                 <option value="5">Images</option>
@@ -169,7 +189,7 @@
         <table class="table table-bordered table-sm generic-table sortable-table">
           <thead>
           <tr>
-            <th>Select</th><th>URL</th><th>Provider</th><th>Title</th><th>Size</th><th>Images</th><th>Source URL | Image</th><th>Uploader</th><th>DL type</th><th>Reason</th><th>Added</th><th>Has archives</th><th>Has alt. archives</th>
+            <th>Select</th><th{% if inline_thumbnails %} style="width:15%"{% endif %}>URL</th><th>Provider</th><th>Title</th><th>Size</th><th>Images</th><th>Source URL | Image</th><th>Uploader</th><th>DL type</th><th>Reason</th><th>Added</th><th>Has archives</th><th>Has alt. archives</th>
           </tr>
           </thead>
           <tbody>
@@ -180,7 +200,11 @@
                 <input id="ord-{{ gallery.id }}" type="hidden" name="ord-{{ gallery.id }}" value="{{ forloop.counter }}">
               </td>
               <td data-sort-value="{{ gallery.pk }}">
-                <a href="{% url 'viewer:gallery' gallery.pk %}">{{ gallery.pk }}</a>
+                  {% if gallery.thumbnail.name and inline_thumbnails %}
+                      {% include 'viewer/include/gallery_cover.html' with show_artist=1 %}
+                  {% else %}
+                    <a href="{% url 'viewer:gallery' gallery.pk %}">{{ gallery.pk }}</a>
+                  {% endif %}
               </td>
               <td data-sort-value="{{ gallery.provider }}">
                 {{ gallery.provider }}
@@ -244,7 +268,11 @@
                 <input id="ord-{{ gallery.id }}" type="hidden" name="ord-{{ gallery.id }}" value="{{ forloop.counter }}">
               </td>
               <td data-sort-value="{{ gallery.pk }}">
-                <a href="{% url 'viewer:gallery' gallery.pk %}">{{ gallery.pk }}</a>
+                  {% if gallery.thumbnail.name and inline_thumbnails %}
+                      {% include 'viewer/include/gallery_cover.html' with show_artist=1 %}
+                  {% else %}
+                    <a href="{% url 'viewer:gallery' gallery.pk %}">{{ gallery.pk }}</a>
+                  {% endif %}
               </td>
               <td data-sort-value="{{ gallery.provider }}">
                 {{ gallery.provider }}
@@ -312,6 +340,37 @@
   {% endcompress %}
     <script type="text/javascript" src="{% static 'js/list_operations.js' %}"></script>
     <script>
+        let tagDataGallery = {};
+        const tagUrlGallery = '{% url 'viewer:api' %}?gt=';
+        function tagToHtml (tag) {
+            return '<div class="tag">' + tag + '</div>'
+        }
+        document.addEventListener("DOMContentLoaded", function() {
+            document.querySelectorAll('.tag-preview-g')?.forEach((element) => {
+                element.addEventListener("click", function (event) {
+                    let el = event.currentTarget;
+                    const pk = event.currentTarget.dataset['bsPk'];
+                    if (tagDataGallery[pk]) {
+                        return tagDataGallery[pk];
+                    } else {
+                        fetch(tagUrlGallery + pk).then(function (response) {
+                            return response.json();
+                        }).then(function (body) {
+                            if (body.tags) {
+                                tagDataGallery[pk] = body.tags.map(tagToHtml);
+
+                                const popover = new bootstrap.Popover(el, {
+                                    content: tagDataGallery[pk].join(""),
+                                    html: true,
+                                })
+                                popover.show();
+
+                            }
+                        });
+                    }
+                });
+            });
+        });
         $(document).ready(function() {
             $('#apply-sort').on('click', function() {
                 const sortBy = parseInt($('#sort-by').val());
@@ -338,7 +397,7 @@
                         const bStr = String(bVal || '').toLowerCase();
                         return sortDirection === 'asc' ? aStr.localeCompare(bStr) : bStr.localeCompare(aStr);
                     });
-                    
+
                     // Reorder rows and update hidden input values
                     $.each($rows, function(index, row) {
                         $tbody.append(row);

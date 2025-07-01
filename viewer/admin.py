@@ -47,6 +47,7 @@ from viewer.models import (
     Category,
     GalleryMatchGroupEntry,
     GalleryMatchGroup,
+    GalleryGroupPossibleMatches,
 )
 from django.contrib import admin
 from django.contrib.admin.helpers import ActionForm
@@ -902,11 +903,38 @@ class GalleryMatchGroupEntryAdmin(admin.ModelAdmin):
 
     gallery_link.short_description = "Gallery"  # type: ignore
 
+class GalleryGroupPossibleMatchesAdmin(admin.ModelAdmin):
+    search_fields = ["gallery__title"]
+    raw_id_fields = ("gallery",)
+    list_display = ["id", "gallery_match_group", "gallery_link", "gallery_url", "match_type", "match_accuracy"]
+    list_filter = ["match_type"]
+
+    def gallery_url(self, obj):
+        # link = reverse("admin:viewer", args=[obj.customer.id])
+        return format_html(
+            '<a href="{}">{}</a>',
+            obj.gallery.get_link(),
+            obj.gallery.get_link(),
+        )
+
+    gallery_url.short_description = "Gallery URL"  # type: ignore
+
+    def gallery_link(self, obj):
+        link = reverse("admin:viewer_gallery_change", args=[obj.gallery.id])
+        return format_html(
+            '<a href="{}">{}</a>',
+            link,
+            obj.gallery.title,
+        )
+
+    gallery_link.short_description = "Gallery"  # type: ignore
+
 admin.site.register(Archive, ArchiveAdmin)
 admin.site.register(ArchiveGroup, ArchiveGroupAdmin)
 admin.site.register(ArchiveGroupEntry, ArchiveGroupEntryAdmin)
 admin.site.register(GalleryMatchGroup, GalleryMatchGroupAdmin)
 admin.site.register(GalleryMatchGroupEntry, GalleryMatchGroupEntryAdmin)
+admin.site.register(GalleryGroupPossibleMatches, GalleryGroupPossibleMatchesAdmin)
 admin.site.register(Tag, TagAdmin)
 admin.site.register(Gallery, GalleryAdmin)
 admin.site.register(Image, ImageAdmin)

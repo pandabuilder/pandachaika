@@ -56,7 +56,7 @@ class BaseParser:
             self.own_settings = None
         self.general_utils = utilities.GeneralUtils(self.settings)
         self.downloaders: list[tuple["BaseDownloader", int]] = self.settings.provider_context.get_downloaders(
-            self.settings, self.general_utils, filter_name=self.name
+            self.settings, self.general_utils, filter_provider=self.name
         )
         self.last_used_downloader: Optional["BaseDownloader"] = None
         self.time_taken_wanted: float = 0
@@ -86,6 +86,16 @@ class BaseParser:
         self, gallery_id: Optional[str] = None, link: str = "", gallery: Optional["Gallery"] = None
     ) -> tuple[bool, str]:
 
+        discarded, reason = self.do_get_gallery_discard_reason(gallery_id, link, gallery)
+
+        # TODO: Why was this added? It calls the callback when processing a child due to adding parent, discarding the gallery even when it's already present.
+        # if discarded:
+        #     if self.gallery_callback:
+        #         self.gallery_callback(gallery, link, "discarded")
+
+        return discarded, reason
+
+    def do_get_gallery_discard_reason(self, gallery_id: Optional[str] = None, link: str = "", gallery: Optional["Gallery"] = None) -> tuple[bool, str]:
         if self.settings.update_metadata_mode:
             return False, "Gallery link {ext_link} running in update metadata mode, processing.".format(
                 ext_link=link,
@@ -96,7 +106,6 @@ class BaseParser:
             return False, "Gallery link {ext_link} has not been added, processing.".format(
                 ext_link=link,
             )
-
         if gallery.is_submitted():
             message = "Gallery {title}, {ext_link} marked as submitted: {link}, reprocessing.".format(
                 ext_link=gallery.get_link(),
@@ -104,7 +113,6 @@ class BaseParser:
                 title=gallery.title,
             )
             return False, message
-
         if not self.settings.retry_failed and ("failed" in gallery.dl_type):
             message = (
                 "Gallery {title}, {ext_link} failed in previous "
@@ -115,7 +123,6 @@ class BaseParser:
                 )
             )
             return True, message
-
         if gallery.archive_set.all() and not self.settings.redownload:
             message = (
                 "Gallery {title}, {ext_link} already added, dl_type: {dl_type} "
@@ -127,7 +134,6 @@ class BaseParser:
                 )
             )
             return True, message
-
         if not gallery.archive_set.all() and not self.settings.replace_metadata:
             message = "Gallery {title}, {ext_link} already added: {link}, skipping (setting: replace_metadata).".format(
                 ext_link=gallery.get_link(),
@@ -135,7 +141,6 @@ class BaseParser:
                 title=gallery.title,
             )
             return True, message
-
         if "skipped" in gallery.dl_type:
             message = "Gallery {title}, {ext_link} marked as skipped: {link}, skipping.".format(
                 ext_link=gallery.get_link(),
@@ -143,7 +148,6 @@ class BaseParser:
                 title=gallery.title,
             )
             return True, message
-
         if gallery.is_deleted():
             message = "Gallery {title}, {ext_link} marked as deleted: {link}, skipping.".format(
                 ext_link=gallery.get_link(),
@@ -151,7 +155,6 @@ class BaseParser:
                 title=gallery.title,
             )
             return True, message
-
         message = "Gallery {title}, {ext_link} already added, but was not discarded: {link}, processing.".format(
             ext_link=gallery.get_link(),
             link=gallery.get_absolute_url(),
@@ -484,7 +487,7 @@ class BaseParser:
             and self.downloaders[0][0].type == "submit"
         ):
             to_use_downloaders = self.settings.provider_context.get_downloaders(
-                self.settings, self.general_utils, filter_name=self.name, priorities=self.settings.back_up_downloaders
+                self.settings, self.general_utils, filter_provider=self.name, priorities=self.settings.back_up_downloaders
             )
             downloaders_msg = "WantedGallery match, reverting to default downloaders (name, priority):"
             for downloader in to_use_downloaders:
@@ -492,7 +495,7 @@ class BaseParser:
             logger.info(downloaders_msg)
         elif force_provider:
             to_use_downloaders = self.settings.provider_context.get_downloaders(
-                self.settings, self.general_utils, filter_name=gallery.provider
+                self.settings, self.general_utils, filter_provider=gallery.provider
             )
             downloaders_msg = "Forcing downloaders to Gallery provider: {}. Downloaders (name, priority):".format(
                 gallery.provider
@@ -509,7 +512,7 @@ class BaseParser:
             is_link_non_current = self.is_current_link_non_current(gallery)
             if is_link_non_current:
                 to_use_downloaders = self.settings.provider_context.get_downloaders(
-                    self.settings, self.general_utils, filter_name="{}_info".format(self.name), force=True
+                    self.settings, self.general_utils, filter_provider=self.name, filter_type="info", force=True
                 )
                 logger.info("Link: {} detected as non-current, it will be added as deleted.".format(gallery.link))
 
@@ -758,6 +761,8 @@ class InternalParser(BaseParser):
             )
 
             if banned_result:
+                if self.gallery_callback:
+                    self.gallery_callback(None, gallery_data.link, "banned_data")
                 logger.info(
                     "Gallery {} of {}: Skipping gallery link {}, discarded reasons: {}".format(
                         count, len(total_galleries_filtered), gallery_data.title, banned_reasons

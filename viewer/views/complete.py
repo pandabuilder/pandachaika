@@ -284,7 +284,7 @@ class ArchiveManageEntryMarkReasonAutocomplete(ArchiveManageEntryFieldAutocomple
 
         if self.request.user.is_authenticated:
             mark_reasons = (
-                ArchiveManageEntry.objects.filter(mark_reason__contains=q)
+                ArchiveManageEntry.objects.filter(status=ArchiveManageEntry.StatusChoices.NORMAL, mark_reason__contains=q)
                 .order_by("mark_reason")
                 .values_list("mark_reason", flat=True)
                 .distinct()

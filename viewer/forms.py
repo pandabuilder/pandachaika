@@ -575,6 +575,14 @@ class GallerySearchSimpleForm(forms.Form):
         widget=forms.widgets.CheckboxInput(attrs={"class": "form-check-input"})
     )
 
+    tags_or = forms.BooleanField(
+        initial=False,
+        required=False,
+        label="Join Tags with OR",
+        help_text="By default, joins with AND",
+        widget=forms.widgets.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
+
     status = forms.ChoiceField(
         choices=[(0, "--------")] + Gallery.StatusChoices.choices, # type: ignore
         required=False,
@@ -1277,6 +1285,14 @@ class EventSearchForm(forms.Form):
         label="",
         widget=forms.TextInput(
             attrs={"class": "form-control", "placeholder": "Data", "autocomplete": "off", "size": 45}
+        ),
+    )
+
+    result_field = forms.CharField(
+        required=False,
+        label="",
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "placeholder": "Result", "autocomplete": "off", "size": 10}
         ),
     )
 

@@ -63,7 +63,7 @@ class ProviderTimedAutoUpdater(BaseScheduler):
                 else:
                     # Leave only info downloaders, then leave only enabled auto updated providers
                     downloaders = current_settings.provider_context.get_downloaders_name_priority(
-                        current_settings, filter_name="info"
+                        current_settings, filter_type="info"
                     )
                     downloaders_names = [x[0] for x in downloaders if x[0].replace("_info", "") == self.provider_name]
 

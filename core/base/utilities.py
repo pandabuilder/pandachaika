@@ -886,6 +886,10 @@ def construct_request_dict(
 
     if own_settings.proxies:
         request_dict["proxies"] = own_settings.proxies
+
+    if own_settings.headers:
+        request_dict["headers"] = settings.requests_headers | own_settings.headers
+
     return request_dict
 
 

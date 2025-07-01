@@ -68,7 +68,7 @@ class Parser(BaseParser):
             headers = {"Content-Type": "application/json"}
 
             request_dict = construct_request_dict(self.settings, self.own_settings)
-            request_dict["headers"] = {**headers, **self.settings.requests_headers}
+            request_dict["headers"] = request_dict["headers"] | headers
             request_dict["data"] = json.dumps(data)
 
             response = self.api_request_function(
@@ -266,7 +266,7 @@ class Parser(BaseParser):
             headers = {"Content-Type": "application/json"}
 
             request_dict = construct_request_dict(self.settings, self.own_settings)
-            request_dict["headers"] = {**headers, **self.settings.requests_headers}
+            request_dict["headers"] = request_dict["headers"] | headers
             request_dict["data"] = json.dumps(data)
 
             response = self.api_request_function(
@@ -323,7 +323,7 @@ class Parser(BaseParser):
         headers = {"Content-Type": "application/json"}
 
         request_dict = construct_request_dict(self.settings, self.own_settings)
-        request_dict["headers"] = {**headers, **self.settings.requests_headers}
+        request_dict["headers"] = request_dict["headers"] | headers
         request_dict["data"] = json.dumps(data)
 
         response = self.api_request_function(
@@ -523,7 +523,7 @@ class Parser(BaseParser):
             headers = {"Content-Type": "application/json"}
 
             request_dict = construct_request_dict(self.settings, self.own_settings)
-            request_dict["headers"] = {**headers, **self.settings.requests_headers}
+            request_dict["headers"] = request_dict["headers"] | headers
             request_dict["data"] = json.dumps(data)
 
             response = self.api_request_function(
@@ -556,6 +556,9 @@ class Parser(BaseParser):
                 )
 
                 if banned_result:
+                    if self.gallery_callback:
+                        self.gallery_callback(None, internal_gallery_data.link, "banned_data")
+
                     if not self.settings.silent_processing:
                         logger.info("Skipping gallery link {}, discarded reasons: {}".format(link, banned_reasons))
                     continue

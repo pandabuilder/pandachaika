@@ -27,7 +27,8 @@ from viewer.utils.functions import (
     gallery_search_results_to_json,
 )
 from viewer.utils.general import clean_up_referer
-from viewer.utils.matching import generate_possible_matches_for_archives
+from viewer.utils.matching import generate_possible_matches_for_archives, \
+    generate_possible_matches_for_gallery_match_groups
 from viewer.utils.actions import event_log
 from viewer.forms import (
     GallerySearchForm,
@@ -65,6 +66,7 @@ from viewer.models import (
     Provider,
     GalleryMatchGroup,
     GalleryMatchGroupEntry,
+    GalleryGroupPossibleMatches, ArchiveManageEntry
 )
 from viewer.utils.requests import double_check_auth
 from viewer.utils.tags import sort_tags
@@ -402,65 +404,65 @@ def filter_by_marks(archives: QuerySet[Archive], params: QueryDict) -> tuple[Que
         q_objects = Q()
 
         if "marked" in params and params["marked"]:
-            q_objects.add(Q(manage_entries__mark_check=True), Q.AND)
+            q_objects.add(Q(manage_entries__mark_check=True, manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL), Q.AND)
             mark_filters = True
         if "mark_reason" in params and params["mark_reason"]:
-            q_objects.add(Q(manage_entries__mark_reason__contains=str(params["mark_reason"])), Q.AND)
+            q_objects.add(Q(manage_entries__mark_reason__contains=str(params["mark_reason"]), manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL), Q.AND)
             mark_filters = True
         if "mark_comment" in params and params["mark_comment"]:
-            q_objects.add(Q(manage_entries__mark_comment__contains=str(params["mark_comment"])), Q.AND)
+            q_objects.add(Q(manage_entries__mark_comment__contains=str(params["mark_comment"]), manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL), Q.AND)
             mark_filters = True
         if "mark_extra" in params and params["mark_extra"]:
-            q_objects.add(Q(manage_entries__mark_extra__contains=str(params["mark_extra"])), Q.AND)
+            q_objects.add(Q(manage_entries__mark_extra__contains=str(params["mark_extra"]), manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL), Q.AND)
             mark_filters = True
         if "origin" in params and params["origin"]:
-            q_objects.add(Q(manage_entries__origin=str(params["origin"])), Q.AND)
+            q_objects.add(Q(manage_entries__origin=str(params["origin"]), manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL), Q.AND)
             mark_filters = True
         priority_to = params.get("priority_to", None)
         if priority_to is not None and priority_to != "":
-            q_objects.add(Q(manage_entries__mark_priority__lte=float(priority_to)), Q.AND)
+            q_objects.add(Q(manage_entries__mark_priority__lte=float(priority_to), manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL), Q.AND)
             mark_filters = True
         priority_from = params.get("priority_from", None)
         if priority_from is not None and priority_from != "":
-            q_objects.add(Q(manage_entries__mark_priority__gte=float(priority_from)), Q.AND)
+            q_objects.add(Q(manage_entries__mark_priority__gte=float(priority_from), manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL), Q.AND)
             mark_filters = True
         elif mark_filters:
             # By default, don't filter marks with less than 1 priority (low level priorities)
             archives = archives.annotate(
-                num_manage_total=Count("manage_entries"),
-                num_manage_below_1=Count("manage_entries", filter=Q(manage_entries__mark_priority__lt=1)),
+                num_manage_total=Count("manage_entries", filter=Q(manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL)),
+                num_manage_below_1=Count("manage_entries", filter=Q(manage_entries__mark_priority__lt=1, manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL)),
             )
             q_objects.add(~Q(num_manage_below_1=F("num_manage_total")), Q.AND)
         archives = archives.filter(q_objects)
     else:
         if "marked" in params and params["marked"]:
-            archives = archives.filter(manage_entries__mark_check=True)
+            archives = archives.filter(manage_entries__mark_check=True, manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL)
             mark_filters = True
         if "mark_reason" in params and params["mark_reason"]:
-            archives = archives.filter(manage_entries__mark_reason__contains=str(params["mark_reason"]))
+            archives = archives.filter(manage_entries__mark_reason__contains=str(params["mark_reason"]), manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL)
             mark_filters = True
         if "mark_comment" in params and params["mark_comment"]:
-            archives = archives.filter(manage_entries__mark_comment__contains=str(params["mark_comment"]))
+            archives = archives.filter(manage_entries__mark_comment__contains=str(params["mark_comment"]), manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL)
             mark_filters = True
         if "mark_extra" in params and params["mark_extra"]:
-            archives = archives.filter(manage_entries__mark_extra__contains=str(params["mark_extra"]))
+            archives = archives.filter(manage_entries__mark_extra__contains=str(params["mark_extra"]), manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL)
             mark_filters = True
         if "origin" in params and params["origin"]:
-            archives = archives.filter(manage_entries__origin=str(params["origin"]))
+            archives = archives.filter(manage_entries__origin=str(params["origin"]), manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL)
             mark_filters = True
         priority_to = params.get("priority_to", None)
         if priority_to is not None and priority_to != "":
-            archives = archives.filter(manage_entries__mark_priority__lte=float(priority_to))
+            archives = archives.filter(manage_entries__mark_priority__lte=float(priority_to), manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL)
             mark_filters = True
         priority_from = params.get("priority_from", None)
         if priority_from is not None and priority_from != "":
-            archives = archives.filter(manage_entries__mark_priority__gte=float(priority_from))
+            archives = archives.filter(manage_entries__mark_priority__gte=float(priority_from), manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL)
             mark_filters = True
         elif mark_filters:
             # By default, don't filter marks with less than 1 priority (low level priorities)
             archives = archives.annotate(
-                num_manage_total=Count("manage_entries"),
-                num_manage_below_1=Count("manage_entries", filter=Q(manage_entries__mark_priority__lt=1)),
+                num_manage_total=Count("manage_entries", filter=Q(manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL)),
+                num_manage_below_1=Count("manage_entries", filter=Q(manage_entries__mark_priority__lt=1, manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL)),
             ).exclude(num_manage_below_1=F("num_manage_total"))
 
     archives = archives.distinct()
@@ -1031,6 +1033,10 @@ def manage_galleries(request: HttpRequest) -> HttpResponse:
                 params["sort_by"] = get.get("sort_by", "")
 
             results_gallery = filter_galleries_simple(params)
+            if "is-not-in-groups" in get:
+                results_gallery = results_gallery.annotate(gallery_groups=Count("gallery_group")).filter(gallery_groups=0)
+            if "is-in-single-group" in get:
+                results_gallery = results_gallery.annotate(galleries_in_group=Count("gallery_group__galleries")).filter(galleries_in_group=1)
         else:
             preserved = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(pks)])
             results_gallery = Gallery.objects.filter(id__in=pks).order_by(preserved)
@@ -1145,7 +1151,94 @@ def manage_galleries(request: HttpRequest) -> HttpResponse:
             gallery_providers = list(results_gallery.values_list("provider", flat=True).distinct())
 
             galleries_update_metadata(gallery_links, gallery_providers, request.user, reason, crawler_settings)
+        elif "create_gallery_match_groups" in p and request.user.has_perm("viewer.add_gallerymatchgroup"):
+            gallery_match_group_pks = []
+            for gallery in results_gallery:
+                gallery_match_group, created = GalleryMatchGroup.objects.get_or_create(galleries__in=(gallery,))
+                if created:
+                    gallery_match_group.galleries.add(gallery)
+                    gallery_match_group.save()
+                    message = "Created gallery match group: {}, galleries: {}".format(gallery_match_group.pk, [x.get_absolute_url() for x in gallery_match_group.galleries.all()])
+                    logger.info(message)
+                    messages.success(request, message)
+                    event_log(
+                        request.user, "CREATE_GALLERY_MATCH_GROUP",
+                        reason=reason, content_object=gallery_match_group, result="created"
+                    )
+                gallery_match_group_pks.append(gallery_match_group.pk)
 
+            gallery_match_groups = GalleryMatchGroup.objects.filter(pk__in=gallery_match_group_pks)
+
+            if thread_exists("match_unmatched_gallery_groups_worker"):
+                return render_error(request, "Gallery Groups matching worker is already running.")
+            provider = p["create_gallery_match_groups"]
+            methods = p.getlist("matcher_type", ["title", "comment"])
+            try:
+                cutoff = clamp(float(p.get("cutoff", "0.4")), 0.0, 1.0)
+            except ValueError:
+                cutoff = 0.4
+            try:
+                max_matches = int(p.get("max-matches", "10"))
+            except ValueError:
+                max_matches = 10
+
+            matching_thread = threading.Thread(
+                name="match_unmatched_gallery_groups_worker",
+                target=generate_possible_matches_for_gallery_match_groups,
+                args=(gallery_match_groups,),
+                kwargs={
+                    "cutoff": cutoff,
+                    "max_matches": max_matches,
+                    "providers": (provider,),
+                    "string_attributes_to_match": methods,
+                },
+            )
+            matching_thread.daemon = True
+            matching_thread.start()
+            messages.success(
+                request,
+                "Looking for possible matches in gallery database "
+                "for Gallery Groups (cutoff: {}, max matches: {}) "
+                'using provider filter "{}" and methods filter: {}'.format(cutoff, max_matches, provider, methods),
+            )
+        elif "delete_gallery_match_groups" in p and request.user.has_perm("viewer.delete_gallerymatchgroup"):
+            delete_result = GalleryMatchGroup.objects.filter(galleries__in=results_gallery).delete()
+            logger.info("User {}: Deleting {} Gallery Match Groups for galleries".format(request.user.username, delete_result[0]))
+            messages.success(request, "Clearing possible matches.")
+        elif "auto_select_first_match" in p:
+            for gallery in results_gallery:
+                try:
+                    gallery_match_group_first = GalleryMatchGroup.objects.filter(galleries__in=(gallery,)).first()
+                    if gallery_match_group_first:
+                        gallery_match = gallery_match_group_first.possible_matches.first()
+                        if gallery_match:
+                            gallery_match_group_first.add_gallery(gallery_match)
+                            gallery_match_group_first.save()
+                            GalleryGroupPossibleMatches.objects.filter(
+                                gallery_match_group=gallery_match_group_first
+                            ).delete()
+
+                            logger.info(
+                                "User: {}: Gallery {} ({}) was matched in a group with gallery {} ({}).".format(
+                                    request.user.username,
+                                    gallery,
+                                    reverse("viewer:gallery", args=(gallery.pk,)),
+                                    gallery_match,
+                                    reverse("viewer:gallery", args=(gallery_match.pk,)),
+                                )
+                            )
+                            event_log(
+                                request.user,
+                                "ADD_GALLERY_TO_MATCH_GROUP",
+                                # reason=user_reason,
+                                data=reverse("viewer:gallery", args=(gallery_match.pk,)),
+                                content_object=gallery_match,
+                                result="matched",
+                            )
+                except ValueError:
+                    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+
+            messages.success(request, "Adding the first possible match to the Match Group.")
         if json_request:
             return HttpResponse("", content_type="application/json; charset=utf-8")
 
@@ -1166,6 +1259,11 @@ def manage_galleries(request: HttpRequest) -> HttpResponse:
         params["sort_by"] = get.get("sort_by", "")
 
     results = filter_galleries_simple(params).prefetch_related("foundgallery_set", "magazine_chapters")
+
+    if "is-not-in-groups" in get:
+        results = results.annotate(gallery_groups=Count("gallery_group")).filter(gallery_groups=0)
+    if "is-in-single-group" in get:
+        results = results.annotate(galleries_in_group=Count("gallery_group__galleries")).filter(galleries_in_group=1)
 
     if json_request:
         results = results.prefetch_related("tags")
@@ -1199,13 +1297,205 @@ def manage_galleries(request: HttpRequest) -> HttpResponse:
 
     search_form = GallerySearchSimpleForm(request.GET)
 
+    available_providers = Gallery.objects.all().values_list("provider", flat=True).distinct()
+
+    matcher_types = ("title", "comment")
+
     d = {
         "results": results_page,
         "form": form,
         "search_form": search_form,
+        "providers": available_providers,
+        "matcher_types": matcher_types,
     }
 
     return render(request, "viewer/collaborators/manage_galleries.html", d)
+
+
+@permission_required("viewer.add_gallerymatchgroup")
+def gallery_match_groups_possibles(request: HttpRequest) -> HttpResponse:
+    p = request.POST
+    get = request.GET
+
+    title = get.get("title", "")
+    tags = get.get("tags", "")
+
+    try:
+        page = int(get.get("page", "1"))
+    except ValueError:
+        page = 1
+
+    try:
+        limit = max(1, int(get.get("limit", "100")))
+    except ValueError:
+        limit = 100
+
+    try:
+        inline_thumbnails = bool(get.get("inline-thumbnails", ""))
+    except ValueError:
+        inline_thumbnails = False
+
+    if "clear" in get:
+        form = GallerySearchForm()
+    else:
+        form = GallerySearchForm(initial={"title": title, "tags": tags})
+
+    if p:
+        pks = []
+        for k, v in p.items():
+            if k.startswith("sel-"):
+                # k, pk = k.split('-')
+                # results[pk][k] = v
+                pks.append(v)
+
+        preserved = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(pks)])
+
+        galleries = Gallery.objects.filter(id__in=pks).order_by(preserved)
+        if "create_gallery_match_groups" in p and request.user.has_perm("viewer.add_gallerymatchgroup"):
+            gallery_match_group_pks = []
+            for gallery in galleries:
+                gallery_match_group, created = GalleryMatchGroup.objects.get_or_create(galleries__in=(gallery,))
+                if created:
+                    gallery_match_group.galleries.add(gallery)
+                    gallery_match_group.save()
+                    message = "Created gallery match group: {}, galleries: {}".format(gallery_match_group.pk, [x.get_absolute_url() for x in gallery_match_group.galleries.all()])
+                    logger.info(message)
+                    messages.success(request, message)
+                    event_log(
+                        request.user, "CREATE_GALLERY_MATCH_GROUP",
+                        # reason=reason,
+                        content_object=gallery_match_group, result="created"
+                    )
+                gallery_match_group_pks.append(gallery_match_group.pk)
+
+            gallery_match_groups = GalleryMatchGroup.objects.filter(pk__in=gallery_match_group_pks)
+
+            if thread_exists("match_unmatched_gallery_groups_worker"):
+                return render_error(request, "Gallery Groups matching worker is already running.")
+            provider = p["create_gallery_match_groups"]
+            methods = p.getlist("matcher_type", ["title", "comment"])
+            try:
+                cutoff = clamp(float(p.get("cutoff", "0.4")), 0.0, 1.0)
+            except ValueError:
+                cutoff = 0.4
+            try:
+                max_matches = int(p.get("max-matches", "10"))
+            except ValueError:
+                max_matches = 10
+
+            matching_thread = threading.Thread(
+                name="match_unmatched_gallery_groups_worker",
+                target=generate_possible_matches_for_gallery_match_groups,
+                args=(gallery_match_groups,),
+                kwargs={
+                    "cutoff": cutoff,
+                    "max_matches": max_matches,
+                    "providers": (provider,),
+                    "string_attributes_to_match": methods,
+                },
+            )
+            matching_thread.daemon = True
+            matching_thread.start()
+            messages.success(
+                request,
+                "Looking for possible matches in gallery database "
+                "for Gallery Groups (cutoff: {}, max matches: {}) "
+                'using provider filter "{}" and methods filter: {}'.format(cutoff, max_matches, provider, methods),
+            )
+        elif "delete_gallery_match_groups" in p and request.user.has_perm("viewer.delete_gallerymatchgroup"):
+            delete_result = GalleryMatchGroup.objects.filter(galleries__in=galleries).delete()
+            logger.info("User {}: Deleting {} Gallery Match Groups for galleries".format(request.user.username, delete_result[0]))
+            messages.success(request, "Clearing possible matches.")
+        elif "auto_select_first_match" in p:
+            for gallery in galleries:
+                try:
+                    gallery_match_group_first = GalleryMatchGroup.objects.filter(galleries__in=(gallery,)).first()
+                    if gallery_match_group_first:
+                        gallery_match = gallery_match_group_first.possible_matches.first()
+                        if gallery_match:
+                            gallery_match_group_first.add_gallery(gallery_match)
+                            gallery_match_group_first.save()
+                            GalleryGroupPossibleMatches.objects.filter(
+                                gallery_match_group=gallery_match_group_first
+                            ).delete()
+
+                            logger.info(
+                                "User: {}: Gallery {} ({}) was matched in a group with gallery {} ({}).".format(
+                                    request.user.username,
+                                    gallery,
+                                    reverse("viewer:gallery", args=(gallery.pk,)),
+                                    gallery_match,
+                                    reverse("viewer:gallery", args=(gallery_match.pk,)),
+                                )
+                            )
+                            event_log(
+                                request.user,
+                                "ADD_GALLERY_TO_MATCH_GROUP",
+                                # reason=user_reason,
+                                data=reverse("viewer:gallery", args=(gallery_match.pk,)),
+                                content_object=gallery_match,
+                                result="matched",
+                            )
+                except ValueError:
+                    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+
+            messages.success(request, "Adding the first possible match to the Match Group.")
+
+    params: dict[str, str] = {
+        "sort": "create_date",
+        "asc_desc": "desc",
+    }
+
+    for k, v in get.items():
+        if isinstance(v, str):
+            params[k] = v
+
+    for k in gallery_filter_keys:
+        if k not in params:
+            params[k] = ""
+
+    results = filter_galleries_simple(params)
+
+    if "is-not-in-groups" in get:
+        results = results.annotate(gallery_groups=Count("gallery_group")).filter(gallery_groups=0)
+    if "is-in-single-group" in get:
+        results = results.annotate(galleries_in_group=Count("gallery_group__galleries")).filter(galleries_in_group=1)
+
+    results = results.prefetch_related(
+        Prefetch(
+            "gallery_group__gallerygrouppossiblematches_set",
+            queryset=GalleryGroupPossibleMatches.objects.select_related("gallery_match_group", "gallery").prefetch_related(
+                Prefetch("gallery__tags", queryset=Tag.objects.filter(scope__exact="artist"), to_attr="artist_tags"),
+                Prefetch(
+                    "gallery__tags", queryset=Tag.objects.filter(scope__exact="magazine"), to_attr="magazine_tags"
+                ),
+            ),
+            to_attr="possible_galleries",
+        ),
+        "gallery_group__possible_galleries__gallery",
+    )
+
+    if "with-possible-matches" in get:
+        results = results.annotate(n_possible_galleries=Count("gallery_group__possible_matches")).filter(n_possible_galleries__gt=0)
+
+    paginator = Paginator(results, limit)
+    try:
+        results_page = paginator.page(page)
+    except (InvalidPage, EmptyPage):
+        results_page = paginator.page(paginator.num_pages)
+
+    available_providers = Gallery.objects.all().values_list("provider", flat=True).distinct()
+
+    matcher_types = ("title", "comment")
+
+    d = {
+        "results": results_page,
+        "providers": available_providers,
+        "matcher_types": matcher_types,
+        "form": form,
+        "inline_thumbnails": inline_thumbnails,
+    }
+    return render(request, "viewer/collaborators/gallery_match_group_tool.html", d)
 
 
 @login_required
@@ -1250,6 +1540,7 @@ def activity_event_log(request: HttpRequest) -> HttpResponse:
     selected_actions = get.getlist("actions")
 
     data_field = get.get("data_field", "")
+    result_field = get.get("result_field", "")
     title = get.get("title", "")
     tags = get.get("tags", "")
     filter_galleries = get.get("filter-galleries", "")
@@ -1296,6 +1587,9 @@ def activity_event_log(request: HttpRequest) -> HttpResponse:
 
     if data_field:
         results = results.filter(data__contains=data_field)
+
+    if result_field:
+        results = results.filter(result__contains=result_field)
 
     if event_content_type in ("archive", "gallery"):
         if event_content_type == "archive":
@@ -1401,7 +1695,7 @@ def user_crawler(request: AuthenticatedHttpRequest) -> HttpResponse:
     p = request.POST
 
     all_downloaders = crawler_settings.provider_context.get_downloaders_name_priority(
-        crawler_settings, filter_name="generic_"
+        crawler_settings, filter_type="generic"
     )
 
     # providers_not_generic = list(set([x[0].provider for x in all_downloaders if not x[0].provider.is_generic()]))
@@ -1810,6 +2104,65 @@ def archive_update(
                 reverse("viewer:archive", args=(archive.pk,)),
             )
         )
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+    else:
+        return render_error(request, "Unrecognized command")
+
+
+@login_required
+def gallery_update(
+    request: HttpRequest, pk: int, tool: Optional[str] = None, tool_use_id: Optional[str] = None
+) -> HttpResponse:
+    try:
+        gallery = Gallery.objects.get(pk=pk)
+    except Gallery.DoesNotExist:
+        raise Http404("Gallery does not exist")
+
+    if tool == "add-to-match-group" and tool_use_id and request.user.has_perm("viewer.add_gallerymatchgroup"):
+        try:
+            gallery_id = int(tool_use_id)
+            try:
+                gallery_match = Gallery.objects.get(pk=gallery_id)
+            except Gallery.DoesNotExist:
+                raise Http404("Gallery does not exist")
+            gallery_match_group, created = GalleryMatchGroup.objects.get_or_create(galleries__in=(gallery,))
+            if created:
+                gallery_match_group.galleries.add(gallery)
+            gallery_match_group.add_gallery(gallery_match)
+            gallery_match_group.save()
+            GalleryGroupPossibleMatches.objects.filter(
+                gallery_match_group=gallery_match_group
+            ).delete()
+            logger.info(
+                "User: {}: Gallery {} ({}) was matched in a group with gallery {} ({}).".format(
+                    request.user.username,
+                    gallery,
+                    reverse("viewer:gallery", args=(gallery.pk,)),
+                    gallery_match,
+                    reverse("viewer:gallery", args=(gallery_match.pk,)),
+                )
+            )
+            event_log(
+                request.user,
+                "ADD_GALLERY_TO_MATCH_GROUP",
+                # reason=user_reason,
+                data=reverse("viewer:gallery", args=(gallery_match.pk,)),
+                content_object=gallery_match,
+                result="matched",
+            )
+        except ValueError:
+            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+    elif tool == "clear-possible-matches" and request.user.has_perm("viewer.add_gallerymatchgroup"):
+        gallery_group = GalleryMatchGroup.objects.filter(galleries__in=(gallery,)).first()
+        if gallery_group:
+            gallery_group.possible_matches.clear()
+            logger.info(
+                "User: {}: Gallery Group {} was cleared from its possible matches.".format(
+                    request.user.username,
+                    gallery_group.pk
+                )
+            )
         return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     else:
         return render_error(request, "Unrecognized command")
@@ -2652,6 +3005,8 @@ def repeated_galleries_by_field(request: HttpRequest) -> HttpResponse:
 
     if "is-not-in-groups" in get:
         results = results.annotate(gallery_groups=Count("gallery_group")).filter(gallery_groups=0)
+    if "is-in-single-group" in get:
+        results = results.annotate(galleries_in_group=Count("gallery_group__galleries")).filter(galleries_in_group=1)
 
     if "has-size" in get:
         results = results.filter(filesize__gt=0)
@@ -2666,22 +3021,41 @@ def repeated_galleries_by_field(request: HttpRequest) -> HttpResponse:
     if "clear-fields" not in get and "ignore-case" not in get:
         clear_function = lambda x: x
 
+    max_diff_filecount = None
+
+    if 'limit-diff-filecount' in get:
+        if 'max-diff-filecount' in get and get['max-diff-filecount']:
+            max_diff_filecount = float(get.get('max-diff-filecount', 0))
+            if max_diff_filecount <= 0:
+                max_diff_filecount = 0
+        else:
+            max_diff_filecount = 0
+
     if "by-title" in get:
         if "same-uploader" in get:
             for k_tu, v_tu in groupby(results.order_by("title", "uploader"), lambda x: (clear_function(x.title or ""), clear_function(x.uploader or ""))):
                 objects = list(v_tu)
                 if len(objects) > 1:
-                    by_title[str(k_tu)] = objects
+                    if max_diff_filecount is not None:
+                        objects = [x for x in objects if abs(x.filecount - objects[0].filecount) <= max_diff_filecount]
+                    if len(objects) > 1:
+                        by_title[str(k_tu)] = objects
         if "same-description" in get:
             for k_tu, v_tu in groupby(results.exclude(comment="").order_by("title", "comment"), lambda x: (clear_function(x.title or ""), clear_function(x.comment or ""))):
                 objects = list(v_tu)
                 if len(objects) > 1:
-                    by_title[str(k_tu)] = objects
+                    if max_diff_filecount is not None:
+                        objects = [x for x in objects if abs(x.filecount - objects[0].filecount) <= max_diff_filecount]
+                    if len(objects) > 1:
+                        by_title[str(k_tu)] = objects
         else:
             for k_title, v_title in groupby(results.order_by("title"), lambda x: clear_function(x.title or "")):
                 objects = list(v_title)
                 if len(objects) > 1:
-                    by_title[k_title] = objects
+                    if max_diff_filecount is not None:
+                        objects = [x for x in objects if abs(x.filecount - objects[0].filecount) <= max_diff_filecount]
+                    if len(objects) > 1:
+                        by_title[k_title] = objects
 
     if 'range-per-group-provider' in get:
         if 'min-group' in get and get['min-group']:
@@ -2703,11 +3077,20 @@ def repeated_galleries_by_field(request: HttpRequest) -> HttpResponse:
         for k_filesize, v_filesize in groupby(results.order_by("filesize"), lambda x: str(x.filesize or "")):
             objects = list(v_filesize)
             if len(objects) > 1:
-                by_filesize[k_filesize] = objects
+                if max_diff_filecount is not None:
+                    objects = [x for x in objects if abs(x.filecount - objects[0].filecount) <= max_diff_filecount]
+                if len(objects) > 1:
+                    by_filesize[k_filesize] = objects
+
+    try:
+        inline_thumbnails = bool(get.get("inline-thumbnails", ""))
+    except ValueError:
+        inline_thumbnails = False
 
     d = {
         "by_title": by_title, "by_filesize": by_filesize, "form": form,
-        "fields_form": fields_form
+        "fields_form": fields_form,
+        "inline_thumbnails": inline_thumbnails
     }
 
     return render(request, "viewer/galleries_repeated_by_fields.html", d)

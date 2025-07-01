@@ -344,6 +344,9 @@ class Parser(BaseParser):
                 )
 
                 if banned_result:
+                    if self.gallery_callback:
+                        self.gallery_callback(None, gallery.link, "banned_data")
+
                     if not self.settings.silent_processing:
                         logger.info(
                             "Skipping gallery link {}, discarded reasons: {}".format(gallery.title, banned_reasons)

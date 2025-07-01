@@ -32,6 +32,7 @@
         {% endif %}
         {% if perms.viewer.mark_similar_archive %}
             <a class="btn btn-sm shrink-btn" href="{% url 'viewer:archive-mark-similar' archive.pk %}">mark similar</a>
+            <a class="btn btn-sm shrink-btn" href="{% url 'viewer:archive-mark-similar' archive.pk %}?use-recycled=1">mark similar (incl. recycled)</a>
         {% endif %}
         {% if user.is_staff %}
             <a class="btn btn-sm shrink-btn" href="{% url 'viewer:check-convert-type' archive.pk %}">convert zip</a>
@@ -420,16 +421,32 @@
       <li class="subtitle">
       <div class="row g-4">
       {% for archive_manage_instance in manage_entries %}
-        <div class="col-sm-3">
-          <div class="card panel">
+        <div class="col-xxl-3 col-md-6 col-sm-12">
+          <div class="card panel{% if perms.viewer.edit_system_marks and not archive_manage_instance.is_indexed %} disabled-card{% endif %}">
             <div class="card-header">
-                <div class="d-flex"><div class="text-center">by: {% if not archive_manage_instance.mark_user or archive_manage_instance.mark_user.pk == 1 %}ServiceAccount{% else %}{{ archive_manage_instance.mark_user }}{% endif %}, on: {{ archive_manage_instance.mark_date|date:"y-m-d H:i:s" }}, priority: {{ archive_manage_instance.mark_priority|floatformat:2 }}</div><a class="btn btn-sm btn-primary justify-content-end" role="button" onclick="toggleHeight(this);">expand</a></div>
+                <div class="d-flex">
+                    <div class="text-center">by: {% if not archive_manage_instance.mark_user or archive_manage_instance.mark_user.pk == 1 %}ServiceAccount{% else %}{{ archive_manage_instance.mark_user }}{% endif %}, on: {{ archive_manage_instance.mark_date|date:"y-m-d H:i:s" }}, priority: {{ archive_manage_instance.mark_priority|floatformat:2 }}</div>
+                </div>
             </div>
             <div class="card-body mark-height">
               <h5 class="card-title">{{ archive_manage_instance.mark_reason }}</h5>
               <p class="card-text">{{ archive_manage_instance.mark_comment|urlize_all_rel|convert_special_urls|linebreaks }}</p>
               <p class="card-text">{{ archive_manage_instance.mark_extra }}</p>
-              {% if archive_manage_instance.mark_user == user or perms.viewer.delete_archivemanageentry %}<a href="{% url 'viewer:archive-manage-delete' archive_manage_instance.pk %}" class="btn btn-primary">Delete mark</a>{% endif %}
+            </div>
+            <div class="card-footer">
+                <div class="d-flex">
+                    <a class="btn btn-sm btn-primary justify-content-end" role="button" onclick="toggleHeight(this);">Expand</a>
+                      {% if perms.viewer.edit_system_marks %}
+                          {% if not archive_manage_instance.mark_user or archive_manage_instance.mark_user.pk == 1 %}
+                              {% if archive_manage_instance.is_indexed %}
+                                <a href="{% url 'viewer:archive-manage-remove-from-index' archive_manage_instance.pk %}" class="btn btn-sm btn-primary justify-content-end ms-1">Un-index</a>
+                              {% else %}
+                                <a href="{% url 'viewer:archive-manage-add-to-index' archive_manage_instance.pk %}" class="btn btn-sm btn-primary justify-content-end ms-1">Re-index</a>
+                              {% endif %}
+                          {% endif %}
+                      {% endif %}
+                    {% if archive_manage_instance.mark_user == user or perms.viewer.delete_archivemanageentry %}<a href="{% url 'viewer:archive-manage-delete' archive_manage_instance.pk %}" class="btn btn-sm btn-primary justify-content-end ms-1">Delete mark</a>{% endif %}
+                </div>
             </div>
           </div>
         </div>
@@ -686,7 +703,6 @@
         });
 
         function toggleHeight(elem) {
-            console.log(elem.parentNode.parentNode.parentNode.parentNode);
             const el = elem.parentNode.parentNode.parentNode.parentNode.querySelector(".card-body");
             if(el.classList.contains("mark-height")) {
                 el.classList.remove("mark-height");

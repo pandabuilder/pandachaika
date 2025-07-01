@@ -115,7 +115,8 @@ class TitleMatcher(Matcher):
         logger.info("Querying URL: {}".format(urljoin(constants.main_url, "suggest/") + quote(title.lower())))
 
         request_dict = construct_request_dict(self.settings, self.own_settings)
-        request_dict["headers"] = {**headers, **self.settings.requests_headers}
+        # We forcefully "remove" regular headers
+        request_dict["headers"] = request_dict["headers"] | headers
 
         response = request_with_retries(
             urljoin(constants.main_url, "suggest/") + quote(title.lower()), request_dict, post=False, retries=3

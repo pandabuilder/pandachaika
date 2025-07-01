@@ -49,7 +49,7 @@ from viewer.models import (
     GalleryQuerySet,
     GallerySubmitEntry,
     ArchiveGroup,
-    GalleryProviderData,
+    GalleryProviderData, GalleryMatchGroup,
 )
 from viewer.utils.functions import send_mass_html_mail, gallery_search_results_to_json, archive_search_result_to_json
 from viewer.utils.general import valid_sha1_string, clean_up_referer
@@ -83,6 +83,7 @@ gallery_filter_keys = [
     "uploader",
     "tags",
     "not_used",
+    "not_used_including_groups",
     "reason",
     "only_used",
     "contains",
@@ -99,7 +100,8 @@ gallery_filter_keys = [
     "public",
     "not_public",
     "comment",
-    "empty_comment"
+    "empty_comment",
+    "tags_or",
 ]
 
 gallery_list_filters_keys = [
@@ -461,7 +463,7 @@ def process_gallery_page(request: HttpRequest, gallery: Gallery, tool: Optional[
 
     gallery_provider_data = GalleryProviderData.objects.filter(gallery=gallery)
 
-    d = {
+    d: dict[str, Any] = {
         "gallery": gallery,
         "tag_lists": tag_lists,
         "settings": crawler_settings,
@@ -478,7 +480,12 @@ def process_gallery_page(request: HttpRequest, gallery: Gallery, tool: Optional[
     else:
         gallery_filters = Q(first_gallery=gallery) | Q(pk=gallery.pk)
 
-    d.update({"gallery_chain": Gallery.objects.filter(gallery_filters, provider=gallery.provider).order_by("gid")})
+    d.update(
+        {
+            "gallery_chain": Gallery.objects.filter(gallery_filters, provider=gallery.provider).order_by("gid"),
+            "gallery_group": GalleryMatchGroup.objects.filter(galleries=gallery).prefetch_related("galleries").first()
+        }
+    )
 
     return render(request, "viewer/gallery.html", d)
 
@@ -935,6 +942,8 @@ def filter_galleries(
     if request.user.is_authenticated:
         if request_filters["not_used"]:
             results = results.non_used_galleries()  # type: ignore
+        if request_filters["not_used_including_groups"]:
+            results = results.not_used_including_groups()  # type: ignore
         if request_filters["only_used"]:
             results = results.only_used_galleries()  # type: ignore
         if request_filters["hidden"]:
@@ -946,6 +955,13 @@ def filter_galleries(
 
     if request_filters["tags"]:
         tags = request_filters["tags"].split(",")
+
+        q_objects = Q()
+        if request_filters["tags_or"]:
+            tags_or = True
+        else:
+            tags_or = False
+
         for tag in tags:
             tag = tag.strip().replace(" ", "_")
             tag_clean = re.sub("^[-|^]", "", tag)
@@ -958,32 +974,43 @@ def filter_galleries(
                 tag_name = scope_name[0]
             if tag.startswith("-"):
                 if tag_name != "" and tag_scope != "":
-                    tag_query = Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)
+                    tag_query = Q(Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope))
                 elif tag_name != "":
                     tag_query = Q(tags__name__contains=tag_name)
                 else:
                     tag_query = Q(tags__scope__contains=tag_scope)
 
-                results = results.exclude(tag_query)
+                if tags_or:
+                    q_objects.add(~tag_query, Q.OR)
+                else:
+                    results = results.exclude(tag_query)
             elif tag.startswith("^"):
                 if tag_name != "" and tag_scope != "":
-                    tag_query = Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope)
+                    tag_query = Q(Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope))
                 elif tag_name != "":
                     tag_query = Q(tags__name__exact=tag_name)
                 else:
                     tag_query = Q(tags__scope__exact=tag_scope)
 
-                results = results.filter(tag_query)
+                if tags_or:
+                    q_objects.add(tag_query, Q.OR)
+                else:
+                    results = results.filter(tag_query)
             else:
                 if tag_name != "" and tag_scope != "":
-                    tag_query = Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)
+                    tag_query = Q(Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope))
                 elif tag_name != "":
                     tag_query = Q(tags__name__contains=tag_name)
                 else:
                     tag_query = Q(tags__scope__contains=tag_scope)
 
-                results = results.filter(tag_query)
+                if tags_or:
+                    q_objects.add(tag_query, Q.OR)
+                else:
+                    results = results.filter(tag_query)
 
+        if tags_or:
+            results = results.filter(q_objects)
         results = results.distinct()
 
     if session_filters["view"] == "extended":
@@ -2060,6 +2087,8 @@ def filter_galleries_simple(params: dict[str, Any]) -> QuerySet[Gallery]:
         results = results.filter(provider__in=params["providers"])
     if params["not_used"]:
         results = results.filter(Q(archive__isnull=True))
+    if params["not_used_including_groups"]:
+        results = results.not_used_including_groups()  # type: ignore
     if params["reason"]:
         results = results.filter(reason__contains=params["reason"])
     if params["empty_comment"]:
@@ -2070,6 +2099,13 @@ def filter_galleries_simple(params: dict[str, Any]) -> QuerySet[Gallery]:
 
     if "tags" in params and params["tags"]:
         tags = params["tags"].split(",")
+
+        q_objects = Q()
+        if params["tags_or"]:
+            tags_or = True
+        else:
+            tags_or = False
+
         for tag in tags:
             tag = tag.strip().replace(" ", "_")
             tag_clean = re.sub("^[-|^]", "", tag)
@@ -2088,7 +2124,10 @@ def filter_galleries_simple(params: dict[str, Any]) -> QuerySet[Gallery]:
                 else:
                     tag_query = Q(tags__scope__contains=tag_scope)
 
-                results = results.exclude(tag_query)
+                if tags_or:
+                    q_objects.add(~tag_query, Q.OR)
+                else:
+                    results = results.exclude(tag_query)
             elif tag.startswith("^"):
                 if tag_name != "" and tag_scope != "":
                     tag_query = Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope)
@@ -2097,7 +2136,10 @@ def filter_galleries_simple(params: dict[str, Any]) -> QuerySet[Gallery]:
                 else:
                     tag_query = Q(tags__scope__exact=tag_scope)
 
-                results = results.filter(tag_query)
+                if tags_or:
+                    q_objects.add(tag_query, Q.OR)
+                else:
+                    results = results.filter(tag_query)
             else:
                 if tag_name != "" and tag_scope != "":
                     tag_query = Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)
@@ -2106,8 +2148,13 @@ def filter_galleries_simple(params: dict[str, Any]) -> QuerySet[Gallery]:
                 else:
                     tag_query = Q(tags__scope__contains=tag_scope)
 
-                results = results.filter(tag_query)
+                if tags_or:
+                    q_objects.add(tag_query, Q.OR)
+                else:
+                    results = results.filter(tag_query)
 
+        if tags_or:
+            results = results.filter(q_objects)
         results = results.distinct()
 
     if "non_public" in params and params["non_public"]:

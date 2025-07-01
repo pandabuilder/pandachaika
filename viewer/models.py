@@ -52,7 +52,7 @@ from django.utils.translation import gettext_lazy as _
 from django.conf import settings
 from simple_history.models import HistoricalRecords
 
-from core.base.comparison import get_list_closer_gallery_titles_from_list
+from core.base.comparison import get_list_closer_text_from_list
 from core.base.image_ops import img_to_thumbnail
 from core.base.utilities import (
     calc_crc32,
@@ -111,17 +111,20 @@ class SpacedSearch(Lookup):
     def as_sql(self, qn: SQLCompiler, connection: BaseDatabaseWrapper) -> tuple[str, typing.Any]:
         lhs, lhs_params = self.process_lhs(qn, connection)
         rhs, rhs_params = self.process_rhs(qn, connection)
-        return "%s LIKE %s" % (lhs, rhs), lhs_params + rhs_params
+        params = tuple(lhs_params) + tuple(rhs_params)
+        return "%s LIKE %s" % (lhs, rhs), params
 
     def as_mysql(self, qn: SQLCompiler, connection: BaseDatabaseWrapper) -> tuple[str, typing.Any]:
         lhs, lhs_params = self.process_lhs(qn, connection)
         rhs, rhs_params = self.process_rhs(qn, connection)
-        return "%s LIKE %s" % (lhs, rhs), lhs_params + rhs_params
+        params = tuple(lhs_params) + tuple(rhs_params)
+        return "%s LIKE %s" % (lhs, rhs), params
 
     def as_postgresql(self, qn: SQLCompiler, connection: BaseDatabaseWrapper) -> tuple[str, typing.Any]:
         lhs, lhs_params = self.process_lhs(qn, connection)
         rhs, rhs_params = self.process_rhs(qn, connection)
-        return "%s ILIKE %s" % (lhs, rhs), lhs_params + rhs_params
+        params = tuple(lhs_params) + tuple(rhs_params)
+        return "%s ILIKE %s" % (lhs, rhs), params
 
 
 models.CharField.register_lookup(SpacedSearch)
@@ -181,6 +184,56 @@ class GalleryQuerySet(models.QuerySet):
             Q(alternative_sources__isnull=True),
             **kwargs,
         ).order_by("-create_date")
+
+    def not_used_including_groups(self, **kwargs: typing.Any) -> QuerySet:
+        # results = self.annotate(gallery_groups=Count("gallery_group"))
+        # gallery.gallerymatchgroupentry.gallery_match_group.galleries.all
+        # match_group = GalleryMatchGroup.objects.filter(galleries=self).first()
+        # if match_group:
+        #     match_group.galleries.filter(
+        #         Q(
+        #             Q(status=Gallery.StatusChoices.NORMAL),
+        #             ~Q(dl_type__contains="skipped"),
+        #             Q(archive__isnull=True),
+        #             Q(gallery_container__archive__isnull=True),
+        #             Q(magazine__archive__isnull=True),
+        #             Q(alternative_sources__isnull=True),
+        #         )
+        #     )
+        return (
+            self.filter(
+                Q(
+                    Q(status=Gallery.StatusChoices.NORMAL),
+                    ~Q(dl_type__contains="skipped"),
+                    Q(archive__isnull=True),
+                    Q(gallery_container__archive__isnull=True),
+                    Q(magazine__archive__isnull=True),
+                    Q(alternative_sources__isnull=True),
+                ),
+                **kwargs,
+            )
+            .annotate(
+                gallery_groups_all_not_used=Count(
+                    "gallerymatchgroupentry__gallery_match_group__galleries",
+                    filter=Q(
+                        Q(gallerymatchgroupentry__gallery_match_group__galleries__status=Gallery.StatusChoices.NORMAL),
+                        ~Q(gallerymatchgroupentry__gallery_match_group__galleries__dl_type__contains="skipped"),
+                        Q(gallerymatchgroupentry__gallery_match_group__galleries__archive__isnull=True),
+                        Q(
+                            gallerymatchgroupentry__gallery_match_group__galleries__gallery_container__archive__isnull=True
+                        ),
+                        Q(gallerymatchgroupentry__gallery_match_group__galleries__magazine__archive__isnull=True),
+                        Q(gallerymatchgroupentry__gallery_match_group__galleries__alternative_sources__isnull=True),
+                    )
+                )
+            )
+            .filter(
+                gallery_groups_all_not_used=Count(
+                    "gallerymatchgroupentry__gallery_match_group__galleries"
+                )
+            )
+            .order_by("-create_date")
+        )
 
     def only_used_galleries(self, **kwargs: typing.Any) -> QuerySet:
         return self.filter(
@@ -258,6 +311,9 @@ class GalleryManager(models.Manager["Gallery"]):
 
     def non_used_galleries(self, **kwargs: typing.Any) -> QuerySet:
         return self.get_queryset().non_used_galleries(**kwargs)
+
+    def not_used_including_groups(self, **kwargs: typing.Any) -> QuerySet:
+        return self.get_queryset().not_used_including_groups(**kwargs)
 
     def only_used_galleries(self, **kwargs: typing.Any) -> QuerySet:
         return self.get_queryset().only_used_galleries(**kwargs)
@@ -1678,6 +1734,7 @@ class Archive(models.Model):
             ("manage_archive", "Can manage available archives"),
             ("mark_archive", "Can mark available archives"),
             ("view_marks", "Can view archive marks"),
+            ("edit_system_marks", "Can edit system archive marks"),
             ("match_archive", "Can match archives"),
             ("update_metadata", "Can update metadata"),
             ("recalc_fileinfo", "Can recalculate file info"),
@@ -1952,7 +2009,7 @@ class Archive(models.Model):
             alt_gallery.public = False
             alt_gallery.save()
 
-    def delete_all_files(self, create_mark: bool = False) -> None:
+    def delete_all_files(self, create_mark: bool = False, preserve_image_data: bool = False) -> None:
 
         results = self.image_set.filter(extracted=True)
 
@@ -1962,7 +2019,8 @@ class Archive(models.Model):
                 img.thumbnail.delete(save=False)
         self.thumbnail.delete(save=False)
         self.zipped.delete(save=False)
-        self.image_set.all().delete()
+        if not preserve_image_data:
+            self.image_set.all().delete()
         self.extracted = False
         if create_mark:
             manager_entry, _ = ArchiveManageEntry.objects.update_or_create(
@@ -3079,7 +3137,7 @@ class Archive(models.Model):
         if clear_title:
             adj_title = clean_title(adj_title)
 
-        similar_list = get_list_closer_gallery_titles_from_list(adj_title, galleries_title_id, cutoff, max_matches)
+        similar_list = get_list_closer_text_from_list(adj_title, galleries_title_id, cutoff, max_matches)
 
         if similar_list is not None:
 
@@ -3102,9 +3160,12 @@ class Archive(models.Model):
 
                 ArchiveMatches.objects.create(archive=self, gallery=gallery, match_type="size", match_accuracy=1)
 
-    def create_marks_for_similar_archives(self, excluded_archives: Optional[list[int]] = None) -> None:
+    def create_marks_for_similar_archives(self, excluded_archives: Optional[list[int]] = None, use_recycled_archives: bool = False) -> None:
         if self.crc32:
-            similar_crc32 = Archive.objects.filter(crc32=self.crc32).exclude(pk=self.pk).exclude(binned=True)
+            if use_recycled_archives:
+                similar_crc32 = Archive.objects.filter(crc32=self.crc32).exclude(pk=self.pk).exclude(binned=True)
+            else:
+                similar_crc32 = Archive.objects.filter(crc32=self.crc32).exclude(pk=self.pk)
 
             # 4.2 means high level priority
             if similar_crc32.count() > 0:
@@ -3126,11 +3187,17 @@ class Archive(models.Model):
                 ).delete()
 
         if self.filesize and self.filecount:
-            similar_fileinfo = (
-                Archive.objects.filter(filesize=self.filesize, filecount=self.filecount)
-                .exclude(pk=self.pk)
-                .exclude(binned=True)
-            )
+            if use_recycled_archives:
+                similar_fileinfo = (
+                    Archive.objects.filter(filesize=self.filesize, filecount=self.filecount)
+                    .exclude(pk=self.pk)
+                )
+            else:
+                similar_fileinfo = (
+                    Archive.objects.filter(filesize=self.filesize, filecount=self.filecount)
+                    .exclude(pk=self.pk)
+                    .exclude(binned=True)
+                )
 
             # 4.1 means high level priority
             if similar_fileinfo.count() > 0:
@@ -3152,7 +3219,11 @@ class Archive(models.Model):
                 ).delete()
 
         if self.title:
-            similar_title = Archive.objects.filter(title=self.title).exclude(pk=self.pk).exclude(binned=True)
+            if use_recycled_archives:
+                similar_title = Archive.objects.filter(title=self.title).exclude(pk=self.pk)
+            else:
+                similar_title = Archive.objects.filter(title=self.title).exclude(pk=self.pk).exclude(binned=True)
+
 
             if similar_title.count() > 0:
 
@@ -3174,26 +3245,35 @@ class Archive(models.Model):
                     archive=self, mark_reason="same_title", mark_user__isnull=True
                 ).delete()
 
-        self.create_sha1_similarity_mark(excluded_archives)
-        self.create_phash_similarity_mark(excluded_archives)
+        self.create_sha1_similarity_mark(excluded_archives, use_recycled_archives=use_recycled_archives)
+        self.create_phash_similarity_mark(excluded_archives, use_recycled_archives=use_recycled_archives)
         self.create_phash_gallery_similarity_mark()
         self.create_wanted_image_similarity_mark()
         # .exclude(pk__in=excluded_archives)
 
-    def create_sha1_similarity_mark(self, excluded_archives: Optional[list[int]] = None) -> None:
+    def create_sha1_similarity_mark(self, excluded_archives: Optional[list[int]] = None, use_recycled_archives: bool = False) -> None:
         images_from_archive = self.image_set.filter(sha1__isnull=False)
 
         if images_from_archive:
             images_sha1 = images_from_archive.values_list("sha1", flat=True)
 
-            similar_images = (
-                Image.objects.filter(sha1__in=images_sha1)
-                .exclude(pk__in=images_from_archive)
-                # Remove this filter, does not make sense to remove archives with fewer images.
-                # .filter(archive__filecount__gte=self.filecount)
-                .exclude(archive__binned=True)
-                .distinct()
-            )
+            if use_recycled_archives:
+                similar_images = (
+                    Image.objects.filter(sha1__in=images_sha1)
+                    .exclude(pk__in=images_from_archive)
+                    # Remove this filter, does not make sense to remove archives with fewer images.
+                    # .filter(archive__filecount__gte=self.filecount)
+                    .distinct()
+                )
+            else:
+                similar_images = (
+                    Image.objects.filter(sha1__in=images_sha1)
+                    .exclude(pk__in=images_from_archive)
+                    # Remove this filter, does not make sense to remove archives with fewer images.
+                    # .filter(archive__filecount__gte=self.filecount)
+                    .exclude(archive__binned=True)
+                    .distinct()
+                )
 
             if excluded_archives:
                 similar_images = similar_images.exclude(archive__pk__in=excluded_archives)
@@ -3249,7 +3329,7 @@ class Archive(models.Model):
             archive=self, mark_reason="images_sha1_similarity", mark_user__isnull=True
         ).delete()
 
-    def create_phash_similarity_mark(self, excluded_archives: Optional[list[int]] = None) -> None:
+    def create_phash_similarity_mark(self, excluded_archives: Optional[list[int]] = None, use_recycled_archives: bool = False) -> None:
         images_from_archive = self.image_set.all()
 
         algorithm = "phash"
@@ -3273,7 +3353,10 @@ class Archive(models.Model):
 
             if similar_images:
                 similar_images_pk = similar_images.values_list("object_id", flat=True)
-                archives_phash = Archive.objects.filter(image__in=similar_images_pk).exclude(binned=True).distinct()
+                if use_recycled_archives:
+                    archives_phash = Archive.objects.filter(image__in=similar_images_pk).distinct()
+                else:
+                    archives_phash = Archive.objects.filter(image__in=similar_images_pk).exclude(binned=True).distinct()
                 if excluded_archives:
                     archives_phash = archives_phash.exclude(pk__in=excluded_archives)
                 per_archives_comment = []
@@ -3753,6 +3836,10 @@ class ArchiveManageEntry(models.Model):
         (ORIGIN_USER, "User"),
     )
 
+    class StatusChoices(models.IntegerChoices):
+        NORMAL = 1, _("Normal")
+        NOT_INDEXED = 5, _("Not Indexed")
+
     class Meta:
         verbose_name_plural = "Archive manage entries"
         ordering = ["-mark_priority"]
@@ -3768,12 +3855,16 @@ class ArchiveManageEntry(models.Model):
     mark_extra = models.CharField(blank=True, default="", max_length=200)
     mark_date = models.DateTimeField(default=django_tz.now)
     origin = models.SmallIntegerField(choices=ORIGIN_CHOICES, db_index=True, default=ORIGIN_SYSTEM, blank=True)
+    status = models.SmallIntegerField(choices=StatusChoices, db_index=True, default=StatusChoices.NORMAL)
 
     resolve_check = models.BooleanField(default=False)
     resolve_user = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True, related_name="archive_entry_resolver"
     )
     resolve_comment = models.TextField(blank=True, null=True, default="")
+
+    def is_indexed(self):
+        return self.status == self.StatusChoices.NORMAL
 
     def mark_as_json_string(self) -> str:
         data = {
@@ -5116,6 +5207,15 @@ class GalleryMatchGroup(models.Model):
         through_fields=("gallery_match_group", "gallery"),
     )
 
+    possible_matches: models.ManyToManyField = models.ManyToManyField(
+        Gallery,
+        related_name="possible_match_group_matches",
+        blank=True,
+        default="",
+        through="GalleryGroupPossibleMatches",
+        through_fields=("gallery_match_group", "gallery"),
+    )
+
     create_date = models.DateTimeField(auto_now_add=True)
     last_modified = models.DateTimeField(auto_now=True, blank=True, null=True)
 
@@ -5150,6 +5250,13 @@ class GalleryMatchGroup(models.Model):
                         archive.gallery = first_post_gallery
                         archive.save()
 
+    def add_gallery(self, gallery: Gallery):
+        positions = GalleryMatchGroupEntry.objects.filter(gallery_match_group=self).values_list("gallery_position", flat=True)
+        highest_position = max(positions)
+        match_entry = GalleryMatchGroupEntry(gallery_match_group=self, gallery=gallery, gallery_position=highest_position + 1)
+        match_entry.save()
+
+
 
 class GalleryMatchGroupEntry(models.Model):
     gallery_match_group = models.ForeignKey(GalleryMatchGroup, on_delete=models.CASCADE)
@@ -5171,3 +5278,14 @@ class GalleryMatchGroupEntry(models.Model):
                 if archive.gallery != first_post_gallery.gallery:
                     archive.gallery = first_post_gallery.gallery
                     archive.save()
+
+
+class GalleryGroupPossibleMatches(models.Model):
+    gallery_match_group = models.ForeignKey(GalleryMatchGroup, on_delete=models.CASCADE)
+    gallery = models.ForeignKey(Gallery, on_delete=models.CASCADE)
+    match_type = models.CharField("Match type", max_length=40, blank=True, null=True, default="")
+    match_accuracy = models.FloatField("Match accuracy", blank=True, null=True, default=0.0)
+
+    class Meta:
+        verbose_name_plural = "Gallery group possible matches"
+        ordering = ["-match_accuracy"]

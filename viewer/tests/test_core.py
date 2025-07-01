@@ -5,7 +5,7 @@ from django.test import TestCase
 
 from core.base.setup import Settings
 from core.base.types import GalleryData
-from core.base.comparison import get_list_closer_gallery_titles_from_list
+from core.base.comparison import get_list_closer_text_from_list
 from core.providers.panda.parsers import Parser as PandaParser
 from viewer.models import Gallery, WantedGallery, Tag, FoundGallery, Provider
 
@@ -23,13 +23,13 @@ class CoreTest(TestCase):
         cutoff = 0.4
         max_matches = 10
 
-        similar_list = get_list_closer_gallery_titles_from_list(title_to_check, galleries_title_id, cutoff, max_matches)
+        similar_list = get_list_closer_text_from_list(title_to_check, galleries_title_id, cutoff, max_matches)
 
         self.assertIsNone(similar_list)
 
         title_to_check_2 = "public gallery 1"
 
-        similar_list = get_list_closer_gallery_titles_from_list(
+        similar_list = get_list_closer_text_from_list(
             title_to_check_2, galleries_title_id, cutoff, max_matches
         )
 

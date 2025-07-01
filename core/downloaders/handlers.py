@@ -61,6 +61,10 @@ class BaseDownloader(metaclass=Meta):
     def is_generic(self) -> bool:
         return self.provider == "generic"
 
+    @classmethod
+    def valid_providers(cls) -> list[str]:
+        return [cls.provider]
+
     def start_download(self) -> None:
         pass
 

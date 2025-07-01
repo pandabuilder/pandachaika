@@ -73,7 +73,8 @@
                 {% if perms.viewer.manage_gallery %}
                   <a class="dropdown-item" href="{% url 'viewer:manage-galleries' %}">Manage galleries</a>
                   <a class="dropdown-item" href="{% url 'viewer:galleries-by-field' %}">Similar galleries by field</a>
-                  <a class="dropdown-item" href="{% url 'viewer:gallery-match-groups' %}">Gallery Match Groups</a>
+                  <a class="dropdown-item" href="{% url 'viewer:gallery-match-groups' %}">Gallery Match Groups Listing</a>
+                  <a class="dropdown-item" href="{% url 'viewer:gallery-match-groups-batch' %}">Gallery Match Groups Batch</a>
                 {% endif %}
                 {% if perms.viewer.crawler_adder %}
                   <a class="dropdown-item" href="{% url 'viewer:user-crawler' %}">Add URLs</a>
@@ -123,7 +124,8 @@
                 <li><a class="dropdown-item" href="{% url 'viewer:repeated-archives' %}">Repeated archives (same gallery)</a></li>
                 <li><a class="dropdown-item" href="{% url 'viewer:archives-by-field' %}">Similar archives by field</a></li>
                 <li><a class="dropdown-item" href="{% url 'viewer:galleries-by-field' %}">Similar galleries by field</a></li>
-                <li><a class="dropdown-item" href="{% url 'viewer:gallery-match-groups' %}">Gallery Match Groups</a></li>
+                <li><a class="dropdown-item" href="{% url 'viewer:gallery-match-groups' %}">Gallery Match Groups Listing</a></li>
+                <li><a class="dropdown-item" href="{% url 'viewer:gallery-match-groups-batch' %}">Gallery Match Groups Batch</a></li>
                 <li><a class="dropdown-item" href="{% url 'viewer:archive-filesize-different' %}">Archives not matching gallery filesize</a></li>
                 <li><a class="dropdown-item" href="{% url 'viewer:archive-not-present' %}">Archives with file not present in filesystem</a></li>
                 <li><a class="dropdown-item" href="{% url 'viewer:archives-not-matched' %}">Archives without gallery matches</a></li>

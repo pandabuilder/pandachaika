@@ -8,7 +8,7 @@ from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import QuerySet, Q
 
-from core.base.comparison import get_list_closer_gallery_titles_from_list
+from core.base.comparison import get_list_closer_text_from_list
 from core.base.utilities import replace_illegal_name, get_title_from_path, clean_title
 from viewer.models import (
     GalleryMatch,
@@ -19,6 +19,8 @@ from viewer.models import (
     ArchiveQuerySet,
     ItemProperties,
     Image,
+    GalleryMatchGroup,
+    GalleryGroupPossibleMatches
 )
 
 crawler_settings = settings.CRAWLER_SETTINGS
@@ -99,7 +101,7 @@ def create_matches_wanted_galleries_from_providers_internal(
         )
         for wanted_gallery in wanted_galleries:
 
-            similar_list = get_list_closer_gallery_titles_from_list(
+            similar_list = get_list_closer_text_from_list(
                 wanted_gallery.search_title, galleries_title_id, cutoff, max_matches
             )
 
@@ -223,7 +225,7 @@ def match_archives_from_gallery_titles(
                     adj_title = matchers[0][0].format_to_compare_title(archive.zipped.name)
                 else:
                     adj_title = get_title_from_path(archive.zipped.name)
-                similar_list = get_list_closer_gallery_titles_from_list(
+                similar_list = get_list_closer_text_from_list(
                     adj_title, galleries_title_id, cutoff, max_matches
                 )
 
@@ -431,7 +433,7 @@ def match_internal(
             if adj_title:
                 galleries_title_id = [(x[0], x[1]) for x in galleries_title_id_type if x[2] == attribute_match]
 
-                similar_list_provider = get_list_closer_gallery_titles_from_list(
+                similar_list_provider = get_list_closer_text_from_list(
                     adj_title, galleries_title_id, cutoff, max_matches
                 )
 
@@ -551,3 +553,158 @@ def match_internal(
                         match_type="hash_image_{}_{}".format(image.position, hash_result.name),
                         match_accuracy=1,
                     )
+
+
+# GalleryMatchGroup
+def generate_possible_matches_for_gallery_match_groups(
+    gallery_match_groups: "QuerySet[GalleryMatchGroup]",
+    cutoff: float = 0.4,
+    max_matches: int = 20,
+    providers: Iterable[str] = (),
+    string_attributes_to_match: Iterable[str] = ("title", ),
+) -> None:
+    try:
+        if gallery_match_groups:
+
+            match_gallery_group_internal(
+                gallery_match_groups,
+                providers,
+                cutoff=cutoff,
+                max_matches=max_matches,
+                match_by_filesize=True,
+                string_attributes_to_match=string_attributes_to_match,
+            )
+
+        logger.info("Gallery Match Group matching ended")
+        return
+    except BaseException:
+        logger.critical(traceback.format_exc())
+
+
+def match_gallery_group_internal(
+    gallery_match_groups: "QuerySet[GalleryMatchGroup]",
+    providers: Iterable[str],
+    cutoff: float = 0.4,
+    max_matches: int = 20,
+    match_by_filesize: bool = True,
+    match_by_thumbnail: bool = True,
+    string_attributes_to_match: Iterable[str] = ("title", ),
+) -> None:
+
+    galleries_per_provider: dict[str, QuerySet[Gallery]] = {}
+    galleries_attribute_id_type_per_provider: dict[str, list[tuple[str, str, str]]] = {}
+
+    if providers:
+        for provider in providers:
+            galleries_per_provider[provider] = Gallery.objects.eligible_for_use(provider__contains=provider)
+    else:
+        galleries_per_provider["all"] = Gallery.objects.eligible_for_use()
+
+    for provider, galleries in galleries_per_provider.items():
+        galleries_attribute_id_type_per_provider[provider] = list()
+        for gallery in galleries:
+            if gallery.title and "title" in string_attributes_to_match:
+                galleries_attribute_id_type_per_provider[provider].append(
+                    (replace_illegal_name(gallery.title), str(gallery.pk), "title")
+                )
+            if gallery.title_jpn and "title" in string_attributes_to_match:
+                galleries_attribute_id_type_per_provider[provider].append(
+                    (replace_illegal_name(gallery.title_jpn), str(gallery.pk), "title")
+                )
+            if gallery.comment and "comment" in string_attributes_to_match:
+                galleries_attribute_id_type_per_provider[provider].append(
+                    (replace_illegal_name(gallery.comment), str(gallery.pk), "comment")
+                )
+
+    gallery_type = ContentType.objects.get_for_model(Gallery)
+
+    for i, gallery_match_group in enumerate(gallery_match_groups, start=1):
+        first_gallery: Gallery | None = gallery_match_group.galleries.first()
+        if not first_gallery:
+            continue
+
+        for provider, galleries_attribute_id_type in galleries_attribute_id_type_per_provider.items():
+
+            for attribute_match in string_attributes_to_match:
+                adj_attribute = get_title_from_path(getattr(first_gallery, attribute_match))
+
+                if adj_attribute:
+                    galleries_title_id = [(x[0], x[1]) for x in galleries_attribute_id_type if x[2] == attribute_match and x[1] != str(first_gallery.pk)]
+
+                    similar_list_provider = get_list_closer_text_from_list(
+                        adj_attribute, galleries_title_id, cutoff, max_matches
+                    )
+
+                    if similar_list_provider is not None:
+
+                        for similar in similar_list_provider:
+                            gallery = Gallery.objects.get(pk=similar[1])
+
+                            GalleryGroupPossibleMatches.objects.update_or_create(
+                                gallery_match_group=gallery_match_group, gallery=gallery, match_type=attribute_match, match_accuracy=similar[2]
+                            )
+
+                        logger.info(
+                            "{} of {}: Found {} matches for gallery: {}, using provider filter: {}, method filter: {}".format(
+                                i,
+                                gallery_match_groups.count(),
+                                len(similar_list_provider),
+                                getattr(first_gallery, attribute_match),
+                                provider,
+                                attribute_match,
+                            )
+                        )
+
+        if match_by_filesize and first_gallery.filesize is not None and first_gallery.filesize > 0:
+            if providers:
+                galleries_same_size = Gallery.objects.filter(filesize=first_gallery.filesize, provider__in=providers).exclude(pk=first_gallery.pk)
+            else:
+                galleries_same_size = Gallery.objects.filter(filesize=first_gallery.filesize).exclude(pk=first_gallery.pk)
+            if galleries_same_size.exists():
+
+                logger.info(
+                    "{} of {}: Found {} matches from filesize for gallery: {}".format(
+                        i, str(gallery_match_groups.count()), str(galleries_same_size.count()), first_gallery.title
+                    )
+                )
+                for similar_gallery in galleries_same_size:
+                    gallery = Gallery.objects.get(pk=similar_gallery.pk)
+
+                    GalleryGroupPossibleMatches.objects.update_or_create(
+                        gallery_match_group=gallery_match_group,
+                        gallery=gallery,
+                        match_type="size",
+                        match_accuracy=1,
+                    )
+
+        if match_by_thumbnail and first_gallery.thumbnail:
+            current_gallery_hashes = ItemProperties.objects.filter(
+                content_type=gallery_type, object_id=first_gallery.pk, tag="hash-compare"
+            )
+
+            for hash_result in current_gallery_hashes:
+                galleries_hashes = ItemProperties.objects.filter(
+                    content_type=gallery_type, tag="hash-compare", name=hash_result.name, value=hash_result.value
+                ).exclude(content_type=gallery_type, object_id=first_gallery.pk)
+
+                if galleries_hashes.exists():
+                    logger.info(
+                        "{} of {}: Found {} matches from thumbnail hashes from algorithm: {} for gallery: {}".format(
+                            i, str(gallery_match_groups.count()), str(galleries_hashes.count()), hash_result.name, first_gallery.title
+                        )
+                    )
+                    for similar_item in galleries_hashes:
+                        gallery_object = similar_item.content_object
+
+                        if not gallery_object:
+                            continue
+
+                        if providers and gallery_object and gallery_object.provider not in providers:
+                            continue
+
+                        GalleryGroupPossibleMatches.objects.update_or_create(
+                            gallery_match_group=gallery_match_group,
+                            gallery=gallery_object,
+                            match_type="hash_thumbnail_{}".format(hash_result.name),
+                            match_accuracy=1,
+                        )

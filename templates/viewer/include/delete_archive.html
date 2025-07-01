@@ -3,20 +3,27 @@
   <h5>Deleting archive: {{ archive.title }}</h5>
 </div>
 
-<button id="select-all" class="btn btn-info">Select All</button>
+<button id="select-delete-zip" class="btn btn-info">Select Delete Zip, Mark Deleted</button>
+<button id="select-delete-all" class="btn btn-info">Select Delete all files, Archive Entry, Mark Deleted</button>
 
 <form action="{% url 'viewer:archive-delete' archive.pk %}" method="POST">{% csrf_token %}
   <ul class="list-group">
     <li class="list-group-item">
         <div class="form-check">
-            <input id="checkbox1" class="form-check-input" type="checkbox" name="delete-archive" value="1" checked><label class="form-check-label" for="checkbox1">Delete archive entry</label>
+            <input id="checkbox-delete-archive" class="form-check-input delete-option" type="checkbox" name="delete-archive" value="1" checked><label class="form-check-label" for="checkbox-delete-archive">Delete archive entry</label>
         </div>
       <p>{{ archive.title }} >> {{ archive.filesize|filesizeformat }} >> {{ archive.filesize }} >> {{ archive.filecount }} >> {{ archive.source_type }}</p>
     </li>
   {% if archive.zipped %}
     <li class="list-group-item">
         <div class="form-check">
-          <input id="checkbox2" class="form-check-input" type="checkbox" name="delete-file" value="1"><label class="form-check-label" for="checkbox2">Delete associated file</label>
+          <input id="checkbox-delete-file" class="form-check-input delete-option" type="checkbox" name="delete-file" value="1"><label class="form-check-label" for="checkbox-delete-file">Delete associated file</label>
+        </div>
+      <p>{{ archive.zipped.path }} >> {{ archive.filesize|filesizeformat }} >> {{ archive.filesize }} >> {{ archive.filecount }} >> {{ archive.source_type }}</p>
+    </li>
+    <li class="list-group-item">
+        <div class="form-check">
+          <input id="checkbox-delete-zipped" class="form-check-input delete-option" type="checkbox" name="delete-zipped" value="1"><label class="form-check-label" for="checkbox-delete-zipped">Delete associated file (preserves metadata, will override other delete archive options. Will recycle the Archive)</label>
         </div>
       <p>{{ archive.zipped.path }} >> {{ archive.filesize|filesizeformat }} >> {{ archive.filesize }} >> {{ archive.filecount }} >> {{ archive.source_type }}</p>
     </li>
@@ -24,19 +31,19 @@
     {% if archive.gallery %}
       <li class="list-group-item">
             <div class="form-check">
-                <input id="checkbox3" class="form-check-input" type="checkbox" name="mark-gallery-deleted" value="1"><label class="form-check-label" for="checkbox3">Mark associated gallery as deleted</label>
+                <input id="checkbox-mark-gallery-deleted" class="form-check-input" type="checkbox" name="mark-gallery-deleted" value="1"><label class="form-check-label" for="checkbox-mark-gallery-deleted">Mark associated gallery as deleted</label>
             </div>
         <p>{{ archive.gallery.filesize }} >> {{ archive.gallery.filecount }} >> {{ archive.gallery.title }} >> {{ archive.gallery.get_link|urlize_all_rel }}</p>
       </li>
       <li class="list-group-item">
             <div class="form-check">
-                <input id="checkbox6" class="form-check-input" type="checkbox" name="mark-gallery-denied" value="1"><label class="form-check-label" for="checkbox6">Mark associated gallery as denied</label>
+                <input id="checkbox-mark-gallery-denied" class="form-check-input" type="checkbox" name="mark-gallery-denied" value="1"><label class="form-check-label" for="checkbox-mark-gallery-denied">Mark associated gallery as denied</label>
             </div>
         <p>{{ archive.gallery.filesize }} >> {{ archive.gallery.filecount }} >> {{ archive.gallery.title }} >> {{ archive.gallery.get_link|urlize_all_rel }}</p>
       </li>
       <li class="list-group-item">
             <div class="form-check">
-                <input id="checkbox4" class="form-check-input" type="checkbox" name="delete-gallery" value="1"><label class="form-check-label" for="checkbox4">Delete gallery</label>
+                <input id="checkbox-delete-gallery" class="form-check-input" type="checkbox" name="delete-gallery" value="1"><label class="form-check-label" for="checkbox-delete-gallery">Delete gallery</label>
             </div>
         <p>{{ archive.gallery.filesize }} >> {{ archive.gallery.filecount }} >> {{ archive.gallery.title }} >> {{ archive.gallery.get_link|urlize_all_rel }}</p>
       </li>
@@ -48,7 +55,36 @@
   <button type="submit" name="delete_confirm" class="btn btn-light">Confirm delete</button>
 </form>
 <script>
-document.querySelector('#select-all').addEventListener("click", function() {
-    document.querySelectorAll('div input[type="checkbox"]')?.forEach((element) => element.checked = true);
+document.querySelector('#select-delete-zip').addEventListener("click", function() {
+    document.querySelector('#checkbox-delete-zipped').checked = true;
+    document.querySelector('#checkbox-delete-archive').checked = false;
+    document.querySelector('#checkbox-delete-file').checked = false;
+    document.querySelector('#checkbox-mark-gallery-deleted').checked = true;
+    document.querySelector('#checkbox-mark-gallery-denied').checked = false;
+    document.querySelector('#checkbox-delete-gallery').checked = false;
+});
+document.querySelector('#select-delete-all').addEventListener("click", function() {
+    document.querySelector('#checkbox-delete-zipped').checked = false;
+    document.querySelector('#checkbox-delete-archive').checked = true;
+    document.querySelector('#checkbox-delete-file').checked = true;
+    document.querySelector('#checkbox-mark-gallery-deleted').checked = true;
+    document.querySelector('#checkbox-mark-gallery-denied').checked = false;
+    document.querySelector('#checkbox-delete-gallery').checked = false;
+});
+
+// Handle mutual exclusivity between delete options
+document.querySelectorAll('.delete-option').forEach(checkbox => {
+    checkbox.addEventListener('change', function() {
+        if (this.checked) {
+            if (this.id === 'checkbox-delete-zipped') {
+                // If delete-zipped is checked, uncheck the others
+                document.querySelector('#checkbox-delete-archive').checked = false;
+                document.querySelector('#checkbox-delete-file').checked = false;
+            } else {
+                // If delete-archive or delete-file is checked, uncheck delete-zipped
+                document.querySelector('#checkbox-delete-zipped').checked = false;
+            }
+        }
+    });
 });
 </script>

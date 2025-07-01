@@ -28,6 +28,11 @@ class PandaBackupHttpFileDownloader(BaseDownloader):
     archive_only = True
     provider = constants.provider_name
 
+    @classmethod
+    def valid_providers(cls) -> list[str]:
+        # return [cls.provider, "panda", "irodori", "fakku"]
+        return [cls.provider]
+
     def start_download(self) -> None:
 
         if not self.gallery or not self.gallery.temp_archive:

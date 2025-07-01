@@ -239,9 +239,15 @@ def repeated_galleries_by_field(request: HttpRequest) -> HttpResponse:
             if len(objects) > 1:
                 by_filesize[k_filesize] = objects
 
+    try:
+        inline_thumbnails = bool(get.get("inline-thumbnails", ""))
+    except ValueError:
+        inline_thumbnails = False
+
     d = {
         "by_title": by_title, "by_filesize": by_filesize, "form": form,
-        "fields_form": fields_form
+        "fields_form": fields_form,
+        "inline_thumbnails": inline_thumbnails
     }
 
     return render(request, "viewer/galleries_repeated_by_fields.html", d)

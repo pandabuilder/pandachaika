@@ -12,9 +12,12 @@
                   {% endfor %}
                 </div>
             </div>
-              <div class="col-md-12 page-line">
+              <div class="col-md-12 page-line d-flex align-items-center gap-2">
                 <button type="submit" name="apply" class="btn btn-info">Search</button>
                 <button type="submit" name="clear" class="btn btn-light">Clear</button>
+                <div class="form-check mb-0">
+                  <input id="checkbox-tags-or" class="form-check-input" type="checkbox" name="tags_or" value="1" {% if request.GET.tags_or == '1' %}checked{% endif %}><label class="form-check-label" for="checkbox-tags-or">Join Tags with OR</label>
+                </div>
                 <button type="button" class="btn btn-secondary js-instant-toggle d-lg-none" data-toggle-target="#advancedFilters">More filters</button>
               </div>
           </div>

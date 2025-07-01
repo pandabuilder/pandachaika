@@ -424,6 +424,7 @@ img {
   z-index: 10;
   font-size: 0.85em;
   color: lightgrey;
+  text-align: center;
 }
 
 .filter-options {
@@ -764,6 +765,10 @@ caption {
    background-color: #122963 !important;
 }
 
+.modal-content {
+   color: lightgrey !important;
+}
+
 .popover-custom-length {
   max-width: 850px;
 }
@@ -771,4 +776,8 @@ caption {
 .mark-height {
   max-height: 135px;
   overflow: auto;
+}
+
+.disabled-card {
+   background-color: #354759;
 }

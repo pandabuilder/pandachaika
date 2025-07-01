@@ -1,0 +1,288 @@
+{% extends "viewer/base.html" %}
+{% block title %}Gallery Match Group matching | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+{% load static %}
+{% block content %}
+  {% load viewer_extras %}
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+  <!-- Gallery Match Group matching  -->
+  <div class="page-header">
+    <h2>Gallery Match Group matching</h2>
+    <p class="lead">Number of galleries (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
+  </div>
+  <form action="{% url 'viewer:gallery-match-groups-batch' %}" method="GET">
+    {% for field in form %}
+      <div class="page-line">
+        {{ field.errors }}
+        {{ field }}
+      </div>
+    {% endfor %}
+    <div class="page-line row g-1 align-items-center">
+    <div class="col-md-auto">
+      <button id="toggle-all" class="btn btn-secondary" type="button">Toggle All</button>
+    </div>
+    <div class="col-md-auto">
+      <button type="submit" name="apply" class="btn btn-info">Search</button>
+      <a class="btn btn-light" href="{% url 'viewer:gallery-match-groups-batch' %}">Clear</a>
+    </div>
+    <div class="col-md-auto">
+        <div class="form-check">
+      <input id="checkbox-f2" class="form-check-input" type="checkbox" name="with-possible-matches" value="1" {% if "with-possible-matches" in request.GET %}checked{% endif %}><label for="checkbox-f2">With possible matches</label>
+        </div>
+    </div>
+    <div class="col-md-auto">
+        <div class="form-check">
+      <input id="checkbox-f4" class="form-check-input" type="checkbox" name="inline-thumbnails" value="1" {% if "inline-thumbnails" in request.GET %}checked{% endif %}><label for="checkbox-f4">Inline thumbnails</label>
+        </div>
+    </div>
+    <div class="col-md-auto">
+      <input title="Limit" size="18" type="number" step="1" class="form-control" name="limit" value="{{ request.GET.limit }}" placeholder="Galleries per page"/>
+    </div>
+    </div>
+  </form>
+  <!-- Next/Prev page links  -->
+  {% if results.object_list and results.paginator.num_pages > 1 %}
+    <div>
+        <span class="step-links">
+            <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
+          {% if results.has_previous %}
+            <a href= "?{% url_replace 'page' results.previous_page_number %}"> previous &lt;&lt; </a>
+          {% endif %}
+          <span class="current">
+                &nbsp;Page {{ results.number }} of {{ results.paginator.num_pages }}
+            </span>
+          {% if results.has_next %}
+            <a href="?{% url_replace 'page' results.next_page_number %}"> &gt;&gt; next</a>
+          {% endif %}
+          <a href="?{% url_replace 'page' results.paginator.num_pages %}"> &gt;&gt; last</a>
+        </span>
+    </div>
+  {% endif %}
+  <form action="{% url 'viewer:gallery-match-groups-batch' %}" method="POST">{% csrf_token %}
+    <ul class="list-group">
+      {% for gallery in results %}
+        <li class="list-group-item">
+        <span class="me-1">
+          <input id="sel-{{ gallery.id }}" class="toggle-list form-check-input" type="checkbox" name="sel-{{ gallery.id }}" value="{{ gallery.pk }}"><label class="form-check-label" for="sel-{{ gallery.id }}"></label>
+        </span>
+            <a href="{{ gallery.get_absolute_url }}">{{ gallery.pk }}</a> >>
+          {{ gallery.best_title }} >>
+          <a href="{% url 'viewer:col-gallery-update-tool' gallery.pk 'clear-possible-matches' %}">Clear possible matches</a>
+          <p>{{ gallery.filesize|filesizeformat }}, {{ gallery.filesize }} >>
+            {{ gallery.filecount }} >>
+            {{ gallery.provider }} >>
+            {% if gallery.thumbnail.name %}
+              <a href="#" data-image-url="{{ gallery.thumbnail.url }}" class="img-preview" rel="popover">Thumbnail</a></p>
+            {% endif %}
+          {% if gallery.thumbnail.name and inline_thumbnails %}
+              <p>
+              {% include 'viewer/include/gallery_match_cover.html' with show_artist=1 %}
+              {% for match_group in gallery.gallery_group.all %}
+              {% with matches=match_group.possible_galleries|dictsort:"gallery.pk" %}
+                {% if matches|length > 0 %}
+                    {% regroup matches by gallery as matches_list %}
+                    {% with matches_list_sorted=matches_list|sort_regrouped_by_max_value_in_list:"match_accuracy" %}
+                        {% for match_gallery, gallery_matches in matches_list_sorted %}
+                          {% include 'viewer/include/gallery_col_match.html' %}
+                        {% endfor %}
+                    {% endwith %}
+                {% endif %}
+              {% endwith %}
+              {% endfor %}
+              </p>
+          {% else %}
+              {% for match_group in gallery.gallery_group.all %}
+              {% with matches=gallery.possible_galleries|dictsort:"gallery.pk" %}
+                {% if matches|length > 0 %}
+                  {% regroup matches by gallery as matches_list %}
+                  {% with matches_list_sorted=matches_list|sort_regrouped_by_max_value_in_list:"match_accuracy" %}
+                      <table class="table table-bordered table-sm generic-table">
+                        <thead>
+                        <tr>
+                            <th>Select</th><th>First Artist</th><th>Title</th><th>URL</th>
+                            <th>
+                                <div class="d-flex justify-content-between">
+                                <div>Type</div><div>Accuracy</div>
+                                </div>
+                            </th>
+                            <th>Posted</th><th>Count</th><th>Size</th><th>Linked?</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for match_gallery, gallery_matches in matches_list_sorted %}
+                          <tr>
+                            <td>
+                              <a href="{% url 'viewer:col-gallery-update-tool-id' gallery.pk 'add-to-match-group' match_gallery.pk %}"><i class="fas fa-check"></i></a>
+                            </td>
+                            <td>
+                              {{ match_gallery.artist_tags.0.name }}
+                            </td>
+                            <td>
+                            {% if match_gallery.thumbnail.name %}
+                              <a href="{% url 'viewer:gallery' match_gallery.pk %}" data-image-url="{{ match_gallery.thumbnail.url }}" class="img-preview" rel="popover">{{ match_gallery.title }}</a>
+                            {% else %}
+                              <a href="{% url 'viewer:gallery' match_gallery.pk %}">{{ match_gallery.title }}</a>
+                            {% endif %}
+                            </td>
+                            <td>
+                              {{ match_gallery.get_link|urlize_all_rel }}
+                            </td>
+                            <td>
+                            {% for match in gallery_matches %}
+                                <div class="d-flex justify-content-between acc-{{ match.match_accuracy|color_percent:1 }}">
+                                <div>
+                                    {{ match.match_type }}
+                                </div>
+                                <div>
+                                    {{ match.match_accuracy|floatformat:3 }}
+                                </div>
+                                </div>
+                            {% endfor %}
+                            </td>
+                            <td>
+                              {{ match_gallery.posted }}
+                            </td>
+                            <td class="{{ match_gallery.filecount|color_percent:match_gallery.filecount }}">
+                              {{ match_gallery.filecount }}
+                            </td>
+                            <td class="{{ match_gallery.filesize|color_percent:match_gallery.filesize }}">
+                              {{ match_gallery.filesize }}
+                            </td>
+                            <td>
+                              {{ match_gallery.archive_set.all|yesno }}
+                            </td>
+                          </tr>
+                        {% endfor %}
+                        </tbody>
+                      </table>
+                  {% endwith %}
+                {% endif %}
+              {% endwith %}
+              {% endfor %}
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+    <div class="row g-1">
+    <div class="col-md-auto">
+      <input title="Cutoff" size="10" type="number" step="0.01" class="form-control" name="cutoff" value="" placeholder="Cutoff"/>
+    </div>
+    <div class="col-md-auto">
+      <input title="Max matches" size="10" type="number" step="1" class="form-control" name="max-matches" value="10" placeholder="Max Matches"/>
+    </div>
+    <div class="col-md-auto">
+    <div class="dropup">
+        <button class="btn btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown">Create Gallery Match Groups & Possible Matches</button>
+        <ul class="dropdown-menu dropdown-menu-end">
+        <li><button type="submit" name="create_gallery_match_groups" class="btn btn-light" value="">All</button></li>
+          {% for provider in providers %}
+            <li><button type="submit" name="create_gallery_match_groups" class="btn btn-light" value="{{ provider }}">{{ provider }}</button></li>
+          {% endfor %}
+        </ul>
+    </div>
+    </div>
+      <div class="col-md-auto">
+        <select id="matcher_type" name="matcher_type" class="form-control" multiple size="2" title="Matcher type to use" aria-label="matcher_type">
+          {% for matcher_type in matcher_types %}
+            <option value="{{ matcher_type }}" {% if matcher_type in request.POST.matcher_type  %} selected{% endif %}>{{ matcher_type }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    <div class="col-md-auto">
+    <button type="submit" name="delete_gallery_match_groups" class="btn btn-light" value="">Delete Gallery Match Groups</button>
+    </div>
+    <div class="col-md-auto">
+    <button type="submit" name="auto_select_first_match" class="btn btn-light" value="">Add First Match to Match Group</button>
+    </div>
+    </div>
+  </form>
+  <!-- Next/Prev page links  -->
+  {% if results.object_list and results.paginator.num_pages > 1 %}
+    <div>
+        <span class="step-links">
+            {% if results.has_previous %}
+              <a href= "?page={{ results.previous_page_number }}">previous &lt;&lt; </a>
+            {% endif %}
+          <span class="current">
+                &nbsp;Page {{ results.number }} of {{ results.paginator.num_pages }}
+            </span>
+          {% if results.has_next %}
+            <a href="?page={{ results.next_page_number }}"> &gt;&gt; next</a>
+          {% endif %}
+        </span>
+    </div>
+  {% endif %}
+{% endblock %}
+{% block afterJQ %}
+  {% load compress %}
+  {% compress css %}
+    <link href="{% static 'css/vendor/jal/style.css' %}" type="text/css" media="all" rel="stylesheet" />
+  {% endcompress %}
+  {% compress js %}
+    <script src="{% static 'js/vendor/jquery.autocomplete-light.min.js' %}"></script>
+  {% endcompress %}
+  <script type="text/javascript" src="{% static 'js/list_operations.js' %}"></script>
+  <script>
+    let tagData = {};
+    const tagUrl = '{% url 'viewer:api' %}?at=';
+    let tagDataGallery = {};
+    const tagUrlGallery = '{% url 'viewer:api' %}?gt=';
+    function tagToHtml (tag) {
+        return '<div class="tag">' + tag + '</div>'
+    }
+    document.addEventListener("DOMContentLoaded", function() {
+        document.querySelectorAll('.tag-preview')?.forEach((element) => {
+            element.addEventListener("click", function(event) {
+                let el = event.currentTarget;
+                const pk = event.currentTarget.dataset['bsPk'];
+                if (tagData[pk]) {
+                    return tagData[pk];
+                } else {
+                    fetch(tagUrl + pk).then(function (response) {
+                        return response.json();
+                    }).then(function (body) {
+                        if (body.tags) {
+                            tagData[pk] = body.tags.map(tagToHtml);
+
+                            const popover = new bootstrap.Popover(el, {
+                                content: tagData[pk].join(""),
+                                html: true,
+                            })
+                            popover.show();
+
+                        }
+                    });
+                }
+            })
+        });
+        document.querySelectorAll('.tag-preview-g')?.forEach((element) => {
+            element.addEventListener("click", function (event) {
+                let el = event.currentTarget;
+                const pk = event.currentTarget.dataset['bsPk'];
+                if (tagDataGallery[pk]) {
+                    return tagDataGallery[pk];
+                } else {
+                    fetch(tagUrlGallery + pk).then(function (response) {
+                        return response.json();
+                    }).then(function (body) {
+                        if (body.tags) {
+                            tagDataGallery[pk] = body.tags.map(tagToHtml);
+
+                            const popover = new bootstrap.Popover(el, {
+                                content: tagDataGallery[pk].join(""),
+                                html: true,
+                            })
+                            popover.show();
+
+                        }
+                    });
+                }
+            });
+        });
+    });
+  </script>
+{% endblock %}

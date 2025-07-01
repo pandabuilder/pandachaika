@@ -9,7 +9,7 @@
         <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
         {% endfor %}
     {% endif %}
-    <!-- Galleries not used  -->
+    <!-- Manage Galleries  -->
     <div class="page-header">
     <h2>Manage galleries</h2>
     <p class="lead">Number of galleries (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
@@ -76,7 +76,7 @@
       </div>
         <div class="col-md-auto">
           <div class="form-check">
-            <input id="checkbox6" class="form-check-input" type="checkbox" name="fjord" value="1" {% if display_prms.fjord == '1' %}checked{% endif %}><label for="checkbox6">Fjord</label>
+            <input id="checkbox6" class="form-check-input" type="checkbox" name="fjord" value="1" {% if request.GET.fjord == '1' %}checked{% endif %}><label for="checkbox6">Fjord</label>
           </div>
         </div>
       <div class="col-md-auto">
@@ -86,18 +86,33 @@
       </div>
         <div class="col-md-auto">
           <div class="form-check">
-            <input id="checkbox7" class="form-check-input" type="checkbox" name="contained" value="1" {% if display_prms.contained == '1' %}checked{% endif %}><label for="checkbox7">Contained</label>
+            <input id="checkbox7" class="form-check-input" type="checkbox" name="contained" value="1" {% if request.GET.contained == '1' %}checked{% endif %}><label for="checkbox7">Contained</label>
           </div>
         </div>
         <div class="col-md-auto">
           <div class="form-check">
-            <input id="checkbox77" class="form-check-input" type="checkbox" name="not_contained" value="1" {% if display_prms.not_contained == '1' %}checked{% endif %}><label for="checkbox77">Not Contained</label>
+            <input id="checkbox77" class="form-check-input" type="checkbox" name="not_contained" value="1" {% if request.GET.not_contained == '1' %}checked{% endif %}><label for="checkbox77">Not Contained</label>
           </div>
         </div>
         <div class="col-md-auto">
           <div class="form-check">
-            <input id="checkbox8" class="form-check-input" type="checkbox" name="contains" value="1" {% if display_prms.contains == '1' %}checked{% endif %}><label for="checkbox8">Contains</label>
+            <input id="checkbox8" class="form-check-input" type="checkbox" name="contains" value="1" {% if request.GET.contains == '1' %}checked{% endif %}><label for="checkbox8">Contains</label>
           </div>
+        </div>
+        <div class="col-md-auto">
+          <div class="form-check">
+            <input id="checkbox-not-used-groups" class="form-check-input" type="checkbox" name="not_used_including_groups" value="1" {% if request.GET.not_used_including_groups == '1' %}checked{% endif %}><label for="checkbox-not-used-groups">Not used including groups</label>
+          </div>
+        </div>
+        <div class="col-md-auto">
+            <div class="form-check">
+            <input id="checkbox-f-groups" class="form-check-input" type="checkbox" name="is-not-in-groups" value="1" {% if "is-not-in-groups" in request.GET %}checked{% endif %}><label for="checkbox-f-groups">Is not in Match Groups</label>
+            </div>
+        </div>
+        <div class="col-md-auto">
+            <div class="form-check">
+            <input id="checkbox-f-single-group" class="form-check-input" type="checkbox" name="is-in-single-group" value="1" {% if "is-in-single-group" in request.GET %}checked{% endif %}><label for="checkbox-f-single-group">Is in Single Match Groups</label>
+            </div>
         </div>
       </div>
       <div class="page-line row g-1">
@@ -271,6 +286,40 @@
             </div>
         {% endif %}
     </div>
+    {% if perms.viewer.add_gallerymatchgroup %}
+    <div class="row g-1 mt-3">
+        <div class="col-md-auto">
+          <input title="Cutoff" size="10" type="number" step="0.01" class="form-control" name="cutoff" value="" placeholder="Cutoff"/>
+        </div>
+        <div class="col-md-auto">
+          <input title="Max matches" size="10" type="number" step="1" class="form-control" name="max-matches" value="10" placeholder="Max Matches"/>
+        </div>
+        <div class="col-md-auto">
+        <div class="dropup">
+            <button class="btn btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown">Create Gallery Match Groups & Possible Matches</button>
+            <ul class="dropdown-menu dropdown-menu-end">
+            <li><button type="submit" name="create_gallery_match_groups" class="btn btn-light" value="">All</button></li>
+              {% for provider in providers %}
+                <li><button type="submit" name="create_gallery_match_groups" class="btn btn-light" value="{{ provider }}">{{ provider }}</button></li>
+              {% endfor %}
+            </ul>
+        </div>
+        </div>
+          <div class="col-md-auto">
+            <select id="matcher_type" name="matcher_type" class="form-control" multiple size="2" title="Matcher type to use" aria-label="matcher_type">
+              {% for matcher_type in matcher_types %}
+                <option value="{{ matcher_type }}" {% if matcher_type in request.POST.matcher_type %} selected{% endif %}>{{ matcher_type }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        <div class="col-md-auto">
+        <button type="submit" name="delete_gallery_match_groups" class="btn btn-light" value="">Delete Gallery Match Groups</button>
+        </div>
+        <div class="col-md-auto">
+        <button type="submit" name="auto_select_first_match" class="btn btn-light" value="">Add First Match to Match Group</button>
+        </div>
+    </div>
+    {% endif %}
     </form>
 {% endblock %}
 {% block afterJQ %}

@@ -219,13 +219,13 @@ def archive_details(request: HttpRequest, pk: int, mode: str = "view") -> HttpRe
 
                 messages.success(request, "Successfully modified Archive manage data")
                 archive_manage_formset = ArchiveManageEditFormSet(
-                    instance=archive, queryset=ArchiveManageEntry.objects.filter(mark_user=request.user)
+                    instance=archive, queryset=ArchiveManageEntry.objects.filter(mark_user=request.user),
                 )
             else:
                 messages.error(request, "The provided data is not valid", extra_tags="danger")
         else:
             archive_manage_formset = ArchiveManageEditFormSet(
-                instance=archive, queryset=ArchiveManageEntry.objects.filter(mark_user=request.user)
+                instance=archive, queryset=ArchiveManageEntry.objects.filter(mark_user=request.user),
             )
 
         d.update({"archive_manage_formset": archive_manage_formset})
@@ -235,7 +235,8 @@ def archive_details(request: HttpRequest, pk: int, mode: str = "view") -> HttpRe
         d.update({"manage_entries": manage_entries, "manage_entries_count": manage_entries.count()})
     elif crawler_settings.urls.enable_public_marks and crawler_settings.urls.public_mark_reasons:
         manage_entries = ArchiveManageEntry.objects.filter(
-            archive=archive, mark_reason__in=crawler_settings.urls.public_mark_reasons
+            archive=archive, mark_reason__in=crawler_settings.urls.public_mark_reasons,
+            status=ArchiveManageEntry.StatusChoices.NORMAL
         )
         d.update({"manage_entries": manage_entries})
 
@@ -1193,8 +1194,10 @@ def mark_similar_archives(request: HttpRequest, pk: int) -> HttpResponse:
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
 
-    logger.info("Creating similar info as marks for Archive: {}".format(archive.get_absolute_url()))
-    archive.create_marks_for_similar_archives()
+    use_recycled_archives = bool(request.GET.get("use-recycled", ""))
+
+    logger.info("Creating similar info as marks for Archive: {}, use recycled archives: {}".format(archive.get_absolute_url(), use_recycled_archives))
+    archive.create_marks_for_similar_archives(use_recycled_archives=use_recycled_archives)
 
     if "HTTP_REFERER" in request.META:
         return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
@@ -1316,12 +1319,16 @@ def delete_archive(request: HttpRequest, pk: int) -> HttpResponse:
 
             message_list = list()
 
-            if "delete-archive" in p:
-                message_list.append("archive entry")
+            # Delete zipped takes priority, deletes actual file but preserves image data
+            if "delete-zipped" in p:
+                message_list.append("associated zipped file only")
+            else:
+                if "delete-archive" in p:
+                    message_list.append("archive entry")
+                if "delete-file" in p:
+                    message_list.append("associated file")
             if "delete-gallery" in p:
                 message_list.append("associated gallery")
-            if "delete-file" in p:
-                message_list.append("associated file")
 
             message = "For archive: {}, deleting: {}".format(archive.title, ", ".join(message_list))
 
@@ -1337,7 +1344,8 @@ def delete_archive(request: HttpRequest, pk: int) -> HttpResponse:
             # Mark deleted takes priority over delete
             if "mark-gallery-deleted" in p and archive.gallery:
                 archive.gallery.mark_as_deleted()
-                archive.gallery = None
+                if "delete-zipped" not in p:
+                    archive.gallery = None
 
                 event_log(
                     request.user,
@@ -1349,7 +1357,8 @@ def delete_archive(request: HttpRequest, pk: int) -> HttpResponse:
                 )
             elif "mark-gallery-denied" in p and archive.gallery:
                 archive.gallery.mark_as_denied()
-                archive.gallery = None
+                if "delete-zipped" not in p:
+                    archive.gallery = None
 
                 event_log(
                     request.user,
@@ -1370,24 +1379,56 @@ def delete_archive(request: HttpRequest, pk: int) -> HttpResponse:
                     data=old_gallery_link,
                     result="deleted",
                 )
-            if "delete-file" in p:
-                create_delete_mark = False if "delete-archive" in p else True
-                archive.delete_all_files(create_mark=create_delete_mark)
-            if "delete-archive" in p:
-                archive.delete_files_but_archive()
-                archive.delete()
 
-            if old_gallery_link:
-                event_log(request.user, "DELETE_ARCHIVE", reason=user_reason, result="deleted", data=archive_report)
+            actual_action: None | str = None
+
+            if "delete-zipped" in p:
+                actual_action = "DELETE_ZIPPED_PRESERVE_IMAGE_DATA"
+                archive.delete_all_files(create_mark=True, preserve_image_data=True)
+                if not archive.is_recycled():
+                    with transaction.atomic():
+                        r = ArchiveRecycleEntry(
+                            archive=archive,
+                            reason=user_reason,
+                            user=request.user,
+                            origin=ArchiveRecycleEntry.ORIGIN_USER,
+                        )
+
+                        r.save()
+                        archive.binned = True
+                        archive.simple_save()
+                        event_log(
+                            request.user,
+                            "MOVE_TO_RECYCLE_BIN",
+                            content_object=archive,
+                            result="recycled",
+                            reason=user_reason,
+                        )
+                        if archive.public:
+                            archive.set_private()
+                            event_log(request.user, "UNPUBLISH_ARCHIVE", content_object=archive, result="unpublished")
             else:
-                event_log(
-                    request.user,
-                    "DELETE_ARCHIVE",
-                    reason=user_reason,
-                    content_object=gallery,
-                    result="deleted",
-                    data=archive_report,
-                )
+                if "delete-file" in p:
+                    create_delete_mark = False if "delete-archive" in p else True
+                    archive.delete_all_files(create_mark=create_delete_mark)
+                    actual_action = "DELETE_ZIPPED"
+                if "delete-archive" in p:
+                    archive.delete_files_but_archive()
+                    archive.delete()
+                    actual_action = "DELETE_ARCHIVE"
+
+            if actual_action is not None:
+                if old_gallery_link:
+                    event_log(request.user, actual_action, reason=user_reason, result="deleted", data=archive_report)
+                else:
+                    event_log(
+                        request.user,
+                        actual_action,
+                        reason=user_reason,
+                        content_object=gallery,
+                        result="deleted",
+                        data=archive_report,
+                    )
 
             return HttpResponseRedirect(reverse("viewer:main-page"))
 
@@ -1403,7 +1444,7 @@ def delete_archive(request: HttpRequest, pk: int) -> HttpResponse:
 
 @login_required
 def delete_manage_archive(request: HttpRequest, pk: int) -> HttpResponse:
-    """Recalculate archive info."""
+    """Delete Manage Archive entry."""
 
     if not request.user.has_perm("viewer.mark_archive"):
         return render_error(request, "You don't have the permission to mark an Archive.")
@@ -1422,5 +1463,54 @@ def delete_manage_archive(request: HttpRequest, pk: int) -> HttpResponse:
     event_log(request.user, "DELETE_MANAGER_ARCHIVE", content_object=archive_manage_entry.archive, result="deleted")
 
     archive_manage_entry.delete()
+
+    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+
+
+@login_required
+def remove_from_index_manage_archive(request: HttpRequest, pk: int) -> HttpResponse:
+    """Mark Archive entry as non-searchable."""
+
+    if not request.user.has_perm("viewer.edit_system_marks"):
+        return render_error(request, "You don't have the permission to remove from index a Mark for an Archive.")
+    try:
+        archive_manage_entry = ArchiveManageEntry.objects.get(pk=pk)
+    except ArchiveManageEntry.DoesNotExist:
+        messages.error(request, "ArchiveManageEntry does not exist")
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+
+    if (archive_manage_entry.mark_user is not None and archive_manage_entry.mark_user.id != 1) and not request.user.is_staff:
+        return render_error(request, "You don't have the permission to remove from index a Mark for an Archive.")
+
+    messages.success(request, "Removing from index ArchiveManageEntry for Archive: {}".format(archive_manage_entry.archive))
+
+    event_log(request.user, "REMOVE_FROM_INDEX_MANAGER_ARCHIVE", content_object=archive_manage_entry.archive, result="remove_from_index")
+
+    archive_manage_entry.status = ArchiveManageEntry.StatusChoices.NOT_INDEXED
+    archive_manage_entry.save()
+
+    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+
+@login_required
+def add_to_index_manage_archive(request: HttpRequest, pk: int) -> HttpResponse:
+    """Mark Archive entry as searchable."""
+
+    if not request.user.has_perm("viewer.edit_system_marks"):
+        return render_error(request, "You don't have the permission to add to index a Mark for an Archive.")
+    try:
+        archive_manage_entry = ArchiveManageEntry.objects.get(pk=pk)
+    except ArchiveManageEntry.DoesNotExist:
+        messages.error(request, "ArchiveManageEntry does not exist")
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+
+    if (archive_manage_entry.mark_user is not None and archive_manage_entry.mark_user.id != 1) and not request.user.is_staff:
+        return render_error(request, "You don't have the permission to add to index a Mark for an Archive.")
+
+    messages.success(request, "Adding to index ArchiveManageEntry for Archive: {}".format(archive_manage_entry.archive))
+
+    event_log(request.user, "ADD_TO_INDEX_MANAGER_ARCHIVE", content_object=archive_manage_entry.archive, result="add_to_index")
+
+    archive_manage_entry.status = ArchiveManageEntry.StatusChoices.NORMAL
+    archive_manage_entry.save()
 
     return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))

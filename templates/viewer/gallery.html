@@ -261,6 +261,21 @@
         </ul>
     </li>
     {% endif %}
+  {% if gallery_group %}
+    <li class="line-top"><label class="label-extended">Galleries in match group:</label>
+        <ul>
+            {% for gallery_from_group in gallery_group.galleries.all %}
+              {% if gallery_from_group.public or user.is_authenticated %}
+                  {% if gallery_from_group.pk == gallery.pk %}
+                    {{ forloop.counter }}* > {{ gallery_from_group }}
+                  {% else %}
+                    <li>{{ forloop.counter }} > <a href="{% url 'viewer:gallery' gallery_from_group.id %}">{{ gallery_from_group }}</a></li>
+                  {% endif %}
+              {% endif %}
+            {% endfor %}
+        </ul>
+    </li>
+    {% endif %}
     {% if gallery_provider_data %}
     <li class="line-top"><label class="label-extended">Extra Provider Metadata:</label>
       <table>

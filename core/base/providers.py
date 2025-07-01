@@ -192,56 +192,65 @@ class ProviderContext:
         self,
         settings: "setup.Settings",
         general_utils: GeneralUtils,
-        filter_name: Optional[str] = None,
+        filter_provider: Optional[str] = None,
+        filter_type: Optional[str] = None,
         force: bool = False,
         priorities: Optional[dict[str, int]] = None,
     ) -> list[tuple["BaseDownloader", int]]:
 
-        if priorities:
-            priorities_to_use = priorities
-        else:
-            priorities_to_use = settings.downloaders
+        # Use provided priorities, or fall back to the ones in settings.
+        priorities_to_use = priorities if priorities is not None else settings.downloaders
 
-        downloaders = list()
-        for downloader in self.downloaders:
-            handler_name = str(downloader)
-            if filter_name:
-                if filter_name in handler_name:
-                    if force:
-                        downloader_instance = downloader(settings, general_utils)
-                        downloaders.append((downloader_instance, 1))
-                    else:
-                        if handler_name in priorities_to_use and priorities_to_use[handler_name] >= 0:
-                            downloader_instance = downloader(settings, general_utils)
-                            downloaders.append((downloader_instance, priorities_to_use[handler_name]))
+        result_downloaders = []
+        for downloader_class in self.downloaders:
+            # --- 1. Filter Logic ---
+            # If a filter is set, the downloader must match it.
+            # If a filter is not set, it's considered a pass.
+            passes_provider_filter = (not filter_provider) or (filter_provider in downloader_class.valid_providers())
+            passes_type_filter = (not filter_type) or (filter_type == downloader_class.type)
+
+            if not (passes_provider_filter and passes_type_filter):
+                continue  # Skip this downloader if it fails any filter
+
+            # --- 2. Priority and Instantiation Logic ---
+            # Determine the priority for the downloader that passed the filters.
+            priority = None
+            if force:
+                priority = 1  # Forced downloaders get a priority of 1
             else:
-                if force:
-                    downloader_instance = downloader(settings, general_utils)
-                    downloaders.append((downloader_instance, 1))
-                else:
-                    if handler_name in priorities_to_use and priorities_to_use[handler_name] >= 0:
-                        downloader_instance = downloader(settings, general_utils)
-                        downloaders.append((downloader_instance, priorities_to_use[handler_name]))
+                handler_name = str(downloader_class)
+                # Use .get() for safe dictionary access to avoid KeyErrors
+                p = priorities_to_use.get(handler_name)
+                if p is not None and p >= 0:
+                    priority = p
 
-        return sorted(downloaders, key=itemgetter(1))
+            # If a valid priority was determined, instantiate and add to the list.
+            if priority is not None:
+                instance = downloader_class(settings, general_utils)
+                result_downloaders.append((instance, priority))
+
+        # --- 3. Final Sort ---
+        # Sort the collected downloaders by their priority.
+        return sorted(result_downloaders, key=itemgetter(1))
 
     def get_downloaders_name_priority(
-        self, settings: "setup.Settings", filter_name: Optional[str] = None
+        self, settings: "setup.Settings",
+            filter_provider: Optional[str] = None,
+            filter_type: Optional[str] = None
     ) -> list[tuple[str, int]]:
         downloaders = list()
-        for downloader in self.downloaders:
-            handler_name = str(downloader)
-            if filter_name:
-                if filter_name in handler_name:
-                    if handler_name in settings.downloaders:
-                        downloaders.append((handler_name, settings.downloaders[handler_name]))
-                    else:
-                        downloaders.append((handler_name, -1))
+        for downloader_class in self.downloaders:
+            handler_name = str(downloader_class)
+            passes_provider_filter = (not filter_provider) or (filter_provider in downloader_class.valid_providers())
+            passes_type_filter = (not filter_type) or (filter_type == downloader_class.type)
+
+            if not (passes_provider_filter and passes_type_filter):
+                continue  # Skip this downloader if it fails any filter
+
+            if handler_name in settings.downloaders:
+                downloaders.append((handler_name, settings.downloaders[handler_name]))
             else:
-                if handler_name in settings.downloaders:
-                    downloaders.append((handler_name, settings.downloaders[handler_name]))
-                else:
-                    downloaders.append((handler_name, -1))
+                downloaders.append((handler_name, -1))
 
         return sorted(downloaders, key=itemgetter(1), reverse=True)
 

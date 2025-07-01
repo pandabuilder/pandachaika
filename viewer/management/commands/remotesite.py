@@ -20,7 +20,7 @@ def get_gid_path_association(archives_to_check, site_page, user_token):
     data = {"operation": "archive_request", "args": archives_gid_provider}
 
     headers = {"Content-Type": "application/json; charset=utf-8", "Authorization": "Bearer {}".format(user_token)}
-    r = requests.post(site_page, data=json.dumps(data), headers={**headers}, timeout=25)
+    r = requests.post(site_page, data=json.dumps(data), headers=headers, timeout=25)
     response_data = {}
     try:
         response_data = r.json()
@@ -42,7 +42,7 @@ def send_urls_from_archive_list(site_page, user_token, reason, details, archive_
         data["archive_details"] = details
 
     headers = {"Content-Type": "application/json; charset=utf-8", "Authorization": "Bearer {}".format(user_token)}
-    r = requests.post(site_page, data=json.dumps(data), headers={**headers}, timeout=25)
+    r = requests.post(site_page, data=json.dumps(data), headers=headers, timeout=25)
     try:
         response_data = r.json()
         yield "Number of new galleries queued: {}".format(response_data["result"])
@@ -63,7 +63,7 @@ def send_urls_from_archives(site_page, user_token, reason, details):
 
     headers = {"Content-Type": "application/json; charset=utf-8", "Authorization": "Bearer {}".format(user_token)}
 
-    r = requests.post(site_page, data=json.dumps(data), headers={**headers}, timeout=25)
+    r = requests.post(site_page, data=json.dumps(data), headers=headers, timeout=25)
     try:
         response_data = r.json()
         yield "Number of new galleries queued: {}".format(response_data["result"])
@@ -106,7 +106,7 @@ def send_urls_from_gallery_query(site_page, user_token, reason, details, web_pag
 
     headers = {"Content-Type": "application/json; charset=utf-8", "Authorization": "Bearer {}".format(user_token)}
 
-    r = requests.post(site_page, data=json.dumps(data), headers={**headers}, timeout=25)
+    r = requests.post(site_page, data=json.dumps(data), headers=headers, timeout=25)
     try:
         response_data = r.json()
         yield "Number of galleries queued: {}".format(response_data["result"])
@@ -126,7 +126,7 @@ def send_urls_from_galleries(site_page, user_token):
 
     headers = {"Content-Type": "application/json; charset=utf-8", "Authorization": "Bearer {}".format(user_token)}
 
-    r = requests.post(site_page, data=json.dumps(data), headers={**headers}, timeout=25)
+    r = requests.post(site_page, data=json.dumps(data), headers=headers, timeout=25)
     try:
         response_data = r.json()
         yield "Number of new galleries queued: {}".format(response_data["result"])
@@ -142,7 +142,7 @@ def send_urls_fakku(site_page, user_token):
 
     headers = {"Content-Type": "application/json; charset=utf-8", "Authorization": "Bearer {}".format(user_token)}
 
-    r = requests.post(site_page, data=json.dumps(data), headers={**headers}, timeout=25)
+    r = requests.post(site_page, data=json.dumps(data), headers=headers, timeout=25)
     try:
         response_data = r.json()
         yield "Number of new galleries queued: {}".format(response_data["result"])
