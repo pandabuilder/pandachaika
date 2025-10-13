@@ -972,7 +972,19 @@ def filter_galleries(
             else:
                 tag_scope = ""
                 tag_name = scope_name[0]
-            if tag.startswith("-"):
+            if tag.startswith("-^"):
+                if tag_name != "" and tag_scope != "":
+                    tag_query = Q(Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope))
+                elif tag_name != "":
+                    tag_query = Q(tags__name__exact=tag_name)
+                else:
+                    tag_query = Q(tags__scope__exact=tag_scope)
+
+                if tags_or:
+                    q_objects.add(~tag_query, Q.OR)
+                else:
+                    results = results.exclude(tag_query)
+            elif tag.startswith("-"):
                 if tag_name != "" and tag_scope != "":
                     tag_query = Q(Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope))
                 elif tag_name != "":
@@ -1254,7 +1266,16 @@ def filter_archives(
             else:
                 tag_scope = ""
                 tag_name = scope_name[0]
-            if tag.startswith("-"):
+            if tag.startswith("-^"):
+                if tag_name != "" and tag_scope != "":
+                    tag_query = Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope)
+                elif tag_name != "":
+                    tag_query = Q(tags__name__exact=tag_name)
+                else:
+                    tag_query = Q(tags__scope__exact=tag_scope)
+
+                results = results.exclude(tag_query)
+            elif tag.startswith("-"):
                 if tag_name != "" and tag_scope != "":
                     tag_query = Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)
                 elif tag_name != "":
@@ -1981,7 +2002,16 @@ def filter_archives_simple(params: dict[str, Any], authenticated=False, show_bin
             else:
                 tag_scope = ""
                 tag_name = scope_name[0]
-            if tag.startswith("-"):
+            if tag.startswith("-^"):
+                if tag_name != "" and tag_scope != "":
+                    tag_query = Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope)
+                elif tag_name != "":
+                    tag_query = Q(tags__name__exact=tag_name)
+                else:
+                    tag_query = Q(tags__scope__exact=tag_scope)
+
+                results = results.exclude(tag_query)
+            elif tag.startswith("-"):
                 if tag_name != "" and tag_scope != "":
                     tag_query = Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)
                 elif tag_name != "":
@@ -2116,7 +2146,19 @@ def filter_galleries_simple(params: dict[str, Any]) -> QuerySet[Gallery]:
             else:
                 tag_scope = ""
                 tag_name = scope_name[0]
-            if tag.startswith("-"):
+            if tag.startswith("-^"):
+                if tag_name != "" and tag_scope != "":
+                    tag_query = Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope)
+                elif tag_name != "":
+                    tag_query = Q(tags__name__exact=tag_name)
+                else:
+                    tag_query = Q(tags__scope__exact=tag_scope)
+
+                if tags_or:
+                    q_objects.add(~tag_query, Q.OR)
+                else:
+                    results = results.exclude(tag_query)
+            elif tag.startswith("-"):
                 if tag_name != "" and tag_scope != "":
                     tag_query = Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)
                 elif tag_name != "":
@@ -2253,7 +2295,17 @@ def filter_wanted_galleries_simple(params: dict[str, Any]) -> QuerySet[WantedGal
             else:
                 tag_scope = ""
                 tag_name = scope_name[0]
-            if tag.startswith("-"):
+            if tag.startswith("-^"):
+                if tag_name != "" and tag_scope != "":
+                    tag_query = (
+                        Q(wanted_tags__name__exact=tag_name) & Q(wanted_tags__scope__exact=tag_scope)
+                    ) | (Q(unwanted_tags__name__exact=tag_name) & Q(unwanted_tags__scope__exact=tag_scope))
+                elif tag_name != "":
+                    tag_query = Q(wanted_tags__name__exact=tag_name) | Q(unwanted_tags__name__exact=tag_name)
+                else:
+                    tag_query = Q(wanted_tags__scope__exact=tag_scope) | Q(unwanted_tags__scope__exact=tag_scope)
+                results = results.exclude(tag_query)
+            elif tag.startswith("-"):
                 if tag_name != "" and tag_scope != "":
                     tag_query = (
                         Q(wanted_tags__name__contains=tag_name) & Q(wanted_tags__scope__contains=tag_scope)

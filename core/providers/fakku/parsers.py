@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import json
 import logging
 import re
 import time
@@ -270,6 +271,21 @@ class Parser(BaseParser):
                 gallery.category = "Doujinshi"
             elif is_game:
                 gallery.category = "Game"
+
+            all_js = soup.find_all("script", type="application/ld+json")
+
+            for js_block in all_js:
+                try:
+                    json_data = json.loads(js_block.text)
+                    if "workExample" in json_data:
+                        for work in json_data["workExample"]:
+                            if "inLanguage" in work:
+                                if work["inLanguage"] == "en":
+                                    work_lang_tag = translate_tag("language:english")
+                                    if not work_lang_tag in gallery.tags:
+                                        gallery.tags.append(work_lang_tag)
+                except json.JSONDecodeError:
+                    continue
 
             return gallery
         else:

@@ -115,7 +115,14 @@ def get_archive_data(data: QueryDict) -> "QuerySet[Archive]":
             tag = term.strip().replace(" ", "_")
             tag_clean = re.sub("^[-|^]", "", tag)
             scope_name = tag_clean.split(":", maxsplit=1)
-            if term.startswith("-"):
+            if term.startswith("-^"):
+                tag_query = (
+                    (Q(tags__name__exact=scope_name[1]) & Q(tags__scope__exact=scope_name[0]))
+                    if len(scope_name) > 1
+                    else Q(tags__name__exact=scope_name[0])
+                )
+                results = results.exclude(tag_query)
+            elif term.startswith("-"):
                 tag_query = (
                     (Q(tags__name__contains=scope_name[1]) & Q(tags__scope__contains=scope_name[0]))
                     if len(scope_name) > 1

@@ -188,7 +188,9 @@ class TorrentHTMLParser(HTMLParser):
 ARCHIVE_ROOT_URL = "/archive/"
 
 
-def contains_archive_root(href: str) -> bool:
+def contains_archive_root(href: str | None) -> bool:
+    if href is None:
+        return False
     return ARCHIVE_ROOT_URL in href
 
 

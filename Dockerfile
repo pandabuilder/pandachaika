@@ -1,5 +1,5 @@
 # Stage 1: Base build stage
-FROM python:3.13 AS builder
+FROM python:3.14 AS builder
 
 # Create the app directory
 RUN mkdir /app
@@ -24,7 +24,7 @@ COPY requirements.txt /app/
 RUN uv pip install --system --no-cache-dir -r requirements.txt psycopg[c]
 
 # Stage 2: Production stage
-FROM python:3.13-slim
+FROM python:3.14-slim
 
 RUN apt update && apt install -y libpq5 gosu
 

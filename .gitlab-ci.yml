@@ -18,10 +18,10 @@ test-all:
   parallel:
     matrix:
       - PYTHON_VERSION:
-        - '3.10'
         - '3.11'
         - '3.12'
         - '3.13'
+        - '3.14'
   cache:
     <<: *global_cache
     key: "$CI_JOB_NAME-$CI_COMMIT_REF_SLUG"
@@ -50,10 +50,10 @@ test-all:
       junit: test-results/TEST-*.xml
 
 build:
-  image: docker:28.3.0
+  image: docker:28.5.1
   when: manual
   services:
-    - docker:28.3.0-dind
+    - docker:28.5.1-dind
   before_script:
     - docker info
   stage: build

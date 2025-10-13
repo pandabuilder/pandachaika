@@ -182,6 +182,8 @@ class UrlSettings:
         "main_webserver_url",
         "external_as_main_download",
         "elasticsearch_as_main_urls",
+        "elasticsearch_archive_url",
+        "elasticsearch_gallery_url",
         "cors_allowed_origins",
         "cors_allow_all_origins",
     ]
@@ -193,6 +195,8 @@ class UrlSettings:
         self.enable_public_marks: bool = False
         self.public_mark_reasons: list[str] = []
         self.elasticsearch_as_main_urls: bool = False
+        self.elasticsearch_archive_url: str = "es-index"
+        self.elasticsearch_gallery_url: str = "es-gallery-index"
         self.viewer_main_url: str = ""
         self.media_url: str = "/media/"
         self.static_url: str = "/static/"
@@ -317,6 +321,7 @@ class Settings:
         self.auto_hash_images = False
         self.auto_phash_images = False
         self.auto_match_wanted_images = False
+        self.auto_match_phash_tags_archives = False
         self.default_wanted_publisher = ''
         self.default_wanted_categories = ["Doujinshi", "Artist CG"]
         self.default_wanted_providers = ["panda"]
@@ -572,6 +577,8 @@ class Settings:
                 self.timeout_timer = config["general"]["timeout_timer"]
             if "mark_similar_new_archives" in config["general"]:
                 self.mark_similar_new_archives = config["general"]["mark_similar_new_archives"]
+            if "auto_match_phash_tags_archives" in config["general"]:
+                self.auto_match_phash_tags_archives = config["general"]["auto_match_phash_tags_archives"]
             if "auto_hash_images" in config["general"]:
                 self.auto_hash_images = config["general"]["auto_hash_images"]
             if "auto_phash_images" in config["general"]:
@@ -783,6 +790,10 @@ class Settings:
                 self.urls.main_webserver_url = config["urls"]["main_webserver_url"]
             if "elasticsearch_as_main_urls" in config["urls"]:
                 self.urls.elasticsearch_as_main_urls = config["urls"]["elasticsearch_as_main_urls"]
+            if "elasticsearch_archive_url" in config["urls"]:
+                self.urls.elasticsearch_archive_url = config["urls"]["elasticsearch_archive_url"]
+            if "elasticsearch_gallery_url" in config["urls"]:
+                self.urls.elasticsearch_gallery_url = config["urls"]["elasticsearch_gallery_url"]
         if "remote_site" in config:
             self.remote_site = config["remote_site"]
         if "monitored_links" in config:

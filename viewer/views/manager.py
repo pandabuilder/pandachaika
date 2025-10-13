@@ -534,7 +534,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
 
     results = filter_archives_simple(params, True)
 
-    results = results.filter(gallery__isnull=True).prefetch_related(
+    results = results.filter(gallery__isnull=True).prefetch_related( # type:ignore[misc]
         Prefetch(
             "archivematches_set",
             queryset=ArchiveMatches.objects.select_related("gallery", "archive").prefetch_related(
@@ -740,7 +740,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
 
     results_filtered = filter_wanted_galleries_simple(params)
 
-    results_filtered = results_filtered.prefetch_related(
+    results_filtered = results_filtered.prefetch_related( # type:ignore[misc]
         Prefetch(
             "gallerymatch_set",
             queryset=GalleryMatch.objects.select_related("gallery", "wanted_gallery").prefetch_related(

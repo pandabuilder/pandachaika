@@ -1698,7 +1698,16 @@ def simple_archive_filter(args: str, public: bool = True) -> "QuerySet[Archive]"
         else:
             tag_scope = ""
             tag_name = scope_name[0]
-        if tag.startswith("-"):
+        if tag.startswith("-^"):
+            if tag_name != "" and tag_scope != "":
+                tag_query = Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope)
+            elif tag_name != "":
+                tag_query = Q(tags__name__exact=tag_name)
+            else:
+                tag_query = Q(tags__scope__exact=tag_scope)
+
+            results = results.exclude(tag_query)
+        elif tag.startswith("-"):
             if tag_name != "" and tag_scope != "":
                 tag_query = Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)
             elif tag_name != "":
@@ -1821,7 +1830,16 @@ def filter_galleries_no_request(filter_args: Union[dict[str, Any], QueryDict]) -
             else:
                 tag_scope = ""
                 tag_name = scope_name[0]
-            if tag.startswith("-"):
+            if tag.startswith("-^"):
+                if tag_name != "" and tag_scope != "":
+                    tag_query = Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope)
+                elif tag_name != "":
+                    tag_query = Q(tags__name__exact=tag_name)
+                else:
+                    tag_query = Q(tags__scope__exact=tag_scope)
+
+                results = results.exclude(tag_query)
+            elif tag.startswith("-"):
                 if tag_name != "" and tag_scope != "":
                     tag_query = Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)
                 elif tag_name != "":

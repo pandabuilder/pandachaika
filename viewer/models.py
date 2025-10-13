@@ -38,7 +38,6 @@ from django.db.models import Value, CharField
 from django.db.models.functions import Concat, Replace
 
 from PIL import Image as PImage
-import pillow_avif
 from PIL import ImageFile
 import django.db.models.options as options
 from django.urls import reverse
@@ -54,6 +53,7 @@ from simple_history.models import HistoricalRecords
 
 from core.base.comparison import get_list_closer_text_from_list
 from core.base.image_ops import img_to_thumbnail
+from core.base.tag_logic import ArchiveTagsComparer
 from core.base.utilities import (
     calc_crc32,
     get_zip_filesize,
@@ -3163,9 +3163,9 @@ class Archive(models.Model):
     def create_marks_for_similar_archives(self, excluded_archives: Optional[list[int]] = None, use_recycled_archives: bool = False) -> None:
         if self.crc32:
             if use_recycled_archives:
-                similar_crc32 = Archive.objects.filter(crc32=self.crc32).exclude(pk=self.pk).exclude(binned=True)
-            else:
                 similar_crc32 = Archive.objects.filter(crc32=self.crc32).exclude(pk=self.pk)
+            else:
+                similar_crc32 = Archive.objects.filter(crc32=self.crc32).exclude(pk=self.pk).exclude(binned=True)
 
             # 4.2 means high level priority
             if similar_crc32.count() > 0:
@@ -3246,10 +3246,9 @@ class Archive(models.Model):
                 ).delete()
 
         self.create_sha1_similarity_mark(excluded_archives, use_recycled_archives=use_recycled_archives)
-        self.create_phash_similarity_mark(excluded_archives, use_recycled_archives=use_recycled_archives)
+        self.create_phash_similarity_mark(excluded_archives, use_recycled_archives=use_recycled_archives, match_similar_tags=settings.CRAWLER_SETTINGS.auto_match_phash_tags_archives)
         self.create_phash_gallery_similarity_mark()
         self.create_wanted_image_similarity_mark()
-        # .exclude(pk__in=excluded_archives)
 
     def create_sha1_similarity_mark(self, excluded_archives: Optional[list[int]] = None, use_recycled_archives: bool = False) -> None:
         images_from_archive = self.image_set.filter(sha1__isnull=False)
@@ -3329,7 +3328,7 @@ class Archive(models.Model):
             archive=self, mark_reason="images_sha1_similarity", mark_user__isnull=True
         ).delete()
 
-    def create_phash_similarity_mark(self, excluded_archives: Optional[list[int]] = None, use_recycled_archives: bool = False) -> None:
+    def create_phash_similarity_mark(self, excluded_archives: Optional[list[int]] = None, use_recycled_archives: bool = False, match_similar_tags: bool = False) -> None:
         images_from_archive = self.image_set.all()
 
         algorithm = "phash"
@@ -3339,6 +3338,9 @@ class Archive(models.Model):
         images_phashes = ItemProperties.objects.filter(
             content_type=image_type, object_id__in=images_from_archive, tag="hash-compare", name=algorithm
         )
+
+        delete_old_marks = True
+        delete_old_tags_marks = True
 
         if images_phashes:
             images_phashes_values = images_phashes.values_list("value", flat=True)
@@ -3360,6 +3362,11 @@ class Archive(models.Model):
                 if excluded_archives:
                     archives_phash = archives_phash.exclude(pk__in=excluded_archives)
                 per_archives_comment = []
+                per_tag_archives_comment = []
+                if match_similar_tags:
+                    current_tags = self.tag_list()
+                else:
+                    current_tags = []
 
                 mark_priority = 0.0
 
@@ -3397,6 +3404,41 @@ class Archive(models.Model):
                         )
                     )
 
+                    if match_similar_tags:
+                        compare_tags = archive_phash.tag_list()
+                        tag_comparer = ArchiveTagsComparer(self, archive_phash, current_tags, compare_tags, found_phash)
+
+                        translation_of_raw_anthology = tag_comparer.translation_of_raw_anthology()
+                        translation_of_raw_book = tag_comparer.translation_of_raw_book()
+
+                        if translation_of_raw_anthology:
+                            per_tag_archives_comment.append(
+                                (
+                                    archive_phash.pk,
+                                    "(special-link):({})({}): Translation of chapter in {}, (special-link):(compare)({})".format(
+                                        archive_phash.pk,
+                                        archive_phash.get_absolute_url(),
+                                        "magazine" if tag_comparer.compare_is_magazine else "tankoubon",
+                                        reverse("viewer:compare-archives-viewer")
+                                        + "?archives={}&archives={}&algos=phash".format(self.pk, archive_phash.pk),
+                                    ),
+                                )
+                            )
+
+                        if translation_of_raw_book:
+                            per_tag_archives_comment.append(
+                                (
+                                    archive_phash.pk,
+                                    "(special-link):({})({}): Translation of {}, (special-link):(compare)({})".format(
+                                        archive_phash.pk,
+                                        archive_phash.get_absolute_url(),
+                                        self.get_es_category(),
+                                        reverse("viewer:compare-archives-viewer")
+                                        + "?archives={}&archives={}&algos=phash".format(self.pk, archive_phash.pk),
+                                    ),
+                                )
+                            )
+
                 per_archives_comment = sorted(per_archives_comment, key=itemgetter(0), reverse=True)
 
                 if per_archives_comment:
@@ -3413,11 +3455,34 @@ class Archive(models.Model):
                             "origin": ArchiveManageEntry.ORIGIN_SYSTEM,
                         },
                     )
-                    return
+                    delete_old_marks = False
 
-        ArchiveManageEntry.objects.filter(
-            archive=self, mark_reason="images_phash_similarity", mark_user__isnull=True
-        ).delete()
+                per_tag_archives_comment = sorted(per_tag_archives_comment, key=itemgetter(0), reverse=True)
+
+                if per_tag_archives_comment:
+                    mark_comment = "\n".join([x[1] for x in per_tag_archives_comment])
+
+                    manager_entry, _ = ArchiveManageEntry.objects.update_or_create(
+                        archive=self,
+                        mark_reason="phash_tags_similarity",
+                        defaults={
+                            "mark_comment": mark_comment,
+                            "mark_priority": 0.5,
+                            "mark_check": True,
+                            "origin": ArchiveManageEntry.ORIGIN_SYSTEM,
+                        },
+                    )
+                    delete_old_tags_marks = False
+
+        if delete_old_marks:
+            ArchiveManageEntry.objects.filter(
+                archive=self, mark_reason="images_phash_similarity", mark_user__isnull=True
+            ).delete()
+
+        if delete_old_tags_marks:
+            ArchiveManageEntry.objects.filter(
+                archive=self, mark_reason="phash_tags_similarity", mark_user__isnull=True
+            ).delete()
 
     def create_wanted_image_similarity_mark(self) -> None:
         if (

@@ -1,32 +1,30 @@
 # Chose one depending on database backend
 # mysqlclient
-psycopg==3.2.9
+psycopg==3.2.10
 # Main
 python-dateutil==2.9.0.post0
 twitter==1.19.6
-beautifulsoup4==4.13.4
+beautifulsoup4==4.14.2
 CherryPy==18.10.0
-Django==5.2.3
+Django==5.2.7
 django-compressor==4.5.1
 django-db-logger==0.1.13
-django-cors-headers==4.7.0
+django-cors-headers==4.9.0
 Pillow==11.3.0
-# Temporary plugin to handle AVIF images
-pillow-avif-plugin==1.5.2
 rarfile==4.2
 py7zr==1.0.0
-requests==2.32.4
-feedparser==6.0.11
+requests==2.32.5
+feedparser==6.0.12
 transmission-rpc==7.0.11
 django-autocomplete-light==3.12.1
 django-vite==3.1.0
 elasticsearch==8.18.1
 django-simple-history==3.10.1
-PyYAML==6.0.2
+PyYAML==6.0.3
 deckar01-ratelimit==3.0.2
 pytz==2025.2
 # For image operations in edge cases
-numpy==2.2.6
+numpy==2.3.3
 # Optional packages (depending on features wanted):
 imagehash==4.3.2
 # PySocks==1.7.1

@@ -930,7 +930,13 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
         results = results.prefetch_related("tags")
 
     if actual_user.has_perm("viewer.view_marks"):
-        results = results.prefetch_related("manage_entries")
+        results = results.prefetch_related(
+            Prefetch(
+                "manage_entries",
+                queryset=ArchiveManageEntry.objects.filter(status=ArchiveManageEntry.StatusChoices.NORMAL),
+                to_attr="indexed_entries",
+            )
+        )
 
     paginator = Paginator(results, size)
     try:
@@ -1461,7 +1467,7 @@ def gallery_match_groups_possibles(request: HttpRequest) -> HttpResponse:
     if "is-in-single-group" in get:
         results = results.annotate(galleries_in_group=Count("gallery_group__galleries")).filter(galleries_in_group=1)
 
-    results = results.prefetch_related(
+    results = results.prefetch_related( # type:ignore[misc]
         Prefetch(
             "gallery_group__gallerygrouppossiblematches_set",
             queryset=GalleryGroupPossibleMatches.objects.select_related("gallery_match_group", "gallery").prefetch_related(
@@ -2022,7 +2028,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
     if "show-matched" not in get:
         results = results.filter(gallery__isnull=True)
 
-    results = results.prefetch_related(
+    results = results.prefetch_related( # type:ignore[misc]
         Prefetch(
             "archivematches_set",
             queryset=ArchiveMatches.objects.select_related("gallery", "archive").prefetch_related(

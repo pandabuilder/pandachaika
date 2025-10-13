@@ -233,8 +233,8 @@ urlpatterns += [
     re_path(r"^es-title-pk-suggest/$", elasticsearch.title_pk_suggest_archive_view, name="es-title-pk-suggest"),
     re_path(r"^es-archive-simple/$", elasticsearch.archive_simple, name="es-archive-simple"),
     re_path(r"^es-archives-simple/$", elasticsearch.archives_simple, name="es-archives-simple"),
-    re_path(r"^es-index/$", ESHomePageView.as_view(), name="es-index-view"),
-    re_path(r"^es-gallery-index/$", ESHomeGalleryPageView.as_view(), name="es-gallery-index-view"),
+    re_path(r"^{}/$".format(settings.CRAWLER_SETTINGS.urls.elasticsearch_archive_url), ESHomePageView.as_view(), name="es-index-view"),
+    re_path(r"^{}/$".format(settings.CRAWLER_SETTINGS.urls.elasticsearch_gallery_url), ESHomeGalleryPageView.as_view(), name="es-gallery-index-view"),
     re_path(r"^es-archive-json/$", ESArchiveJSONView.as_view(), name="es-archive-json"),
     re_path(r"^es-gallery-json/$", ESGalleryJSONView.as_view(), name="es-gallery-json"),
 ]
