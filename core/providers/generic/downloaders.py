@@ -7,12 +7,12 @@ import requests
 
 from core.base.types import DataDict
 from core.base.utilities import (
+    construct_request_dict,
     replace_illegal_name,
     available_filename,
     get_filename_from_cd,
     get_zip_fileinfo_for_gallery,
     calc_crc32,
-    construct_request_dict,
     remove_archive_extensions,
 )
 from core.downloaders.torrent import get_torrent_client

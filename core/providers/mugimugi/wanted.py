@@ -297,6 +297,8 @@ def wanted_generator(settings: "Settings", attrs: "AttributeManager"):
                             keep_searching=new_keep_searching,
                             category="Manga",
                             unwanted_title=own_settings.unwanted_title or settings.auto_wanted.unwanted_title,
+                            regexp_unwanted_title=own_settings.unwanted_title_regex or settings.auto_wanted.regexp_unwanted_title,
+                            regexp_unwanted_title_icase=own_settings.unwanted_title_regex_icase or settings.auto_wanted.regexp_unwanted_title_icase,
                         )
                         wanted_provider_string = attrs.fetch_value("wanted_provider_{}".format(query_name))
                         if wanted_provider_string and isinstance(wanted_provider_string, str):

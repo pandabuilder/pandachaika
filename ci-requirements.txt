@@ -1,6 +1,6 @@
 -r requirements.txt
 mypy==1.18.2
-ruff==0.14.0
+ruff==0.14.4
 django-stubs==5.2.7
 types-requests==2.32.4.20250913
 types-pytz==2025.2.0.20250809

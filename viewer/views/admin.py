@@ -16,7 +16,8 @@ from django.utils.dateparse import parse_date
 from django_db_logger.models import StatusLog
 
 from core.base.setup import Settings
-from core.base.utilities import get_thread_status, get_thread_status_bool, thread_exists, get_schedulers_status, \
+from core.base.setup_utilities import get_thread_status, get_thread_status_bool
+from core.base.utilities import thread_exists, get_schedulers_status, \
     timestamp_or_zero
 from core.local.foldercrawlerthread import FolderCrawlerThread
 from core.web.crawlerthread import CrawlerThread

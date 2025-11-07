@@ -7,8 +7,8 @@ import typing
 from tempfile import mkdtemp
 from typing import Optional, Any
 
+from core.base.setup_utilities import GeneralUtils
 from core.base.utilities import (
-    GeneralUtils,
     replace_illegal_name,
     get_base_filename_string_from_gallery_data,
     available_filename,

@@ -3,7 +3,7 @@ from time import sleep
 from typing import Optional
 
 from core.base import setup
-from core.base.utilities import check_for_running_threads
+from core.base.setup_utilities import check_for_running_threads
 
 if typing.TYPE_CHECKING:
     from core.downloaders.postdownload import TimedPostDownloader

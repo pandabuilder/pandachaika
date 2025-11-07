@@ -9,7 +9,8 @@ from django.http import HttpResponse, HttpRequest
 from django.conf import settings
 from django.utils.dateparse import parse_date
 
-from core.base.utilities import get_thread_status_bool, thread_exists
+from core.base.setup_utilities import get_thread_status_bool
+from core.base.utilities import thread_exists
 from core.web.crawlerthread import CrawlerThread
 from core.workers.archive_work import ArchiveWorker
 

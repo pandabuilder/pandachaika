@@ -33,7 +33,7 @@ line-length = 120
 
 line-length = 120
 
-target-version = ['py310', 'py311', 'py312', 'py313']
+target-version = ['py311', 'py312', 'py313', 'py314']
 
 extend-exclude = '''
 (
@@ -61,3 +61,48 @@ extend-exclude = '''
     |src
 )
 '''
+
+[project]
+name = "pandagallery"
+version = "0.0.1"
+requires-python = ">=3.11"
+dependencies = [
+    "beautifulsoup4==4.14.2",
+    "cherrypy==18.10.0",
+    "deckar01-ratelimit==3.0.2",
+    "django==5.2.8",
+    "django-autocomplete-light==3.12.1",
+    "django-compressor==4.5.1",
+    "django-cors-headers==4.9.0",
+    "django-db-logger==0.1.13",
+    "django-simple-history==3.10.1",
+    "django-vite==3.1.0",
+    "elasticsearch==8.18.1",
+    "feedparser==6.0.12",
+    "imagehash==4.3.2",
+    "numpy==2.3.4",
+    "pillow==12.0.0",
+    "psycopg==3.2.12",
+    "psycopg-binary==3.2.12; sys_platform == 'win32'",
+    "py7zr==1.0.0",
+    "python-dateutil==2.9.0.post0",
+    "pytz==2025.2",
+    "pyyaml==6.0.3",
+    "rarfile==4.2",
+    "requests==2.32.5",
+    "ruff==0.14.4",
+    "transmission-rpc==7.0.11",
+    "twitter==1.19.6",
+]
+
+[dependency-groups]
+dev = [
+    "django-debug-toolbar==6.1.0",
+    "django-stubs==5.2.7",
+    "django-unused-media==0.2.2",
+    "mypy==1.18.2",
+    "ruff==0.14.4",
+    "types-python-dateutil==2.9.0.20251008",
+    "types-pytz==2025.2.0.20250809",
+    "types-requests==2.32.4.20250913",
+]

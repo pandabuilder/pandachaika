@@ -1,14 +1,15 @@
+import io
 import typing
+import zipfile
 from typing import Optional, Union
 
 from PIL import Image as PImage
 from PIL import UnidentifiedImageError
-from django.contrib.contenttypes.models import ContentType
-from django.db.models import QuerySet
 
 from core.base import hashing
 
 if typing.TYPE_CHECKING:
+    from django.db.models import QuerySet
     from viewer.models import Archive, Image, ItemProperties
 
 
@@ -79,6 +80,8 @@ class CompareObjectsService:
 
                         if item_model and image_model:
 
+                            from django.contrib.contenttypes.models import ContentType
+
                             image_type = ContentType.objects.get_for_model(image_model)
 
                             images_phashes = item_model.objects.filter(
@@ -127,3 +130,28 @@ class CompareObjectsService:
 
         result = chosen_algo(file_object)
         return result
+
+    @classmethod
+    def calculate_phash_for_zip_member(
+            cls, arguments: tuple[str, str, str | None]
+    ) -> tuple[str, str | None]:
+        zip_path, member_name, nested_zip_name = arguments
+        try:
+            with zipfile.ZipFile(zip_path, "r") as my_zip:
+                if nested_zip_name is None:
+                    # Case 1: Image is in the top-level archive
+                    with my_zip.open(member_name) as image_file:
+                        hash_result = cls.hash_thumbnail(image_file, "phash")
+                        return member_name, hash_result
+                else:
+                    # Case 2: Image is in a nested archive
+                    with my_zip.open(nested_zip_name) as nested_zip_file:
+                        # zipfile can read from a file-like object (BytesIO is a good choice)
+                        nested_zip_data = io.BytesIO(nested_zip_file.read())
+                        with zipfile.ZipFile(nested_zip_data) as my_nested_zip:
+                            with my_nested_zip.open(member_name) as image_file:
+                                hash_result = cls.hash_thumbnail(image_file, "phash")
+                                return member_name, hash_result
+        except Exception:
+            # Catching exceptions is crucial in worker processes
+            return member_name, None

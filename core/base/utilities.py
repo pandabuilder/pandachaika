@@ -1,4 +1,3 @@
-import base64
 import hashlib
 import heapq
 import html.entities
@@ -17,7 +16,7 @@ from difflib import SequenceMatcher
 from functools import wraps
 from itertools import tee, islice, chain
 from tempfile import mkdtemp
-from typing import Union, Optional, Any, Tuple, List
+from typing import Union, Optional, Any
 
 from ratelimit import limits, RateLimitException
 
@@ -35,11 +34,10 @@ except ImportError:
 
 import requests
 
-from core.base import setup
-
 if typing.TYPE_CHECKING:
     from core.workers.schedulers import BaseScheduler
     from core.base.types import ProviderSettings
+    from core.base import setup
 
 logger = logging.getLogger(__name__)
 
@@ -61,47 +59,6 @@ REPLACE_CHARS = (
     (">", "＞"),
     ("|", "｜"),
 )
-
-
-# The idea of this class is to contain certain methods, to not have to pass arguments that are global.
-class GeneralUtils:
-
-    def __init__(self, global_settings: "setup.Settings") -> None:
-        self.settings = global_settings
-
-    def discard_by_gallery_data(
-        self, tag_list: Optional[list[str]], uploader: Optional[str] = None, force_check: bool = False
-    ) -> tuple[bool, list[str]]:
-
-        discarded = False
-        reasons: list[str] = []
-
-        if not force_check and self.settings.update_metadata_mode:
-            return discarded, reasons
-        if tag_list is not None:
-            found_tags = set(self.settings.banned_tags).intersection(tag_list)
-            if found_tags:
-                discarded = True
-                reasons.append("Banned tags: {}".format(", ".join(found_tags)))
-        if uploader is not None and uploader != "" and self.settings.banned_uploaders:
-            found_uploader = uploader in set(self.settings.banned_uploaders)
-            if found_uploader:
-                discarded = True
-                reasons.append("Banned uploader: {}".format(uploader))
-        return discarded, reasons
-
-    def get_torrent(
-        self, torrent_url: str, cookies: dict[str, Any], convert_to_base64: bool = False
-    ) -> Union[str, bytes]:
-
-        r = requests.get(
-            torrent_url, cookies=cookies, headers=self.settings.requests_headers, timeout=self.settings.timeout_timer
-        )
-
-        if not convert_to_base64:
-            return r.content
-        else:
-            return base64.encodebytes(r.content).decode("utf-8")
 
 
 def discard_string_by_cutoff(base: str, compare: str, cutoff: float) -> bool:
@@ -700,21 +657,6 @@ def unescape(text: Optional[str]) -> Optional[str]:
         return re.sub(r"&#?\w+;", fixup, text)
 
 
-def get_thread_status() -> list[tuple[tuple[str, str, str], bool]]:
-    info_list = []
-    thread_names = set()
-
-    thread_list = threading.enumerate()
-    for thread_info in setup.GlobalInfo.worker_threads:
-        info_list.append((thread_info, any([thread_info[0] == thread.name for thread in thread_list])))
-        thread_names.add(thread_info[0])
-
-    for thread_data in thread_list:
-        if thread_data.name not in thread_names:
-            info_list.append(((thread_data.name, "None", "other"), thread_data.is_alive()))
-
-    return info_list
-
 
 def get_schedulers_status(
     schedulers: typing.Sequence[Optional["BaseScheduler"]],
@@ -739,27 +681,6 @@ def get_schedulers_status(
             )
 
     return info_list
-
-
-def get_thread_status_bool() -> dict[str, bool]:
-    info_dict = {}
-
-    thread_list = threading.enumerate()
-    for thread_info in setup.GlobalInfo.worker_threads:
-        if any([thread_info[0] == thread.name for thread in thread_list]):
-            info_dict[thread_info[0]] = True
-        else:
-            info_dict[thread_info[0]] = False
-
-    return info_dict
-
-
-def check_for_running_threads() -> bool:
-    thread_list = threading.enumerate()
-    for thread_name in setup.GlobalInfo.worker_threads:
-        if any([thread_name[0] == thread.name for thread in thread_list]):
-            return True
-    return False
 
 
 def thread_exists(thread_name: str) -> bool:
@@ -873,26 +794,6 @@ def request_by_provider(provider_name: str, provider_calls: int, provider_limit:
     return REQUESTER_BY_PROVIDER[provider_name]
 
 
-def construct_request_dict(
-    settings: "setup.Settings", own_settings: "ProviderSettings", no_cookies: bool = False
-) -> dict[str, Any]:
-    request_dict = {
-        "headers": settings.requests_headers,
-        "timeout": own_settings.timeout_timer,
-    }
-
-    if not no_cookies:
-        request_dict["cookies"] = own_settings.cookies
-
-    if own_settings.proxies:
-        request_dict["proxies"] = own_settings.proxies
-
-    if own_settings.headers:
-        request_dict["headers"] = settings.requests_headers | own_settings.headers
-
-    return request_dict
-
-
 def get_filename_from_cd(cd: typing.Optional[str] = None):
     """
     Get filename from content-disposition
@@ -930,3 +831,23 @@ def get_oldest_entry_from_wayback(url: str) -> Optional[datetime]:
 
 def hamming_distance(phash1, phash2):
     return sum(c1 != c2 for c1, c2 in zip(phash1, phash2))
+
+
+def construct_request_dict(
+    settings: "setup.Settings", own_settings: "ProviderSettings", no_cookies: bool = False
+) -> dict[str, Any]:
+    request_dict = {
+        "headers": settings.requests_headers,
+        "timeout": own_settings.timeout_timer,
+    }
+
+    if not no_cookies:
+        request_dict["cookies"] = own_settings.cookies
+
+    if own_settings.proxies:
+        request_dict["proxies"] = own_settings.proxies
+
+    if own_settings.headers:
+        request_dict["headers"] = settings.requests_headers | own_settings.headers
+
+    return request_dict

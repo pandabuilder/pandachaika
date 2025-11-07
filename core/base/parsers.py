@@ -17,7 +17,7 @@ from django.db import close_old_connections
 from django.db.models import QuerySet, Q, Value, CharField, F
 from django.db.models.functions import Concat, Replace
 
-from core.base import utilities
+from core.base import setup_utilities
 from core.base.utilities import send_pushover_notification, chunks
 from core.base.types import GalleryData
 from viewer.signals import wanted_gallery_found
@@ -54,7 +54,7 @@ class BaseParser:
             self.own_settings = settings.providers[self.name]
         else:
             self.own_settings = None
-        self.general_utils = utilities.GeneralUtils(self.settings)
+        self.general_utils = setup_utilities.GeneralUtils(self.settings)
         self.downloaders: list[tuple["BaseDownloader", int]] = self.settings.provider_context.get_downloaders(
             self.settings, self.general_utils, filter_provider=self.name
         )

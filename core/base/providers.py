@@ -8,7 +8,7 @@ from typing import Optional, Union
 import typing
 
 from core.base.types import ProviderSettings
-from core.base.utilities import GeneralUtils
+from core.base.setup_utilities import GeneralUtils
 from core.base.matchers import Matcher
 from core.base.parsers import BaseParser
 from core.downloaders.handlers import BaseDownloader

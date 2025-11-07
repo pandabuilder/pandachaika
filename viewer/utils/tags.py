@@ -15,6 +15,7 @@ scope_priorities = [
     "female",
     "male",
     "mixed",
+    "location",
     "other",
     "misc",
     "magazine",

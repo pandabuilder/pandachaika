@@ -7,7 +7,7 @@ from typing import Optional
 import typing
 
 from core.base.comparison import get_gallery_closer_title_from_gallery_values, get_list_closer_gallery_titles_from_dict
-from core.base.utilities import GeneralUtils
+from core.base.setup_utilities import GeneralUtils
 from core.base.types import GalleryData, DataDict
 
 

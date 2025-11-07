@@ -124,6 +124,8 @@ def match_tweet_with_wanted_galleries(tweet_obj: TweetPost, settings: "Settings"
                     "reason": wanted_reason,
                     "public": own_settings.add_as_public,
                     "unwanted_title": own_settings.unwanted_title or settings.auto_wanted.unwanted_title,
+                    "regexp_unwanted_title": own_settings.regexp_unwanted_title or settings.auto_wanted.regexp_unwanted_title,
+                    "regexp_unwanted_title_icase": own_settings.regexp_unwanted_title_icase or settings.auto_wanted.regexp_unwanted_title_icase,
                 },
             )
             if created:

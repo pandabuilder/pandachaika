@@ -51,7 +51,10 @@ class MonitoredLinksSettings:
 
 
 class AutoWantedSettings:
-    __slots__ = ["enable", "startup", "cycle_timer", "providers", "unwanted_title"]
+    __slots__ = [
+        "enable", "startup", "cycle_timer", "providers",
+        "unwanted_title", "regexp_unwanted_title", "regexp_unwanted_title_icase"
+    ]
 
     def __init__(self) -> None:
         self.enable: bool = False
@@ -59,6 +62,8 @@ class AutoWantedSettings:
         self.cycle_timer: float = 0
         self.providers: list[str] = []
         self.unwanted_title: str = ""
+        self.regexp_unwanted_title: bool = False
+        self.regexp_unwanted_title_icase: bool = False
 
 
 class AutoUpdaterSettings:
@@ -633,6 +638,10 @@ class Settings:
                 self.auto_wanted.providers = config["auto_wanted"]["providers"]
             if "unwanted_title" in config["auto_wanted"]:
                 self.auto_wanted.unwanted_title = config["auto_wanted"]["unwanted_title"]
+            if "regexp_unwanted_title" in config["auto_wanted"]:
+                self.auto_wanted.regexp_unwanted_title = config["auto_wanted"]["regexp_unwanted_title"]
+            if "regexp_unwanted_title_icase" in config["auto_wanted"]:
+                self.auto_wanted.regexp_unwanted_title_icase = config["auto_wanted"]["regexp_unwanted_title_icase"]
         if "pushover" in config:
             if "enable" in config["pushover"]:
                 self.pushover.enable = config["pushover"]["enable"]

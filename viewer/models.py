@@ -2,6 +2,7 @@ import base64
 import io
 import itertools
 import json
+import multiprocessing
 import os
 import re
 import shutil
@@ -11,6 +12,7 @@ import typing
 import uuid
 import zipfile
 from collections import Counter, defaultdict
+from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime, timedelta, timezone, date
 from operator import itemgetter
 
@@ -2428,9 +2430,10 @@ class Archive(models.Model):
         else:
             return static("imgs/no_cover.png"), 290, 196
 
-    def calculate_sha1_and_data_for_images(self, process_image_data: bool = True, process_other_data: bool = True, process_archive_statistics: bool = True) -> bool:
-
-        image_set = self.image_set.all()
+    def calculate_sha1_and_data_for_images(
+            self, process_image_data: bool = True, process_other_data: bool = True,
+            process_archive_statistics: bool = True
+    ) -> bool:
 
         try:
             my_zip = zipfile.ZipFile(self.zipped.path, "r")
@@ -2438,102 +2441,137 @@ class Archive(models.Model):
             return False
 
         if my_zip.testzip():
+            my_zip.close()
             return False
 
+        # --- Initial Setup ---
+        image_set = self.image_set.all()
         filtered_files = get_images_from_zip(my_zip)
-
         image_type = ContentType.objects.get_for_model(Image)
 
+        archive_statistics = None
+        archive_stats_calc = None
         if process_archive_statistics:
-
             archive_statistics, _ = ArchiveStatistics.objects.get_or_create(archive=self)
-
             archive_stats_calc = ArchiveStatisticsCalculator()
 
-        else:
-            archive_statistics = None
-            archive_stats_calc = None
+        # --- Phase 1: Serial Processing and Task Preparation ---
+        images_to_update = []
+        phash_tasks = []
+        # Map filename to image object for efficient lookup later
+        filename_to_image_map = {
+            image.image_name: image for image in image_set
+        }
 
-        for count, filename_tuple in enumerate(filtered_files, start=1):
-            image = image_set.get(archive_position=count)
-            if filename_tuple[1] is None:
+        for filename_tuple in filtered_files:
+            image_filename, nested_zip_filename, _ = filename_tuple
+            image = filename_to_image_map.get(image_filename)
 
-                with my_zip.open(filename_tuple[0]) as current_zip_img:
+            if not image:
+                continue
 
+            # Prepare task for parallel processing, regardless of nesting
+            if process_image_data and settings.CRAWLER_SETTINGS.auto_phash_images:
+                phash_tasks.append((self.zipped.path, image_filename, nested_zip_filename))
+
+            # --- Perform fast, serial I/O tasks ---
+            if nested_zip_filename is None:
+                # Case 1: Top-level image
+                with my_zip.open(image_filename) as current_zip_img:
                     if process_image_data:
-
                         image.sha1 = sha1_from_file_object(current_zip_img)
-
                         image.set_attributes_from_image(
                             current_zip_img,
-                            my_zip.getinfo(filename_tuple[0]).file_size,
-                            os.path.basename(filename_tuple[0]),
+                            my_zip.getinfo(image_filename).file_size,
+                            os.path.basename(image_filename),
                         )
-
-                    if process_archive_statistics and archive_stats_calc is not None:
-
-                        archive_stats_calc.set_values(
-                            filesize=image.image_size,
-                            height=image.original_height,
-                            width=image.original_width,
-                            image_mode=image.image_mode,
-                            is_horizontal=image.image_width / image.image_height > 1 if image.image_width and image.image_height else False,
-                            file_type=os.path.splitext(filename_tuple[0])[1]
-                        )
-
-                    if process_image_data and settings.CRAWLER_SETTINGS.auto_phash_images:
-
-                        hash_result = CompareObjectsService.hash_thumbnail(current_zip_img, "phash")
-                        if hash_result:
-                            hash_object, _ = ItemProperties.objects.update_or_create(
-                                content_type=image_type,
-                                object_id=image.pk,
-                                tag="hash-compare",
-                                name="phash",
-                                defaults={"value": hash_result},
-                            )
-
             else:
-                with my_zip.open(filename_tuple[1]) as current_zip:
-                    with zipfile.ZipFile(current_zip) as my_nested_zip:
-                        with my_nested_zip.open(filename_tuple[0]) as current_zip_img:
-
+                # Case 2: Nested image
+                with my_zip.open(nested_zip_filename) as current_zip:
+                    # Read into memory to avoid issues with non-seekable streams
+                    nested_zip_data = io.BytesIO(current_zip.read())
+                    with zipfile.ZipFile(nested_zip_data) as my_nested_zip:
+                        with my_nested_zip.open(image_filename) as current_zip_img:
                             if process_image_data:
                                 image.sha1 = sha1_from_file_object(current_zip_img)
-
                                 image.set_attributes_from_image(
                                     current_zip_img,
-                                    my_nested_zip.getinfo(filename_tuple[0]).file_size,
-                                    os.path.basename(filename_tuple[0]),
+                                    my_nested_zip.getinfo(image_filename).file_size,
+                                    os.path.basename(image_filename),
                                 )
 
-                            if process_archive_statistics and archive_stats_calc is not None:
-
-                                archive_stats_calc.set_values(
-                                    filesize=image.image_size,
-                                    height=image.original_height,
-                                    width=image.original_width,
-                                    image_mode=image.image_mode,
-                                    is_horizontal=image.image_width / image.image_height > 1
-                                    if image.image_width and image.image_height else False,
-                                    file_type=os.path.splitext(filename_tuple[0])[1],
-                                )
-
-                            if process_image_data and settings.CRAWLER_SETTINGS.auto_phash_images:
-                                hash_result = CompareObjectsService.hash_thumbnail(current_zip_img, "phash")
-                                if hash_result:
-                                    hash_object, _ = ItemProperties.objects.update_or_create(
-                                        content_type=image_type,
-                                        object_id=image.pk,
-                                        tag="hash-compare",
-                                        name="phash",
-                                        defaults={"value": hash_result},
-                                    )
+            # This part is common to both cases
             if process_image_data:
-                image.save()
 
+                images_to_update.append(image)
+
+            if process_archive_statistics and archive_stats_calc is not None:
+                archive_stats_calc.set_values(
+                    filesize=image.image_size,
+                    height=image.original_height,
+                    width=image.original_width,
+                    image_mode=image.image_mode,
+                    is_horizontal=image.image_width / image.image_height > 1 if image.image_width and image.image_height else False,
+                    file_type=os.path.splitext(image_filename)[1]
+                )
+
+        # --- Phase 2: Parallel p-hash Calculation ---
+        phash_results = {}
+        if phash_tasks:
+            with ProcessPoolExecutor(max_workers=multiprocessing.cpu_count() // 2) as executor:
+                # Map the worker function over the prepared tasks
+                results_iterator = executor.map(CompareObjectsService.calculate_phash_for_zip_member, phash_tasks)
+                for filename, hash_result in results_iterator:
+                    if hash_result:
+                        phash_results[filename] = hash_result
+
+        # --- Phase 3: Database Updates ---
+        if images_to_update:
+            Image.objects.bulk_update(
+                images_to_update,
+                ["sha1", "image_size", "original_height", "original_width", "image_mode"]
+            )
+
+        if phash_results:
+            # Use bulk operations for performance instead of update_or_create in a loop
+            props_to_create = []
+            props_to_update = []
+            # -- REFACTORED SECTION --
+            # 1. Fetch all potentially existing properties in a single query.
+            existing_props_qs = ItemProperties.objects.filter(
+                content_type=image_type,
+                object_id__in=[img.pk for img in filename_to_image_map.values()],
+                tag="hash-compare",
+                name="phash"
+            )
+
+            # 2. Manually build the lookup dictionary. This is the replacement for in_bulk().
+            #    The key is the image's PK (object_id), and the value is the property object.
+            existing_props_map = {prop.object_id: prop for prop in existing_props_qs}
+            # -- END REFACTORED SECTION --
+
+            for filename, hash_val in phash_results.items():
+                image = filename_to_image_map.get(filename)
+                if not image: continue
+
+                # Now, check against our manually created map
+                if image.pk in existing_props_map:
+                    prop = existing_props_map[image.pk]
+                    prop.value = hash_val
+                    props_to_update.append(prop)
+                else:
+                    props_to_create.append(
+                        ItemProperties(
+                            content_type=image_type, object_id=image.pk,
+                            tag="hash-compare", name="phash", value=hash_val
+                        )
+                    )
+
+            if props_to_create: ItemProperties.objects.bulk_create(props_to_create)
+            if props_to_update: ItemProperties.objects.bulk_update(props_to_update, ['value'])
+
+        # Finalize and save archive statistics
         if process_archive_statistics and archive_stats_calc is not None and archive_statistics is not None:
-
             archive_statistics.filesize_average = archive_stats_calc.mean('filesize')
             archive_statistics.height_average = archive_stats_calc.mean('height')
             archive_statistics.width_average = archive_stats_calc.mean('width')
@@ -2545,14 +2583,12 @@ class Archive(models.Model):
             archive_statistics.image_mode_mode = archive_stats_calc.mode('image_mode')
             archive_statistics.file_type_mode = archive_stats_calc.mode("file_type")
             archive_statistics.file_type_match = archive_stats_calc.eq_to_value("file_type", archive_statistics.file_type_mode)
-
             archive_statistics.save()
 
-        # Calculate other data:
-        if process_other_data and self.archivefileentry_set.count() > 0:
+        # Process other non-image files
+        if process_other_data and self.archivefileentry_set.exists():
             for file_entry in self.archivefileentry_set.all():
-                file_entry_name = file_entry.file_name
-                with my_zip.open(file_entry_name) as current_other_file:
+                with my_zip.open(file_entry.file_name) as current_other_file:
                     file_entry.sha1 = sha1_from_file_object(current_other_file)
                     file_entry.save()
 
