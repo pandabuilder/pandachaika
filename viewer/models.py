@@ -857,6 +857,21 @@ class Gallery(models.Model):
         )
         constraints = [models.UniqueConstraint(fields=["gid", "provider"], name="unique_gallery")]
 
+        indexes = [
+            models.Index(
+                F("create_date").desc(nulls_last=True),
+                F("public").asc(nulls_last=True),
+                "status",
+                name="gallery_pub_norm_create_date",
+            ),
+            models.Index(
+                F("posted").desc(nulls_last=True),
+                F("public").asc(nulls_last=True),
+                "status",
+                name="gallery_pub_norm_pub_date",
+            ),
+        ]
+
     def es_repr(self) -> DataDict:
         data = {}
         mapping = self._meta.es_mapping  # type: ignore

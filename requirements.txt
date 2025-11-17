@@ -7,7 +7,7 @@ twitter==1.19.6
 beautifulsoup4==4.14.2
 CherryPy==18.10.0
 Django==5.2.8
-django-compressor==4.5.1
+django-compressor==4.6.0
 django-db-logger==0.1.13
 django-cors-headers==4.9.0
 Pillow==12.0.0
@@ -27,4 +27,4 @@ pytz==2025.2
 numpy==2.3.4
 # Optional packages (depending on features wanted):
 imagehash==4.3.2
-# PySocks==1.7.1
+PySocks==1.7.1
