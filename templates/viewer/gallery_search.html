@@ -10,7 +10,8 @@
       <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
     {% endfor %}
   {% endif %}
-
+    <form id="filter-gallery-form" action="{% url 'viewer:gallery-list' %}" method="GET" role="form">
+    </form>
     <!-- Main Search Form -->
     {% include 'viewer/include/gallery_search/main_search.html' %}
 

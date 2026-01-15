@@ -24,7 +24,7 @@ Requirements
 
 Know how to run a Python program and how to install packages.
 
-Python [3.11, 3.12, 3.13, 3.14] are the tested versions, it won't work on Python 2.
+Python [3.12, 3.13, 3.14] are the tested versions, it won't work on Python 2.
 
 See requirements.txt.
 

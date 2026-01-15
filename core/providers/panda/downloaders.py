@@ -100,27 +100,38 @@ class ArchiveDownloader(BaseDownloader):
                 request_dict = construct_request_dict(self.settings, self.own_settings)
                 request_dict['stream'] = True
 
-                request_file = request_with_retries(archive_link + "?start=1", request_dict)
+                for attempt in range(3):
+                    try:
+                        request_file = request_with_retries(archive_link + "?start=1", request_dict)
 
-                if r and r.status_code == 200 and request_file:
-                    logger.info("Downloading gallery: {}.zip".format(to_use_filename))
-                    filepath = os.path.join(self.settings.MEDIA_ROOT, self.gallery.filename)
-                    total_size = int(request_file.headers.get("Content-Length", 0))
-                    self.download_event = self.create_download_event(
-                        self.gallery.link, self.type, filepath, total_size=total_size
-                    )
-                    with open(filepath, "wb") as fo:
-                        for chunk in request_file.iter_content(4096):
-                            fo.write(chunk)
+                        if r and r.status_code == 200 and request_file:
+                            logger.info("Downloading gallery: {}.zip (Attempt {}/3)".format(to_use_filename, attempt + 1))
+                            filepath = os.path.join(self.settings.MEDIA_ROOT, self.gallery.filename)
+                            total_size = int(request_file.headers.get("Content-Length", 0))
+                            self.download_event = self.create_download_event(
+                                self.gallery.link, self.type, filepath, total_size=total_size
+                            )
+                            with open(filepath, "wb") as fo:
+                                for chunk in request_file.iter_content(4096):
+                                    fo.write(chunk)
 
-                    self.gallery.filesize, self.gallery.filecount = get_zip_fileinfo_for_gallery(filepath)
-                    if self.gallery.filesize > 0:
-                        self.crc32 = calc_crc32(filepath)
+                            self.gallery.filesize, self.gallery.filecount = get_zip_fileinfo_for_gallery(filepath)
+                            if self.gallery.filesize > 0:
+                                self.crc32 = calc_crc32(filepath)
 
-                        self.fileDownloaded = 1
-                        self.return_code = 1
+                                self.fileDownloaded = 1
+                                self.return_code = 1
+                                break
 
-                else:
+                    except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout) as e:
+                        logger.warning("Download failed on attempt {}/3 with error: {}".format(attempt + 1, str(e)))
+                        if self.download_event:
+                            self.download_event.set_as_failed()
+                            self.download_event.save()
+                            self.download_event = None
+
+
+                if self.return_code != 1:
                     logger.error("Could not download archive")
                     self.return_code = 0
 

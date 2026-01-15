@@ -1,0 +1,43 @@
+{% if results %}
+<h3>Results ({{ results|length }})</h3>
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Thumbnail</th>
+            <th>Archive</th>
+            <th>Image</th>
+            <th>Link</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for result in results %}
+        <tr>
+            <td>
+                {% if result.archive.thumbnail %}
+                <img src="{{ result.archive.thumbnail.url }}" alt="Thumbnail" style="width: 200px; max-width: 300px;">
+
+                {% else %}
+                <span class="text-muted">No thumb</span>
+                {% endif %}
+            </td>
+            <td>{{ result.archive.title|default:result.archive.id }}</td>
+            <td>{{ result.image.filename }} (Page {{ result.image.archive_position }})</td>
+            <td>
+                <a href="{% url 'viewer:archive' result.archive.id %}" class="btn btn-sm btn-outline-primary"
+                    target="_blank">View in Archive</a>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% elif not error %}
+<div class="alert alert-warning">
+    No matches found for the image.
+</div>
+{% endif %}
+
+{% if error %}
+<div class="alert alert-danger">
+    Error: {{ error }}
+</div>
+{% endif %}

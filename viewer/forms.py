@@ -470,6 +470,14 @@ class GallerySearchForm(forms.Form):
         ),
     )
 
+    def __init__(self, *args, **kwargs):
+        form_name = kwargs.pop("form_name", None)
+        super().__init__(*args, **kwargs)
+        if form_name:
+            for field_name, field in self.fields.items():
+                # Add a 'data-custom' attribute to every field
+                field.widget.attrs.update({'form': form_name})
+
 
 class GallerySearchSimpleForm(forms.Form):
 

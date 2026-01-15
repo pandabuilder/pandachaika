@@ -2460,7 +2460,7 @@ class Archive(models.Model):
             return False
 
         # --- Initial Setup ---
-        image_set = self.image_set.all()
+        image_set = self.image_set.all().order_by('archive_position')
         filtered_files = get_images_from_zip(my_zip)
         image_type = ContentType.objects.get_for_model(Image)
 
@@ -2474,13 +2474,9 @@ class Archive(models.Model):
         images_to_update = []
         phash_tasks = []
         # Map filename to image object for efficient lookup later
-        filename_to_image_map = {
-            image.image_name: image for image in image_set
-        }
 
-        for filename_tuple in filtered_files:
+        for filename_tuple, image in zip(filtered_files, image_set):
             image_filename, nested_zip_filename, _ = filename_tuple
-            image = filename_to_image_map.get(image_filename)
 
             if not image:
                 continue
@@ -2544,10 +2540,15 @@ class Archive(models.Model):
         if images_to_update:
             Image.objects.bulk_update(
                 images_to_update,
-                ["sha1", "image_size", "original_height", "original_width", "image_mode"]
+                ["sha1", "image_size", "original_height", "original_width", "image_mode", "image_name"]
             )
 
         if phash_results:
+
+            filename_to_image_map = {
+                image.image_name: image for image in image_set
+            }
+
             # Use bulk operations for performance instead of update_or_create in a loop
             props_to_create = []
             props_to_update = []
@@ -2566,18 +2567,18 @@ class Archive(models.Model):
             # -- END REFACTORED SECTION --
 
             for filename, hash_val in phash_results.items():
-                image = filename_to_image_map.get(filename)
-                if not image: continue
+                image_from_name = filename_to_image_map.get(filename)
+                if not image_from_name: continue
 
                 # Now, check against our manually created map
-                if image.pk in existing_props_map:
-                    prop = existing_props_map[image.pk]
+                if image_from_name.pk in existing_props_map:
+                    prop = existing_props_map[image_from_name.pk]
                     prop.value = hash_val
                     props_to_update.append(prop)
                 else:
                     props_to_create.append(
                         ItemProperties(
-                            content_type=image_type, object_id=image.pk,
+                            content_type=image_type, object_id=image_from_name.pk,
                             tag="hash-compare", name="phash", value=hash_val
                         )
                     )
@@ -2594,7 +2595,7 @@ class Archive(models.Model):
             archive_statistics.width_mode = archive_stats_calc.mode('width')
             archive_statistics.height_stddev = archive_stats_calc.stddev('height')
             archive_statistics.width_stddev = archive_stats_calc.stddev('width')
-            archive_statistics.is_horizontal_mode = archive_stats_calc.mode('is_horizontal')
+            archive_statistics.is_horizontal_mode = archive_stats_calc.mode('is_horizontal') or False
             archive_statistics.image_mode_mode = archive_stats_calc.mode('image_mode')
             archive_statistics.file_type_mode = archive_stats_calc.mode("file_type")
             archive_statistics.file_type_match = archive_stats_calc.eq_to_value("file_type", archive_statistics.file_type_mode)
@@ -3000,7 +3001,7 @@ class Archive(models.Model):
                 archive_statistics.width_mode = archive_stats_calc.mode('width')
                 archive_statistics.height_stddev = archive_stats_calc.stddev('height')
                 archive_statistics.width_stddev = archive_stats_calc.stddev('width')
-                archive_statistics.is_horizontal_mode = archive_stats_calc.mode('is_horizontal')
+                archive_statistics.is_horizontal_mode = archive_stats_calc.mode('is_horizontal') or False
                 archive_statistics.image_mode_mode = archive_stats_calc.mode('image_mode')
                 archive_statistics.file_type_mode = archive_stats_calc.mode('file_type')
                 archive_statistics.file_type_match = archive_stats_calc.eq_to_value(
@@ -5314,6 +5315,23 @@ class DownloadEvent(models.Model):
         self.completed = True
         self.completed_date = django_tz.now()
 
+
+    def eta(self):
+        if self.create_date.tzinfo is not None:
+            now = datetime.now(self.create_date.tzinfo)
+        else:
+            now = datetime.now()
+        if self.progress <= 0:
+            return None
+
+        if self.progress >= 100:
+            return now
+
+        elapsed_time = now - self.create_date
+
+        remaining_seconds = elapsed_time.total_seconds() * ((100 / self.progress) - 1)
+
+        return now + timedelta(seconds=remaining_seconds)
 
 class GalleryMatchGroup(models.Model):
     title = models.CharField(max_length=500, blank=True, null=False, default="")

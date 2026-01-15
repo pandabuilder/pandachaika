@@ -38,7 +38,7 @@
     <table class="table table-striped">
         <thead>
         <tr>
-          <th>URL</th><th>Download method</th><th>Archive</th><th>Gallery</th><th>Size</th><th>Progress</th><th>Failed</th><th>Start date</th><th>End date</th>
+          <th>URL</th><th>Download method</th><th>Archive</th><th>Gallery</th><th>Size</th><th>Progress</th><th>Failed</th><th>Start date</th><th>End date (or ETA)</th>
         </tr>
         </thead>
         <tbody>
@@ -85,7 +85,11 @@
               {{ download_event.create_date|date:"DATETIME_FORMAT" }}
             </td>
             <td>
-              {{ download_event.completed_date|date:"DATETIME_FORMAT" }}
+                {% if download_event.completed %}
+                    {{ download_event.completed_date|date:"DATETIME_FORMAT" }}
+                {% else %}
+                    {{ download_event.eta|date:"DATETIME_FORMAT" }}
+                {% endif %}
             </td>
           </tr>
         {% endfor %}

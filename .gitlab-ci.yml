@@ -6,6 +6,7 @@ stages:
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
   UV_CACHE_DIR: "$CI_PROJECT_DIR/.cache/uv"
+  FF_TIMESTAMPS: true
 
 cache: &global_cache
   paths:
@@ -18,27 +19,22 @@ test-all:
   parallel:
     matrix:
       - PYTHON_VERSION:
-        - '3.11'
         - '3.12'
         - '3.13'
         - '3.14'
   cache:
     <<: *global_cache
     key: "$CI_JOB_NAME-$CI_COMMIT_REF_SLUG"
-  image: python:$PYTHON_VERSION
+  image: astral/uv:python$PYTHON_VERSION-trixie
   stage: test
   script:
   - python --version
-  - pip -V
-  - python -m venv ENV
-  - source ENV/bin/activate
-  - pip install uv
-  - uv pip install -r ci-requirements.txt
-  - ruff check --exclude="ENV" .
-  - mypy core pandabackup viewer
+  - uv sync --active --group ci
+  - uv run --no-sync ruff check --exclude=".venv" .
+  - uv run --no-sync mypy core pandabackup viewer
   - bash ./set_db_engine.sh
-  - python manage.py migrate
-  - python manage.py test --noinput viewer.tests.test_internal viewer.tests.test_core
+  - uv run --no-sync manage.py migrate
+  - uv run --no-sync manage.py test --noinput viewer.tests.test_internal viewer.tests.test_core
   tags:
     - django
     - panda
@@ -50,10 +46,10 @@ test-all:
       junit: test-results/TEST-*.xml
 
 build:
-  image: docker:28.5.2
+  image: docker:29.1.3
   when: manual
   services:
-    - docker:28.5.2-dind
+    - docker:29.1.3-dind
   before_script:
     - docker info
   stage: build

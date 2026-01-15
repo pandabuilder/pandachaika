@@ -18,7 +18,10 @@ from viewer.views import (
     elasticsearch,
     gallery,
     gallery_match_groups,
+    stats,
+    image_search,
 )
+
 from viewer.feeds import LatestArchivesFeed
 from viewer.views.elasticsearch import (
     ESHomePageView,
@@ -155,6 +158,8 @@ urlpatterns += [
     re_path(r"^folder-crawler/$", admin.foldercrawler, name="folder-crawler"),
     re_path(r"^tools-api/([\w-]+)/$", admin_api.tools, name="tools-api"),
     re_path(r"^tools-api/([\w-]+)/([\w-]+)/$", admin_api.tools, name="tools-api-id-arg"),
+    re_path(r"^stats/$", stats.stats_view, name="stats-visualizations"),
+    re_path(r"^api/stats/$", stats.stats_api, name="api-stats"),
 ]
 
 # Collaborators.
@@ -243,4 +248,6 @@ urlpatterns += [
     re_path(r"^compare-archives/$", tools.compare_archives, name="compare-archives"),
     re_path(r"^compare-archives-viewer/$", tools.compare_archives_viewer, name="compare-archives-viewer"),
     re_path(r"^archive-group-editor/$", tools.archive_group_editor, name="archive-group-editor"),
+    re_path(r"^image-search/$", image_search.image_search, name="image-search"),
 ]
+

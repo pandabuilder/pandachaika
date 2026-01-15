@@ -1,0 +1,711 @@
+{% extends "viewer/base.html" %}
+{% block title %}{{ page_title }} | {{ block.super }}{% endblock %}
+{% load static %}
+
+{% block extra_head %}
+<script src="{% static 'js/vendor/chart.umd.min.js' %}"></script>
+<script src="{% static 'js/vendor/d3.min.js' %}"></script>
+<style>
+    .chart-container {
+        position: relative;
+        height: 400px;
+        width: 100%;
+        margin-bottom: 2rem;
+    }
+
+    .viz-card {
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        padding: 20px;
+        margin-bottom: 20px;
+        color: #333;
+    }
+
+    .viz-card h3 {
+        color: #2c3e50;
+        border-bottom: 2px solid #eee;
+        padding-bottom: 10px;
+        margin-bottom: 20px;
+    }
+
+    #treemap {
+        width: 100%;
+        height: 600px;
+        font-family: sans-serif;
+        font-size: 12px;
+    }
+
+    #heatmap {
+        width: 100%;
+        height: 800px;
+        overflow: auto;
+    }
+
+    #sunburst {
+        width: 100%;
+        height: 700px;
+        display: flex;
+        justify-content: center;
+    }
+
+    .heatmap-cell:hover {
+        stroke: #000;
+        stroke-width: 1px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="my-4 text-light">Stats & Visualizations</h1>
+
+    <!-- Main Search Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body" id="mainSearchContainer">
+                    {% include 'viewer/include/gallery_search/main_search.html' with force_show_form=1 hide_submit_options=1 %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Filters Column -->
+        <div class="col-md-2">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0 text-dark">Filters</h5>
+                </div>
+                <div class="card-body">
+                    <form id="filter-gallery-form">
+                        {% include 'viewer/include/gallery_search/advanced_panel.html' with hide_show_options=1 hide_sort_options=1 %}
+                        <div id="filterActionButtons" class="d-grid gap-2 mt-3">
+                            <button type="button" class="btn btn-primary" onclick="applyFilters()">Apply
+                                Filters</button>
+                            <button type="button" class="btn btn-secondary" onclick="clearFilters()">Clear
+                                Filters</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Visualizations Column -->
+        <div class="col-md-10">
+            <!-- Control Panel -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title text-dark">Select Visualizations</h5>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="checkTimeline" value="timeline">
+                        <label class="form-check-label text-dark" for="checkTimeline">Uploads Over Time</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="checkTreemap" value="treemap">
+                        <label class="form-check-label text-dark" for="checkTreemap">Tag Distribution</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="checkHeatmap" value="heatmap">
+                        <label class="form-check-label text-dark" for="checkHeatmap">Co-occurrence Heatmap</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="checkSunburst" value="sunburst">
+                        <label class="form-check-label text-dark" for="checkSunburst">Sunburst Chart</label>
+                    </div>
+                    <div class="d-inline-block ms-3">
+                        <select class="form-select form-select-sm d-inline-block w-auto" id="chart_tag_scope"
+                            name="chart_tag_scope" form="filter-gallery-form">
+                            <option value="">All Scopes</option>
+                            <option value="artist">Artist</option>
+                            <option value="group">Group</option>
+                            <option value="parody">Parody</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div id="stats-content">
+                <!-- Timeline Section -->
+                <div class="row" id="timelineSection" style="display: none;">
+                    <div class="col-12">
+                        <div class="viz-card">
+                            <h3>Uploads Over Time</h3>
+                            <div id="timelineLoading" class="text-center my-5" style="display: none;">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="timelineChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <!-- Treemap Section -->
+                    <div class="col-md-12" id="treemapSection" style="display: none;">
+                        <div class="viz-card">
+                            <h3>Tag Distribution (Treemap) (Top 100)</h3>
+                            <div id="treemapLoading" class="text-center my-5" style="display: none;">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                            <div id="treemap"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <!-- Heatmap Section -->
+                    <div class="col-md-12" id="heatmapSection" style="display: none;">
+                        <div class="viz-card">
+                            <h3>Tag Co-occurrence Heatmap (Top 40)</h3>
+                            <div id="heatmapLoading" class="text-center my-5" style="display: none;">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                            <div id="heatmap"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <!-- Sunburst Section -->
+                    <div class="col-md-12" id="sunburstSection" style="display: none;">
+                        <div class="viz-card">
+                            <h3>Tag Hierarchy (Sunburst)</h3>
+                            <div id="sunburstLoading" class="text-center my-5" style="display: none;">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                            <div id="sunburst"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Data Cache
+    let timelineData = null;
+    let treemapData = null;
+    let heatmapData = null;
+    let sunburstData = null;
+    let currentFilters = "";
+    let timelineChartInstance = null;
+
+    document.addEventListener('DOMContentLoaded', function () {
+        // Reset checkboxes on load to prevent cache issues
+        document.getElementById('checkTimeline').checked = false;
+        document.getElementById('checkTreemap').checked = false;
+        document.getElementById('checkHeatmap').checked = false;
+        document.getElementById('checkSunburst').checked = false;
+
+        // Event Listeners for Checkboxes
+        document.getElementById('checkTimeline').addEventListener('change', function () {
+            toggleSection('timelineSection', this.checked);
+            if (this.checked && !timelineData) {
+                loadData('timeline');
+            }
+        });
+
+        document.getElementById('checkTreemap').addEventListener('change', function () {
+            toggleSection('treemapSection', this.checked);
+            if (this.checked && !treemapData) {
+                loadData('treemap');
+            }
+        });
+
+        document.getElementById('checkHeatmap').addEventListener('change', function () {
+            toggleSection('heatmapSection', this.checked);
+            if (this.checked && !heatmapData) {
+                loadData('heatmap');
+            }
+        });
+
+        document.getElementById('checkSunburst').addEventListener('change', function () {
+            toggleSection('sunburstSection', this.checked);
+            if (this.checked && !sunburstData) {
+                loadData('sunburst');
+            }
+        });
+
+        // Auto-apply filters when scope changes
+        document.getElementById('chart_tag_scope').addEventListener('change', function () {
+            applyFilters();
+        });
+
+        // Adjust layout of advanced panel to fit sidebar
+        const advancedPanel = document.getElementById('advancedFilters');
+        if (advancedPanel) {
+            advancedPanel.classList.remove('col-md-2', 'd-none', 'd-lg-block');
+            advancedPanel.classList.add('col-12');
+            // Remove the card wrapper from the included template as we wrapped it ourselves
+            const innerCard = advancedPanel.querySelector('.card');
+            if (innerCard) {
+                const cardBody = innerCard.querySelector('.card-body');
+                if (cardBody) {
+                    // Remove the original action buttons from the included template
+                    const originalButtons = cardBody.querySelector('.d-grid');
+                    if (originalButtons) {
+                        originalButtons.remove();
+                    }
+
+                    // Move children of card-body to our form
+                    const form = document.getElementById('filter-gallery-form');
+                    // Insert before our own buttons
+                    const buttonsDiv = document.getElementById('filterActionButtons');
+                    while (cardBody.firstChild) {
+                        form.insertBefore(cardBody.firstChild, buttonsDiv);
+                    }
+                }
+                advancedPanel.remove(); // Remove the original structure
+            }
+        }
+
+        // Handle Main Search Integration
+        const mainSearchContainer = document.getElementById('mainSearchContainer');
+        if (mainSearchContainer) {
+            const mainForm = mainSearchContainer.querySelector('form');
+            if (mainForm) {
+                // Remove the buttons from main search
+                const buttonsRow = mainForm.querySelector('.d-flex.align-items-center.gap-2');
+                if (buttonsRow) {
+                    buttonsRow.remove();
+                }
+
+                // Remove the form tag but keep children
+                const children = Array.from(mainForm.children);
+                children.forEach(child => {
+                    mainForm.parentNode.insertBefore(child, mainForm);
+                });
+                mainForm.remove();
+            }
+        }
+
+        // Duplicate Apply/Clear buttons to Main Search
+        const filterActionButtons = document.getElementById('filterActionButtons');
+
+        if (mainSearchContainer && filterActionButtons) {
+            const targetRow = mainSearchContainer.querySelector('.d-flex.align-items-center.gap-2');
+            if (targetRow) {
+                // Clone the buttons
+                const buttonsClone = filterActionButtons.cloneNode(true);
+                buttonsClone.id = 'filterActionButtonsMain'; // Avoid duplicate IDs
+                buttonsClone.className = 'd-flex gap-2'; // Adjust styling
+
+                // Append to the row
+                targetRow.appendChild(buttonsClone);
+            }
+        }
+    });
+
+    function toggleSection(id, show) {
+        const el = document.getElementById(id);
+        if (show) {
+            if (id === 'timelineSection') el.style.display = 'flex';
+            else el.style.display = 'block';
+        } else {
+            el.style.display = 'none';
+        }
+    }
+
+    function getFilterQueryString() {
+        const params = new URLSearchParams();
+
+        // Collect from Advanced Filters Form
+        const form = document.getElementById('filter-gallery-form');
+        const formData = new FormData(form);
+        for (const [key, value] of formData.entries()) {
+            if (value) {
+                params.append(key, value);
+            }
+        }
+        return params.toString();
+    }
+
+    function applyFilters() {
+        currentFilters = getFilterQueryString();
+        // Clear cache
+        timelineData = null;
+        treemapData = null;
+        networkData = null;
+
+        // Reload active charts
+        if (document.getElementById('checkTimeline').checked) loadData('timeline');
+        if (document.getElementById('checkTreemap').checked) loadData('treemap');
+        if (document.getElementById('checkHeatmap').checked) loadData('heatmap');
+        if (document.getElementById('checkSunburst').checked) loadData('sunburst');
+    }
+
+    function clearFilters() {
+        document.getElementById('filter-gallery-form').reset();
+
+        // Clear main search inputs too
+        const mainSearchContainer = document.getElementById('mainSearchContainer');
+        if (mainSearchContainer) {
+            const inputs = mainSearchContainer.querySelectorAll('input, select, textarea');
+            inputs.forEach(input => {
+                if (input.type === 'checkbox' || input.type === 'radio') {
+                    input.checked = false;
+                } else {
+                    input.value = '';
+                }
+            });
+        }
+
+        // Reset scope dropdown
+        const tagScope = document.getElementById('chart_tag_scope');
+        if (tagScope) tagScope.value = "";
+
+        applyFilters();
+    }
+
+    function loadData(type) {
+        const loadingEl = document.getElementById(type + 'Loading');
+        loadingEl.style.display = 'block';
+
+        // Clear existing content if reloading
+        if (type === 'treemap') document.getElementById('treemap').innerHTML = '';
+        if (type === 'heatmap') document.getElementById('heatmap').innerHTML = '';
+        if (type === 'sunburst') document.getElementById('sunburst').innerHTML = '';
+
+        let url = '{% url "viewer:api-stats" %}?chart=' + type;
+        if (currentFilters) {
+            url += '&' + currentFilters;
+        }
+
+        fetch(url)
+            .then(response => response.json())
+            .then(data => {
+                loadingEl.style.display = 'none';
+                if (type === 'timeline') {
+                    timelineData = data.timeline;
+                    renderTimeline(timelineData);
+                } else if (type === 'treemap') {
+                    treemapData = data.treemap;
+                    renderTreemap(treemapData);
+                } else if (type === 'heatmap') {
+                    heatmapData = data.heatmap;
+                    renderHeatmap(heatmapData);
+                } else if (type === 'sunburst') {
+                    sunburstData = data.sunburst;
+                    renderSunburst(sunburstData);
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching ' + type + ':', error);
+                loadingEl.innerHTML = '<p class="text-danger">Error loading. Please try again.</p>';
+            });
+    }
+
+    function renderTimeline(data) {
+        const ctx = document.getElementById('timelineChart').getContext('2d');
+
+        if (timelineChartInstance) {
+            timelineChartInstance.destroy();
+        }
+
+        timelineChartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: data.map(d => d.date),
+                datasets: [{
+                    label: 'Uploads',
+                    data: data.map(d => d.count),
+                    backgroundColor: 'rgba(54, 162, 235, 0.6)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        labels: {
+                            color: '#333'
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: { color: '#333' },
+                        grid: { color: '#eee' }
+                    },
+                    x: {
+                        ticks: { color: '#333' },
+                        grid: { display: false }
+                    }
+                }
+            }
+        });
+    }
+
+    function renderTreemap(data) {
+        const container = document.getElementById('treemap');
+        const width = container.clientWidth;
+        const height = 600;
+        const color = d3.scaleOrdinal(d3.schemeCategory10);
+
+        const treemap = d3.treemap()
+            .size([width, height])
+            .padding(1)
+            .round(true);
+
+        const root = d3.hierarchy(data)
+            .sum(d => d.value)
+            .sort((a, b) => b.height - a.height || b.value - a.value);
+
+        treemap(root);
+
+        const svg = d3.select("#treemap")
+            .append("svg")
+            .attr("width", width)
+            .attr("height", height)
+            .style("font", "12px sans-serif");
+
+        const leaf = svg.selectAll("g")
+            .data(root.leaves())
+            .join("g")
+            .attr("transform", d => `translate(${d.x0},${d.y0})`);
+
+        leaf.append("rect")
+            .attr("fill", d => { while (d.depth > 1) d = d.parent; return color(d.data.name); })
+            .attr("fill-opacity", 0.8)
+            .attr("width", d => d.x1 - d.x0)
+            .attr("height", d => d.y1 - d.y0);
+
+        leaf.append("text")
+            .selectAll("tspan")
+            .data(d => d.data.name.split(/(?=[A-Z][a-z])|\s+/g).concat(d.value))
+            .join("tspan")
+            .attr("x", 3)
+            .attr("y", (d, i, nodes) => `${(i === nodes.length - 1) * 0.3 + 1.1 + i * 0.9}em`)
+            .attr("fill", "#fff")
+            .attr("fill-opacity", 1)
+            .style("text-shadow", "0px 0px 3px #000")
+            .text(d => d);
+
+        leaf.append("title")
+            .text(d => `${d.data.name}\n${d.value}`);
+    }
+
+    function renderHeatmap(data) {
+        const container = document.getElementById('heatmap');
+        const margin = { top: 150, right: 0, bottom: 0, left: 150 };
+        const width = 800; // Fixed width for scrolling
+        const height = 800;
+
+        const svg = d3.select("#heatmap")
+            .append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+            .append("g")
+            .attr("transform", `translate(${margin.left},${margin.top})`);
+
+        const tags = data.tags;
+
+        // Build X scales and axis:
+        const x = d3.scaleBand()
+            .range([0, width])
+            .domain(tags)
+            .padding(0.01);
+
+        svg.append("g")
+            .attr("transform", `translate(0, 0)`)
+            .call(d3.axisTop(x))
+            .selectAll("text")
+            .attr("transform", "translate(5,0)rotate(-45)")
+            .style("text-anchor", "start");
+
+        // Build Y scales and axis:
+        const y = d3.scaleBand()
+            .range([0, height])
+            .domain(tags)
+            .padding(0.01);
+
+        svg.append("g")
+            .call(d3.axisLeft(y));
+
+        // Build color scale
+        const maxVal = d3.max(data.data, d => d.value);
+        const myColor = d3.scaleSequential()
+            .interpolator(d3.interpolateInferno)
+            .domain([0, maxVal]);
+
+        // Tooltip
+        const tooltip = d3.select("#heatmap")
+            .append("div")
+            .style("opacity", 0)
+            .attr("class", "tooltip")
+            .style("background-color", "white")
+            .style("border", "solid")
+            .style("border-width", "2px")
+            .style("border-radius", "5px")
+            .style("padding", "5px")
+            .style("position", "absolute");
+
+        const mouseover = function (event, d) {
+            tooltip.style("opacity", 1);
+            d3.select(this).style("stroke", "black").style("opacity", 1);
+        }
+        const mousemove = function (event, d) {
+            tooltip
+                .html(`Tags: ${d.x} & ${d.y}<br>Count: ${d.value}`)
+                .style("left", (event.pageX + 10) + "px")
+                .style("top", (event.pageY - 10) + "px");
+        }
+        const mouseleave = function (event, d) {
+            tooltip.style("opacity", 0);
+            d3.select(this).style("stroke", "none").style("opacity", 0.8);
+        }
+
+        svg.selectAll()
+            .data(data.data, function (d) { return d.x + ':' + d.y; })
+            .join("rect")
+            .attr("x", function (d) { return x(d.x) })
+            .attr("y", function (d) { return y(d.y) })
+            .attr("width", x.bandwidth())
+            .attr("height", y.bandwidth())
+            .style("fill", function (d) { return myColor(d.value) })
+            .style("opacity", 0.8)
+            .on("mouseover", mouseover)
+            .on("mousemove", mousemove)
+            .on("mouseleave", mouseleave);
+    }
+
+    function renderSunburst(data) {
+        const container = document.getElementById('sunburst');
+        const width = 700;
+        const height = 700;
+        const radius = width / 6;
+
+        const color = d3.scaleOrdinal(d3.quantize(d3.interpolateRainbow, data.children.length + 1));
+
+        // Prepare data hierarchy
+        const root = d3.hierarchy(data)
+            .sum(d => d.value)
+            .sort((a, b) => b.value - a.value);
+
+        const partition = d3.partition()
+            .size([2 * Math.PI, root.height + 1]);
+
+        partition(root);
+
+        root.each(d => d.current = d);
+
+        const arc = d3.arc()
+            .startAngle(d => d.x0)
+            .endAngle(d => d.x1)
+            .padAngle(d => Math.min((d.x1 - d.x0) / 2, 0.005))
+            .padRadius(radius * 1.5)
+            .innerRadius(d => d.y0 * radius)
+            .outerRadius(d => Math.max(d.y0 * radius, d.y1 * radius - 1));
+
+        const svg = d3.select("#sunburst")
+            .append("svg")
+            .attr("viewBox", [0, 0, width, width])
+            .style("font", "10px sans-serif");
+
+        const g = svg.append("g")
+            .attr("transform", `translate(${width / 2},${width / 2})`);
+
+        const path = g.append("g")
+            .selectAll("path")
+            .data(root.descendants().slice(1))
+            .join("path")
+            .attr("fill", d => { while (d.depth > 1) d = d.parent; return color(d.data.name); })
+            .attr("fill-opacity", d => arcVisible(d.current) ? (d.children ? 0.6 : 0.4) : 0)
+            .attr("pointer-events", d => arcVisible(d.current) ? "auto" : "none")
+            .attr("d", d => arc(d.current));
+
+        path.filter(d => d.children)
+            .style("cursor", "pointer")
+            .on("click", clicked);
+
+        path.append("title")
+            .text(d => `${d.ancestors().map(d => d.data.name).reverse().join("/")}\n${d.value}`);
+
+        const label = g.append("g")
+            .attr("pointer-events", "none")
+            .attr("text-anchor", "middle")
+            .style("user-select", "none")
+            .selectAll("text")
+            .data(root.descendants().slice(1))
+            .join("text")
+            .attr("dy", "0.35em")
+            .attr("fill-opacity", d => +labelVisible(d.current))
+            .attr("transform", d => labelTransform(d.current))
+            .text(d => d.data.name);
+
+        const parent = g.append("circle")
+            .datum(root)
+            .attr("r", radius)
+            .attr("fill", "none")
+            .attr("pointer-events", "all")
+            .on("click", clicked);
+
+        function clicked(event, p) {
+            parent.datum(p.parent || root);
+
+            root.each(d => d.target = {
+                x0: Math.max(0, Math.min(1, (d.x0 - p.x0) / (p.x1 - p.x0))) * 2 * Math.PI,
+                x1: Math.max(0, Math.min(1, (d.x1 - p.x0) / (p.x1 - p.x0))) * 2 * Math.PI,
+                y0: Math.max(0, d.y0 - p.depth),
+                y1: Math.max(0, d.y1 - p.depth)
+            });
+
+            const t = g.transition().duration(750);
+
+            path.transition(t)
+                .tween("data", d => {
+                    const i = d3.interpolate(d.current, d.target);
+                    return t => d.current = i(t);
+                })
+                .filter(function (d) {
+                    return +this.getAttribute("fill-opacity") || arcVisible(d.target);
+                })
+                .attr("fill-opacity", d => arcVisible(d.target) ? (d.children ? 0.6 : 0.4) : 0)
+                .attr("pointer-events", d => arcVisible(d.target) ? "auto" : "none")
+                .attrTween("d", d => () => arc(d.current));
+
+            label.filter(function (d) {
+                return +this.getAttribute("fill-opacity") || labelVisible(d.target);
+            }).transition(t)
+                .attr("fill-opacity", d => +labelVisible(d.target))
+                .attrTween("transform", d => () => labelTransform(d.current));
+        }
+
+        function arcVisible(d) {
+            return d.y1 <= 3 && d.y0 >= 1 && d.x1 > d.x0;
+        }
+
+        function labelVisible(d) {
+            return d.y1 <= 3 && d.y0 >= 1 && (d.y1 - d.y0) * (d.x1 - d.x0) > 0.03;
+        }
+
+        function labelTransform(d) {
+            const x = (d.x0 + d.x1) / 2 * 180 / Math.PI;
+            const y = (d.y0 + d.y1) / 2 * radius;
+            return `rotate(${x - 90}) translate(${y},0) rotate(${x < 180 ? 0 : 180})`;
+        }
+    }
+</script>
+{% endblock %}
+{% block afterJQ %}
+{% load compress %}
+{% compress css %}
+<link href="{% static 'css/vendor/jal/style.css' %}" type="text/css" media="all" rel="stylesheet" />
+{% endcompress %}
+{% compress js %}
+<script src="{% static 'js/vendor/jquery.autocomplete-light.min.js' %}"></script>
+{% endcompress %}
+{% endblock %}

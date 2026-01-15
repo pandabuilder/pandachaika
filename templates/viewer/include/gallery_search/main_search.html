@@ -1,9 +1,9 @@
 <div class="row">
     <div class="col-md-12">
-        <form id="main-form" action="{% url 'viewer:gallery-list' %}" method="GET" role="form">
+
           <div class="row">
             <div class="col-md-12">
-                <div id="main-search" class="collapse{% if prm.main_filters %} show{% endif %}">
+                <div id="main-search" class="collapse{% if prm.main_filters or force_show_form %} show{% endif %}">
                   {% for field in gallery_search_form %}
                     <div class="page-line">
                       {{ field.errors }}
@@ -13,14 +13,17 @@
                 </div>
             </div>
               <div class="col-md-12 page-line d-flex align-items-center gap-2">
-                <button type="submit" name="apply" class="btn btn-info">Search</button>
-                <button type="submit" name="clear" class="btn btn-light">Clear</button>
+              {% if not hide_submit_options %}
+                <button form="filter-gallery-form" type="submit" name="apply" class="btn btn-info">Search</button>
+                <button form="filter-gallery-form" type="submit" name="clear" class="btn btn-light">Clear</button>
+              {% endif %}
                 <div class="form-check mb-0">
-                  <input id="checkbox-tags-or" class="form-check-input" type="checkbox" name="tags_or" value="1" {% if request.GET.tags_or == '1' %}checked{% endif %}><label class="form-check-label" for="checkbox-tags-or">Join Tags with OR</label>
+                  <input form="filter-gallery-form" id="checkbox-tags-or" class="form-check-input" type="checkbox" name="tags_or" value="1" {% if request.GET.tags_or == '1' %}checked{% endif %}><label class="form-check-label" for="checkbox-tags-or">Join Tags with OR</label>
                 </div>
+              {% if not hide_submit_options %}
                 <button type="button" class="btn btn-secondary js-instant-toggle d-lg-none" data-toggle-target="#advancedFilters">More filters</button>
+              {% endif %}
               </div>
           </div>
-        </form>
     </div>
 </div>

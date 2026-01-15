@@ -6,7 +6,7 @@
 // @include     http://exhentai.org/*
 // @include     https://e-hentai.org/*
 // @include     https://exhentai.org/*
-// @version     0.1.13
+// @version     0.1.14
 // @grant       GM_xmlhttpRequest
 // @grant       GM_setValue
 // @grant       GM_getValue
@@ -119,6 +119,15 @@ color: black;\
     text-decoration: none;\
     display: inline-block;\
     font-size: 16px;\
+}\
+/* Click feedback animation */\
+@keyframes click-feedback {\
+    0%   { transform: scale(1); filter: brightness(100%); }\
+    50%  { transform: scale(1.15); filter: brightness(150%); }\
+    100% { transform: scale(1); filter: brightness(100%); }\
+}\
+.clicked-image-feedback {\
+    animation: click-feedback 0.3s ease-out;\
 }');
 
 
@@ -217,47 +226,60 @@ function getDownloadReason() {
     return localStorage.getItem('pandabackup-download reason');
 }
 
+/**
+ * Applies a visual feedback animation to the image within the clicked element.
+ * @param {HTMLElement} element The element that was clicked.
+ */
+function addClickFeedback(element) {
+    const img = element.getElementsByTagName('img')[0];
+    if (img) {
+        img.classList.add('clicked-image-feedback');
+        // Remove the class after the animation is done (duration is 300ms in CSS)
+        setTimeout(() => {
+            img.classList.remove('clicked-image-feedback');
+        }, 300);
+    }
+}
+
 function modifyDivList(currentDiv) {
-
     var galleryLink = currentDiv.getElementsByTagName('a')[0].getAttribute('href');
-
-    var div2 =document.createElement('div');
-    div2.style.margin ='5px 0px 0px 0px';
-    div2.innerHTML ='<img class="n" src="https://ehgt.org/g/t.png" alt="T" title="' +galleryLink +'"/></img>';
-    div2.addEventListener('click',function () { sendWebCrawlerAction(galleryLink, null, null, getDownloadReason()); });
+    var div2 = document.createElement('div');
+    div2.style.margin = '5px 0px 0px 0px';
+    div2.innerHTML = '<img class="n" src="https://ehgt.org/g/t.png" alt="T" title="' + galleryLink + '"/></img>';
+    div2.addEventListener('click', function() {
+        addClickFeedback(this);
+        sendWebCrawlerAction(galleryLink, null, null, getDownloadReason());
+    });
     currentDiv.parentNode.appendChild(div2);
-
 }
 
 function modifyDivThumbnail(currentDiv) {
+    var galleryLink = currentDiv.getElementsByClassName('gl3t')[0].getElementsByTagName('a')[0].getAttribute('href');
+    var rightBot = currentDiv.getElementsByClassName('gl5t')[0].getElementsByClassName('gldown')[0];
 
-    var galleryLink =currentDiv.getElementsByClassName('gl3t')[0].getElementsByTagName('a')[0].getAttribute('href');
-    var rightBot =currentDiv.getElementsByClassName('gl5t')[0].getElementsByClassName('gldown')[0];
-
-    var div2 =document.createElement('div');
-    div2.style.float ='right';
-    div2.style.margin ='5px -20px 0px 10px';
+    var div2 = document.createElement('div');
+    div2.style.float = 'right';
+    div2.style.margin = '5px -20px 0px 10px';
     div2.innerHTML = '<img class="tn" src="https://ehgt.org/g/t.png" alt="T" title="' + galleryLink + '"/></img>';
-    div2.addEventListener('click',function () {
+    div2.addEventListener('click', function() {
+        addClickFeedback(this);
         sendWebCrawlerAction(galleryLink, null, null, getDownloadReason());
     });
     rightBot.parentNode.appendChild(div2);
-
 }
 
 function modifyDivExtended(currentDiv) {
+    var galleryLink = currentDiv.getElementsByTagName('div')[0].children[1].getAttribute('href');
+    var rightBot = currentDiv.getElementsByTagName('div')[0].getElementsByClassName('gl3e')[0].getElementsByClassName('gldown')[0];
 
-    var galleryLink =currentDiv.getElementsByTagName('div')[0].children[1].getAttribute('href');
-    var rightBot =currentDiv.getElementsByTagName('div')[0].getElementsByClassName('gl3e')[0].getElementsByClassName('gldown')[0];
-
-    var div2 =document.createElement('div');
-    div2.style.margin ='0px 0px 0px 2px';
+    var div2 = document.createElement('div');
+    div2.style.margin = '0px 0px 0px 2px';
     div2.innerHTML = '<img class="tn" src="https://ehgt.org/g/t.png" alt="T" title="' + galleryLink + '"/></img>';
-    div2.addEventListener('click',function () {
+    div2.addEventListener('click', function() {
+        addClickFeedback(this);
         sendWebCrawlerAction(galleryLink, null, null, getDownloadReason());
     });
     rightBot.parentNode.appendChild(div2);
-
 }
 
 function insertCrawler() {
@@ -282,7 +304,10 @@ function insertCrawler() {
             var galleryLink =document.URL;
             var div2 =document.createElement('div');
             div2.innerHTML ='<img style="height: auto; width: auto" src="https://ehgt.org/g/t.png" alt="T" title="' + galleryLink + '"/></img>';
-            div2.addEventListener('click',function () { sendWebCrawlerAction(galleryLink, parentLink, null, getDownloadReason()); });
+            div2.addEventListener('click',function () {
+                addClickFeedback(this);
+                sendWebCrawlerAction(galleryLink, parentLink, null, getDownloadReason());
+            });
             container.appendChild(div2);
         }());
         return true;

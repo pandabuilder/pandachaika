@@ -1,9 +1,9 @@
 -r requirements.txt
 django-debug-toolbar==6.1.0
 django-unused-media==0.2.2
-mypy==1.18.2
-ruff==0.14.5
-django-stubs==5.2.7
+mypy==1.19.1
+ruff==0.14.10
+django-stubs==5.2.8
 types-requests==2.32.4.20250913
 types-pytz==2025.2.0.20251108
 types-python-dateutil==2.9.0.20251115

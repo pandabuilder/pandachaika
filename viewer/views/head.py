@@ -825,7 +825,7 @@ def gallery_list(request: HttpRequest, mode: str = "none", tag: Optional[str] = 
         )
     )
 
-    gallery_search_form = GallerySearchForm(initial={"title": display_prms["title"], "tags": display_prms["tags"]})
+    gallery_search_form = GallerySearchForm(initial={"title": display_prms["title"], "tags": display_prms["tags"]}, form_name="filter-gallery-form")
 
     view_options = ("list", "extended")
 

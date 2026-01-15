@@ -151,42 +151,56 @@ class GenericArchiveDownloader(BaseDownloader):
 
         request_dict = construct_request_dict(self.settings, self.own_settings)
 
-        request_file = requests.get(self.gallery.link, stream=True, **request_dict)
+        for attempt in range(3):
+            try:
+                request_file = requests.get(self.gallery.link, stream=True, **request_dict)
 
-        filename = get_filename_from_cd(request_file.headers.get("content-disposition"))
+                filename = get_filename_from_cd(request_file.headers.get("content-disposition"))
 
-        if not filename:
-            if self.gallery.link.find("/"):
-                filename = self.gallery.link.rsplit("/", 1)[1]
+                if not filename:
+                    if self.gallery.link.find("/"):
+                        filename = self.gallery.link.rsplit("/", 1)[1]
 
-        if not filename:
-            logger.error("Could not find a filename for link: {}".format(self.gallery.link))
-            self.return_code = 0
+                if not filename:
+                    logger.error("Could not find a filename for link: {}".format(self.gallery.link))
+                    continue
 
-        filename = replace_illegal_name(filename)
+                filename = replace_illegal_name(filename)
 
-        self.gallery.title = remove_archive_extensions(filename)
-        self.gallery.filename = available_filename(
-            self.settings.MEDIA_ROOT, os.path.join(self.own_settings.archive_dl_folder, filename)
-        )
+                self.gallery.title = remove_archive_extensions(filename)
+                self.gallery.filename = available_filename(
+                    self.settings.MEDIA_ROOT, os.path.join(self.own_settings.archive_dl_folder, filename)
+                )
 
-        logger.info("Chosen local filename: {}".format(self.gallery.filename))
+                logger.info("Chosen local filename: {} (Attempt {}/3)".format(self.gallery.filename, attempt + 1))
 
-        filepath = os.path.join(self.settings.MEDIA_ROOT, self.gallery.filename)
-        total_size = int(request_file.headers.get("Content-Length", 0))
-        self.download_event = self.create_download_event(self.gallery.link, self.type, filepath, total_size=total_size)
-        with open(filepath, "wb") as fo:
-            for chunk in request_file.iter_content(4096):
-                fo.write(chunk)
+                filepath = os.path.join(self.settings.MEDIA_ROOT, self.gallery.filename)
+                total_size = int(request_file.headers.get("Content-Length", 0))
+                self.download_event = self.create_download_event(self.gallery.link, self.type, filepath, total_size=total_size)
+                with open(filepath, "wb") as fo:
+                    for chunk in request_file.iter_content(4096):
+                        fo.write(chunk)
 
-        self.gallery.filesize, self.gallery.filecount = get_zip_fileinfo_for_gallery(filepath)
-        if self.gallery.filesize > 0:
-            self.crc32 = calc_crc32(filepath)
+                self.gallery.filesize, self.gallery.filecount = get_zip_fileinfo_for_gallery(filepath)
+                if self.gallery.filesize > 0:
+                    self.crc32 = calc_crc32(filepath)
 
-            self.fileDownloaded = 1
-            self.return_code = 1
+                    self.fileDownloaded = 1
+                    self.return_code = 1
+                    break
 
-        else:
+            except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout) as e:
+                logger.warning("Download failed on attempt {}/3 with error: {}".format(attempt + 1, str(e)))
+                if hasattr(self.gallery, 'filename') and self.gallery.filename:
+                    filepath = os.path.join(self.settings.MEDIA_ROOT, self.gallery.filename)
+                    if os.path.exists(filepath):
+                        os.remove(filepath)
+                if self.download_event:
+                    self.download_event.set_as_failed()
+                    self.download_event.save()
+                    self.download_event = None
+
+        if self.return_code != 1:
             logger.error("Could not download archive")
             self.return_code = 0
 
