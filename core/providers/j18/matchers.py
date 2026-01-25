@@ -1,11 +1,7 @@
 import logging
 import os
-import re
 from typing import Optional
 from urllib.parse import urljoin, unquote
-
-import bs4
-from bs4 import BeautifulSoup
 
 from core.base.matchers import Matcher
 from core.base.types import DataDict

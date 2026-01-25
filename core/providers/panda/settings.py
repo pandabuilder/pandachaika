@@ -35,6 +35,7 @@ class OwnSettings(ProviderSettings):
         self.mark_relationships = False
         self.api_concurrent_limit = 4  # Wiki says between 4-5
         self.api_wait_limit = 5.5  # Wiki says 5 seconds
+        self.maximum_gp_cost_for_dls: None | float = None # Maximum cost for hath and archive downloads, if None, don't consider, if number, 0 = only free.
 
 
 def parse_config(global_settings: "Settings", config: dict[str, typing.Any]) -> "OwnSettings":
@@ -58,6 +59,8 @@ def parse_config(global_settings: "Settings", config: dict[str, typing.Any]) -> 
         # TODO: Mark galleries when a new gallery in chain is detected
         if "mark_relationships" in config["general"]:
             settings.mark_relationships = config["general"]["mark_relationships"]
+        if "maximum_gp_cost_for_dls" in config["general"]:
+            settings.maximum_gp_cost_for_dls = config["general"]["maximum_gp_cost_for_dls"]
     if "api" in config:
         if "concurrent_limit" in config["api"]:
             settings.api_concurrent_limit = config["api"]["concurrent_limit"]

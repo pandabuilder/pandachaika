@@ -351,43 +351,42 @@ class Settings:
         if load_from_config:
             self.config = deepcopy(load_from_config)
             self.dict_to_settings(self.config)
-
-        self.load_from_environment()
+            self.load_from_environment()
 
     def load_from_environment(self):
 
         if 'DATABASE_ENGINE' in os.environ:
-            DATABASE_ENGINE = os.environ['DATABASE_ENGINE']
-            self.db_engine = DATABASE_ENGINE
+            database_engine = os.environ['DATABASE_ENGINE']
+            self.db_engine = database_engine
         else:
-            DATABASE_ENGINE = self.db_engine
+            database_engine = self.db_engine
 
         if 'DATABASE_NAME' in os.environ:
-            if DATABASE_ENGINE == 'postgresql':
+            if database_engine == 'postgresql':
                 self.database['postgresql_name'] = os.environ['DATABASE_NAME']
             else:
                 self.database['mysql_name'] = os.environ['DATABASE_NAME']
 
         if 'DATABASE_USERNAME' in os.environ:
-            if DATABASE_ENGINE == 'postgresql':
+            if database_engine == 'postgresql':
                 self.database['postgresql_user'] = os.environ['DATABASE_USERNAME']
             else:
                 self.database['mysql_user'] = os.environ['DATABASE_USERNAME']
 
         if 'DATABASE_PASSWORD' in os.environ:
-            if DATABASE_ENGINE == 'postgresql':
+            if database_engine == 'postgresql':
                 self.database['postgresql_password'] = os.environ['DATABASE_PASSWORD']
             else:
                 self.database['mysql_password'] = os.environ['DATABASE_PASSWORD']
 
         if 'DATABASE_HOST' in os.environ:
-            if DATABASE_ENGINE == 'postgresql':
+            if database_engine == 'postgresql':
                 self.database['postgresql_host'] = os.environ['DATABASE_HOST']
             else:
                 self.database['mysql_host'] = os.environ['DATABASE_HOST']
 
         if 'DATABASE_PORT' in os.environ:
-            if DATABASE_ENGINE == 'postgresql':
+            if database_engine == 'postgresql':
                 self.database['postgresql_port'] = os.environ['DATABASE_PORT']
             else:
                 self.database['mysql_port'] = os.environ['DATABASE_PORT']
@@ -435,6 +434,7 @@ class Settings:
             yaml_settings = yaml.safe_load(f)
         self.dict_to_settings(yaml_settings)
         self.config = yaml_settings
+        self.load_from_environment()
 
     def write(self) -> None:
         with open(os.path.join(self.default_dir, "settings.yaml"), "w") as yaml_file:

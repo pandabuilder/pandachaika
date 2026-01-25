@@ -12,7 +12,7 @@ django-db-logger==0.1.13
 django-cors-headers==4.9.0
 Pillow==12.1.0
 rarfile==4.2
-py7zr==1.1.0
+py7zr==1.1.2
 requests==2.32.5
 feedparser==6.0.12
 transmission-rpc==7.0.11

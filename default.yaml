@@ -177,9 +177,9 @@ match_params:
   copy_match_file: true
 locations:
   # Absolute location in the filesystem where the media will be stored. Includes archives, thumbnails, and extracted archives.
-  media_root: ''
+  media_root: /media/
   # Absolute location in the filesystem where the static files will be stored.
-  static_root: ''
+  static_root: /static/
   # Relative location where archive (HTTP) downloads will be stored. Can be replaced by each provider.
   archive_dl_folder: galleries/archive_dls
   # Relative location where torrent downloads will be stored. Can be replaced by each provider.
@@ -209,7 +209,7 @@ torrent:
   # download_dir only implemented for Transmission
   download_dir: /home/panda/downloads/torrents
   # By default, the validity of the server certificate is checked. If it's a self-signed cert for example, set it to "yes".
-  # no_certificate_check: false
+  no_certificate_check: false
 ftps:
   # Download files from the remote server, when using remote handler. Only option available is FTPS connection.
   user: panda

@@ -772,7 +772,8 @@ def sleep_log_and_retry(func):
             try:
                 return func(*args, **kwargs)
             except RateLimitException as exception:
-                logger.warning("Request limited, sleeping for {} seconds".format(exception.period_remaining))
+                url = args[0]
+                logger.info("Request limited for URL: {}, sleeping for {} seconds".format(url, exception.period_remaining))
                 time.sleep(exception.period_remaining)
 
     return wrapper

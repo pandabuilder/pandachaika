@@ -11,10 +11,10 @@ from bs4 import BeautifulSoup
 from core.base.types import DataDict
 from core.base.utilities import (
     calc_crc32,
-    request_with_retries,
     get_base_filename_string_from_gallery_data,
     get_zip_fileinfo_for_gallery,
     construct_request_dict,
+    request_by_provider
 )
 from core.downloaders.handlers import BaseDownloader, BaseInfoDownloader, BaseFakeDownloader, BaseTorrentDownloader
 from core.downloaders.torrent import get_torrent_client
@@ -25,11 +25,112 @@ from . import constants
 
 logger = logging.getLogger(__name__)
 
+class CostTracker:
+    _instance = None
+
+    def __init__(self) -> None:
+        self.costs_per_gid_method: dict[str, dict[str, float]] = {}
+
+    def add_cost(self, gid: str, method: str, cost: float) -> None:
+        if gid not in self.costs_per_gid_method:
+            self.costs_per_gid_method[gid] = {}
+        self.costs_per_gid_method[gid][method] = cost
+
+    def get_cost(self, gid: str, method: str) -> float | None:
+        if gid not in self.costs_per_gid_method:
+            return None
+        if method not in self.costs_per_gid_method[gid]:
+            return None
+        return self.costs_per_gid_method[gid][method]
+
+    def check_method_cost(
+            self, root: str, gid: str, token: str, method_name: str,
+            downloader : 'ArchiveDownloader | HathDownloader'
+    ) -> float | None:
+
+        found_cost = self.get_cost(gid, method_name)
+
+        if found_cost is not None:
+            return found_cost
+
+        url = root + "/archiver.php"
+
+        params = {"gid": gid, "token": token}
+
+        request_dict = construct_request_dict(downloader.settings, downloader.own_settings)
+        request_dict["params"] = params
+
+        response = downloader.web_request_function(
+            url,
+            request_dict,
+            post=False,
+        )
+
+        if not response:
+            logger.error("Could not get download page.")
+            return None
+
+        response.encoding = "utf-8"
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        # <input type="hidden" name="dltype" value="org" />
+        input_org_dl_archive = soup.find("input", attrs={'type': "hidden", 'name': "dltype", 'value': "org"})
+
+        if input_org_dl_archive:
+            if input_org_dl_archive.parent is not None:
+                if input_org_dl_archive.parent.parent is not None:
+                    div_container = input_org_dl_archive.parent.parent
+                    cost_div = div_container.find("strong")
+                    if cost_div is not None:
+                        cost_text = cost_div.get_text()
+                        # Look for: 2,853 GP or Free!
+                        if 'Free' in cost_text:
+                            self.add_cost(gid, 'archive', 0)
+                        else:
+                            cleaned_cost_text = cost_text.strip().replace("GP", "").replace(",", "")
+                            cost_number = float(cleaned_cost_text)
+                            self.add_cost(gid, 'archive', cost_number)
+
+        # <a href="#" onclick="return do_hathdl('org')">Original</a>
+
+        a_org_dl_hath = soup.find("a", attrs={'href': "#", 'onclick': "return do_hathdl('org')"}, string="Original")  # type: ignore
+
+        if a_org_dl_hath:
+            if a_org_dl_hath.parent is not None:
+                if a_org_dl_hath.parent.parent is not None:
+                    div_container = a_org_dl_hath.parent.parent
+                    cost_ps = div_container.find_all("p")
+                    for cost_p in cost_ps:
+                        cost_text = cost_p.get_text()
+                        if 'Free' in cost_text or ' GP' in cost_text:
+                            # Look for: 2,853 GP or Free!
+                            if 'Free' in cost_text:
+                                self.add_cost(gid, 'hath', 0)
+                            else:
+                                cleaned_cost_text = cost_text.strip().replace("GP", "").replace(",", "")
+                                cost_number = float(cleaned_cost_text)
+                                self.add_cost(gid, 'hath', cost_number)
+                            break
+
+        found_cost = self.get_cost(gid, method_name)
+
+        if found_cost is not None:
+            return found_cost
+
+        return None
+
+cost_tracker = CostTracker()
 
 class ArchiveDownloader(BaseDownloader):
 
     type = "archive"
     provider = constants.provider_name
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.web_request_function = request_by_provider(
+            self.provider + "_web", 1, self.own_settings.wait_timer
+        )
 
     def request_archive_download(self, root: str, gid: str, token: str) -> Optional[requests.models.Response]:
 
@@ -41,7 +142,7 @@ class ArchiveDownloader(BaseDownloader):
         request_dict["params"] = params
         request_dict["data"] = constants.archive_download_data
 
-        response = request_with_retries(
+        response = self.web_request_function(
             url,
             request_dict,
             post=True,
@@ -70,6 +171,19 @@ class ArchiveDownloader(BaseDownloader):
             )
             self.return_code = 0
             return
+
+        if self.own_settings.maximum_gp_cost_for_dls is not None:
+            logger.info("Checking for download cost.")
+            cost = cost_tracker.check_method_cost(self.gallery.root, self.gallery.gid, self.gallery.token, self.type, self)
+            if cost is None:
+                logger.error("Could not retrieve cost, skipping download.")
+                self.return_code = 0
+                return
+            if cost > self.own_settings.maximum_gp_cost_for_dls:
+                logger.error("Download cost: {} for gallery: {} using method: {} is higher than the limit: {}, skipping download.".format(cost, self.gallery.link, self.type, self.own_settings.maximum_gp_cost_for_dls))
+                self.return_code = 0
+                return
+            logger.info("Download cost: {} for gallery: {} using method: {} is below the limit: {}, continuing download.".format(cost, self.gallery.link, self.type, self.own_settings.maximum_gp_cost_for_dls))
 
         r = self.request_archive_download(self.gallery.root, self.gallery.gid, self.gallery.token)
 
@@ -102,7 +216,7 @@ class ArchiveDownloader(BaseDownloader):
 
                 for attempt in range(3):
                     try:
-                        request_file = request_with_retries(archive_link + "?start=1", request_dict)
+                        request_file = self.web_request_function(archive_link + "?start=1", request_dict)
 
                         if r and r.status_code == 200 and request_file:
                             logger.info("Downloading gallery: {}.zip (Attempt {}/3)".format(to_use_filename, attempt + 1))
@@ -160,6 +274,9 @@ class TorrentDownloader(BaseTorrentDownloader):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
+        self.web_request_function = request_by_provider(
+            self.provider + "_web", 1, self.own_settings.wait_timer
+        )
 
     def request_torrent_download(self, root: str, gid: str, token: str) -> Optional[requests.models.Response]:
 
@@ -170,7 +287,7 @@ class TorrentDownloader(BaseTorrentDownloader):
         request_dict = construct_request_dict(self.settings, self.own_settings)
         request_dict["params"] = params
 
-        response = request_with_retries(
+        response = self.web_request_function(
             url,
             request_dict,
             post=True,
@@ -397,6 +514,12 @@ class HathDownloader(BaseDownloader):
     provider = constants.provider_name
     direct_downloader = False
 
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.web_request_function = request_by_provider(
+            self.provider + "_web", 1, self.own_settings.wait_timer
+        )
+
     def start_download(self) -> None:
 
         if not self.gallery:
@@ -410,6 +533,19 @@ class HathDownloader(BaseDownloader):
             )
             self.return_code = 0
             return
+
+        if self.own_settings.maximum_gp_cost_for_dls is not None:
+            logger.info("Checking for download cost.")
+            cost = cost_tracker.check_method_cost(self.gallery.root, self.gallery.gid, self.gallery.token, self.type, self)
+            if cost is None:
+                logger.error("Could not retrieve cost, skipping download.")
+                self.return_code = 0
+                return
+            if cost > self.own_settings.maximum_gp_cost_for_dls:
+                logger.error("Download cost: {} for gallery: {} using method: {} is higher than the limit: {}, skipping download.".format(cost, self.gallery.link, self.type, self.own_settings.maximum_gp_cost_for_dls))
+                self.return_code = 0
+                return
+            logger.info("Download cost: {} for gallery: {} using method: {} is below the limit: {}, continuing download.".format(cost, self.gallery.link, self.type, self.own_settings.maximum_gp_cost_for_dls))
 
         r = self.request_hath_download(self.gallery.root, self.gallery.gid, self.gallery.token)
 
@@ -465,17 +601,13 @@ class HathDownloader(BaseDownloader):
         request_dict["params"] = params
         request_dict["data"] = {"hathdl_xres": "org"}
 
-        for retry_count in range(3):
-            try:
-                r = requests.post(url, **request_dict)
-                return r
-            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-                if retry_count < 2:
-                    logger.warning("Request failed, retrying {} of {}: {}".format(retry_count, 3, str(e)))
-                    continue
-                else:
-                    return None
-        return None
+        response = self.web_request_function(
+            url,
+            request_dict,
+            post=True,
+        )
+        
+        return response
 
     def update_archive_db(self, default_values: DataDict) -> Optional["Archive"]:
 
