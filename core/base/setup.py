@@ -353,6 +353,24 @@ class Settings:
             self.dict_to_settings(self.config)
             self.load_from_environment()
 
+    def create_missing_directories(self):
+        if self.archive_dl_folder:
+            if not os.path.exists(os.path.join(self.MEDIA_ROOT, self.archive_dl_folder)):
+                os.makedirs(os.path.join(self.MEDIA_ROOT, self.archive_dl_folder))
+        if self.torrent_dl_folder:
+            if not os.path.exists(os.path.join(self.MEDIA_ROOT, self.torrent_dl_folder)):
+                os.makedirs(os.path.join(self.MEDIA_ROOT, self.torrent_dl_folder))
+        if not os.path.exists(os.path.dirname(self.log_location)):
+            os.makedirs(os.path.dirname(self.log_location))
+
+        for provider_name, provider_settings in self.providers.items():
+            folders = [a for a in dir(provider_settings) if a.endswith('_dl_folder')]
+            for folder in folders:
+                folder_name = getattr(provider_settings, folder)
+                if folder_name:
+                    if not os.path.exists(os.path.join(self.MEDIA_ROOT, folder_name)):
+                        os.makedirs(os.path.join(self.MEDIA_ROOT, folder_name))
+
     def load_from_environment(self):
 
         if 'DATABASE_ENGINE' in os.environ:
@@ -725,18 +743,10 @@ class Settings:
                 self.STATIC_ROOT = config["locations"]["static_root"]
             if "archive_dl_folder" in config["locations"]:
                 self.archive_dl_folder = config["locations"]["archive_dl_folder"]
-                if not typing.TYPE_CHECKING:
-                    if not os.path.exists(os.path.join(self.MEDIA_ROOT, self.archive_dl_folder)):
-                        os.makedirs(os.path.join(self.MEDIA_ROOT, self.archive_dl_folder))
             if "torrent_dl_folder" in config["locations"]:
                 self.torrent_dl_folder = config["locations"]["torrent_dl_folder"]
-                if not typing.TYPE_CHECKING:
-                    if not os.path.exists(os.path.join(self.MEDIA_ROOT, self.torrent_dl_folder)):
-                        os.makedirs(os.path.join(self.MEDIA_ROOT, self.torrent_dl_folder))
             if "log_location" in config["locations"]:
                 self.log_location = config["locations"]["log_location"]
-                if not os.path.exists(os.path.dirname(self.log_location)):
-                    os.makedirs(os.path.dirname(self.log_location))
             else:
                 self.log_location = os.path.join(self.default_dir, "viewer.log")
         if "database" in config:

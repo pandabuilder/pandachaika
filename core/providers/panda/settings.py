@@ -69,16 +69,10 @@ def parse_config(global_settings: "Settings", config: dict[str, typing.Any]) -> 
     if "locations" in config:
         if "archive_dl_folder" in config["locations"]:
             settings.archive_dl_folder = config["locations"]["archive_dl_folder"]
-            if not os.path.exists(os.path.join(global_settings.MEDIA_ROOT, settings.archive_dl_folder)):
-                os.makedirs(os.path.join(global_settings.MEDIA_ROOT, settings.archive_dl_folder))
         if "torrent_dl_folder" in config["locations"]:
             settings.torrent_dl_folder = config["locations"]["torrent_dl_folder"]
-            if not os.path.exists(os.path.join(global_settings.MEDIA_ROOT, settings.torrent_dl_folder)):
-                os.makedirs(os.path.join(global_settings.MEDIA_ROOT, settings.torrent_dl_folder))
         if "hath_dl_folder" in config["locations"]:
             settings.hath_dl_folder = config["locations"]["hath_dl_folder"]
-            if not os.path.exists(os.path.join(global_settings.MEDIA_ROOT, settings.hath_dl_folder)):
-                os.makedirs(os.path.join(global_settings.MEDIA_ROOT, settings.hath_dl_folder))
         if "local_hath_folder" in config["locations"]:
             settings.local_hath_folder = config["locations"]["local_hath_folder"]
         if "remote_hath_dir" in config["locations"]:

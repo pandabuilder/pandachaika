@@ -68,6 +68,7 @@ class DjangoAppPlugin(plugins.SimplePlugin):
         cherrypy.tree.graft(self.wsgi_http_logger(get_wsgi_application(), self.crawler_settings))
 
         settings.WORKERS.start_workers(settings.CRAWLER_SETTINGS)
+        settings.CRAWLER_SETTINGS.create_missing_directories()
 
         tool = cherrypy._cptools.HandlerTool(corsstaticdir)
         static_handler = tool.handler(

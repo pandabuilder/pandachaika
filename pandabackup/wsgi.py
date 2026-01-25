@@ -15,3 +15,4 @@ application = get_wsgi_application()
 from pandabackup import settings
 
 settings.WORKERS.start_workers(settings.CRAWLER_SETTINGS)
+settings.CRAWLER_SETTINGS.create_missing_directories()
