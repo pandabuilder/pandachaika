@@ -725,12 +725,14 @@ class Settings:
                 self.STATIC_ROOT = config["locations"]["static_root"]
             if "archive_dl_folder" in config["locations"]:
                 self.archive_dl_folder = config["locations"]["archive_dl_folder"]
-                if not os.path.exists(os.path.join(self.MEDIA_ROOT, self.archive_dl_folder)):
-                    os.makedirs(os.path.join(self.MEDIA_ROOT, self.archive_dl_folder))
+                if not typing.TYPE_CHECKING:
+                    if not os.path.exists(os.path.join(self.MEDIA_ROOT, self.archive_dl_folder)):
+                        os.makedirs(os.path.join(self.MEDIA_ROOT, self.archive_dl_folder))
             if "torrent_dl_folder" in config["locations"]:
                 self.torrent_dl_folder = config["locations"]["torrent_dl_folder"]
-                if not os.path.exists(os.path.join(self.MEDIA_ROOT, self.torrent_dl_folder)):
-                    os.makedirs(os.path.join(self.MEDIA_ROOT, self.torrent_dl_folder))
+                if not typing.TYPE_CHECKING:
+                    if not os.path.exists(os.path.join(self.MEDIA_ROOT, self.torrent_dl_folder)):
+                        os.makedirs(os.path.join(self.MEDIA_ROOT, self.torrent_dl_folder))
             if "log_location" in config["locations"]:
                 self.log_location = config["locations"]["log_location"]
                 if not os.path.exists(os.path.dirname(self.log_location)):
