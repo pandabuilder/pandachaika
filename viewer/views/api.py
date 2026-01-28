@@ -28,7 +28,8 @@ from django.conf import settings
 
 from core.base.setup import Settings
 from core.base.utilities import str_to_int, timestamp_or_zero
-from viewer.models import Archive, Gallery, UserArchivePrefs, ArchiveGroup, ArchiveGroupEntry
+from viewer.models import Archive, Gallery, UserArchivePrefs, ArchiveGroup, ArchiveGroupEntry, WantedGallery, Tag, \
+    Category, Provider
 from viewer.utils.matching import generate_possible_matches_for_archives
 from viewer.utils.requests import authenticate_by_token, double_check_auth
 from viewer.views.head import gallery_filter_keys, gallery_order_fields, filter_archives_simple, archive_filter_keys
@@ -954,7 +955,6 @@ def json_api_handle_get(request: HttpRequest, user_is_authenticated: bool):
     else:
         return HttpResponse(json.dumps({"result": "Unknown command"}), content_type="application/json; charset=utf-8")
 
-
 def json_api_handle_post(request: HttpRequest, user: Optional[User | AnonymousUser]):
     data = request.GET
     body = json.loads(request.body)
@@ -1052,8 +1052,98 @@ def json_api_handle_post(request: HttpRequest, user: Optional[User | AnonymousUs
             return HttpResponseNotFound(
                 json.dumps({"result": "Archive does not exist."}), content_type="application/json; charset=utf-8"
             )
+    elif "wanted-gallery" in data and user and user.has_perm("viewer.add_wantedgallery"):
+        try:
+            wanted_gallery = WantedGallery(
+                title=body.get("title", ""),
+                title_jpn=body.get("title_jpn", ""),
+                search_title=body.get("search_title", ""),
+                regexp_search_title=body.get("regexp_search_title", False),
+                regexp_search_title_icase=body.get("regexp_search_title_icase", False),
+                unwanted_title=body.get("unwanted_title", ""),
+                regexp_unwanted_title=body.get("regexp_unwanted_title", False),
+                regexp_unwanted_title_icase=body.get("regexp_unwanted_title_icase", False),
+                wanted_page_count_lower=body.get("wanted_page_count_lower", 0),
+                wanted_page_count_upper=body.get("wanted_page_count_upper", 0),
+                wanted_tags_exclusive_scope=body.get("wanted_tags_exclusive_scope", False),
+                exclusive_scope_name=body.get("exclusive_scope_name", ""),
+                wanted_tags_accept_if_none_scope=body.get("wanted_tags_accept_if_none_scope", ""),
+                category=body.get("category", ""),
+                wait_for_time=body.get("wait_for_time"),
+                should_search=body.get("should_search", False),
+                keep_searching=body.get("keep_searching", False),
+                reason=body.get("reason", ""),
+                book_type=body.get("book_type", ""),
+                publisher=body.get("publisher", ""),
+                page_count=body.get("page_count", 0),
+                restricted_to_links=body.get("restricted_to_links", False),
+            )
+
+            if "release_date" in body and body["release_date"]:
+                wanted_gallery.release_date = body["release_date"]
+
+            if "add_to_archive_group" in body and body["add_to_archive_group"]:
+                try:
+                    group = ArchiveGroup.objects.get(pk=body["add_to_archive_group"])
+                    wanted_gallery.add_to_archive_group = group
+                except ArchiveGroup.DoesNotExist:
+                    pass
+
+            wanted_gallery.save()
+
+            if "wanted_tags" in body:
+                tag_objects = get_tag_objects_from_tag_list(body["wanted_tags"])
+                for tag in tag_objects:
+                    wanted_gallery.wanted_tags.add(tag)
+            if "unwanted_tags" in body:
+                tag_objects = get_tag_objects_from_tag_list(body["unwanted_tags"])
+                for tag in tag_objects:
+                    wanted_gallery.unwanted_tags.add(tag)
+            if "wanted_providers" in body:
+                providers = Provider.objects.filter(slug__in=body["wanted_providers"])
+                wanted_gallery.wanted_providers.set(providers)
+            if "unwanted_providers" in body:
+                providers = Provider.objects.filter(slug__in=body["unwanted_providers"])
+                wanted_gallery.unwanted_providers.set(providers)
+            if "categories" in body:
+                for category in body["categories"]:
+                    category_obj, _ = Category.objects.get_or_create(name=category)
+                    wanted_gallery.categories.add(category_obj)
+
+            wanted_gallery.save()
+
+            return HttpResponse(
+                json.dumps({"result": "success", "id": wanted_gallery.id}),
+                content_type="application/json; charset=utf-8",
+            )
+
+        except WantedGallery.DoesNotExist:
+            return HttpResponseNotFound(
+                json.dumps({"result": "Error creating WantedGallery"}),
+                content_type="application/json; charset=utf-8",
+            )
     else:
         return HttpResponse(json.dumps({"result": "Unknown command"}), content_type="application/json; charset=utf-8")
+
+
+def get_tag_objects_from_tag_list(tag_list) -> list[Tag]:
+    tag_objects = []
+    if isinstance(tag_list, str):
+        tag_list = tag_list.split(",")
+    if isinstance(tag_list, list):
+        for tag_entry in tag_list:
+
+            tag_clean = tag_entry.strip().replace(" ", "_")
+            scope_name = tag_clean.split(":", maxsplit=1)
+            if len(scope_name) > 1:
+                tag_scope = scope_name[0]
+                tag_name = scope_name[1]
+            else:
+                tag_scope = ""
+                tag_name = scope_name[0]
+            tag_obj, tag_created = Tag.objects.get_or_create(scope=tag_scope, name=tag_name)
+            tag_objects.append(tag_obj)
+    return tag_objects
 
 
 def json_api_handle_put(request: HttpRequest, user: Optional[User | AnonymousUser]):

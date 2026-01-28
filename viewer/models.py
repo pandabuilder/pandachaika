@@ -4578,7 +4578,7 @@ class WantedGallery(models.Model):
     )
     wanted_page_count_lower = models.IntegerField(blank=True, default=0)
     wanted_page_count_upper = models.IntegerField(blank=True, default=0)
-    wanted_tags = models.ManyToManyField(Tag, blank=True)
+    wanted_tags: models.ManyToManyField = models.ManyToManyField(Tag, blank=True)
     wanted_tags_exclusive_scope = models.BooleanField(blank=True, default=False)
     exclusive_scope_name = models.CharField(max_length=200, blank=True, default="")
     wanted_tags_accept_if_none_scope = models.CharField(max_length=200, blank=True, default="")
