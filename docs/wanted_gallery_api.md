@@ -4,7 +4,7 @@ This document describes how to use the API to create `WantedGallery` entries.
 
 ## Create Wanted Gallery
 
-**Endpoint**: `/api/json`  
+**Endpoint**: `/api`  
 **Method**: `POST`  
 **Query Parameters**: `?wanted-gallery=`  
 **Permissions Required**: User must be authenticated and have `viewer.add_wantedgallery` permission.
@@ -50,7 +50,7 @@ The request body should be a JSON object with the following fields:
 #### cURL
 
 ```bash
-curl -X POST "https://example.chaika.moe/api/json?wanted-gallery=" \
+curl -X POST "https://example.chaika.moe/api?wanted-gallery=" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_API_TOKEN" \
   -d '{
@@ -87,7 +87,7 @@ Save the following as `data.json`:
 Then run:
 
 ```bash
-curl -X POST "https://example.chaika.moe/api/json?wanted-gallery=" \
+curl -X POST "https://example.chaika.moe/api?wanted-gallery=" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_API_TOKEN" \
   -d @data.json
