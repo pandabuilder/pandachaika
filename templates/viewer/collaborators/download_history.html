@@ -4,97 +4,129 @@
 {% load static %}
 
 {% block content %}
-  {% load viewer_extras %}
-    {% if messages %}
-        {% for message in messages %}
-        <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
-        {% endfor %}
-    {% endif %}
-    <!-- Galleries not used  -->
-    <div class="page-header">
-    <h2>Download History</h2>
-    <p class="lead">Number of downloads (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
+{% load viewer_extras %}
+{% if messages %}
+{% for message in messages %}
+<div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+{% endfor %}
+{% endif %}
+<!-- Galleries not used  -->
+<div class="page-header">
+  <h2>Download History</h2>
+  <p class="lead">Number of downloads (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
+</div>
+<form action="{{ request.get_full_path }}" method="GET">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-3">
+      {{ form.name.label_tag }}
+      {{ form.name }}
     </div>
-    <form action="{{ request.get_full_path }}" method="GET">
-      {% for field in form %}
-        <div class="page-line">
-          {{ field.errors }}
-          {{ field }}
-        </div>
+    <div class="col-md-3">
+      {{ form.title.label_tag }}
+      {{ form.title }}
+    </div>
+    <div class="col-md-3">
+      {{ form.method.label_tag }}
+      {{ form.method }}
+    </div>
+    <div class="col-md-2">
+      {{ form.status.label_tag }}
+      {{ form.status }}
+    </div>
+    <div class="col-md-2">
+      {{ form.create_date_from.label_tag }}
+      {{ form.create_date_from }}
+    </div>
+    <div class="col-md-2">
+      {{ form.create_date_to.label_tag }}
+      {{ form.create_date_to }}
+    </div>
+    <div class="col-md-2">
+      {{ form.sort_by.label_tag }}
+      {{ form.sort_by }}
+    </div>
+    <div class="col-md-2">
+      {{ form.direction.label_tag }}
+      {{ form.direction }}
+    </div>
+
+    <div class="col-md-auto">
+      <button type="submit" class="btn btn-info">Apply Filters</button>
+      <a class="btn btn-light" href="{{ request.path }}">Clear</a>
+    </div>
+  </div>
+</form>
+<div class="mt-2" id="contained-data">
+  <table class="table table-striped">
+    <thead>
+      <tr>
+        <th>URL</th>
+        <th>Download method</th>
+        <th>Archive</th>
+        <th>Gallery</th>
+        <th>Size</th>
+        <th>Progress</th>
+        <th>Failed</th>
+        <th>Start date</th>
+        <th>End date (or ETA)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for download_event in results %}
+      <tr>
+        <td>
+          {{ download_event.name|urlize_all_rel }}
+        </td>
+        <td>
+          {{ download_event.method }}
+        </td>
+        <td>
+          {% if download_event.archive %}
+          {% if download_event.archive.thumbnail.name %}
+          <a href="{% url 'viewer:archive' download_event.archive.pk %}"
+            data-image-url="{{ download_event.archive.thumbnail.url }}" class="img-preview" rel="popover">{{ download_event.archive.pk }}</a>
+          {% else %}
+          <a href="{% url 'viewer:archive' download_event.archive.pk %}">{{ download_event.archive.pk }}</a>
+          {% endif %}
+          {% else %}
+          Not set
+          {% endif %}
+        </td>
+        <td>
+          {% if download_event.gallery %}
+          {% if download_event.gallery.thumbnail.name %}
+          <a href="{% url 'viewer:gallery' download_event.gallery.pk %}"
+            data-image-url="{{ download_event.gallery.thumbnail.url }}" class="img-preview" rel="popover">{{ download_event.gallery.pk }}</a>
+          {% else %}
+          <a href="{% url 'viewer:gallery' download_event.gallery.pk %}">{{ download_event.gallery.pk }}</a>
+          {% endif %}
+          {% else %}
+          Not set
+          {% endif %}
+        </td>
+        <td>
+          {{ download_event.total_size|filesizeformat }}
+        </td>
+        <td>
+          {{ download_event.progress }}%
+        </td>
+        <td>
+          {{ download_event.failed|yesno }}
+        </td>
+        <td>
+          {{ download_event.create_date|date:"DATETIME_FORMAT" }}
+        </td>
+        <td>
+          {% if download_event.completed %}
+          {{ download_event.completed_date|date:"DATETIME_FORMAT" }}
+          {% else %}
+          {{ download_event.eta|date:"DATETIME_FORMAT" }}
+          {% endif %}
+        </td>
+      </tr>
       {% endfor %}
-      <div class="page-line row g-1 align-items-center">
-          <div class="col-md-auto">
-            <div class="form-check">
-            <input id="checkbox-f1" class="form-check-input" type="checkbox" name="completed" value="1" {% if "completed" in request.GET %}checked{% endif %}><label for="checkbox-f1">Show completed</label>
-            </div>
-          </div>
-          <div class="col-md-auto">
-            <button type="submit" name="apply" class="btn btn-info">Search</button>
-            <a class="btn btn-light" href="{{ request.path }}">Clear</a>
-          </div>
-      </div>
-    </form>
-    <div class="mt-2" id="contained-data">
-    <table class="table table-striped">
-        <thead>
-        <tr>
-          <th>URL</th><th>Download method</th><th>Archive</th><th>Gallery</th><th>Size</th><th>Progress</th><th>Failed</th><th>Start date</th><th>End date (or ETA)</th>
-        </tr>
-        </thead>
-        <tbody>
-        {% for download_event in results %}
-          <tr>
-            <td>
-              {{ download_event.name|urlize_all_rel }}
-            </td>
-            <td>
-              {{ download_event.method }}
-            </td>
-            <td>
-            {% if download_event.archive %}
-              {% if download_event.archive.thumbnail.name %}
-                <a href="{% url 'viewer:archive' download_event.archive.pk %}" data-image-url="{{ download_event.archive.thumbnail.url }}" class="img-preview" rel="popover">{{ download_event.archive.pk }}</a>
-              {% else %}
-                <a href="{% url 'viewer:archive' download_event.archive.pk %}">{{ download_event.archive.pk }}</a>
-              {% endif %}
-            {% else %}
-                Not set
-            {% endif %}
-            </td>
-            <td>
-            {% if download_event.gallery %}
-                {% if download_event.gallery.thumbnail.name %}
-                <a href="{% url 'viewer:gallery' download_event.gallery.pk %}" data-image-url="{{ download_event.gallery.thumbnail.url }}" class="img-preview" rel="popover">{{ download_event.gallery.pk }}</a>
-                {% else %}
-                  <a href="{% url 'viewer:gallery' download_event.gallery.pk %}">{{ download_event.gallery.pk }}</a>
-                {% endif %}
-            {% else %}
-                Not set
-            {% endif %}
-            </td>
-            <td>
-              {{ download_event.total_size|filesizeformat }}
-            </td>
-            <td>
-              {{ download_event.progress }}%
-            </td>
-            <td>
-              {{ download_event.failed|yesno }}
-            </td>
-            <td>
-              {{ download_event.create_date|date:"DATETIME_FORMAT" }}
-            </td>
-            <td>
-                {% if download_event.completed %}
-                    {{ download_event.completed_date|date:"DATETIME_FORMAT" }}
-                {% else %}
-                    {{ download_event.eta|date:"DATETIME_FORMAT" }}
-                {% endif %}
-            </td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </div>
+    </tbody>
+  </table>
+</div>
 
 {% endblock %}

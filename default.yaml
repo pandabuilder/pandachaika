@@ -145,6 +145,7 @@ elasticsearch:
   auto_refresh_gallery: false
   index_name: viewer
   gallery_index_name: viewer_gallery
+  match_index_name: viewer_match
   only_index_public: false
   timeout: 20
 # External downloader

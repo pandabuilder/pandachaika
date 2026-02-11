@@ -56,10 +56,14 @@
               </span>
               <a href="{{ archive.get_absolute_url }}">{{ archive.pk }}</a> >> {{ archive.title }}
           </p>
-          <p>{% if archive.zipped %}{{ archive.zipped.path }}{% else %}No file present{% endif %} >> {{ archive.filesize|filesizeformat }} >> {{ archive.filesize }} >> {{ archive.filecount }} >> {{ archive.source_type }}</p>
+          <p>{% if archive.zipped %}{{ archive.zipped.path }}{% else %}No file present{% endif %} >> {{ archive.filesize|filesizeformat }} >> {{ archive.filesize }} >> {{ archive.filecount }} >> {{ archive.source_type }} >> {{ archive.create_date|date:"m/d/Y H:i:s" }}</p>
         </li>
       {% endfor %}
     </ul>
+    {% if perms.viewer.download_gallery %}
+        <button type="submit" name="download_galleries" class="btn btn-light">Force queue for download</button>
+    {% endif %}
+    <button type="submit" name="clear_crc32" class="btn btn-light">Clear CRC32 to force redownload</button>
     <button type="submit" name="delete_archives" class="btn btn-light">Delete (WARNING!) selected archives</button>
     <button type="submit" name="mark_deleted" class="btn btn-light">Mark selected archives as deleted</button>
   </form>

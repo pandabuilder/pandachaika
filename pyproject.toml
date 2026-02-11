@@ -101,7 +101,7 @@ dev = [
     "django-stubs==5.2.9",
     "django-unused-media==0.2.2",
     "mypy==1.19.1",
-    "ruff==0.14.14",
+    "ruff==0.15.0",
     "types-python-dateutil==2.9.0.20260124",
     "types-pytz==2025.2.0.20251108",
     "types-requests==2.32.4.20260107",
@@ -109,7 +109,7 @@ dev = [
 
 ci = [
     "mypy==1.19.1",
-    "ruff==0.14.14",
+    "ruff==0.15.0",
     "django-stubs==5.2.9",
     "types-requests==2.32.4.20260107",
     "types-pytz==2025.2.0.20251108",

@@ -202,7 +202,7 @@
                   {% for hit in hits %}
                     <tr>
                       <td class="td-extended">
-                        <a href="{% url 'viewer:gallery' hit.pk %}">
+                        <a href="{% url 'viewer:archive' hit.pk %}">
                           <img alt="" title="{{ hit.title }}" src="{{ hit.thumbnail }}"/>
                         </a>
                       </td>

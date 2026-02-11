@@ -134,6 +134,7 @@ class ElasticSearchSettings:
         "index_name",
         "auto_refresh_gallery",
         "gallery_index_name",
+        "match_index_name",
         "only_index_public",
         "timeout",
     ]
@@ -146,6 +147,7 @@ class ElasticSearchSettings:
         self.auto_refresh_gallery: bool = False
         self.index_name: str = "viewer"
         self.gallery_index_name: str = "viewer_gallery"
+        self.match_index_name: str = "viewer_match"
         self.only_index_public: bool = False
         self.timeout: int = 20
 
@@ -701,6 +703,8 @@ class Settings:
                 self.elasticsearch.index_name = config["elasticsearch"]["index_name"]
             if "gallery_index_name" in config["elasticsearch"]:
                 self.elasticsearch.gallery_index_name = config["elasticsearch"]["gallery_index_name"]
+            if "match_index_name" in config["elasticsearch"]:
+                self.elasticsearch.match_index_name = config["elasticsearch"]["match_index_name"]
             if "only_index_public" in config["elasticsearch"]:
                 self.elasticsearch.only_index_public = config["elasticsearch"]["only_index_public"]
             if "timeout" in config["elasticsearch"]:

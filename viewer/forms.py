@@ -440,6 +440,80 @@ class ArchiveModForm(forms.ModelForm):
     )
 
 
+class DownloadHistoryForm(forms.Form):
+    STATUS_CHOICES = [
+        ("all", "All"),
+        ("in_progress", "In Progress"),
+        ("finished", "Finished"),
+        ("failed", "Failed"),
+    ]
+
+    SORT_CHOICES = [
+        ("create_date", "Date"),
+        ("total_size", "Size"),
+        ("progress", "Progress"),
+    ]
+
+    DIRECTION_CHOICES = [
+        ("desc", "Descending"),
+        ("asc", "Ascending"),
+    ]
+
+    name = forms.CharField(
+        required=False,
+        label="URL",
+        widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "Search by URL"}),
+    )
+
+    title = forms.CharField(
+        required=False,
+        label="Title",
+        widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "Search by Title"}),
+    )
+
+    method = forms.CharField(
+        required=False,
+        label="Method",
+        widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "Search by method"}),
+    )
+
+    status = forms.ChoiceField(
+        choices=STATUS_CHOICES,
+        required=False,
+        initial="in_progress",
+        label="Status",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+
+    create_date_from = forms.DateField(
+        required=False,
+        label="Date From",
+        widget=forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+    )
+
+    create_date_to = forms.DateField(
+        required=False,
+        label="Date To",
+        widget=forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+    )
+
+    sort_by = forms.ChoiceField(
+        choices=SORT_CHOICES,
+        required=False,
+        initial="create_date",
+        label="Sort By",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+
+    direction = forms.ChoiceField(
+        choices=DIRECTION_CHOICES,
+        required=False,
+        initial="desc",
+        label="Direction",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+
+
 class GallerySearchForm(forms.Form):
 
     title = forms.CharField(
@@ -770,6 +844,7 @@ class WantedGalleryCreateOrEditForm(ModelForm):
             "categories",
             "wanted_page_count_lower",
             "wanted_page_count_upper",
+            "match_expression",
             "add_to_archive_group",
             "release_date",
             "wait_for_time",
@@ -801,6 +876,8 @@ class WantedGalleryCreateOrEditForm(ModelForm):
             "categories": "Category in Gallery to match (OR logic)",
             "wanted_page_count_lower": "Gallery must have more or equal than this value (0 is ignored)",
             "wanted_page_count_upper": "Gallery must have less or equal than this value (0 is ignored)",
+            "match_expression": "Expression to match against the gallery (ElasticSearch syntax). "
+                                "Default fields: title, title_jpn, tags.full. Available fields: gid, title, title_jpn, tags.full, tags.name, tags.scope, size, image_count, posted_date, provider, reason, category, rating, expunged, disowned, uploader, source_url",
             "add_to_archive_group": "ArchiveGroup to add the resulting Archive if found",
             "wanted_providers": "Limit the provider to match (panda, fakku, etc). Default is search in all providers",
             "unwanted_providers": "Exclude galleries from these providers (panda, fakku, etc)",
@@ -842,6 +919,7 @@ class WantedGalleryCreateOrEditForm(ModelForm):
             ),
             "wanted_page_count_lower": forms.widgets.NumberInput(attrs={"min": 0, "class": "form-control"}),
             "wanted_page_count_upper": forms.widgets.NumberInput(attrs={"min": 0, "class": "form-control"}),
+            "match_expression": forms.widgets.Textarea(attrs={"class": "form-control"}),
             "wanted_providers": autocomplete.ModelSelect2Multiple(
                 url="provider-pk-autocomplete",
                 attrs={"data-placeholder": "Provider name", "class": "form-control", "data-width": "100%"},

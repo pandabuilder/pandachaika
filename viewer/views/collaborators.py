@@ -46,6 +46,7 @@ from viewer.forms import (
     ArchiveExtraFileSimpleForm,
     WantedGalleryCommand,
     GallerySearchFields,
+    DownloadHistoryForm,
 )
 from viewer.models import (
     Archive,
@@ -1663,7 +1664,51 @@ def activity_event_log(request: HttpRequest) -> HttpResponse:
 
 @permission_required("viewer.download_history")
 def download_history(request: AuthenticatedHttpRequest) -> HttpResponse:
-    completed = request.GET.get("completed", "")
+    
+    if len(request.GET) == 0:
+        form = DownloadHistoryForm(initial={"status": "in_progress", "sort_by": "create_date", "direction": "desc"})
+    else:
+        form = DownloadHistoryForm(request.GET)
+
+    download_events = DownloadEvent.objects.select_related("archive", "gallery")
+
+    if form.is_valid():
+        data = form.cleaned_data
+        
+        if data.get("name"):
+            download_events = download_events.filter(name__icontains=data["name"])
+
+        if data.get("title"):
+             download_events = download_events.filter(archive__title__icontains=data["title"])
+        
+        if data.get("method"):
+            download_events = download_events.filter(method__icontains=data["method"])
+        
+        status = data.get("status")
+        if status == "in_progress":
+            download_events = download_events.filter(completed=False)
+        elif status == "finished":
+            download_events = download_events.filter(completed=True, failed=False)
+        elif status == "failed":
+            download_events = download_events.filter(failed=True)
+        # "all" does no filtering
+        
+        if data.get("create_date_from"):
+            download_events = download_events.filter(create_date__date__gte=data["create_date_from"])
+            
+        if data.get("create_date_to"):
+            download_events = download_events.filter(create_date__date__lte=data["create_date_to"])
+
+        sort_by = data.get("sort_by", "create_date")
+        direction = data.get("direction", "desc")
+        
+        if direction == "desc":
+            sort_by = f"-{sort_by}"
+            
+        download_events = download_events.order_by(sort_by)
+    else:
+        # Fallback default behavior
+        download_events = download_events.filter(completed=False).order_by("-create_date")
 
     try:
         page = int(request.GET.get("page", "1"))
@@ -1675,20 +1720,13 @@ def download_history(request: AuthenticatedHttpRequest) -> HttpResponse:
     except ValueError:
         limit = 100
 
-    if completed:
-        download_events = DownloadEvent.objects.select_related("archive", "gallery").order_by("-create_date")
-    else:
-        download_events = (
-            DownloadEvent.objects.in_progress().select_related("archive", "gallery").order_by("-create_date")
-        )
-
     paginator = Paginator(download_events, limit)
     try:
         results_page = paginator.page(page)
     except (InvalidPage, EmptyPage):
         results_page = paginator.page(paginator.num_pages)
 
-    d = {"results": results_page}
+    d = {"results": results_page, "form": form}
     return render(request, "viewer/collaborators/download_history.html", d)
 
 

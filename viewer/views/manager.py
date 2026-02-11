@@ -10,6 +10,7 @@ from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.conf import settings
 
+from core.base.setup import Settings
 from core.base.utilities import thread_exists, clamp
 from viewer.forms import GallerySearchForm, ArchiveSearchForm, WantedGallerySearchForm, GallerySearchFields
 from viewer.models import (
@@ -342,6 +343,63 @@ def archives_not_present_in_filesystem(request: HttpRequest) -> HttpResponse:
         form = ArchiveSearchForm(initial={"title": title, "tags": tags})
 
     if p:
+        if "download_galleries" in p and request.user.has_perm("viewer.download_gallery"):
+
+            pks = []
+            for k, v in p.items():
+                if k.startswith("del-"):
+                    # k, pk = k.split('-')
+                    # results[pk][k] = v
+                    pks.append(v)
+            results_archive = Archive.objects.filter(id__in=pks, gallery__isnull=False).select_related("gallery").order_by("-pk")
+
+            for archive in results_archive:
+                if archive.gallery is None:
+                    continue
+                message = "Queueing gallery: {}, link: {}".format(archive.gallery.title, archive.gallery.get_link())
+                logger.info(message)
+                messages.success(request, message)
+
+                # Force replace_metadata when queueing from this list, since it's mostly used to download non-used.
+                current_settings = Settings(load_from_config=crawler_settings.config)
+
+                if current_settings.workers.web_queue:
+
+                    current_settings.replace_metadata = True
+                    current_settings.retry_failed = True
+                    current_settings.redownload = True
+
+                    if archive.reason:
+                        current_settings.archive_reason = archive.reason
+
+                    reason = archive.reason
+
+                    def archive_callback(x: "Archive | None", crawled_url: str | None, result: str) -> None:
+                        event_log(
+                            request.user,
+                            "DOWNLOAD_ARCHIVE",
+                            reason=reason,
+                            content_object=x,
+                            result=result,
+                            data=crawled_url,
+                        )
+
+                    def gallery_callback(x: "Gallery | None", crawled_url: str | None, result: str) -> None:
+                        event_log(
+                            request.user,
+                            "DOWNLOAD_GALLERY",
+                            reason=reason,
+                            content_object=x,
+                            result=result,
+                            data=crawled_url,
+                        )
+
+                    current_settings.workers.web_queue.enqueue_args_list(
+                        (archive.gallery.get_link(),),
+                        override_options=current_settings,
+                        archive_callback=archive_callback,
+                        gallery_callback=gallery_callback,
+                    )
         if "delete_archives" in p:
             pks = []
             for k, v in p.items():
@@ -356,6 +414,21 @@ def archives_not_present_in_filesystem(request: HttpRequest) -> HttpResponse:
                 logger.info(message)
                 messages.success(request, message)
                 archive.delete()
+        elif "clear_crc32" in p:
+            pks = []
+            for k, v in p.items():
+                if k.startswith("del-"):
+                    # k, pk = k.split('-')
+                    # results[pk][k] = v
+                    pks.append(v)
+            results_archive = Archive.objects.filter(id__in=pks).order_by("-pk")
+
+            for archive in results_archive:
+                message = "Clearing CRC32 to force redownload: {}, path: {}".format(archive.title, archive.zipped.path)
+                logger.info(message)
+                messages.success(request, message)
+                archive.crc32 = ""
+                archive.save()
         elif "mark_deleted" in p:
             pks = []
             for k, v in p.items():

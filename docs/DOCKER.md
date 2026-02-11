@@ -54,7 +54,7 @@ docker compose -f docker-compose.local.yml up --build
 ### Post execution commands
 ```bash
 docker compose exec -e PANDA_CONFIG_DIR=/config/ -e DJANGO_SUPERUSER_USERNAME=pandauser -e DJANGO_SUPERUSER_PASSWORD=SECRET_PASSWORD pandachaika python manage.py createsuperuser --email some@email.com --noinput # Creates the super user. Remember to replace user, password and emai with actual secure credentials
-docker compose exec -e PANDA_CONFIG_DIR=/config/ pandachaika python manage.py push-to-index -r -rg # Only needed if running the ElasticSearch integration
+docker compose exec -e PANDA_CONFIG_DIR=/config/ pandachaika python manage.py push-to-index -r -rg -rm # Only needed if running the ElasticSearch integration
 ```
 
 Build Image (If you know what you're doing)
@@ -87,5 +87,5 @@ docker run -it -p 8090:8090 \
 ### Post execution commands
 ```bash
 docker exec -d pandachaika -e DJANGO_SUPERUSER_USERNAME=pandauser -e DJANGO_SUPERUSER_PASSWORD=SECRET_PASSWORD pandachaika python manage.py createsuperuser --email some@email.com --noinput # Creates the super user. Remember to replace user, password and emai with actual secure credentials
-docker exec -d pandachaika python manage.py push-to-index -r -rg # Only needed if running the ElasticSearch integration
+docker exec -d pandachaika python manage.py push-to-index -r -rg -rm # Only needed if running the ElasticSearch integration
 ```

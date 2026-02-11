@@ -360,7 +360,7 @@ if crawler_settings.elasticsearch.enable:
     from elasticsearch import Elasticsearch
 
     ES_CLIENT: Optional[Elasticsearch] = Elasticsearch(
-        [crawler_settings.elasticsearch.url], timeout=crawler_settings.elasticsearch.timeout
+        [crawler_settings.elasticsearch.url], request_timeout=crawler_settings.elasticsearch.timeout
     )
     ES_ENABLED = True
 else:
@@ -373,6 +373,7 @@ ES_AUTOREFRESH_GALLERY: bool = crawler_settings.elasticsearch.auto_refresh_galle
 ES_INDEX_NAME: str = crawler_settings.elasticsearch.index_name
 ES_GALLERY_INDEX_NAME: str = crawler_settings.elasticsearch.gallery_index_name
 ES_ONLY_INDEX_PUBLIC: bool = crawler_settings.elasticsearch.only_index_public
+ES_MATCH_INDEX_NAME: str = crawler_settings.elasticsearch.match_index_name
 
 # These are the default providers, you could register more after the program starts, but that's not supported
 # If for each new provider, you need to call this method to register it.

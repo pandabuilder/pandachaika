@@ -1065,6 +1065,7 @@ def json_api_handle_post(request: HttpRequest, user: Optional[User | AnonymousUs
                 regexp_unwanted_title_icase=body.get("regexp_unwanted_title_icase", False),
                 wanted_page_count_lower=body.get("wanted_page_count_lower", 0),
                 wanted_page_count_upper=body.get("wanted_page_count_upper", 0),
+                match_expression=body.get("match_expression", None),
                 wanted_tags_exclusive_scope=body.get("wanted_tags_exclusive_scope", False),
                 exclusive_scope_name=body.get("exclusive_scope_name", ""),
                 wanted_tags_accept_if_none_scope=body.get("wanted_tags_accept_if_none_scope", ""),

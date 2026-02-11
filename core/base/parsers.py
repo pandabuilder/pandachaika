@@ -326,6 +326,11 @@ class BaseParser:
                 if any(item in gallery.tags for item in wanted_filter.unwanted_tags_list()):
                     continue
 
+            if wanted_filter.match_expression:
+                expression_matched = wanted_filter.evaluate_match_expression(gallery)
+                if not expression_matched:
+                    continue
+
             gallery_wanted_lists[gallery.gid].append(wanted_filter)
 
         if len(gallery_wanted_lists[gallery.gid]) > 0:

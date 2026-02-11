@@ -74,6 +74,8 @@ from core.base.types import GalleryData, DataDict, ArchiveGenericFile, ArchiveSt
 from core.base.utilities import get_dict_allowed_fields, replace_illegal_name
 from viewer.services import CompareObjectsService
 from viewer.utils import image_processing
+from viewer.utils.elasticsearch import add_gallery_data_to_match_index, match_expression_to_wanted_index, \
+    remove_gallery_from_match_index
 from viewer.utils.tags import sort_tags, sort_tags_str
 
 if typing.TYPE_CHECKING:
@@ -308,7 +310,7 @@ class GalleryManager(models.Manager["Gallery"]):
     def different_filesize_archive(self, **kwargs: typing.Any) -> QuerySet:
         return self.get_queryset().different_filesize_archive(**kwargs)
 
-    def filter_non_existent(self) -> QuerySet:
+    def several_archives(self) -> QuerySet:
         return self.get_queryset().several_archives()
 
     def non_used_galleries(self, **kwargs: typing.Any) -> QuerySet:
@@ -598,7 +600,7 @@ class GalleryManager(models.Manager["Gallery"]):
 
 class ArchiveQuerySet(models.QuerySet):
     def filter_non_existent(self, root: str, **kwargs: typing.Any) -> list["Archive"]:
-        archives = self.filter(**kwargs).order_by("-id")
+        archives = self.filter(**kwargs, file_deleted=False, binned=False).order_by("-id")
 
         return [archive for archive in archives if (not archive.zipped) or (not os.path.isfile(os.path.join(root, archive.zipped.path)))]
 
@@ -1136,23 +1138,21 @@ class Gallery(models.Model):
         if settings.ES_CLIENT and settings.ES_AUTOREFRESH_GALLERY:
             if (settings.ES_ONLY_INDEX_PUBLIC and self.public) or not settings.ES_ONLY_INDEX_PUBLIC:
                 payload = self.es_repr()
+                del payload["_id"]
                 if is_new is not None:
-                    del payload["_id"]
                     try:
                         settings.ES_CLIENT.update(
                             index=self._meta.es_index_name,  # type: ignore
                             id=str(self.pk),
                             refresh=True,
-                            body={"doc": payload},
-                            request_timeout=30,
+                            doc=payload
                         )
                     except elasticsearch.exceptions.NotFoundError:
                         settings.ES_CLIENT.create(
                             index=self._meta.es_index_name,  # type: ignore
                             id=str(self.pk),
                             refresh=True,
-                            body={"doc": payload},
-                            request_timeout=30,
+                            document=payload
                         )
 
                 else:
@@ -1160,8 +1160,7 @@ class Gallery(models.Model):
                         index=self._meta.es_index_name,  # type: ignore
                         id=self.pk,
                         refresh=True,
-                        body={"doc": payload},
-                        request_timeout=30,
+                        document=payload
                     )
         self.fetch_thumbnail()
 
@@ -1237,16 +1236,14 @@ class Gallery(models.Model):
                         index=self._meta.es_index_name,  # type: ignore
                         id=str(self.pk),
                         refresh=True,
-                        body={"doc": payload},
-                        request_timeout=30,
+                        doc=payload
                     )
                 except elasticsearch.exceptions.NotFoundError:
                     settings.ES_CLIENT.create(
                         index=self._meta.es_index_name,  # type: ignore
                         id=str(self.pk),
                         refresh=True,
-                        body={"doc": payload},
-                        request_timeout=30,
+                        document=payload
                     )
 
     def delete(self, *args: typing.Any, **kwargs: typing.Any) -> tuple[int, dict[str, int]]:
@@ -1441,6 +1438,11 @@ class Gallery(models.Model):
 
             if bool(wanted_filter.unwanted_tags.all()):
                 if any(item in self.tag_list() for item in wanted_filter.unwanted_tags_list()):
+                    continue
+
+            if wanted_filter.match_expression:
+                expression_matched = wanted_filter.evaluate_match_expression(self)
+                if not expression_matched:
                     continue
 
             found_wanted_galleries.append(wanted_filter)
@@ -2849,23 +2851,21 @@ class Archive(models.Model):
         if settings.ES_CLIENT and settings.ES_AUTOREFRESH:
             if (settings.ES_ONLY_INDEX_PUBLIC and self.public) or not settings.ES_ONLY_INDEX_PUBLIC:
                 payload = self.es_repr()
+                del payload["_id"]
                 if is_new is not None:
-                    del payload["_id"]
                     try:
                         settings.ES_CLIENT.update(
                             index=self._meta.es_index_name,  # type: ignore
                             id=str(self.pk),
                             refresh=True,
-                            body={"doc": payload},
-                            request_timeout=30,
+                            doc=payload
                         )
                     except elasticsearch.exceptions.NotFoundError:
                         settings.ES_CLIENT.create(
                             index=self._meta.es_index_name,  # type: ignore
                             id=str(self.pk),
                             refresh=True,
-                            body={"doc": payload},
-                            request_timeout=30,
+                            document=payload
                         )
 
                 else:
@@ -2873,8 +2873,7 @@ class Archive(models.Model):
                         index=self._meta.es_index_name,  # type: ignore
                         id=str(self.pk),
                         refresh=True,
-                        body={"doc": payload},
-                        request_timeout=30,
+                        document=payload
                     )
 
     def save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
@@ -4576,6 +4575,7 @@ class WantedGallery(models.Model):
     regexp_unwanted_title_icase = models.BooleanField(
         "Regexp unwanted title case-insensitive", blank=True, default=False
     )
+    match_expression = models.CharField(max_length=2000, blank=True, null=True)
     wanted_page_count_lower = models.IntegerField(blank=True, default=0)
     wanted_page_count_upper = models.IntegerField(blank=True, default=0)
     wanted_tags: models.ManyToManyField = models.ManyToManyField(Tag, blank=True)
@@ -4802,6 +4802,11 @@ class WantedGallery(models.Model):
                 if any(item in gallery.tag_list() for item in self.unwanted_tags_list()):
                     accepted = False
 
+            if self.match_expression:
+                expression_matched = self.evaluate_match_expression(gallery)
+                if not expression_matched:
+                    accepted = False
+
             if accepted:
                 matching_galleries.append(gallery)
 
@@ -4830,6 +4835,20 @@ class WantedGallery(models.Model):
 
     def save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
         super(WantedGallery, self).save(*args, **kwargs)
+
+    def evaluate_match_expression(self, gallery: GalleryData | Gallery) -> bool:
+        if not self.match_expression:
+            return False
+        result_adding = add_gallery_data_to_match_index(gallery)
+        if not result_adding:
+            return False
+        match_result = match_expression_to_wanted_index(self.match_expression, gallery)
+
+        remove_gallery_from_match_index(gallery)
+
+        if not match_result:
+            return False
+        return True
 
 
 class FoundGallery(models.Model):

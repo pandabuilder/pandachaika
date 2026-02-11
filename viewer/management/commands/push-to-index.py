@@ -5,6 +5,7 @@ from django.core.management.base import BaseCommand
 from django.core.paginator import Paginator
 
 from viewer.models import Archive, Gallery
+from viewer.utils.elasticsearch import ES_MATCH_MAPPING
 
 crawler_settings = settings.CRAWLER_SETTINGS
 
@@ -19,7 +20,7 @@ class Command(BaseCommand):
         # TODO: Timeout as option.
         self.es_client = Elasticsearch(
             [crawler_settings.elasticsearch.url],
-            timeout=crawler_settings.elasticsearch.timeout,
+            request_timeout=crawler_settings.elasticsearch.timeout,
         )
 
     def add_arguments(self, parser):
@@ -63,8 +64,19 @@ class Command(BaseCommand):
             type=int,
             help="Specify bulk size when adding to index.",
         )
+        parser.add_argument(
+            "-rm",
+            "--recreate_match_index",
+            required=False,
+            action="store_true",
+            default=False,
+            help="Creates the match index and puts mapping in it.",
+        )
 
     def handle(self, *args, **options):
+
+        if options["recreate_match_index"]:
+            self.recreate_match_index_model()
 
         if options["recreate_index"]:
             self.recreate_index_model(Archive)
@@ -74,6 +86,39 @@ class Command(BaseCommand):
             self.push_db_to_index_model(Archive, options["bulk_size"])
         if options["push_to_index_gallery"]:
             self.push_db_to_index_model(Gallery, options["bulk_size"])
+
+    def recreate_match_index_model(self):
+
+        from elasticsearch.client import IndicesClient
+
+        indices_client = IndicesClient(client=self.es_client)
+        index_name = crawler_settings.elasticsearch.match_index_name
+        if indices_client.exists(index=index_name):
+            indices_client.delete(index=index_name)
+        indices_client.create(index=index_name)
+        indices_client.close(index=index_name)
+        indices_client.put_settings(
+            index=index_name,
+            body={
+                "index": {"max_result_window": settings.MAX_RESULT_WINDOW},
+                "analysis": {
+                    "filter": {"edge_ngram_filter": {"type": "edge_ngram", "min_gram": 2, "max_gram": 20}},
+                    "analyzer": {
+                        "edge_ngram_analyzer": {
+                            "type": "custom",
+                            "tokenizer": "standard",
+                            "filter": ["lowercase", "edge_ngram_filter"],
+                        }
+                    },
+                },
+            },
+        )
+
+        indices_client.put_mapping(
+            body=ES_MATCH_MAPPING,
+            index=index_name,
+        )
+        indices_client.open(index=index_name)
 
     def recreate_index_model(self, model: Union[type[Gallery], type[Archive]]):
 

@@ -25,6 +25,7 @@ The request body should be a JSON object with the following fields:
 | `regexp_unwanted_title_icase` | `boolean` | Case-insensitive regex unwanted title.                                                          |
 | `wanted_page_count_lower` | `integer` | Minimum page count.                                                                             |
 | `wanted_page_count_upper` | `integer` | Maximum page count.                                                                             |
+| `match_expression` | `string` | Expression to match against the gallery (ElasticSearch syntax, ES integration required).        |
 | `wanted_tags_exclusive_scope` | `boolean` | Enforce exclusive scope for wanted tags.                                                        |
 | `exclusive_scope_name` | `string` | Name of the exclusive scope.                                                                    |
 | `wanted_tags_accept_if_none_scope` | `string` | Accept if no tags in this scope are present.                                                    |
