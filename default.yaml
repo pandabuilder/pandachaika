@@ -139,6 +139,7 @@ mail_logging:
 # ElasticSearch for advanced search
 elasticsearch:
   enable: false
+  enable_match: false
   url: http://localhost:9200/
   max_result_window: 10000
   auto_refresh: false

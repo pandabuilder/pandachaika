@@ -128,6 +128,7 @@ class MailSettings:
 class ElasticSearchSettings:
     __slots__ = [
         "enable",
+        "enable_match",
         "url",
         "max_result_window",
         "auto_refresh",
@@ -141,6 +142,7 @@ class ElasticSearchSettings:
 
     def __init__(self) -> None:
         self.enable: bool = False
+        self.enable_match: bool = False
         self.url: str = "http://127.0.0.1:9200/"
         self.max_result_window: int = 10000
         self.auto_refresh: bool = False
@@ -691,6 +693,8 @@ class Settings:
         if "elasticsearch" in config:
             if "enable" in config["elasticsearch"]:
                 self.elasticsearch.enable = config["elasticsearch"]["enable"]
+            if "enable_match" in config["elasticsearch"]:
+                self.elasticsearch.enable_match = config["elasticsearch"]["enable_match"]
             if "url" in config["elasticsearch"]:
                 self.elasticsearch.url = config["elasticsearch"]["url"]
             if "max_result_window" in config["elasticsearch"]:

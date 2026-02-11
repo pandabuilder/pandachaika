@@ -70,7 +70,7 @@ def gallery_data_to_es_repr(gallery_data: 'GalleryData') -> dict:
     return data
 
 def add_gallery_data_to_match_index(gallery: 'Gallery | GalleryData') -> bool:
-    if not settings.ES_ENABLED or not es_client:
+    if not settings.ES_MATCH_ENABLED or not es_client:
         return False
     if not es_client.indices.exists(index=es_match_index_name):
         return False
@@ -94,7 +94,7 @@ def add_gallery_data_to_match_index(gallery: 'Gallery | GalleryData') -> bool:
 
 
 def remove_gallery_from_match_index(gallery: 'Gallery | GalleryData') -> bool:
-    if not settings.ES_ENABLED or not es_client:
+    if not settings.ES_MATCH_ENABLED or not es_client:
         return False
     if not es_client.indices.exists(index=es_match_index_name):
         return False
@@ -113,7 +113,7 @@ def remove_gallery_from_match_index(gallery: 'Gallery | GalleryData') -> bool:
 
 
 def match_expression_to_wanted_index(q_string: str, gallery: 'Gallery | GalleryData') -> list[dict[str, typing.Any]] | None:
-    if not settings.ES_ENABLED or not es_client:
+    if not settings.ES_MATCH_ENABLED or not es_client:
         return None
     if not es_client.indices.exists(index=es_match_index_name):
         return None

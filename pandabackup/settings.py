@@ -356,16 +356,20 @@ if crawler_settings.mail_logging.enable:
     LOGGING["loggers"]["core"]["handlers"].append("mail_admins_urgent")
     LOGGING["loggers"]["django"]["handlers"].append("mail_admins")
 
-if crawler_settings.elasticsearch.enable:
+if crawler_settings.elasticsearch.enable or crawler_settings.elasticsearch.enable_match:
     from elasticsearch import Elasticsearch
 
     ES_CLIENT: Optional[Elasticsearch] = Elasticsearch(
         [crawler_settings.elasticsearch.url], request_timeout=crawler_settings.elasticsearch.timeout
     )
-    ES_ENABLED = True
+    if crawler_settings.elasticsearch.enable:
+        ES_ENABLED = True
+    if crawler_settings.elasticsearch.enable_match:
+        ES_MATCH_ENABLED = True
 else:
     ES_CLIENT = None
     ES_ENABLED = False
+    ES_MATCH_ENABLED = False
 
 MAX_RESULT_WINDOW: int = crawler_settings.elasticsearch.max_result_window
 ES_AUTOREFRESH: bool = crawler_settings.elasticsearch.auto_refresh
