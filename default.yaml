@@ -30,20 +30,23 @@ general:
   cherrypy_auto_restart: false
   # Auto discard galleries that contain these tags. For new downloads and matches.
   banned_tags:
-  - language:thai
-  - language:chinese
-  - language:korean
-  - language:french
-  - language:spanish
-  - language:italian
-  - language:hungarian
-  - language:portuguese
-  - language:polish
-  - language:russian
-  - language:vietnamese
+    - language:thai
+    - language:chinese
+    - language:korean
+    - language:french
+    - language:spanish
+    - language:italian
+    - language:hungarian
+    - language:portuguese
+    - language:polish
+    - language:russian
+    - language:vietnamese
   # Auto discard galleries that contain these uploaders. For new downloads and matches.
   banned_uploaders:
-  - random_guy
+    - random_guy
+  # Depends on elasticsearch backend (match_index). Uses Elasticsearch DSL (8.x)
+  banned_search_queries:
+    - 'tags.full:"language:chinese" AND (NOT tags.full:"language:japanese")'
   # WARNING: will add all galleries as public, not only feed ones.
   add_as_public: false
   # Timeout for most web requests (seconds)

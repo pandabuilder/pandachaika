@@ -1,5 +1,6 @@
 import logging
 import typing
+import uuid
 from datetime import timezone
 
 import elasticsearch
@@ -69,11 +70,11 @@ def gallery_data_to_es_repr(gallery_data: 'GalleryData') -> dict:
     }
     return data
 
-def add_gallery_data_to_match_index(gallery: 'Gallery | GalleryData') -> bool:
+def add_gallery_data_to_match_index(gallery: 'Gallery | GalleryData') -> str | None:
     if not settings.ES_MATCH_ENABLED or not es_client:
-        return False
+        return None
     if not es_client.indices.exists(index=es_match_index_name):
-        return False
+        return None
 
     if not isinstance(gallery, GalleryData):
         gallery_data = gallery.as_gallery_data()
@@ -82,28 +83,28 @@ def add_gallery_data_to_match_index(gallery: 'Gallery | GalleryData') -> bool:
 
     es_data = gallery_data_to_es_repr(gallery_data)
 
+    unique_id = str(uuid.uuid4())
+
     es_client.update(
         index=es_match_index_name,
-        id=f"{gallery.provider}|{gallery.gid}",
+        id=unique_id,
         refresh=True,
         doc=es_data,
         doc_as_upsert=True
     )
 
-    return True
+    return unique_id
 
 
-def remove_gallery_from_match_index(gallery: 'Gallery | GalleryData') -> bool:
+def remove_gallery_from_match_index(index_uuid: str) -> bool:
     if not settings.ES_MATCH_ENABLED or not es_client:
         return False
     if not es_client.indices.exists(index=es_match_index_name):
         return False
 
-    prev_id = f"{gallery.provider}|{gallery.gid}"
-
     try:
         es_client.delete(
-            index=es_match_index_name, id=prev_id, refresh=True, request_timeout=30  # type: ignore
+            index=es_match_index_name, id=index_uuid, refresh=True, request_timeout=30  # type: ignore
         )
         return True
     except elasticsearch.exceptions.NotFoundError:
@@ -112,18 +113,16 @@ def remove_gallery_from_match_index(gallery: 'Gallery | GalleryData') -> bool:
     return False
 
 
-def match_expression_to_wanted_index(q_string: str, gallery: 'Gallery | GalleryData') -> list[dict[str, typing.Any]] | None:
+def match_expression_to_wanted_index(q_string: str, index_uuid: str) -> list[dict[str, typing.Any]] | None:
     if not settings.ES_MATCH_ENABLED or not es_client:
         return None
     if not es_client.indices.exists(index=es_match_index_name):
         return None
 
-    prev_id = f"{gallery.provider}|{gallery.gid}"
-
     s = (
         Search(using=es_client, index=es_match_index_name)
             .source(["gid", "provider"])
-            .filter("term", _id=prev_id)
+            .filter("term", _id=index_uuid)
             .query("query_string", query=q_string, fields=["title", "title_jpn", "tags.full"])
      )
 

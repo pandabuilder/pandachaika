@@ -340,7 +340,7 @@ class Parser(BaseParser):
                     continue
 
                 banned_result, banned_reasons = self.general_utils.discard_by_gallery_data(
-                    gallery.tags, gallery.uploader
+                    gallery.tags, gallery.uploader, gallery_data=gallery
                 )
 
                 if banned_result:

@@ -312,6 +312,7 @@ class Settings:
         self.rehash_files = False
         self.banned_tags: list[str] = []
         self.banned_uploaders: list[str] = []
+        self.banned_search_queries: list[str] = []
 
         self.matchers: dict[str, int] = {}
         self.downloaders: dict[str, int] = {}
@@ -598,6 +599,8 @@ class Settings:
                 self.banned_tags = config["general"]["banned_tags"]
             if "banned_uploaders" in config["general"]:
                 self.banned_uploaders = config["general"]["banned_uploaders"]
+            if "banned_search_queries" in config["general"]:
+                self.banned_search_queries = config["general"]["banned_search_queries"]
             if "add_as_public" in config["general"]:
                 self.add_as_public = config["general"]["add_as_public"]
             if "timeout_timer" in config["general"]:

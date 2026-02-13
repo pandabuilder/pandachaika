@@ -4839,12 +4839,12 @@ class WantedGallery(models.Model):
     def evaluate_match_expression(self, gallery: GalleryData | Gallery) -> bool:
         if not self.match_expression:
             return False
-        result_adding = add_gallery_data_to_match_index(gallery)
-        if not result_adding:
+        index_uuid = add_gallery_data_to_match_index(gallery)
+        if not index_uuid:
             return False
-        match_result = match_expression_to_wanted_index(self.match_expression, gallery)
+        match_result = match_expression_to_wanted_index(self.match_expression, index_uuid)
 
-        remove_gallery_from_match_index(gallery)
+        remove_gallery_from_match_index(index_uuid)
 
         if not match_result:
             return False

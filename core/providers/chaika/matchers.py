@@ -43,7 +43,7 @@ class BaseExactMatcher(Matcher):
             if not galleries_data:
                 return 0
             galleries_data = [
-                x for x in galleries_data if not self.general_utils.discard_by_gallery_data(x.tags, x.uploader)[0]
+                x for x in galleries_data if not self.general_utils.discard_by_gallery_data(x.tags, x.uploader, gallery_data=x)[0]
             ]
             if not galleries_data:
                 return 0
@@ -74,7 +74,7 @@ class BaseExactMatcher(Matcher):
             self.values_array = []
             if galleries_data:
                 galleries_data = [
-                    x for x in galleries_data if not self.general_utils.discard_by_gallery_data(x.tags, x.uploader)[0]
+                    x for x in galleries_data if not self.general_utils.discard_by_gallery_data(x.tags, x.uploader, gallery_data=x)[0]
                 ]
                 # We don't call get_list_closer_gallery_titles_from_dict
                 # because we assume that a hash match is correct already

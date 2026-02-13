@@ -142,7 +142,7 @@ class Parser(BaseParser):
                 continue
 
             banned_result, banned_reasons = self.general_utils.discard_by_gallery_data(
-                internal_gallery_data.tags, internal_gallery_data.uploader
+                internal_gallery_data.tags, internal_gallery_data.uploader, gallery_data=internal_gallery_data
             )
 
             if banned_result:

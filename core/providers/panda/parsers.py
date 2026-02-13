@@ -90,6 +90,7 @@ class Parser(BaseParser):
                 discard_approved, discard_message = self.discard_gallery_by_internal_checks(
                     gallery_id=gid_token_pair["gid"],
                     link=link_from_gid_token_fjord(gid_token_pair["gid"], gid_token_pair["token"], False),
+                    gallery=None  # We don't have full gallery data here yet
                 )
 
                 if discard_approved:
@@ -552,7 +553,7 @@ class Parser(BaseParser):
                 internal_gallery_data.link = link
 
                 banned_result, banned_reasons = self.general_utils.discard_by_gallery_data(
-                    internal_gallery_data.tags, internal_gallery_data.uploader
+                    internal_gallery_data.tags, internal_gallery_data.uploader, gallery_data=internal_gallery_data
                 )
 
                 if banned_result:
