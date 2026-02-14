@@ -6,52 +6,108 @@
 // @include     http://exhentai.org/*
 // @include     https://e-hentai.org/*
 // @include     https://exhentai.org/*
-// @version     0.1.14
+// @version     0.2.03
 // @grant       GM_xmlhttpRequest
 // @grant       GM_setValue
 // @grant       GM_getValue
 // ==/UserScript==
 
 
-const setTokenIfMissing = () => {
-    const currentToken = GM_getValue("activeUserToken", null);
-    if (currentToken === null) {
-        let modal = document.createElement('div');
-        modal.setAttribute('id', 'tokenModal');
+const showConfigModal = () => {
+    let modal = document.getElementById('configModal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.setAttribute('id', 'configModal');
         modal.setAttribute('class', 'modal');
-        modal.innerHTML = '<div class="modal-content"><div class="modal-header"><span id="closeTokenModal" class="close">×</span><h2>Confirm</h2></div><div class="modal-body"><p id="tokenModalMessage">Message</p></div><div class="modal-footer"><input type="text" id="user-token-text" size="100"/><button id="ok-token-modal" class="modal-button">OK</button><button id="cancel-token-modal" class="modal-button">Cancel</button></div></div>';
+        modal.innerHTML = '<div class="modal-content"><div class="modal-header"><span id="closeConfigModal" class="close">×</span><h2>Configuration</h2></div><div class="modal-body"><p id="configModalMessage">Message</p></div><div class="modal-footer"><p>Token:</p><input type="text" id="user-token-text" size="60"/><br/><p>Server URL (no trailing slash):</p><input type="text" id="server-url-text" size="60"/><br/><p>Icon URL (for browser notifications):</p><input type="text" id="icon-url-text" size="60"/><br/><p>Download Reason:</p><input type="text" id="download-reason-text" size="60"/><br/><br/><button id="ok-config-modal" class="modal-button">Save</button><button id="cancel-config-modal" class="modal-button">Cancel</button></div></div>';
         document.body.appendChild(modal);
-        modal = document.getElementById('tokenModal');
-        // Get the <span> element that closes the modal
-        let span = document.getElementById("closeTokenModal");
+        modal = document.getElementById('configModal');
 
-        document.getElementById('tokenModalMessage').innerHTML = "Enter the Token you want to use for requests to Panda Backup. If it needs to change, delete activeUserToken from this script's data";
+        // Get the <span> element that closes the modal
+        let span = document.getElementById("closeConfigModal");
+
+        document.getElementById('configModalMessage').innerHTML = "Enter the Token, Server URL, Icon URL and Download Reason you want to use for requests to Panda Backup. You can manually reset this values by deleting activeUserToken, activeUserServerUrl, activeUserIconUrl or activeUserDownloadReason from this script's data";
 
         // When the user clicks on <span> (x), close the modal
-        span.onclick = function() {
+        span.onclick = function () {
             modal.style.display = "none";
         };
         // When the user clicks on Cancel, close the modal
-        document.getElementById('cancel-token-modal').onclick = function() {
+        document.getElementById('cancel-config-modal').onclick = function () {
             modal.style.display = "none";
         };
         // When the user clicks anywhere outside the modal, close it
-        window.onclick = function(event) {
+        window.onclick = function (event) {
             if (event.target === modal) {
                 modal.style.display = "none";
             }
         };
 
-        document.getElementById('ok-token-modal').onclick = function () {
-            const elem = document.getElementById('user-token-text');
-            const newToken = elem.value;
+        document.getElementById('ok-config-modal').onclick = function () {
+            const newToken = document.getElementById('user-token-text').value;
+            const newUrl = document.getElementById('server-url-text').value;
+            const newIconUrl = document.getElementById('icon-url-text').value;
+            const newDownloadReason = document.getElementById('download-reason-text').value;
             GM_setValue("activeUserToken", newToken);
+            GM_setValue("activeUserServerUrl", newUrl);
+            GM_setValue("activeUserIconUrl", newIconUrl);
+            GM_setValue("activeUserDownloadReason", newDownloadReason);
             modal.style.display = "none";
         };
-
-        modal.style.display = "block"
-
     }
+
+    const currentToken = GM_getValue("activeUserToken", null);
+    const currentServerUrl = GM_getValue("activeUserServerUrl", null);
+    const currentIconUrl = GM_getValue("activeUserIconUrl", null);
+    const currentDownloadReason = GM_getValue("activeUserDownloadReason", "backup");
+
+    if (currentToken) {
+        document.getElementById('user-token-text').value = currentToken;
+    }
+
+    if (currentServerUrl) {
+        document.getElementById('server-url-text').value = currentServerUrl;
+    }
+
+    if (currentIconUrl) {
+        document.getElementById('icon-url-text').value = currentIconUrl;
+    }
+
+    if (currentDownloadReason) {
+        document.getElementById('download-reason-text').value = currentDownloadReason;
+    }
+
+    modal.style.display = "block";
+}
+
+const checkConfiguration = () => {
+    const currentToken = GM_getValue("activeUserToken", null);
+    const currentServerUrl = GM_getValue("activeUserServerUrl", null);
+
+    if (currentToken === null || currentServerUrl === null) {
+        showConfigModal();
+    }
+}
+
+const insertSettingsIcon = () => {
+    const iconDiv = document.createElement('div');
+    iconDiv.style.position = 'fixed';
+    iconDiv.style.top = '10px';
+    iconDiv.style.right = '10px';
+    iconDiv.style.zIndex = '10000';
+    iconDiv.style.cursor = 'pointer';
+    iconDiv.style.backgroundColor = 'rgba(255, 255, 255, 0.8)';
+    iconDiv.style.padding = '5px';
+    iconDiv.style.borderRadius = '5px';
+    iconDiv.style.boxShadow = '0 0 5px rgba(0,0,0,0.5)';
+    iconDiv.innerHTML = '⚙️';
+    iconDiv.title = 'Panda Backup Settings';
+
+    iconDiv.addEventListener('click', function () {
+        showConfigModal();
+    });
+
+    document.body.appendChild(iconDiv);
 }
 
 addGlobalStyle('/* The Modal (background) */\
@@ -134,7 +190,8 @@ color: black;\
 insertCrawler();
 Notification.requestPermission();
 
-setTokenIfMissing();
+checkConfiguration();
+insertSettingsIcon();
 
 function addGlobalStyle(css) {
     var head, style;
@@ -157,15 +214,15 @@ function insertModal() {
     var span = document.getElementById("closeModal");
 
     // When the user clicks on <span> (x), close the modal
-    span.onclick = function() {
+    span.onclick = function () {
         modal.style.display = "none";
     };
     // When the user clicks on Cancel, close the modal
-    document.getElementById('cancel-modal').onclick = function() {
+    document.getElementById('cancel-modal').onclick = function () {
         modal.style.display = "none";
     };
     // When the user clicks anywhere outside the modal, close it
-    window.onclick = function(event) {
+    window.onclick = function (event) {
         if (event.target === modal) {
             modal.style.display = "none";
         }
@@ -181,31 +238,31 @@ function displayModalConfirm(message, cbOK, cbNO) {
 
 }
 
-function sendWebCrawlerAction ( link, parentLink, action, reason ) {
+function sendWebCrawlerAction(link, parentLink, action, reason) {
 
-    var data ={ operation : 'webcrawler',args : {link: link, action: action} };
+    var data = { operation: 'webcrawler', args: { link: link, action: action } };
 
-    if(parentLink !== null) {
+    if (parentLink !== null) {
         data.args.parentLink = parentLink;
     }
 
-    if(reason !== null) {
+    if (reason !== null) {
         data.args.reason = reason;
     }
 
     const token = GM_getValue("activeUserToken", '');
 
-    GM_xmlhttpRequest( {
-        method : 'POST',
-        url : '{{ server_url }}',
-        data : JSON.stringify( data ),
-        headers : {
-            'Content-Type' : 'application/json',
+    GM_xmlhttpRequest({
+        method: 'POST',
+        url: GM_getValue("activeUserServerUrl", "") + "/admin-api/",
+        data: JSON.stringify(data),
+        headers: {
+            'Content-Type': 'application/json',
             "Authorization": "Bearer " + token
         },
         onload: function (response) {
             var jsonResponse = JSON.parse(response.responseText);
-            if(jsonResponse.action === 'confirmDeletion') {
+            if (jsonResponse.action === 'confirmDeletion') {
                 displayModalConfirm(
                     jsonResponse.message,
                     function () { sendWebCrawlerAction(link, parentLink, 'replaceFound', getDownloadReason()) },
@@ -214,16 +271,16 @@ function sendWebCrawlerAction ( link, parentLink, action, reason ) {
             }
             else {
                 if (Notification.permission === "granted") {
-                    spawnNotification(jsonResponse.message, "{{ img_url }}", "Panda Backup");
+                    spawnNotification(jsonResponse.message, GM_getValue("activeUserIconUrl", ""), "Panda Backup");
                 }
             }
         }
-    } );
+    });
 
 }
 
 function getDownloadReason() {
-    return localStorage.getItem('pandabackup-download reason');
+    return GM_getValue("activeUserDownloadReason", "backup");
 }
 
 /**
@@ -246,7 +303,7 @@ function modifyDivList(currentDiv) {
     var div2 = document.createElement('div');
     div2.style.margin = '5px 0px 0px 0px';
     div2.innerHTML = '<img class="n" src="https://ehgt.org/g/t.png" alt="T" title="' + galleryLink + '"/></img>';
-    div2.addEventListener('click', function() {
+    div2.addEventListener('click', function () {
         addClickFeedback(this);
         sendWebCrawlerAction(galleryLink, null, null, getDownloadReason());
     });
@@ -261,7 +318,7 @@ function modifyDivThumbnail(currentDiv) {
     div2.style.float = 'right';
     div2.style.margin = '5px -20px 0px 10px';
     div2.innerHTML = '<img class="tn" src="https://ehgt.org/g/t.png" alt="T" title="' + galleryLink + '"/></img>';
-    div2.addEventListener('click', function() {
+    div2.addEventListener('click', function () {
         addClickFeedback(this);
         sendWebCrawlerAction(galleryLink, null, null, getDownloadReason());
     });
@@ -275,7 +332,7 @@ function modifyDivExtended(currentDiv) {
     var div2 = document.createElement('div');
     div2.style.margin = '0px 0px 0px 2px';
     div2.innerHTML = '<img class="tn" src="https://ehgt.org/g/t.png" alt="T" title="' + galleryLink + '"/></img>';
-    div2.addEventListener('click', function() {
+    div2.addEventListener('click', function () {
         addClickFeedback(this);
         sendWebCrawlerAction(galleryLink, null, null, getDownloadReason());
     });
@@ -283,16 +340,16 @@ function modifyDivExtended(currentDiv) {
 }
 
 function insertCrawler() {
-	//Gallery page
-    var container =document.getElementById('gd5');
-    if ( container !==null ) {
+    //Gallery page
+    var container = document.getElementById('gd5');
+    if (container !== null) {
 
         //get info nodes, check if parent info exists.
-        var infoNodes =document.getElementsByClassName('gdt1');
+        var infoNodes = document.getElementsByClassName('gdt1');
         var parentLink = null;
-        if (infoNodes.length !==0) {
-            for(var k =0; k <infoNodes.length; k++) {
-                if(infoNodes[k].innerHTML.includes('Parent:') && infoNodes[k].nextSibling.getElementsByTagName('a').length > 0) {
+        if (infoNodes.length !== 0) {
+            for (var k = 0; k < infoNodes.length; k++) {
+                if (infoNodes[k].innerHTML.includes('Parent:') && infoNodes[k].nextSibling.getElementsByTagName('a').length > 0) {
                     parentLink = infoNodes[k].nextSibling.getElementsByTagName('a')[0].href;
 
                     insertModal();
@@ -301,10 +358,10 @@ function insertCrawler() {
             }
         }
         (function () {
-            var galleryLink =document.URL;
-            var div2 =document.createElement('div');
-            div2.innerHTML ='<img style="height: auto; width: auto" src="https://ehgt.org/g/t.png" alt="T" title="' + galleryLink + '"/></img>';
-            div2.addEventListener('click',function () {
+            var galleryLink = document.URL;
+            var div2 = document.createElement('div');
+            div2.innerHTML = '<img style="height: auto; width: auto" src="https://ehgt.org/g/t.png" alt="T" title="' + galleryLink + '"/></img>';
+            div2.addEventListener('click', function () {
                 addClickFeedback(this);
                 sendWebCrawlerAction(galleryLink, parentLink, null, getDownloadReason());
             });
@@ -313,25 +370,25 @@ function insertCrawler() {
         return true;
     }
     //Main page, list mode
-    var list =document.getElementsByClassName('gl3m');
-    if (list.length !==0) {
-        for(var i =0; i <list.length; i++) {
+    var list = document.getElementsByClassName('gl3m');
+    if (list.length !== 0) {
+        for (var i = 0; i < list.length; i++) {
             (modifyDivList(list[i]));
         }
         return true;
     }
     //Main page, thumbnails mode
-    var list2 =document.getElementsByClassName('gl1t');
-    if(list2.length !==0) {
-        for(var j =0; j <list2.length; j++) {
+    var list2 = document.getElementsByClassName('gl1t');
+    if (list2.length !== 0) {
+        for (var j = 0; j < list2.length; j++) {
             (modifyDivThumbnail(list2[j]));
         }
         return true;
     }
     //Main page, extended mode
-    var list3 =document.getElementsByClassName('gl2e');
-    if (list3.length !==0) {
-        for(var jj=0; jj <list3.length; jj++) {
+    var list3 = document.getElementsByClassName('gl2e');
+    if (list3.length !== 0) {
+        for (var jj = 0; jj < list3.length; jj++) {
             (modifyDivExtended(list3[jj]));
         }
         return true;

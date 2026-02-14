@@ -88,7 +88,6 @@ urlpatterns = [
     re_path(r"^profile/$", head.change_profile, name="change-profile"),
     re_path(r"^session-settings/$", head.session_settings, name="session-settings"),
     re_path(r"^img/(\d+)/$", head.image_url, name="image-url"),
-    re_path(r"^content/panda.user.js$", head.panda_userscript, name="panda-user-script"),
     re_path(r"^about/$", head.about, name="about"),
     re_path(r"^archive-auth/$", archive.archive_auth, name="archive-auth"),
 ]

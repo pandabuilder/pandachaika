@@ -22,8 +22,24 @@ if es_client:
 ES_MATCH_MAPPING = {
     "properties": {
         "gid": {"type": "keyword"},
-        "title": {"type": "text"},
-        "title_jpn": {"type": "text"},
+        "title": {
+            "type": "text",
+            "fields": {
+                "keyword": {
+                    "type": "keyword",
+                    "ignore_above": 512
+                }
+            }
+        },
+        "title_jpn": {
+            "type": "text",
+            "fields": {
+                "keyword": {
+                    "type": "keyword",
+                    "ignore_above": 512
+                }
+            }
+        },
         "tags": {
             "type": "object",
             "properties": {

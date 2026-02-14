@@ -7,6 +7,8 @@ import typing
 from tempfile import mkdtemp
 from typing import Optional, Any
 
+from django.db import DataError
+
 from core.base.setup_utilities import GeneralUtils
 from core.base.utilities import (
     replace_illegal_name,
@@ -200,7 +202,11 @@ class BaseDownloader(metaclass=Meta):
             total_size=total_size,
         )
 
-        download_event.save()
+        try:
+            download_event.save()
+        except DataError:
+            logger.error(f"Error saving DownloadEvent: name: {name}, method: {method}, download_id: {download_id}, archive: {archive}, gallery: {gallery}, progress: {progress}, total_size: {total_size}")
+            return None
 
         return download_event
         # result, torrent_id
@@ -215,6 +221,16 @@ class BaseDownloader(metaclass=Meta):
 
         if self.return_code == 0:
             return
+
+        wanted_galleries_last_reason = None
+
+        if wanted_gallery_list:
+            for wanted_gallery in wanted_gallery_list:
+                if wanted_gallery.reason:
+                    wanted_galleries_last_reason = wanted_gallery.reason
+
+        if wanted_galleries_last_reason:
+            self.original_gallery.reason = wanted_galleries_last_reason
 
         if not self.archive_only:
             self.update_gallery_db()
@@ -234,10 +250,8 @@ class BaseDownloader(metaclass=Meta):
             if self.settings.archive_origin:
                 default_values["origin"] = self.settings.archive_origin
 
-            if wanted_gallery_list:
-                for wanted_gallery in wanted_gallery_list:
-                    if wanted_gallery.reason:
-                        default_values["reason"] = wanted_gallery.reason
+            if wanted_galleries_last_reason:
+                default_values["reason"] = wanted_galleries_last_reason
 
             self.archive_db_entry = self.update_archive_db(default_values)
 

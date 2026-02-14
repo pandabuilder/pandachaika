@@ -4640,6 +4640,12 @@ class WantedGallery(models.Model):
         lst = [str(x) for x in self.wanted_tags.all()]
         return lst
 
+    def sorted_wanted_tags_list(self) -> SortedTagList:
+        return sort_tags(self.wanted_tags.all())
+
+    def sorted_unwanted_tags_list(self) -> SortedTagList:
+        return sort_tags(self.unwanted_tags.all())
+
     def categories_list(self) -> list[str]:
         lst = [str(x) for x in self.categories.all()]
         return lst

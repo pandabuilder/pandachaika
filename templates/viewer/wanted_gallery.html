@@ -5,144 +5,163 @@
 {% load static %}
 
 {% block content %}
-  {% if messages %}
-    {% for message in messages %}
-      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
-    {% endfor %}
-  {% endif %}
-  <!-- Gallery  -->
-  <h1 class="text-md-center">
-    {{ wanted_gallery.title }}
-    {% if user.is_staff %}
-    <div class="dropdown">
-      <a class="btn btn-primary float-end dropdown-toggle" data-bs-toggle="dropdown" role="button" id="dropdownTools" aria-haspopup="true" aria-expanded="false"><i class="fas fa-tools"></i></a>
-      <ul class="dropdown-menu py-0" aria-labelledby="dropdownTools">
-            <div class="card bg-dark border-info dropdown-item">
-            <div class="card-header bg-light">
-              Match tools
-            </div>
-              <form action="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}" method="GET">
-                <ul class="list-group w-100">
-                  <li class="list-group-item">
-                      <input size="10" class="form-control" name="provider" value="" placeholder="Provider filter"/>
-                  </li>
-                  <li class="list-group-item">
-                    <button class="btn btn-light" name="tool" value="create-possible-matches-internally">
-                      Create possible matches locally
-                    </button>
-                  </li>
-                  <li class="list-group-item">
-                    <button class="btn btn-light" name="tool" value="create-matches-internally">
-                      Create matches locally
-                    </button>
-                  </li>
-                </ul>
-              </form>
-            </div>
-            <div class="card bg-dark border-info dropdown-item">
-            <div class="card-header bg-light">
-              Change state
-            </div>
-            <form action="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}" method="GET">
-              <ul class="list-group w-100">
-                <li class="list-group-item"><button class="btn btn-light" name="tool" value="stop-searching">stop searching</button></li>
-                <li class="list-group-item"><button class="btn btn-light" name="tool" value="toggle-public">Set {% if wanted_gallery.public %}private{% else %}public{% endif %}</button></li>
-                <li class="list-group-item"><button class="btn btn-light" name="tool" value="clear-possible-matches">clear possible matches</button></li>
-              </ul>
-            </form>
-            </div>
-            <div class="card bg-dark border-info dropdown-item">
-            <div class="card-header bg-light">
-              Extra tools
-            </div>
-            <a class="btn btn-secondary float-end" href="{% url 'viewer:col-create-wanted-gallery' %}?wanted-gallery={{ wanted_gallery.id }}" role="button">Use as template to create another</a>
-            </div>
-            <a class="border-info dropdown-item my-1" href="{% url 'admin:viewer_wantedgallery_change' wanted_gallery.pk %}" role="button">Admin page</a>
-      </ul>
-    </div>
-    {% endif %}
-  </h1>
-  <div class="row">
-    <div class="col-md-4">
-   <div class="card bg-dark border-info mb-2">
-    <div class="card-header py-2">
-      Description
-    </div>
-    <ul class="list-group list-group-flush">
-      <li class="list-group-item d-flex justify-content-between py-1"><label class="my-0">Japanese title:</label><span>{{ wanted_gallery.title_jpn|default:"Not set" }}</span></li>
-      <li class="list-group-item d-flex justify-content-between py-1">
-      <div class="card w-100 text-white bg-secondary">
-        <div class="card-header py-1">
-          Artists
+{% if messages %}
+{% for message in messages %}
+<div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+{% endfor %}
+{% endif %}
+<!-- Gallery  -->
+<h1 class="text-md-center">
+  {{ wanted_gallery.title }}
+  {% if user.is_staff %}
+  <div class="dropdown">
+    <a class="btn btn-primary float-end dropdown-toggle" data-bs-toggle="dropdown" role="button" id="dropdownTools"
+      aria-haspopup="true" aria-expanded="false"><i class="fas fa-tools"></i></a>
+    <ul class="dropdown-menu py-0" aria-labelledby="dropdownTools">
+      <div class="card bg-dark border-info dropdown-item">
+        <div class="card-header bg-light">
+          Match tools
         </div>
-        <ul class="list-group">
-          {% for artist in wanted_gallery.artists.all %}
-            <li class="list-group-item py-1">
-              {% if artist.twitter_handle %}
-                {{ artist.name }} (<a href="//twitter.com/{{ artist.twitter_handle }}">@{{ artist.twitter_handle }}</a>)
-            {% else %}
-                {{ artist.name }}
-            {% endif %}
+        <form action="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}" method="GET">
+          <ul class="list-group w-100">
+            <li class="list-group-item">
+              <input size="10" class="form-control" name="provider" value="" placeholder="Provider filter" />
             </li>
-          {% endfor %}
-        </ul>
+            <li class="list-group-item">
+              <button class="btn btn-light" name="tool" value="create-possible-matches-internally">
+                Create possible matches locally
+              </button>
+            </li>
+            <li class="list-group-item">
+              <button class="btn btn-light" name="tool" value="create-matches-internally">
+                Create matches locally
+              </button>
+            </li>
+          </ul>
+        </form>
       </div>
-      </li>
-      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Book type:</label>{{ wanted_gallery.book_type|default:"Not set" }}</li>
-      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Publisher:</label>{{ wanted_gallery.publisher|default:"Not set" }}</li>
-      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Pages:</label>{{ wanted_gallery.page_count }}</li>
-      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Reason:</label>{{ wanted_gallery.reason }}</li>
+      <div class="card bg-dark border-info dropdown-item">
+        <div class="card-header bg-light">
+          Change state
+        </div>
+        <form action="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}" method="GET">
+          <ul class="list-group w-100">
+            <li class="list-group-item"><button class="btn btn-light" name="tool" value="stop-searching">stop
+                searching</button></li>
+            <li class="list-group-item"><button class="btn btn-light" name="tool" value="toggle-public">Set {% if wanted_gallery.public %}private{% else %}public{% endif %}</button></li>
+            <li class="list-group-item"><button class="btn btn-light" name="tool" value="clear-possible-matches">clear
+                possible matches</button></li>
+          </ul>
+        </form>
+      </div>
+      <div class="card bg-dark border-info dropdown-item">
+        <div class="card-header bg-light">
+          Extra tools
+        </div>
+        <a class="btn btn-secondary float-end"
+          href="{% url 'viewer:col-create-wanted-gallery' %}?wanted-gallery={{ wanted_gallery.id }}" role="button">Use
+          as template to create another</a>
+      </div>
+      <a class="border-info dropdown-item my-1" href="{% url 'admin:viewer_wantedgallery_change' wanted_gallery.pk %}"
+        role="button">Admin page</a>
     </ul>
   </div>
-    </div>
-    <div class="col-md-4">
-  <div class="card bg-dark border-info mb-2">
-    <div class="card-header py-2">
-      Match parameters
-    </div>
-    <ul class="list-group list-group-flush">
-      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Search title:</label>{{ wanted_gallery.search_title }}</li>
-      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Search title Regexp:</label>{{ wanted_gallery.regexp_search_title|yesno }}</li>
-      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Search title Regexp case-insensitive:</label>{{ wanted_gallery.regexp_search_title_icase|yesno }}</li>
-      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Unwanted title:</label>{{ wanted_gallery.unwanted_title }}</li>
-      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Unwanted title Regexp:</label>{{ wanted_gallery.regexp_unwanted_title|yesno }}</li>
-      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Unwanted title Regexp case-insensitive:</label>{{ wanted_gallery.regexp_unwanted_title_icase|yesno }}</li>
-      <li class="list-group-item d-flex justify-content-between py-1">
-      <div class="card w-100 text-white bg-secondary">
-        <div class="card-header py-1">
-          Wanted tags
-        </div>
-        <ul class="list-group">
-          {% for tag_list in wanted_tag_lists %}
-            <li class="list-group-item py-1">
-              {% if tag_list.0 %}{{ tag_list.0 }}:{% endif %}
-              {% for tag in tag_list.1 %}
-                <a href="{% url 'viewer:gallery-tag-search' 'gallery-tag' tag %}">{% if tag_list.0 %}{{ tag.name }}{% else %}{{ tag }}{% endif %}</a>
-              {% endfor %}
-            </li>{% endfor %}
-        </ul>
+  {% endif %}
+</h1>
+<div class="row">
+  <div class="col-md-4">
+    <div class="card bg-dark border-info mb-2">
+      <div class="card-header py-2">
+        Description
       </div>
-      </li>
-      <li class="list-group-item d-flex justify-content-between py-1">
-      <div class="card w-100 text-white bg-secondary">
-        <div class="card-header py-1">
-          Unwanted tags
-        </div>
-        <ul class="list-group">
-          {% for tag_list in unwanted_tag_lists %}
-            <li class="list-group-item py-1">
-              {% if tag_list.0 %}{{ tag_list.0 }}:{% endif %}
-              {% for tag in tag_list.1 %}
-                <a href="{% url 'viewer:gallery-tag-search' 'gallery-tag' tag %}">{% if tag_list.0 %}{{ tag.name }}{% else %}{{ tag }}{% endif %}</a>
+      <ul class="list-group list-group-flush">
+        <li class="list-group-item d-flex justify-content-between py-1"><label class="my-0">Japanese
+            title:</label><span>{{ wanted_gallery.title_jpn|default:"Not set" }}</span></li>
+        <li class="list-group-item d-flex justify-content-between py-1">
+          <div class="card w-100 text-white bg-secondary">
+            <div class="card-header py-1">
+              Artists
+            </div>
+            <ul class="list-group">
+              {% for artist in wanted_gallery.artists.all %}
+              <li class="list-group-item py-1">
+                {% if artist.twitter_handle %}
+                {{ artist.name }} (<a href="//twitter.com/{{ artist.twitter_handle }}">@{{ artist.twitter_handle }}</a>)
+                {% else %}
+                {{ artist.name }}
+                {% endif %}
+              </li>
               {% endfor %}
-            </li>{% endfor %}
-        </ul>
+            </ul>
+          </div>
+        </li>
+        <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Book
+            type:</label>{{ wanted_gallery.book_type|default:"Not set" }}</li>
+        <li class="list-group-item d-flex justify-content-between py-1"><label
+            class="label-extended">Publisher:</label>{{ wanted_gallery.publisher|default:"Not set" }}</li>
+        <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Pages:</label>{{ wanted_gallery.page_count }}</li>
+        <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Reason:</label>{{ wanted_gallery.reason }}</li>
+      </ul>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card bg-dark border-info mb-2">
+      <div class="card-header py-2">
+        Match parameters
       </div>
-      </li>
-      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Wanted tags exclusive scope:</label>{{ wanted_gallery.wanted_tags_exclusive_scope|yesno }}</li>
-      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Exclusive scope name:</label>{{ wanted_gallery.exclusive_scope_name|default:"Not set" }}</li>
-      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Wanted tags 'accept if none' scope:</label>{{ wanted_gallery.wanted_tags_accept_if_none_scope|default:"Not set" }}</li>
-      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Category:</label>{{ wanted_gallery.category|default:"Not set" }}</li>
+      <ul class="list-group list-group-flush">
+        <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Search
+            title:</label>{{ wanted_gallery.search_title }}</li>
+        <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Search title
+            Regexp:</label>{{ wanted_gallery.regexp_search_title|yesno }}</li>
+        <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Search title
+            Regexp case-insensitive:</label>{{ wanted_gallery.regexp_search_title_icase|yesno }}</li>
+        <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Unwanted
+            title:</label>{{ wanted_gallery.unwanted_title }}</li>
+        <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Unwanted title
+            Regexp:</label>{{ wanted_gallery.regexp_unwanted_title|yesno }}</li>
+        <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Unwanted title
+            Regexp case-insensitive:</label>{{ wanted_gallery.regexp_unwanted_title_icase|yesno }}</li>
+        <li class="list-group-item d-flex justify-content-between py-1">
+          <div class="card w-100 text-white bg-secondary">
+            <div class="card-header py-1">
+              Wanted tags
+            </div>
+            <ul class="list-group">
+              {% for tag_list in wanted_gallery.sorted_wanted_tags_list %}
+              <li class="list-group-item py-1">
+                {% if tag_list.0 %}{{ tag_list.0 }}:{% endif %}
+                {% for tag in tag_list.1 %}
+                <a href="{% url 'viewer:gallery-tag-search' 'gallery-tag' tag %}">{% if tag_list.0 %}{{ tag.name }}{% else %}{{ tag }}{% endif %}</a>
+                {% endfor %}
+              </li>{% endfor %}
+            </ul>
+          </div>
+        </li>
+        <li class="list-group-item d-flex justify-content-between py-1">
+          <div class="card w-100 text-white bg-secondary">
+            <div class="card-header py-1">
+              Unwanted tags
+            </div>
+            <ul class="list-group">
+              {% for tag_list in wanted_gallery.sorted_unwanted_tags_list %}
+              <li class="list-group-item py-1">
+                {% if tag_list.0 %}{{ tag_list.0 }}:{% endif %}
+                {% for tag in tag_list.1 %}
+                <a href="{% url 'viewer:gallery-tag-search' 'gallery-tag' tag %}">{% if tag_list.0 %}{{ tag.name }}{% else %}{{ tag }}{% endif %}</a>
+                {% endfor %}
+              </li>{% endfor %}
+            </ul>
+          </div>
+        </li>
+        <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Wanted tags
+            exclusive scope:</label>{{ wanted_gallery.wanted_tags_exclusive_scope|yesno }}</li>
+        <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Exclusive scope
+            name:</label>{{ wanted_gallery.exclusive_scope_name|default:"Not set" }}</li>
+        <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Wanted tags
+            'accept if none' scope:</label>{{ wanted_gallery.wanted_tags_accept_if_none_scope|default:"Not set" }}</li>
+        <li class="list-group-item d-flex justify-content-between py-1"><label
+            class="label-extended">Category:</label>{{ wanted_gallery.category|default:"Not set" }}</li>
         <li class="list-group-item d-flex justify-content-between py-1">
           <div class="card w-100 text-white bg-secondary">
             <div class="card-header py-1">
@@ -150,221 +169,253 @@
             </div>
             <ul class="list-group">
               {% for category in wanted_gallery.categories.all %}
-                <li class="list-group-item py-1">
-                  {{ category }}
-                </li>{% endfor %}
+              <li class="list-group-item py-1">
+                {{ category }}
+              </li>{% endfor %}
             </ul>
           </div>
         </li>
-      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Wanted page count lower bound:</label>{{ wanted_gallery.wanted_page_count_lower }}</li>
-      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Wanted page count upper bound:</label>{{ wanted_gallery.wanted_page_count_upper }}</li>
-    </ul>
-  </div>
-    </div>
-   <div class="col-md-4">
-  <div class="card bg-dark border-info mb-2">
-    <div class="card-header py-2">
-      Search information
-    </div>
-    <ul class="list-group list-group-flush">
-      <li class="list-group-item d-flex justify-content-between py-1">
-      <div class="card w-100 text-white bg-secondary">
-        <div class="card-header py-1">
-          Wanted providers
-        </div>
-        <ul class="list-group">
-          {% for wanted_provider in wanted_gallery.wanted_providers.all %}
-            <li class="list-group-item py-1">
-              {{ wanted_provider.slug }}
-            </li>
-          {% endfor %}
-        </ul>
-      </div>
-      </li>
-      <li class="list-group-item d-flex justify-content-between py-1">
-      <div class="card w-100 text-white bg-secondary">
-        <div class="card-header py-1">
-          Unwanted providers
-        </div>
-        <ul class="list-group">
-          {% for unwanted_provider in wanted_gallery.unwanted_providers.all %}
-            <li class="list-group-item py-1">
-              {{ unwanted_provider.slug }}
-            </li>
-          {% endfor %}
-        </ul>
-      </div>
-      </li>
-      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Restrict to Monitored Links:</label>{{ wanted_gallery.restricted_to_links|yesno }}</li>
-      <li class="list-group-item d-flex justify-content-between py-1">
-      <div class="card w-100 text-white bg-secondary">
-        <div class="card-header py-1">
-          Monitored Links
-        </div>
-        <ul class="list-group">
-          {% for monitored_link in wanted_gallery.monitoredlink_set.all %}
-            <li class="list-group-item py-1">
-              {{ monitored_link.name }}
-            </li>
-          {% endfor %}
-        </ul>
-      </div>
-      </li>
-      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Release date:</label>{{ wanted_gallery.release_date|date|default:"Not set" }}</li>
-      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Wait for time:</label>{{ wanted_gallery.wait_for_time|default:"Not set" }}</li>
-      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Should search:</label>{{ wanted_gallery.should_search|yesno }}</li>
-      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Keep searching:</label>{{ wanted_gallery.keep_searching|yesno }}</li>
-      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Found:</label>{{ wanted_gallery.found|yesno }}</li>
-      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Found on:</label>{{ wanted_gallery.date_found|date:"DATETIME_FORMAT" }}</li>
-      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Created on:</label>{{ wanted_gallery.create_date|date:"DATETIME_FORMAT" }}</li>
-      <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Last modified:</label>{{ wanted_gallery.last_modified|date:"DATETIME_FORMAT" }}</li>
-    </ul>
-  </div>
+        <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Wanted page count
+            lower bound:</label>{{ wanted_gallery.wanted_page_count_lower }}</li>
+        <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Wanted page count
+            upper bound:</label>{{ wanted_gallery.wanted_page_count_upper }}</li>
+      </ul>
     </div>
   </div>
-  <div class="card bg-dark border-info mb-2">
-    <div class="card-header py-2">
-      Found Galleries
-    </div>
-    <div class="card-body">
-    {% if wanted_gallery.foundgallery_set.count > 0 %}
-      <div class="table-responsive">
-        <table class="table table-sm table-striped">
-          <thead>
-          <tr>
-            <th scope="col">Gallery</th>
-            <th scope="col">Source link</th>
-            <th scope="col">Found date</th>
-            <th scope="col">Posted date</th>
-            <th scope="col">Images</th>
-            <th scope="col">Size</th>
-            <th scope="col">Download gallery</th>
-            <th scope="col">Clear gallery</th>
-            <th scope="col">Archives</th>
-          </tr>
-          </thead>
-          <tbody>
-          {% for found_entry in wanted_gallery.foundgallery_set.all %}
-            <tr>
-              <td><a title="{{ found_entry.gallery.title_jpn }}"
-                     href="{% url 'viewer:gallery' found_entry.gallery.pk %}">{{ found_entry.gallery.title }}</a></td>
-              <td><a href="{{ found_entry.gallery.get_link }}" data-image-url="{% if found_entry.gallery.thumbnail.name %}{{ found_entry.gallery.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover noopener noreferrer nofollow">{{ found_entry.gallery.get_link }}</a></td>
-              <td>{{ found_entry.create_date|date:"SHORT_DATE_FORMAT" }}</td>
-              <td>{{ found_entry.gallery.posted|date:"SHORT_DATE_FORMAT" }}</td>
-              <td>{{ found_entry.gallery.filecount }}</td>
-              <td>{{ found_entry.gallery.filesize|filesizeformat }}</td>
-              <td><a href="{% url 'viewer:gallery-tool' found_entry.gallery.pk 'download' %}"><i class="fas fa-download"></i></a></td>
-              <td><a href="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}?tool=remove-match&tool-id={{ found_entry.gallery.pk }}"><i class="fas fa-minus"></i></a></td>
-              <td>
-                <table class="table table-sm table-bordered">
-                  <thead>
-                  <tr>
-                    <th scope="col">Archive</th>
-                    <th scope="col">Images</th>
-                    <th scope="col">Size</th>
-                    <th scope="col">Thumbnail</th>
-                  </tr>
-                  </thead>
-                  <tbody>
-                  {% for archive in found_entry.gallery.archive_set.all %}
-                    <tr>
-                      <th scope="row"><a title="{{ archive.title_jpn }}"
-                                         href="{% url 'viewer:archive' archive.pk %}">{{ archive.title }}</a></th>
-                      <td>{{ archive.filecount }}</td>
-                      <td>{{ archive.filesize|filesizeformat }}</td>
-                      <td><a href="#" data-image-url="{% if archive.thumbnail.name %}{{ archive.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover">Thumbnail</a></td>
-                    </tr>
-                  {% endfor %}
-                  </tbody>
-                </table>
-              </td>
-            </tr>
-          {% endfor %}
-          </tbody>
-        </table>
+  <div class="col-md-4">
+    <div class="card bg-dark border-info mb-2">
+      <div class="card-header text-white py-2">
+        Search information
       </div>
-    {% else %}
-      <div>No found galleries</div>
-    {% endif %}
+      <ul class="list-group list-group-flush">
+        <li class="list-group-item d-flex justify-content-between py-1">
+          <div class="card w-100 text-white bg-secondary">
+            <div class="card-header text-white py-1">
+              Wanted providers
+            </div>
+            <ul class="list-group">
+              {% for wanted_provider in wanted_gallery.wanted_providers.all %}
+              <li class="list-group-item py-1">
+                {{ wanted_provider.slug }}
+              </li>
+              {% endfor %}
+            </ul>
           </div>
+        </li>
+        <li class="list-group-item d-flex justify-content-between py-1">
+          <div class="card w-100 text-white bg-secondary">
+            <div class="card-header py-1">
+              Unwanted providers
+            </div>
+            <ul class="list-group">
+              {% for unwanted_provider in wanted_gallery.unwanted_providers.all %}
+              <li class="list-group-item py-1">
+                {{ unwanted_provider.slug }}
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
+        </li>
+        <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Restrict to
+            Monitored Links:</label>{{ wanted_gallery.restricted_to_links|yesno }}</li>
+        <li class="list-group-item d-flex justify-content-between py-1">
+          <div class="card w-100 text-white bg-secondary">
+            <div class="card-header py-1">
+              Monitored Links
+            </div>
+            <ul class="list-group">
+              {% for monitored_link in wanted_gallery.monitoredlink_set.all %}
+              <li class="list-group-item py-1">
+                {{ monitored_link.name }}
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
+        </li>
+        <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Release
+            date:</label>{{ wanted_gallery.release_date|date|default:"Not set" }}</li>
+        <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Wait for
+            time:</label>{{ wanted_gallery.wait_for_time|default:"Not set" }}</li>
+        <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Should
+            search:</label>{{ wanted_gallery.should_search|yesno }}</li>
+        <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Keep
+            searching:</label>{{ wanted_gallery.keep_searching|yesno }}</li>
+        <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Found:</label>{{ wanted_gallery.found|yesno }}</li>
+        <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Found
+            on:</label>{{ wanted_gallery.date_found|date:"DATETIME_FORMAT" }}</li>
+        <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Created
+            on:</label>{{ wanted_gallery.create_date|date:"DATETIME_FORMAT" }}</li>
+        <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Last
+            modified:</label>{{ wanted_gallery.last_modified|date:"DATETIME_FORMAT" }}</li>
+      </ul>
     </div>
-  <div class="card bg-dark border-info mb-2">
-    <div class="card-header py-2">
-      Possible Matches
-    </div>
-    <div class="card-body">
-      {% if wanted_gallery.gallerymatch_set.count > 0 %}
-      <div class="table-responsive">
-        <table class="table table-sm table-striped">
-          <thead>
-          <tr>
-            <th scope="col">Gallery</th>
-            <th scope="col">Source link</th>
-            <th scope="col">Accuracy</th>
-            <th scope="col">Posted date</th>
-            <th scope="col">Images</th>
-            <th scope="col">Size</th>
-            <th scope="col">Select as match</th>
-            <th scope="col">Archives</th>
-          </tr>
-          </thead>
-          <tbody>
-          {% for match in wanted_gallery.gallerymatch_set.all %}
-            <tr>
-              <td><a title="{{ match.gallery.title_jpn }}"
-                     href="{% url 'viewer:gallery' match.gallery.pk %}">{{ match.gallery.title }}</a></td>
-              <td><a href="{{ match.gallery.get_link }}" data-image-url="{% if match.gallery.thumbnail.name %}{{ match.gallery.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover noopener noreferrer nofollow">{{ match.gallery.get_link }}</a></td>
-              <td>{{ match.match_accuracy|floatformat:3 }}</td>
-              <td>{{ match.gallery.posted }}</td>
-              <td>{{ match.gallery.filecount }}</td>
-              <td>{{ match.gallery.filesize|filesizeformat }}</td>
-              <td>
-                <a href="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}?tool=select-as-match&tool-id={{ match.gallery.pk }}">
-                  <i class="fas fa-check"></i>
-                </a>
-              </td>
-              <td>
-                <table class="table table-sm table-bordered">
-                  <thead>
-                  <tr>
-                    <th scope="col">Archive</th>
-                    <th scope="col">Images</th>
-                    <th scope="col">Size</th>
-                    <th scope="col">Thumbnail</th>
-                  </tr>
-                  </thead>
-                  <tbody>
-                  {% for archive in match.gallery.archive_set.all %}
-                    <tr>
-                      <th scope="row"><a title="{{ archive.title_jpn }}"
-                                         href="{% url 'viewer:archive' archive.pk %}">{{ archive.title }}</a></th>
-                      <td>{{ archive.filecount }}</td>
-                      <td>{{ archive.filesize|filesizeformat }}</td>
-                      <td><a href="#" data-image-url="{% if archive.thumbnail.name %}{{ archive.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover">Archive thumbnail</a></td>
-                    </tr>
-                  {% endfor %}
-                  </tbody>
-                </table>
-              </td>
-            </tr>
-          {% endfor %}
-          </tbody>
-        </table>
+  </div>
+</div>
+<div class="row mb-2">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-body py-2 text-center">
+        <span class="me-2">Jump to:</span>
+        <a href="#found-galleries" class="btn btn-sm btn-outline-primary position-relative me-4">
+          Found Galleries
+          <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+            {{ wanted_gallery.foundgallery_set.count }}
+          </span>
+        </a>
+        <a href="#possible-matches" class="btn btn-sm btn-outline-primary position-relative me-4">
+          Possible Matches
+          <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+            {{ wanted_gallery.gallerymatch_set.count }}
+          </span>
+        </a>
+        <a href="#mentions" class="btn btn-sm btn-outline-primary position-relative">
+          Mentions
+          <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+            {{ wanted_gallery.mentions.count }}
+          </span>
+        </a>
       </div>
-      {% else %}
-        <div>No possible matches</div>
-      {% endif %}
-        </div>
     </div>
-  <div class="card bg-dark border-info mb-2">
-    <div class="card-header py-2">
-      Mentions
-    </div>
-  <div class="card-body">
+  </div>
+</div>
+<div class="mb-2">
+  <h4 id="found-galleries">
+    Found Galleries: {{ wanted_gallery.foundgallery_set.count }}
+  </h4>
+  {% if wanted_gallery.foundgallery_set.count > 0 %}
+  <div class="table-responsive">
+    <table class="table table-sm table-striped">
+      <thead>
+        <tr>
+          <th scope="col">Gallery</th>
+          <th scope="col">Source link</th>
+          <th scope="col">Found date</th>
+          <th scope="col">Posted date</th>
+          <th scope="col">Images</th>
+          <th scope="col">Size</th>
+          <th scope="col">Download gallery</th>
+          <th scope="col">Clear gallery</th>
+          <th scope="col">Archives</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for found_entry in wanted_gallery.foundgallery_set.all %}
+        <tr>
+          <td><a title="{{ found_entry.gallery.title_jpn }}" href="{% url 'viewer:gallery' found_entry.gallery.pk %}">{{ found_entry.gallery.title }}</a></td>
+          <td><a href="{{ found_entry.gallery.get_link }}" data-image-url="{% if found_entry.gallery.thumbnail.name %}{{ found_entry.gallery.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover noopener noreferrer nofollow">{{ found_entry.gallery.get_link }}</a></td>
+          <td>{{ found_entry.create_date|date:"SHORT_DATE_FORMAT" }}</td>
+          <td>{{ found_entry.gallery.posted|date:"SHORT_DATE_FORMAT" }}</td>
+          <td>{{ found_entry.gallery.filecount }}</td>
+          <td>{{ found_entry.gallery.filesize|filesizeformat }}</td>
+          <td><a href="{% url 'viewer:gallery-tool' found_entry.gallery.pk 'download' %}"><i
+                class="fas fa-download"></i></a></td>
+          <td><a
+              href="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}?tool=remove-match&tool-id={{ found_entry.gallery.pk }}"><i
+                class="fas fa-minus"></i></a></td>
+          <td>
+            <table class="table table-sm table-bordered">
+              <thead>
+                <tr>
+                  <th scope="col">Archive</th>
+                  <th scope="col">Images</th>
+                  <th scope="col">Size</th>
+                  <th scope="col">Thumbnail</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for archive in found_entry.gallery.archive_set.all %}
+                <tr>
+                  <th scope="row"><a title="{{ archive.title_jpn }}" href="{% url 'viewer:archive' archive.pk %}">{{ archive.title }}</a></th>
+                  <td>{{ archive.filecount }}</td>
+                  <td>{{ archive.filesize|filesizeformat }}</td>
+                  <td><a href="#" data-image-url="{% if archive.thumbnail.name %}{{ archive.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover">Thumbnail</a></td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div>No found galleries</div>
+  {% endif %}
+</div>
+<div class="mb-2">
+  <h4 id="possible-matches">
+    Possible Matches: {{ wanted_gallery.gallerymatch_set.count }}
+  </h4>
+  {% if wanted_gallery.gallerymatch_set.count > 0 %}
+  <div class="table-responsive">
+    <table class="table table-sm table-striped">
+      <thead>
+        <tr>
+          <th scope="col">Gallery</th>
+          <th scope="col">Source link</th>
+          <th scope="col">Accuracy</th>
+          <th scope="col">Posted date</th>
+          <th scope="col">Images</th>
+          <th scope="col">Size</th>
+          <th scope="col">Select as match</th>
+          <th scope="col">Archives</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for match in wanted_gallery.gallerymatch_set.all %}
+        <tr>
+          <td><a title="{{ match.gallery.title_jpn }}" href="{% url 'viewer:gallery' match.gallery.pk %}">{{ match.gallery.title }}</a></td>
+          <td><a href="{{ match.gallery.get_link }}" data-image-url="{% if match.gallery.thumbnail.name %}{{ match.gallery.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover noopener noreferrer nofollow">{{ match.gallery.get_link }}</a></td>
+          <td>{{ match.match_accuracy|floatformat:3 }}</td>
+          <td>{{ match.gallery.posted }}</td>
+          <td>{{ match.gallery.filecount }}</td>
+          <td>{{ match.gallery.filesize|filesizeformat }}</td>
+          <td>
+            <a
+              href="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}?tool=select-as-match&tool-id={{ match.gallery.pk }}">
+              <i class="fas fa-check"></i>
+            </a>
+          </td>
+          <td>
+            <table class="table table-sm table-bordered">
+              <thead>
+                <tr>
+                  <th scope="col">Archive</th>
+                  <th scope="col">Images</th>
+                  <th scope="col">Size</th>
+                  <th scope="col">Thumbnail</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for archive in match.gallery.archive_set.all %}
+                <tr>
+                  <th scope="row"><a title="{{ archive.title_jpn }}" href="{% url 'viewer:archive' archive.pk %}">{{ archive.title }}</a></th>
+                  <td>{{ archive.filecount }}</td>
+                  <td>{{ archive.filesize|filesizeformat }}</td>
+                  <td><a href="#" data-image-url="{% if archive.thumbnail.name %}{{ archive.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover">Archive thumbnail</a></td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div>No possible matches</div>
+  {% endif %}
+</div>
+<div class="mb-2">
+  <h4 id="mentions">
+    Mentions: {{ wanted_gallery.mentions.count }}
+  </h4>
   {% if wanted_gallery.mentions.count > 0 %}
-    <div class="table-responsive">
-      <table class="table table-sm table-striped">
-        <thead>
+  <div class="table-responsive">
+    <table class="table table-sm table-striped">
+      <thead>
         <tr>
           <th scope="col">#</th>
           <th scope="col">Mention date</th>
@@ -374,27 +425,26 @@
           <th scope="col">Image</th>
           <th scope="col">Comment</th>
         </tr>
-        </thead>
-        <tbody>
+      </thead>
+      <tbody>
         {% for mention in wanted_gallery.mentions.all %}
-          <tr>
-            <th scope="row">{% if user.is_staff %}<a href="{% url 'admin:viewer_mention_change' mention.pk %}">{{ mention.pk }}</a>{% else %}{{ mention.pk }}{% endif %}</th>
-            <td>{{ mention.mention_date }}</td>
-            <td>{{ mention.release_date }}</td>
-            <td>{{ mention.type }}</td>
-            <td>{{ mention.source }}</td>
-            <td>{% if mention.image %}<a href="{{ mention.image.url }}" data-image-url="{{ mention.thumbnail.url }}" class="img-preview" rel="popover">Image</a>{% endif %}</td>
-            <td>{{ mention.comment }}</td>
-          </tr>
+        <tr>
+          <th scope="row">{% if user.is_staff %}<a href="{% url 'admin:viewer_mention_change' mention.pk %}">{{ mention.pk }}</a>{% else %}{{ mention.pk }}{% endif %}</th>
+          <td>{{ mention.mention_date }}</td>
+          <td>{{ mention.release_date }}</td>
+          <td>{{ mention.type }}</td>
+          <td>{{ mention.source }}</td>
+          <td>{% if mention.image %}<a href="{{ mention.image.url }}" data-image-url="{{ mention.thumbnail.url }}" class="img-preview" rel="popover">Image</a>{% endif %}</td>
+          <td>{{ mention.comment }}</td>
+        </tr>
         {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  {% else %}
-    <div>No mentions</div>
-  {% endif %}
-    </div>
+      </tbody>
+    </table>
   </div>
+  {% else %}
+  <div>No mentions</div>
+  {% endif %}
+</div>
 
 
 {% endblock %}

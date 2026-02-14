@@ -326,22 +326,6 @@ def session_settings(request: HttpRequest) -> HttpResponse:
         return HttpResponse(json.dumps({"result": "error"}), content_type="application/json; charset=utf-8")
 
 
-# TODO: Generalize this script for several providers.
-# Since we expose the api key here, until this is a per user parameter, only an admin can use this.
-@staff_member_required(login_url="viewer:login")  # type: ignore
-def panda_userscript(request: HttpRequest) -> HttpResponse:
-
-    return render(
-        request,
-        "viewer/panda.user.js",
-        {
-            "img_url": request.build_absolute_uri(crawler_settings.urls.static_url + "favicon-160.png"),
-            "server_url": request.build_absolute_uri(reverse("viewer:json-parser")),
-        },
-        content_type="application/javascript",
-    )
-
-
 def image_url(request: HttpRequest, pk: int) -> HttpResponse:
     try:
         image = Image.objects.get(id=pk, extracted=True)

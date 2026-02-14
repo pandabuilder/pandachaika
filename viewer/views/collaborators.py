@@ -67,7 +67,7 @@ from viewer.models import (
     Provider,
     GalleryMatchGroup,
     GalleryMatchGroupEntry,
-    GalleryGroupPossibleMatches, ArchiveManageEntry
+    GalleryGroupPossibleMatches, ArchiveManageEntry, FoundGallery
 )
 from viewer.utils.requests import double_check_auth
 from viewer.utils.tags import sort_tags
@@ -2288,7 +2288,17 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
 def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
     """WantedGallery listing."""
     try:
-        wanted_gallery_instance = WantedGallery.objects.get(pk=pk)
+        wanted_gallery_instance = WantedGallery.objects.prefetch_related(
+            Prefetch(
+                'foundgallery_set',
+                queryset=FoundGallery.objects.select_related('gallery').prefetch_related('gallery__archive_set')
+            ),
+            'categories',
+            'mentions',
+            'artists',
+            'wanted_providers',
+            'unwanted_providers',
+        ).get(pk=pk)
     except WantedGallery.DoesNotExist:
         raise Http404("Wanted gallery does not exist")
 
@@ -2309,13 +2319,8 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
     else:
         edit_form = WantedGalleryCreateOrEditForm(instance=wanted_gallery_instance)
 
-    wanted_tag_lists = sort_tags(wanted_gallery_instance.wanted_tags.all())
-    unwanted_tag_lists = sort_tags(wanted_gallery_instance.unwanted_tags.all())
-
     d = {
         "wanted_gallery": wanted_gallery_instance,
-        "wanted_tag_lists": wanted_tag_lists,
-        "unwanted_tag_lists": unwanted_tag_lists,
         "edit_form": edit_form,
     }
     return render(request, "viewer/collaborators/wanted_gallery.html", d)

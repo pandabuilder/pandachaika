@@ -1,6 +1,7 @@
 import django.utils.timezone as django_tz
 import logging
 from django.contrib.auth.decorators import login_required
+from django.db.models import Prefetch
 from django.http import Http404, HttpResponseRedirect, HttpRequest, HttpResponse
 from django.shortcuts import render
 from django.urls import reverse
@@ -35,7 +36,23 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
         tool = request.GET.get("tool", "")
         tool_use_id = request.GET.get("tool-id", "")
         try:
-            wanted_gallery_instance = WantedGallery.objects.get(pk=pk)
+            wanted_gallery_instance = WantedGallery.objects.prefetch_related(
+                Prefetch(
+                    'foundgallery_set',
+                    queryset=FoundGallery.objects.select_related('gallery').prefetch_related('gallery__archive_set')
+                ),
+                Prefetch(
+                    'gallerymatch_set',
+                    queryset=GalleryMatch.objects.select_related('gallery').prefetch_related('gallery__archive_set')
+                ),
+                'wanted_tags',
+                'unwanted_tags',
+                'categories',
+                'mentions',
+                'artists',
+                'wanted_providers',
+                'unwanted_providers',
+            ).get(pk=pk)
         except WantedGallery.DoesNotExist:
             raise Http404("Wanted gallery does not exist")
         if tool == "create-possible-matches-internally":
@@ -108,12 +125,7 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
             wanted_gallery_instance.public_toggle()
             return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
-        wanted_tag_lists = sort_tags(wanted_gallery_instance.wanted_tags.all())
-        unwanted_tag_lists = sort_tags(wanted_gallery_instance.unwanted_tags.all())
-
         d = {
-            "wanted_gallery": wanted_gallery_instance,
-            "wanted_tag_lists": wanted_tag_lists,
-            "unwanted_tag_lists": unwanted_tag_lists,
+            "wanted_gallery": wanted_gallery_instance
         }
     return render(request, "viewer/wanted_gallery.html", d)
