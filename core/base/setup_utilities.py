@@ -39,7 +39,7 @@ class GeneralUtils:
 
         if not force_check and self.settings.update_metadata_mode:
             return discarded, reasons
-        if tag_list is not None:
+        if tag_list is not None and self.settings.banned_tags:
             found_tags = set(self.settings.banned_tags).intersection(tag_list)
             if found_tags:
                 discarded = True
