@@ -4590,6 +4590,7 @@ class WantedGallery(models.Model):
         "Provider", blank=True, related_name="unwanted_providers"
     )
     wait_for_time = models.DurationField("Wait for time", blank=True, null=True)
+    backlog_url_query = models.CharField(max_length=2000, blank=True, null=True)
     found_galleries: models.ManyToManyField = models.ManyToManyField(
         Gallery,
         related_name="found_galleries",
@@ -5319,7 +5320,7 @@ class DownloadEvent(models.Model):
     archive = models.ForeignKey(Archive, on_delete=models.SET_NULL, blank=True, null=True)
     gallery = models.ForeignKey(Gallery, on_delete=models.SET_NULL, blank=True, null=True)
     progress = models.FloatField(default=0.0)
-    total_size = models.PositiveIntegerField(default=0)
+    total_size = models.BigIntegerField(default=0)
     failed = models.BooleanField(default=False)
     completed = models.BooleanField(default=False)
     method = models.CharField()

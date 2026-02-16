@@ -1,3 +1,5 @@
+import urllib.parse
+
 import django.utils.timezone as django_tz
 import logging
 from django.contrib.auth.decorators import login_required
@@ -7,9 +9,11 @@ from django.shortcuts import render
 from django.urls import reverse
 from django.conf import settings
 
-from viewer.models import Gallery, WantedGallery, FoundGallery, GalleryMatch
+from core.base.setup import Settings
+from viewer.models import Gallery, WantedGallery, FoundGallery, GalleryMatch, Archive
 from viewer.utils.general import clean_up_referer
 from viewer.utils.tags import sort_tags
+from viewer.utils.actions import event_log
 
 
 crawler_settings = settings.CRAWLER_SETTINGS
@@ -124,8 +128,32 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
         elif tool == "toggle-public":
             wanted_gallery_instance.public_toggle()
             return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+        elif tool == 'backlog-search':
+            urls_to_match = request.GET.getlist("urls-to-match", [])
+            url_query = wanted_gallery_instance.backlog_url_query
+
+            current_settings = Settings(load_from_config=crawler_settings.config)
+
+            if urls_to_match and url_query and current_settings.workers.web_queue:
+                
+                current_settings.silent_processing = True
+                current_settings.replace_metadata = True
+                current_settings.archive_origin = Archive.ORIGIN_WANTED_GALLERY
+
+                arguments_to_crawler = [x['url'] + urllib.parse.quote_plus(url_query) for x in current_settings.backlog_search.urls if x['name'] in urls_to_match]
+
+                arguments_to_crawler.append("-wanted")
+                arguments_to_crawler.extend(["--restrict-wanted-galleries", str(wanted_gallery_instance.pk)])
+                # Could be beneficial to have a separate setting.
+                def gallery_callback(x: "Gallery | None", crawled_url: str | None, result: str) -> None:
+                    event_log(request.user, "WANTED_GALLERY_MATCH", content_object=x, result=result, data=crawled_url)
+
+                current_settings.workers.web_queue.enqueue_args_list(
+                    arguments_to_crawler, override_options=current_settings, gallery_callback=gallery_callback
+                )
 
         d = {
-            "wanted_gallery": wanted_gallery_instance
+            "wanted_gallery": wanted_gallery_instance,
+            "backlog_search_urls": crawler_settings.backlog_search.urls,
         }
     return render(request, "viewer/wanted_gallery.html", d)

@@ -848,6 +848,7 @@ class WantedGalleryCreateOrEditForm(ModelForm):
             "add_to_archive_group",
             "release_date",
             "wait_for_time",
+            "backlog_url_query",
             "should_search",
             "keep_searching",
             "reason",
@@ -883,6 +884,7 @@ class WantedGalleryCreateOrEditForm(ModelForm):
             "unwanted_providers": "Exclude galleries from these providers (panda, fakku, etc)",
             "wait_for_time": "Time after gallery is posted to wait for it to be considered, in timedelta format."
             " Useful if waiting for unwanted tags",
+            "backlog_url_query": "String that will be used when triggering Backlog searches. It will be HTML quoted internally",
             "release_date": "This Gallery will only be searched when the current date is higher than this value",
             "should_search": "Enable searching for this Gallery",
             "keep_searching": "Keep searching for this Gallery after one successful match",
@@ -929,6 +931,7 @@ class WantedGalleryCreateOrEditForm(ModelForm):
                 attrs={"data-placeholder": "Provider name", "class": "form-control", "data-width": "100%"},
             ),
             "wait_for_time": forms.widgets.TextInput(attrs={"class": "form-control"}),
+            "backlog_url_query": forms.widgets.Textarea(attrs={"class": "form-control"}),
             "release_date": Html5DateInput(attrs={"class": "form-control"}),
             "should_search": forms.widgets.CheckboxInput(attrs={"class": "form-check-input"}),
             "keep_searching": forms.widgets.CheckboxInput(attrs={"class": "form-check-input"}),

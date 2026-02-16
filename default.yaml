@@ -130,6 +130,13 @@ pushover:
   token: ''
   device: ''
   sound: ''
+backlog_search:
+  enable: false
+  urls:
+    - name: panda_backlog
+      url: https://e-hentai.org/?f_doujinshi=1&f_manga=1&f_artistcg=1&f_gamecg=1&f_western=0&f_non-h=1&f_imageset=1&f_cosplay=0&f_asianporn=0&f_misc=0&f_apply=Apply+Filter&f_search=
+    - name: chaika_backlog
+      url: https://panda.chaika.moe/meta/es-gallery-json/?sort=posted_date&order=desc&q=
 mail_logging:
   # Some stuff will be reported to email. (Server Error, new gallery submissions.)
   enable: false

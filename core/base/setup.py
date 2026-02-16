@@ -50,6 +50,14 @@ class MonitoredLinksSettings:
         self.enable: bool = False
 
 
+class BacklogSearchSettings:
+    __slots__ = ["enable", "urls"]
+
+    def __init__(self) -> None:
+        self.enable: bool = False
+        self.urls: list[dict[str, str]] = []
+
+
 class AutoWantedSettings:
     __slots__ = [
         "enable", "startup", "cycle_timer", "providers",
@@ -273,6 +281,7 @@ class Settings:
         self.download_ftp_torrent = "default"
         self.download_ftp_hath = "default"
         self.auto_wanted = AutoWantedSettings()
+        self.backlog_search = BacklogSearchSettings()
         self.autoupdater = AutoUpdaterSettings()
 
         self.pushover = PushoverSettings()
@@ -667,6 +676,11 @@ class Settings:
                 self.auto_wanted.regexp_unwanted_title = config["auto_wanted"]["regexp_unwanted_title"]
             if "regexp_unwanted_title_icase" in config["auto_wanted"]:
                 self.auto_wanted.regexp_unwanted_title_icase = config["auto_wanted"]["regexp_unwanted_title_icase"]
+        if "backlog_search" in config:
+            if "enable" in config["backlog_search"]:
+                self.backlog_search.enable = config["backlog_search"]["enable"]
+            if "urls" in config["backlog_search"]:
+                self.backlog_search.urls = config["backlog_search"]["urls"]
         if "pushover" in config:
             if "enable" in config["pushover"]:
                 self.pushover.enable = config["pushover"]["enable"]

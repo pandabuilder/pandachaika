@@ -112,6 +112,7 @@ class Parser(BaseParser):
                 break
 
             dict_list = json_decoded["hits"]
+            limit_page = json_decoded["paginator"]["num_pages"]
 
             for gallery in dict_list:
                 gallery["posted"] = datetime.fromisoformat(gallery["posted_date"].replace("+0000", "+00:00"))
@@ -137,6 +138,15 @@ class Parser(BaseParser):
                         "ending (setting: provider.stop_page_number).".format(self.own_settings.stop_page_number)
                     )
                     break
+                    
+            if current_page >= limit_page:
+                logger.info(
+                    "Got to last page: {}.".format(
+                        limit_page
+                    )
+                )
+                break
+                    
             current_page += 1
             params = {"page": [str(current_page)]}
             query.update(params)
@@ -333,6 +343,8 @@ class Parser(BaseParser):
                         found_galleries.add(found_gallery.gid)
 
             gallery_data_list: list[ChaikaGalleryData] = []
+
+            logger.info("Already found galleries: {}".format(len(found_galleries)))
 
             for count, gallery in enumerate(total_galleries_filtered, start=1):
 

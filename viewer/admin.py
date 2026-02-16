@@ -425,9 +425,92 @@ class WantedGalleryAdmin(admin.ModelAdmin):
         "disable_notify_when_found",
         "set_wait_for_time",
         "set_category",
+        "add_wanted_categories",
+        "set_wanted_categories",
+        "add_unwanted_tags",
+        "set_unwanted_tags",
     ]
 
     action_form = UpdateActionForm
+
+    # inlines = (FoundGalleryInline,)
+
+    def add_wanted_categories(self, request: HttpRequest, queryset: QuerySet) -> None:
+        categories_str = request.POST.get("extra_field", "")
+        if not categories_str:
+            self.message_user(request, "No categories provided.")
+            return
+
+        category_names = [c.strip() for c in categories_str.split(",") if c.strip()]
+        count = 0
+        for wanted_gallery in queryset:
+            for name in category_names:
+                category, _ = Category.objects.get_or_create(name=name)
+                wanted_gallery.categories.add(category)
+            count += 1
+        
+        self.message_user(request, f"Added categories to {count} wanted galleries.")
+
+    add_wanted_categories.short_description = "Add wanted categories (comma separated)"  # type: ignore
+
+    def set_wanted_categories(self, request: HttpRequest, queryset: QuerySet) -> None:
+        categories_str = request.POST.get("extra_field", "")
+        category_names = [c.strip() for c in categories_str.split(",") if c.strip()]
+        
+        count = 0
+        for wanted_gallery in queryset:
+            wanted_gallery.categories.clear()
+            for name in category_names:
+                category, _ = Category.objects.get_or_create(name=name)
+                wanted_gallery.categories.add(category)
+            count += 1
+
+        self.message_user(request, f"Set categories for {count} wanted galleries.")
+
+    set_wanted_categories.short_description = "Set wanted categories (comma separated)"  # type: ignore
+
+    def add_unwanted_tags(self, request: HttpRequest, queryset: QuerySet) -> None:
+        tags_str = request.POST.get("extra_field", "")
+        if not tags_str:
+            self.message_user(request, "No tags provided.")
+            return
+
+        tag_strings = [t.strip() for t in tags_str.split(",") if t.strip()]
+        
+        count = 0
+        for wanted_gallery in queryset:
+            for tag_str in tag_strings:
+                scope_name = tag_str.split(":", maxsplit=1)
+                if len(scope_name) > 1:
+                    tag_obj, _ = Tag.objects.get_or_create(scope=scope_name[0], name=scope_name[1])
+                else:
+                    tag_obj, _ = Tag.objects.get_or_create(name=tag_str, scope="")
+                wanted_gallery.unwanted_tags.add(tag_obj)
+            count += 1
+
+        self.message_user(request, f"Added unwanted tags to {count} wanted galleries.")
+
+    add_unwanted_tags.short_description = "Add unwanted tags (comma separated)"  # type: ignore
+
+    def set_unwanted_tags(self, request: HttpRequest, queryset: QuerySet) -> None:
+        tags_str = request.POST.get("extra_field", "")
+        tag_strings = [t.strip() for t in tags_str.split(",") if t.strip()]
+
+        count = 0
+        for wanted_gallery in queryset:
+            wanted_gallery.unwanted_tags.clear()
+            for tag_str in tag_strings:
+                scope_name = tag_str.split(":", maxsplit=1)
+                if len(scope_name) > 1:
+                    tag_obj, _ = Tag.objects.get_or_create(scope=scope_name[0], name=scope_name[1])
+                else:
+                    tag_obj, _ = Tag.objects.get_or_create(name=tag_str, scope="")
+                wanted_gallery.unwanted_tags.add(tag_obj)
+            count += 1
+            
+        self.message_user(request, f"Set unwanted tags for {count} wanted galleries.")
+
+    set_unwanted_tags.short_description = "Set unwanted tags (comma separated)"  # type: ignore
 
     # inlines = (FoundGalleryInline,)
 

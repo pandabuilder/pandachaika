@@ -7,8 +7,6 @@ import typing
 from tempfile import mkdtemp
 from typing import Optional, Any
 
-from django.db import DataError
-
 from core.base.setup_utilities import GeneralUtils
 from core.base.utilities import (
     replace_illegal_name,
@@ -202,11 +200,7 @@ class BaseDownloader(metaclass=Meta):
             total_size=total_size,
         )
 
-        try:
-            download_event.save()
-        except DataError:
-            logger.error(f"Error saving DownloadEvent: name: {name}, method: {method}, download_id: {download_id}, archive: {archive}, gallery: {gallery}, progress: {progress}, total_size: {total_size}")
-            return None
+        download_event.save()
 
         return download_event
         # result, torrent_id

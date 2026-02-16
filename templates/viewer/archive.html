@@ -2,226 +2,174 @@
 {% block title %}{{ archive.best_title }} | {{ block.super }}{% endblock %}
 {% load static %}
 {% block content %}
-  {% load viewer_extras %}
-  {% if messages %}
-    {% for message in messages %}
-      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
-    {% endfor %}
-  {% endif %}
-  <!-- Archives  -->
-  <ul class="info">
-    {% if user.is_authenticated %}
-      <li class="right-container d-flex flex-column">
-      <div class="d-grid gap-1 d-md-flex justify-content-md-end">
-         <div class="me-1">Tools:</div>
-        {% if perms.viewer.recycle_archive %}
-            {% if archive.is_recycled %}
-                <a class="btn btn-sm shrink-btn open-modal" data-popup-url="{% url 'viewer:archive-tool-reason' archive.pk 'unrecycle' %}?inline=1" href="{% url 'viewer:archive-tool-reason' archive.pk 'unrecycle' %}" role="button">unrecycle</a>
-            {% else %}
-                <a class="btn btn-sm shrink-btn open-modal" data-popup-url="{% url 'viewer:archive-tool-reason' archive.pk 'recycle' %}?inline=1" href="{% url 'viewer:archive-tool-reason' archive.pk 'recycle' %}" role="button">recycle</a>
-            {% endif %}
-        {% endif %}
-        {% if perms.viewer.modify_archive_tools %}
-            <a class="btn btn-sm shrink-btn open-modal" data-popup-url="{% url 'viewer:archive-clone-plus' archive.pk %}?inline=1" href="{% url 'viewer:archive-clone-plus' archive.pk %}" role="button">clone +</a>
-        {% endif %}
-        {% if perms.viewer.modify_archive_tools %}
-            <a class="btn btn-sm shrink-btn open-modal" data-popup-url="{% url 'viewer:archive-split' archive.pk %}?inline=1" href="{% url 'viewer:archive-split' archive.pk %}" role="button">split</a>
-        {% endif %}
-        {% if user.is_staff %}
-            <a class="btn btn-sm shrink-btn" href="{% url 'viewer:archive-recalc-info' archive.pk %}">recalc</a>
-        {% endif %}
-        {% if perms.viewer.mark_similar_archive %}
-            <a class="btn btn-sm shrink-btn" href="{% url 'viewer:archive-mark-similar' archive.pk %}">mark similar</a>
-            <a class="btn btn-sm shrink-btn" href="{% url 'viewer:archive-mark-similar' archive.pk %}?use-recycled=1">mark similar (incl. recycled)</a>
-        {% endif %}
-        {% if user.is_staff %}
-            <a class="btn btn-sm shrink-btn" href="{% url 'viewer:check-convert-type' archive.pk %}">convert zip</a>
-        {% endif %}
-        {% if perms.viewer.update_metadata %}
-            <a class="btn btn-sm shrink-btn" href="{% url 'viewer:archive-recall-api' archive.pk %}">recall api</a>
-        {% endif %}
-        {% if perms.viewer.publish_archive %}
-            <a class="btn btn-sm shrink-btn" href="{% url 'viewer:archive-calc-imgs-sha1' archive.pk %}">calc sha1</a>
-        {% endif %}
-        {% if perms.viewer.publish_archive %}
-            {% if archive.public %}
-                <a class="btn btn-sm shrink-btn" href="{% url 'viewer:archive-private' archive.pk %}">private</a>
-            {% else %}
-                <a class="btn btn-sm shrink-btn" href="{% url 'viewer:archive-public' archive.pk %}">public</a>
-            {% endif %}
-        {% endif %}
-        {% if user.is_staff %}
-            <a class="btn btn-sm shrink-btn" href="{% url 'viewer:archive-rematch' archive.pk %}">rematch</a>
-            <a class="btn btn-sm shrink-btn open-modal" href="{% url 'viewer:archive-delete' archive.pk %}" data-popup-url="{% url 'viewer:archive-delete' archive.pk %}?inline=1" role="button">delete</a>
-            {% if archive.gallery %}
-                <a class="btn btn-sm shrink-btn" href="{% url 'viewer:gallery-tool' archive.gallery.pk 'toggle-hidden' %}">{% if archive.gallery.hidden %}open{% else %}hidden{% endif %}</a>
-            {% endif %}
-            {% if mode == 'view' %}
-                <a class="btn btn-sm shrink-btn" href="{% url 'viewer:archive-edit' archive.pk 'edit' %}">edit</a>
-            {% else %}
-                <a class="btn btn-sm shrink-btn" href="{% url 'viewer:archive' archive.pk %}">view</a>
-            {% endif %}
-            <a class="btn btn-sm shrink-btn" href="{% url 'admin:viewer_archive_change' archive.pk %}">admin</a>
-        {% endif %}
-      </div>
-      {% if archive.extracted %}
-      <div class="d-grid gap-1 d-md-flex justify-content-md-end mt-1">
-        <div class="me-1">View:</div>
-        <a class="btn btn-sm shrink-btn" href="?{% url_replace 'view' 'cover' %}">cover</a>
-        <a class="btn btn-sm shrink-btn" href="?{% url_replace 'view' 'thumbnails' %}">thumbnails</a>
-        <a class="btn btn-sm shrink-btn" href="?{% url_replace 'view' 'full' %}">full</a>
-        <a class="btn btn-sm shrink-btn" href="?{% url_replace 'view' 'single' %}">single</a>
-      </div>
-      {% endif %}
-      </li>
-    {% endif %}
-    <li class="title-main {{ archive|archive_title_class }}"><h5>{{ archive.best_title }}</h5></li>
-    {% if archive.title_jpn %}<li class="subtitle">{{ archive.title_jpn }}</li>{% endif %}
-    <li class="subtitle">
+{% load viewer_extras %}
+{% if messages %}
+{% for message in messages %}
+<div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+{% endfor %}
+{% endif %}
+<!-- Archives  -->
+<ul class="info">
+
+  <li class="title-main {{ archive|archive_title_class }}">
+    <h5>{{ archive.best_title }}</h5>
+  </li>
+  {% if archive.title_jpn %}<li class="subtitle">{{ archive.title_jpn }}</li>{% endif %}
+  <li class="subtitle">
     <div class="row">
-    <div class="col-sm-6">
-      <table>
-        {% if user.is_staff %}
-        <tr>
-          <th>File path</th>
-          <td>{{ archive.zipped|default:'No file in filesystem'  }}</td>
-        </tr>
-        {% endif %}
-        <tr>
-          <th>Images</th>
-          <td>{{ archive.filecount }}</td>
-        </tr>
-        <tr>
-          <th>Total image size</th>
-          <td><span class="align-middle">{{ archive.filesize|filesizeformat }}, {{ archive.filesize }}</span><span class="align-middle mx-2">{% if file_entry_total %}| <span class="fw-bold">Non-images total size:</span> {{ file_entry_total|filesizeformat }}, {{ file_entry_total }}</span><a class="btn btn-sm btn-light other-preview" tabindex="0" role="button" data-bs-toggle="popover" data-bs-pk="{{ archive.pk }}">Non-Images Details</a>{% endif %}</td>
-        </tr>
-        <tr>
-          <th>CRC32</th>
-          <td>{{ archive.crc32 }}</td>
-        </tr>
-        <tr>
-          <th>Source type</th>
-          <td><a href="{% url 'viewer:archive-search' %}?source_type={{ archive.source_type }}">{{ archive.source_type }}</a></td>
-        </tr>
-        <tr>
-          <th>Reason</th>
-          <td><a href="{% url 'viewer:archive-search' %}?reason={{ archive.reason }}">{{ archive.reason }}</a></td>
-        </tr>
-        {% if user.is_authenticated %}
-          <tr>
-          <th>Details</th>
-          <td>{{ archive.details|linebreaksbr|urlize_all_rel }}</td>
-        </tr>
-        {% endif %}
-        <tr>
-          {% if user.is_authenticated %}
-            <th>Added to backup</th><td>{{ archive.create_date|date:"DATETIME_FORMAT" }}</td>
-          {% else %}
-            <th>Available in backup</th><td>{{ archive.public_date|date:"DATETIME_FORMAT" }}</td>
-          {% endif %}
-        </tr>
-      {% if user.is_authenticated %}
-        <tr>
-          <th>Published</th><td>{{ archive.public|yesno }}</td>
-        </tr>
-        <tr>
-          <th>Published date</th><td>{{ archive.public_date|date:"DATETIME_FORMAT" }}</td>
-        </tr>
-      {% endif %}
-      </table>
-    </div>
-    {% if perms.viewer.archive_internal_info %}
-    <div class="col-sm-3">
-      <table class="private-info-table">
-        <caption>Private information</caption>
-        <tr>
-          <th>Added by</th>
-          <td>
-              {% if archive.user.pk == 1 %}ServiceAccount{% else %}{{ archive.user }}{% endif %}
-          </td>
-        </tr>
-        <tr>
-          <th>Added origin</th>
-          <td>
-              {{ archive.get_origin_display }}
-          </td>
-        </tr>
-          {% if archive.is_recycled %}
-        <tr>
-          <th>In Recycle bin?</th>
-          <td>
-              yes
-          </td>
-        </tr>
-        <tr>
-          <th>Recycle reason, user, date</th>
-          <td>
-              {{ archive.recycle_entry.reason|default:"Not set" }}, {{ archive.recycle_entry.user }}, {{ archive.recycle_entry.date_deleted|date:"DATETIME_FORMAT" }}
-          </td>
-        </tr>
-          {% else %}
-        <tr>
-          <th>In Recycle bin?</th>
-          <td>
-              no
-          </td>
-        </tr>
-          {% endif %}
-        <tr>
-          <th>Is file deleted?</th>
-          <td>
-              {{ archive.is_file_deleted|yesno }}
-          </td>
-        </tr>
-      </table>
-    </div>
-    {% endif %}
-{% if archive_statistics %}
-        <div class="col-sm-3">
-          <table>
-            <caption class="">Image Statistics</caption>
-            <tr>
-              <th>Average File Size</th>
-              <td>{{ archive_statistics.filesize_average|filesizeformat }}</td>
-            </tr>
-            <tr>
-              <th>Average Height, std dev</th>
-              <td{% if archive_statistics.height_stddev == 0 %} class="acc-total"{% endif %}>{{ archive_statistics.height_average|floatformat:1 }}px, {{ archive_statistics.height_stddev|floatformat:1 }}</td>
-            </tr>
-            <tr>
-              <th>Average Width, std dev</th>
-              <td{% if archive_statistics.width_stddev == 0 %} class="acc-total"{% endif %}>{{ archive_statistics.width_average|floatformat:1 }}px, {{ archive_statistics.width_stddev|floatformat:1 }}</td>
-            </tr>
-            <tr>
-              <th>Most Common Height</th>
-              <td>{{ archive_statistics.height_mode }}px</td>
-            </tr>
-            <tr>
-              <th>Most Common Width</th>
-              <td>{{ archive_statistics.width_mode }}px</td>
-            </tr>
-            <tr>
-              <th>Most Common Image Format</th>
-              <td>{{ archive_statistics.image_mode_mode|default:"N/A" }}</td>
-            </tr>
-            <tr>
-              <th>Most Common File Type</th>
-              <td{% if archive_statistics.file_type_match == 1 %} class="acc-total"{% endif %}>{{ archive_statistics.file_type_mode|default:"N/A" }}</td>
-            </tr>
-            <tr>
-              <th>Orientation</th>
-              <td>{% if archive_statistics.is_horizontal_mode %}Horizontal{% else %}Vertical{% endif %}</td>
-            </tr>
-          </table>
-        </div>
-    {% endif %}
-    </div>
-    </li>
-    <li class="subtitle line-top">
-      <div class="row">
       <div class="col-sm-6">
         <table>
-        {% if archive.gallery %}
+          {% if user.is_staff %}
+          <tr>
+            <th>File path</th>
+            <td>{{ archive.zipped|default:'No file in filesystem' }}</td>
+          </tr>
+          {% endif %}
+          <tr>
+            <th>Images</th>
+            <td>{{ archive.filecount }}</td>
+          </tr>
+          <tr>
+            <th>Total image size</th>
+            <td><span class="align-middle">{{ archive.filesize|filesizeformat }}, {{ archive.filesize }}</span><span
+                class="align-middle mx-2">{% if file_entry_total %}| <span class="fw-bold">Non-images total size:</span>
+                {{ file_entry_total|filesizeformat }}, {{ file_entry_total }}</span><a
+                class="btn btn-sm btn-light other-preview" tabindex="0" role="button" data-bs-toggle="popover"
+                data-bs-pk="{{ archive.pk }}">Non-Images Details</a>{% endif %}</td>
+          </tr>
+          <tr>
+            <th>CRC32</th>
+            <td>{{ archive.crc32 }}</td>
+          </tr>
+          <tr>
+            <th>Source type</th>
+            <td><a href="{% url 'viewer:archive-search' %}?source_type={{ archive.source_type }}">{{ archive.source_type }}</a></td>
+          </tr>
+          <tr>
+            <th>Reason</th>
+            <td><a href="{% url 'viewer:archive-search' %}?reason={{ archive.reason }}">{{ archive.reason }}</a></td>
+          </tr>
+          {% if user.is_authenticated %}
+          <tr>
+            <th>Details</th>
+            <td>{{ archive.details|linebreaksbr|urlize_all_rel }}</td>
+          </tr>
+          {% endif %}
+          <tr>
+            {% if user.is_authenticated %}
+            <th>Added to backup</th>
+            <td>{{ archive.create_date|date:"DATETIME_FORMAT" }}</td>
+            {% else %}
+            <th>Available in backup</th>
+            <td>{{ archive.public_date|date:"DATETIME_FORMAT" }}</td>
+            {% endif %}
+          </tr>
+          {% if user.is_authenticated %}
+          <tr>
+            <th>Published</th>
+            <td>{{ archive.public|yesno }}</td>
+          </tr>
+          <tr>
+            <th>Published date</th>
+            <td>{{ archive.public_date|date:"DATETIME_FORMAT" }}</td>
+          </tr>
+          {% endif %}
+        </table>
+      </div>
+      {% if perms.viewer.archive_internal_info %}
+      <div class="col-sm-3">
+        <table class="private-info-table">
+          <caption>Private information</caption>
+          <tr>
+            <th>Added by</th>
+            <td>
+              {% if archive.user.pk == 1 %}ServiceAccount{% else %}{{ archive.user }}{% endif %}
+            </td>
+          </tr>
+          <tr>
+            <th>Added origin</th>
+            <td>
+              {{ archive.get_origin_display }}
+            </td>
+          </tr>
+          {% if archive.is_recycled %}
+          <tr>
+            <th>In Recycle bin?</th>
+            <td>
+              yes
+            </td>
+          </tr>
+          <tr>
+            <th>Recycle reason, user, date</th>
+            <td>
+              {{ archive.recycle_entry.reason|default:"Not set" }}, {{ archive.recycle_entry.user }}, {{ archive.recycle_entry.date_deleted|date:"DATETIME_FORMAT" }}
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <th>In Recycle bin?</th>
+            <td>
+              no
+            </td>
+          </tr>
+          {% endif %}
+          <tr>
+            <th>Is file deleted?</th>
+            <td>
+              {{ archive.is_file_deleted|yesno }}
+            </td>
+          </tr>
+        </table>
+      </div>
+      {% endif %}
+      {% if archive_statistics %}
+      <div class="col-sm-3">
+        <table>
+          <caption class="">Image Statistics</caption>
+          <tr>
+            <th>Average File Size</th>
+            <td>{{ archive_statistics.filesize_average|filesizeformat }}</td>
+          </tr>
+          <tr>
+            <th>Average Height, std dev</th>
+            <td{% if archive_statistics.height_stddev == 0 %} class="acc-total" {% endif %}>{{ archive_statistics.height_average|floatformat:1 }}px, {{ archive_statistics.height_stddev|floatformat:1 }}
+              </td>
+          </tr>
+          <tr>
+            <th>Average Width, std dev</th>
+            <td{% if archive_statistics.width_stddev == 0 %} class="acc-total" {% endif %}>{{ archive_statistics.width_average|floatformat:1 }}px, {{ archive_statistics.width_stddev|floatformat:1 }}
+              </td>
+          </tr>
+          <tr>
+            <th>Most Common Height</th>
+            <td>{{ archive_statistics.height_mode }}px</td>
+          </tr>
+          <tr>
+            <th>Most Common Width</th>
+            <td>{{ archive_statistics.width_mode }}px</td>
+          </tr>
+          <tr>
+            <th>Most Common Image Format</th>
+            <td>{{ archive_statistics.image_mode_mode|default:"N/A" }}</td>
+          </tr>
+          <tr>
+            <th>Most Common File Type</th>
+            <td{% if archive_statistics.file_type_match == 1 %} class="acc-total" {% endif %}>{{ archive_statistics.file_type_mode|default:"N/A" }}</td>
+          </tr>
+          <tr>
+            <th>Orientation</th>
+            <td>{% if archive_statistics.is_horizontal_mode %}Horizontal{% else %}Vertical{% endif %}</td>
+          </tr>
+        </table>
+      </div>
+      {% endif %}
+    </div>
+  </li>
+  <li class="subtitle line-top">
+    <div class="row">
+      <div class="col-sm-6">
+        <table>
+          {% if archive.gallery %}
           <tr>
             <th>Source metadata</th>
             <td>{{ archive.get_link|urlize_all_rel }}</td>
@@ -246,23 +194,23 @@
             <th>Metadata</th>
             <td><a href="{% url 'viewer:gallery' archive.gallery_id %}">{% url 'viewer:gallery' archive.gallery_id %}</a></td>
           </tr>
-        {% else %}
-            <tr>
-                <th>Metadata</th>
-                <td>No associated Gallery</td>
-            </tr>
-        {% endif %}
+          {% else %}
+          <tr>
+            <th>Metadata</th>
+            <td>No associated Gallery</td>
+          </tr>
+          {% endif %}
 
           <tr>
             <th>Alternative sources</th>
             <td>
               <ul class="simple-tags">
                 {% for alternative_gallery in archive.alternative_sources.eligible_for_use %}
-                  {% if user.is_authenticated or alternative_gallery.public %}
-                  <li>
-                    <a href="{% url 'viewer:gallery' alternative_gallery.pk %}">{{ alternative_gallery.best_title }}</a>
-                  </li>
-                  {% endif %}
+                {% if user.is_authenticated or alternative_gallery.public %}
+                <li>
+                  <a href="{% url 'viewer:gallery' alternative_gallery.pk %}">{{ alternative_gallery.best_title }}</a>
+                </li>
+                {% endif %}
                 {% endfor %}
               </ul>
             </td>
@@ -272,11 +220,11 @@
             <td>
               <ul class="simple-tags">
                 {% for archive_group in archive.archive_groups.all %}
-                  {% if user.is_authenticated or archive_group.public %}
-                    <li>
-                      <a href="{% url 'viewer:archive-group' archive_group.title_slug %}">{{ archive_group.title }}</a>
-                    </li>
-                  {% endif %}
+                {% if user.is_authenticated or archive_group.public %}
+                <li>
+                  <a href="{% url 'viewer:archive-group' archive_group.title_slug %}">{{ archive_group.title }}</a>
+                </li>
+                {% endif %}
                 {% endfor %}
               </ul>
             </td>
@@ -284,440 +232,558 @@
         </table>
       </div>
 
-    {% if gallery_provider_data %}
-    <div class="col-sm-6">
-      <table class="private-info-table">
-        <caption>Provider Extra Metadata</caption>
+      {% if gallery_provider_data %}
+      <div class="col-sm-6">
+        <table class="private-info-table">
+          <caption>Provider Extra Metadata</caption>
           {% for provider_data in gallery_provider_data %}
-            <tr>
-              <th>{{ provider_data.name|capfirst }}</th>
-              <td>
-                  {{ provider_data.value|urlize_all_rel }}
-              </td>
-            </tr>
-            <tr>
-          {% endfor %}
-      </table>
-    </div>
-    {% endif %}
-
+          <tr>
+            <th>{{ provider_data.name|capfirst }}</th>
+            <td>
+              {{ provider_data.value|urlize_all_rel }}
+            </td>
+          </tr>
+          <tr>
+            {% endfor %}
+        </table>
       </div>
-      </li>
-    {% if tag_count %}
-      <li class="subtitle">
-        <ul class="tags">
-          {% for tag_list in archive.gallery_tag_lists %}
-            <li>
-              {% if tag_list.0 %}
-                <label class="label-extended">{{ tag_list.0 }}:</label>
-              {% endif %}
-              {% for tag in tag_list.1 %}
-                <a href="{% url 'viewer:archive-tag-search' 'tag' tag %}">
-                  {% if tag_list.0 %}{{ tag.name }}{% else %}{{ tag }}{% endif %}</a>
-              {% endfor %}
-            </li>
-          {% endfor %}
-        </ul>
-      </li>
-    {% endif %}
-    {% if custom_tag_count %}
-      <li class="subtitle">
-        <ul class="tags">
-          {% for tag_list in archive.custom_tag_lists %}
-            <li>
-              {% if tag_list.0 %}
-                <label class="label-extended">{{ tag_list.0 }}:</label>
-              {% endif %}
-              {% for tag in tag_list.1 %}
-                <a href="{% url 'viewer:archive-tag-search' 'tag' tag %}">
-                  {% if tag_list.0 %}{{ tag.name }}{% else %}{{ tag }}{% endif %}</a>
-              {% endfor %}
-            </li>
-          {% endfor %}
-        </ul>
-      </li>
-    {% endif %}
-    <li class="subtitle">
-    {% if user.is_staff %}
-      {% if archive.crc32 %}
-          {% if archive.extracted %}
-            <a class="btn btn-info" href="{% url 'viewer:new-image-viewer' archive.pk '1' %}" id="view-online">View online</a>
-            <a class="btn btn-light" href="{% url 'viewer:archive-reduce' archive.pk %}">Reduce archive</a>
-          {% else %}
-            <a class="btn btn-light" href="{% url 'viewer:archive-extract' archive.pk %}">Expand archive</a>
-            <a class="btn btn-light" href="{% url 'viewer:archive-extract' archive.pk %}?resized=1">Expand (resized) archive</a>
-          {% endif %}
-          <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}">Download archive</a>
-          <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}?original=1">Download with original name</a>
-          <a class="btn btn-light" href="{% url 'viewer:api' %}?archive={{ archive.pk }}">JSON info</a>
-          <a class="btn btn-light hash-preview" tabindex="0" role="button" data-bs-toggle="popover" data-bs-pk="{{ archive.pk }}">Images SHA1</a>
-          <a class="btn btn-light" href="{% url 'viewer:image-data-list' archive.pk %}">Images Data</a>
-          <a class="btn btn-light" href="{% url 'viewer:archive-change-log' archive.pk %}">Change Log</a>
-          <a class="btn btn-light" href="{% url 'viewer:activity-event-log' %}?content_type=archive&content_id={{ archive.pk }}">Activity Log</a>
-          {% if archive.thumbnail.name %}
-            <a class="btn btn-light img-preview" data-image-url="{{ archive.thumbnail.url }}" rel="popover">Hover for cover</a>
-          {% endif %}
-          {% if user_archive_preferences.favorite_group == 0 %}
-              <a class="btn btn-light" href="{% url 'viewer:user-archive-preferences' archive.pk 'favorite' %}">Favorite</a>
-          {% else %}
-              <a class="btn btn-light" href="{% url 'viewer:user-archive-preferences' archive.pk 'unfavorite' %}">Unfavorite</a>
-          {% endif %}
       {% endif %}
-      <button class="btn btn-secondary collapse-icon" id="edit-archive" data-bs-toggle="collapse" data-bs-target="#change-archive-form" name="edit-archive" type="button" aria-label="toggle edit archive">Edit <i class="fas fa-chevron-down"></i></button>
-      <button class="btn {% if manage_entries_count %}btn-success{% else %}btn-secondary{% endif %} collapse-icon" id="manage-archive" data-bs-toggle="collapse" data-bs-target="#manage-archive-form" name="manage-archive" type="button" aria-label="toggle edit archive">Manage <i class="fas fa-chevron-down"></i></button>
+
+    </div>
+  </li>
+  {% if tag_count %}
+  <li class="subtitle">
+    <ul class="tags">
+      {% for tag_list in archive.gallery_tag_lists %}
+      <li>
+        {% if tag_list.0 %}
+        <label class="label-extended">{{ tag_list.0 }}:</label>
+        {% endif %}
+        {% for tag in tag_list.1 %}
+        <a href="{% url 'viewer:archive-tag-search' 'tag' tag %}">
+          {% if tag_list.0 %}{{ tag.name }}{% else %}{{ tag }}{% endif %}</a>
+        {% endfor %}
+      </li>
+      {% endfor %}
+    </ul>
+  </li>
+  {% endif %}
+  {% if custom_tag_count %}
+  <li class="subtitle">
+    <ul class="tags">
+      {% for tag_list in archive.custom_tag_lists %}
+      <li>
+        {% if tag_list.0 %}
+        <label class="label-extended">{{ tag_list.0 }}:</label>
+        {% endif %}
+        {% for tag in tag_list.1 %}
+        <a href="{% url 'viewer:archive-tag-search' 'tag' tag %}">
+          {% if tag_list.0 %}{{ tag.name }}{% else %}{{ tag }}{% endif %}</a>
+        {% endfor %}
+      </li>
+      {% endfor %}
+    </ul>
+  </li>
+  {% endif %}
+  <li class="subtitle d-flex flex-wrap gap-1 align-items-center mb-1">
+    {% if user.is_staff %}
+    {% if archive.crc32 %}
+    {% if archive.extracted %}
+    <a class="btn btn-info" href="{% url 'viewer:new-image-viewer' archive.pk '1' %}" id="view-online">View
+      online</a>
+
+
+    <a class="btn btn-light" href="{% url 'viewer:archive-reduce' archive.pk %}">Reduce archive</a>
+    {% else %}
+    <a class="btn btn-light" href="{% url 'viewer:archive-extract' archive.pk %}">Expand archive</a>
+    <a class="btn btn-light" href="{% url 'viewer:archive-extract' archive.pk %}?resized=1">Expand (resized)
+      archive</a>
+    {% endif %}
+    <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}">Download archive</a>
+    <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}?original=1">Download with
+      original name</a>
+    <a class="btn btn-light" href="{% url 'viewer:api' %}?archive={{ archive.pk }}">JSON info</a>
+    <a class="btn btn-light hash-preview" tabindex="0" role="button" data-bs-toggle="popover"
+      data-bs-pk="{{ archive.pk }}">Images SHA1</a>
+    <a class="btn btn-light" href="{% url 'viewer:image-data-list' archive.pk %}">Images Data</a>
+    <a class="btn btn-light" href="{% url 'viewer:archive-change-log' archive.pk %}">Change Log</a>
+    <a class="btn btn-light"
+      href="{% url 'viewer:activity-event-log' %}?content_type=archive&content_id={{ archive.pk }}">Activity Log</a>
+    {% if archive.thumbnail.name %}
+    <a class="btn btn-light img-preview" data-image-url="{{ archive.thumbnail.url }}" rel="popover">Hover for
+      cover</a>
+    {% endif %}
+    {% if user_archive_preferences.favorite_group == 0 %}
+    <a class="btn btn-light"
+      href="{% url 'viewer:user-archive-preferences' archive.pk 'favorite' %}">Favorite</a>
+    {% else %}
+    <a class="btn btn-light"
+      href="{% url 'viewer:user-archive-preferences' archive.pk 'unfavorite' %}">Unfavorite</a>
+    {% endif %}
+    {% endif %}
+    <button class="btn btn-secondary collapse-icon" id="edit-archive" data-bs-toggle="collapse"
+      data-bs-target="#change-archive-form" name="edit-archive" type="button" aria-label="toggle edit archive">Edit <i
+        class="fas fa-chevron-down"></i></button>
+    <button class="btn {% if manage_entries_count %}btn-success{% else %}btn-secondary{% endif %} collapse-icon"
+      id="manage-archive" data-bs-toggle="collapse" data-bs-target="#manage-archive-form" name="manage-archive"
+      type="button" aria-label="toggle edit archive">Manage <i class="fas fa-chevron-down"></i></button>
 
     {% elif archive.crc32 %}
-        {% if perms.viewer.expand_archive %}
-          {% if archive.extracted %}
-            <a class="btn btn-info" href="{% url 'viewer:new-image-viewer' archive.pk '1' %}" id="view-online">View online</a>
-            <a class="btn btn-light" href="{% url 'viewer:archive-reduce' archive.pk %}">Reduce archive</a>
-          {% else %}
-            <a class="btn btn-light" href="{% url 'viewer:archive-extract' archive.pk %}">Expand archive</a>
-            <a class="btn btn-light" href="{% url 'viewer:archive-extract' archive.pk %}?resized=1">Expand (resized) archive</a>
-          {% endif %}
-        {% endif %}
-        <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}">Download archive</a>
-        <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}?original=1">Download with original name</a>
-        <a class="btn btn-light" href="{% url 'viewer:api' %}?archive={{ archive.pk }}">JSON info</a>
-        <a class="btn btn-light hash-preview" tabindex="0" role="button" data-bs-toggle="popover" data-bs-pk="{{ archive.pk }}">Images SHA1</a>
-        <a class="btn btn-light" href="{% url 'viewer:image-data-list' archive.pk %}">Images Data</a>
-        {% if perms.viewer.read_archive_change_log %}
-        <a class="btn btn-light" href="{% url 'viewer:archive-change-log' archive.pk %}">Change Log</a>
-        {% endif %}
-        {% if perms.viewer.read_activity_logs %}
-        <a class="btn btn-light" href="{% url 'viewer:activity-event-log' %}?content_type=archive&content_id={{ archive.pk }}">Activity Log</a>
-        {% endif %}
-        {% if archive.thumbnail.name %}
-          <a class="btn btn-light img-preview" data-image-url="{{ archive.thumbnail.url }}" rel="popover">Hover for cover</a>
-        {% endif %}
-        {% if user.is_authenticated %}
-            {% if user_archive_preferences.favorite_group == 0 %}
-                <a class="btn btn-light" href="{% url 'viewer:user-archive-preferences' archive.pk 'favorite' %}">Favorite</a>
-            {% else %}
-                <a class="btn btn-light" href="{% url 'viewer:user-archive-preferences' archive.pk 'unfavorite' %}">Unfavorite</a>
-            {% endif %}
-        {% endif %}
-        {% if perms.viewer.change_archive %}
-        <button class="btn btn-secondary collapse-icon" id="edit-archive" data-bs-toggle="collapse" data-bs-target="#change-archive-form" name="edit-archive" type="button" aria-label="toggle edit archive">Edit <i class="fas fa-chevron-down"></i></button>
-        {% endif %}
-        {% if perms.viewer.mark_archive %}
-        <button class="btn {% if manage_entries_count %}btn-success{% else %}btn-secondary{% endif %} collapse-icon" id="manage-archive" data-bs-toggle="collapse" data-bs-target="#manage-archive-form" name="manage-archive" type="button" aria-label="toggle edit archive">Manage <i class="fas fa-chevron-down"></i></button>
-        {% endif %}
+    {% if perms.viewer.expand_archive %}
+    {% if archive.extracted %}
+    <a class="btn btn-info" href="{% url 'viewer:new-image-viewer' archive.pk '1' %}" id="view-online">View
+      online</a>
+    <a class="btn btn-light" href="{% url 'viewer:archive-reduce' archive.pk %}">Reduce archive</a>
     {% else %}
-        {% if perms.viewer.change_archive %}
-        <button class="btn btn-secondary collapse-icon" id="edit-archive" data-bs-toggle="collapse" data-bs-target="#change-archive-form" name="edit-archive" type="button" aria-label="toggle edit archive">Edit <i class="fas fa-chevron-down"></i></button>
-        {% endif %}
-        {% if perms.viewer.mark_archive %}
-        <button class="btn {% if manage_entries_count %}btn-success{% else %}btn-secondary{% endif %} collapse-icon" id="manage-archive" data-bs-toggle="collapse" data-bs-target="#manage-archive-form" name="manage-archive" type="button" aria-label="toggle edit archive">Manage <i class="fas fa-chevron-down"></i></button>
-        {% endif %}
+    <a class="btn btn-light" href="{% url 'viewer:archive-extract' archive.pk %}">Expand archive</a>
+    <a class="btn btn-light" href="{% url 'viewer:archive-extract' archive.pk %}?resized=1">Expand (resized)
+      archive</a>
     {% endif %}
-    </li>
+    {% endif %}
+    <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}">Download archive</a>
+    <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}?original=1">Download with
+      original name</a>
+    <a class="btn btn-light" href="{% url 'viewer:api' %}?archive={{ archive.pk }}">JSON info</a>
+    <a class="btn btn-light hash-preview" tabindex="0" role="button" data-bs-toggle="popover"
+      data-bs-pk="{{ archive.pk }}">Images SHA1</a>
+    <a class="btn btn-light" href="{% url 'viewer:image-data-list' archive.pk %}">Images Data</a>
+    {% if perms.viewer.read_archive_change_log %}
+    <a class="btn btn-light" href="{% url 'viewer:archive-change-log' archive.pk %}">Change Log</a>
+    {% endif %}
+    {% if perms.viewer.read_activity_logs %}
+    <a class="btn btn-light"
+      href="{% url 'viewer:activity-event-log' %}?content_type=archive&content_id={{ archive.pk }}">Activity Log</a>
+    {% endif %}
+    {% if archive.thumbnail.name %}
+    <a class="btn btn-light img-preview" data-image-url="{{ archive.thumbnail.url }}" rel="popover">Hover for
+      cover</a>
+    {% endif %}
+    {% if user.is_authenticated %}
+    {% if user_archive_preferences.favorite_group == 0 %}
+    <a class="btn btn-light"
+      href="{% url 'viewer:user-archive-preferences' archive.pk 'favorite' %}">Favorite</a>
+    {% else %}
+    <a class="btn btn-light"
+      href="{% url 'viewer:user-archive-preferences' archive.pk 'unfavorite' %}">Unfavorite</a>
+    {% endif %}
+    {% endif %}
     {% if perms.viewer.change_archive %}
-    <li class="subtitle">
-        {% include 'viewer/include/archive_edit.html' %}
-    </li>
+    <button class="btn btn-secondary collapse-icon" id="edit-archive" data-bs-toggle="collapse"
+      data-bs-target="#change-archive-form" name="edit-archive" type="button" aria-label="toggle edit archive">Edit <i
+        class="fas fa-chevron-down"></i></button>
     {% endif %}
-    {% if perms.viewer.view_marks %}
-      <li class="subtitle">
-      <div class="row g-4">
-      {% for archive_manage_instance in manage_entries %}
-        <div class="col-xxl-3 col-md-6 col-sm-12">
-          <div class="card panel{% if perms.viewer.edit_system_marks and not archive_manage_instance.is_indexed %} disabled-card{% endif %}">
-            <div class="card-header">
-                <div class="d-flex">
-                    <div class="text-center">by: {% if not archive_manage_instance.mark_user or archive_manage_instance.mark_user.pk == 1 %}ServiceAccount{% else %}{{ archive_manage_instance.mark_user }}{% endif %}, on: {{ archive_manage_instance.mark_date|date:"y-m-d H:i:s" }}, priority: {{ archive_manage_instance.mark_priority|floatformat:2 }}</div>
-                </div>
-            </div>
-            <div class="card-body mark-height">
-              <h5 class="card-title">{{ archive_manage_instance.mark_reason }}</h5>
-              <p class="card-text">{{ archive_manage_instance.mark_comment|urlize_all_rel|convert_special_urls|linebreaks }}</p>
-              <p class="card-text">{{ archive_manage_instance.mark_extra }}</p>
-            </div>
-            <div class="card-footer">
-                <div class="d-flex">
-                    <a class="btn btn-sm btn-primary justify-content-end" role="button" onclick="toggleHeight(this);">Expand</a>
-                      {% if perms.viewer.edit_system_marks %}
-                          {% if not archive_manage_instance.mark_user or archive_manage_instance.mark_user.pk == 1 %}
-                              {% if archive_manage_instance.is_indexed %}
-                                <a href="{% url 'viewer:archive-manage-remove-from-index' archive_manage_instance.pk %}" class="btn btn-sm btn-primary justify-content-end ms-1">Un-index</a>
-                              {% else %}
-                                <a href="{% url 'viewer:archive-manage-add-to-index' archive_manage_instance.pk %}" class="btn btn-sm btn-primary justify-content-end ms-1">Re-index</a>
-                              {% endif %}
-                          {% endif %}
-                      {% endif %}
-                    {% if archive_manage_instance.mark_user == user or perms.viewer.delete_archivemanageentry %}<a href="{% url 'viewer:archive-manage-delete' archive_manage_instance.pk %}" class="btn btn-sm btn-primary justify-content-end ms-1">Delete</a>{% endif %}
-                </div>
-            </div>
-          </div>
-        </div>
-     {% endfor %}
-      </div>
-      </li>
-      {% if perms.viewer.mark_archive %}
-      <li class="subtitle">
-      {% include 'viewer/include/archive_manage.html' %}
-      </li>
-      {% endif %}
+    {% if perms.viewer.mark_archive %}
+    <button class="btn {% if manage_entries_count %}btn-success{% else %}btn-secondary{% endif %} collapse-icon"
+      id="manage-archive" data-bs-toggle="collapse" data-bs-target="#manage-archive-form" name="manage-archive"
+      type="button" aria-label="toggle edit archive">Manage <i class="fas fa-chevron-down"></i></button>
+    {% endif %}
     {% else %}
-      <li class="subtitle">
-      <div class="row g-4">
+    {% if perms.viewer.change_archive %}
+    <button class="btn btn-secondary collapse-icon" id="edit-archive" data-bs-toggle="collapse"
+      data-bs-target="#change-archive-form" name="edit-archive" type="button" aria-label="toggle edit archive">Edit <i
+        class="fas fa-chevron-down"></i></button>
+    {% endif %}
+    {% if perms.viewer.mark_archive %}
+    <button class="btn {% if manage_entries_count %}btn-success{% else %}btn-secondary{% endif %} collapse-icon"
+      id="manage-archive" data-bs-toggle="collapse" data-bs-target="#manage-archive-form" name="manage-archive"
+      type="button" aria-label="toggle edit archive">Manage <i class="fas fa-chevron-down"></i></button>
+    {% endif %}
+    {% endif %}
+  </li>
+{% if user.is_authenticated %}
+  <li class="subtitle d-flex flex-wrap gap-1 align-items-center mb-1">
+    <div class="fw-bold me-1">Tools:</div>
+    {% if perms.viewer.recycle_archive %}
+    {% if archive.is_recycled %}
+    <a class="btn shrink-btn open-modal"
+      data-popup-url="{% url 'viewer:archive-tool-reason' archive.pk 'unrecycle' %}?inline=1"
+      href="{% url 'viewer:archive-tool-reason' archive.pk 'unrecycle' %}" role="button">unrecycle</a>
+    {% else %}
+    <a class="btn shrink-btn open-modal"
+      data-popup-url="{% url 'viewer:archive-tool-reason' archive.pk 'recycle' %}?inline=1"
+      href="{% url 'viewer:archive-tool-reason' archive.pk 'recycle' %}" role="button">recycle</a>
+    {% endif %}
+    {% endif %}
+    {% if perms.viewer.modify_archive_tools %}
+    <a class="btn shrink-btn open-modal"
+      data-popup-url="{% url 'viewer:archive-clone-plus' archive.pk %}?inline=1"
+      href="{% url 'viewer:archive-clone-plus' archive.pk %}" role="button">clone +</a>
+    {% endif %}
+    {% if perms.viewer.modify_archive_tools %}
+    <a class="btn shrink-btn open-modal" data-popup-url="{% url 'viewer:archive-split' archive.pk %}?inline=1"
+      href="{% url 'viewer:archive-split' archive.pk %}" role="button">split</a>
+    {% endif %}
+    {% if user.is_staff %}
+    <a class="btn shrink-btn" href="{% url 'viewer:archive-recalc-info' archive.pk %}">recalc</a>
+    {% endif %}
+    {% if perms.viewer.mark_similar_archive %}
+    <a class="btn shrink-btn" href="{% url 'viewer:archive-mark-similar' archive.pk %}">mark similar</a>
+    <a class="btn shrink-btn" href="{% url 'viewer:archive-mark-similar' archive.pk %}?use-recycled=1">mark
+      similar (incl. recycled)</a>
+    {% endif %}
+    {% if user.is_staff %}
+    <a class="btn shrink-btn" href="{% url 'viewer:check-convert-type' archive.pk %}">convert zip</a>
+    {% endif %}
+    {% if perms.viewer.update_metadata %}
+    <a class="btn shrink-btn" href="{% url 'viewer:archive-recall-api' archive.pk %}">recall api</a>
+    {% endif %}
+    {% if perms.viewer.publish_archive %}
+    <a class="btn shrink-btn" href="{% url 'viewer:archive-calc-imgs-sha1' archive.pk %}">calc sha1</a>
+    {% endif %}
+    {% if perms.viewer.publish_archive %}
+    {% if archive.public %}
+    <a class="btn shrink-btn" href="{% url 'viewer:archive-private' archive.pk %}">private</a>
+    {% else %}
+    <a class="btn shrink-btn" href="{% url 'viewer:archive-public' archive.pk %}">public</a>
+    {% endif %}
+    {% endif %}
+    {% if user.is_staff %}
+    <a class="btn shrink-btn" href="{% url 'viewer:archive-rematch' archive.pk %}">rematch</a>
+    <a class="btn shrink-btn open-modal" href="{% url 'viewer:archive-delete' archive.pk %}"
+      data-popup-url="{% url 'viewer:archive-delete' archive.pk %}?inline=1" role="button">delete</a>
+    {% if archive.gallery %}
+    <a class="btn shrink-btn" href="{% url 'viewer:gallery-tool' archive.gallery.pk 'toggle-hidden' %}">{% if archive.gallery.hidden %}open{% else %}hidden{% endif %}</a>
+    {% endif %}
+    {% if mode == 'view' %}
+    <a class="btn shrink-btn" href="{% url 'viewer:archive-edit' archive.pk 'edit' %}">edit</a>
+    {% else %}
+    <a class="btn shrink-btn" href="{% url 'viewer:archive' archive.pk %}">view</a>
+    {% endif %}
+    <a class="btn shrink-btn" href="{% url 'admin:viewer_archive_change' archive.pk %}">admin</a>
+    {% endif %}
+  </li>
+    {% endif %}
+{% if user.is_authenticated and archive.extracted %}
+  <li class="subtitle d-flex flex-wrap gap-1 align-items-center mb-1">
+    <div class="fw-bold me-1">View:</div>
+    <a class="btn shrink-btn" href="?{% url_replace 'view' 'cover' %}">cover</a>
+    <a class="btn shrink-btn" href="?{% url_replace 'view' 'thumbnails' %}">thumbnails</a>
+    <a class="btn shrink-btn" href="?{% url_replace 'view' 'full' %}">full</a>
+    <a class="btn shrink-btn" href="?{% url_replace 'view' 'single' %}">single</a>
+  </li>
+    {% endif %}
+  {% if perms.viewer.change_archive %}
+  <li class="subtitle">
+    {% include 'viewer/include/archive_edit.html' %}
+  </li>
+  {% endif %}
+  {% if perms.viewer.view_marks %}
+  <li class="subtitle">
+    <div class="row g-4">
       {% for archive_manage_instance in manage_entries %}
-        <div class="col-sm-3">
-          <div class="card panel">
-            <div class="card-body mark-height">
-              <h5 class="card-title">{{ archive_manage_instance.mark_reason }}<a class="btn btn-sm btn-primary justify-content-end ms-2" role="button" onclick="toggleHeight(this);">expand</a></h5>
-              <p class="card-text">{{ archive_manage_instance.mark_comment|urlize_all_rel|convert_special_urls|linebreaks }}</p>
-              <p class="card-text">{{ archive_manage_instance.mark_extra }}</p>
+      <div class="col-xxl-3 col-md-6 col-sm-12">
+        <div
+          class="card panel{% if perms.viewer.edit_system_marks and not archive_manage_instance.is_indexed %} disabled-card{% endif %}">
+          <div class="card-header">
+            <div class="d-flex">
+              <div class="text-center">by: {% if not archive_manage_instance.mark_user or archive_manage_instance.mark_user.pk == 1 %}ServiceAccount{% else %}{{ archive_manage_instance.mark_user }}{% endif %}, on: {{ archive_manage_instance.mark_date|date:"y-m-d H:i:s" }}, priority: {{ archive_manage_instance.mark_priority|floatformat:2 }}</div>
+            </div>
+          </div>
+          <div class="card-body mark-height">
+            <h5 class="card-title">{{ archive_manage_instance.mark_reason }}</h5>
+            <p class="card-text">{{ archive_manage_instance.mark_comment|urlize_all_rel|convert_special_urls|linebreaks }}</p>
+            <p class="card-text">{{ archive_manage_instance.mark_extra }}</p>
+          </div>
+          <div class="card-footer">
+            <div class="d-flex">
+              <a class="btn btn-sm btn-primary justify-content-end" role="button"
+                onclick="toggleHeight(this);">Expand</a>
+              {% if perms.viewer.edit_system_marks %}
+              {% if not archive_manage_instance.mark_user or archive_manage_instance.mark_user.pk == 1 %}
+              {% if archive_manage_instance.is_indexed %}
+              <a href="{% url 'viewer:archive-manage-remove-from-index' archive_manage_instance.pk %}"
+                class="btn btn-sm btn-primary justify-content-end ms-1">Un-index</a>
+              {% else %}
+              <a href="{% url 'viewer:archive-manage-add-to-index' archive_manage_instance.pk %}"
+                class="btn btn-sm btn-primary justify-content-end ms-1">Re-index</a>
+              {% endif %}
+              {% endif %}
+              {% endif %}
+              {% if archive_manage_instance.mark_user == user or perms.viewer.delete_archivemanageentry %}<a
+                href="{% url 'viewer:archive-manage-delete' archive_manage_instance.pk %}"
+                class="btn btn-sm btn-primary justify-content-end ms-1">Delete</a>{% endif %}
             </div>
           </div>
         </div>
-     {% endfor %}
       </div>
-      </li>
-    {% endif %}
+      {% endfor %}
+    </div>
+  </li>
+  {% if perms.viewer.mark_archive %}
+  <li class="subtitle">
+    {% include 'viewer/include/archive_manage.html' %}
+  </li>
+  {% endif %}
+  {% else %}
+  <li class="subtitle">
+    <div class="row g-4">
+      {% for archive_manage_instance in manage_entries %}
+      <div class="col-sm-3">
+        <div class="card panel">
+          <div class="card-body mark-height">
+            <h5 class="card-title">{{ archive_manage_instance.mark_reason }}<a
+                class="btn btn-sm btn-primary justify-content-end ms-2" role="button"
+                onclick="toggleHeight(this);">expand</a></h5>
+            <p class="card-text">{{ archive_manage_instance.mark_comment|urlize_all_rel|convert_special_urls|linebreaks }}</p>
+            <p class="card-text">{{ archive_manage_instance.mark_extra }}</p>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </li>
+  {% endif %}
 
-     <!-- Pagination and messages -->
-    {% if user.is_authenticated %}
-      {% if not archive.crc32 %}
-          <li class="subtitle">
-            <div class="mt-4">The file is still being downloaded, cannot operate it unless it finishes</div>
-          </li>
-      {% endif %}
-      {% if images %}
-        <!-- Next/Prev page links  -->
-        <li class="text-center mt-4">
-          <span class="step-links">
-              {% if images.has_previous %}
-                <a id="prev-page" href="?page={{ images.previous_page_number }}">previous &lt;&lt; </a> {% endif %}
-            <span class="current">&nbsp;Page {{ images.number }} of {{ images.paginator.num_pages }} </span>
-            {% if images.has_next %} <a id="next-page" href="?page={{ images.next_page_number }}">&gt;&gt; next</a> {% endif %}
-          </span>
-        </li>
-      {% endif %}
-    {% endif %}
+  <!-- Pagination and messages -->
+  {% if user.is_authenticated %}
+  {% if not archive.crc32 %}
+  <li class="subtitle">
+    <div class="mt-4">The file is still being downloaded, cannot operate it unless it finishes</div>
+  </li>
+  {% endif %}
+  {% if images %}
+  <!-- Next/Prev page links  -->
+  <li class="text-center mt-4">
+    <span class="step-links">
+      {% if images.has_previous %}
+      <a id="prev-page" href="?page={{ images.previous_page_number }}">previous &lt;&lt; </a> {% endif %}
+      <span class="current">&nbsp;Page {{ images.number }} of {{ images.paginator.num_pages }} </span>
+      {% if images.has_next %} <a id="next-page" href="?page={{ images.next_page_number }}">&gt;&gt; next</a> {% endif %}
+    </span>
+  </li>
+  {% endif %}
+  {% endif %}
 
-    {% if user.is_authenticated %}
-      {% if mode == "edit" and user.is_staff %}
-        <!-- EDIT VIEW  -->
-        <li class="subtitle mt-4">
-          <a href="{% url 'viewer:archive-generate-matches' archive.pk %}">generate matches internally</a> >>
-          <a href="{% url 'viewer:archive-generate-matches' archive.pk %}?clear">generate matches internally with cleared title</a> >>
-          <span class="dropdown">
-            <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">match</button>
-            <div class="dropdown-menu">
-            <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{% static 'favicon-160.png' %}', 'match_archive', {archive: {{ archive.pk }}, match_filter: ''}); return false;">All</a>
-              {% for matcher, priority in matchers %}
-                <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{% static 'favicon-160.png' %}', 'match_archive', {archive: {{ archive.pk }}, match_filter: '{{ matcher }}'}); return false;">{{ matcher }}</a>
-              {% endfor %}
-            </div>
-            </span> >>
-          <a href="{% url 'viewer:archive-update-tool' archive.pk 'clear-possible-matches' %}">Clear possible matches</a>
-        </li>
-        <li class="subtitle">
-          <form action="{% url 'viewer:archive-update' archive.pk %}" method="POST">{% csrf_token %}
-            <table class="table">
-              {{ form }}
-            </table>
-            {% if image_formset %}
-              {{ image_formset.non_form_errors }}
-              {{ image_formset.management_form }}
-              <div id="update">
-                <button type="submit" class="btn btn-light">Update</button>
-              </div>
-              <div class="text-center">
-                <div class="row">
-                  {% for form in image_formset %}
-                    {{ form.id }}
-                    <div class="thumbnail text-center col-md-2 col-sm-6">
-                      <img alt="" src="{% if form.instance.extracted %}{{ form.instance.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}"/>
-                      <p>{{ form.position.label }}</p>
-                      <p>{{ form.position }}</p>
-                      {% if image_formset.can_delete %}
-                        <p>{{ form.DELETE }}<label for="{{ form.DELETE.input }}">Delete</label></p>
-                      {% endif %}
-                    </div>
-                  {% endfor %}
-                </div>
-              </div>
-              <div id="update">
-                <button type="submit" class="btn btn-light">Update</button>
-              </div>
-
+  {% if user.is_authenticated %}
+  {% if mode == "edit" and user.is_staff %}
+  <!-- EDIT VIEW  -->
+  <li class="subtitle mt-4">
+    <a href="{% url 'viewer:archive-generate-matches' archive.pk %}">generate matches internally</a> >>
+    <a href="{% url 'viewer:archive-generate-matches' archive.pk %}?clear">generate matches internally with cleared
+      title</a> >>
+    <span class="dropdown">
+      <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">match</button>
+      <div class="dropdown-menu">
+        <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{% static 'favicon-160.png' %}', 'match_archive', {archive: {{ archive.pk }}, match_filter: ''}); return false;">All</a>
+        {% for matcher, priority in matchers %}
+        <a class="dropdown-item" href="#"
+          onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{% static 'favicon-160.png' %}', 'match_archive', {archive: {{ archive.pk }}, match_filter: '{{ matcher }}'}); return false;">{{ matcher }}</a>
+        {% endfor %}
+      </div>
+    </span> >>
+    <a href="{% url 'viewer:archive-update-tool' archive.pk 'clear-possible-matches' %}">Clear possible matches</a>
+  </li>
+  <li class="subtitle">
+    <form action="{% url 'viewer:archive-update' archive.pk %}" method="POST">{% csrf_token %}
+      <table class="table">
+        {{ form }}
+      </table>
+      {% if image_formset %}
+      {{ image_formset.non_form_errors }}
+      {{ image_formset.management_form }}
+      <div id="update">
+        <button type="submit" class="btn btn-light">Update</button>
+      </div>
+      <div class="text-center">
+        <div class="row">
+          {% for form in image_formset %}
+          {{ form.id }}
+          <div class="thumbnail text-center col-md-2 col-sm-6">
+            <img alt="" src="{% if form.instance.extracted %}{{ form.instance.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" />
+            <p>{{ form.position.label }}</p>
+            <p>{{ form.position }}</p>
+            {% if image_formset.can_delete %}
+            <p>{{ form.DELETE }}<label for="{{ form.DELETE.input }}">Delete</label></p>
             {% endif %}
-          </form>
-            <!-- Next/Prev page links  -->
-            <div>
-                <span class="step-links">
-                  <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
-                  {% if image_queryset.has_previous %}
-                    <a href= "?{% url_replace 'page' image_queryset.previous_page_number %}"> previous &lt;&lt; </a>
-                  {% else %}
-                    <span> previous &lt;&lt; </span>
-                  {% endif %}
-                  <span class="current">
-                        &nbsp;Page {{ image_queryset.number }} of {{ image_queryset.paginator.num_pages }}
-                    </span>
-                  {% if image_queryset.has_next %}
-                    <a href="?{% url_replace 'page' image_queryset.next_page_number %}"> &gt;&gt; next</a>
-                  {% else %}
-                    <span> &gt;&gt; next</span>
-                  {% endif %}
-                  <a href="?{% url_replace 'page' image_queryset.paginator.num_pages %}"> &gt;&gt; last</a>
-                </span>
-            </div>
-        </li>
-      {% else %}
-        <!-- COVER VIEW  -->
-        <li class="text-center" id="img-container">
-          {% for img in images.object_list %}
-            {% if view == "cover" %}
-              <a href="{% url 'viewer:new-image-viewer' archive.pk images.start_index|add:forloop.counter0 %}?{% url_replace 'extracted' '1' %}">
-                <img class="img-fluid mx-auto" alt="" src="{% if img.thumbnail.name %}{{ img.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}"/>
-              </a>
-            {% elif view == "full" %}
-              <a href="{% url 'viewer:new-image-viewer' archive.pk images.start_index|add:forloop.counter0 %}?{% url_replace 'extracted' '1' %}">
-                <img id="img-{{ forloop.counter }}" class="img-fluid mx-auto" alt="" src="{% if img.image.name %}{{ img.image.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" width="{{ image.image_width }}"/>
-              </a>
-            {% elif view == "single" %}
-              <a href="{% url 'viewer:new-image-viewer' archive.pk images.start_index|add:forloop.counter0 %}?{% url_replace 'extracted' '1' %}">
-                <img class="img-fluid mx-auto" alt="" src="{% if img.image.name %}{{ img.image.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" width="{{ image.image_width }}"/>
-              </a>
-            {% elif view == "thumbnails" %}
-              <a href="{% url 'viewer:new-image-viewer' archive.pk images.start_index|add:forloop.counter0 %}?{% url_replace 'extracted' '1' %}">
-                <img class="img-fluid mx-auto" alt="" src="{% if img.thumbnail.name %}{{ img.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}"/></a>{% endif %}
+          </div>
           {% endfor %}
-        </li>
+        </div>
+      </div>
+      <div id="update">
+        <button type="submit" class="btn btn-light">Update</button>
+      </div>
+
       {% endif %}
-      <!-- Next/Prev page links  -->
-      {% if images %}
-        <li class="text-center">
-            <span class="step-links">
-                {% if images.has_previous %}
-                  <a href="?page={{ images.previous_page_number }}">previous &lt;&lt; </a> {% endif %}
-              <span class="current">&nbsp;Page {{ images.number }} of {{ images.paginator.num_pages }} </span>
-              {% if images.has_next %}<a href="?page={{ images.next_page_number }}">&gt;&gt; next</a> {% endif %}
-            </span>
-        </li> {% endif %}
-    {% endif %}
-  </ul>
+    </form>
+    <!-- Next/Prev page links  -->
+    <div>
+      <span class="step-links">
+        <a href="?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
+        {% if image_queryset.has_previous %}
+        <a href="?{% url_replace 'page' image_queryset.previous_page_number %}"> previous &lt;&lt; </a>
+        {% else %}
+        <span> previous &lt;&lt; </span>
+        {% endif %}
+        <span class="current">
+          &nbsp;Page {{ image_queryset.number }} of {{ image_queryset.paginator.num_pages }}
+        </span>
+        {% if image_queryset.has_next %}
+        <a href="?{% url_replace 'page' image_queryset.next_page_number %}"> &gt;&gt; next</a>
+        {% else %}
+        <span> &gt;&gt; next</span>
+        {% endif %}
+        <a href="?{% url_replace 'page' image_queryset.paginator.num_pages %}"> &gt;&gt; last</a>
+      </span>
+    </div>
+  </li>
+  {% else %}
+  <!-- COVER VIEW  -->
+  <li class="text-center" id="img-container">
+    {% for img in images.object_list %}
+    {% if view == "cover" %}
+    <a
+      href="{% url 'viewer:new-image-viewer' archive.pk images.start_index|add:forloop.counter0 %}?{% url_replace 'extracted' '1' %}">
+      <img class="img-fluid mx-auto" alt="" src="{% if img.thumbnail.name %}{{ img.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" />
+    </a>
+    {% elif view == "full" %}
+    <a
+      href="{% url 'viewer:new-image-viewer' archive.pk images.start_index|add:forloop.counter0 %}?{% url_replace 'extracted' '1' %}">
+      <img id="img-{{ forloop.counter }}" class="img-fluid mx-auto" alt=""
+        src="{% if img.image.name %}{{ img.image.url }}{% else %}{% static " imgs/no_cover.png" %}{% endif %}"
+        width="{{ image.image_width }}" />
+    </a>
+    {% elif view == "single" %}
+    <a
+      href="{% url 'viewer:new-image-viewer' archive.pk images.start_index|add:forloop.counter0 %}?{% url_replace 'extracted' '1' %}">
+      <img class="img-fluid mx-auto" alt="" src="{% if img.image.name %}{{ img.image.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" width="{{ image.image_width }}" />
+    </a>
+    {% elif view == "thumbnails" %}
+    <a
+      href="{% url 'viewer:new-image-viewer' archive.pk images.start_index|add:forloop.counter0 %}?{% url_replace 'extracted' '1' %}">
+      <img class="img-fluid mx-auto" alt="" src="{% if img.thumbnail.name %}{{ img.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" /></a>{% endif %}
+    {% endfor %}
+  </li>
+  {% endif %}
+  <!-- Next/Prev page links  -->
+  {% if images %}
+  <li class="text-center">
+    <span class="step-links">
+      {% if images.has_previous %}
+      <a href="?page={{ images.previous_page_number }}">previous &lt;&lt; </a> {% endif %}
+      <span class="current">&nbsp;Page {{ images.number }} of {{ images.paginator.num_pages }} </span>
+      {% if images.has_next %}<a href="?page={{ images.next_page_number }}">&gt;&gt; next</a> {% endif %}
+    </span>
+  </li> {% endif %}
+  {% endif %}
+</ul>
 {% endblock %}
 {% block afterJQ %}
-  {% load compress %}
-  {% if perms.viewer.change_archive %}
-  {{ edit_form.media }}
-  {% endif %}
-  {% if perms.viewer.mark_archive %}
-  {{ archive_manage_formset.media }}
-  {% endif %}
-  {% compress js %}
-    <script>
-        let hashData = {};
-        let otherFilesData = {};
-        let hashUrl = '{% url 'viewer:api' %}?ah=';
-        let otherFilesUrl = '{% url 'viewer:api' %}?aof=';
-        function hashToHtml (hash) {
-            return hash
-        }
-        function otherDataToHtml (otherData) {
-            let row = document.createElement('tr');
-            let cell1 = row.insertCell();
-            cell1.textContent = otherData.name;
-            let cell2 = row.insertCell();
-            cell2.textContent = otherData.size;
-            let cell3 = row.insertCell();
-            cell3.textContent = otherData.sha1;
-            return row
-        }
-        document.addEventListener("DOMContentLoaded", function() {
-            document.querySelector('.hash-preview')?.addEventListener("click", function (event) {
-                let el = event.currentTarget;
-                let pk = event.currentTarget.dataset['bsPk'];
-                if (hashData[pk]) {
-                    return hashData[pk];
-                } else {
-                    fetch(hashUrl + pk).then(function (response) {
-                          return response.json();
-                    }).then(function(body) {
-                        if (body.image_hashes) {
-                            hashData[pk] = body.image_hashes.map(hashToHtml);
-                            let textareaHashes = document.createElement('textarea');
-                            textareaHashes.setAttribute("readonly", true);
-                            textareaHashes.setAttribute("class", "form-control");
-                            textareaHashes.setAttribute("rows", "10");
-                            textareaHashes.setAttribute("style", "background-color: #29527a; width: 360px;");
-                            textareaHashes.innerHTML = hashData[pk].join("\n");
+{% load compress %}
+{% if perms.viewer.change_archive %}
+{{ edit_form.media }}
+{% endif %}
+{% if perms.viewer.mark_archive %}
+{{ archive_manage_formset.media }}
+{% endif %}
+{% compress js %}
+<script>
+  let hashData = {};
+  let otherFilesData = {};
+  let hashUrl = '{% url 'viewer:api' %}?ah=';
+  let otherFilesUrl = '{% url 'viewer:api' %}?aof=';
+  function hashToHtml(hash) {
+    return hash
+  }
+  function otherDataToHtml(otherData) {
+    let row = document.createElement('tr');
+    let cell1 = row.insertCell();
+    cell1.textContent = otherData.name;
+    let cell2 = row.insertCell();
+    cell2.textContent = otherData.size;
+    let cell3 = row.insertCell();
+    cell3.textContent = otherData.sha1;
+    return row
+  }
+  document.addEventListener("DOMContentLoaded", function () {
+    document.querySelector('.hash-preview')?.addEventListener("click", function (event) {
+      let el = event.currentTarget;
+      let pk = event.currentTarget.dataset['bsPk'];
+      if (hashData[pk]) {
+        return hashData[pk];
+      } else {
+        fetch(hashUrl + pk).then(function (response) {
+          return response.json();
+        }).then(function (body) {
+          if (body.image_hashes) {
+            hashData[pk] = body.image_hashes.map(hashToHtml);
+            let textareaHashes = document.createElement('textarea');
+            textareaHashes.setAttribute("readonly", true);
+            textareaHashes.setAttribute("class", "form-control");
+            textareaHashes.setAttribute("rows", "10");
+            textareaHashes.setAttribute("style", "background-color: #29527a; width: 360px;");
+            textareaHashes.innerHTML = hashData[pk].join("\n");
 
-                            const popover = new bootstrap.Popover(el, {
-                                content: textareaHashes,
-                                html: true,
-                                customClass: 'popover-custom-length',
-                            })
-                            popover.show();
+            const popover = new bootstrap.Popover(el, {
+              content: textareaHashes,
+              html: true,
+              customClass: 'popover-custom-length',
+            })
+            popover.show();
 
-                        }
-                    });
-                }
-            });
-            document.querySelector('.other-preview')?.addEventListener("click", function (event) {
-                let el = event.currentTarget;
-                let pk = event.currentTarget.dataset['bsPk'];
-                if (otherFilesData[pk]) {
-                    return otherFilesData[pk];
-                } else {
-                    fetch(otherFilesUrl + pk).then(function (response) {
-                      return response.json();
-                    }).then(function(data) {
-                        if (data.other_files) {
-                            otherFilesData[pk] = data.other_files.map(otherDataToHtml);
-                            let table = document.createElement('table');
-                            let head = table.createTHead()
-                            let headRow = head.insertRow()
-                            let thead1 = headRow.appendChild(document.createElement("th"));
-                            thead1.innerText = "File"
-                            let thead2 = headRow.appendChild(document.createElement("th"));
-                            thead2.innerText = "Size"
-                            let thead3 = headRow.appendChild(document.createElement("th"));
-                            thead3.innerText = "SHA1"
-                            let body = table.createTBody()
-                            otherFilesData[pk].forEach((row) => {
-                                let newRow = body.insertRow();
-                                newRow.innerHTML = row.innerHTML;
-                            })
-
-                            table.setAttribute("class", "table table-sm table-bordered");
-                            let div = document.createElement('div');
-                            div.setAttribute("style", "background-color: #29527a; width: 800px;");
-                            div.appendChild(table);
-
-                            const popover = new bootstrap.Popover(el, {
-                                content: div,
-                                html: true,
-                                customClass: 'popover-custom-length',
-                            })
-                            popover.show();
-
-                        }
-                    });
-                }
-            });
+          }
         });
+      }
+    });
+    document.querySelector('.other-preview')?.addEventListener("click", function (event) {
+      let el = event.currentTarget;
+      let pk = event.currentTarget.dataset['bsPk'];
+      if (otherFilesData[pk]) {
+        return otherFilesData[pk];
+      } else {
+        fetch(otherFilesUrl + pk).then(function (response) {
+          return response.json();
+        }).then(function (data) {
+          if (data.other_files) {
+            otherFilesData[pk] = data.other_files.map(otherDataToHtml);
+            let table = document.createElement('table');
+            let head = table.createTHead()
+            let headRow = head.insertRow()
+            let thead1 = headRow.appendChild(document.createElement("th"));
+            thead1.innerText = "File"
+            let thead2 = headRow.appendChild(document.createElement("th"));
+            thead2.innerText = "Size"
+            let thead3 = headRow.appendChild(document.createElement("th"));
+            thead3.innerText = "SHA1"
+            let body = table.createTBody()
+            otherFilesData[pk].forEach((row) => {
+              let newRow = body.insertRow();
+              newRow.innerHTML = row.innerHTML;
+            })
 
-        function toggleHeight(elem) {
-            const el = elem.parentNode.parentNode.parentNode.parentNode.querySelector(".card-body");
-            if(el.classList.contains("mark-height")) {
-                el.classList.remove("mark-height");
-            }
-            else {
-                el.classList.add("mark-height");
-            }
-        }
+            table.setAttribute("class", "table table-sm table-bordered");
+            let div = document.createElement('div');
+            div.setAttribute("style", "background-color: #29527a; width: 800px;");
+            div.appendChild(table);
 
-    </script>
-  {% endcompress %}
-  {% if user.is_staff %}
-    <script type="text/javascript" src="{% static 'js/admin.js' %}"></script>
-    <script type="text/javascript" src="{% static 'js/vendor/keys.min.js' %}"></script>
-    <script type="text/javascript" src="{% static 'js/archnav.js' %}"></script>
-    {% include "viewer/include/viewer_modal.html" %}
-  {% endif %}
+            const popover = new bootstrap.Popover(el, {
+              content: div,
+              html: true,
+              customClass: 'popover-custom-length',
+            })
+            popover.show();
+
+          }
+        });
+      }
+    });
+  });
+
+  function toggleHeight(elem) {
+    const el = elem.parentNode.parentNode.parentNode.parentNode.querySelector(".card-body");
+    if (el.classList.contains("mark-height")) {
+      el.classList.remove("mark-height");
+    }
+    else {
+      el.classList.add("mark-height");
+    }
+  }
+
+</script>
+{% endcompress %}
+{% if user.is_staff %}
+<script type="text/javascript" src="{% static 'js/admin.js' %}"></script>
+<script type="text/javascript" src="{% static 'js/vendor/keys.min.js' %}"></script>
+<script type="text/javascript" src="{% static 'js/archnav.js' %}"></script>
+{% include "viewer/include/viewer_modal.html" %}
+{% endif %}
 {% endblock %}

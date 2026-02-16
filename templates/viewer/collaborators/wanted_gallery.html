@@ -192,6 +192,7 @@
             date:</label>{{ wanted_gallery.release_date|date|default:"Not set" }}</li>
         <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Wait for
             time:</label>{{ wanted_gallery.wait_for_time|default:"Not set" }}</li>
+        <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Backlog search query:</label>{{ wanted_gallery.backlog_url_query|default:"Not set" }}</li>
         <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Should
             search:</label>{{ wanted_gallery.should_search|yesno }}</li>
         <li class="list-group-item d-flex justify-content-between py-1"><label class="label-extended">Keep
