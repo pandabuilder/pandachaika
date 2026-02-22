@@ -449,6 +449,10 @@ class Settings:
     def load_config_from_file(self, default_dir: Optional[str] = None) -> None:
         if default_dir:
             self.default_dir = default_dir
+        elif self.default_dir:
+            pass
+        elif "PANDA_CONFIG_DIR" in os.environ:
+            self.default_dir = os.environ["PANDA_CONFIG_DIR"]
         else:
             self.default_dir = os.getcwd()
 

@@ -1,6 +1,6 @@
 # Chose one depending on database backend
 # mysqlclient
-psycopg==3.3.2
+psycopg==3.3.3
 # Main
 python-dateutil==2.9.0.post0
 twitter==1.19.6

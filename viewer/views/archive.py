@@ -38,7 +38,7 @@ from viewer.models import (
     ArchiveStatistics,
 )
 from viewer.utils.general import clean_up_referer
-from viewer.utils.requests import double_check_auth
+from viewer.utils.requests import double_check_auth, authenticate_by_token
 from viewer.views.head import render_error
 
 logger = logging.getLogger(__name__)
@@ -488,7 +488,12 @@ def archive_download(request: HttpRequest, pk: int) -> HttpResponse:
         archive = Archive.objects.get(pk=pk)
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
-    if not archive.public and not request.user.is_authenticated:
+
+    token_valid, token_user = authenticate_by_token(request)
+
+    user_is_authenticated = request.user.is_authenticated or token_valid
+    
+    if not archive.public and not user_is_authenticated:
         raise Http404("Archive does not exist")
     if "HTTP_X_FORWARDED_HOST" in request.META:
         response = HttpResponse()

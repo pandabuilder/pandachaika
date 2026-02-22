@@ -16,8 +16,9 @@
       <label for="urls"></label>
       <textarea name="urls" class="form-control" id="urls" rows="5"></textarea>
     </div>
-  <div class="mb-2">
+  <div class="mb-2 d-flex gap-2">
     <button type="button" class="btn btn-info" data-bs-toggle="collapse" data-bs-target="#priorities">Change default priorities</button>
+    <button type="button" class="btn btn-warning" onclick="document.querySelectorAll('#priorities input[type=\'number\']').forEach(el => el.value = '-1')">Set all to -1</button>
   </div>
   <div id="priorities" class="collapse">
     {% for name, priority in downloaders %}

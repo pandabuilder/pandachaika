@@ -4,6 +4,7 @@ import re
 from datetime import datetime, timezone, timedelta
 from typing import Any, Optional
 import html
+from urllib.parse import urljoin
 
 import requests
 from bs4 import BeautifulSoup
@@ -14,11 +15,12 @@ from core.base.utilities import (
     get_base_filename_string_from_gallery_data,
     get_zip_fileinfo_for_gallery,
     construct_request_dict,
-    request_by_provider
+    request_by_provider,
+    request_with_retries,
 )
 from core.downloaders.handlers import BaseDownloader, BaseInfoDownloader, BaseFakeDownloader, BaseTorrentDownloader
 from core.downloaders.torrent import get_torrent_client
-from core.providers.panda.utilities import TorrentHTMLParser, get_archive_link_from_html_page
+from .utilities import TorrentHTMLParser, get_archive_link_from_html_page
 from viewer.models import Archive
 from core.base.utilities import available_filename, replace_illegal_name
 from . import constants
@@ -184,6 +186,22 @@ class ArchiveDownloader(BaseDownloader):
                 self.return_code = 0
                 return
             logger.info("Download cost: {} for gallery: {} using method: {} is below the limit: {}, continuing download.".format(cost, self.gallery.link, self.type, self.own_settings.maximum_gp_cost_for_dls))
+
+        if self.own_settings.proceed_with_download_if_lowest_cost:
+            logger.info("Checking for lowest download cost.")
+            cost = cost_tracker.check_method_cost(self.gallery.root, self.gallery.gid, self.gallery.token, self.type, self)
+            other_type = 'hath' if self.type == 'archive' else 'archive'
+            other_cost = cost_tracker.check_method_cost(self.gallery.root, self.gallery.gid, self.gallery.token, other_type, self)
+            if cost is None:
+                logger.error("Could not retrieve cost for method: {}, skipping download.".format(self.type))
+                self.return_code = 0
+                return
+            if other_cost is not None and cost > other_cost:
+                logger.error("Download cost: {} for gallery: {} using method: {} is higher than the alternative method {}: {}, skipping download.".format(
+                    cost, self.gallery.link, self.type, other_type, other_cost))
+                self.return_code = 0
+                return
+            logger.info("Download cost: {} for gallery: {} using method: {} is the lowest or equal to alternative {}, continuing download.".format(cost, self.gallery.link, self.type, other_type))
 
         r = self.request_archive_download(self.gallery.root, self.gallery.gid, self.gallery.token)
 
@@ -547,6 +565,22 @@ class HathDownloader(BaseDownloader):
                 return
             logger.info("Download cost: {} for gallery: {} using method: {} is below the limit: {}, continuing download.".format(cost, self.gallery.link, self.type, self.own_settings.maximum_gp_cost_for_dls))
 
+        if self.own_settings.proceed_with_download_if_lowest_cost:
+            logger.info("Checking for lowest download cost.")
+            cost = cost_tracker.check_method_cost(self.gallery.root, self.gallery.gid, self.gallery.token, self.type, self)
+            other_type = 'hath' if self.type == 'archive' else 'archive'
+            other_cost = cost_tracker.check_method_cost(self.gallery.root, self.gallery.gid, self.gallery.token, other_type, self)
+            if cost is None:
+                logger.error("Could not retrieve cost for method: {}, skipping download.".format(self.type))
+                self.return_code = 0
+                return
+            if other_cost is not None and cost > other_cost:
+                logger.error("Download cost: {} for gallery: {} using method: {} is higher than the alternative method {}: {}, skipping download.".format(
+                    cost, self.gallery.link, self.type, other_type, other_cost))
+                self.return_code = 0
+                return
+            logger.info("Download cost: {} for gallery: {} using method: {} is the lowest or equal to alternative {}, continuing download.".format(cost, self.gallery.link, self.type, other_type))
+
         r = self.request_hath_download(self.gallery.root, self.gallery.gid, self.gallery.token)
 
         if r and r.status_code == 200:
@@ -653,6 +687,131 @@ class UrlSubmitDownloader(BaseDownloader):
         self.return_code = 1
 
 
+class PandaChaikaDownloader(BaseDownloader):
+
+    type = "chaika"
+    provider = constants.provider_name
+
+    def start_download(self) -> None:
+
+        if not self.gallery:
+            return
+
+        chaika_provider_settings = self.settings.providers.get("chaika")
+        if not chaika_provider_settings:
+            logger.error("Chaika provider settings not found.")
+            self.return_code = 0
+            return
+
+        api_url = urljoin(chaika_provider_settings.url, "api/")
+
+        request_dict = construct_request_dict(self.settings, chaika_provider_settings)
+        request_dict["params"] = {"gid": self.gallery.gid, "provider": self.provider}
+
+        response = request_with_retries(
+            api_url,
+            request_dict,
+            post=False,
+        )
+
+        if not response:
+            logger.error("Did not get a response from Chaika API.")
+            self.return_code = 0
+            return
+
+        try:
+            json_decoded = response.json()
+        except (ValueError, KeyError):
+            logger.error("Could not parse Chaika API response to JSON.")
+            self.return_code = 0
+            return
+
+        if "archives" not in json_decoded or not json_decoded["archives"]:
+            logger.error("No archives found in Chaika API response.")
+            self.return_code = 0
+            return
+
+        archive_data = json_decoded["archives"][0]
+        if "download" not in archive_data:
+            logger.error("Download link not found in Chaika API response.")
+            self.return_code = 0
+            return
+
+        download_url = urljoin(chaika_provider_settings.url, archive_data["download"])
+
+        logger.info(
+            "Downloading an archive: {} from Chaika: {}".format(
+                self.gallery.title, download_url
+            )
+        )
+
+        to_use_filename = get_base_filename_string_from_gallery_data(self.gallery)
+        to_use_filename = replace_illegal_name(to_use_filename)
+
+        self.gallery.filename = available_filename(
+            self.settings.MEDIA_ROOT, os.path.join(chaika_provider_settings.archive_dl_folder, to_use_filename + ".zip")
+        )
+
+        download_request_dict = construct_request_dict(self.settings, chaika_provider_settings)
+        download_request_dict["stream"] = True
+
+        for attempt in range(3):
+            try:
+                request_file = request_with_retries(
+                    download_url,
+                    download_request_dict,
+                )
+                if not request_file:
+                    logger.error("Could not download archive (Attempt {}/3)".format(attempt + 1))
+                    continue
+
+                filepath = os.path.join(self.settings.MEDIA_ROOT, self.gallery.filename)
+
+                total_size = int(request_file.headers.get("Content-Length", 0))
+                self.download_event = self.create_download_event(self.gallery.link, self.type, filepath, total_size=total_size)
+
+                with open(filepath, "wb") as fo:
+                    for chunk in request_file.iter_content(4096):
+                        fo.write(chunk)
+
+                self.gallery.filesize, self.gallery.filecount = get_zip_fileinfo_for_gallery(filepath)
+                if self.gallery.filesize > 0:
+                    self.crc32 = calc_crc32(filepath)
+
+                    self.fileDownloaded = 1
+                    self.return_code = 1
+                    break
+
+            except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout) as e:
+                logger.warning("Download failed on attempt {}/3 with error: {}".format(attempt + 1, str(e)))
+                if self.download_event:
+                    self.download_event.set_as_failed()
+                    self.download_event.save()
+                    self.download_event = None
+
+        if self.return_code != 1:
+            logger.error("Could not download archive")
+            self.return_code = 0
+
+    def update_archive_db(self, default_values: DataDict) -> Optional["Archive"]:
+
+        if not self.gallery:
+            return None
+
+        values = {
+            "title": self.gallery.title,
+            "title_jpn": self.gallery.title_jpn,
+            "zipped": self.gallery.filename,
+            "crc32": self.crc32,
+            "filesize": self.gallery.filesize,
+            "filecount": self.gallery.filecount,
+        }
+        default_values.update(values)
+        return Archive.objects.update_or_create_by_values_and_gid(
+            default_values, (self.gallery.gid, self.gallery.provider), zipped=self.gallery.filename
+        )
+
+
 API = (
     ArchiveDownloader,
     TorrentDownloader,
@@ -661,4 +820,5 @@ API = (
     InfoDownloader,
     FakeDownloader,
     UrlSubmitDownloader,
+    PandaChaikaDownloader,
 )

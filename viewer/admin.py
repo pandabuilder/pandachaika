@@ -429,6 +429,7 @@ class WantedGalleryAdmin(admin.ModelAdmin):
         "set_wanted_categories",
         "add_unwanted_tags",
         "set_unwanted_tags",
+        "set_exclusive_scope_name",
     ]
 
     action_form = UpdateActionForm
@@ -511,6 +512,17 @@ class WantedGalleryAdmin(admin.ModelAdmin):
         self.message_user(request, f"Set unwanted tags for {count} wanted galleries.")
 
     set_unwanted_tags.short_description = "Set unwanted tags (comma separated)"  # type: ignore
+
+    def set_exclusive_scope_name(self, request: HttpRequest, queryset: QuerySet) -> None:
+        exclusive_scope_name = request.POST.get("extra_field", "").strip()
+        rows_updated = queryset.update(exclusive_scope_name=exclusive_scope_name)
+        if rows_updated == 1:
+            message_bit = "1 wanted gallery was"
+        else:
+            message_bit = "%s wanted galleries were" % rows_updated
+        self.message_user(request, "%s successfully set exclusive_scope_name to: %s." % (message_bit, exclusive_scope_name))
+
+    set_exclusive_scope_name.short_description = "Set exclusive scope name of selected wanted galleries"  # type: ignore
 
     # inlines = (FoundGalleryInline,)
 

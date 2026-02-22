@@ -293,6 +293,8 @@ providers:
       sessionid: ''
   panda:
     general:
+      # If true, it will check the cost of both hath and archive downloads, and only proceed if the current method has the lowest or equal cost.
+      proceed_with_download_if_lowest_cost: false
       # When crawling the home pages, stop at limit page number. This parameter is optional
       stop_page_number: 5
       # panda RSS reports categories, you can use this to pre-filter what galleries can be processed, check panda.settings for possible options.

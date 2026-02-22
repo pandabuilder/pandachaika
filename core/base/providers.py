@@ -75,6 +75,7 @@ class ProviderContext:
     settings_parsers: list[tuple[str, Callable]] = []
     wanted_generators: list[tuple[str, Callable]] = []
     constants: list[tuple[str, ModuleType]] = []
+    names: list[str] = []
 
     def register_providers(self, module_name_list: list[str]) -> None:
         for module_name in module_name_list:
@@ -84,6 +85,7 @@ class ProviderContext:
         # We just split the module and get their last part
         # Only used by resolver since the others define their provider internally
         provider_name = module_name.split(".")[-1]
+        self.names.append(provider_name)
         for member in _get_provider_submodule_api(module_name, "parsers"):
             if member not in self.parsers and issubclass(member, BaseParser):
                 # logger.debug("For provider: {}, registering parser: {}".format(provider_name, member))

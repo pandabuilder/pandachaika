@@ -82,8 +82,8 @@ dependencies = [
     "imagehash==4.3.2",
     "numpy==2.4.2",
     "pillow==12.1.1",
-    "psycopg==3.3.2",
-    "psycopg-binary==3.3.2; sys_platform == 'win32'",
+    "psycopg==3.3.3",
+    "psycopg-binary==3.3.3; sys_platform == 'win32'",
     "py7zr==1.1.2",
     "pysocks==1.7.1",
     "python-dateutil==2.9.0.post0",
@@ -101,7 +101,7 @@ dev = [
     "django-stubs==5.2.9",
     "django-unused-media==0.2.2",
     "mypy==1.19.1",
-    "ruff==0.15.1",
+    "ruff==0.15.2",
     "types-python-dateutil==2.9.0.20260124",
     "types-pytz==2025.2.0.20251108",
     "types-requests==2.32.4.20260107",
@@ -109,7 +109,7 @@ dev = [
 
 ci = [
     "mypy==1.19.1",
-    "ruff==0.15.1",
+    "ruff==0.15.2",
     "django-stubs==5.2.9",
     "types-requests==2.32.4.20260107",
     "types-pytz==2025.2.0.20251108",

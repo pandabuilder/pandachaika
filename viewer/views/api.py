@@ -1423,7 +1423,7 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                     current_settings.archive_origin = Archive.ORIGIN_ADD_URL
                     extra_args = []
                     if "reason" in args and args["reason"]:
-                        extra_args.append("-reason " + args["reason"])
+                        extra_args.extend(["-reason", args["reason"]])
 
                     if "parentLink" in args:
                         parent_archive = None

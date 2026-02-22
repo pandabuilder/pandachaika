@@ -78,3 +78,16 @@ class AdminActionsTestCase(TestCase):
         self.assertEqual(self.gallery.unwanted_tags.count(), 1)
         self.assertTrue(self.gallery.unwanted_tags.filter(name="newtag").exists())
         self.assertFalse(self.gallery.unwanted_tags.filter(name="oldtag").exists())
+
+    def test_set_exclusive_scope_name(self):
+        self.gallery.exclusive_scope_name = "old_scope"
+        self.gallery.save()
+        
+        request = self.factory.post("/", {"extra_field": "new_scope"})
+        request.user = self.user
+        self.admin.message_user = lambda request, message: None
+        
+        self.admin.set_exclusive_scope_name(request, self.queryset)
+        
+        self.gallery.refresh_from_db()
+        self.assertEqual(self.gallery.exclusive_scope_name, "new_scope")
