@@ -19,6 +19,58 @@ from core.workers.holder import WorkerContext
 if typing.TYPE_CHECKING:
     from viewer.models import Gallery, Archive, WantedGallery, FoundGallery, ArchiveManageEntry, DownloadEvent
     from django.contrib.auth.models import User
+    from core.base.types import ProviderSettings
+
+    from core.providers.chaika.settings import OwnSettings as ChaikaSettings
+    from core.providers.fakku.settings import OwnSettings as FakkuSettings
+    from core.providers.generic.settings import OwnSettings as GenericSettings
+    from core.providers.irodori.settings import OwnSettings as IrodoriSettings
+    from core.providers.j18.settings import OwnSettings as J18Settings
+    from core.providers.mega.settings import OwnSettings as MegaSettings
+    from core.providers.mugimugi.settings import OwnSettings as MugimugiSettings
+    from core.providers.nexus.settings import OwnSettings as NexusSettings
+    from core.providers.nhentai.settings import OwnSettings as NhentaiSettings
+    from core.providers.nyaa.settings import OwnSettings as NyaaSettings
+    from core.providers.panda.settings import OwnSettings as PandaSettings
+    from core.providers.twitter.settings import OwnSettings as TwitterSettings
+    from core.providers.twodmarket.settings import OwnSettings as TwodmarketSettings
+    from core.providers.wanimagazine.settings import OwnSettings as WanimagazineSettings
+
+    class ProvidersDict(dict[str, ProviderSettings]):
+        @typing.overload
+        def __getitem__(self, key: typing.Literal["chaika"]) -> ChaikaSettings: ...
+        @typing.overload
+        def __getitem__(self, key: typing.Literal["fakku"]) -> FakkuSettings: ...
+        @typing.overload
+        def __getitem__(self, key: typing.Literal["generic"]) -> GenericSettings: ...
+        @typing.overload
+        def __getitem__(self, key: typing.Literal["irodori"]) -> IrodoriSettings: ...
+        @typing.overload
+        def __getitem__(self, key: typing.Literal["j18"]) -> J18Settings: ...
+        @typing.overload
+        def __getitem__(self, key: typing.Literal["mega"]) -> MegaSettings: ...
+        @typing.overload
+        def __getitem__(self, key: typing.Literal["mugimugi"]) -> MugimugiSettings: ...
+        @typing.overload
+        def __getitem__(self, key: typing.Literal["nexus"]) -> NexusSettings: ...
+        @typing.overload
+        def __getitem__(self, key: typing.Literal["nhentai"]) -> NhentaiSettings: ...
+        @typing.overload
+        def __getitem__(self, key: typing.Literal["nyaa"]) -> NyaaSettings: ...
+        @typing.overload
+        def __getitem__(self, key: typing.Literal["panda"]) -> PandaSettings: ...
+        @typing.overload
+        def __getitem__(self, key: typing.Literal["twitter"]) -> TwitterSettings: ...
+        @typing.overload
+        def __getitem__(self, key: typing.Literal["twodmarket"]) -> TwodmarketSettings: ...
+        @typing.overload
+        def __getitem__(self, key: typing.Literal["wanimagazine"]) -> WanimagazineSettings: ...
+        @typing.overload
+        def __getitem__(self, key: str) -> typing.Any: ...
+        def __getitem__(self, key: typing.Any) -> typing.Any: ...
+else:
+    ProvidersDict = dict
+
 
 
 class GlobalInfo:
@@ -269,11 +321,11 @@ class Settings:
         # The logic for a current link is provider-specific
         self.non_current_links_as_deleted = False
 
-        self.MEDIA_ROOT = ""
-        self.STATIC_ROOT = ""
-        self.django_secret_key = ""
-        self.django_debug_mode = False
-        self.download_handler = "local"
+        self.MEDIA_ROOT: str = ""
+        self.STATIC_ROOT: str = ""
+        self.django_secret_key: str = ""
+        self.django_debug_mode: bool = False
+        self.download_handler: str = "local"
         self.temp_directory_path: Optional[str] = None
         # More specific, if not set, will use 'download_handler'
         self.download_handler_torrent = ""
@@ -350,7 +402,7 @@ class Settings:
 
         self.experimental: dict[str, Any] = {}
 
-        self.providers: dict[str, Any] = {}
+        self.providers: ProvidersDict = {}  # type: ignore[assignment]
 
         self.remote_site: dict[str, Any] = {}
 
@@ -427,13 +479,19 @@ class Settings:
             self.django_debug_mode = os.getenv("DEBUG", "False").lower() in ('true', '1', 't')
 
         if 'DJANGO_SECRET_KEY' in os.environ:
-            self.django_secret_key = os.environ.get("DJANGO_SECRET_KEY")
+            django_secret_key = os.environ.get("DJANGO_SECRET_KEY")
+            if django_secret_key:
+                self.django_secret_key = django_secret_key
 
         if 'MEDIA_ROOT' in os.environ:
-            self.MEDIA_ROOT = os.environ.get("MEDIA_ROOT")
+            media_root = os.environ.get("MEDIA_ROOT")
+            if media_root:
+                self.MEDIA_ROOT = media_root
 
         if 'STATIC_ROOT' in os.environ:
-            self.STATIC_ROOT = os.environ.get("STATIC_ROOT")
+            static_root = os.environ.get("STATIC_ROOT")
+            if static_root:
+                self.STATIC_ROOT = static_root
 
         if 'USING_REVERSE_PROXY' in os.environ:
             self.urls.behind_proxy = os.getenv("USING_REVERSE_PROXY", "False").lower() in ('true', '1', 't')

@@ -22,15 +22,8 @@ from ratelimit import limits, RateLimitException
 
 from core.base.types import GalleryData, ArchiveGenericFile
 
-try:
-    import rarfile
-except ImportError:
-    rarfile = None
-
-try:
-    import py7zr
-except ImportError:
-    py7zr = None  # type: ignore
+import rarfile
+import py7zr
 
 import requests
 
@@ -270,8 +263,6 @@ def get_zip_filesize(filepath: str) -> int:
 
 
 def convert_rar_to_zip(filepath: str, temp_path: typing.Optional[str] = None) -> int:
-    if not rarfile:
-        return -1
     try:
         file_name = os.path.splitext(filepath)[0]
         temp_rar_file = file_name + ".tar"
@@ -298,8 +289,6 @@ def convert_rar_to_zip(filepath: str, temp_path: typing.Optional[str] = None) ->
 
 
 def convert_7z_to_zip(filepath: str, temp_path: typing.Optional[str] = None) -> int:
-    if not py7zr:
-        return -1
     try:
         file_name = os.path.splitext(filepath)[0]
         temp_7z_file = file_name + ".t7z"
@@ -702,8 +691,8 @@ def module_exists(module_name: str) -> bool:
 
 
 class StandardFormatter(logging.Formatter):
-    def formatException(self, exc_info: Any) -> str:
-        result = super(StandardFormatter, self).formatException(exc_info)
+    def formatException(self, ei: 'logging._SysExcInfoType') -> str:
+        result = super(StandardFormatter, self).formatException(ei)
         return result
 
     def format(self, record: logging.LogRecord) -> str:

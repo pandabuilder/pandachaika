@@ -20,6 +20,10 @@ from core.base.types import GalleryData, TorrentClient, DataDict
 if typing.TYPE_CHECKING:
     from core.base.setup import Settings
     from viewer.models import Gallery, Archive, WantedGallery, DownloadEvent
+    from core.base.types import ProviderSettings
+    T_ProviderSettings = typing.TypeVar("T_ProviderSettings", bound=ProviderSettings)
+else:
+    T_ProviderSettings = typing.TypeVar("T_ProviderSettings")
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +36,7 @@ class Meta(type):
         return "{}_{}".format(self.provider, self.type)
 
 
-class BaseDownloader(metaclass=Meta):
+class BaseDownloader(typing.Generic[T_ProviderSettings], metaclass=Meta):
 
     type = ""
     provider = ""
@@ -44,7 +48,7 @@ class BaseDownloader(metaclass=Meta):
     def __init__(self, settings: "Settings", general_utils: GeneralUtils) -> None:
         self.settings = settings
         self.general_utils = general_utils
-        self.own_settings = settings.providers[self.provider]
+        self.own_settings: T_ProviderSettings = settings.providers[self.provider]
         self.fileDownloaded = 0
         self.return_code = 0
         self.gallery_db_entry: Optional["Gallery"] = None

@@ -24,14 +24,14 @@ class Transmission(TorrentClient):
     def __str__(self) -> str:
         return self.name
 
-    def add_url(self, enc_torrent: str, download_dir: Optional[str] = None) -> tuple[bool, Optional[str]]:
-        result, torrent_id = self.add_torrent(enc_torrent, download_dir=download_dir)
+    def add_url(self, torrent_data: str, download_dir: Optional[str] = None) -> tuple[bool, Optional[str]]:
+        result, torrent_id = self.add_torrent(torrent_data, download_dir=download_dir)
         if self.expected_torrent_name and not self.expected_torrent_extension:
             self.expected_torrent_name = os.path.splitext(self.expected_torrent_name)[0]
         return result, torrent_id
 
     def add_torrent(
-        self, enc_torrent: Union[str, bytes], download_dir: Optional[str] = None
+        self, torrent_data: Union[str, bytes], download_dir: Optional[str] = None
     ) -> tuple[bool, Optional[str]]:
 
         if not self.trans:
@@ -43,7 +43,7 @@ class Transmission(TorrentClient):
             self.expected_torrent_extension = ""
 
         try:
-            torr = self.trans.add_torrent(enc_torrent, download_dir=download_dir, timeout=25)
+            torr = self.trans.add_torrent(torrent_data, download_dir=download_dir, timeout=25)
 
             if self.set_expected:
                 self.expected_torrent_name = torr.name

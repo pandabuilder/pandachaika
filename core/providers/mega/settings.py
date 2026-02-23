@@ -10,7 +10,7 @@ if typing.TYPE_CHECKING:
 class OwnSettings(ProviderSettings):
     def __init__(self, global_settings: "Settings", config: dict[str, typing.Any]) -> None:
         super().__init__(global_settings, config)
-        self.archive_dl_folder = ""
+        self.archive_dl_folder = global_settings.archive_dl_folder
         self.megadl_executable_path: str = ""
         self.megadl_executable_name: str = "megatools"
         self.extra_megadl_arguments: list[str] = []
@@ -31,6 +31,4 @@ def parse_config(global_settings: "Settings", config: dict[str, typing.Any]) -> 
     if "locations" in config:
         if "archive_dl_folder" in config["locations"]:
             settings.archive_dl_folder = config["locations"]["archive_dl_folder"]
-        else:
-            settings.archive_dl_folder = global_settings.archive_dl_folder
     return settings

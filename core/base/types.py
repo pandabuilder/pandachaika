@@ -181,7 +181,7 @@ class TorrentClient:
     ) -> tuple[bool, Optional[str]]:
         return False, None
 
-    def add_url(self, url: str, download_dir: Optional[str] = None) -> tuple[bool, Optional[str]]:
+    def add_url(self, torrent_data: str, download_dir: Optional[str] = None) -> tuple[bool, Optional[str]]:
         return False, None
 
     def get_download_progress(self, download_list: list[tuple[str, TorrentKey]]) -> list[tuple[TorrentKey, float]]:

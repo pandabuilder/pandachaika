@@ -23,6 +23,12 @@ from core.downloaders.torrent import get_torrent_client
 from .utilities import TorrentHTMLParser, get_archive_link_from_html_page
 from viewer.models import Archive
 from core.base.utilities import available_filename, replace_illegal_name
+
+import typing
+if typing.TYPE_CHECKING:
+    from core.providers.panda.settings import OwnSettings as PandaSettings
+else:
+    PandaSettings = typing.Any
 from . import constants
 
 logger = logging.getLogger(__name__)
@@ -123,7 +129,7 @@ class CostTracker:
 
 cost_tracker = CostTracker()
 
-class ArchiveDownloader(BaseDownloader):
+class ArchiveDownloader(BaseDownloader[PandaSettings]):
 
     type = "archive"
     provider = constants.provider_name
@@ -697,7 +703,7 @@ class PandaChaikaDownloader(BaseDownloader):
         if not self.gallery:
             return
 
-        chaika_provider_settings = self.settings.providers.get("chaika")
+        chaika_provider_settings = self.settings.providers["chaika"] if "chaika" in self.settings.providers else None
         if not chaika_provider_settings:
             logger.error("Chaika provider settings not found.")
             self.return_code = 0

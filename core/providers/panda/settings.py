@@ -13,8 +13,8 @@ class OwnSettings(ProviderSettings):
         self.hath_dl_folder = ""
         self.local_hath_folder = ""
         self.remote_hath_dir = ""
-        self.archive_dl_folder = ""
-        self.torrent_dl_folder = ""
+        self.archive_dl_folder = global_settings.archive_dl_folder
+        self.torrent_dl_folder = global_settings.torrent_dl_folder
         self.accepted_rss_categories = (
             # '[Doujinshi]',
             # '[Manga]',
@@ -43,8 +43,6 @@ def parse_config(global_settings: "Settings", config: dict[str, typing.Any]) -> 
 
     settings = OwnSettings(global_settings, config)
 
-    settings.torrent_dl_folder = global_settings.torrent_dl_folder
-    settings.archive_dl_folder = global_settings.archive_dl_folder
 
     if "general" in config:
         if "accepted_rss_categories" in config["general"]:

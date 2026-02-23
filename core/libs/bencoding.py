@@ -192,7 +192,7 @@ class Encoder:
         result += b"e"
         return result
 
-    def _encode_dict(self, data: dict) -> bytes:
+    def _encode_dict(self, data: dict) -> bytearray:
         result = bytearray("d", "utf-8")
         for k, v in data.items():
             key = self.encode_next(k)

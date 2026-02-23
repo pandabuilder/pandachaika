@@ -53,7 +53,6 @@ class NyaaTorrentDownloader(GenericTorrentDownloader):
 
                 try:
                     if client.convert_to_base64 and isinstance(torrent_data, str):
-                        torrent_data = cast(str, torrent_data)
                         torrent_metadata = Decoder(base64.decodebytes(torrent_data.encode("utf-8"))).decode()
                     else:
                         torrent_data = cast(bytes, torrent_data)

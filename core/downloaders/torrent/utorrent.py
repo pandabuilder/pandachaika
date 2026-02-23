@@ -52,13 +52,13 @@ class uTorrent(TorrentClient):
             lf.close()
             return False, None
 
-    def add_url(self, url: str, download_dir: Optional[str] = None) -> tuple[bool, Optional[str]]:
+    def add_url(self, torrent_data: str, download_dir: Optional[str] = None) -> tuple[bool, Optional[str]]:
 
         self.total_size = 0
         self.expected_torrent_name = ""
         self.expected_torrent_extension = ""
 
-        params = {"action": "add-url", "token": self.token, "s": url}
+        params = {"action": "add-url", "token": self.token, "s": torrent_data}
         try:
             response = requests.get(
                 self.UTORRENT_URL,

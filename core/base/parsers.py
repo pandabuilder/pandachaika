@@ -24,8 +24,12 @@ from viewer.signals import wanted_gallery_found
 
 if typing.TYPE_CHECKING:
     from core.downloaders.handlers import BaseDownloader
-    from core.base.setup import Settings
+    from core.base.setup import Settings, ProvidersDict
     from viewer.models import Gallery, WantedGallery, Archive
+    from core.base.types import ProviderSettings
+    T_ProviderSettings = typing.TypeVar("T_ProviderSettings", bound=ProviderSettings)
+else:
+    T_ProviderSettings = typing.TypeVar("T_ProviderSettings")
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +44,7 @@ def aggregate_wanted_time_taken(func):
     return wrapper_save_time_taken
 
 
-class BaseParser:
+class BaseParser(typing.Generic[T_ProviderSettings]):
     name = ""
     ignore = False
     accepted_urls: list[str] = []
@@ -50,10 +54,7 @@ class BaseParser:
 
     def __init__(self, settings: "Settings") -> None:
         self.settings = settings
-        if self.name in settings.providers:
-            self.own_settings = settings.providers[self.name]
-        else:
-            self.own_settings = None
+        self.own_settings: T_ProviderSettings = settings.providers[self.name]
         self.general_utils = setup_utilities.GeneralUtils(self.settings)
         self.downloaders: list[tuple["BaseDownloader", int]] = self.settings.provider_context.get_downloaders(
             self.settings, self.general_utils, filter_provider=self.name

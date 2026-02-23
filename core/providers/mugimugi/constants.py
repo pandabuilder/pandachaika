@@ -1,4 +1,6 @@
-provider_name = "mugimugi"
+from typing import Final
+
+provider_name: Final[str] = "mugimugi"
 home_page = "https://www.doujinshi.org"
 
 main_page = "https://www.doujinshi.org"
