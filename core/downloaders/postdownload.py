@@ -21,6 +21,7 @@ import re
 
 from core.base.setup import Settings
 from core.base.utilities import convert_rar_to_zip, replace_illegal_name, convert_7z_to_zip
+from core.providers.panda.parsers import Parser as PandaParser
 from core.workers.schedulers import BaseScheduler
 from viewer.models import Archive, ArchiveManageEntry
 
@@ -136,6 +137,50 @@ class PostDownloader(object):
                     logger.warning(
                         "For archive: {} size does not match gallery. Check the file manually.".format(archive)
                     )
+            elif archive.gallery and archive.filesize == archive.gallery.filesize and archive.match_type and 'torrent' in archive.match_type:
+                panda_provider_settings = self.settings.providers["panda"]
+
+                if panda_provider_settings.confirm_files_after_download:
+                    logger.info(
+                        "For archive: {} checking if the sha1 for each downloaded image matches with panda's page data.".format(archive)
+                    )
+                    
+                    downloaded_sha1_list = [x.sha1 for x in archive.image_set.all()]
+
+                    gallery_url = archive.gallery.get_link()
+
+                    parsers = self.settings.provider_context.get_parsers(self.settings, filter_name='panda')
+                    
+                    if len(parsers) > 0 and isinstance(parsers[0], PandaParser):
+                        panda_parser = parsers[0]
+                        panda_sha1_list = panda_parser.get_sha1_hashes_from_panda(gallery_url)
+
+                        if panda_sha1_list != downloaded_sha1_list:
+                            if archive.source_type and "panda" in archive.source_type:
+                                logger.error(
+                                    "For archive: {}, sha1 mismatch on downloaded zipfile failed on file: {}, "
+                                    "forcing download as panda_archive to fix it.".format(archive, archive.zipped.path)
+                                )
+                                archive.save()
+                                if self.web_queue and archive.gallery:
+                                    temp_settings = Settings(load_from_config=self.settings.config)
+                                    temp_settings.allow_downloaders_only(["panda_archive"], True, True, True)
+                                    if archive.reason:
+                                        temp_settings.archive_reason = archive.reason
+                                    self.web_queue.enqueue_args_list((archive.gallery.get_link(),), override_options=temp_settings)
+                                    return
+                            else:
+                                logger.warning(
+                                    "For archive: {}, sha1 mismatch on downloaded zipfile: {}. "
+                                    "Check the file manually.".format(archive, archive.zipped.path)
+                                )
+                        else:
+                            logger.info("For archive: {} local sha1 matches with gallery page sha1.")
+                    else:
+                        logger.warning(
+                            "For archive: {} could not obtain the needed parser."
+                        )
+
 
     def write_file_update_progress(
         self,

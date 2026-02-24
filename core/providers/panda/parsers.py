@@ -350,6 +350,70 @@ class Parser(BaseParser):
             return internal_gallery_data
         return None
 
+    def get_sha1_hashes_from_panda(self, gallery_url: str) -> list[str]:
+        request_dict = construct_request_dict(self.settings, self.own_settings)
+        request_dict["cookie"] = request_dict["cookie"] | {"datatags": "1"}
+        request_method = request_by_provider("panda_web", 1, self.own_settings.wait_timer)
+
+        def get_panda_page_count(soup):
+            pagination_table = soup.find("table", class_="ptt")
+            if not pagination_table:
+                return 1
+
+            td_elements = pagination_table.find_all("td")
+            page_numbers = []
+
+            for td in td_elements:
+                text = td.get_text(strip=True)
+                if text.isdigit():
+                    page_numbers.append(int(text))
+
+            if page_numbers:
+                return max(page_numbers)
+            return 1
+
+        def extract_all_hashes(base_url: str) -> list[str]:
+            if not base_url.endswith("/"):
+                base_url += "/"
+            response = request_method(
+                base_url,
+                request_dict,
+                post=False,
+            )
+
+            soup = BeautifulSoup(response.text, "html.parser")
+            if not soup:
+                logger.error(
+                    f"Failed to fetch initial page for sha1 comparison. Status code: {response.status_code}"
+                )
+                return []
+
+            total_pages = get_panda_page_count(soup)
+            all_hashes: list[str] = []
+
+            for page_index in range(total_pages):
+                page_url = f"{base_url}?p={page_index}"
+
+                if page_index == 0:
+                    current_soup = soup
+                else:
+                    response = request_method(
+                        page_url,
+                        request_dict,
+                        post=False,
+                    )
+                    current_soup = BeautifulSoup(response.text, "html.parser")
+                    if not current_soup:
+                        continue
+                hash_elements = current_soup.find_all(attrs={"data-orghash": True})
+                page_hashes = [str(el["data-orghash"]) for el in hash_elements]
+                all_hashes.extend(page_hashes)
+            return all_hashes
+
+        panda_sha1_list = extract_all_hashes(gallery_url)
+
+        return panda_sha1_list
+
     def get_feed_urls(self) -> list[str]:
         return [
             constants.rss_url,
