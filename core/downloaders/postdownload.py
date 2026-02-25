@@ -175,11 +175,9 @@ class PostDownloader(object):
                                     "Check the file manually.".format(archive, archive.zipped.path)
                                 )
                         else:
-                            logger.info("For archive: {} local sha1 matches with gallery page sha1.")
+                            logger.info("For archive: {} local sha1 matches with gallery page sha1, validation passes.".format(archive))
                     else:
-                        logger.warning(
-                            "For archive: {} could not obtain the needed parser."
-                        )
+                        logger.warning("For archive: {} could not obtain the needed parser.".format(archive))
 
 
     def write_file_update_progress(
