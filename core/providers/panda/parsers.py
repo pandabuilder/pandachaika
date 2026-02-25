@@ -352,7 +352,7 @@ class Parser(BaseParser):
 
     def get_sha1_hashes_from_panda(self, gallery_url: str) -> list[str]:
         request_dict = construct_request_dict(self.settings, self.own_settings)
-        request_dict["cookie"] = request_dict["cookie"] | {"datatags": "1"}
+        request_dict["cookies"] = request_dict["cookies"] | {"datatags": "1"}
         request_method = request_by_provider("panda_web", 1, self.own_settings.wait_timer)
 
         def get_panda_page_count(soup):
