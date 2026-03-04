@@ -26,6 +26,8 @@ RUN uv pip install --system --no-cache-dir -r requirements.txt psycopg[c]
 # Stage 2: Production stage
 FROM python:3.14-slim
 
+RUN sed -i -r 's/^(Components: main.*)/\1 non-free/' /etc/apt/sources.list.d/debian.sources
+
 RUN apt update && apt install -y libpq5 gosu unrar
 
 RUN groupadd -g 1000 appuser && \
