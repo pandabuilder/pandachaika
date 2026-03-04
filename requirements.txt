@@ -6,7 +6,7 @@ python-dateutil==2.9.0.post0
 twitter==1.19.6
 beautifulsoup4==4.14.3
 CherryPy==18.10.0
-Django==6.0.2
+Django==6.0.3
 django-compressor==4.6.0
 django-db-logger==0.1.13
 django-cors-headers==4.9.0

@@ -70,7 +70,7 @@ dependencies = [
     "beautifulsoup4==4.14.3",
     "cherrypy==18.10.0",
     "deckar01-ratelimit==3.0.2",
-    "django==6.0.2",
+    "django==6.0.3",
     "django-autocomplete-light==3.12.1",
     "django-compressor==4.6.0",
     "django-cors-headers==4.9.0",
@@ -101,7 +101,7 @@ dev = [
     "django-stubs==5.2.9",
     "django-unused-media==0.2.2",
     "mypy==1.19.1",
-    "ruff==0.15.2",
+    "ruff==0.15.4",
     "types-python-dateutil==2.9.0.20260124",
     "types-pytz==2025.2.0.20251108",
     "types-requests==2.32.4.20260107",
@@ -109,7 +109,7 @@ dev = [
 
 ci = [
     "mypy==1.19.1",
-    "ruff==0.15.2",
+    "ruff==0.15.4",
     "django-stubs==5.2.9",
     "types-requests==2.32.4.20260107",
     "types-pytz==2025.2.0.20251108",
