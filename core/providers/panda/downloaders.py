@@ -193,6 +193,22 @@ class ArchiveDownloader(BaseDownloader[PandaSettings]):
                 return
             logger.info("Download cost: {} for gallery: {} using method: {} is below the limit: {}, continuing download.".format(cost, self.gallery.link, self.type, self.own_settings.maximum_gp_cost_for_dls))
 
+        if self.own_settings.maximum_gp_mb_ratio_for_dls is not None and self.gallery.filesize is not None:
+
+            mb_filesize = self.gallery.filesize/(1024.0 * 1024.0)
+
+            logger.info("Checking for download ratio cost.")
+            cost = cost_tracker.check_method_cost(self.gallery.root, self.gallery.gid, self.gallery.token, self.type, self)
+            if cost is None:
+                logger.error("Could not retrieve cost, skipping download.")
+                self.return_code = 0
+                return
+            if cost / mb_filesize > self.own_settings.maximum_gp_mb_ratio_for_dls:
+                logger.error("Download ratio cost: {} for gallery: {} using method: {} is higher than the limit: {}, skipping download.".format(cost / mb_filesize, self.gallery.link, self.type, self.own_settings.maximum_gp_mb_ratio_for_dls))
+                self.return_code = 0
+                return
+            logger.info("Download ratio cost: {} for gallery: {} using method: {} is below the limit: {}, continuing download.".format(cost / mb_filesize, self.gallery.link, self.type, self.own_settings.maximum_gp_mb_ratio_for_dls))
+
         if self.own_settings.proceed_with_download_if_lowest_cost:
             logger.info("Checking for lowest download cost.")
             cost = cost_tracker.check_method_cost(self.gallery.root, self.gallery.gid, self.gallery.token, self.type, self)

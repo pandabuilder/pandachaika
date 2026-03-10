@@ -37,6 +37,7 @@ class OwnSettings(ProviderSettings):
         self.api_concurrent_limit = 4  # Wiki says between 4-5
         self.api_wait_limit = 5.5  # Wiki says 5 seconds
         self.maximum_gp_cost_for_dls: None | float = None # Maximum cost for hath and archive downloads, if None, don't consider, if number, 0 = only free.
+        self.maximum_gp_mb_ratio_for_dls: None | float = None # Maximum GP/MB cost for hath and archive downloads, if None, don't consider, if number, 0 = only free.
         self.proceed_with_download_if_lowest_cost = False
 
 
@@ -61,6 +62,8 @@ def parse_config(global_settings: "Settings", config: dict[str, typing.Any]) -> 
             settings.mark_relationships = config["general"]["mark_relationships"]
         if "maximum_gp_cost_for_dls" in config["general"]:
             settings.maximum_gp_cost_for_dls = config["general"]["maximum_gp_cost_for_dls"]
+        if "maximum_gp_mb_ratio_for_dls" in config["general"]:
+            settings.maximum_gp_mb_ratio_for_dls = config["general"]["maximum_gp_mb_ratio_for_dls"]
         if "proceed_with_download_if_lowest_cost" in config["general"]:
             settings.proceed_with_download_if_lowest_cost = config["general"]["proceed_with_download_if_lowest_cost"]
         if "confirm_files_after_download" in config["general"]:
