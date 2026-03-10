@@ -112,21 +112,21 @@ class SpacedSearch(Lookup):
 
     lookup_name = "ss"
 
-    def as_sql(self, qn: SQLCompiler, connection: BaseDatabaseWrapper) -> tuple[str, typing.Any]:
-        lhs, lhs_params = self.process_lhs(qn, connection)
-        rhs, rhs_params = self.process_rhs(qn, connection)
+    def as_sql(self, compiler: SQLCompiler, connection: BaseDatabaseWrapper) -> tuple[str, typing.Any]:
+        lhs, lhs_params = self.process_lhs(compiler, connection)
+        rhs, rhs_params = self.process_rhs(compiler, connection)
         params = tuple(lhs_params) + tuple(rhs_params)
         return "%s LIKE %s" % (lhs, rhs), params
 
-    def as_mysql(self, qn: SQLCompiler, connection: BaseDatabaseWrapper) -> tuple[str, typing.Any]:
-        lhs, lhs_params = self.process_lhs(qn, connection)
-        rhs, rhs_params = self.process_rhs(qn, connection)
+    def as_mysql(self, compiler: SQLCompiler, connection: BaseDatabaseWrapper) -> tuple[str, typing.Any]:
+        lhs, lhs_params = self.process_lhs(compiler, connection)
+        rhs, rhs_params = self.process_rhs(compiler, connection)
         params = tuple(lhs_params) + tuple(rhs_params)
         return "%s LIKE %s" % (lhs, rhs), params
 
-    def as_postgresql(self, qn: SQLCompiler, connection: BaseDatabaseWrapper) -> tuple[str, typing.Any]:
-        lhs, lhs_params = self.process_lhs(qn, connection)
-        rhs, rhs_params = self.process_rhs(qn, connection)
+    def as_postgresql(self, compiler: SQLCompiler, connection: BaseDatabaseWrapper) -> tuple[str, typing.Any]:
+        lhs, lhs_params = self.process_lhs(compiler, connection)
+        rhs, rhs_params = self.process_rhs(compiler, connection)
         params = tuple(lhs_params) + tuple(rhs_params)
         return "%s ILIKE %s" % (lhs, rhs), params
 
@@ -2882,15 +2882,22 @@ class Archive(models.Model):
 
         if not self.zipped or not os.path.isfile(self.zipped.path):
             return
+
+        # crc32: Calculate CRC32 first, since it doesn't depend on the zipfile being correct or not.
+        if self.crc32 is None or self.crc32 == "":
+            self.crc32 = calc_crc32(self.zipped.path)
+
         image_set_present = bool(self.image_set.all())
         # large thumbnail and image set
         if not self.thumbnail or not image_set_present:
             try:
                 my_zip = zipfile.ZipFile(self.zipped.path, "r")
             except (zipfile.BadZipFile, NotImplementedError):
+                self.simple_save(force_update=True)
                 return
             if my_zip.testzip():
                 my_zip.close()
+                self.simple_save(force_update=True)
                 return
             filtered_files = get_images_from_zip(my_zip)
 
@@ -3051,10 +3058,6 @@ class Archive(models.Model):
         if self.filesize is None or self.filecount is None:
             self.filesize, self.filecount, other_file_datas = get_zip_fileinfo(self.zipped.path, get_extra_data=True)
             self.fill_other_file_data(other_file_datas)
-
-        # crc32
-        if self.crc32 is None or self.crc32 == "":
-            self.crc32 = calc_crc32(self.zipped.path)
 
         # original_filename
         if self.original_filename is None or self.original_filename == "":
@@ -4313,14 +4316,19 @@ class Image(models.Model):
     def set_attributes_from_image(
         self, image_object: typing.IO[bytes], image_size: Optional[int] = None, image_name: Optional[str] = None
     ) -> None:
-        im = PImage.open(image_object)
-        size = im.size
-        self.original_width = size[0]
-        self.original_height = size[1]
-        self.image_format = im.format
-        self.image_mode = im.mode
-        self.image_size = image_size
-        self.image_name = image_name
+        try:
+            im = PImage.open(image_object)
+            size = im.size
+            self.original_width = size[0]
+            self.original_height = size[1]
+            self.image_format = im.format
+            self.image_mode = im.mode
+            self.image_size = image_size
+            self.image_name = image_name
+        except PImage.UnidentifiedImageError:
+            # TODO: Log errors
+            pass
+
 
     def save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
         if not self.image_height and self.image and os.path.isfile(self.image.path):
