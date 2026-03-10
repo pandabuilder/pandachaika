@@ -3924,6 +3924,21 @@ class Archive(models.Model):
             ArchiveManageEntry.objects.filter(
                 archive=self, mark_reason="gallery_phash_similarity", mark_user__isnull=True
             ).delete()
+            
+    def move_to_recycle_bin(self, reason=""):
+        if not self.is_recycled():
+            with transaction.atomic():
+                r = ArchiveRecycleEntry(
+                    archive=self,
+                    reason=reason,
+                    origin=ArchiveRecycleEntry.ORIGIN_SYSTEM,
+                )
+
+                r.save()
+                self.binned = True
+                self.simple_save()
+                if self.public:
+                    self.set_private()
 
 
 class ArchiveTag(models.Model):

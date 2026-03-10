@@ -85,6 +85,8 @@ class PostDownloader(object):
                         "For archive: {}, File check on downloaded zipfile: {}. "
                         "Check the file manually.".format(archive, archive.zipped.path)
                     )
+                if self.settings.recycle_failed_checks_downloads:
+                    archive.move_to_recycle_bin(reason="Failed on ZIP file opening")
             # crc32 = calc_crc32(archive.zipped.path)
             # filesize, filecount = get_zip_fileinfo(archive.zipped.path)
             # values = {
@@ -137,12 +139,14 @@ class PostDownloader(object):
                     logger.warning(
                         "For archive: {} size does not match gallery. Check the file manually.".format(archive)
                     )
+                if self.settings.recycle_failed_checks_downloads:
+                    archive.move_to_recycle_bin(reason="Size does not match gallery")
             elif archive.gallery and archive.filesize == archive.gallery.filesize and archive.match_type and 'torrent' in archive.match_type:
                 panda_provider_settings = self.settings.providers["panda"]
 
                 if panda_provider_settings.confirm_files_after_download:
                     logger.info(
-                        "For archive: {} checking if the sha1 for each downloaded image matches with panda's page data.".format(archive)
+                        "For archive: {} checking if the SHA1 for each downloaded image matches with panda's page data.".format(archive)
                     )
                     
                     downloaded_sha1_list = [x.sha1 for x in archive.image_set.all()]
@@ -158,7 +162,7 @@ class PostDownloader(object):
                         if panda_sha1_list != downloaded_sha1_list:
                             if archive.source_type and "panda" in archive.source_type:
                                 logger.error(
-                                    "For archive: {}, sha1 mismatch on downloaded zipfile failed on file: {}, "
+                                    "For archive: {}, SHA1 mismatch on downloaded zipfile failed on file: {}, "
                                     "forcing download as panda_archive to fix it.".format(archive, archive.zipped.path)
                                 )
                                 archive.save()
@@ -171,11 +175,13 @@ class PostDownloader(object):
                                     return
                             else:
                                 logger.warning(
-                                    "For archive: {}, sha1 mismatch on downloaded zipfile: {}. "
+                                    "For archive: {}, SHA1 mismatch on downloaded zipfile: {}. "
                                     "Check the file manually.".format(archive, archive.zipped.path)
                                 )
+                            if self.settings.recycle_failed_checks_downloads:
+                                archive.move_to_recycle_bin(reason="SHA1 mismatch on downloaded zipfile")
                         else:
-                            logger.info("For archive: {} local sha1 matches with gallery page sha1, validation passes.".format(archive))
+                            logger.info("For archive: {} local SHA1 matches with gallery page sha1, validation passes.".format(archive))
                     else:
                         logger.warning("For archive: {} could not obtain the needed parser.".format(archive))
 

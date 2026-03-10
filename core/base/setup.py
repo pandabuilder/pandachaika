@@ -320,6 +320,7 @@ class Settings:
         # Option to add metadata from a non-current link, but no archive download.
         # The logic for a current link is provider-specific
         self.non_current_links_as_deleted = False
+        self.recycle_failed_checks_downloads = False
 
         self.MEDIA_ROOT: str = ""
         self.STATIC_ROOT: str = ""
@@ -629,6 +630,8 @@ class Settings:
                 self.convert_others_to_zip = config["allowed"]["convert_others_to_zip"]
             if "non_current_links_as_deleted" in config["general"]:
                 self.non_current_links_as_deleted = config["general"]["non_current_links_as_deleted"]
+            if "recycle_failed_checks_downloads" in config["general"]:
+                self.recycle_failed_checks_downloads = config["general"]["recycle_failed_checks_downloads"]
         if "general" in config:
             if "filename_filter" in config["general"]:
                 self.filename_filter = config["general"]["filename_filter"]
