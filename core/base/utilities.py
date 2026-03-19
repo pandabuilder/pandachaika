@@ -421,28 +421,39 @@ def get_zip_fileinfo_for_gallery(filepath: str) -> tuple[int, int]:
 
 
 def available_filename(root: str, filename: str) -> str:
-    filename_full = os.path.join(root, filename)
     file_head, file_tail = os.path.split(filename)
+    name, ext = os.path.splitext(file_tail)
 
-    extra_text = 2
-    if os.path.isfile(filename_full):
-        while os.path.isfile(
-            os.path.splitext(
-                os.path.join(root, os.path.join(file_head, file_tail[0 : 251 - 1 - len(str(extra_text))]))
-            )[0]
-            + "-"
-            + str(extra_text)
-            + os.path.splitext(filename_full)[1]
-        ):
-            extra_text += 1
-        return (
-            os.path.splitext(os.path.join(file_head, file_tail[0 : 251 - 1 - len(str(extra_text))]))[0]
-            + "-"
-            + str(extra_text)
-            + os.path.splitext(filename)[1]
-        )
-    else:
-        return filename
+    max_bytes = 255
+    max_suffix_bytes = 15
+
+    ext_bytes = ext.encode("utf-8")
+    if len(ext_bytes) > max_bytes - max_suffix_bytes:
+        ext = ext_bytes[: max_bytes - max_suffix_bytes].decode("utf-8", errors="ignore")
+        ext_bytes = ext.encode("utf-8")
+        name = ""
+
+    name_bytes = name.encode("utf-8")
+
+    extra_text = 1
+    while True:
+        suffix = "" if extra_text == 1 else f"-{extra_text}"
+        suffix_bytes = suffix.encode("utf-8")
+
+        avail_bytes = max_bytes - len(ext_bytes) - len(suffix_bytes)
+
+        if len(name_bytes) > avail_bytes:
+            truncated_name = name_bytes[:avail_bytes].decode("utf-8", errors="ignore")
+        else:
+            truncated_name = name
+
+        candidate_tail = truncated_name + suffix + ext
+        candidate_full = os.path.join(root, file_head, candidate_tail)
+
+        if not os.path.isfile(candidate_full):
+            return os.path.join(file_head, candidate_tail)
+
+        extra_text += 1
 
 
 def get_base_filename_string_from_gallery_data(gallery_data: GalleryData) -> str:
