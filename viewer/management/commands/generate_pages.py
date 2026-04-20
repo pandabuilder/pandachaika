@@ -126,7 +126,7 @@ class Command(BaseCommand):
         }
 
         for language in languages:
-            languages_dict[language] = {
+            languages_dict[str(language)] = {
                 "n_galleries": Gallery.objects.filter(public=True)
                 .filter(tags__scope="language", tags__name=language)
                 .distinct()

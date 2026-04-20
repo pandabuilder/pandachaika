@@ -495,6 +495,8 @@ def archive_download(request: HttpRequest, pk: int) -> HttpResponse:
     
     if not archive.public and not user_is_authenticated:
         raise Http404("Archive does not exist")
+    if not archive.zipped.name:
+        raise Http404("Archive does not exist")
     if "HTTP_X_FORWARDED_HOST" in request.META:
         response = HttpResponse()
         response["Content-Type"] = "application/vnd.comicbook+zip"
@@ -516,6 +518,8 @@ def archive_ext_download(request: HttpRequest, pk: int) -> HttpResponse:
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
     if not archive.public and not request.user.is_authenticated:
+        raise Http404("Archive does not exist")
+    if not archive.zipped.name:
         raise Http404("Archive does not exist")
 
     if "original" in request.GET:

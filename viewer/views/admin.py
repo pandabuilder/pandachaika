@@ -178,7 +178,7 @@ def stats_collection(request: HttpRequest) -> HttpResponse:
     }
 
     for language in languages:
-        languages_dict[language] = {
+        languages_dict[str(language)] = {
             "n_galleries": Gallery.objects.filter(tags__scope="language", tags__name=language).distinct().count(),
             "gallery": Gallery.objects.filter(filesize__gt=0, tags__scope="language", tags__name=language)
             .distinct()

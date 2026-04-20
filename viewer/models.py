@@ -602,7 +602,7 @@ class ArchiveQuerySet(models.QuerySet):
     def filter_non_existent(self, root: str, **kwargs: typing.Any) -> list["Archive"]:
         archives = self.filter(**kwargs, file_deleted=False, binned=False).order_by("-id")
 
-        return [archive for archive in archives if (not archive.zipped) or (not os.path.isfile(os.path.join(root, archive.zipped.path)))]
+        return [archive for archive in archives if (not archive.zipped) or (not os.path.isfile(os.path.join(root, archive.zipped.path)))]  # type: ignore
 
 
 class ArchiveManager(models.Manager["Archive"]):
@@ -1892,6 +1892,8 @@ class Archive(models.Model):
 
     @property
     def pretty_name(self) -> str:
+        if not self.zipped.name:
+            return ''
         return "{0}{1}".format(
             quote(replace_illegal_name(self.title or self.title_jpn or self.zipped.name)),
             os.path.splitext(self.zipped.name)[1],
@@ -1906,6 +1908,8 @@ class Archive(models.Model):
         return EMPTY_TITLE
 
     def filename(self) -> str:
+        if not self.zipped.name:
+            return ''
         return os.path.basename(self.zipped.name)
 
     def tags_str(self) -> str:
@@ -2095,6 +2099,9 @@ class Archive(models.Model):
         if len(sha1s) != len(filtered_files):
             return None, "SHA1 values count different from filtered files from zip file"
 
+        if not self.zipped.name:
+            return None, "Original file is not set"
+
         new_file_name = available_filename(settings.MEDIA_ROOT, self.zipped.name)
 
         new_file_path = os.path.join(settings.MEDIA_ROOT, new_file_name)
@@ -2179,6 +2186,9 @@ class Archive(models.Model):
 
         if len(local_sha1s) != len(filtered_files):
             return None, "SHA1 values count different from filtered files from zip file"
+
+        if not self.zipped.name:
+            return None, "Original file is not set"
 
         new_file_name = available_filename(settings.MEDIA_ROOT, self.zipped.name)
 
@@ -2326,6 +2336,9 @@ class Archive(models.Model):
 
         if my_zip.testzip():
             return None, "Bad original zip file"
+
+        if not self.zipped.name:
+            return None, "Original file is not set"
 
         filtered_files = get_images_from_zip(my_zip)
 
@@ -3043,7 +3056,7 @@ class Archive(models.Model):
         if self.gallery and self.gallery.title and (not archive_option or not archive_option.freeze_titles):
             self.title = self.gallery.title
             self.possible_matches.clear()
-        elif self.title is None:
+        elif self.title is None and self.zipped.name:
             self.title = re.sub("[_]", " ", os.path.splitext(os.path.basename(self.zipped.name))[0])
 
         # tags
@@ -3060,7 +3073,7 @@ class Archive(models.Model):
             self.fill_other_file_data(other_file_datas)
 
         # original_filename
-        if self.original_filename is None or self.original_filename == "":
+        if (self.original_filename is None or self.original_filename == "") and self.zipped.name:
             self.original_filename = os.path.basename(self.zipped.name)
 
         self.create_mark_if_parent_gallery()
@@ -3138,6 +3151,8 @@ class Archive(models.Model):
         self.thumbnail.name = thumb_name
 
     def rename_zipped_tail(self, new_file_name: str) -> bool:
+        if not self.zipped.name:
+            return False
         initial_path = self.zipped.path
         current_head, current_tail = os.path.split(self.zipped.name)
         new_file_name = os.path.join(current_head, new_file_name)
@@ -3163,6 +3178,9 @@ class Archive(models.Model):
         self, cutoff: float = 0.4, max_matches: int = 20, clear_title: bool = False, provider_filter: str = ""
     ) -> None:
         if not self.match_type == "non-match":
+            return
+
+        if not self.zipped.name:
             return
 
         galleries_title_id = []
@@ -3658,7 +3676,7 @@ class Archive(models.Model):
             raise zipfile.BadZipFile("Bad CRC check on files: {}.".format(bad_files))
 
     def set_original_filename(self) -> None:
-        if os.path.isfile(self.zipped.path):
+        if os.path.isfile(self.zipped.path) and self.zipped.name:
             self.original_filename = os.path.basename(self.zipped.name)
             super(Archive, self).save()
 
@@ -4298,7 +4316,7 @@ class Image(models.Model):
                     im: PImage.Image | ImageFile.ImageFile = PImage.open(io.BytesIO(full_image))
                     if im.mode != "RGB":
                         im = im.convert("RGB")
-                    im.thumbnail((200, 290), PImage.Resampling.LANCZOS)
+                    im.thumbnail((250, 362.5), PImage.Resampling.LANCZOS)
                     img_bytes = io.BytesIO()
                     im.save(img_bytes, format="JPEG")
                     return img_bytes.getvalue()
@@ -4524,7 +4542,7 @@ class Mention(models.Model):
         self.regen_tn()
 
     def regen_tn(self) -> None:
-        if not self.image:
+        if not self.image or not self.image.name:
             return
         im: PImage.Image | ImageFile.ImageFile = PImage.open(self.image.path)
         im = img_to_thumbnail(im)
@@ -4974,7 +4992,7 @@ class AttributeQuerySet(models.QuerySet):
         attr = self.filter(name=name).first()
 
         if attr:
-            return attr.value
+            return attr.value  # type: ignore
         else:
             return None
 
@@ -5220,8 +5238,10 @@ class WantedImage(models.Model):
     def __str__(self) -> str:
         if self.image_name:
             return self.image_name
-        else:
+        elif self.image.name:
             return self.image.name
+        else:
+            return ''
 
     # def get_absolute_url(self) -> str:
     #     return reverse('viewer:wanted-image', args=[str(self.id)])
@@ -5297,7 +5317,10 @@ class FoundWantedImageOnArchive(models.Model):
     )
 
     def __str__(self) -> str:
-        return self.result_image.name
+        if self.result_image.name:
+            return self.result_image.name
+        else:
+            return ''
 
     def get_image_url(self) -> str:
         return self.result_image.url

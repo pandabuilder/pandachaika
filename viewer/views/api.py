@@ -45,6 +45,8 @@ from viewer.utils.functions import (
 crawler_settings = settings.CRAWLER_SETTINGS
 logger = logging.getLogger(__name__)
 
+ACCEPTED_PER_PAGE = [24, 48, 100, 200, 300]
+
 
 def get_galleries_from_request(data: QueryDict, user_is_authenticated: bool) -> QuerySet[Gallery]:
     args = data.copy()
@@ -668,7 +670,14 @@ def json_api_handle_get(request: HttpRequest, user_is_authenticated: bool):
             used_prefetch = Prefetch("archive_set", to_attr="available_archives")
         results_gallery = filter_galleries_no_request(args).prefetch_related("tags", used_prefetch)
 
-        paginator = Paginator(results_gallery, 48)
+        try:
+            per_page = int(args.get("count", "48"))
+            if per_page not in ACCEPTED_PER_PAGE:
+                per_page = 48
+        except ValueError:
+            per_page = 48
+
+        paginator = Paginator(results_gallery, per_page)
         try:
             page = int(args.get("page", "1"))
         except ValueError:

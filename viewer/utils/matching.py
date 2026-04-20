@@ -216,6 +216,9 @@ def match_archives_from_gallery_titles(
                 )
             )
             for i, archive in enumerate(non_match_archives, start=1):
+                if not archive.zipped.name:
+                    logger.warning("Tried to match Archive missing file: {}, skipping.".format(archive.title))
+                    continue
 
                 matchers = crawler_settings.provider_context.get_matchers(
                     crawler_settings, filter_name="{}_title".format(provider), force=True
@@ -339,10 +342,12 @@ def match_external(
                         )
                     else:
                         results = []
-                elif matcher[0].type == "image":
+                elif matcher[0].type == "image" and archive.zipped.name:
+                    results = matcher[0].create_closer_matches_values(archive.zipped.name)
+                elif archive.zipped.name:
                     results = matcher[0].create_closer_matches_values(archive.zipped.name)
                 else:
-                    results = matcher[0].create_closer_matches_values(archive.zipped.name)
+                    results = []
                 for result in results:
                     gallery = Gallery.objects.update_or_create_from_values(result[1])
                     ArchiveMatches.objects.update_or_create(
@@ -413,6 +418,9 @@ def match_internal(
     gallery_type = ContentType.objects.get_for_model(Gallery)
 
     for i, archive in enumerate(archives, start=1):
+        if not archive.zipped.name:
+            logger.warning("Tried to match Archive missing file: {}, skipping.".format(archive.title))
+            continue
 
         for provider, galleries_title_id_type in galleries_title_id_type_per_provider.items():
 

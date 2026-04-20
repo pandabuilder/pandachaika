@@ -47,7 +47,7 @@ crawler_settings = settings.CRAWLER_SETTINGS
 logger = logging.getLogger(__name__)
 
 
-@staff_member_required(login_url="viewer:login")  # type: ignore
+@staff_member_required(login_url="viewer:login")
 def repeated_archives_for_galleries(request: HttpRequest) -> HttpResponse:
     p = request.POST
     get = request.GET
@@ -115,7 +115,7 @@ def repeated_archives_for_galleries(request: HttpRequest) -> HttpResponse:
     return render(request, "viewer/archives_repeated.html", d)
 
 
-@staff_member_required(login_url="viewer:login")  # type: ignore
+@staff_member_required(login_url="viewer:login")
 def repeated_galleries_by_field(request: HttpRequest) -> HttpResponse:
     p = request.POST
     get = request.GET
@@ -254,7 +254,7 @@ def repeated_galleries_by_field(request: HttpRequest) -> HttpResponse:
     return render(request, "viewer/galleries_repeated_by_fields.html", d)
 
 
-@staff_member_required(login_url="viewer:login")  # type: ignore
+@staff_member_required(login_url="viewer:login")
 def archive_filesize_different_from_gallery(request: HttpRequest) -> HttpResponse:
     providers = Gallery.objects.all().values_list("provider", flat=True).distinct()
     p = request.POST
@@ -324,7 +324,7 @@ def public_missing_archives_for_galleries(request: HttpRequest) -> HttpResponse:
     return render(request, "viewer/archives_missing_for_galleries.html", d)
 
 
-@staff_member_required(login_url="viewer:login")  # type: ignore
+@staff_member_required(login_url="viewer:login")
 def archives_not_present_in_filesystem(request: HttpRequest) -> HttpResponse:
     p = request.POST
     get = request.GET
@@ -472,7 +472,7 @@ def archives_not_present_in_filesystem(request: HttpRequest) -> HttpResponse:
     return render(request, "viewer/archives_not_present.html", d)
 
 
-@staff_member_required(login_url="viewer:login")  # type: ignore
+@staff_member_required(login_url="viewer:login")
 def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
     p = request.POST
     get = request.GET

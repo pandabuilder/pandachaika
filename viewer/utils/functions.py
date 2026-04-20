@@ -125,6 +125,7 @@ def gallery_search_results_to_json(request: HttpRequest, galleries: Iterable[Gal
             "fjord": gallery.fjord,
             "tags": gallery.tag_list(),
             "link": gallery.get_link(),
+            "url": request.build_absolute_uri(reverse("viewer:gallery", args=(gallery.pk,))),
             "thumbnail": (
                 request.build_absolute_uri(reverse("viewer:gallery-thumb", args=(gallery.pk,)))
                 if gallery.thumbnail

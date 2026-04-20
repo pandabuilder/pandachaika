@@ -1,4 +1,5 @@
 stages:
+  - static-check
   - test
   - deploy
   - build
@@ -45,11 +46,33 @@ test-all:
     reports:
       junit: test-results/TEST-*.xml
 
+static-test:
+  parallel:
+    matrix:
+      - PYTHON_VERSION:
+        - '3.12'
+        - '3.13'
+        - '3.14'
+  cache:
+    <<: *global_cache
+    key: "$CI_JOB_NAME-$CI_COMMIT_REF_SLUG"
+  image: astral/uv:python$PYTHON_VERSION-trixie
+  stage: static-check
+  when: manual
+  script:
+  - python --version
+  - uv sync --active --group ci
+  - uv run --no-sync ruff check --exclude=".venv" .
+  - uvx ty check core pandabackup viewer
+  tags:
+    - django
+    - panda
+
 build:
-  image: docker:29.2.1
+  image: docker:29.4.0
   when: manual
   services:
-    - docker:29.2.1-dind
+    - docker:29.4.0-dind
   before_script:
     - docker info
   stage: build
