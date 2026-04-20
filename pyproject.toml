@@ -84,7 +84,7 @@ dependencies = [
     "pillow==12.2.0",
     "psycopg==3.3.3",
     "psycopg-binary==3.3.3; sys_platform == 'win32'",
-    "py7zr==1.1.2",
+    "py7zr==1.1.0",
     "pysocks==1.7.1",
     "python-dateutil==2.9.0.post0",
     "pytz==2026.1.post1",
