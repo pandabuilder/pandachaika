@@ -4,12 +4,12 @@
     "src": "src/assets/no_cover.png"
   },
   "src/main.tsx": {
-    "file": "assets/main-CX7jbNNa.js",
+    "file": "assets/main-CzVyyldz.js",
     "name": "main",
     "src": "src/main.tsx",
     "isEntry": true,
     "css": [
-      "assets/main-CyoxNMCT.css"
+      "assets/main-CYIUjYuM.css"
     ],
     "assets": [
       "assets/no_cover-eEdCbnFG.png"

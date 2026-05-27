@@ -9,7 +9,9 @@ from django.test import TestCase, Client
 from django.contrib.auth.models import User
 from django.urls import reverse
 
-from viewer.models import Tag, Archive, Gallery, WantedGallery, ArchiveTag
+import json
+
+from viewer.models import Tag, Archive, Gallery, WantedGallery, ArchiveTag, FoundGallery
 
 
 class TagTestCase(TestCase):
@@ -355,3 +357,122 @@ class GeneralPagesTest(TestCase):
         self.assertEqual(response.status_code, 404)
         response = c_normal.get(reverse("viewer:wanted-gallery", args=[self.test_wanted_gallery2.pk]))
         self.assertEqual(response.status_code, 200)
+
+
+class JsonApiEndpointsTest(GeneralPagesTest):
+    """GET /api handlers: gid, gids, wanted-gallery, wanted-galleries."""
+
+    def setUp(self):
+        super().setUp()
+        FoundGallery.objects.get_or_create(
+            wanted_gallery=self.test_wanted_gallery2,
+            gallery=self.test_gallery3,
+        )
+
+    def _api_get(self, client, **params):
+        return client.get(reverse("viewer:api"), params)
+
+    def test_api_gid_public_gallery_anonymous(self):
+        response = self._api_get(
+            self.client,
+            gid=self.test_gallery3.gid,
+            provider=self.test_gallery3.provider,
+        )
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertEqual(data["gid"], self.test_gallery3.gid)
+        self.assertEqual(data["title"], self.test_gallery3.title)
+
+    def test_api_gid_private_gallery_anonymous_returns_404(self):
+        response = self._api_get(
+            self.client,
+            gid=self.test_gallery1.gid,
+            provider=self.test_gallery1.provider,
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertIn("does not exist", json.loads(response.content)["result"])
+
+    def test_api_gid_private_gallery_authenticated(self):
+        client = Client()
+        client.login(username="testuser1", password="12345")
+        response = self._api_get(
+            client,
+            gid=self.test_gallery1.gid,
+            provider=self.test_gallery1.provider,
+        )
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertEqual(data["gid"], self.test_gallery1.gid)
+
+    def test_api_gids_returns_only_accessible_galleries(self):
+        response = self._api_get(
+            self.client,
+            gids=[self.test_gallery1.gid, self.test_gallery3.gid],
+            provider=self.test_gallery3.provider,
+        )
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["gid"], self.test_gallery3.gid)
+
+    def test_api_gids_authenticated_returns_multiple(self):
+        client = Client()
+        client.login(username="testuser1", password="12345")
+        response = self._api_get(
+            client,
+            gids=[self.test_gallery1.gid, self.test_gallery3.gid],
+        )
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        gids = {item["gid"] for item in data}
+        self.assertEqual(gids, {self.test_gallery1.gid, self.test_gallery3.gid})
+
+    def test_api_wanted_gallery_public_anonymous(self):
+        response = self._api_get(self.client, **{"wanted-gallery": self.test_wanted_gallery2.pk})
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertEqual(data["id"], self.test_wanted_gallery2.pk)
+        self.assertTrue(data["public"])
+
+    def test_api_wanted_gallery_private_anonymous_returns_404(self):
+        response = self._api_get(self.client, **{"wanted-gallery": self.test_wanted_gallery1.pk})
+        self.assertEqual(response.status_code, 404)
+
+    def test_api_wanted_gallery_private_authenticated(self):
+        client = Client()
+        client.login(username="testuser1", password="12345")
+        response = self._api_get(client, **{"wanted-gallery": self.test_wanted_gallery1.pk})
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertEqual(data["id"], self.test_wanted_gallery1.pk)
+        self.assertFalse(data["public"])
+
+    def test_api_wanted_galleries_by_id(self):
+        client = Client()
+        client.login(username="testuser1", password="12345")
+        response = self._api_get(
+            client,
+            **{
+                "wanted-galleries": [
+                    self.test_wanted_gallery1.pk,
+                    self.test_wanted_gallery2.pk,
+                ]
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        ids = {item["id"] for item in data}
+        self.assertEqual(ids, {self.test_wanted_gallery1.pk, self.test_wanted_gallery2.pk})
+
+    def test_api_wanted_gallery_include_found_galleries(self):
+        response = self._api_get(
+            self.client,
+            **{
+                "wanted-gallery": self.test_wanted_gallery2.pk,
+                "include_found_galleries": "",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertEqual(len(data["found_galleries"]), 1)
+        self.assertEqual(data["found_galleries"][0]["gid"], self.test_gallery3.gid)

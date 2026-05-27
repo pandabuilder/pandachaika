@@ -8,7 +8,7 @@ from django.urls import reverse
 from core.base.setup import Settings
 from core.base.utilities import timestamp_or_zero, timestamp_or_null
 
-from viewer.models import Gallery, Archive, Image, ArchiveGroupEntry
+from viewer.models import Gallery, Archive, Image, ArchiveGroupEntry, WantedGallery, FoundGallery
 from viewer.utils.actions import event_log
 
 
@@ -270,3 +270,93 @@ def archive_entry_archive_to_json(
         "thumbnail": request.build_absolute_uri(archive.thumbnail.url) if archive.thumbnail else None,
         "tags": archive.tag_list_sorted(),
     }
+
+
+def found_gallery_to_json(found_gallery: FoundGallery, user_is_authenticated: bool) -> dict[str, Any]:
+    gallery = found_gallery.gallery
+    return {
+        "id": gallery.pk,
+        "gid": gallery.gid,
+        "token": gallery.token,
+        "title": gallery.title,
+        "title_jpn": gallery.title_jpn,
+        "category": gallery.category,
+        "uploader": gallery.uploader,
+        "posted": int(timestamp_or_zero(gallery.posted)),
+        "filecount": gallery.filecount,
+        "filesize": gallery.filesize,
+        "expunged": gallery.expunged,
+        "disowned": gallery.disowned,
+        "provider": gallery.provider,
+        "rating": gallery.rating,
+        "fjord": gallery.fjord,
+        "public": gallery.public,
+        "tags": gallery.tag_list(),
+        "link": gallery.get_link(),
+        "match_accuracy": found_gallery.match_accuracy,
+        "source": found_gallery.source,
+        "found_create_date": timestamp_or_null(found_gallery.create_date),
+    }
+
+
+def wanted_gallery_to_json(
+    wanted_gallery: WantedGallery,
+    *,
+    request: Optional[HttpRequest] = None,
+    user_is_authenticated: bool = False,
+    include_found_galleries: bool = False,
+) -> dict[str, Any]:
+    result = {
+        "id": wanted_gallery.pk,
+        "title": wanted_gallery.title,
+        "title_jpn": wanted_gallery.title_jpn,
+        "search_title": wanted_gallery.search_title,
+        "regexp_search_title": wanted_gallery.regexp_search_title,
+        "regexp_search_title_icase": wanted_gallery.regexp_search_title_icase,
+        "unwanted_title": wanted_gallery.unwanted_title,
+        "regexp_unwanted_title": wanted_gallery.regexp_unwanted_title,
+        "regexp_unwanted_title_icase": wanted_gallery.regexp_unwanted_title_icase,
+        "wanted_page_count_lower": wanted_gallery.wanted_page_count_lower,
+        "wanted_page_count_upper": wanted_gallery.wanted_page_count_upper,
+        "match_expression": wanted_gallery.match_expression,
+        "wanted_tags_exclusive_scope": wanted_gallery.wanted_tags_exclusive_scope,
+        "exclusive_scope_name": wanted_gallery.exclusive_scope_name,
+        "wanted_tags_accept_if_none_scope": wanted_gallery.wanted_tags_accept_if_none_scope,
+        "category": wanted_gallery.category,
+        "wait_for_time": (
+            wanted_gallery.wait_for_time.total_seconds() if wanted_gallery.wait_for_time is not None else None
+        ),
+        "should_search": wanted_gallery.should_search,
+        "keep_searching": wanted_gallery.keep_searching,
+        "reason": wanted_gallery.reason,
+        "book_type": wanted_gallery.book_type,
+        "publisher": wanted_gallery.publisher,
+        "page_count": wanted_gallery.page_count,
+        "restricted_to_links": wanted_gallery.restricted_to_links,
+        "release_date": timestamp_or_null(wanted_gallery.release_date),
+        "add_to_archive_group": (
+            wanted_gallery.add_to_archive_group.pk if wanted_gallery.add_to_archive_group else None
+        ),
+        "wanted_tags": wanted_gallery.wanted_tags_list(),
+        "unwanted_tags": wanted_gallery.unwanted_tags_list(),
+        "wanted_providers": list(wanted_gallery.wanted_providers.values_list("slug", flat=True)),
+        "unwanted_providers": list(wanted_gallery.unwanted_providers.values_list("slug", flat=True)),
+        "categories": wanted_gallery.categories_list(),
+        "public": wanted_gallery.public,
+        "found": wanted_gallery.found,
+        "date_found": timestamp_or_null(wanted_gallery.date_found),
+        "create_date": timestamp_or_null(wanted_gallery.create_date),
+        "last_modified": timestamp_or_null(wanted_gallery.last_modified),
+    }
+    if include_found_galleries and request is not None:
+        found_gallery_entries = getattr(wanted_gallery, "foundgallery_set", None)
+        if found_gallery_entries is None:
+            found_gallery_entries = FoundGallery.objects.filter(wanted_gallery=wanted_gallery).select_related(
+                "gallery"
+            ).prefetch_related("gallery__tags")
+        result["found_galleries"] = [
+            found_gallery_to_json(found_entry, user_is_authenticated)
+            for found_entry in found_gallery_entries.all()
+            if found_entry.gallery.public or user_is_authenticated
+        ]
+    return result

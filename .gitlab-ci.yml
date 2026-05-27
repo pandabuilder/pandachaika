@@ -69,10 +69,10 @@ static-test:
     - panda
 
 build:
-  image: docker:29.4.0
+  image: docker:29.4.3
   when: manual
   services:
-    - docker:29.4.0-dind
+    - docker:29.4.3-dind
   before_script:
     - docker info
   stage: build

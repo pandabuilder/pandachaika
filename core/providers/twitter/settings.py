@@ -16,8 +16,8 @@ class OwnSettings(ProviderSettings):
         self.add_as_public = False
         # Automatically add this text to "unwanted_title" field on generated wanted galleries
         self.unwanted_title = ""
-        self.regexp_unwanted_title = ""
-        self.regexp_unwanted_title_icase = ""
+        self.regexp_unwanted_title = False
+        self.regexp_unwanted_title_icase = False
         self.enabled_handles: list[str] = []
 
 

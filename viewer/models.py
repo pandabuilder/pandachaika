@@ -3584,7 +3584,7 @@ class Archive(models.Model):
                             wanted_image=wanted_image,
                             archive=self,
                             defaults={
-                                "comment": django_tz.now(),
+                                "comment": str(django_tz.now())
                             },
                         )
 
