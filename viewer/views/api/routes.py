@@ -34,6 +34,7 @@ from viewer.views.api.filters import filter_galleries_no_request
 crawler_settings = settings.CRAWLER_SETTINGS
 logger = logging.getLogger(__name__)
 
+@csrf_exempt
 def api_login(request: HttpRequest) -> HttpResponse:
     if request.method == "POST":
         username = request.POST.get("username", "")
