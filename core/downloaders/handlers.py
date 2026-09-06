@@ -338,13 +338,13 @@ class BaseTorrentDownloader(BaseDownloader):
             return None
         client.connect()
         if client.send_url:
-            result, torrent_id = client.add_url(torrent_link, download_dir=self.settings.torrent["download_dir"])
+            result, torrent_id = client.add_url(torrent_link, download_dir=os.path.join(self.settings.torrent["download_dir"], str(self.gallery.gid)))
         else:
             result, torrent_id = client.add_torrent(
                 self.general_utils.get_torrent(
                     torrent_link, self.own_settings.cookies, convert_to_base64=client.convert_to_base64
                 ),
-                download_dir=self.settings.torrent["download_dir"],
+                download_dir=os.path.join(self.settings.torrent["download_dir"], str(self.gallery.gid)),
             )
         if result:
             self.download_id = torrent_id

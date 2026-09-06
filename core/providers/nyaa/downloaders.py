@@ -41,13 +41,13 @@ class NyaaTorrentDownloader(GenericTorrentDownloader):
         logger.info("Adding torrent to client.")
         client.connect()
         if client.send_url or torrent_link.startswith("magnet:"):
-            result, torrent_id = client.add_url(torrent_link, download_dir=self.settings.torrent["download_dir"])
+            result, torrent_id = client.add_url(torrent_link, download_dir=os.path.join(self.settings.torrent["download_dir"], str(self.gallery.gid)))
         else:
             torrent_data = self.general_utils.get_torrent(
                 torrent_link, self.own_settings.cookies, convert_to_base64=client.convert_to_base64
             )
 
-            result, torrent_id = client.add_torrent(torrent_data, download_dir=self.settings.torrent["download_dir"])
+            result, torrent_id = client.add_torrent(torrent_data, download_dir=os.path.join(self.settings.torrent["download_dir"], str(self.gallery.gid)))
             if client.expected_torrent_name == "":
                 from core.libs.bencoding import Decoder
 

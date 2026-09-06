@@ -11,6 +11,7 @@ from ftplib import FTP_TLS
 from tempfile import mkdtemp
 from typing import Any, Optional, TypeVar
 from zipfile import ZipFile, BadZipFile
+import ftplib
 
 import django.utils.timezone as django_tz
 import threading
@@ -398,25 +399,36 @@ class PostDownloader(object):
             self.set_current_dir(ftp_key_torrent, self.settings.ftps["remote_torrent_dir"])
             ftp_data_torrent.ftps.encoding = "utf8"
             files_matched_torrent = []
-            for line in ftp_data_torrent.ftps.mlsd(facts=["type", "size"]):
-                if not line[0]:
+            for archive in files_torrent:
+                if not archive.gallery:
                     continue
-                if "type" not in line[1]:
+                gid_str = str(archive.gallery.gid)
+                
+                try:
+                    lines = list(ftp_data_torrent.ftps.mlsd(path=gid_str, facts=["type", "size"]))
+                except ftplib.error_perm:
                     continue
-                if line[1]["type"] != "dir" and line[1]["type"] != "file":
+                except Exception:
                     continue
-                for archive in files_torrent:
-                    if archive.gallery:
-                        cleaned_torrent_name = os.path.splitext(os.path.basename(archive.zipped.path))[0].replace(
-                            " [" + archive.gallery.gid + "]", ""
-                        )
-                    else:
-                        cleaned_torrent_name = os.path.splitext(os.path.basename(archive.zipped.path))[0]
+                    
+                cleaned_torrent_name = os.path.splitext(os.path.basename(archive.zipped.path))[0].replace(
+                    " [" + archive.gallery.gid + "]", ""
+                )
+                
+                for line in lines:
+                    if not line[0]:
+                        continue
+                    if "type" not in line[1]:
+                        continue
+                    if line[1]["type"] != "dir" and line[1]["type"] != "file":
+                        continue
+                        
                     if replace_illegal_name(os.path.splitext(line[0])[0]) == cleaned_torrent_name:
+                        matched_path = gid_str + "/" + line[0]
                         if line[1]["type"] == "dir":
-                            files_matched_torrent.append((line[0], line[1]["type"], 0, archive))
+                            files_matched_torrent.append((matched_path, line[1]["type"], 0, archive))
                         else:
-                            files_matched_torrent.append((line[0], line[1]["type"], int(line[1]["size"]), archive))
+                            files_matched_torrent.append((matched_path, line[1]["type"], int(line[1]["size"]), archive))
             for matched_file_torrent in files_matched_torrent:
                 if matched_file_torrent[1] == "dir":
                     dir_path = mkdtemp(dir=self.settings.temp_directory_path)
@@ -611,15 +623,19 @@ class PostDownloader(object):
                     files_torrent, self.settings.torrent["download_dir"]
                 )
             )
-            for filename in os.listdir(self.settings.torrent["download_dir"]):
-                for archive in files_torrent:
-                    if archive.gallery:
-                        cleaned_torrent_name = os.path.splitext(os.path.basename(archive.zipped.path))[0].replace(
-                            " [" + archive.gallery.gid + "]", ""
-                        )
+            for archive in files_torrent:
+                if not archive.gallery:
+                    continue
+                
+                gid_folder_path = os.path.join(self.settings.torrent["download_dir"], str(archive.gallery.gid))
+                if not os.path.isdir(gid_folder_path):
+                    continue
 
-                    else:
-                        cleaned_torrent_name = os.path.splitext(os.path.basename(archive.zipped.path))[0]
+                cleaned_torrent_name = os.path.splitext(os.path.basename(archive.zipped.path))[0].replace(
+                    " [" + archive.gallery.gid + "]", ""
+                )
+
+                for filename in os.listdir(gid_folder_path):
                     logger.debug(
                         "Checking if cleaned expected file name {0} is equal to found "
                         "torrent name, with replaced illegal characters (original name: {1}): {2}.".format(
@@ -627,10 +643,11 @@ class PostDownloader(object):
                         )
                     )
                     if replace_illegal_name(os.path.splitext(filename)[0]) == cleaned_torrent_name:
+                        matched_path = os.path.join(str(archive.gallery.gid), filename)
                         files_matched_torrent.append(
                             (
-                                filename,
-                                not os.path.isfile(os.path.join(self.settings.torrent["download_dir"], filename)),
+                                matched_path,
+                                not os.path.isfile(os.path.join(self.settings.torrent["download_dir"], matched_path)),
                                 archive,
                             )
                         )
