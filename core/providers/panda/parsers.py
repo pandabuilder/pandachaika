@@ -352,7 +352,7 @@ class Parser(BaseParser):
 
     def get_sha1_hashes_from_panda(self, gallery_url: str) -> list[str]:
         request_dict = construct_request_dict(self.settings, self.own_settings)
-        request_dict["cookies"] = request_dict["cookies"] | {"datatags": "1"}
+        request_dict["cookies"] = request_dict["cookies"] | {"datatags": "1", "nw": "1"} # nw is "never warn" with a redirection about certain content tags
         request_method = request_by_provider("panda_web", 1, self.own_settings.wait_timer)
 
         def get_panda_page_count(soup):
@@ -405,7 +405,7 @@ class Parser(BaseParser):
                     current_soup = BeautifulSoup(response.text, "html.parser")
                     if not current_soup:
                         continue
-                hash_elements = current_soup.find_all(attrs={"data-orghash": True})
+                hash_elements = current_soup.find_all(attrs={"data-orghash": True}) # type: ignore
                 page_hashes = [str(el["data-orghash"]) for el in hash_elements]
                 all_hashes.extend(page_hashes)
             return all_hashes

@@ -195,7 +195,7 @@ def gallery_match_group_edit(request: HttpRequest, pk: Optional[int] = None) -> 
 
         pks = []
         for k, v in p.items():
-            if k.startswith("sel-"):
+            if k.startswith("sel-") and isinstance(v, str):
                 # k, pk = k.split('-')
                 # results[pk][k] = v
                 pks.append(v)

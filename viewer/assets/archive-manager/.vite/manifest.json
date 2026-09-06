@@ -1,0 +1,11 @@
+{
+  "src/main.tsx": {
+    "file": "assets/main-WJestVfK.js",
+    "name": "main",
+    "src": "src/main.tsx",
+    "isEntry": true,
+    "css": [
+      "assets/main-_L4i1-ts.css"
+    ]
+  }
+}

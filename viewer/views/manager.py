@@ -347,7 +347,7 @@ def archives_not_present_in_filesystem(request: HttpRequest) -> HttpResponse:
 
             pks = []
             for k, v in p.items():
-                if k.startswith("del-"):
+                if k.startswith("del-") and isinstance(v, str):
                     # k, pk = k.split('-')
                     # results[pk][k] = v
                     pks.append(v)
@@ -403,7 +403,7 @@ def archives_not_present_in_filesystem(request: HttpRequest) -> HttpResponse:
         if "delete_archives" in p:
             pks = []
             for k, v in p.items():
-                if k.startswith("del-"):
+                if k.startswith("del-") and isinstance(v, str):
                     # k, pk = k.split('-')
                     # results[pk][k] = v
                     pks.append(v)
@@ -417,7 +417,7 @@ def archives_not_present_in_filesystem(request: HttpRequest) -> HttpResponse:
         elif "clear_crc32" in p:
             pks = []
             for k, v in p.items():
-                if k.startswith("del-"):
+                if k.startswith("del-") and isinstance(v, str):
                     # k, pk = k.split('-')
                     # results[pk][k] = v
                     pks.append(v)
@@ -432,7 +432,7 @@ def archives_not_present_in_filesystem(request: HttpRequest) -> HttpResponse:
         elif "mark_deleted" in p:
             pks = []
             for k, v in p.items():
-                if k.startswith("del-"):
+                if k.startswith("del-") and isinstance(v, str):
                     # k, pk = k.split('-')
                     # results[pk][k] = v
                     pks.append(v)
@@ -503,7 +503,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
     if p:
         pks = []
         for k, v in p.items():
-            if k.startswith("sel-"):
+            if k.startswith("sel-") and isinstance(v, str):
                 # k, pk = k.split('-')
                 # results[pk][k] = v
                 pks.append(v)
@@ -674,7 +674,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
         if "delete_galleries" in p:
             pks = []
             for k, v in p.items():
-                if k.startswith("sel-"):
+                if k.startswith("sel-") and isinstance(v, str):
                     # k, pk = k.split('-')
                     # results[pk][k] = v
                     pks.append(v)
@@ -688,7 +688,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
         elif "search_for_galleries" in p:
             pks = []
             for k, v in p.items():
-                if k.startswith("sel-"):
+                if k.startswith("sel-") and isinstance(v, str):
                     # k, pk = k.split('-')
                     # results[pk][k] = v
                     pks.append(v)
@@ -702,7 +702,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
         elif "toggle-public" in p:
             pks = []
             for k, v in p.items():
-                if k.startswith("sel-"):
+                if k.startswith("sel-") and isinstance(v, str):
                     # k, pk = k.split('-')
                     # results[pk][k] = v
                     pks.append(v)
@@ -719,7 +719,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
                 return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
             pks = []
             for k, v in p.items():
-                if k.startswith("sel-"):
+                if k.startswith("sel-") and isinstance(v, str):
                     # k, pk = k.split('-')
                     # results[pk][k] = v
                     pks.append(v)
@@ -757,7 +757,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
                 return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
             pks = []
             for k, v in p.items():
-                if k.startswith("sel-"):
+                if k.startswith("sel-") and isinstance(v, str):
                     # k, pk = k.split('-')
                     # results[pk][k] = v
                     pks.append(v)

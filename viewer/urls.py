@@ -168,6 +168,7 @@ urlpatterns += [
     re_path(r"^upload-archive/$", collaborators.upload_archive, name="upload-archive"),
     re_path(r"^upload-gallery/$", collaborators.upload_gallery, name="upload-gallery"),
     re_path(r"^manage-archives/$", collaborators.manage_archives, name="manage-archives"),
+    re_path(r"^archive-manager/$", collaborators.archive_manager, name="archive-manager"),
     re_path(r"^manage-galleries/$", collaborators.manage_galleries, name="manage-galleries"),
     re_path(r"^gallery-match-groups-batch/$", collaborators.gallery_match_groups_possibles, name="gallery-match-groups-batch"),
     re_path(r"^col-wanted-galleries/$", collaborators.wanted_galleries, name="col-wanted-galleries"),

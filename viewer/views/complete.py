@@ -6,7 +6,7 @@ import typing
 from dal import autocomplete
 from django import http
 from django.db.models import Q, QuerySet, Max
-from django.http import HttpResponse, HttpRequest
+from django.http import HttpResponse
 from django.utils.html import format_html
 from django.conf import settings
 from django.views.generic import ListView
@@ -772,18 +772,8 @@ class NonCustomTagAutocomplete(autocomplete.Select2QuerySetView):
 class CustomTagAutocomplete(autocomplete.Select2QuerySetView):
     model = Tag
 
-    def post(self, request: HttpRequest, *args, **kwargs) -> HttpResponse:
-
-        if not self.has_add_permission(request):
-            return http.HttpResponseForbidden()
-
-        t = request.POST.get("text", None)
-
-        if t is None:
-            return http.HttpResponseBadRequest()
-
-        t = t.replace(" ", "_")
-
+    def create_object(self, text):
+        t = text.replace(" ", "_")
         scope_name = t.split(":", maxsplit=1)
         if len(scope_name) > 1:
             name = scope_name[1]
@@ -791,13 +781,7 @@ class CustomTagAutocomplete(autocomplete.Select2QuerySetView):
         else:
             name = t
             scope = ""
-        custom_tag = Tag.objects.get_or_create(name=name, scope=scope, defaults={"source": "user"})[0]
-        return http.JsonResponse(
-            {
-                "id": custom_tag.pk,
-                "text": str(custom_tag),
-            }
-        )
+        return Tag.objects.get_or_create(name=name, scope=scope, defaults={"source": "user"})[0]
 
     def get_queryset(self) -> QuerySet:
 
@@ -903,30 +887,11 @@ class ArchiveGroupSelectAutocomplete(autocomplete.Select2QuerySetView):
     model = ArchiveGroup
     limit_choices = 100
 
-    def post(self, request: HttpRequest, *args, **kwargs) -> HttpResponse:
-
-        if not self.has_add_permission(request):
-            return http.HttpResponseForbidden()
-
-        t = request.POST.get("text", None)
-
-        if t is None:
-            return http.HttpResponseBadRequest()
-
-        archive_group_name = t
-
+    def create_object(self, text):
         archive_group_position = ArchiveGroup.objects.all().aggregate(Max("position", default=1))["position__max"]
-
-        archive_group = ArchiveGroup.objects.get_or_create(
-            title=archive_group_name, defaults={"position": archive_group_position + 1}
+        return ArchiveGroup.objects.get_or_create(
+            title=text, defaults={"position": archive_group_position + 1}
         )[0]
-
-        return http.JsonResponse(
-            {
-                "id": archive_group.pk,
-                "text": str(archive_group),
-            }
-        )
 
     def get_result_label(self, result: ArchiveGroup) -> str:
         return "({}) ({})".format(result.pk, result.title)

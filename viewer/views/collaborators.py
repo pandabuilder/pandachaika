@@ -70,7 +70,6 @@ from viewer.models import (
     GalleryGroupPossibleMatches, ArchiveManageEntry, FoundGallery
 )
 from viewer.utils.requests import double_check_auth
-from viewer.utils.tags import sort_tags
 from viewer.utils.types import AuthenticatedHttpRequest
 from viewer.views.head import (
     gallery_filter_keys,
@@ -112,7 +111,7 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
     if p:
         pks = []
         for k, v in p.items():
-            if k.startswith("sel-"):
+            if k.startswith("sel-") and isinstance(v, str):
                 # k, pk = k.split('-')
                 # results[pk][k] = v
                 pks.append(v)
@@ -354,8 +353,11 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
         gallery_results = filter_galleries_simple(params)
 
         submit_entries = submit_entries.filter(gallery__in=gallery_results)
-
-    allowed_resolved_status = [GallerySubmitEntry.RESOLVED_SUBMITTED]
+    
+    if "hide_submitted" in get:
+        allowed_resolved_status = []
+    else:
+        allowed_resolved_status = [GallerySubmitEntry.RESOLVED_SUBMITTED]
 
     if "denied" in get:
         allowed_resolved_status.append(GallerySubmitEntry.RESOLVED_DENIED)
@@ -382,6 +384,15 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
 
     if "gallery-public" in get:
         submit_entries = submit_entries.filter(gallery__public=True)
+
+    if "gallery-private" in get:
+        submit_entries = submit_entries.filter(gallery__public=False)
+
+    if "submitted_from" in get and get["submitted_from"]:
+        submit_entries = submit_entries.filter(submit_date__gte=get["submitted_from"])
+
+    if "submitted_to" in get and get["submitted_to"]:
+        submit_entries = submit_entries.filter(submit_date__lte=get["submitted_to"])
 
     submit_entries = submit_entries.annotate(
         archives_recycled=Count("gallery__archive", filter=Q(gallery__archive__binned=True))
@@ -524,7 +535,7 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
     if p:
         pks = []
         for k, v in p.items():
-            if k.startswith("sel-"):
+            if k.startswith("sel-") and isinstance(v, str):
                 # k, pk = k.split('-')
                 # results[pk][k] = v
                 pks.append(v)
@@ -546,16 +557,16 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
             if "sort_by" in get:
                 params["sort_by"] = get.get("sort_by", "")
 
-            archives = filter_archives_simple(params, request.user.is_authenticated, show_binned=True)
+            archives = filter_archives_simple(params, actual_user.is_authenticated, show_binned=True)
 
             archives, _ = filter_by_marks(archives, request.GET)
 
-            if "recycled" in get and request.user.has_perm("viewer.recycle_archive"):
+            if "recycled" in get and actual_user.has_perm("viewer.recycle_archive"):
                 archives = archives.filter(binned=True)
             else:
                 archives = archives.filter(binned=False)
 
-            if "file_deleted" in get and request.user.has_perm("viewer.recycle_archive"):
+            if "file_deleted" in get and actual_user.has_perm("viewer.recycle_archive"):
                 archives = archives.filter(file_deleted=True)
             else:
                 archives = archives.filter(file_deleted=False)
@@ -565,42 +576,42 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
         else:
             preserved = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(pks)])
             archives = Archive.objects.filter(id__in=pks).order_by(preserved)
-        if "publish_archives" in p and request.user.has_perm("viewer.publish_archive"):
+        if "publish_archives" in p and actual_user.has_perm("viewer.publish_archive"):
             for archive in archives:
                 message = "Publishing archive: {}, link: {}".format(archive.title, archive.get_absolute_url())
                 if "reason" in p and p["reason"] != "":
                     message += ", reason: {}".format(p["reason"])
-                logger.info("User {}: {}".format(request.user.username, message))
+                logger.info("User {}: {}".format(actual_user.username, message))
                 if not json_request:
                     messages.success(request, message)
                 archive.set_public(reason=user_reason)
                 event_log(
-                    request.user, "PUBLISH_ARCHIVE", reason=user_reason, content_object=archive, result="published"
+                    actual_user, "PUBLISH_ARCHIVE", reason=user_reason, content_object=archive, result="published"
                 )
-        elif "unpublish_archives" in p and request.user.has_perm("viewer.publish_archive"):
+        elif "unpublish_archives" in p and actual_user.has_perm("viewer.publish_archive"):
             for archive in archives:
                 message = "Unpublishing archive: {}, link: {}".format(archive.title, archive.get_absolute_url())
                 if "reason" in p and p["reason"] != "":
                     message += ", reason: {}".format(p["reason"])
-                logger.info("User {}: {}".format(request.user.username, message))
+                logger.info("User {}: {}".format(actual_user.username, message))
                 if not json_request:
                     messages.success(request, message)
                 archive.set_private(reason=user_reason)
                 event_log(
-                    request.user, "UNPUBLISH_ARCHIVE", reason=user_reason, content_object=archive, result="unpublished"
+                    actual_user, "UNPUBLISH_ARCHIVE", reason=user_reason, content_object=archive, result="unpublished"
                 )
-        elif "change_archive_reason" in p and request.user.has_perm("viewer.change_archive"):
+        elif "change_archive_reason" in p and actual_user.has_perm("viewer.change_archive"):
             for archive in archives:
                 archive_reason = p.get("archive_reason", "")
                 message = "Changing archive reason: {}, link: {}, new reason: {}".format(archive.title, archive.get_absolute_url(), archive_reason)
                 if "reason" in p and p["reason"] != "":
                     message += ", reason: {}".format(p["reason"])
-                logger.info("User {}: {}".format(request.user.username, message))
+                logger.info("User {}: {}".format(actual_user.username, message))
                 if not json_request:
                     messages.success(request, message)
                 archive.set_reason(archive_reason)
                 event_log(
-                    request.user, "CHANGE_ARCHIVE_REASON", reason=user_reason, content_object=archive, result="changed"
+                    actual_user, "CHANGE_ARCHIVE_REASON", reason=user_reason, content_object=archive, result="changed"
                 )
         elif "release_gallery" in p:
             for archive in archives:
@@ -610,12 +621,12 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                     )
                     if "reason" in p and p["reason"] != "":
                         message += ", reason: {}".format(p["reason"])
-                    logger.info("User {}: {}".format(request.user.username, message))
+                    logger.info("User {}: {}".format(actual_user.username, message))
                     if not json_request:
                         messages.success(request, message)
                     archive.release_gallery()
                     event_log(
-                        request.user,
+                        actual_user,
                         "RELEASE_GALLERY_FROM_ARCHIVE",
                         reason=user_reason,
                         content_object=archive,
@@ -630,19 +641,19 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                     )
                     if "reason" in p and p["reason"] != "":
                         message += ", reason: {}".format(p["reason"])
-                    logger.info("User {}: {}".format(request.user.username, message))
+                    logger.info("User {}: {}".format(actual_user.username, message))
                     if not json_request:
                         messages.success(request, message)
 
                     archive.move_gallery_to_alternative()
                     event_log(
-                        request.user,
+                        actual_user,
                         "GALLERY_TO_ALTERNATIVE",
                         reason=user_reason,
                         content_object=archive,
                         result="success",
                     )
-        elif "delete_archives" in p and request.user.has_perm("viewer.delete_archive"):
+        elif "delete_archives" in p and actual_user.has_perm("viewer.delete_archive"):
             for archive in archives:
                 message = "Deleting archive: {}, link: {}, with its file: {}".format(
                     archive.title, archive.get_absolute_url(), archive.zipped.path
@@ -653,13 +664,13 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                     if (
                         "mark_delete_galleries" in p
                         and p["mark_delete_galleries"]
-                        and request.user.has_perm("viewer.mark_delete_gallery")
+                        and actual_user.has_perm("viewer.mark_delete_gallery")
                     ):
                         archive.gallery.mark_as_deleted()
                         message += ", gallery: {} will be marked as deleted".format(archive.gallery.get_absolute_url())
                         archive.gallery = None
                         event_log(
-                            request.user,
+                            actual_user,
                             "MARK_DELETE_GALLERY",
                             data=archive_report,
                             reason=user_reason,
@@ -669,13 +680,13 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                     elif (
                         "deny_galleries" in p
                         and p["deny_galleries"]
-                        and request.user.has_perm("viewer.approve_gallery")
+                        and actual_user.has_perm("viewer.approve_gallery")
                     ):
                         archive.gallery.mark_as_denied()
                         message += ", gallery: {} will be marked as denied".format(archive.gallery.get_absolute_url())
                         archive.gallery = None
                         event_log(
-                            request.user,
+                            actual_user,
                             "DENY_GALLERY",
                             data=archive_report,
                             reason=user_reason,
@@ -685,13 +696,13 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                     elif (
                         "delete_galleries" in p
                         and p["delete_galleries"]
-                        and request.user.has_perm("viewer.delete_gallery")
+                        and actual_user.has_perm("viewer.delete_gallery")
                     ):
                         old_gallery_link = archive.gallery.get_link()
                         archive.gallery.delete()
                         archive.gallery = None
                         event_log(
-                            request.user,
+                            actual_user,
                             "DELETE_GALLERY",
                             reason=user_reason,
                             data=old_gallery_link,
@@ -703,7 +714,7 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                 archive.delete_all_files()
                 archive.delete()
                 event_log(
-                    request.user,
+                    actual_user,
                     "DELETE_ARCHIVE",
                     content_object=gallery,
                     reason=user_reason,
@@ -712,10 +723,10 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                 )
                 if "reason" in p and p["reason"] != "":
                     message += ", reason: {}".format(p["reason"])
-                logger.info("User {}: {}".format(request.user.username, message))
+                logger.info("User {}: {}".format(actual_user.username, message))
                 if not json_request:
                     messages.success(request, message)
-        elif "update_metadata" in p and request.user.has_perm("viewer.update_metadata"):
+        elif "update_metadata" in p and actual_user.has_perm("viewer.update_metadata"):
 
             galleries_from_archives = Gallery.objects.filter(archive__in=archives).distinct()
 
@@ -728,7 +739,7 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
             )
             if "reason" in p and p["reason"] != "":
                 message += ", reason: {}".format(p["reason"])
-            logger.info("User {}: {}".format(request.user.username, message))
+            logger.info("User {}: {}".format(actual_user.username, message))
             if not json_request:
                 messages.success(request, message)
 
@@ -739,7 +750,7 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
 
                 def gallery_callback(x: Optional["Gallery"], crawled_url: Optional[str], result: str) -> None:
                     event_log(
-                        request.user,
+                        actual_user,
                         "UPDATE_METADATA",
                         reason=user_reason,
                         content_object=x,
@@ -753,19 +764,19 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                     gallery_links, override_options=current_settings, gallery_callback=gallery_callback
                 )
 
-        elif "recalc_fileinfo" in p and request.user.has_perm("viewer.recalc_fileinfo"):
+        elif "recalc_fileinfo" in p and actual_user.has_perm("viewer.recalc_fileinfo"):
             for archive in archives:
                 message = "Recalculating file information for archive: {}, link: {}".format(
                     archive.title, archive.get_absolute_url()
                 )
                 if "reason" in p and p["reason"] != "":
                     message += ", reason: {}".format(p["reason"])
-                logger.info("User {}: {}".format(request.user.username, message))
+                logger.info("User {}: {}".format(actual_user.username, message))
                 if not json_request:
                     messages.success(request, message)
                 archive.recalc_fileinfo()
-                event_log(request.user, "RECALC_ARCHIVE", reason=user_reason, content_object=archive, result="success")
-        elif "add_to_group" in p and request.user.has_perm("viewer.change_archivegroup"):
+                event_log(actual_user, "RECALC_ARCHIVE", reason=user_reason, content_object=archive, result="success")
+        elif "add_to_group" in p and actual_user.has_perm("viewer.change_archivegroup"):
 
             if "archive_group" in p:
                 archive_group_ids = p.getlist("archive_group")
@@ -789,11 +800,11 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                             )
                             if "reason" in p and p["reason"] != "":
                                 message += ", reason: {}".format(p["reason"])
-                            logger.info("User {}: {}".format(request.user.username, message))
+                            logger.info("User {}: {}".format(actual_user.username, message))
                             if not json_request:
                                 messages.success(request, message)
                             event_log(
-                                request.user,
+                                actual_user,
                                 "ADD_ARCHIVE_TO_GROUP",
                                 content_object=archive,
                                 reason=user_reason,
@@ -801,8 +812,8 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                             )
         elif (
             "recycle_archives" in p
-            and request.user.is_authenticated
-            and request.user.has_perm("viewer.recycle_archive")
+            and actual_user.is_authenticated
+            and actual_user.has_perm("viewer.recycle_archive")
         ):
             for archive in archives:
                 if not archive.is_recycled():
@@ -811,13 +822,13 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                     )
                     if "reason" in p and p["reason"] != "":
                         message += ", reason: {}".format(p["reason"])
-                    logger.info("User {}: {}".format(request.user.username, message))
+                    logger.info("User {}: {}".format(actual_user.username, message))
                     if not json_request:
                         messages.success(request, message)
                     r = ArchiveRecycleEntry(
                         archive=archive,
                         reason=user_reason,
-                        user=request.user,
+                        user=actual_user,
                         origin=ArchiveRecycleEntry.ORIGIN_USER,
                     )
 
@@ -825,38 +836,38 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                     archive.binned = True
                     archive.simple_save()
                     event_log(
-                        request.user,
+                        actual_user,
                         "MOVE_TO_RECYCLE_BIN",
                         reason=user_reason,
                         content_object=archive,
                         result="recycled",
                     )
         elif (
-            "reduce_archives" in p and request.user.is_authenticated and request.user.has_perm("viewer.expand_archive")
+            "reduce_archives" in p and actual_user.is_authenticated and actual_user.has_perm("viewer.expand_archive")
         ):
             for archive in archives:
                 if archive.extracted:
                     message = "Reducing Archive: {}, link: {}".format(archive.title, archive.get_absolute_url())
                     if "reason" in p and p["reason"] != "":
                         message += ", reason: {}".format(p["reason"])
-                    logger.info("User {}: {}".format(request.user.username, message))
+                    logger.info("User {}: {}".format(actual_user.username, message))
                     if not json_request:
                         messages.success(request, message)
 
                     archive.reduce()
                     event_log(
-                        request.user, "REDUCE_ARCHIVE", reason=user_reason, content_object=archive, result="success"
+                        actual_user, "REDUCE_ARCHIVE", reason=user_reason, content_object=archive, result="success"
                     )
         elif (
             "mark_similar" in p
-            and request.user.is_authenticated
-            and request.user.has_perm("viewer.mark_similar_archive")
+            and actual_user.is_authenticated
+            and actual_user.has_perm("viewer.mark_similar_archive")
         ):
             for archive in archives:
                 message = "Creating similar info as marks for Archive: {}".format(archive.get_absolute_url())
                 if "reason" in p and p["reason"] != "":
                     message += ", reason: {}".format(p["reason"])
-                logger.info("User {}: {}".format(request.user.username, message))
+                logger.info("User {}: {}".format(actual_user.username, message))
                 if not json_request:
                     messages.success(request, message)
 
@@ -927,6 +938,13 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
 
     results = results.select_related("gallery", "user")
 
+    if "gallery-in-queue" in get:
+        results = results.annotate(
+            num_galleries_in_submit=Count(
+                "gallery__gallerysubmitentry"
+            )
+        ).filter(num_galleries_in_submit__gt=0)
+
     if json_request:
         results = results.prefetch_related("tags")
 
@@ -987,6 +1005,56 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
     return render(request, "viewer/collaborators/manage_archives.html", d)
 
 
+@permission_required("viewer.manage_archive")
+def archive_manager(request: HttpRequest) -> HttpResponse:
+    authenticated, actual_user = double_check_auth(request)
+
+    if not actual_user or not actual_user.has_perm("viewer.manage_archive"):
+        return HttpResponse(status=403)
+
+    json_request = request.GET.get("json", "")
+
+    if json_request:
+        response = manage_archives(request)
+        if response.status_code == 200 and response.headers.get("Content-Type", "").startswith("application/json"):
+            try:
+                # Decodes legacy json and injects groups list & permissions mapping
+                body = response.content.decode("utf-8")
+                if not body:
+                    return response
+                data = json.loads(body)
+                if isinstance(data, dict) and "results" in data:
+                    groups_list = []
+                    if actual_user.has_perm("viewer.change_archivegroup"):
+                        groups_list = list(ArchiveGroup.objects.all().order_by("title").values("id", "title"))
+
+                    permissions = {
+                        "publish_archive": actual_user.has_perm("viewer.publish_archive"),
+                        "delete_archive": actual_user.has_perm("viewer.delete_archive"),
+                        "change_archive": actual_user.has_perm("viewer.change_archive"),
+                        "recycle_archive": actual_user.has_perm("viewer.recycle_archive"),
+                        "expand_archive": actual_user.has_perm("viewer.expand_archive"),
+                        "update_metadata": actual_user.has_perm("viewer.update_metadata"),
+                        "recalc_fileinfo": actual_user.has_perm("viewer.recalc_fileinfo"),
+                        "mark_similar_archive": actual_user.has_perm("viewer.mark_similar_archive"),
+                        "change_archivegroup": actual_user.has_perm("viewer.change_archivegroup"),
+                        "match_archive": actual_user.has_perm("viewer.match_archive"),
+                        "view_marks": actual_user.has_perm("viewer.view_marks"),
+                        "is_staff": actual_user.is_staff,
+                    }
+                    data["groups"] = groups_list
+                    data["permissions"] = permissions
+
+                new_content = json.dumps(data, ensure_ascii=False)
+                return HttpResponse(new_content, content_type="application/json; charset=utf-8")
+            except Exception as e:
+                logger.error(f"Error parsing legacy json response in archive_manager: {e}")
+                return response
+        return response
+
+    return render(request, "viewer/collaborators/archive_manager.html")
+
+
 @permission_required("viewer.manage_gallery")
 def manage_galleries(request: HttpRequest) -> HttpResponse:
     p = request.POST
@@ -1012,7 +1080,7 @@ def manage_galleries(request: HttpRequest) -> HttpResponse:
     if p:
         pks = []
         for k, v in p.items():
-            if k.startswith("sel-"):
+            if k.startswith("sel-") and isinstance(v, str):
                 # k, pk = k.split('-')
                 # results[pk][k] = v
                 pks.append(v)
@@ -1350,7 +1418,7 @@ def gallery_match_groups_possibles(request: HttpRequest) -> HttpResponse:
     if p:
         pks = []
         for k, v in p.items():
-            if k.startswith("sel-"):
+            if k.startswith("sel-") and isinstance(v, str):
                 # k, pk = k.split('-')
                 # results[pk][k] = v
                 pks.append(v)
@@ -1521,7 +1589,7 @@ def my_event_log(request: AuthenticatedHttpRequest) -> HttpResponse:
     else:
         results = EventLog.objects.all()
 
-    results = results.filter(user=request.user).prefetch_related("content_object")
+    results = results.filter(user=request.user).prefetch_related("content_object")  # type: ignore[misc]
 
     actions = EventLog.objects.filter(user=request.user).order_by().values_list("action", flat=True).distinct()
 
@@ -1579,10 +1647,10 @@ def activity_event_log(request: HttpRequest) -> HttpResponse:
 
     if selected_actions:
         results = EventLog.objects.filter(action__in=selected_actions).prefetch_related(
-            "content_object", "content_type"
+            "content_object", "content_type"  # type: ignore[misc]
         )
     else:
-        results = EventLog.objects.all().prefetch_related("content_object", "content_type")
+        results = EventLog.objects.all().prefetch_related("content_object", "content_type")  # type: ignore[misc]
 
     if show_users:
         results = results.select_related("user")
@@ -1962,7 +2030,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
     if p:
         pks = []
         for k, v in p.items():
-            if k.startswith("sel-"):
+            if k.startswith("sel-") and isinstance(v, str):
                 # k, pk = k.split('-')
                 # results[pk][k] = v
                 pks.append(v)
@@ -2567,7 +2635,7 @@ def missing_archives_for_galleries(request: HttpRequest) -> HttpResponse:
     if p:
         pks = []
         for k, v in p.items():
-            if k.startswith("sel-"):
+            if k.startswith("sel-") and isinstance(v, str):
                 # k, pk = k.split('-')
                 # results[pk][k] = v
                 pks.append(v)

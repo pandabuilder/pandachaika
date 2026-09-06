@@ -4,27 +4,27 @@ psycopg==3.3.4
 # Main
 python-dateutil==2.9.0.post0
 twitter==1.19.6
-beautifulsoup4==4.14.3
+beautifulsoup4==4.15.0
 CherryPy==18.10.0
-Django==6.0.5
+Django==6.1
 django-compressor==4.6.0
 django-db-logger==0.1.13
 django-cors-headers==4.9.0
-Pillow==12.2.0
-rarfile==4.2
-py7zr==1.1.0
-requests==2.33.1
-feedparser==6.0.12
-transmission-rpc==7.0.11
-django-autocomplete-light==4.0.0
+Pillow==12.3.0
+rarfile==4.5
+py7zr==1.1.3
+requests==2.34.2
+feedparser==6.0.14
+transmission-rpc==7.0.12
+django-autocomplete-light==5.0.0
 django-vite==3.1.0
 elasticsearch==8.18.1
-django-simple-history==3.11.0
+django-simple-history==3.13.0
 PyYAML==6.0.3
 deckar01-ratelimit==3.0.2
-pytz==2026.1.post1
+pytz==2026.3.post1
 # For image operations in edge cases
-numpy==2.4.6
+numpy==2.5.2
 # Optional packages (depending on features wanted):
 imagehash==4.3.2
 PySocks==1.7.1

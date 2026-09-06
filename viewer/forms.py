@@ -58,7 +58,7 @@ class JalTextWidget(WidgetMixin, forms.TextInput):
 
         WidgetMixin.__init__(self, url=url, forward=forward)
 
-        self.attrs.update(attrs)
+        self.attrs.update(attrs or {})
 
     def render(self, name, value, attrs=None, renderer=None, **kwargs):
         """Proxy Django's TextInput.render()"""

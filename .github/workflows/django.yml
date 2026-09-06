@@ -15,19 +15,49 @@ jobs:
       matrix:
         python-version: ['3.12', '3.13', '3.14']
 
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: pandaweb
+          POSTGRES_USER: pandaadmin
+          POSTGRES_PASSWORD: pandaadmin
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pandaadmin -d pandaweb"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_ENGINE: postgresql
+      DATABASE_NAME: pandaweb
+      DATABASE_USERNAME: pandaadmin
+      DATABASE_PASSWORD: pandaadmin
+      DATABASE_HOST: localhost
+      DATABASE_PORT: "5432"
+      DEBUG: "true"
+
     steps:
-    - uses: actions/checkout@v6
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v6
+    - uses: actions/checkout@v7
+    - name: Install uv
+      uses: astral-sh/setup-uv@v10.0.1
       with:
         python-version: ${{ matrix.python-version }}
     - name: Install Dependencies
-      run: |
-        python -m pip install --upgrade pip uv
-        uv pip install --system -r ci-requirements.txt
+      run: uv sync --group ci
     - name: Run Ruff
-      run: |
-        ruff check .
+      run: uv run --no-sync ruff check --exclude=".venv" .
     - name: Run mypy
-      run: |
-        mypy core pandabackup viewer
+      run: uv run --no-sync mypy core pandabackup viewer
+    - name: Run migrations
+      run: uv run --no-sync manage.py migrate
+    - name: Run tests
+      run: uv run --no-sync manage.py test --noinput viewer.tests.test_internal viewer.tests.test_core
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: test-results-py${{ matrix.python-version }}
+        path: test-results/TEST-*.xml

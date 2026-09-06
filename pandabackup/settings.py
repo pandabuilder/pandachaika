@@ -204,6 +204,10 @@ DJANGO_VITE = {
         "manifest_path": os.path.join(BASE_DIR, "viewer/assets/archive-groups/.vite/manifest.json"),
         "static_url_prefix": "archive-groups",
     },
+    "archive_manager": {
+        "manifest_path": os.path.join(BASE_DIR, "viewer/assets/archive-manager/.vite/manifest.json"),
+        "static_url_prefix": "archive-manager",
+    },
 }
 
 

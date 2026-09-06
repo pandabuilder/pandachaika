@@ -27,13 +27,26 @@ test-all:
     <<: *global_cache
     key: "$CI_JOB_NAME-$CI_COMMIT_REF_SLUG"
   image: astral/uv:python$PYTHON_VERSION-trixie
+  services:
+    - name: postgres:17
+      alias: postgres
+  variables:
+    POSTGRES_DB: pandaweb
+    POSTGRES_USER: pandaadmin
+    POSTGRES_PASSWORD: pandaadmin
+    DATABASE_ENGINE: postgresql
+    DATABASE_NAME: pandaweb
+    DATABASE_USERNAME: pandaadmin
+    DATABASE_PASSWORD: pandaadmin
+    DATABASE_HOST: postgres
+    DATABASE_PORT: "5432"
+    DEBUG: "true"
   stage: test
   script:
   - python --version
   - uv sync --active --group ci
   - uv run --no-sync ruff check --exclude=".venv" .
   - uv run --no-sync mypy core pandabackup viewer
-  - bash ./set_db_engine.sh
   - uv run --no-sync manage.py migrate
   - uv run --no-sync manage.py test --noinput viewer.tests.test_internal viewer.tests.test_core
   tags:
@@ -69,10 +82,10 @@ static-test:
     - panda
 
 build:
-  image: docker:29.4.3
+  image: docker:29.7.2
   when: manual
   services:
-    - docker:29.4.3-dind
+    - docker:29.7.2-dind
   before_script:
     - docker info
   stage: build

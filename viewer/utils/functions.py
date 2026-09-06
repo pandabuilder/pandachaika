@@ -83,7 +83,15 @@ def archive_manage_results_to_json(
             "url": request.build_absolute_uri(reverse("viewer:archive", args=(archive.pk,))),
             "thumbnail": request.build_absolute_uri(archive.thumbnail.url) if archive.thumbnail else None,
             "tags": archive.tag_list_sorted(),
-            "manage_entries": [x.mark_as_json_string() for x in archive.manage_entries.all()],
+            "manage_entries": [
+                {
+                    "mark_user": x.mark_user.username if x.mark_user else None,
+                    "mark_reason": x.mark_reason,
+                    "mark_comment": x.mark_comment,
+                    "mark_priority": x.mark_priority,
+                    "mark_date": timestamp_or_null(x.mark_date),
+                } for x in archive.manage_entries.all()
+            ],
             "gallery": (
                 {
                     "id": archive.gallery.pk,

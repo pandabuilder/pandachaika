@@ -15,20 +15,20 @@ from viewer.models import Tag, Archive, Gallery, WantedGallery, ArchiveTag, Foun
 
 
 class TagTestCase(TestCase):
-    def setUp(self):
+    @classmethod
+    def setUpTestData(cls):
+        cls.test_user1 = User.objects.create_user(username="testuser1", password="12345")
 
-        test_user1 = User.objects.create_user(username="testuser1", password="12345")
-        test_user1.save()
-
-        self.gallery_tag1 = Tag.objects.create(name="sister", scope="female")
-        self.gallery_tag2 = Tag.objects.create(name="hisasi", scope="artist")
-        self.archive_tag1 = Tag.objects.create(name="distance", scope="artist")
-        self.custom_tag = Tag.objects.create(scope="custom", name="adjective", source="user")
-        self.test_gallery1 = Gallery.objects.create(title="sample non public gallery 1", gid="344", provider="panda")
-        self.test_gallery1.tags.set([self.gallery_tag1, self.gallery_tag2])
-        self.archive1 = Archive.objects.create(title="sample Archive", user=test_user1)
-        archive_tag = ArchiveTag(archive=self.archive1, tag=self.archive_tag1, origin=ArchiveTag.ORIGIN_SYSTEM)
-        archive_tag.save()
+        cls.gallery_tag1 = Tag.objects.create(name="sister", scope="female")
+        cls.gallery_tag2 = Tag.objects.create(name="hisasi", scope="artist")
+        cls.archive_tag1 = Tag.objects.create(name="distance", scope="artist")
+        cls.custom_tag = Tag.objects.create(scope="custom", name="adjective", source="user")
+        cls.test_gallery1 = Gallery.objects.create(title="sample non public gallery 1", gid="344", provider="panda")
+        cls.test_gallery1.tags.set([cls.gallery_tag1, cls.gallery_tag2])
+        cls.archive1 = Archive.objects.create(title="sample Archive", user=cls.test_user1)
+        ArchiveTag.objects.create(
+            archive=cls.archive1, tag=cls.archive_tag1, origin=ArchiveTag.ORIGIN_SYSTEM
+        )
 
     def test_first_artist_tag(self):
         """Test obtain first artist tag"""
@@ -56,91 +56,90 @@ class TagTestCase(TestCase):
 
 
 class PrivateURLsTest(TestCase):
-    def setUp(self):
+    @classmethod
+    def setUpTestData(cls):
+        cls.test_admin1 = User.objects.create_user(username="admin1", password="12345")
+        cls.test_admin1.is_staff = True
+        cls.test_admin1.save()
 
-        # Admin user
-        test_admin1 = User.objects.create_user(username="admin1", password="12345")
-        test_admin1.is_staff = True
-        test_admin1.save()
+        cls.test_user1 = User.objects.create_user(username="testuser1", password="12345")
 
-        # Registered user
-        test_user1 = User.objects.create_user(username="testuser1", password="12345")
-        test_user1.save()
+        cls.tag1 = Tag.objects.create(name="sister", scope="female")
+        cls.tag2 = Tag.objects.create(name="hisasi", scope="artist")
+        cls.tag3 = Tag.objects.create(name="fue", scope="artist")
+        cls.tag4 = Tag.objects.create(name="anzuame", scope="artist")
+        cls.tag_english = Tag.objects.create(name="english", scope="language")
 
-        # Tags
-        self.tag1 = Tag.objects.create(name="sister", scope="female")
-        self.tag2 = Tag.objects.create(name="hisasi", scope="artist")
-        self.tag3 = Tag.objects.create(name="fue", scope="artist")
-        self.tag4 = Tag.objects.create(name="anzuame", scope="artist")
-        self.tag_english = Tag.objects.create(name="english", scope="language")
+        cls.tag_custom1 = Tag.objects.create(name="special_edition", scope="")
+        cls.tag_custom2 = Tag.objects.create(name="limited_edition", scope="")
 
-        self.tag_custom1 = Tag.objects.create(name="special_edition", scope="")
-        self.tag_custom2 = Tag.objects.create(name="limited_edition", scope="")
-
-        # Galleries
-        self.test_gallery1 = Gallery.objects.create(
+        cls.test_gallery1 = Gallery.objects.create(
             title="sample non public gallery 1", gid="344", provider="panda", category="Manga"
         )
-        self.test_gallery1.tags.add(self.tag1, self.tag2, self.tag_english)
-        self.test_gallery2 = Gallery.objects.create(
+        cls.test_gallery1.tags.add(cls.tag1, cls.tag2, cls.tag_english)
+        cls.test_gallery2 = Gallery.objects.create(
             title="sample non public gallery 2", gid="342", provider="test", category="Doujinshi"
         )
-        self.test_gallery2.tags.add(self.tag1, self.tag3, self.tag_english)
-        self.test_gallery3 = Gallery.objects.create(
+        cls.test_gallery2.tags.add(cls.tag1, cls.tag3, cls.tag_english)
+        cls.test_gallery3 = Gallery.objects.create(
             title="sample non public gallery 3", gid="897", provider="test", category="Manga", public=True
         )
-        self.test_gallery3.tags.add(self.tag1, self.tag4)
+        cls.test_gallery3.tags.add(cls.tag1, cls.tag4)
 
-        # Archives
-        self.test_book1 = Archive.objects.create(title="sample non public archive", user=test_admin1)
-        self.test_book2 = Archive.objects.create(
-            title="sample public archive", user=test_admin1, public=True, gallery=self.test_gallery2
+        cls.test_book1 = Archive.objects.create(title="sample non public archive", user=cls.test_admin1)
+        cls.test_book2 = Archive.objects.create(
+            title="sample public archive", user=cls.test_admin1, public=True, gallery=cls.test_gallery2
         )
-        self.test_book3 = Archive.objects.create(
-            title="new public archive sample", user=test_admin1, public=True, gallery=self.test_gallery3
+        cls.test_book3 = Archive.objects.create(
+            title="new public archive sample", user=cls.test_admin1, public=True, gallery=cls.test_gallery3
         )
-        self.test_book4 = Archive.objects.create(
-            title="new private archive sample", user=test_admin1, public=False, gallery=self.test_gallery1
+        cls.test_book4 = Archive.objects.create(
+            title="new private archive sample", user=cls.test_admin1, public=False, gallery=cls.test_gallery1
         )
 
-        archive_tag1 = ArchiveTag(archive=self.test_book4, tag=self.tag_custom1, origin=ArchiveTag.ORIGIN_USER)
-        archive_tag2 = ArchiveTag(archive=self.test_book4, tag=self.tag_custom2, origin=ArchiveTag.ORIGIN_USER)
-        archive_tag1.save()
-        archive_tag2.save()
+        ArchiveTag.objects.bulk_create(
+            [
+                ArchiveTag(archive=cls.test_book4, tag=cls.tag_custom1, origin=ArchiveTag.ORIGIN_USER),
+                ArchiveTag(archive=cls.test_book4, tag=cls.tag_custom2, origin=ArchiveTag.ORIGIN_USER),
+            ]
+        )
 
-        self.test_books = []
-
+        bulk_archives = []
         for i in range(3):
-            self.test_books.append(
-                Archive.objects.create(
+            bulk_archives.append(
+                Archive(
                     title="new private archive sample {}".format(i + 1),
-                    user=test_admin1,
+                    user=cls.test_admin1,
                     public=False,
-                    gallery=self.test_gallery3,
+                    gallery=cls.test_gallery3,
                 )
             )
-
         for i in range(3):
-            self.test_books.append(
-                Archive.objects.create(
+            bulk_archives.append(
+                Archive(
                     title="new private archive sample {}".format(i + 1),
-                    user=test_admin1,
+                    user=cls.test_admin1,
                     public=False,
-                    gallery=self.test_gallery1,
+                    gallery=cls.test_gallery1,
                 )
             )
-
         for i in range(50):
-            self.test_books.append(
-                Archive.objects.create(
-                    title="new public archive sample {}".format(i + 1), user=test_admin1, public=True
+            bulk_archives.append(
+                Archive(
+                    title="new public archive sample {}".format(i + 1),
+                    user=cls.test_admin1,
+                    public=True,
                 )
             )
-
         for i in range(10):
-            self.test_books.append(
-                Archive.objects.create(title="new private file sample {}".format(i + 1), user=test_admin1, public=False)
+            bulk_archives.append(
+                Archive(
+                    title="new private file sample {}".format(i + 1),
+                    user=cls.test_admin1,
+                    public=False,
+                )
             )
+        cls.test_books = Archive.objects.bulk_create(bulk_archives)
 
     def test_redirect_if_not_logged_in(self):
         """Test to deny access to log page"""
@@ -210,54 +209,47 @@ class PrivateURLsTest(TestCase):
 
 
 class GeneralPagesTest(TestCase):
-    def setUp(self):
+    @classmethod
+    def setUpTestData(cls):
+        cls.test_admin1 = User.objects.create_user(username="admin1", password="12345")
+        cls.test_admin1.is_staff = True
+        cls.test_admin1.save()
 
-        # Admin user
-        test_admin1 = User.objects.create_user(username="admin1", password="12345")
-        test_admin1.is_staff = True
-        test_admin1.save()
+        cls.test_user1 = User.objects.create_user(username="testuser1", password="12345")
 
-        # Registered user
-        test_user1 = User.objects.create_user(username="testuser1", password="12345")
-        test_user1.save()
+        cls.tag1 = Tag.objects.create(name="sister", scope="female")
+        cls.tag2 = Tag.objects.create(name="hisasi", scope="artist")
+        cls.tag3 = Tag.objects.create(name="fue", scope="artist")
+        cls.tag4 = Tag.objects.create(name="anzuame", scope="artist")
+        cls.tag_english = Tag.objects.create(name="english", scope="language")
 
-        # Tags
-        self.tag1 = Tag.objects.create(name="sister", scope="female")
-        self.tag2 = Tag.objects.create(name="hisasi", scope="artist")
-        self.tag3 = Tag.objects.create(name="fue", scope="artist")
-        self.tag4 = Tag.objects.create(name="anzuame", scope="artist")
-        self.tag_english = Tag.objects.create(name="english", scope="language")
-
-        # Galleries
-        self.test_gallery1 = Gallery.objects.create(
+        cls.test_gallery1 = Gallery.objects.create(
             title="sample non public gallery 1", gid="344", provider="panda", category="Manga"
         )
-        self.test_gallery1.tags.add(self.tag1, self.tag2, self.tag_english)
-        self.test_gallery2 = Gallery.objects.create(
+        cls.test_gallery1.tags.add(cls.tag1, cls.tag2, cls.tag_english)
+        cls.test_gallery2 = Gallery.objects.create(
             title="sample non public gallery 2", gid="342", provider="test", category="Doujinshi"
         )
-        self.test_gallery2.tags.add(self.tag1, self.tag3, self.tag_english)
-        self.test_gallery3 = Gallery.objects.create(
+        cls.test_gallery2.tags.add(cls.tag1, cls.tag3, cls.tag_english)
+        cls.test_gallery3 = Gallery.objects.create(
             title="sample non public gallery 3", gid="897", provider="test", category="Manga", public=True
         )
-        self.test_gallery3.tags.add(self.tag1, self.tag4)
+        cls.test_gallery3.tags.add(cls.tag1, cls.tag4)
 
-        # Archives
-        self.test_book1 = Archive.objects.create(title="archive 1", user=test_admin1, gallery=self.test_gallery1)
-        self.test_book1b = Archive.objects.create(title="archive 1b", user=test_admin1, gallery=self.test_gallery1)
-        self.test_book2 = Archive.objects.create(
-            title="archive 2", user=test_admin1, gallery=self.test_gallery2, public=True
+        cls.test_book1 = Archive.objects.create(title="archive 1", user=cls.test_admin1, gallery=cls.test_gallery1)
+        cls.test_book1b = Archive.objects.create(title="archive 1b", user=cls.test_admin1, gallery=cls.test_gallery1)
+        cls.test_book2 = Archive.objects.create(
+            title="archive 2", user=cls.test_admin1, gallery=cls.test_gallery2, public=True
         )
-        self.test_book3 = Archive.objects.create(title="archive 3", user=test_admin1, public=True)
-        self.test_book4 = Archive.objects.create(
-            title="book 4", user=test_admin1, gallery=self.test_gallery2, public=True
+        cls.test_book3 = Archive.objects.create(title="archive 3", user=cls.test_admin1, public=True)
+        cls.test_book4 = Archive.objects.create(
+            title="book 4", user=cls.test_admin1, gallery=cls.test_gallery2, public=True
         )
-        self.test_book5 = Archive.objects.create(
-            title="archive 5", user=test_admin1, gallery=self.test_gallery2, public=True
+        cls.test_book5 = Archive.objects.create(
+            title="archive 5", user=cls.test_admin1, gallery=cls.test_gallery2, public=True
         )
 
-        # WantedGalleries
-        self.test_wanted_gallery1 = WantedGallery.objects.create(
+        cls.test_wanted_gallery1 = WantedGallery.objects.create(
             title="test wanted gallery",
             title_jpn="テスト募集ギャラリー",
             search_title="sample non",
@@ -270,7 +262,7 @@ class GeneralPagesTest(TestCase):
             keep_searching=False,
             notify_when_found=False,
         )
-        self.test_wanted_gallery2 = WantedGallery.objects.create(
+        cls.test_wanted_gallery2 = WantedGallery.objects.create(
             title="test wanted gallery 2",
             title_jpn="テスト募集ギャラリー",
             search_title="public gallery",
@@ -362,11 +354,12 @@ class GeneralPagesTest(TestCase):
 class JsonApiEndpointsTest(GeneralPagesTest):
     """GET /api handlers: gid, gids, wanted-gallery, wanted-galleries."""
 
-    def setUp(self):
-        super().setUp()
-        FoundGallery.objects.get_or_create(
-            wanted_gallery=self.test_wanted_gallery2,
-            gallery=self.test_gallery3,
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        FoundGallery.objects.create(
+            wanted_gallery=cls.test_wanted_gallery2,
+            gallery=cls.test_gallery3,
         )
 
     def _api_get(self, client, **params):

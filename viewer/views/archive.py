@@ -119,7 +119,11 @@ def archive_details(request: HttpRequest, pk: int, mode: str = "view") -> HttpRe
             all_images = paginator.page(paginator.num_pages)
 
         form = ArchiveModForm(instance=archive, initial={"archive_groups": archive.archive_groups.all()})
-        image_formset = ImageFormSet(queryset=all_images.object_list, prefix="images")  # type: ignore
+        page_image_pks = [img.pk for img in all_images]
+        image_formset = ImageFormSet(
+            queryset=archive.image_set.filter(pk__in=page_image_pks),
+            prefix="images",
+        )
         d.update(
             {
                 "form": form,

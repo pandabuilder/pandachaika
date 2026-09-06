@@ -73,6 +73,7 @@
                 {% endif %}
                 {% if perms.viewer.manage_archive %}
                 <a class="dropdown-item" href="{% url 'viewer:manage-archives' %}?non_public=1">Manage archives</a>
+                <a class="dropdown-item" href="{% url 'viewer:archive-manager' %}">Archive Manager App</a>
                 <a class="dropdown-item" href="{% url 'viewer:archives-by-field' %}">Similar archives by field</a>
                 {% endif %}
                 {% if perms.viewer.manage_gallery %}
@@ -156,6 +157,7 @@
                 <div class="dropdown-divider"></div>
                 <a class="dropdown-item" href="{% url 'viewer:submit-queue' %}">Submit queue</a>
                 <a class="dropdown-item" href="{% url 'viewer:manage-archives' %}?non_public=1">Manage archives</a>
+                <a class="dropdown-item" href="{% url 'viewer:archive-manager' %}">Archive Manager App</a>
                 <a class="dropdown-item" href="{% url 'viewer:manage-galleries' %}">Manage galleries</a>
                 <a class="dropdown-item" href="{% url 'viewer:user-crawler' %}">Add URLs</a>
                 <a class="dropdown-item" href="{% url 'viewer:download-history' %}">Download History</a>

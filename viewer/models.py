@@ -39,7 +39,7 @@ from django.utils.text import slugify
 from django.db.models import Value, CharField
 from django.db.models.functions import Concat, Replace
 
-from PIL import Image as PImage
+from PIL import Image as PImage, ImageOps
 from PIL import ImageFile
 import django.db.models.options as options
 from django.urls import reverse
@@ -2754,6 +2754,7 @@ class Archive(models.Model):
                         with my_nested_zip.open(filename_tuple[0]) as current_img:
                             if resized:
                                 im_resized = PImage.open(current_img)
+                                im_resized = ImageOps.exif_transpose(im_resized)
                                 if im_resized.mode != "RGB":
                                     im_resized = im_resized.convert("RGB")
                                 im_w, im_h = im_resized.size
@@ -2773,6 +2774,7 @@ class Archive(models.Model):
                 else:
                     if resized:
                         im_resized = PImage.open(current_file)
+                        im_resized = ImageOps.exif_transpose(im_resized)
                         if im_resized.mode != "RGB":
                             im_resized = im_resized.convert("RGB")
                         im_w, im_h = im_resized.size

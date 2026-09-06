@@ -1,4 +1,4 @@
-from PIL import Image
+from PIL import Image, ImageOps
 import numpy as np
 
 
@@ -26,6 +26,7 @@ def img_to_thumbnail(im: Image.Image, width: float = 250, height: float = 362.5)
     else:
         if im.mode != "RGB":
             im = im.convert("RGB")
+    im = ImageOps.exif_transpose(im)
     im.thumbnail((width, height), Image.Resampling.LANCZOS)
 
     return im

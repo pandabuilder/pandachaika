@@ -79,7 +79,6 @@ class PostDownloader(object):
                         if archive.reason:
                             temp_settings.archive_reason = archive.reason
                         self.web_queue.enqueue_args_list((archive.gallery.get_link(),), override_options=temp_settings)
-                        return
                 else:
                     logger.warning(
                         "For archive: {}, File check on downloaded zipfile: {}. "
@@ -87,6 +86,7 @@ class PostDownloader(object):
                     )
                 if self.settings.recycle_failed_checks_downloads:
                     archive.move_to_recycle_bin(reason="Failed on ZIP file opening")
+                return
             # crc32 = calc_crc32(archive.zipped.path)
             # filesize, filecount = get_zip_fileinfo(archive.zipped.path)
             # values = {
@@ -161,7 +161,7 @@ class PostDownloader(object):
 
                         if panda_sha1_list != downloaded_sha1_list:
                             if archive.source_type and "panda" in archive.source_type:
-                                logger.error(
+                                logger.warning(
                                     "For archive: {}, SHA1 mismatch on downloaded zipfile failed on file: {}, "
                                     "forcing download as panda_archive to fix it.".format(archive, archive.zipped.path)
                                 )
@@ -172,7 +172,6 @@ class PostDownloader(object):
                                     if archive.reason:
                                         temp_settings.archive_reason = archive.reason
                                     self.web_queue.enqueue_args_list((archive.gallery.get_link(),), override_options=temp_settings)
-                                    return
                             else:
                                 logger.warning(
                                     "For archive: {}, SHA1 mismatch on downloaded zipfile: {}. "
@@ -180,6 +179,7 @@ class PostDownloader(object):
                                 )
                             if self.settings.recycle_failed_checks_downloads:
                                 archive.move_to_recycle_bin(reason="SHA1 mismatch on downloaded zipfile")
+                            return
                         else:
                             logger.info("For archive: {} local SHA1 matches with gallery page sha1, validation passes.".format(archive))
                     else:

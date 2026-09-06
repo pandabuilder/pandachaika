@@ -11,10 +11,13 @@ from viewer.models import Gallery, WantedGallery, Tag, FoundGallery, Provider
 
 
 class CoreTest(TestCase):
-    def setUp(self):
-        # Galleries
-        self.test_gallery1 = Gallery.objects.create(title="sample non public gallery 1", gid="344", provider="panda")
-        self.test_gallery2 = Gallery.objects.create(title="sample non public gallery 2", gid="342", provider="test")
+    test_gallery1: Gallery
+    test_gallery2: Gallery
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.test_gallery1 = Gallery.objects.create(title="sample non public gallery 1", gid="344", provider="panda")
+        cls.test_gallery2 = Gallery.objects.create(title="sample non public gallery 2", gid="342", provider="test")
 
     def test_repeated_archives(self):
 
@@ -40,21 +43,38 @@ class CoreTest(TestCase):
 
 
 class WantedGalleryTest(TestCase):
-    def setUp(self):
-        # Tags
-        english_tag = Tag.objects.create(scope="language", name="english")
-        artist_tag = Tag.objects.create(scope="artist", name="suzunomoku")
-        artist2_tag = Tag.objects.create(scope="artist", name="mitsuya")
-        parody_tag = Tag.objects.create(scope="parody", name="original")
+    english_tag: Tag
+    artist_tag: Tag
+    artist2_tag: Tag
+    parody_tag: Tag
+    provider_instance: Provider | None
+    test_gallery1: Gallery
+    test_gallery2: Gallery
+    test_gallery3: Gallery
+    test_gallery4: Gallery
+    test_gallery5: Gallery
+    test_gallery6: Gallery
+    test_wanted_gallery1: WantedGallery
+    test_wanted_gallery3: WantedGallery
+    test_wanted_gallery4: WantedGallery
+    test_wanted_gallery4b: WantedGallery
+    test_wanted_gallery4c: WantedGallery
+    test_wanted_gallery5: WantedGallery
+    test_wanted_gallery_regex: WantedGallery
 
-        provider_instance = Provider.objects.filter(slug="fakku").first()
+    @classmethod
+    def setUpTestData(cls):
+        cls.english_tag = Tag.objects.create(scope="language", name="english")
+        cls.artist_tag = Tag.objects.create(scope="artist", name="suzunomoku")
+        cls.artist2_tag = Tag.objects.create(scope="artist", name="mitsuya")
+        cls.parody_tag = Tag.objects.create(scope="parody", name="original")
 
-        # Galleries
-        self.test_gallery1 = Gallery.objects.create(title="sample non public gallery 1", gid="344", provider="panda")
-        self.test_gallery2 = Gallery.objects.create(title="sample non public gallery 2", gid="342", provider="test")
+        cls.provider_instance = Provider.objects.filter(slug="fakku").first()
 
-        # WantedGalleries
-        self.test_wanted_gallery1 = WantedGallery.objects.create(
+        cls.test_gallery1 = Gallery.objects.create(title="sample non public gallery 1", gid="344", provider="panda")
+        cls.test_gallery2 = Gallery.objects.create(title="sample non public gallery 2", gid="342", provider="test")
+
+        cls.test_wanted_gallery1 = WantedGallery.objects.create(
             title="test wanted gallery",
             book_type="Manga",
             publisher="wanimagazine",
@@ -63,21 +83,25 @@ class WantedGalleryTest(TestCase):
             keep_searching=True,
             notify_when_found=False,
         )
-        self.test_wanted_gallery1.wanted_tags.set([english_tag, artist_tag])
+        cls.test_wanted_gallery1.wanted_tags.set([cls.english_tag, cls.artist_tag])
 
-        for i in range(10):
-            WantedGallery.objects.create(
-                title="repeated wanted gallery {}".format(i),
-                search_title="Dopyu",
-                book_type="Manga",
-                publisher="wanimagazine",
-                reason="wanimagazine",
-                should_search=True,
-                keep_searching=True,
-                notify_when_found=False,
-            )
+        WantedGallery.objects.bulk_create(
+            [
+                WantedGallery(
+                    title="repeated wanted gallery {}".format(i),
+                    search_title="Dopyu",
+                    book_type="Manga",
+                    publisher="wanimagazine",
+                    reason="wanimagazine",
+                    should_search=True,
+                    keep_searching=True,
+                    notify_when_found=False,
+                )
+                for i in range(10)
+            ]
+        )
 
-        self.test_wanted_gallery3 = WantedGallery.objects.create(
+        cls.test_wanted_gallery3 = WantedGallery.objects.create(
             title="test wanted gallery 3",
             search_title="gallery",
             publisher="wanimagazine",
@@ -88,14 +112,13 @@ class WantedGalleryTest(TestCase):
             found=True,
         )
 
-        self.test_gallery3 = Gallery.objects.create(
+        cls.test_gallery3 = Gallery.objects.create(
             title="existing gallery", gid="345", provider="panda", category="Manga", token="4324234"
         )
 
-        FoundGallery.objects.get_or_create(wanted_gallery=self.test_wanted_gallery3, gallery=self.test_gallery3)
+        FoundGallery.objects.create(wanted_gallery=cls.test_wanted_gallery3, gallery=cls.test_gallery3)
 
-        # Set 4
-        self.test_wanted_gallery4 = WantedGallery.objects.create(
+        cls.test_wanted_gallery4 = WantedGallery.objects.create(
             title="test wanted gallery 4",
             book_type="Manga",
             publisher="wanimagazine",
@@ -106,9 +129,9 @@ class WantedGalleryTest(TestCase):
             wanted_tags_exclusive_scope=True,
             exclusive_scope_name="artist",
         )
-        self.test_wanted_gallery4.wanted_tags.set([english_tag, artist2_tag])
+        cls.test_wanted_gallery4.wanted_tags.set([cls.english_tag, cls.artist2_tag])
 
-        self.test_wanted_gallery4b = WantedGallery.objects.create(
+        cls.test_wanted_gallery4b = WantedGallery.objects.create(
             title="test wanted gallery 4b",
             book_type="Manga",
             publisher="wanimagazine",
@@ -120,9 +143,9 @@ class WantedGalleryTest(TestCase):
             exclusive_scope_name="artist",
             wanted_tags_accept_if_none_scope="parody",
         )
-        self.test_wanted_gallery4b.wanted_tags.set([artist2_tag, parody_tag])
+        cls.test_wanted_gallery4b.wanted_tags.set([cls.artist2_tag, cls.parody_tag])
 
-        self.test_wanted_gallery4c = WantedGallery.objects.create(
+        cls.test_wanted_gallery4c = WantedGallery.objects.create(
             title="test wanted gallery 4c",
             book_type="Manga",
             publisher="wanimagazine",
@@ -132,19 +155,19 @@ class WantedGalleryTest(TestCase):
             notify_when_found=False,
             wanted_tags_accept_if_none_scope="parody",
         )
-        self.test_wanted_gallery4c.wanted_tags.set([artist2_tag, parody_tag])
+        cls.test_wanted_gallery4c.wanted_tags.set([cls.artist2_tag, cls.parody_tag])
 
-        self.test_gallery4 = Gallery.objects.create(
+        cls.test_gallery4 = Gallery.objects.create(
             title="New Release 4", gid="34665", provider="panda", category="Manga", token="4324239"
         )
-        self.test_gallery4.tags.set([english_tag, artist_tag, artist2_tag])
+        cls.test_gallery4.tags.set([cls.english_tag, cls.artist_tag, cls.artist2_tag])
 
-        self.test_gallery5 = Gallery.objects.create(
+        cls.test_gallery5 = Gallery.objects.create(
             title="New Release 5", gid="346659", provider="panda", category="Manga", token="4324288"
         )
-        self.test_gallery5.tags.set([english_tag, artist2_tag, parody_tag])
+        cls.test_gallery5.tags.set([cls.english_tag, cls.artist2_tag, cls.parody_tag])
 
-        self.test_wanted_gallery5 = WantedGallery.objects.create(
+        cls.test_wanted_gallery5 = WantedGallery.objects.create(
             title="test wanted gallery 5",
             search_title="kairakuten",
             publisher="wanimagazine",
@@ -155,10 +178,10 @@ class WantedGalleryTest(TestCase):
             unwanted_title="[Chinese]",
         )
 
-        if provider_instance:
-            self.test_wanted_gallery5.unwanted_providers.add(provider_instance)
+        if cls.provider_instance:
+            cls.test_wanted_gallery5.unwanted_providers.add(cls.provider_instance)
 
-        self.test_gallery6 = Gallery.objects.create(
+        cls.test_gallery6 = Gallery.objects.create(
             title="COMIC Kairakuten 2022-06 [Digital]",
             title_jpn="COMIC 快楽天 2022年6月号 [DL版]",
             gid="2207323",
@@ -170,8 +193,7 @@ class WantedGalleryTest(TestCase):
             filesize=1043530781,
         )
 
-        # Regex
-        self.test_wanted_gallery_regex = WantedGallery.objects.create(
+        cls.test_wanted_gallery_regex = WantedGallery.objects.create(
             title="test wanted gallery regex",
             book_type="user",
             reason="kairakuten_raw",

@@ -1,0 +1,13 @@
+{% extends "viewer/base.html" %}
+{% block title %}Archive Manager | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+{% load static %}
+{% load django_vite %}
+{% block extra_head %}
+{% vite_asset 'src/main.tsx' app="archive_manager" %}
+{% endblock %}
+
+{% block content %}
+<noscript>You need to enable JavaScript to run this app.</noscript>
+<div id="root"></div>
+{% endblock %}

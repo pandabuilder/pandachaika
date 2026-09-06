@@ -21,7 +21,7 @@ def get_torrent_client(torrent_settings: dict[str, Any]) -> Optional[TorrentClie
     if not torrent_module:
         return None
     for _, obj in inspect.getmembers(torrent_module):
-        if inspect.isclass(obj) and hasattr(obj, "type") and "torrent_handler" in getattr(obj, "type"):
+        if inspect.isclass(obj) and issubclass(obj, TorrentClient):
             client = obj(
                 torrent_settings["address"],
                 torrent_settings["port"],

@@ -12,7 +12,7 @@
     {% endif %}
     <!-- Galleries not used  -->
     <div class="page-header">
-    <h2>Submitted galleries without associated archives</h2>
+    <h2>Submitted galleries</h2>
     <p class="lead">Number of galleries (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
     </div>
     <form action="{{ request.get_full_path }}" method="GET">
@@ -52,6 +52,20 @@
         <div class="col-md-auto">
             <input title="Submit Reason" class="form-control" name="submit_reason" placeholder="Submit Reason" value="{{ request.GET.submit_reason }}">
         </div>
+        <div class="col-md-auto">
+            <div class="input-group align-items-center">
+                <label for="submitted-from">Submitted</label>
+                <input id="submitted-from" title="" class="form-control" type="date" name="submitted_from" placeholder="from" value="{{ request.GET.submitted_from }}">
+            </div>
+        </div>
+        <div class="col-md-auto">
+            <input title="" class="form-control" type="date" name="submitted_to" placeholder="to" value="{{ request.GET.submitted_to }}">
+        </div>
+      <div class="col-md-auto">
+        <div class="form-check">
+        <input id="checkbox-f31" class="form-check-input" type="checkbox" name="hide_submitted" value="1" {% if "hide_submitted" in request.GET %}checked{% endif %}><label for="checkbox-f31">Hide submitted</label>
+        </div>
+      </div>
       <div class="col-md-auto">
         <div class="form-check">
         <input id="checkbox-f1" class="form-check-input" type="checkbox" name="denied" value="1" {% if "denied" in request.GET %}checked{% endif %}><label for="checkbox-f1">Show denied</label>
@@ -85,6 +99,11 @@
       <div class="col-md-auto">
         <div class="form-check">
         <input id="checkbox-f10" class="form-check-input" type="checkbox" name="gallery-public" value="1" {% if "gallery-public" in request.GET %}checked{% endif %}><label for="checkbox-f10">Public Gallery</label>
+        </div>
+      </div>
+      <div class="col-md-auto">
+        <div class="form-check">
+        <input id="checkbox-f11" class="form-check-input" type="checkbox" name="gallery-private" value="1" {% if "gallery-private" in request.GET %}checked{% endif %}><label for="checkbox-f11">Private Gallery</label>
         </div>
       </div>
       <div class="col-md-auto">
