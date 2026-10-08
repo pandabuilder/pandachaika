@@ -118,12 +118,18 @@ def request_data_from_gid_token_iterable(api_token_iterable: typing.Iterable[tup
 AttrList = list[tuple[str, typing.Optional[str]]]
 
 
+class OrderedSet(list[str]):
+    def add(self, item: str) -> None:
+        if item not in self:
+            self.append(item)
+
+
 # TODO: This parsers should be migrated to bs4, they were written before using bs4 in the project.
 class SearchHTMLParser(HTMLParser):
 
     def __init__(self) -> None:
         HTMLParser.__init__(self)
-        self.galleries: typing.Set[str] = set()
+        self.galleries: OrderedSet = OrderedSet()
         self.stop_at_favorites: int = 0
 
     def error(self, message: str) -> None:

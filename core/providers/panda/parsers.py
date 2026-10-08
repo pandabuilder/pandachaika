@@ -108,19 +108,9 @@ class Parser(BaseParser):
     def get_galleries_from_main_page_link(self, url: str) -> set[str]:
 
         unique_urls = set()
+        current_page = 0
 
         while True:
-
-            parsed = urllib.parse.urlparse(url)
-            query = urllib.parse.parse_qs(parsed.query)
-            if "page" in query:
-                current_page = int(query["page"][0])
-            else:
-                params = {"page": ["0"]}
-                query.update(params)
-                new_query = urllib.parse.urlencode(query, doseq=True)
-                url = urllib.parse.urlunparse(list(parsed[0:4]) + [new_query] + list(parsed[5:]))
-                current_page = 0
 
             request_dict = construct_request_dict(self.settings, self.own_settings)
 
@@ -160,9 +150,22 @@ class Parser(BaseParser):
                             "ending (setting: provider.stop_page_number).".format(self.own_settings.stop_page_number)
                         )
                         break
+
+                last_gallery = main_page_parser.galleries[-1]
+                last_gid, _ = get_gid_token_from_link(last_gallery)
+                if not last_gid:
+                    logger.warning("Could not extract gid from last gallery {}, ending".format(last_gallery))
+                    break
+
                 current_page += 1
-                params = {"page": [str(current_page)]}
-                query.update(params)
+                parsed = urllib.parse.urlparse(url)
+                query = urllib.parse.parse_qs(parsed.query)
+                if query.get("next") == [last_gid]:
+                    logger.info("Next gid did not change ({}), ending".format(last_gid))
+                    break
+
+                query.pop("page", None)
+                query["next"] = [last_gid]
                 new_query = urllib.parse.urlencode(query, doseq=True)
                 url = urllib.parse.urlunparse(list(parsed[0:4]) + [new_query] + list(parsed[5:]))
                 time.sleep(self.own_settings.wait_timer)
@@ -172,19 +175,9 @@ class Parser(BaseParser):
     def get_galleries_from_lofi_page_link(self, url: str) -> set[str]:
 
         unique_urls = set()
+        current_page = 0
 
         while True:
-            parsed = urllib.parse.urlparse(url)
-            query = urllib.parse.parse_qs(parsed.query)
-            if "page" in query:
-                current_page = int(query["page"][0])
-            else:
-                params = {"page": ["0"]}
-                query.update(params)
-                new_query = urllib.parse.urlencode(query, doseq=True)
-                url = urllib.parse.urlunparse(list(parsed[0:4]) + [new_query] + list(parsed[5:]))
-                current_page = 0
-
             request_dict = construct_request_dict(self.settings, self.own_settings)
 
             response = request_with_retries(
@@ -232,9 +225,22 @@ class Parser(BaseParser):
                             "ending (setting: provider.stop_page_number).".format(self.own_settings.stop_page_number)
                         )
                         break
+
+                last_gallery = current_found_links[-1]
+                last_gid, _ = get_gid_token_from_link(last_gallery)
+                if not last_gid:
+                    logger.warning("Could not extract gid from last gallery {}, ending".format(last_gallery))
+                    break
+
                 current_page += 1
-                params = {"page": [str(current_page)]}
-                query.update(params)
+                parsed = urllib.parse.urlparse(url)
+                query = urllib.parse.parse_qs(parsed.query)
+                if query.get("next") == [last_gid]:
+                    logger.info("Next gid did not change ({}), ending".format(last_gid))
+                    break
+
+                query.pop("page", None)
+                query["next"] = [last_gid]
                 new_query = urllib.parse.urlencode(query, doseq=True)
                 url = urllib.parse.urlunparse(list(parsed[0:4]) + [new_query] + list(parsed[5:]))
                 time.sleep(self.own_settings.wait_timer)
