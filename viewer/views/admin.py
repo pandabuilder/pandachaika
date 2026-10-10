@@ -1,3 +1,4 @@
+import datetime
 import json
 import logging
 import os.path
@@ -12,8 +13,11 @@ from django.urls import reverse
 from django.db.models import Avg, Max, Min, Sum, Count
 from django.http import HttpResponseRedirect, HttpRequest, HttpResponse
 from django.shortcuts import render
-from django.utils.dateparse import parse_date
+from django.utils import timezone
+from django.utils.dateparse import parse_date, parse_datetime
 from django_db_logger.models import StatusLog
+
+from viewer.utils.actions import event_log
 
 from core.base.setup import Settings
 from core.base.setup_utilities import get_thread_status, get_thread_status_bool
@@ -547,6 +551,94 @@ def logs(request: HttpRequest, tool: str = "all") -> HttpResponse:
 
     if not request.user.is_staff:
         return render_error(request, "You need to be an admin to see logs.")
+
+    if request.method == "POST":
+        action = request.POST.get("action", "")
+        delete_type = request.POST.get("delete_type", "") or request.POST.get("range", "")
+        custom_date_str = request.POST.get("custom_date", "").strip()
+
+        if action in ("delete_logs", "delete") or delete_type or custom_date_str:
+            deleted_count = 0
+            success = False
+            msg = ""
+
+            if delete_type == "all":
+                deleted_count, _ = StatusLog.objects.all().delete()
+                msg = f"Successfully deleted all server logs ({deleted_count} removed)."
+                success = True
+            elif delete_type in ("1_day", "1"):
+                cutoff = timezone.now() - datetime.timedelta(days=1)
+                deleted_count, _ = StatusLog.objects.filter(create_datetime__lt=cutoff).delete()
+                msg = f"Successfully deleted {deleted_count} logs older than 1 day."
+                success = True
+            elif delete_type in ("7_days", "1_week", "7"):
+                cutoff = timezone.now() - datetime.timedelta(days=7)
+                deleted_count, _ = StatusLog.objects.filter(create_datetime__lt=cutoff).delete()
+                msg = f"Successfully deleted {deleted_count} logs older than 7 days (1 week)."
+                success = True
+            elif delete_type in ("14_days", "2_weeks", "14"):
+                cutoff = timezone.now() - datetime.timedelta(days=14)
+                deleted_count, _ = StatusLog.objects.filter(create_datetime__lt=cutoff).delete()
+                msg = f"Successfully deleted {deleted_count} logs older than 14 days."
+                success = True
+            elif delete_type in ("30_days", "1_month", "30"):
+                cutoff = timezone.now() - datetime.timedelta(days=30)
+                deleted_count, _ = StatusLog.objects.filter(create_datetime__lt=cutoff).delete()
+                msg = f"Successfully deleted {deleted_count} logs older than 30 days."
+                success = True
+            elif delete_type.isdigit():
+                days = int(delete_type)
+                cutoff = timezone.now() - datetime.timedelta(days=days)
+                deleted_count, _ = StatusLog.objects.filter(create_datetime__lt=cutoff).delete()
+                msg = f"Successfully deleted {deleted_count} logs older than {days} days."
+                success = True
+            elif delete_type == "custom" or custom_date_str:
+                dt = None
+                if custom_date_str:
+                    dt = parse_datetime(custom_date_str)
+                    if dt is None:
+                        parsed_date = parse_date(custom_date_str)
+                        if parsed_date is not None:
+                            dt = datetime.datetime.combine(parsed_date, datetime.time.min)
+                    if dt is None:
+                        for fmt in ("%Y-%m-%d %H:%M", "%Y/%m/%d", "%d/%m/%Y", "%m/%d/%Y"):
+                            try:
+                                dt = datetime.datetime.strptime(custom_date_str, fmt)
+                                break
+                            except ValueError:
+                                pass
+
+                if dt is not None:
+                    if timezone.is_naive(dt):
+                        dt = timezone.make_aware(dt, timezone.get_current_timezone())
+                    deleted_count, _ = StatusLog.objects.filter(create_datetime__lt=dt).delete()
+                    date_display = dt.strftime("%Y-%m-%d %H:%M:%S") if dt.time() != datetime.time.min else dt.strftime("%Y-%m-%d")
+                    msg = f"Successfully deleted {deleted_count} logs older than {date_display}."
+                    success = True
+                else:
+                    msg = f"Invalid date specified: '{custom_date_str}'"
+                    messages.error(request, msg, extra_tags="danger")
+            else:
+                msg = "No valid delete option specified."
+                messages.error(request, msg, extra_tags="danger")
+
+            if success:
+                messages.success(request, msg)
+                try:
+                    event_log(request.user, "DELETE_STATUS_LOGS", data=f"delete_type={delete_type}, count={deleted_count}", result="success")
+                except Exception:
+                    pass
+
+            if request.POST.get("json") or request.headers.get("x-requested-with") == "XMLHttpRequest":
+                return HttpResponse(
+                    json.dumps({"success": success, "deleted": deleted_count, "message": msg}),
+                    content_type="application/json; charset=utf-8",
+                )
+
+            referer = clean_up_referer(request.META.get("HTTP_REFERER", ""))
+            if not referer:
+                referer = reverse("viewer:logs")
+            return HttpResponseRedirect(referer)
 
     status_logs = StatusLog.objects.all()
 

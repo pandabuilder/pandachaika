@@ -24,6 +24,142 @@
         <button class="btn btn-outline-light" id="auto-refresh" title="Auto-refresh logs every 5 seconds">
           <i class="fas fa-sync"></i> Auto-refresh
         </button>
+        <div class="btn-group" role="group">
+          <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteLogsModal" title="Delete logs">
+            <i class="fas fa-trash-alt"></i> Delete logs
+          </button>
+          <button type="button" class="btn btn-outline-danger dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false" title="Quick delete options">
+            <span class="visually-hidden">Toggle Dropdown</span>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark">
+            <li><h6 class="dropdown-header text-uppercase text-secondary small fw-bold">Quick Cleanup</h6></li>
+            <li><a class="dropdown-item quick-delete-btn" href="#" data-delete-type="1_day" data-confirm="Are you sure you want to delete logs older than 1 day?"><i class="fas fa-clock text-warning me-2"></i>Older than 1 day</a></li>
+            <li><a class="dropdown-item quick-delete-btn" href="#" data-delete-type="7_days" data-confirm="Are you sure you want to delete logs older than 7 days (1 week)?"><i class="fas fa-calendar-week text-warning me-2"></i>Older than 7 days (1 week)</a></li>
+            <li><a class="dropdown-item quick-delete-btn" href="#" data-delete-type="30_days" data-confirm="Are you sure you want to delete logs older than 30 days (1 month)?"><i class="fas fa-calendar-alt text-warning me-2"></i>Older than 30 days</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#deleteLogsModal"><i class="fas fa-calendar-day text-info me-2"></i>Choose custom date...</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item text-danger quick-delete-btn" href="#" data-delete-type="all" data-confirm="DANGER: Are you sure you want to permanently delete ALL server logs? This action CANNOT be undone!"><i class="fas fa-dumpster-fire me-2"></i>Delete ALL logs</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hidden Quick Delete Form -->
+  <form id="quick-delete-form" action="{% url 'viewer:logs' %}" method="POST" style="display: none;">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="delete_logs">
+    <input type="hidden" name="delete_type" id="quick-delete-type" value="">
+  </form>
+
+  <!-- Delete Logs Modal -->
+  <div class="modal fade" id="deleteLogsModal" tabindex="-1" aria-labelledby="deleteLogsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content modal-background text-white shadow-lg">
+        <div class="modal-header border-secondary">
+          <h5 class="modal-title" id="deleteLogsModalLabel">
+            <i class="fas fa-trash-alt text-danger me-2"></i>Delete Server Logs
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body p-4">
+          <p class="text-light mb-4">
+            Select an option below to delete log entries from the database. <strong class="text-warning">Deleted logs cannot be recovered.</strong>
+          </p>
+
+          <!-- Option 1: Choose a Cutoff Date -->
+          <div class="card bg-dark border-secondary mb-4">
+            <div class="card-header bg-secondary bg-opacity-25 border-secondary text-white fw-semibold">
+              <i class="fas fa-calendar-alt text-info me-2"></i>Delete logs older than a specific date
+            </div>
+            <div class="card-body">
+              <form action="{% url 'viewer:logs' %}" method="POST" id="custom-date-delete-form" onsubmit="return confirmCustomDateDelete();">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="delete_logs">
+                <input type="hidden" name="delete_type" value="custom">
+                <div class="row g-3 align-items-end">
+                  <div class="col-sm-8">
+                    <label for="custom_date" class="form-label small text-light">Cutoff date:</label>
+                    <input type="date" class="form-control bg-dark text-white border-secondary" id="custom_date" name="custom_date" required>
+                    <div class="form-text text-muted">
+                      All logs created before 00:00:00 UTC of this date will be permanently deleted.
+                    </div>
+                  </div>
+                  <div class="col-sm-4">
+                    <button type="submit" class="btn btn-warning w-100">
+                      <i class="fas fa-calendar-times me-1"></i> Delete older than date
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <!-- Option 2: Quick Presets -->
+          <div class="card bg-dark border-secondary mb-4">
+            <div class="card-header bg-secondary bg-opacity-25 border-secondary text-white fw-semibold">
+              <i class="fas fa-history text-info me-2"></i>Quick presets
+            </div>
+            <div class="card-body">
+              <p class="small text-muted mb-3">Delete logs older than a predefined duration relative to current time:</p>
+              <div class="d-flex flex-wrap gap-2">
+                <form action="{% url 'viewer:logs' %}" method="POST" class="d-inline" onsubmit="return confirm('Are you sure you want to delete logs older than 1 day?');">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="delete_logs">
+                  <input type="hidden" name="delete_type" value="1_day">
+                  <button type="submit" class="btn btn-outline-light">
+                    <i class="fas fa-clock text-warning me-1"></i> Older than 1 day
+                  </button>
+                </form>
+
+                <form action="{% url 'viewer:logs' %}" method="POST" class="d-inline" onsubmit="return confirm('Are you sure you want to delete logs older than 7 days (1 week)?');">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="delete_logs">
+                  <input type="hidden" name="delete_type" value="7_days">
+                  <button type="submit" class="btn btn-outline-light">
+                    <i class="fas fa-calendar-week text-warning me-1"></i> Older than 7 days (1 week)
+                  </button>
+                </form>
+
+                <form action="{% url 'viewer:logs' %}" method="POST" class="d-inline" onsubmit="return confirm('Are you sure you want to delete logs older than 30 days (1 month)?');">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="delete_logs">
+                  <input type="hidden" name="delete_type" value="30_days">
+                  <button type="submit" class="btn btn-outline-light">
+                    <i class="fas fa-calendar-alt text-warning me-1"></i> Older than 30 days (1 month)
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+
+          <!-- Option 3: Delete All Logs -->
+          <div class="card bg-dark border-danger">
+            <div class="card-header bg-danger bg-opacity-25 border-danger text-danger fw-semibold">
+              <i class="fas fa-exclamation-triangle me-2"></i>Danger zone
+            </div>
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+                <div>
+                  <h6 class="text-white mb-1">Delete all server logs</h6>
+                  <p class="text-muted small mb-0">Permanently clears every log entry in the system.</p>
+                </div>
+                <form action="{% url 'viewer:logs' %}" method="POST" class="d-inline" onsubmit="return confirm('DANGER: Are you sure you want to permanently delete ALL server logs? This action CANNOT be undone.');">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="delete_logs">
+                  <input type="hidden" name="delete_type" value="all">
+                  <button type="submit" class="btn btn-danger">
+                    <i class="fas fa-dumpster-fire me-1"></i> Delete ALL logs
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer border-secondary">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
       </div>
     </div>
   </div>
@@ -221,6 +357,15 @@
   background-color: rgba(255,255,255,0.1);
 }
 
+input[type="date"] {
+  color-scheme: dark;
+}
+
+.modal-content.modal-background {
+  background-color: #1a2234 !important;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
 
 </style>
 {% endblock %}
@@ -294,6 +439,37 @@ document.addEventListener('DOMContentLoaded', function() {
     } finally {
       isRefreshing = false;
     }
+  }
+
+  // Quick delete dropdown action handler
+  document.querySelectorAll('.quick-delete-btn').forEach(function(item) {
+    item.addEventListener('click', function(e) {
+      e.preventDefault();
+      const deleteType = this.getAttribute('data-delete-type');
+      const confirmText = this.getAttribute('data-confirm');
+      if (confirm(confirmText)) {
+        const form = document.getElementById('quick-delete-form');
+        document.getElementById('quick-delete-type').value = deleteType;
+        form.submit();
+      }
+    });
+  });
+
+  // Modal custom date delete confirmation
+  window.confirmCustomDateDelete = function() {
+    const dateInput = document.getElementById('custom_date');
+    if (!dateInput.value) {
+      alert('Please select a date.');
+      return false;
+    }
+    return confirm('Are you sure you want to delete all logs older than ' + dateInput.value + '?');
+  };
+
+  // Set default max date to today
+  const dateInput = document.getElementById('custom_date');
+  if (dateInput) {
+    const today = new Date().toISOString().split('T')[0];
+    dateInput.setAttribute('max', today);
   }
 });
 </script>
