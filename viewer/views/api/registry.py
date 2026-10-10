@@ -6,6 +6,7 @@ Each list maps a query-string command key to its handler. See dispatch.py for ro
 from viewer.views.api.handlers.delete import (
     handle_delete_archive_group,
     handle_delete_archive_group_entry,
+    handle_delete_wanted_gallery,
 )
 from viewer.views.api.handlers.get import (
     handle_get_archive,
@@ -44,6 +45,7 @@ from viewer.views.api.handlers.post import (
 from viewer.views.api.handlers.put import (
     handle_put_archive_group,
     handle_put_archive_group_entry,
+    handle_put_wanted_gallery,
 )
 
 GET_HANDLERS = [
@@ -87,10 +89,13 @@ POST_HANDLERS = [
 PUT_HANDLERS = [
     ("archive-group", "viewer.change_archivegroup", handle_put_archive_group),
     ("archive-group-entry", "viewer.change_archivegroupentry", handle_put_archive_group_entry),
+    ("wanted-gallery", "viewer.change_wantedgallery", handle_put_wanted_gallery),
 ]
 
 
 DELETE_HANDLERS = [
     ("archive-group", "viewer.delete_archivegroup", handle_delete_archive_group),
     ("archive-group-entry", "viewer.delete_archivegroupentry", handle_delete_archive_group_entry),
+    ("wanted-gallery", "viewer.delete_wantedgallery", handle_delete_wanted_gallery),
 ]
+

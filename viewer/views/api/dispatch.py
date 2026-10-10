@@ -4,7 +4,13 @@ import json
 from typing import Any, Optional
 
 from django.contrib.auth.models import User, AnonymousUser
-from django.http import HttpResponse, HttpRequest, HttpResponseForbidden, HttpResponseNotFound
+from django.http import (
+    HttpResponse,
+    HttpRequest,
+    HttpResponseBadRequest,
+    HttpResponseForbidden,
+    HttpResponseNotFound,
+)
 
 from viewer.views.api.registry import (
     DELETE_HANDLERS,
@@ -23,7 +29,12 @@ def json_api_handle_get(request: HttpRequest, user_is_authenticated: bool):
 
 def json_api_handle_post(request: HttpRequest, user: Optional[User | AnonymousUser]):
     data = request.GET
-    body = json.loads(request.body)
+    try:
+        body = json.loads(request.body) if request.body else {}
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return HttpResponseBadRequest(
+            json.dumps({"result": "Invalid JSON body"}), content_type="application/json; charset=utf-8"
+        )
     for key, required_perm, handler in POST_HANDLERS:
         if key in data:
             if user and user.has_perm(required_perm):
@@ -37,7 +48,12 @@ def json_api_handle_post(request: HttpRequest, user: Optional[User | AnonymousUs
 
 def json_api_handle_put(request: HttpRequest, user: Optional[User | AnonymousUser]):
     data = request.GET
-    body = json.loads(request.body)
+    try:
+        body = json.loads(request.body) if request.body else {}
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return HttpResponseBadRequest(
+            json.dumps({"result": "Invalid JSON body"}), content_type="application/json; charset=utf-8"
+        )
     for key, required_perm, handler in PUT_HANDLERS:
         if key in data:
             if user and user.has_perm(required_perm):
@@ -63,3 +79,4 @@ def json_api_handle_delete(request: HttpRequest, user: Optional[User | Anonymous
     return HttpResponseNotFound(
         json.dumps({"result": "Unknown command"}), content_type="application/json; charset=utf-8"
     )
+

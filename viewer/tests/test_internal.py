@@ -6,7 +6,7 @@ Replace these with more appropriate tests for your application.
 """
 
 from django.test import TestCase, Client
-from django.contrib.auth.models import User
+from django.contrib.auth.models import User, Permission
 from django.urls import reverse
 
 import json
@@ -352,7 +352,7 @@ class GeneralPagesTest(TestCase):
 
 
 class JsonApiEndpointsTest(GeneralPagesTest):
-    """GET /api handlers: gid, gids, wanted-gallery, wanted-galleries."""
+    """API handlers: gid, gids, wanted-gallery, wanted-galleries, wanted-galleries-search."""
 
     @classmethod
     def setUpTestData(cls):
@@ -362,8 +362,40 @@ class JsonApiEndpointsTest(GeneralPagesTest):
             gallery=cls.test_gallery3,
         )
 
+        cls.perm_user_add = User.objects.create_user(username="perm_add", password="12345")
+        cls.perm_user_change = User.objects.create_user(username="perm_change", password="12345")
+        cls.perm_user_delete = User.objects.create_user(username="perm_delete", password="12345")
+        cls.perm_user_all = User.objects.create_user(username="perm_all", password="12345")
+
+        perm_add = Permission.objects.get(codename="add_wantedgallery", content_type__app_label="viewer")
+        perm_change = Permission.objects.get(codename="change_wantedgallery", content_type__app_label="viewer")
+        perm_delete = Permission.objects.get(codename="delete_wantedgallery", content_type__app_label="viewer")
+
+        cls.perm_user_add.user_permissions.add(perm_add)
+        cls.perm_user_change.user_permissions.add(perm_change)
+        cls.perm_user_delete.user_permissions.add(perm_delete)
+        cls.perm_user_all.user_permissions.add(perm_add, perm_change, perm_delete)
+
     def _api_get(self, client, **params):
         return client.get(reverse("viewer:api"), params)
+
+    def _api_post(self, client, query_str="", body=None):
+        url = reverse("viewer:api")
+        if query_str:
+            url = f"{url}?{query_str}"
+        return client.post(url, data=json.dumps(body or {}), content_type="application/json")
+
+    def _api_put(self, client, query_str="", body=None):
+        url = reverse("viewer:api")
+        if query_str:
+            url = f"{url}?{query_str}"
+        return client.put(url, data=json.dumps(body or {}), content_type="application/json")
+
+    def _api_delete(self, client, query_str="", body=None):
+        url = reverse("viewer:api")
+        if query_str:
+            url = f"{url}?{query_str}"
+        return client.delete(url, data=json.dumps(body or {}), content_type="application/json")
 
     def test_api_gid_public_gallery_anonymous(self):
         response = self._api_get(
@@ -469,3 +501,166 @@ class JsonApiEndpointsTest(GeneralPagesTest):
         data = json.loads(response.content)
         self.assertEqual(len(data["found_galleries"]), 1)
         self.assertEqual(data["found_galleries"][0]["gid"], self.test_gallery3.gid)
+
+    def test_api_wanted_gallery_post_create_success(self):
+        client = Client()
+        client.login(username="perm_add", password="12345")
+        payload = {
+            "title": "New Created Wanted Gallery",
+            "title_jpn": "新規募集ギャラリー",
+            "search_title": "Search Query",
+            "should_search": True,
+            "keep_searching": False,
+            "notify_when_found": True,
+            "public": True,
+            "wait_for_time": 300,
+            "wanted_tags": ["artist:new_artist", "female:twintails"],
+            "category": "Manga",
+            "reason": "Test Create",
+        }
+        response = self._api_post(client, "wanted-gallery=", payload)
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertEqual(data["result"], "success")
+        self.assertIn("id", data)
+
+        created = WantedGallery.objects.get(pk=data["id"])
+        self.assertEqual(created.title, "New Created Wanted Gallery")
+        self.assertEqual(created.title_jpn, "新規募集ギャラリー")
+        self.assertTrue(created.public)
+        self.assertTrue(created.should_search)
+        self.assertTrue(created.notify_when_found)
+        self.assertEqual(created.wait_for_time.total_seconds(), 300)
+        self.assertIn("artist:new_artist", created.wanted_tags_list())
+
+    def test_api_wanted_gallery_post_unauthorized(self):
+        # Unauthenticated
+        response = self._api_post(self.client, "wanted-gallery=", {"title": "Denied"})
+        self.assertEqual(response.status_code, 403)
+
+        # Authenticated but missing add_wantedgallery permission
+        client = Client()
+        client.login(username="testuser1", password="12345")
+        response = self._api_post(client, "wanted-gallery=", {"title": "Denied"})
+        self.assertEqual(response.status_code, 403)
+
+    def test_api_wanted_gallery_put_modify_success(self):
+        client = Client()
+        client.login(username="perm_change", password="12345")
+        payload = {
+            "title": "Modified Title Put",
+            "should_search": False,
+            "public": True,
+            "notify_when_found": True,
+            "wait_for_time": 600,
+            "wanted_tags": ["artist:updated_artist"],
+            "reason": "Updated Reason",
+        }
+        response = self._api_put(client, f"wanted-gallery={self.test_wanted_gallery1.pk}", payload)
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertEqual(data["result"], "success")
+        self.assertEqual(data["id"], self.test_wanted_gallery1.pk)
+        self.assertEqual(data["title"], "Modified Title Put")
+        self.assertTrue(data["public"])
+        self.assertFalse(data["should_search"])
+        self.assertEqual(data["wait_for_time"], 600)
+        self.assertIn("artist:updated_artist", data["wanted_tags"])
+
+        self.test_wanted_gallery1.refresh_from_db()
+        self.assertEqual(self.test_wanted_gallery1.title, "Modified Title Put")
+        self.assertTrue(self.test_wanted_gallery1.public)
+        self.assertFalse(self.test_wanted_gallery1.should_search)
+        self.assertEqual(self.test_wanted_gallery1.wait_for_time.total_seconds(), 600)
+        self.assertIn("artist:updated_artist", self.test_wanted_gallery1.wanted_tags_list())
+
+    def test_api_wanted_gallery_put_modify_partial(self):
+        client = Client()
+        client.login(username="perm_change", password="12345")
+        original_title = self.test_wanted_gallery2.title
+        payload = {"should_search": False}
+        response = self._api_put(client, f"wanted-gallery={self.test_wanted_gallery2.pk}", payload)
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertEqual(data["title"], original_title)
+        self.assertFalse(data["should_search"])
+
+        self.test_wanted_gallery2.refresh_from_db()
+        self.assertEqual(self.test_wanted_gallery2.title, original_title)
+        self.assertFalse(self.test_wanted_gallery2.should_search)
+
+    def test_api_wanted_gallery_put_with_id_in_body(self):
+        client = Client()
+        client.login(username="perm_change", password="12345")
+        payload = {
+            "id": self.test_wanted_gallery2.pk,
+            "reason": "Updated Reason Via Body ID",
+        }
+        response = self._api_put(client, "wanted-gallery=", payload)
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertEqual(data["reason"], "Updated Reason Via Body ID")
+
+        self.test_wanted_gallery2.refresh_from_db()
+        self.assertEqual(self.test_wanted_gallery2.reason, "Updated Reason Via Body ID")
+
+    def test_api_wanted_gallery_put_not_found(self):
+        client = Client()
+        client.login(username="perm_change", password="12345")
+        response = self._api_put(client, "wanted-gallery=999999", {"title": "Non-existent"})
+        self.assertEqual(response.status_code, 404)
+        data = json.loads(response.content)
+        self.assertIn("does not exist", data["result"])
+
+    def test_api_wanted_gallery_put_unauthorized(self):
+        # Unauthenticated
+        response = self._api_put(self.client, f"wanted-gallery={self.test_wanted_gallery1.pk}", {"title": "Denied"})
+        self.assertEqual(response.status_code, 403)
+
+        # Authenticated without change_wantedgallery
+        client = Client()
+        client.login(username="perm_add", password="12345")
+        response = self._api_put(client, f"wanted-gallery={self.test_wanted_gallery1.pk}", {"title": "Denied"})
+        self.assertEqual(response.status_code, 403)
+
+    def test_api_wanted_gallery_delete_success(self):
+        temp = WantedGallery.objects.create(title="To be deleted", public=True)
+        temp_pk = temp.pk
+
+        client = Client()
+        client.login(username="perm_delete", password="12345")
+        response = self._api_delete(client, f"wanted-gallery={temp_pk}")
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertEqual(data["result"], "success")
+        self.assertEqual(data["id"], temp_pk)
+        self.assertFalse(WantedGallery.objects.filter(pk=temp_pk).exists())
+
+    def test_api_wanted_gallery_delete_not_found_and_unauthorized(self):
+        # Unauthenticated
+        response = self._api_delete(self.client, f"wanted-gallery={self.test_wanted_gallery1.pk}")
+        self.assertEqual(response.status_code, 403)
+
+        # Authorized but not found
+        client = Client()
+        client.login(username="perm_delete", password="12345")
+        response = self._api_delete(client, "wanted-gallery=999999")
+        self.assertEqual(response.status_code, 404)
+
+    def test_api_wanted_galleries_search_include_found_galleries(self):
+        response = self._api_get(
+            self.client,
+            **{
+                "wanted-galleries-search": "",
+                "title": "public gallery",
+                "include_found_galleries": "",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertGreaterEqual(len(data), 1)
+        found_entry = next((item for item in data if item["id"] == self.test_wanted_gallery2.pk), None)
+        self.assertIsNotNone(found_entry)
+        self.assertIn("found_galleries", found_entry)
+        self.assertEqual(len(found_entry["found_galleries"]), 1)
+        self.assertEqual(found_entry["found_galleries"][0]["gid"], self.test_gallery3.gid)

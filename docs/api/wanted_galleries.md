@@ -1,6 +1,6 @@
 # Wanted Gallery Endpoints API Documentation
 
-This document describes all API endpoints for reading, searching, and creating `WantedGallery` records in Panda Backup.
+This document describes all API endpoints for reading, searching, creating, modifying, and deleting `WantedGallery` records in Panda Backup.
 
 All endpoints use the public JSON API at `/api` (or `/jsearch`).
 
@@ -11,6 +11,8 @@ All endpoints use the public JSON API at `/api` (or `/jsearch`).
 - **Unauthenticated GET requests**: Unauthenticated callers only receive entries where `public=true`. If an unauthenticated caller requests a non-public entry, `404 Not Found` with `{"result": "WantedGallery does not exist."}` is returned.
 - **Authenticated GET requests**: Passing an `Authorization: Bearer <API_TOKEN>` header or active Django session allows access to both public and non-public wanted galleries.
 - **Creating Wanted Galleries (`POST`)**: Requires an authenticated user with the `viewer.add_wantedgallery` permission. Unauthenticated or unauthorized callers receive `403 Forbidden` (`{"result": "Not authorized"}`).
+- **Modifying Wanted Galleries (`PUT`)**: Requires an authenticated user with the `viewer.change_wantedgallery` permission. Unauthenticated or unauthorized callers receive `403 Forbidden` (`{"result": "Not authorized"}`).
+- **Deleting Wanted Galleries (`DELETE`)**: Requires an authenticated user with the `viewer.delete_wantedgallery` permission. Unauthenticated or unauthorized callers receive `403 Forbidden` (`{"result": "Not authorized"}`).
 
 ---
 
@@ -22,6 +24,8 @@ All endpoints use the public JSON API at `/api` (or `/jsearch`).
 | `?wanted-galleries=<id>&wanted-galleries=<id>...` | `GET` | None | Get multiple WantedGallery objects |
 | `?wanted-galleries-search=` | `GET` | None | Search WantedGallery objects with filters |
 | `?wanted-gallery=` | `POST` | `viewer.add_wantedgallery` | Create a new WantedGallery |
+| `?wanted-gallery=<id>` | `PUT` | `viewer.change_wantedgallery` | Modify an existing WantedGallery |
+| `?wanted-gallery=<id>` | `DELETE` | `viewer.delete_wantedgallery` | Delete a WantedGallery |
 
 ---
 
@@ -74,6 +78,7 @@ Returns a JSON object with the fields listed in [Response Field Definitions](#re
   "wait_for_time": null,
   "should_search": true,
   "keep_searching": false,
+  "notify_when_found": true,
   "reason": "Collection completion",
   "book_type": "",
   "publisher": "",
@@ -171,12 +176,13 @@ Filters and searches WantedGallery records.
 | `tags` | `string` | Comma-separated tag query (same syntax as gallery/archive search). |
 | `mention-source` | `string` | Mention source filter. |
 | `restricted-to-links` | `boolean` | Filter for entries restricted to links. |
+| `include_found_galleries` | `flag` | Embed linked `found_galleries` in each result. |
 | `sort` | `string` | Sort field: `title`, `date_found`, `create_date`, `last_modified`, `release_date`. |
 | `asc_desc` | `string` | `desc` for descending order, `asc` for ascending. Default is ascending. |
 
 ### Example Request
 ```bash
-curl "https://example.chaika.moe/api?wanted-galleries-search=&title=Example&wanted-not-found=1&sort=release_date&asc_desc=desc"
+curl "https://example.chaika.moe/api?wanted-galleries-search=&title=Example&wanted-not-found=1&sort=release_date&asc_desc=desc&include_found_galleries"
 ```
 
 ---
@@ -212,15 +218,17 @@ Creates a new WantedGallery record.
 | `exclusive_scope_name` | `string` | No | Name of exclusive scope. |
 | `wanted_tags_accept_if_none_scope`| `string` | No | Accept match if no tags in this scope are present. |
 | `category` | `string` | No | Main gallery category (e.g. `Manga`). |
-| `wait_for_time` | `number` / `null` | No | Wait time in seconds before download triggers. |
+| `wait_for_time` | `number` / `null` | No | Wait time in seconds before download triggers (or duration string). |
 | `should_search` | `boolean` | No | Enable active crawler searching. Default `false`. |
 | `keep_searching` | `boolean` | No | Continue searching after initial match. Default `false`. |
-| `reason` | `string` | No | Reason for monitoring this item. |
+| `notify_when_found` | `boolean` | No | Send notification when match is found. Default `true`. |
+| `public` | `boolean` | No | Visible to unauthenticated API callers. Default `false`. |
+| `reason` | `string` | No | Reason for monitoring this item. Default `"backup"`. |
 | `book_type` | `string` | No | Type of publication (e.g. `Tankoubon`, `Anthology`). |
 | `publisher` | `string` | No | Publisher name. |
-| `page_count` | `integer` | No | Exact page count. |
+| `page_count` | `integer` | No | Expected page count. |
 | `restricted_to_links` | `boolean` | No | Limit searching to monitored links only. |
-| `release_date` | `string` | No | Release date (`YYYY-MM-DD` or ISO 8601 string). |
+| `release_date` | `string` / `integer` | No | Release date (`YYYY-MM-DD`, ISO 8601 string, or Unix timestamp). |
 | `add_to_archive_group` | `integer` | No | ArchiveGroup primary key to automatically add matched archives to. |
 | `wanted_tags` | `array[string]` | No | List of required tags (e.g. `["artist:alpha", "female:nekomimi"]`). Can also be a comma-separated string. |
 | `unwanted_tags` | `array[string]` | No | List of excluded tags. |
@@ -238,6 +246,8 @@ curl -X POST "https://example.chaika.moe/api?wanted-gallery=" \
     "title_jpn": "Example Manga Vol. 1 JPN",
     "search_title": "Example Manga",
     "should_search": true,
+    "public": true,
+    "notify_when_found": true,
     "wanted_tags": ["artist:example_artist", "female:nekomimi"],
     "unwanted_tags": ["male:ugly_bastard"],
     "category": "Manga",
@@ -257,6 +267,180 @@ curl -X POST "https://example.chaika.moe/api?wanted-gallery=" \
 
 **Error (403 Forbidden)**  
 Missing authentication or `viewer.add_wantedgallery` permission:
+```json
+{
+  "result": "Not authorized"
+}
+```
+
+---
+
+## 5. Modify Wanted Gallery (`PUT ?wanted-gallery=<id>`)
+
+Modifies an existing WantedGallery record.
+
+- **Endpoint**: `/api`
+- **Method**: `PUT`
+- **Query Parameter**: `?wanted-gallery=<id>` (alternatively, `id` can be specified in the JSON request body)
+- **Permissions**: Requires an authenticated user with `viewer.change_wantedgallery` permission.
+- **Headers**:
+  - `Content-Type: application/json`
+  - `Authorization: Bearer YOUR_API_TOKEN`
+
+### Request Body Schema
+
+Supports **partial updates**: only the fields included in the request body are modified. All omitted fields retain their existing values.
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `title` | `string` | Primary title of the gallery. |
+| `title_jpn` | `string` | Japanese title. |
+| `search_title` | `string` | Search query phrase used by crawlers. |
+| `regexp_search_title` | `boolean` | Treat `search_title` as regex pattern. |
+| `regexp_search_title_icase` | `boolean` | Case-insensitive regex matching for search title. |
+| `unwanted_title` | `string` | Excluded title pattern. |
+| `regexp_unwanted_title` | `boolean` | Treat `unwanted_title` as regex pattern. |
+| `regexp_unwanted_title_icase` | `boolean` | Case-insensitive regex matching for unwanted title. |
+| `wanted_page_count_lower` | `integer` | Minimum acceptable page count. |
+| `wanted_page_count_upper` | `integer` | Maximum acceptable page count. |
+| `match_expression` | `string` / `null` | Query expression. |
+| `wanted_tags_exclusive_scope` | `boolean` | Enforce exclusive scope for tags. |
+| `exclusive_scope_name` | `string` | Exclusive scope name. |
+| `wanted_tags_accept_if_none_scope` | `string` | Accept match if no tags in scope are present. |
+| `category` | `string` | Primary gallery category. |
+| `wait_for_time` | `number` / `null` | Delay in seconds before download triggers (or duration string). |
+| `should_search` | `boolean` | Enable or disable crawler search. |
+| `keep_searching` | `boolean` | Continue searching after match is found. |
+| `notify_when_found` | `boolean` | Notification flag when match is found. |
+| `public` | `boolean` | Toggle visibility to unauthenticated callers. |
+| `reason` | `string` | Reason for monitoring this entry. |
+| `book_type` | `string` | Book publication type. |
+| `publisher` | `string` | Publisher name. |
+| `page_count` | `integer` | Expected page count. |
+| `restricted_to_links` | `boolean` | Limit crawling to monitored links only. |
+| `release_date` | `string` / `integer` / `null` | Release date (ISO 8601 string or Unix timestamp integer). |
+| `found` | `boolean` | Match status flag. |
+| `date_found` | `string` / `integer` / `null` | Unix timestamp or ISO string of match date. |
+| `add_to_archive_group` | `integer` / `null` | ArchiveGroup ID to automatically link matches to (`null` to unlink). |
+| `wanted_tags` | `array[string]` | Replacement list of required tags. |
+| `unwanted_tags` | `array[string]` | Replacement list of excluded tags. |
+| `wanted_providers` | `array[string]` | Replacement list of provider slugs to search. |
+| `unwanted_providers` | `array[string]` | Replacement list of provider slugs to exclude. |
+| `categories` | `array[string]` | Replacement list of categories. |
+
+### Example Request
+```bash
+curl -X PUT "https://example.chaika.moe/api?wanted-gallery=123" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -d '{
+    "title": "Example Manga Vol. 1 (Updated)",
+    "should_search": false,
+    "public": true,
+    "wanted_tags": ["artist:example_artist", "female:twintails"]
+  }'
+```
+
+### Response
+**Success (200 OK)**  
+Returns the full updated WantedGallery object and `"result": "success"`:
+
+```json
+{
+  "result": "success",
+  "id": 123,
+  "title": "Example Manga Vol. 1 (Updated)",
+  "title_jpn": "Example Manga Vol. 1 JPN",
+  "search_title": "Example Manga",
+  "regexp_search_title": false,
+  "regexp_search_title_icase": false,
+  "unwanted_title": "",
+  "regexp_unwanted_title": false,
+  "regexp_unwanted_title_icase": false,
+  "wanted_page_count_lower": 0,
+  "wanted_page_count_upper": 0,
+  "match_expression": null,
+  "wanted_tags_exclusive_scope": false,
+  "exclusive_scope_name": "",
+  "wanted_tags_accept_if_none_scope": "",
+  "category": "Manga",
+  "wait_for_time": null,
+  "should_search": false,
+  "keep_searching": false,
+  "notify_when_found": true,
+  "reason": "Collection completion",
+  "book_type": "",
+  "publisher": "",
+  "page_count": 0,
+  "restricted_to_links": false,
+  "release_date": null,
+  "add_to_archive_group": null,
+  "wanted_tags": ["artist:example_artist", "female:twintails"],
+  "unwanted_tags": ["male:ugly_bastard"],
+  "wanted_providers": ["panda", "nhentai"],
+  "unwanted_providers": [],
+  "categories": ["Manga"],
+  "public": true,
+  "found": false,
+  "date_found": null,
+  "create_date": 1600000000,
+  "last_modified": 1600000050
+}
+```
+
+**Error (404 Not Found)**  
+Returned if the ID does not exist:
+```json
+{
+  "result": "WantedGallery does not exist."
+}
+```
+
+**Error (403 Forbidden)**  
+Missing authentication or `viewer.change_wantedgallery` permission:
+```json
+{
+  "result": "Not authorized"
+}
+```
+
+---
+
+## 6. Delete Wanted Gallery (`DELETE ?wanted-gallery=<id>`)
+
+Deletes an existing WantedGallery record.
+
+- **Endpoint**: `/api`
+- **Method**: `DELETE`
+- **Query Parameter**: `?wanted-gallery=<id>` (alternatively, `id` can be specified in the request body)
+- **Permissions**: Requires an authenticated user with `viewer.delete_wantedgallery` permission.
+- **Headers**:
+  - `Authorization: Bearer YOUR_API_TOKEN`
+
+### Example Request
+```bash
+curl -X DELETE "https://example.chaika.moe/api?wanted-gallery=123" \
+  -H "Authorization: Bearer YOUR_API_TOKEN"
+```
+
+### Response
+**Success (200 OK)**
+```json
+{
+  "result": "success",
+  "id": 123,
+  "deleted": 1
+}
+```
+
+**Error (404 Not Found)**
+```json
+{
+  "result": "WantedGallery does not exist."
+}
+```
+
+**Error (403 Forbidden)**
 ```json
 {
   "result": "Not authorized"
@@ -288,6 +472,7 @@ Missing authentication or `viewer.add_wantedgallery` permission:
 | `wait_for_time` | `number` / `null` | Delay in seconds |
 | `should_search` | `boolean` | Active crawler search enabled |
 | `keep_searching` | `boolean` | Continue searching after finding a match |
+| `notify_when_found` | `boolean` | Notification flag when a match is found |
 | `reason` | `string` | Monitoring reason |
 | `book_type` | `string` | Book type |
 | `publisher` | `string` | Publisher |

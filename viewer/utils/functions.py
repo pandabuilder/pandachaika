@@ -1,4 +1,5 @@
 from collections.abc import Iterable
+from datetime import timedelta
 from typing import Any, Optional
 
 from django.core.mail import get_connection, EmailMultiAlternatives
@@ -335,10 +336,13 @@ def wanted_gallery_to_json(
         "wanted_tags_accept_if_none_scope": wanted_gallery.wanted_tags_accept_if_none_scope,
         "category": wanted_gallery.category,
         "wait_for_time": (
-            wanted_gallery.wait_for_time.total_seconds() if wanted_gallery.wait_for_time is not None else None
+            wanted_gallery.wait_for_time.total_seconds()
+            if isinstance(wanted_gallery.wait_for_time, timedelta)
+            else (float(wanted_gallery.wait_for_time) if wanted_gallery.wait_for_time is not None else None)
         ),
         "should_search": wanted_gallery.should_search,
         "keep_searching": wanted_gallery.keep_searching,
+        "notify_when_found": wanted_gallery.notify_when_found,
         "reason": wanted_gallery.reason,
         "book_type": wanted_gallery.book_type,
         "publisher": wanted_gallery.publisher,

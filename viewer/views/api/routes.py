@@ -101,7 +101,7 @@ def json_api(request: HttpRequest) -> HttpResponse:
             )
     else:
         return HttpResponseNotAllowed(
-            ["GET", "PUT", "DELETE"],
+            ["GET", "POST", "PUT", "DELETE"],
             json.dumps({"result": "Unsupported request method"}),
             content_type="application/json; charset=utf-8",
         )

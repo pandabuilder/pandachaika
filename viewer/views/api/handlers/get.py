@@ -1115,19 +1115,36 @@ def handle_get_wanted_galleries_search(request: HttpRequest, data: QueryDict, us
     else:
         results = filter_wanted_galleries_simple(args)
 
-    results = results.prefetch_related(
+    include_found_galleries = _include_found_galleries(data)
+    prefetches: list[str | Prefetch] = [
         "wanted_tags",
         "unwanted_tags",
         "wanted_providers",
         "unwanted_providers",
         "categories",
-    )
+    ]
+    if include_found_galleries:
+        prefetches.append(
+            Prefetch(
+                "foundgallery_set",
+                queryset=FoundGallery.objects.select_related("gallery").prefetch_related("gallery__tags"),
+            )
+        )
+    results = results.prefetch_related(*prefetches)
 
     if not results:
         return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
 
     response = json.dumps(
-        [wanted_gallery_to_json(wanted_gallery) for wanted_gallery in results],
+        [
+            wanted_gallery_to_json(
+                wanted_gallery,
+                request=request,
+                user_is_authenticated=user_is_authenticated,
+                include_found_galleries=include_found_galleries,
+            )
+            for wanted_gallery in results
+        ],
         sort_keys=True,
         ensure_ascii=False,
     )

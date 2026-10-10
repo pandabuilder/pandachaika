@@ -1,18 +1,26 @@
 """PUT command handlers for the public JSON API."""
 
 import json
+import logging
 from typing import Optional
 
 from django.contrib.auth.models import User, AnonymousUser
 from django.db import transaction
 from django.db.models import Prefetch
-from django.http import HttpResponse, HttpRequest, HttpResponseNotFound
+from django.http import HttpResponse, HttpRequest, HttpResponseBadRequest, HttpResponseNotFound
 from django.http.request import QueryDict
 
 from core.base.utilities import timestamp_or_zero
-from viewer.models import Archive, ArchiveGroup, ArchiveGroupEntry
-from viewer.utils.functions import archive_group_entry_to_json
-from viewer.views.api.common import _get_int
+from viewer.models import Archive, ArchiveGroup, ArchiveGroupEntry, WantedGallery
+from viewer.utils.functions import archive_group_entry_to_json, wanted_gallery_to_json
+from viewer.views.api.common import (
+    _get_int,
+    _get_int_from_data_or_body,
+    apply_wanted_gallery_fields,
+    apply_wanted_gallery_m2m_fields,
+)
+
+logger = logging.getLogger(__name__)
 
 def handle_put_archive_group(request: HttpRequest, data: QueryDict, body: dict, user: Optional[User | AnonymousUser]):
     try:
@@ -133,4 +141,58 @@ def handle_put_archive_group_entry(
             json.dumps({"result": "ArchiveGroupEntry does not exist."}),
             content_type="application/json; charset=utf-8",
         )
+
+
+def handle_put_wanted_gallery(
+    request: HttpRequest, data: QueryDict, body: dict, user: Optional[User | AnonymousUser]
+):
+    try:
+        wanted_gallery_id = _get_int_from_data_or_body(data, "wanted-gallery", body)
+    except (ValueError, TypeError):
+        return HttpResponseNotFound(
+            json.dumps({"result": "WantedGallery does not exist."}),
+            content_type="application/json; charset=utf-8",
+        )
+
+    try:
+        with transaction.atomic():
+            wanted_gallery = WantedGallery.objects.select_for_update(of=("self",)).get(pk=wanted_gallery_id)
+            apply_wanted_gallery_fields(wanted_gallery, body, is_create=False)
+            wanted_gallery.save()
+            apply_wanted_gallery_m2m_fields(wanted_gallery, body)
+            wanted_gallery.save()
+
+        updated_wanted_gallery = (
+            WantedGallery.objects.prefetch_related(
+                "wanted_tags",
+                "unwanted_tags",
+                "wanted_providers",
+                "unwanted_providers",
+                "categories",
+            ).get(pk=wanted_gallery_id)
+        )
+
+        response_data = wanted_gallery_to_json(
+            updated_wanted_gallery,
+            request=request,
+            user_is_authenticated=True,
+        )
+        response_data["result"] = "success"
+        return HttpResponse(
+            json.dumps(response_data, sort_keys=True, ensure_ascii=False),
+            content_type="application/json; charset=utf-8",
+        )
+
+    except WantedGallery.DoesNotExist:
+        return HttpResponseNotFound(
+            json.dumps({"result": "WantedGallery does not exist."}),
+            content_type="application/json; charset=utf-8",
+        )
+    except Exception as e:
+        logger.exception("Error updating WantedGallery: %s", e)
+        return HttpResponseBadRequest(
+            json.dumps({"result": f"Error updating WantedGallery: {str(e)}"}),
+            content_type="application/json; charset=utf-8",
+        )
+
 

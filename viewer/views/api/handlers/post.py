@@ -1,10 +1,11 @@
 """POST command handlers for the public JSON API."""
 
 import json
+import logging
 from typing import Optional
 
 from django.contrib.auth.models import User, AnonymousUser
-from django.http import HttpResponse, HttpRequest, HttpResponseNotFound
+from django.http import HttpResponse, HttpRequest, HttpResponseBadRequest, HttpResponseNotFound
 from django.http.request import QueryDict
 
 from core.base.utilities import timestamp_or_zero
@@ -17,7 +18,14 @@ from viewer.models import (
     Provider,
 )
 from viewer.utils.functions import archive_group_entry_to_json
-from viewer.views.api.common import _get_int, get_tag_objects_from_tag_list
+from viewer.views.api.common import (
+    _get_int,
+    apply_wanted_gallery_fields,
+    apply_wanted_gallery_m2m_fields,
+    get_tag_objects_from_tag_list,
+)
+
+logger = logging.getLogger(__name__)
 
 def handle_post_archive_group(request: HttpRequest, data: QueryDict, body: dict, user: Optional[User | AnonymousUser]):
     try:
@@ -121,63 +129,10 @@ def handle_post_archive_group_entry(
 
 def handle_post_wanted_gallery(request: HttpRequest, data: QueryDict, body: dict, user: Optional[User | AnonymousUser]):
     try:
-        wanted_gallery = WantedGallery(
-            title=body.get("title", ""),
-            title_jpn=body.get("title_jpn", ""),
-            search_title=body.get("search_title", ""),
-            regexp_search_title=body.get("regexp_search_title", False),
-            regexp_search_title_icase=body.get("regexp_search_title_icase", False),
-            unwanted_title=body.get("unwanted_title", ""),
-            regexp_unwanted_title=body.get("regexp_unwanted_title", False),
-            regexp_unwanted_title_icase=body.get("regexp_unwanted_title_icase", False),
-            wanted_page_count_lower=body.get("wanted_page_count_lower", 0),
-            wanted_page_count_upper=body.get("wanted_page_count_upper", 0),
-            match_expression=body.get("match_expression", None),
-            wanted_tags_exclusive_scope=body.get("wanted_tags_exclusive_scope", False),
-            exclusive_scope_name=body.get("exclusive_scope_name", ""),
-            wanted_tags_accept_if_none_scope=body.get("wanted_tags_accept_if_none_scope", ""),
-            category=body.get("category", ""),
-            wait_for_time=body.get("wait_for_time"),
-            should_search=body.get("should_search", False),
-            keep_searching=body.get("keep_searching", False),
-            reason=body.get("reason", ""),
-            book_type=body.get("book_type", ""),
-            publisher=body.get("publisher", ""),
-            page_count=body.get("page_count", 0),
-            restricted_to_links=body.get("restricted_to_links", False),
-        )
-
-        if "release_date" in body and body["release_date"]:
-            wanted_gallery.release_date = body["release_date"]
-
-        if "add_to_archive_group" in body and body["add_to_archive_group"]:
-            try:
-                group = ArchiveGroup.objects.get(pk=body["add_to_archive_group"])
-                wanted_gallery.add_to_archive_group = group
-            except ArchiveGroup.DoesNotExist:
-                pass
-
+        wanted_gallery = WantedGallery()
+        apply_wanted_gallery_fields(wanted_gallery, body, is_create=True)
         wanted_gallery.save()
-
-        if "wanted_tags" in body:
-            tag_objects = get_tag_objects_from_tag_list(body["wanted_tags"])
-            for tag in tag_objects:
-                wanted_gallery.wanted_tags.add(tag)
-        if "unwanted_tags" in body:
-            tag_objects = get_tag_objects_from_tag_list(body["unwanted_tags"])
-            for tag in tag_objects:
-                wanted_gallery.unwanted_tags.add(tag)
-        if "wanted_providers" in body:
-            providers = Provider.objects.filter(slug__in=body["wanted_providers"])
-            wanted_gallery.wanted_providers.set(providers)
-        if "unwanted_providers" in body:
-            providers = Provider.objects.filter(slug__in=body["unwanted_providers"])
-            wanted_gallery.unwanted_providers.set(providers)
-        if "categories" in body:
-            for category in body["categories"]:
-                category_obj, _ = Category.objects.get_or_create(name=category)
-                wanted_gallery.categories.add(category_obj)
-
+        apply_wanted_gallery_m2m_fields(wanted_gallery, body)
         wanted_gallery.save()
 
         return HttpResponse(
@@ -185,9 +140,10 @@ def handle_post_wanted_gallery(request: HttpRequest, data: QueryDict, body: dict
             content_type="application/json; charset=utf-8",
         )
 
-    except WantedGallery.DoesNotExist:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Error creating WantedGallery"}),
+    except Exception as e:
+        logger.exception("Error creating WantedGallery: %s", e)
+        return HttpResponseBadRequest(
+            json.dumps({"result": f"Error creating WantedGallery: {str(e)}"}),
             content_type="application/json; charset=utf-8",
         )
 
