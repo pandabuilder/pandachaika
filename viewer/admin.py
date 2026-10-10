@@ -215,12 +215,14 @@ class TagAdmin(admin.ModelAdmin):
 
             if current_settings.workers.web_queue and gallery.provider:
                 current_settings.set_update_metadata_options(providers=(gallery.provider,))
-
-                def gallery_callback(x: Optional["Gallery"], crawled_url: Optional[str], result: str) -> None:
-                    event_log(request.user, "UPDATE_METADATA", content_object=x, result=result, data=crawled_url)
+                current_settings.archive_user = request.user
+                current_settings.event_action = "UPDATE_METADATA"
 
                 current_settings.workers.web_queue.enqueue_args_list(
-                    (gallery.get_link(),), override_options=current_settings, gallery_callback=gallery_callback
+                    (gallery.get_link(),),
+                    override_options=current_settings,
+                    user=request.user,
+                    event_action="UPDATE_METADATA",
                 )
 
         self.message_user(request, "%s galleries pulled new metadata." % galleries.count())
@@ -430,6 +432,8 @@ class WantedGalleryAdmin(admin.ModelAdmin):
         "add_unwanted_tags",
         "set_unwanted_tags",
         "set_exclusive_scope_name",
+        "set_search_title",
+        "set_unwanted_title"
     ]
 
     action_form = UpdateActionForm
@@ -523,6 +527,28 @@ class WantedGalleryAdmin(admin.ModelAdmin):
         self.message_user(request, "%s successfully set exclusive_scope_name to: %s." % (message_bit, exclusive_scope_name))
 
     set_exclusive_scope_name.short_description = "Set exclusive scope name of selected wanted galleries"  # type: ignore
+
+    def set_search_title(self, request: HttpRequest, queryset: QuerySet) -> None:
+        search_title = request.POST.get("extra_field", "").strip()
+        rows_updated = queryset.update(search_title=search_title)
+        if rows_updated == 1:
+            message_bit = "1 wanted gallery was"
+        else:
+            message_bit = "%s wanted galleries were" % rows_updated
+        self.message_user(request, "%s successfully set search_title to: %s." % (message_bit, search_title))
+
+    set_search_title.short_description = "Set search title of selected wanted galleries"  # type: ignore
+
+    def set_unwanted_title(self, request: HttpRequest, queryset: QuerySet) -> None:
+        unwanted_title = request.POST.get("extra_field", "").strip()
+        rows_updated = queryset.update(unwanted_title=unwanted_title)
+        if rows_updated == 1:
+            message_bit = "1 wanted gallery was"
+        else:
+            message_bit = "%s wanted galleries were" % rows_updated
+        self.message_user(request, "%s successfully set unwanted_title to: %s." % (message_bit, unwanted_title))
+
+    set_unwanted_title.short_description = "Set unwanted title of selected wanted galleries"  # type: ignore
 
     # inlines = (FoundGalleryInline,)
 

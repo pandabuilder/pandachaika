@@ -1238,14 +1238,15 @@ def recall_api(request: HttpRequest, pk: int) -> HttpResponse:
     current_settings = Settings(load_from_config=crawler_settings.config)
 
     if current_settings.workers.web_queue and gallery.provider:
-
+        current_settings.archive_user = request.user
+        current_settings.event_action = "UPDATE_METADATA"
         current_settings.set_update_metadata_options(providers=(gallery.provider,))
 
-        def gallery_callback(x: Optional["Gallery"], crawled_url: Optional[str], result: str) -> None:
-            event_log(request.user, "UPDATE_METADATA", content_object=x, result=result, data=crawled_url)
-
         current_settings.workers.web_queue.enqueue_args_list(
-            (gallery.get_link(),), override_options=current_settings, gallery_callback=gallery_callback
+            (gallery.get_link(),),
+            override_options=current_settings,
+            user=request.user,
+            event_action="UPDATE_METADATA",
         )
 
         logger.info("Updating gallery API data for gallery: {} and related archives".format(gallery.get_absolute_url()))

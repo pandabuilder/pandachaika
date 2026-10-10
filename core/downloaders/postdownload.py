@@ -5,6 +5,7 @@ import socket
 import ssl
 import time
 import traceback
+import zlib
 from collections.abc import Iterable, Callable
 from dataclasses import dataclass
 from ftplib import FTP_TLS
@@ -65,7 +66,7 @@ class PostDownloader(object):
                 my_zip = ZipFile(archive.zipped.path, "r")
                 return_error = my_zip.testzip()
                 my_zip.close()
-            except (BadZipFile, NotImplementedError):
+            except (BadZipFile, NotImplementedError, zlib.error):
                 except_at_open = True
             if except_at_open or return_error:
                 if archive.source_type and "panda" in archive.source_type:
@@ -850,4 +851,24 @@ class TimedPostDownloader(BaseScheduler):
                 logger.critical("Error downloading Archive: {}\n{}".format(item.title, traceback.format_exc()))
 
     def current_download(self) -> list[CurrentDownload]:
-        return [x.current_download for x in self.post_downloader.values()]
+        local_downloads = [x.current_download for x in self.post_downloader.values()]
+        if local_downloads:
+            return local_downloads
+        try:
+            from workers.models import SchedulerState
+            state = SchedulerState.objects.filter(name=self.thread_name).first()
+            if state and state.extra_data and "current_download" in state.extra_data:
+                return [
+                    CurrentDownload(
+                        filename=item.get("filename", ""),
+                        speed=float(item.get("speed", 0.0)),
+                        index=int(item.get("index", 0)),
+                        total=int(item.get("total", 0)),
+                        downloaded=int(item.get("downloaded", 0)),
+                        filesize=int(item.get("filesize", 0)),
+                    )
+                    for item in state.extra_data["current_download"]
+                ]
+        except Exception:
+            pass
+        return []

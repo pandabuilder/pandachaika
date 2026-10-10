@@ -197,12 +197,15 @@ def galleries_update_metadata(gallery_links, gallery_providers, user, reason, cs
     current_settings = Settings(load_from_config=cs.config)
     if current_settings.workers.web_queue:
         current_settings.set_update_metadata_options(providers=gallery_providers)
-
-        def gallery_callback(x: Optional["Gallery"], crawled_url: Optional[str], result: str) -> None:
-            event_log(user, "UPDATE_METADATA", reason=reason, content_object=x, result=result, data=crawled_url)
+        current_settings.archive_user = user
+        current_settings.event_action = "UPDATE_METADATA"
 
         current_settings.workers.web_queue.enqueue_args_list(
-            gallery_links, override_options=current_settings, gallery_callback=gallery_callback
+            gallery_links,
+            override_options=current_settings,
+            user=user,
+            reason=reason,
+            event_action="UPDATE_METADATA",
         )
 
 

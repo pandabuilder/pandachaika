@@ -83,9 +83,44 @@ def get_thread_status() -> list[tuple[tuple[str, str, str], bool]]:
     thread_names = set()
 
     thread_list = threading.enumerate()
+    scheduler_statuses: dict[str, bool] = {}
+    active_tasks: set[str] = set()
+    worker_running = False
+    try:
+        from workers.models import SchedulerState, TaskQueue, WorkerProcess
+        scheduler_statuses = SchedulerState.get_all_statuses()
+        active_tasks = set(
+            TaskQueue.objects.filter(status=TaskQueue.Status.PROCESSING).values_list("task_type", flat=True)
+        )
+        worker_running = WorkerProcess.is_any_worker_running()
+    except Exception:
+        pass
+
+    alias_map = {
+        "post_downloader": "timed_downloader",
+        "timed_downloader": "post_downloader",
+        "foldercrawler": "folder_crawler",
+        "folder_crawler": "foldercrawler",
+        "webcrawler": "web_crawler",
+        "web_crawler": "webcrawler",
+        "fileinfo_worker": "recalc_all_file_info",
+        "thumbnails_worker": "regenerate_all_thumbs",
+    }
+
     for thread_info in setup.GlobalInfo.worker_threads:
-        info_list.append((thread_info, any([thread_info[0] == thread.name for thread in thread_list])))
-        thread_names.add(thread_info[0])
+        tname = thread_info[0]
+        is_local = any([tname == thread.name for thread in thread_list])
+        alias = alias_map.get(tname, "")
+        is_active = (
+            is_local
+            or scheduler_statuses.get(tname, False)
+            or scheduler_statuses.get(alias, False)
+            or (tname == "web_queue" and worker_running)
+            or (tname in active_tasks)
+            or (alias in active_tasks)
+        )
+        info_list.append((thread_info, is_active))
+        thread_names.add(tname)
 
     for thread_data in thread_list:
         if thread_data.name not in thread_names:
@@ -98,11 +133,45 @@ def get_thread_status_bool() -> dict[str, bool]:
     info_dict = {}
 
     thread_list = threading.enumerate()
+    scheduler_statuses: dict[str, bool] = {}
+    active_tasks: set[str] = set()
+    worker_running = False
+    try:
+        from workers.models import SchedulerState, TaskQueue, WorkerProcess
+        scheduler_statuses = SchedulerState.get_all_statuses()
+        active_tasks = set(
+            TaskQueue.objects.filter(status=TaskQueue.Status.PROCESSING).values_list("task_type", flat=True)
+        )
+        worker_running = WorkerProcess.is_any_worker_running()
+    except Exception:
+        pass
+
+    alias_map = {
+        "post_downloader": "timed_downloader",
+        "timed_downloader": "post_downloader",
+        "foldercrawler": "folder_crawler",
+        "folder_crawler": "foldercrawler",
+        "webcrawler": "web_crawler",
+        "web_crawler": "webcrawler",
+        "fileinfo_worker": "recalc_all_file_info",
+        "thumbnails_worker": "regenerate_all_thumbs",
+    }
+
     for thread_info in setup.GlobalInfo.worker_threads:
-        if any([thread_info[0] == thread.name for thread in thread_list]):
-            info_dict[thread_info[0]] = True
-        else:
-            info_dict[thread_info[0]] = False
+        tname = thread_info[0]
+        is_local = any([tname == thread.name for thread in thread_list])
+        alias = alias_map.get(tname, "")
+        info_dict[tname] = (
+            is_local
+            or scheduler_statuses.get(tname, False)
+            or scheduler_statuses.get(alias, False)
+            or (tname == "web_queue" and worker_running)
+            or (tname in active_tasks)
+            or (alias in active_tasks)
+        )
+
+    if "post_downloader" in info_dict:
+        info_dict["timed_downloader"] = info_dict["post_downloader"]
 
     return info_dict
 

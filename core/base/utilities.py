@@ -265,7 +265,7 @@ def get_zip_filesize(filepath: str) -> int:
 def convert_rar_to_zip(filepath: str, temp_path: typing.Optional[str] = None) -> int:
     try:
         file_name = os.path.splitext(filepath)[0]
-        temp_rar_file = file_name + ".tar"
+        temp_rar_file = file_name + ".rar"
         os.rename(filepath, temp_rar_file)
         my_rar = rarfile.RarFile(temp_rar_file, "r")
 
@@ -658,29 +658,84 @@ def unescape(text: Optional[str]) -> Optional[str]:
 
 
 
+class SchedulerStatusInfo(typing.NamedTuple):
+    name: str
+    is_running: bool
+    last_run: Optional[datetime]
+    cycle_timer: str
+    next_run: Optional[datetime]
+    worker_pid: Optional[int] = None
+
+
 def get_schedulers_status(
-    schedulers: typing.Sequence[Optional["BaseScheduler"]],
-) -> list[tuple[str, bool, Optional[datetime], str, Optional[datetime]]]:
+    schedulers: typing.Sequence[Any],
+) -> list[SchedulerStatusInfo]:
     info_list = []
 
     for scheduler in schedulers:
         if scheduler:
-            if scheduler.last_run:
-                next_run: Optional[datetime] = scheduler.last_run + timedelta(seconds=scheduler.timer)
+            name: str = str(getattr(scheduler, "thread_name", None) or getattr(scheduler, "name", "") or "")
+
+            if callable(getattr(scheduler, "is_running", None)):
+                is_running = scheduler.is_running()
+            elif hasattr(scheduler, "is_active"):
+                is_running = scheduler.is_active
+            else:
+                is_running = bool(getattr(scheduler, "is_running", False))
+                if hasattr(scheduler, "last_heartbeat") and scheduler.last_heartbeat:
+                    try:
+                        import django.utils.timezone as django_tz
+                        cutoff = django_tz.now() - timedelta(seconds=30)
+                        is_running = bool(is_running and scheduler.last_heartbeat >= cutoff)
+                    except Exception:
+                        pass
+            if not is_running and thread_exists(name):
+                is_running = True
+
+            last_run = getattr(scheduler, "current_last_run", getattr(scheduler, "last_run", None))
+
+            if hasattr(scheduler, "cycle_timer"):
+                timer = scheduler.cycle_timer
+            elif hasattr(scheduler, "timer"):
+                timer = scheduler.timer
+            else:
+                timer = 0.0
+
+            if getattr(scheduler, "next_run", None):
+                next_run = scheduler.next_run
+            elif last_run and timer:
+                next_run = last_run + timedelta(seconds=timer)
             else:
                 next_run = None
 
+            timer_sec_str = str(int(timer)) if timer == int(timer) else str(timer)
+            cycle_timer_str = f"{timer_sec_str}, {timer / 60}"
+            worker_pid = getattr(scheduler, "worker_pid", None)
+
             info_list.append(
-                (
-                    scheduler.thread_name,
-                    scheduler.is_running(),
-                    scheduler.last_run,
-                    str(scheduler.timer) + ", " + str(scheduler.timer / 60),
-                    next_run,
+                SchedulerStatusInfo(
+                    name=name,
+                    is_running=is_running,
+                    last_run=last_run,
+                    cycle_timer=cycle_timer_str,
+                    next_run=next_run,
+                    worker_pid=worker_pid,
                 )
             )
 
     return info_list
+
+
+def get_schedulers_status_from_db(
+    schedulers: Optional[typing.Sequence[Any]] = None,
+) -> list[SchedulerStatusInfo]:
+    if schedulers is None:
+        try:
+            from django.conf import settings
+            schedulers = settings.CRAWLER_SETTINGS.workers.get_active_initialized_workers_from_db()
+        except Exception:
+            schedulers = []
+    return get_schedulers_status(schedulers)
 
 
 def thread_exists(thread_name: str) -> bool:
@@ -688,6 +743,33 @@ def thread_exists(thread_name: str) -> bool:
     for thread in thread_list:
         if thread_name == thread.name:
             return True
+
+    try:
+        from workers.models import TaskQueue
+        alias_groups = [
+            {"fileinfo_worker", "recalc_all_file_info"},
+            {"thumbnails_worker", "regenerate_all_thumbs"},
+            {"foldercrawler", "folder_crawler"},
+            {"webcrawler", "web_crawler"},
+            {"match_unmatched_worker", "generate_possible_matches_internally"},
+            {"web_search_worker", "search_wanted_galleries_provider_titles"},
+            {"wanted_local_search_worker", "wanted_galleries_possible_matches"},
+            {"match_unmatched_gallery_groups_worker"},
+            {"web_match_worker"},
+        ]
+        query_types = [thread_name]
+        for group in alias_groups:
+            if thread_name in group:
+                query_types = list(group)
+                break
+
+        if TaskQueue.objects.filter(
+            status__in=[TaskQueue.Status.PENDING, TaskQueue.Status.PROCESSING],
+            task_type__in=query_types,
+        ).exists():
+            return True
+    except Exception:
+        pass
 
     return False
 

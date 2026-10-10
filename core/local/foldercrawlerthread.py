@@ -14,10 +14,26 @@ logger = logging.getLogger(__name__)
 
 class FolderCrawlerThread(threading.Thread):
 
-    def __init__(self, settings: "Settings", argv: list[str]) -> None:
-        threading.Thread.__init__(self, name="foldercrawler")
+    def __init__(self, settings: "Settings", argv: typing.Optional[list[str]] = None) -> None:
+        super().__init__(name="foldercrawler")
         self.settings = settings
-        self.argv = argv
+        self.argv = argv if argv is not None else []
+
+    def start(self, force_local: bool = False) -> None:
+        is_worker = force_local or getattr(self.settings, "is_worker_process", False)
+        if is_worker:
+            super().start()
+        else:
+            from workers.client import enqueue
+            enqueue(
+                args=self.argv,
+                task_type="folder_crawler",
+                override_options=self.settings,
+                user=getattr(self.settings, "archive_user", None),
+                reason=getattr(self.settings, "archive_reason", ""),
+                event_action=getattr(self.settings, "event_action", ""),
+            )
+            logger.info("Enqueued folder_crawler task to worker process with args: %s", self.argv)
 
     def run(self) -> None:
         try:
@@ -25,3 +41,12 @@ class FolderCrawlerThread(threading.Thread):
             folder_crawler.start_crawling(self.argv)
         except BaseException:
             logger.critical(traceback.format_exc())
+
+    def crawl(self, argv: list[str], override_options: typing.Any = None, user: typing.Any = None) -> typing.Any:
+        """Enqueue or run a folder crawl task."""
+        self.argv = argv
+        if override_options:
+            self.settings = override_options
+        if user:
+            self.settings.archive_user = user
+        self.start()

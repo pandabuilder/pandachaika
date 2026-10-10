@@ -143,13 +143,14 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
                 arguments_to_crawler = [x['url'] + urllib.parse.quote_plus(url_query) for x in current_settings.backlog_search.urls if x['name'] in urls_to_match]
 
                 arguments_to_crawler.append("-wanted")
-                arguments_to_crawler.extend(["--restrict-wanted-galleries", str(wanted_gallery_instance.pk)])
-                # Could be beneficial to have a separate setting.
-                def gallery_callback(x: "Gallery | None", crawled_url: str | None, result: str) -> None:
-                    event_log(request.user, "WANTED_GALLERY_MATCH", content_object=x, result=result, data=crawled_url)
+                current_settings.archive_user = request.user
+                current_settings.event_action = "WANTED_GALLERY_MATCH"
 
                 current_settings.workers.web_queue.enqueue_args_list(
-                    arguments_to_crawler, override_options=current_settings, gallery_callback=gallery_callback
+                    arguments_to_crawler,
+                    override_options=current_settings,
+                    user=request.user,
+                    event_action="WANTED_GALLERY_MATCH",
                 )
 
         d = {

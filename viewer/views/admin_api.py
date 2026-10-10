@@ -19,6 +19,7 @@ from viewer.utils.matching import (
     create_matches_wanted_galleries_from_providers,
     create_matches_wanted_galleries_from_providers_internal,
     generate_possible_matches_for_archives,
+    MatchingThread,
 )
 
 
@@ -89,15 +90,13 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
             response["error"] = "File info worker is already running."
             return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status_code=401)
 
-        archives = Archive.objects.all()
-        logger.info("Recalculating file info for all archives, count: {}".format(archives.count()))
-
-        archive_worker_thread = ArchiveWorker(4)
-        for archive in archives:
-            if os.path.exists(archive.zipped.path):
-                archive_worker_thread.enqueue_archive(archive)
-        fileinfo_thread = threading.Thread(name="fileinfo_worker", target=archive_worker_thread.start_info_thread)
-        fileinfo_thread.start()
+        logger.info("Recalculating file info for all archives")
+        if crawler_settings.workers.archive_worker:
+            crawler_settings.workers.archive_worker.recalc_all_file_info(user=request.user)
+        else:
+            archive_worker_thread = ArchiveWorker(crawler_settings, 4)
+            archive_worker_thread.recalc_all_file_info(user=request.user)
+        response["message"] = "File info worker started in background."
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
     elif tool == "set_all_hidden_as_public":
 
@@ -117,15 +116,13 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
             response["error"] = "Thumbnails worker is already running."
             return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
 
-        archives = Archive.objects.all()
-        logger.info("Generating thumbs for all archives, count {}".format(archives.count()))
-
-        archive_worker_thread = ArchiveWorker(4)
-        for archive in archives:
-            if os.path.exists(archive.zipped.path):
-                archive_worker_thread.enqueue_archive(archive)
-        thumbnails_thread = threading.Thread(name="thumbnails_worker", target=archive_worker_thread.start_thumbs_thread)
-        thumbnails_thread.start()
+        logger.info("Generating thumbs for all archives")
+        if crawler_settings.workers.archive_worker:
+            crawler_settings.workers.archive_worker.regenerate_all_thumbs(user=request.user)
+        else:
+            archive_worker_thread = ArchiveWorker(crawler_settings, 4)
+            archive_worker_thread.regenerate_all_thumbs(user=request.user)
+        response["message"] = "Thumbnails worker started in background."
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
     elif tool == "generate_possible_matches_internally":
         if thread_exists("match_unmatched_worker"):
@@ -145,7 +142,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
             "for non-matched archives (cutoff: {}, max matches: {}) "
             'using provider filter "{}"'.format(cutoff, max_matches, provider)
         )
-        matching_thread = threading.Thread(
+        matching_thread = MatchingThread(
             name="match_unmatched_worker",
             target=generate_possible_matches_for_archives,
             args=(None,),
@@ -156,6 +153,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
                 "match_local": True,
                 "match_web": False,
             },
+            user=request.user,
         )
         matching_thread.daemon = True
         matching_thread.start()
@@ -183,10 +181,11 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
 
         logger.info("Searching for gallery matches in panda for wanted galleries, starting thread.")
         response["message"] = "Searching for gallery matches in panda for wanted galleries, starting thread."
-        panda_search_thread = threading.Thread(
+        panda_search_thread = MatchingThread(
             name="web_search_worker",
             target=create_matches_wanted_galleries_from_providers,
             args=(results, provider),
+            user=request.user,
         )
         panda_search_thread.daemon = True
         panda_search_thread.start()
@@ -216,11 +215,12 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         except ValueError:
             max_matches = 10
 
-        matching_thread = threading.Thread(
+        matching_thread = MatchingThread(
             name="wanted_local_search_worker",
             target=create_matches_wanted_galleries_from_providers_internal,
             args=(non_match_wanted,),
             kwargs={"provider_filter": provider, "cutoff": cutoff, "max_matches": max_matches},
+            user=request.user,
         )
         matching_thread.daemon = True
         matching_thread.start()

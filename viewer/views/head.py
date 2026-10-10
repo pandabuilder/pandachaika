@@ -1,4 +1,4 @@
-﻿import json
+import json
 import logging
 import re
 import uuid
@@ -406,13 +406,15 @@ def process_gallery_page(request: HttpRequest, gallery: Gallery, tool: Optional[
 
         if current_settings.workers.web_queue and gallery.provider:
 
-            def gallery_callback(x: Optional["Gallery"], crawled_url: Optional[str], result: str) -> None:
-                event_log(request.user, "UPDATE_METADATA", content_object=x, result=result, data=crawled_url)
-
+            current_settings.archive_user = request.user
+            current_settings.event_action = "UPDATE_METADATA"
             current_settings.set_update_metadata_options(providers=(gallery.provider,))
 
             current_settings.workers.web_queue.enqueue_args_list(
-                (gallery.get_link(),), override_options=current_settings, gallery_callback=gallery_callback
+                (gallery.get_link(),),
+                override_options=current_settings,
+                user=request.user,
+                event_action="UPDATE_METADATA",
             )
 
             logger.info(
@@ -612,20 +614,18 @@ def gallery_enter_reason(request: HttpRequest, pk: int, tool: Optional[str] = No
 
                 if current_settings.workers.web_queue and gallery.provider:
 
-                    def gallery_callback(x: Optional["Gallery"], crawled_url: Optional[str], result: str) -> None:
-                        event_log(
-                            request.user,
-                            "UPDATE_METADATA",
-                            content_object=x,
-                            result=result,
-                            data=crawled_url,
-                            reason=user_reason,
-                        )
-
+                    current_settings.archive_user = request.user
+                    current_settings.event_action = "UPDATE_METADATA"
+                    current_settings.archive_reason = user_reason
+                    current_settings.gallery_reason = user_reason
                     current_settings.set_update_metadata_options(providers=(gallery.provider,))
 
                     current_settings.workers.web_queue.enqueue_args_list(
-                        (gallery.get_link(),), override_options=current_settings, gallery_callback=gallery_callback
+                        (gallery.get_link(),),
+                        override_options=current_settings,
+                        user=request.user,
+                        reason=user_reason,
+                        event_action="UPDATE_METADATA",
                     )
 
                     logger.info(
@@ -1628,20 +1628,10 @@ def url_submit(request: HttpRequest) -> HttpResponse:
             if parser.id_from_url_implemented():
                 no_commands_in_args_list.extend(parser.filter_accepted_urls(urls))
 
-        def gallery_callback(x: Optional["Gallery"], crawled_url: Optional[str], result: str) -> None:
-            # TODO: This needs work, if an ex link is changed to a e-h link, it's not found
-            if crawled_url in gallery_submit_entries:
-                gallery_submit_entries[crawled_url].submit_result = result
-                gallery_submit_entries[crawled_url].save()
-            # For some reason we're getting an int here, convert to str
-            if x:
-                gallery_gid = str(x.gid)
-                if (gid, x.provider) in gallery_submit_entries_by_id:
-                    gallery_submit_entries_by_id[(gallery_gid, x.provider)].gallery = x
-                    gallery_submit_entries_by_id[(gallery_gid, x.provider)].save()
+        current_settings.submit_group_uuid = str(uuid_group)
 
         current_settings.workers.web_queue.enqueue_args_list(
-            no_commands_in_args_list, override_options=current_settings, gallery_callback=gallery_callback
+            no_commands_in_args_list, override_options=current_settings
         )
 
         if reason:

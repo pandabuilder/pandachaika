@@ -12,11 +12,15 @@ if typing.TYPE_CHECKING:
     from core.workers.auto_wanted import TimedAutoWanted
     from core.workers.webqueue import WebQueue
     from core.workers.link_monitor import LinkMonitor
+    from core.workers.archive_work import ArchiveWorker
+    from core.local.foldercrawlerthread import FolderCrawlerThread
     from viewer.models import Scheduler, MonitoredLink
 
 
 class WorkerContext:
     web_queue: Optional["WebQueue"] = None
+    archive_worker: Optional["ArchiveWorker"] = None
+    folder_crawler: Optional["FolderCrawlerThread"] = None
     timed_auto_wanted: Optional["TimedAutoWanted"] = None
     timed_downloader: Optional["TimedPostDownloader"] = None
     download_progress_checker: Optional["DownloadProgressChecker"] = None
@@ -35,7 +39,47 @@ class WorkerContext:
         workers.extend(self.timed_link_monitors)
         return workers
 
-    def add_new_link_monitor(self, crawler_settings: "setup.Settings", monitored_link: "MonitoredLink"):
+    def get_active_initialized_workers_from_db(self):
+        """Query SchedulerState objects from the database for webserver status display,
+        falling back to in-memory workers if not yet synced in DB.
+        """
+        try:
+            from workers.models import SchedulerState
+            states_by_name = {s.name: s for s in SchedulerState.objects.all()}
+            if states_by_name:
+                alias_map = {
+                    "post_downloader": "timed_downloader",
+                    "timed_downloader": "post_downloader",
+                }
+                workers = []
+                initialized = self.get_active_initialized_workers()
+                seen_names = set()
+                for w in initialized:
+                    tname = getattr(w, "thread_name", "")
+                    s = states_by_name.get(tname) or states_by_name.get(alias_map.get(tname, ""))
+                    if s:
+                        workers.append(s)
+                        seen_names.add(s.name)
+                    else:
+                        workers.append(w)
+                    seen_names.add(tname)
+                for name, s in states_by_name.items():
+                    if name not in seen_names and alias_map.get(name) not in seen_names:
+                        workers.append(s)
+                        seen_names.add(name)
+                return workers
+            states = list(SchedulerState.objects.all())
+            if states:
+                return states
+        except Exception:
+            pass
+        return self.get_active_initialized_workers()
+
+    get_schedulers_from_db = get_active_initialized_workers_from_db
+
+    def add_new_link_monitor(
+        self, crawler_settings: "setup.Settings", monitored_link: "MonitoredLink", start_thread: bool = False
+    ):
 
         from viewer.models import Scheduler
         from core.workers.link_monitor import LinkMonitor
@@ -61,10 +105,10 @@ class WorkerContext:
         )
         link_monitor.last_run = obj[0].last_run
         link_monitor.pk = obj[0].pk
-        if link_monitor.monitored_link.auto_start:
+        if start_thread and link_monitor.monitored_link.auto_start:
             link_monitor.start_running(timer=link_monitor.original_timer)
 
-    def start_workers(self, crawler_settings: "setup.Settings") -> None:
+    def start_workers(self, crawler_settings: "setup.Settings", start_threads: bool = False) -> None:
 
         from core.downloaders.postdownload import TimedPostDownloader
         from core.workers.autoupdate import ProviderTimedAutoUpdater
@@ -72,9 +116,13 @@ class WorkerContext:
         from core.workers.auto_wanted import TimedAutoWanted
         from core.workers.link_monitor import LinkMonitor
         from core.workers.webqueue import WebQueue
+        from core.workers.archive_work import ArchiveWorker
+        from core.local.foldercrawlerthread import FolderCrawlerThread
         from viewer.models import Scheduler, MonitoredLink
 
         self.web_queue = WebQueue(crawler_settings)
+        self.archive_worker = ArchiveWorker(crawler_settings, 4)
+        self.folder_crawler = FolderCrawlerThread(crawler_settings, [])
         self.timed_downloader = TimedPostDownloader(
             crawler_settings,
             web_queue=self.web_queue,
@@ -105,7 +153,7 @@ class WorkerContext:
         )
         self.timed_downloader.last_run = obj[0].last_run
         self.timed_downloader.pk = obj[0].pk
-        if crawler_settings.timed_downloader_startup:
+        if start_threads and crawler_settings.timed_downloader_startup:
             self.timed_downloader.start_running(timer=crawler_settings.timed_downloader_cycle_timer)
 
         if crawler_settings.monitored_links.enable:
@@ -134,7 +182,7 @@ class WorkerContext:
         )
         self.timed_auto_wanted.last_run = obj[0].last_run
         self.timed_auto_wanted.pk = obj[0].pk
-        if crawler_settings.auto_wanted.startup:
+        if start_threads and crawler_settings.auto_wanted.startup:
             self.timed_auto_wanted.start_running(timer=crawler_settings.auto_wanted.cycle_timer)
 
         for provider_auto_updater in self.timed_auto_updaters:
@@ -143,7 +191,7 @@ class WorkerContext:
             )
             provider_auto_updater.last_run = obj[0].last_run
             provider_auto_updater.pk = obj[0].pk
-            if crawler_settings.autoupdater.startup:
+            if start_threads and crawler_settings.autoupdater.startup:
                 provider_auto_updater.start_running(timer=provider_auto_updater.original_timer)
 
         for link_monitor in self.timed_link_monitors:
@@ -152,7 +200,7 @@ class WorkerContext:
             )
             link_monitor.last_run = obj[0].last_run
             link_monitor.pk = obj[0].pk
-            if link_monitor.monitored_link.auto_start:
+            if start_threads and link_monitor.monitored_link.auto_start:
                 link_monitor.start_running(timer=link_monitor.original_timer)
 
         self.download_progress_checker = DownloadProgressChecker(crawler_settings, web_queue=self.web_queue, timer=10)
@@ -162,7 +210,7 @@ class WorkerContext:
         )
         self.download_progress_checker.last_run = obj[0].last_run
         self.download_progress_checker.pk = obj[0].pk
-        if crawler_settings.download_progress_checker_startup:
+        if start_threads and crawler_settings.download_progress_checker_startup:
             self.download_progress_checker.start_running(timer=crawler_settings.download_progress_checker_cycle_timer)
 
     def command_workers_to_stop(self) -> None:

@@ -6,7 +6,7 @@ import os
 import typing
 from collections import defaultdict
 from collections.abc import Callable
-from typing import Union, Optional, NoReturn
+from typing import Union, Optional, NoReturn, Any
 
 import requests
 from django.db.models import QuerySet, Q
@@ -248,6 +248,9 @@ class WebCrawler(object):
         archive_callback: "Optional[Callable[[Optional[Archive], Optional[str], str], None]]" = None,
         gallery_callback: "Optional[Callable[[Optional[Gallery], Optional[str], str], None]]" = None,
         use_argparser: bool = True,
+        user: Any = None,
+        reason: Optional[str] = None,
+        event_action: Optional[str] = None,
     ):
 
         if use_argparser:
@@ -256,6 +259,9 @@ class WebCrawler(object):
                 override_options=override_options,
                 archive_callback=archive_callback,
                 gallery_callback=gallery_callback,
+                user=user,
+                reason=reason,
+                event_action=event_action,
             )
         else:
             self.start_crawling_no_argparser(
@@ -263,6 +269,9 @@ class WebCrawler(object):
                 override_options=override_options,
                 archive_callback=archive_callback,
                 gallery_callback=gallery_callback,
+                user=user,
+                reason=reason,
+                event_action=event_action,
             )
 
     def crawl_json_source(self, args, current_settings, wanted_filters):
@@ -283,6 +292,9 @@ class WebCrawler(object):
         override_options: "Optional[Settings]" = None,
         archive_callback: "Optional[Callable[[Optional[Archive], Optional[str], str], None]]" = None,
         gallery_callback: "Optional[Callable[[Optional[Gallery], Optional[str], str], None]]" = None,
+        user: Any = None,
+        reason: Optional[str] = None,
+        event_action: Optional[str] = None,
     ):
 
         args = self.get_args(arg_line)
@@ -295,6 +307,13 @@ class WebCrawler(object):
             current_settings = override_options
         else:
             current_settings = self.settings
+
+        if user:
+            current_settings.archive_user = user
+        if reason:
+            current_settings.archive_reason = reason
+        if event_action:
+            current_settings.event_action = event_action
 
         if args.wait_timer:
             current_settings.wait_timer = args.wait_timer
@@ -453,12 +472,22 @@ class WebCrawler(object):
         override_options: "Optional[Settings]" = None,
         archive_callback: "Optional[Callable[[Optional[Archive], Optional[str], str], None]]" = None,
         gallery_callback: "Optional[Callable[[Optional[Gallery], Optional[str], str], None]]" = None,
+        user: Any = None,
+        reason: Optional[str] = None,
+        event_action: Optional[str] = None,
     ):
 
         if override_options:
             current_settings = override_options
         else:
             current_settings = self.settings
+
+        if user:
+            current_settings.archive_user = user
+        if reason:
+            current_settings.archive_reason = reason
+        if event_action:
+            current_settings.event_action = event_action
 
         parsers = current_settings.provider_context.get_parsers(current_settings)
 

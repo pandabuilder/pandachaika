@@ -54,7 +54,11 @@ class BaseParser(typing.Generic[T_ProviderSettings]):
 
     def __init__(self, settings: "Settings") -> None:
         self.settings = settings
-        self.own_settings: T_ProviderSettings = settings.providers[self.name]
+        self.own_settings: T_ProviderSettings = (
+            typing.cast(T_ProviderSettings, settings.providers[self.name])
+            if hasattr(settings, "providers") and isinstance(settings.providers, dict) and self.name in settings.providers
+            else typing.cast(T_ProviderSettings, None)
+        )
         self.general_utils = setup_utilities.GeneralUtils(self.settings)
         self.downloaders: list[tuple["BaseDownloader", int]] = self.settings.provider_context.get_downloaders(
             self.settings, self.general_utils, filter_provider=self.name
@@ -63,6 +67,86 @@ class BaseParser(typing.Generic[T_ProviderSettings]):
         self.time_taken_wanted: float = 0
         self.archive_callback: Optional[Callable[[Optional["Archive"], Optional[str], str], None]] = None
         self.gallery_callback: Optional[Callable[[Optional["Gallery"], Optional[str], str], None]] = None
+
+    def notify_archive(self, archive: Optional["Archive"], crawled_url: Optional[str], result: str) -> None:
+        if archive:
+            if getattr(self.settings, "preserve_user_favorites", None):
+                try:
+                    from viewer.models import UserArchivePrefs
+                    for fav in self.settings.preserve_user_favorites:
+                        user_val = fav.get("user") or fav.get("user_id")
+                        if user_val:
+                            fav_grp = fav.get("favorite_group", 1)
+                            UserArchivePrefs.objects.get_or_create(
+                                archive=archive,
+                                user_id=int(user_val),
+                                favorite_group=int(fav_grp) if fav_grp is not None else 1,
+                            )
+                except Exception:
+                    logger.critical(traceback.format_exc())
+
+            if getattr(self.settings, "preserve_extracted", False) and not archive.extracted and archive.crc32:
+                try:
+                    archive.extract()
+                except Exception:
+                    logger.critical(traceback.format_exc())
+
+        if self.archive_callback:
+            self.archive_callback(archive, crawled_url, result)
+        elif getattr(self.settings, "archive_user", None):
+            try:
+                from viewer.utils.actions import event_log
+                action = getattr(self.settings, "event_action", None) or (
+                    "DOWNLOAD_ARCHIVE" if getattr(self.settings, "redownload", False) else "ADD_ARCHIVE"
+                )
+                reason = getattr(self.settings, "archive_reason", "") or getattr(self.settings, "gallery_reason", "") or None
+                event_log(
+                    self.settings.archive_user,
+                    action,
+                    reason=reason,
+                    content_object=archive,
+                    result=result,
+                    data=crawled_url,
+                )
+            except Exception:
+                logger.critical(traceback.format_exc())
+
+    def notify_gallery(self, gallery: Optional["Gallery"], crawled_url: Optional[str], result: str) -> None:
+        if getattr(self.settings, "submit_group_uuid", None):
+            try:
+                from viewer.models import GallerySubmitEntry
+                entries = GallerySubmitEntry.objects.filter(submit_group=self.settings.submit_group_uuid)
+                if crawled_url:
+                    entries.filter(submit_url=crawled_url).update(submit_result=result)
+                if gallery:
+                    entries.filter(submit_url=gallery.get_link()).update(gallery=gallery)
+                    if getattr(gallery, "gid", None):
+                        for entry in entries:
+                            if entry.submit_url and str(gallery.gid) in entry.submit_url:
+                                entry.gallery = gallery
+                                entry.save()
+            except Exception:
+                logger.critical(traceback.format_exc())
+
+        if self.gallery_callback:
+            self.gallery_callback(gallery, crawled_url, result)
+        elif getattr(self.settings, "archive_user", None):
+            try:
+                from viewer.utils.actions import event_log
+                action = getattr(self.settings, "event_action", None) or (
+                    "DOWNLOAD_GALLERY" if getattr(self.settings, "redownload", False) else "ADD_GALLERY"
+                )
+                reason = getattr(self.settings, "gallery_reason", "") or getattr(self.settings, "archive_reason", "") or None
+                event_log(
+                    self.settings.archive_user,
+                    action,
+                    reason=reason,
+                    content_object=gallery,
+                    result=result,
+                    data=crawled_url,
+                )
+            except Exception:
+                logger.critical(traceback.format_exc())
 
     # We need this dispatcher because some provider have multiple ways of getting data (single, multiple),
     # or some have priorities (json fetch, crawl gallery page).
@@ -555,10 +639,8 @@ class BaseParser(typing.Generic[T_ProviderSettings]):
                                 downloader[0].gallery_db_entry.get_absolute_url(),
                             )
                         )
-                        if self.gallery_callback:
-                            self.gallery_callback(downloader[0].gallery_db_entry, gallery.link, "success")
-                        if self.archive_callback:
-                            self.archive_callback(downloader[0].archive_db_entry, gallery.link, "success")
+                        self.notify_gallery(downloader[0].gallery_db_entry, gallery.link, "success")
+                        self.notify_archive(downloader[0].archive_db_entry, gallery.link, "success")
                     else:
                         logger.info(
                             "Download complete, using downloader: {}. Archive link: {}. No gallery associated".format(
@@ -566,16 +648,14 @@ class BaseParser(typing.Generic[T_ProviderSettings]):
                                 downloader[0].archive_db_entry.get_absolute_url(),
                             )
                         )
-                        if self.archive_callback:
-                            self.archive_callback(downloader[0].archive_db_entry, gallery.link, "success")
+                        self.notify_archive(downloader[0].archive_db_entry, gallery.link, "success")
                 elif downloader[0].gallery_db_entry:
                     logger.info(
                         "Download completed successfully (gallery only), using downloader: {}. Gallery link: {}".format(
                             downloader[0], downloader[0].gallery_db_entry.get_absolute_url()
                         )
                     )
-                    if self.gallery_callback:
-                        self.gallery_callback(downloader[0].gallery_db_entry, gallery.link, "success")
+                    self.notify_gallery(downloader[0].gallery_db_entry, gallery.link, "success")
 
                     # Process possible nested galleries (contained, magazine)
                     # To avoid downloading extra Archives, it will only be possible to auto add Gallery only downloads
@@ -683,8 +763,7 @@ class BaseParser(typing.Generic[T_ProviderSettings]):
                                 downloader[0], downloader[0].gallery_db_entry.get_absolute_url()
                             )
                         )
-                        if self.gallery_callback:
-                            self.gallery_callback(downloader[0].gallery_db_entry, gallery.link, "failed")
+                        self.notify_gallery(downloader[0].gallery_db_entry, gallery.link, "failed")
                         for wanted_gallery in gallery_wanted_lists[gallery.gid]:
                             self.settings.found_gallery_model.objects.get_or_create(
                                 wanted_gallery=wanted_gallery, gallery=downloader[0].gallery_db_entry
@@ -706,8 +785,7 @@ class BaseParser(typing.Generic[T_ProviderSettings]):
                         "Download completed unsuccessfully using downloader: {},"
                         " no entry was updated on the database".format(downloader[0])
                     )
-                    if self.gallery_callback:
-                        self.gallery_callback(None, gallery.link, "failed")
+                    self.notify_gallery(None, gallery.link, "failed")
             else:
                 logger.info(
                     "Download was unsuccessful, using downloader {}. Trying with the next downloader.".format(
@@ -767,8 +845,7 @@ class InternalParser(BaseParser):
             )
 
             if banned_result:
-                if self.gallery_callback:
-                    self.gallery_callback(None, gallery_data.link, "banned_data")
+                self.notify_gallery(None, gallery_data.link, "banned_data")
                 logger.info(
                     "Gallery {} of {}: Skipping gallery link {}, discarded reasons: {}".format(
                         count, len(total_galleries_filtered), gallery_data.title, banned_reasons

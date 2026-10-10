@@ -93,6 +93,7 @@ if MAIN_LOGGER:
     }
     LOGGING['loggers'] = {
         "viewer": {"handlers": ["viewer", "console"], "level": log_level},
+        "workers": {"handlers": ["viewer", "console"], "level": log_level},
         "core": {"handlers": ["viewer", "console"], "level": log_level},
         "django": {
             "handlers": ["viewer", "console"],
@@ -103,6 +104,7 @@ if MAIN_LOGGER:
 else:
     LOGGING['loggers'] = {
         "viewer": {"handlers": ["console"], "level": log_level},
+        "workers": {"handlers": ["console"], "level": log_level},
         "core": {"handlers": ["console"], "level": log_level},
         "django": {
             "handlers": ["console"],
@@ -133,6 +135,7 @@ if not crawler_settings.disable_sql_log:
         "class": "django_db_logger.db_log_handler.DatabaseLogHandler"
     }
     LOGGING["loggers"]["viewer"]["handlers"].append("db_log")
+    LOGGING["loggers"]["workers"]["handlers"].append("db_log")
     LOGGING["loggers"]["core"]["handlers"].append("db_log")
     LOGGING["loggers"]["django"]["handlers"].append("db_log")
 
@@ -152,7 +155,7 @@ if module_exists("corsheaders"):
 
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 10000
 
-INSTALLED_APPS += ["viewer"]
+INSTALLED_APPS += ["viewer", "workers"]
 
 if module_exists("compressor"):
     INSTALLED_APPS += ["compressor"]
@@ -357,6 +360,7 @@ if crawler_settings.mail_logging.enable:
     }
 
     LOGGING["loggers"]["viewer"]["handlers"].append("mail_admins_urgent")
+    LOGGING["loggers"]["workers"]["handlers"].append("mail_admins_urgent")
     LOGGING["loggers"]["core"]["handlers"].append("mail_admins_urgent")
     LOGGING["loggers"]["django"]["handlers"].append("mail_admins")
 

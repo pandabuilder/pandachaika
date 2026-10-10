@@ -68,9 +68,21 @@
             </ul>
           </td>
           <td>
-          {% for setting, value in item.override_options|format_setting_value %}
-            <div>{{ setting }}: {{ value|format_setting_value }}</div>
-          {% endfor %}
+          {% if item.override_options.items %}
+            {% for setting, value in item.override_options.items %}
+              <div>{{ setting }}: {{ value }}</div>
+            {% empty %}
+              None
+            {% endfor %}
+          {% elif item.override_options %}
+            {% for setting, value in item.override_options|format_setting_value %}
+              <div>{{ setting }}: {{ value|format_setting_value }}</div>
+            {% empty %}
+              None
+            {% endfor %}
+          {% else %}
+            None
+          {% endif %}
           </td>
           <td>
             Not allowed
@@ -97,7 +109,21 @@
           </ul>
         </td>
         <td>
-          {{ item.override_options }}
+          {% if item.override_options.items %}
+            {% for setting, value in item.override_options.items %}
+              <div>{{ setting }}: {{ value }}</div>
+            {% empty %}
+              None
+            {% endfor %}
+          {% elif item.override_options %}
+            {% for setting, value in item.override_options|format_setting_value %}
+              <div>{{ setting }}: {{ value|format_setting_value }}</div>
+            {% empty %}
+              None
+            {% endfor %}
+          {% else %}
+            None
+          {% endif %}
         </td>
         <td>
           <a href="{% url 'viewer:queue-operations' 'remove_by_index' forloop.counter0 %}">Remove</a>
@@ -168,7 +194,7 @@
   <table class="table table-striped">
     <thead>
     <tr>
-      <th>Name</th><th>Running</th><th>Last run</th><th>Cycle (seconds, minutes)</th><th>Next run</th><th>Next run in</th>
+      <th>Name</th><th>Running</th><th>Worker PID</th><th>Last run</th><th>Cycle (seconds, minutes)</th><th>Next run</th><th>Next run in</th>
     </tr>
     </thead>
     <tbody>
@@ -179,6 +205,9 @@
         </td>
         <td class="{% if scheduler.1 %}active{% else %}danger{% endif %}">
           {{ scheduler.1|yesno }}
+        </td>
+        <td>
+          {% if scheduler.worker_pid %}{{ scheduler.worker_pid }}{% elif scheduler.5 %}{{ scheduler.5 }}{% else %}-{% endif %}
         </td>
         <td>
           {{ scheduler.2 }}

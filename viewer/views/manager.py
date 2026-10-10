@@ -31,6 +31,7 @@ from viewer.utils.matching import (
     generate_possible_matches_for_archives,
     create_matches_wanted_galleries_from_providers,
     create_matches_wanted_galleries_from_providers_internal,
+    MatchingThread,
 )
 from viewer.views.head import (
     render_error,
@@ -374,31 +375,15 @@ def archives_not_present_in_filesystem(request: HttpRequest) -> HttpResponse:
 
                     reason = archive.reason
 
-                    def archive_callback(x: "Archive | None", crawled_url: str | None, result: str) -> None:
-                        event_log(
-                            request.user,
-                            "DOWNLOAD_ARCHIVE",
-                            reason=reason,
-                            content_object=x,
-                            result=result,
-                            data=crawled_url,
-                        )
-
-                    def gallery_callback(x: "Gallery | None", crawled_url: str | None, result: str) -> None:
-                        event_log(
-                            request.user,
-                            "DOWNLOAD_GALLERY",
-                            reason=reason,
-                            content_object=x,
-                            result=result,
-                            data=crawled_url,
-                        )
+                    current_settings.archive_user = request.user
+                    current_settings.event_action = "DOWNLOAD"
 
                     current_settings.workers.web_queue.enqueue_args_list(
                         (archive.gallery.get_link(),),
                         override_options=current_settings,
-                        archive_callback=archive_callback,
-                        gallery_callback=gallery_callback,
+                        user=request.user,
+                        reason=reason,
+                        event_action="DOWNLOAD",
                     )
         if "delete_archives" in p:
             pks = []
@@ -543,7 +528,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
             except ValueError:
                 max_matches = 10
 
-            web_match_thread = threading.Thread(
+            web_match_thread = MatchingThread(
                 name="web_match_worker",
                 target=generate_possible_matches_for_archives,
                 args=(archives,),
@@ -554,6 +539,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                     "match_local": False,
                     "match_web": True,
                 },
+                user=request.user,
             )
             web_match_thread.daemon = True
             web_match_thread.start()
@@ -576,7 +562,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                 "for non-matched archives (cutoff: {}, max matches: {}) "
                 'using provider filter "{}"'.format(cutoff, max_matches, provider)
             )
-            matching_thread = threading.Thread(
+            matching_thread = MatchingThread(
                 name="match_unmatched_worker",
                 target=generate_possible_matches_for_archives,
                 args=(archives,),
@@ -587,6 +573,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                     "match_local": True,
                     "match_web": False,
                 },
+                user=request.user,
             )
             matching_thread.daemon = True
             matching_thread.start()
@@ -740,7 +727,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
             logger.info(message)
             messages.success(request, message)
 
-            panda_search_thread = threading.Thread(
+            panda_search_thread = MatchingThread(
                 name="web_search_worker",
                 target=create_matches_wanted_galleries_from_providers,
                 args=(results, provider),
@@ -748,6 +735,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
                     "cutoff": cutoff,
                     "max_matches": max_matches,
                 },
+                user=request.user,
             )
             panda_search_thread.daemon = True
             panda_search_thread.start()
@@ -783,8 +771,8 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
             logger.info(message)
             messages.success(request, message)
 
-            matching_thread = threading.Thread(
-                name="web_search_worker",
+            matching_thread = MatchingThread(
+                name="wanted_local_search_worker",
                 target=create_matches_wanted_galleries_from_providers_internal,
                 args=(results,),
                 kwargs={
@@ -793,6 +781,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
                     "max_matches": max_matches,
                     "must_be_used": must_be_used,
                 },
+                user=request.user,
             )
             matching_thread.daemon = True
             matching_thread.start()

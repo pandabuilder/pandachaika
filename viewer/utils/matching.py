@@ -1,5 +1,8 @@
 import logging
+import threading
 import traceback
+import typing
+from typing import Any, Callable, Optional
 
 import time
 from collections.abc import Iterable
@@ -716,3 +719,69 @@ def match_gallery_group_internal(
                             match_type="hash_thumbnail_{}".format(hash_result.name),
                             match_accuracy=1,
                         )
+
+
+class MatchingThread(threading.Thread):
+    """Thread subclass that executes matching tasks locally or dispatches them to TaskQueue if in web process."""
+
+    def __init__(
+        self,
+        name: str,
+        target: Callable,
+        args: Iterable = (),
+        kwargs: Optional[dict[str, Any]] = None,
+        user: Any = None,
+        settings: Optional[Any] = None,
+    ) -> None:
+        super().__init__(name=name)
+        self.target = target
+        self.target_args = tuple(args)
+        self.target_kwargs = kwargs or {}
+        self.user = user
+        self.settings = settings
+
+    def start(self, force_local: bool = False) -> None:
+        from django.conf import settings as django_settings
+        c_settings = self.settings or getattr(django_settings, "CRAWLER_SETTINGS", None)
+        is_worker = force_local or (c_settings and getattr(c_settings, "is_worker_process", False))
+        if is_worker:
+            super().start()
+        else:
+            from workers.client import enqueue
+            pks = []
+            if self.target_args and self.target_args[0] is not None:
+                first_arg = self.target_args[0]
+                if hasattr(first_arg, "values_list"):
+                    pks = list(first_arg.values_list("pk", flat=True))
+                elif isinstance(first_arg, (list, tuple, set)):
+                    pks = [getattr(x, "pk", x) for x in first_arg]
+
+            serializable_kwargs = {}
+            for k, v in self.target_kwargs.items():
+                if isinstance(v, (tuple, set, list)):
+                    serializable_kwargs[k] = list(v)
+                else:
+                    serializable_kwargs[k] = v
+
+            options: dict[str, Any] = {"matching_kwargs": serializable_kwargs}
+            if len(self.target_args) > 1 and isinstance(self.target_args[1], str):
+                options["provider"] = self.target_args[1]
+
+            user_obj = self.user
+            if not user_obj and c_settings and getattr(c_settings, "archive_user", None):
+                user_obj = c_settings.archive_user
+
+            enqueue(
+                args=pks,
+                task_type=self.name,
+                override_options=options,
+                user=user_obj,
+            )
+            logger.info("Enqueued matching task '%s' to worker process with %d items", self.name, len(pks))
+
+    def run(self) -> None:
+        try:
+            self.target(*self.target_args, **self.target_kwargs)
+        except BaseException:
+            logger.critical(traceback.format_exc())
+

@@ -1,0 +1,16 @@
+[Unit]
+Description=Panda Backup Background Workers
+Documentation=https://github.com/pandabuilder/pandachaika
+After=local-fs.target network.target postgresql.service
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/home/panda/pandabackup/
+ExecStart=/home/panda/pandabackup/env/python /home/panda/pandabackup/manage.py run_workers -c /home/panda/pandabackup/
+Restart=always
+RestartSec=5s
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target

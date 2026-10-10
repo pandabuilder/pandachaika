@@ -101,8 +101,10 @@ def mark_color(mark_priority: float) -> str:
 
 
 @register.filter
-def format_setting_value(value: T) -> Union[T, ItemsView[str, Any]]:
-    if hasattr(value, "__dict__"):
+def format_setting_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return value.items()
+    elif hasattr(value, "__dict__"):
         return vars(value).items()
     elif hasattr(value, "__slots__"):
         return {k: getattr(value, k) for k in value.__slots__}.items()

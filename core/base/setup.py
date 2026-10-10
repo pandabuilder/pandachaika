@@ -10,7 +10,7 @@ import typing
 # Main concern with this first approach is that a provider could read settings from another provider (cookies, etc).
 # Another option is to have each provider construct it's own settings object, inheriting from this,
 # is that it would need to copy the original settings object each time a provider specific setting is needed.
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 from core.base.providers import ProviderContext
 from core.base.types import DataDict
@@ -18,7 +18,7 @@ from core.workers.holder import WorkerContext
 
 if typing.TYPE_CHECKING:
     from viewer.models import Gallery, Archive, WantedGallery, FoundGallery, ArchiveManageEntry, DownloadEvent
-    from django.contrib.auth.models import User
+    from django.contrib.auth.models import User, AnonymousUser
     from core.base.types import ProviderSettings
 
     from core.providers.chaika.settings import OwnSettings as ChaikaSettings
@@ -306,9 +306,14 @@ class Settings:
         self.archive_source = ""
         self.archive_details = ""
         self.archive_origin: Optional[int] = None
-        self.archive_user: Optional[User] = None
+        self.archive_user: Optional[Union[User, AnonymousUser]] = None
+        self.event_action: Optional[str] = None
+        self.submit_group_uuid: Optional[str] = None
+        self.preserve_user_favorites: list[Any] = []
+        self.preserve_extracted: bool = False
         self.silent_processing = False
         self.update_metadata_mode = False
+        self.is_worker_process: bool = False
 
         # USER SETTINGS
         self.replace_metadata = False

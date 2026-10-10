@@ -27,8 +27,11 @@ from viewer.utils.functions import (
     gallery_search_results_to_json,
 )
 from viewer.utils.general import clean_up_referer
-from viewer.utils.matching import generate_possible_matches_for_archives, \
-    generate_possible_matches_for_gallery_match_groups
+from viewer.utils.matching import (
+    generate_possible_matches_for_archives,
+    generate_possible_matches_for_gallery_match_groups,
+    MatchingThread,
+)
 from viewer.utils.actions import event_log
 from viewer.forms import (
     GallerySearchForm,
@@ -245,31 +248,15 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
                         elif gallery.reason:
                             current_settings.archive_reason = gallery.reason
 
-                        def archive_callback(x: Optional["Archive"], crawled_url: Optional[str], result: str) -> None:
-                            event_log(
-                                request.user,
-                                "ADD_ARCHIVE",
-                                reason=user_reason,
-                                content_object=x,
-                                result=result,
-                                data=crawled_url,
-                            )
-
-                        def gallery_callback(x: Optional["Gallery"], crawled_url: Optional[str], result: str) -> None:
-                            event_log(
-                                request.user,
-                                "ADD_GALLERY",
-                                reason=user_reason,
-                                content_object=x,
-                                result=result,
-                                data=crawled_url,
-                            )
+                        current_settings.archive_user = request.user
+                        current_settings.event_action = "ADD"
 
                         current_settings.workers.web_queue.enqueue_args_list(
                             (gallery.get_link(),),
                             override_options=current_settings,
-                            archive_callback=archive_callback,
-                            gallery_callback=gallery_callback,
+                            user=request.user,
+                            reason=user_reason,
+                            event_action="ADD",
                         )
 
                     event_log(
@@ -298,31 +285,15 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
                             current_settings.archive_reason = reason[:200]
                             current_settings.gallery_reason = reason[:200]
 
-                        def archive_callback(x: Optional["Archive"], crawled_url: Optional[str], result: str) -> None:
-                            event_log(
-                                request.user,
-                                "ADD_ARCHIVE",
-                                reason=user_reason,
-                                content_object=x,
-                                result=result,
-                                data=crawled_url,
-                            )
-
-                        def gallery_callback(x: Optional["Gallery"], crawled_url: Optional[str], result: str) -> None:
-                            event_log(
-                                request.user,
-                                "ADD_GALLERY",
-                                reason=user_reason,
-                                content_object=x,
-                                result=result,
-                                data=crawled_url,
-                            )
+                        current_settings.archive_user = request.user
+                        current_settings.event_action = "ADD"
 
                         current_settings.workers.web_queue.enqueue_args_list(
                             (gallery_entry.submit_url,),
                             override_options=current_settings,
-                            archive_callback=archive_callback,
-                            gallery_callback=gallery_callback,
+                            user=request.user,
+                            reason=user_reason,
+                            event_action="ADD",
                         )
 
                         event_log(
@@ -747,21 +718,17 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
 
             if current_settings.workers.web_queue:
                 current_settings.set_update_metadata_options(providers=providers_filtered)
-
-                def gallery_callback(x: Optional["Gallery"], crawled_url: Optional[str], result: str) -> None:
-                    event_log(
-                        actual_user,
-                        "UPDATE_METADATA",
-                        reason=user_reason,
-                        content_object=x,
-                        result=result,
-                        data=crawled_url,
-                    )
+                current_settings.archive_user = actual_user
+                current_settings.event_action = "UPDATE_METADATA"
 
                 gallery_links = [x.get_link() for x in galleries_from_archives]
 
                 current_settings.workers.web_queue.enqueue_args_list(
-                    gallery_links, override_options=current_settings, gallery_callback=gallery_callback
+                    gallery_links,
+                    override_options=current_settings,
+                    user=actual_user,
+                    reason=user_reason,
+                    event_action="UPDATE_METADATA",
                 )
 
         elif "recalc_fileinfo" in p and actual_user.has_perm("viewer.recalc_fileinfo"):
@@ -1191,31 +1158,15 @@ def manage_galleries(request: HttpRequest) -> HttpResponse:
                     elif gallery.reason:
                         current_settings.archive_reason = gallery.reason
 
-                    def archive_callback(x: Optional["Archive"], crawled_url: Optional[str], result: str) -> None:
-                        event_log(
-                            request.user,
-                            "DOWNLOAD_ARCHIVE",
-                            reason=reason,
-                            content_object=x,
-                            result=result,
-                            data=crawled_url,
-                        )
-
-                    def gallery_callback(x: Optional["Gallery"], crawled_url: Optional[str], result: str) -> None:
-                        event_log(
-                            request.user,
-                            "DOWNLOAD_GALLERY",
-                            reason=reason,
-                            content_object=x,
-                            result=result,
-                            data=crawled_url,
-                        )
+                    current_settings.archive_user = request.user
+                    current_settings.event_action = "DOWNLOAD"
 
                     current_settings.workers.web_queue.enqueue_args_list(
                         (gallery.get_link(),),
                         override_options=current_settings,
-                        archive_callback=archive_callback,
-                        gallery_callback=gallery_callback,
+                        user=request.user,
+                        reason=reason,
+                        event_action="DOWNLOAD",
                     )
         elif "recall_api" in p and request.user.has_perm("viewer.update_metadata"):
             message = "Recalling API for {} galleries".format(results_gallery.count())
@@ -1257,7 +1208,7 @@ def manage_galleries(request: HttpRequest) -> HttpResponse:
             except ValueError:
                 max_matches = 10
 
-            matching_thread = threading.Thread(
+            matching_thread = MatchingThread(
                 name="match_unmatched_gallery_groups_worker",
                 target=generate_possible_matches_for_gallery_match_groups,
                 args=(gallery_match_groups,),
@@ -1267,6 +1218,7 @@ def manage_galleries(request: HttpRequest) -> HttpResponse:
                     "providers": (provider,),
                     "string_attributes_to_match": methods,
                 },
+                user=request.user,
             )
             matching_thread.daemon = True
             matching_thread.start()
@@ -1458,7 +1410,7 @@ def gallery_match_groups_possibles(request: HttpRequest) -> HttpResponse:
             except ValueError:
                 max_matches = 10
 
-            matching_thread = threading.Thread(
+            matching_thread = MatchingThread(
                 name="match_unmatched_gallery_groups_worker",
                 target=generate_possible_matches_for_gallery_match_groups,
                 args=(gallery_match_groups,),
@@ -1468,6 +1420,7 @@ def gallery_match_groups_possibles(request: HttpRequest) -> HttpResponse:
                     "providers": (provider,),
                     "string_attributes_to_match": methods,
                 },
+                user=request.user,
             )
             matching_thread.daemon = True
             matching_thread.start()
@@ -1862,25 +1815,10 @@ def user_crawler(request: AuthenticatedHttpRequest) -> HttpResponse:
         if add_as_deleted and request.user.has_perm("viewer.add_deleted_gallery"):
             # Use this to download using info
             current_settings.allow_type_downloaders_only("info")
-
-            def gallery_callback(x: Optional["Gallery"], crawled_url: Optional[str], result: str) -> None:
-                event_log(
-                    request.user,
-                    "ADD_DELETED_GALLERY",
-                    reason=user_reason,
-                    content_object=x,
-                    result=result,
-                    data=crawled_url,
-                )
-                if x:
-                    x.mark_as_deleted()
-
+            current_settings.event_action = "ADD_DELETED_GALLERY"
+            current_settings.non_current_links_as_deleted = True
         else:
-
-            def gallery_callback(x: Optional["Gallery"], crawled_url: Optional[str], result: str) -> None:
-                event_log(
-                    request.user, "ADD_GALLERY", reason=user_reason, content_object=x, result=result, data=crawled_url
-                )
+            current_settings.event_action = "ADD_GALLERY"
 
         current_settings.archive_user = request.user
         current_settings.archive_origin = Archive.ORIGIN_ADD_URL
@@ -1895,16 +1833,15 @@ def user_crawler(request: AuthenticatedHttpRequest) -> HttpResponse:
 
         parsers = crawler_settings.provider_context.get_parsers(crawler_settings)
 
-        def archive_callback(x: Optional["Archive"], crawled_url: Optional[str], result: str) -> None:
-            event_log(
-                request.user, "ADD_ARCHIVE", reason=user_reason, content_object=x, result=result, data=crawled_url
-            )
+        current_settings.archive_user = request.user
+        current_settings.event_action = "ADD"
 
         current_settings.workers.web_queue.enqueue_args_list(
             urls,
             override_options=current_settings,
-            archive_callback=archive_callback,
-            gallery_callback=gallery_callback,
+            user=request.user,
+            reason=user_reason,
+            event_action="ADD",
             use_argparser=False,
         )
 
@@ -2059,7 +1996,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                     request.user.username, cutoff, max_matches, provider, method
                 )
             )
-            matching_thread = threading.Thread(
+            matching_thread = MatchingThread(
                 name="match_unmatched_worker",
                 target=generate_possible_matches_for_archives,
                 args=(archives,),
@@ -2071,6 +2008,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                     "match_web": False,
                     "method_filter": method,
                 },
+                user=request.user,
             )
             matching_thread.daemon = True
             matching_thread.start()
@@ -2724,31 +2662,15 @@ def missing_archives_for_galleries(request: HttpRequest) -> HttpResponse:
                     elif gallery.reason:
                         current_settings.archive_reason = gallery.reason
 
-                    def archive_callback(x: Optional["Archive"], crawled_url: Optional[str], result: str) -> None:
-                        event_log(
-                            request.user,
-                            "DOWNLOAD_ARCHIVE",
-                            reason=reason,
-                            content_object=x,
-                            result=result,
-                            data=crawled_url,
-                        )
-
-                    def gallery_callback(x: Optional["Gallery"], crawled_url: Optional[str], result: str) -> None:
-                        event_log(
-                            request.user,
-                            "DOWNLOAD_GALLERY",
-                            reason=reason,
-                            content_object=x,
-                            result=result,
-                            data=crawled_url,
-                        )
+                    current_settings.archive_user = request.user
+                    current_settings.event_action = "DOWNLOAD"
 
                     current_settings.workers.web_queue.enqueue_args_list(
                         (gallery.get_link(),),
                         override_options=current_settings,
-                        archive_callback=archive_callback,
-                        gallery_callback=gallery_callback,
+                        user=request.user,
+                        reason=reason,
+                        event_action="DOWNLOAD",
                     )
         elif "recall_api" in p and request.user.has_perm("viewer.update_metadata"):
             message = "Recalling API for {} galleries".format(results_gallery.count())

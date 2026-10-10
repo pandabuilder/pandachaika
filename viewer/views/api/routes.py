@@ -191,8 +191,10 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                             link = parent_archive.gallery.get_link()
                             if "action" in args and args["action"] == "replaceFound":
                                 # Preserve old archive extra data
-                                old_user_favorites = UserArchivePrefs.objects.filter(archive=parent_archive).values(
-                                    "user", "favorite_group"
+                                old_user_favorites = list(
+                                    UserArchivePrefs.objects.filter(archive=parent_archive).values(
+                                        "user", "favorite_group"
+                                    )
                                 )
                                 old_extracted = parent_archive.extracted
 
@@ -203,26 +205,12 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                                 parent_archive.delete()
                                 response["message"] = "Crawling: " + args["link"] + ", deleting parent: " + link
 
-                                def archive_callback(
-                                    x: Optional["Archive"], crawled_url: Optional[str], result: str
-                                ) -> None:
-
-                                    if x:
-                                        logger.info(
-                                            "Preserving old extra info for archive: {}".format(x.get_absolute_url())
-                                        )
-                                        for old_user_favorite in old_user_favorites:
-                                            UserArchivePrefs.objects.get_or_create(
-                                                archive=x,
-                                                user=old_user_favorite["user"],
-                                                favorite_group=old_user_favorite["favorite_group"],
-                                            )
-
-                                        if old_extracted and not x.extracted and x.crc32:
-                                            x.extract()
+                                current_settings.preserve_user_favorites = old_user_favorites
+                                current_settings.preserve_extracted = bool(old_extracted)
 
                                 current_settings.workers.web_queue.enqueue_args_list(
-                                    [args["link"]] + extra_args, archive_callback=archive_callback
+                                    [args["link"]] + extra_args,
+                                    override_options=current_settings,
                                 )
                             elif "action" in args and args["action"] == "queueFound":
                                 response["message"] = "Crawling: " + args["link"] + ", keeping parent: " + link

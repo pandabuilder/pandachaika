@@ -5,6 +5,7 @@ import os
 import re
 import time
 import argparse
+import zlib
 from typing import Union, NoReturn
 from zipfile import BadZipFile
 from zipfile import ZipFile
@@ -479,7 +480,7 @@ class FolderCrawler(object):
                         my_zip = ZipFile(os.path.join(self.settings.MEDIA_ROOT, filepath), "r")
                         return_error = my_zip.testzip()
                         my_zip.close()
-                    except (BadZipFile, NotImplementedError):
+                    except (BadZipFile, NotImplementedError, zlib.error):
                         except_at_open = True
                     if except_at_open or return_error:
                         logger.warning("File check on zipfile failed on file: {}, marking as corrupt.".format(filepath))
