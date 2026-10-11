@@ -747,37 +747,20 @@ class MatchingThread(threading.Thread):
         if is_worker:
             super().start()
         else:
-            from workers.client import enqueue
-            pks = []
-            if self.target_args and self.target_args[0] is not None:
-                first_arg = self.target_args[0]
-                if hasattr(first_arg, "values_list"):
-                    pks = list(first_arg.values_list("pk", flat=True))
-                elif isinstance(first_arg, (list, tuple, set)):
-                    pks = [getattr(x, "pk", x) for x in first_arg]
-
-            serializable_kwargs = {}
-            for k, v in self.target_kwargs.items():
-                if isinstance(v, (tuple, set, list)):
-                    serializable_kwargs[k] = list(v)
-                else:
-                    serializable_kwargs[k] = v
-
-            options: dict[str, Any] = {"matching_kwargs": serializable_kwargs}
-            if len(self.target_args) > 1 and isinstance(self.target_args[1], str):
-                options["provider"] = self.target_args[1]
-
+            from workers.client import enqueue_matching_task
+            first_arg = self.target_args[0] if self.target_args else None
+            provider = self.target_args[1] if len(self.target_args) > 1 and isinstance(self.target_args[1], str) else None
             user_obj = self.user
             if not user_obj and c_settings and getattr(c_settings, "archive_user", None):
                 user_obj = c_settings.archive_user
-
-            enqueue(
-                args=pks,
+            enqueue_matching_task(
                 task_type=self.name,
-                override_options=options,
+                args=first_arg,
+                matching_kwargs=self.target_kwargs,
+                provider=provider,
                 user=user_obj,
             )
-            logger.info("Enqueued matching task '%s' to worker process with %d items", self.name, len(pks))
+            logger.info("Enqueued matching task '%s' to worker process", self.name)
 
     def run(self) -> None:
         try:

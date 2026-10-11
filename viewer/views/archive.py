@@ -19,7 +19,7 @@ from django.shortcuts import render
 from django.conf import settings
 
 from core.base.setup import Settings
-from core.local.foldercrawlerthread import FolderCrawlerThread
+from workers import client
 from viewer.utils.actions import event_log
 from viewer.forms import ArchiveModForm, ImageFormSet, ArchiveEditForm, ArchiveManageEditFormSet, SplitArchiveFormSet
 from viewer.models import (
@@ -1306,8 +1306,12 @@ def rematch_archive(request: HttpRequest, pk: int) -> HttpResponse:
     if archive.gallery:
         archive.gallery.archive_set.remove(archive)
 
-    folder_crawler_thread = FolderCrawlerThread(crawler_settings, ["-frm", archive.zipped.path])
-    folder_crawler_thread.start()
+    client.enqueue(
+        args=["-frm", archive.zipped.path],
+        task_type="folder_crawler",
+        override_options=crawler_settings,
+        user=request.user,
+    )
 
     logger.info("Rematching archive: {}".format(archive.title))
 

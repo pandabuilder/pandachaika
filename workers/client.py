@@ -52,6 +52,43 @@ def enqueue(
     return task
 
 
+def enqueue_matching_task(
+    task_type: str,
+    args: Any = None,
+    matching_kwargs: Optional[dict[str, Any]] = None,
+    provider: Optional[str] = None,
+    user: Any = None,
+    priority: int = 10,
+) -> TaskQueue:
+    """Convenience helper to enqueue matching tasks to the database task queue."""
+    pks = []
+    if args is not None:
+        if hasattr(args, "values_list"):
+            pks = list(args.values_list("pk", flat=True))
+        elif isinstance(args, (list, tuple, set)):
+            pks = [getattr(x, "pk", x) for x in args]
+
+    serializable_kwargs = {}
+    if matching_kwargs:
+        for k, v in matching_kwargs.items():
+            if isinstance(v, (tuple, set, list)):
+                serializable_kwargs[k] = list(v)
+            else:
+                serializable_kwargs[k] = v
+
+    options: dict[str, Any] = {"matching_kwargs": serializable_kwargs}
+    if provider:
+        options["provider"] = provider
+
+    return enqueue(
+        args=pks,
+        task_type=task_type,
+        override_options=options,
+        user=user,
+        priority=priority,
+    )
+
+
 def get_pending_tasks():
     """Return pending tasks ordered by priority and creation time."""
     return TaskQueue.objects.filter(status=TaskQueue.Status.PENDING).order_by("priority", "created_at", "id")

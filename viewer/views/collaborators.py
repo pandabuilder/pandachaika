@@ -1,7 +1,6 @@
 import json
 import logging
 import re
-import threading
 from collections import defaultdict
 from itertools import groupby
 from typing import Optional, Any
@@ -27,12 +26,8 @@ from viewer.utils.functions import (
     gallery_search_results_to_json,
 )
 from viewer.utils.general import clean_up_referer
-from viewer.utils.matching import (
-    generate_possible_matches_for_archives,
-    generate_possible_matches_for_gallery_match_groups,
-    MatchingThread,
-)
 from viewer.utils.actions import event_log
+from workers import client
 from viewer.forms import (
     GallerySearchForm,
     ArchiveSearchForm,
@@ -1208,11 +1203,10 @@ def manage_galleries(request: HttpRequest) -> HttpResponse:
             except ValueError:
                 max_matches = 10
 
-            matching_thread = MatchingThread(
-                name="match_unmatched_gallery_groups_worker",
-                target=generate_possible_matches_for_gallery_match_groups,
-                args=(gallery_match_groups,),
-                kwargs={
+            client.enqueue_matching_task(
+                task_type="match_unmatched_gallery_groups_worker",
+                args=gallery_match_groups,
+                matching_kwargs={
                     "cutoff": cutoff,
                     "max_matches": max_matches,
                     "providers": (provider,),
@@ -1220,8 +1214,6 @@ def manage_galleries(request: HttpRequest) -> HttpResponse:
                 },
                 user=request.user,
             )
-            matching_thread.daemon = True
-            matching_thread.start()
             messages.success(
                 request,
                 "Looking for possible matches in gallery database "
@@ -1410,11 +1402,10 @@ def gallery_match_groups_possibles(request: HttpRequest) -> HttpResponse:
             except ValueError:
                 max_matches = 10
 
-            matching_thread = MatchingThread(
-                name="match_unmatched_gallery_groups_worker",
-                target=generate_possible_matches_for_gallery_match_groups,
-                args=(gallery_match_groups,),
-                kwargs={
+            client.enqueue_matching_task(
+                task_type="match_unmatched_gallery_groups_worker",
+                args=gallery_match_groups,
+                matching_kwargs={
                     "cutoff": cutoff,
                     "max_matches": max_matches,
                     "providers": (provider,),
@@ -1422,8 +1413,6 @@ def gallery_match_groups_possibles(request: HttpRequest) -> HttpResponse:
                 },
                 user=request.user,
             )
-            matching_thread.daemon = True
-            matching_thread.start()
             messages.success(
                 request,
                 "Looking for possible matches in gallery database "
@@ -1996,11 +1985,10 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                     request.user.username, cutoff, max_matches, provider, method
                 )
             )
-            matching_thread = MatchingThread(
-                name="match_unmatched_worker",
-                target=generate_possible_matches_for_archives,
-                args=(archives,),
-                kwargs={
+            client.enqueue_matching_task(
+                task_type="match_unmatched_worker",
+                args=archives,
+                matching_kwargs={
                     "cutoff": cutoff,
                     "max_matches": max_matches,
                     "filters": (provider,),
@@ -2010,8 +1998,6 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                 },
                 user=request.user,
             )
-            matching_thread.daemon = True
-            matching_thread.start()
             messages.success(
                 request,
                 "Looking for possible matches in gallery database "

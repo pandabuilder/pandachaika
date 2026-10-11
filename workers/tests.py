@@ -725,4 +725,58 @@ class OnDemandWorkerTests(TestCase):
         self.assertIsNotNone(context.archive_worker)
         self.assertIsInstance(context.archive_worker, ArchiveWorker)
 
+    def test_enqueue_matching_task_helper(self):
+        from unittest.mock import patch
+        from viewer.models import Archive, WantedGallery, GalleryMatchGroup
+        from viewer.utils.matching import (
+            generate_possible_matches_for_archives,
+            create_matches_wanted_galleries_from_providers,
+            create_matches_wanted_galleries_from_providers_internal,
+            generate_possible_matches_for_gallery_match_groups,
+        )
+
+        a1 = Archive.objects.create(title="Match Test 1", crc32="99999991", user=self.user)
+        a2 = Archive.objects.create(title="Match Test 2", crc32="99999992", user=self.user)
+
+        # 1. Enqueue matching task for archives
+        task1 = client.enqueue_matching_task(
+            task_type="match_unmatched_worker",
+            args=Archive.objects.filter(pk__in=[a1.pk, a2.pk]),
+            matching_kwargs={"cutoff": 0.5, "filters": ("panda",)},
+            user=self.user,
+        )
+        self.assertEqual(task1.task_type, "match_unmatched_worker")
+        self.assertEqual(set(task1.args), {a1.pk, a2.pk})
+        self.assertEqual(task1.options.get("matching_kwargs", {}).get("filters"), ["panda"])
+        self.assertEqual(task1.user, self.user)
+
+        claimed1 = self.runner.claim_next_job()
+        self.assertEqual(claimed1.pk, task1.pk)
+        with patch("viewer.utils.matching.generate_possible_matches_for_archives") as mock_match:
+            self.runner.execute_job(claimed1)
+            mock_match.assert_called_once()
+        claimed1.refresh_from_db()
+        self.assertEqual(claimed1.status, TaskQueue.Status.COMPLETED)
+
+        # 2. Enqueue web search worker for wanted galleries
+        w1 = WantedGallery.objects.create(title="Wanted 1")
+        task2 = client.enqueue_matching_task(
+            task_type="web_search_worker",
+            args=[w1],
+            provider="panda",
+            matching_kwargs={"cutoff": 0.4, "max_matches": 5},
+            user=self.user,
+        )
+        self.assertEqual(task2.task_type, "web_search_worker")
+        self.assertEqual(task2.args, [w1.pk])
+        self.assertEqual(task2.options.get("provider"), "panda")
+
+        claimed2 = self.runner.claim_next_job()
+        self.assertEqual(claimed2.pk, task2.pk)
+        with patch("viewer.utils.matching.create_matches_wanted_galleries_from_providers") as mock_ws:
+            self.runner.execute_job(claimed2)
+            mock_ws.assert_called_once()
+        claimed2.refresh_from_db()
+        self.assertEqual(claimed2.status, TaskQueue.Status.COMPLETED)
+
 

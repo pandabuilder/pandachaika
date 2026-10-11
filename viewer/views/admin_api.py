@@ -2,8 +2,6 @@ import os.path
 import json
 import logging
 import signal
-import threading
-
 import yaml
 from django.http import HttpResponse, HttpRequest
 from django.conf import settings
@@ -11,16 +9,10 @@ from django.utils.dateparse import parse_date
 
 from core.base.setup_utilities import get_thread_status_bool
 from core.base.utilities import thread_exists
-from core.web.crawlerthread import CrawlerThread
 from core.workers.archive_work import ArchiveWorker
 
 from viewer.models import Archive, ArchiveMatches, WantedGallery
-from viewer.utils.matching import (
-    create_matches_wanted_galleries_from_providers,
-    create_matches_wanted_galleries_from_providers_internal,
-    generate_possible_matches_for_archives,
-    MatchingThread,
-)
+from workers import client
 
 
 MAIN_LOGGER = settings.MAIN_LOGGER
@@ -36,12 +28,16 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         response["error"] = "Not allowed"
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status_code=401)
     if tool == "transfer_missing_downloads":
-        crawler_thread = CrawlerThread(crawler_settings, "-tmd".split())
-        crawler_thread.start()
+        if crawler_settings.workers.web_queue:
+            crawler_settings.workers.web_queue.enqueue_args_list(("-tmd",), override_options=crawler_settings, user=request.user)
+        else:
+            client.enqueue(args=["-tmd"], task_type="web_crawler", override_options=crawler_settings, user=request.user)
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
     elif tool == "retry_failed":
-        crawler_thread = CrawlerThread(crawler_settings, "--retry-failed".split())
-        crawler_thread.start()
+        if crawler_settings.workers.web_queue:
+            crawler_settings.workers.web_queue.enqueue_args_list(("--retry-failed",), override_options=crawler_settings, user=request.user)
+        else:
+            client.enqueue(args=["--retry-failed"], task_type="web_crawler", override_options=crawler_settings, user=request.user)
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
     elif tool == "update_newer_than":
         p = request.GET
@@ -142,11 +138,10 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
             "for non-matched archives (cutoff: {}, max matches: {}) "
             'using provider filter "{}"'.format(cutoff, max_matches, provider)
         )
-        matching_thread = MatchingThread(
-            name="match_unmatched_worker",
-            target=generate_possible_matches_for_archives,
-            args=(None,),
-            kwargs={
+        client.enqueue_matching_task(
+            task_type="match_unmatched_worker",
+            args=None,
+            matching_kwargs={
                 "cutoff": cutoff,
                 "max_matches": max_matches,
                 "filters": (provider,),
@@ -155,8 +150,6 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
             },
             user=request.user,
         )
-        matching_thread.daemon = True
-        matching_thread.start()
         response["message"] = "Looking for possible matches, filtering providers: {}, cutoff: {}.".format(
             provider, cutoff
         )
@@ -181,14 +174,12 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
 
         logger.info("Searching for gallery matches in panda for wanted galleries, starting thread.")
         response["message"] = "Searching for gallery matches in panda for wanted galleries, starting thread."
-        panda_search_thread = MatchingThread(
-            name="web_search_worker",
-            target=create_matches_wanted_galleries_from_providers,
-            args=(results, provider),
+        client.enqueue_matching_task(
+            task_type="web_search_worker",
+            args=results,
+            provider=provider,
             user=request.user,
         )
-        panda_search_thread.daemon = True
-        panda_search_thread.start()
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
     elif tool == "wanted_galleries_possible_matches":
         if thread_exists("wanted_local_search_worker"):
@@ -215,15 +206,12 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         except ValueError:
             max_matches = 10
 
-        matching_thread = MatchingThread(
-            name="wanted_local_search_worker",
-            target=create_matches_wanted_galleries_from_providers_internal,
-            args=(non_match_wanted,),
-            kwargs={"provider_filter": provider, "cutoff": cutoff, "max_matches": max_matches},
+        client.enqueue_matching_task(
+            task_type="wanted_local_search_worker",
+            args=non_match_wanted,
+            matching_kwargs={"provider_filter": provider, "cutoff": cutoff, "max_matches": max_matches},
             user=request.user,
         )
-        matching_thread.daemon = True
-        matching_thread.start()
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
     elif tool == "restart_viewer":
         crawler_settings.workers.stop_workers_and_wait()

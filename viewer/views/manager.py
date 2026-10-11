@@ -1,5 +1,4 @@
 import logging
-import threading
 from itertools import groupby
 
 from django.contrib import messages
@@ -27,12 +26,7 @@ from viewer.models import (
 )
 from viewer.utils.actions import event_log
 from viewer.utils.general import clean_up_referer
-from viewer.utils.matching import (
-    generate_possible_matches_for_archives,
-    create_matches_wanted_galleries_from_providers,
-    create_matches_wanted_galleries_from_providers_internal,
-    MatchingThread,
-)
+from workers import client
 from viewer.views.head import (
     render_error,
     gallery_filter_keys,
@@ -528,11 +522,10 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
             except ValueError:
                 max_matches = 10
 
-            web_match_thread = MatchingThread(
-                name="web_match_worker",
-                target=generate_possible_matches_for_archives,
-                args=(archives,),
-                kwargs={
+            client.enqueue_matching_task(
+                task_type="web_match_worker",
+                args=archives,
+                matching_kwargs={
                     "cutoff": cutoff,
                     "max_matches": max_matches,
                     "filters": (matcher_filter,),
@@ -541,8 +534,6 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                 },
                 user=request.user,
             )
-            web_match_thread.daemon = True
-            web_match_thread.start()
             messages.success(request, "Starting web match worker.")
         elif "create_possible_matches_internal" in p:
             if thread_exists("match_unmatched_worker"):
@@ -562,11 +553,10 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                 "for non-matched archives (cutoff: {}, max matches: {}) "
                 'using provider filter "{}"'.format(cutoff, max_matches, provider)
             )
-            matching_thread = MatchingThread(
-                name="match_unmatched_worker",
-                target=generate_possible_matches_for_archives,
-                args=(archives,),
-                kwargs={
+            client.enqueue_matching_task(
+                task_type="match_unmatched_worker",
+                args=archives,
+                matching_kwargs={
                     "cutoff": cutoff,
                     "max_matches": max_matches,
                     "filters": (provider,),
@@ -575,8 +565,6 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                 },
                 user=request.user,
             )
-            matching_thread.daemon = True
-            matching_thread.start()
             messages.success(request, "Starting internal match worker.")
 
     params = {
@@ -727,18 +715,16 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
             logger.info(message)
             messages.success(request, message)
 
-            panda_search_thread = MatchingThread(
-                name="web_search_worker",
-                target=create_matches_wanted_galleries_from_providers,
-                args=(results, provider),
-                kwargs={
+            client.enqueue_matching_task(
+                task_type="web_search_worker",
+                args=results,
+                provider=provider,
+                matching_kwargs={
                     "cutoff": cutoff,
                     "max_matches": max_matches,
                 },
                 user=request.user,
             )
-            panda_search_thread.daemon = True
-            panda_search_thread.start()
         elif "search_provider_galleries_internal" in p:
             if thread_exists("wanted_local_search_worker"):
                 messages.error(request, "Wanted local matching worker is already running.", extra_tags="danger")
@@ -771,11 +757,10 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
             logger.info(message)
             messages.success(request, message)
 
-            matching_thread = MatchingThread(
-                name="wanted_local_search_worker",
-                target=create_matches_wanted_galleries_from_providers_internal,
-                args=(results,),
-                kwargs={
+            client.enqueue_matching_task(
+                task_type="wanted_local_search_worker",
+                args=results,
+                matching_kwargs={
                     "provider_filter": provider,
                     "cutoff": cutoff,
                     "max_matches": max_matches,
@@ -783,8 +768,6 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
                 },
                 user=request.user,
             )
-            matching_thread.daemon = True
-            matching_thread.start()
         elif "clear_all_matches" in p:
             GalleryMatch.objects.all().delete()
             message = "Clearing matches from every wanted gallery."
