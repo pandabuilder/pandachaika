@@ -201,7 +201,15 @@ class ProviderContext:
     ) -> list[tuple["BaseDownloader", int]]:
 
         # Use provided priorities, or fall back to the ones in settings.
-        priorities_to_use = priorities if priorities is not None else settings.downloaders
+        priorities_to_use = dict(priorities if priorities is not None else settings.downloaders)
+
+        # Resolve any active custom downloaders
+        if hasattr(settings, "custom_downloaders") and settings.custom_downloaders:
+            for custom_name, targets in settings.custom_downloaders.items():
+                if priorities_to_use.get(custom_name, -1) > 0:
+                    for target_name, rel_priority in targets.items():
+                        if priorities_to_use.get(target_name, -1) <= 0:
+                            priorities_to_use[target_name] = rel_priority
 
         result_downloaders = []
         for downloader_class in self.downloaders:
@@ -253,6 +261,20 @@ class ProviderContext:
                 downloaders.append((handler_name, settings.downloaders[handler_name]))
             else:
                 downloaders.append((handler_name, -1))
+
+        if hasattr(settings, "custom_downloaders") and settings.custom_downloaders:
+            for custom_name in settings.custom_downloaders.keys():
+                custom_provider = settings.get_custom_downloader_provider(custom_name)
+                passes_provider_filter = (not filter_provider) or (filter_provider == custom_provider)
+                passes_type_filter = not filter_type
+
+                if not (passes_provider_filter and passes_type_filter):
+                    continue
+
+                if custom_name in settings.downloaders:
+                    downloaders.append((custom_name, settings.downloaders[custom_name]))
+                else:
+                    downloaders.append((custom_name, -1))
 
         return sorted(downloaders, key=itemgetter(1), reverse=True)
 

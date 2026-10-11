@@ -224,10 +224,19 @@ class PostDownloader(object):
                 conn.unwrap()
         return ftp_data.ftps.voidresp()
 
-    def start_connection(self, ftp_config_name: str) -> None:
+    def start_connection(self, ftp_config_name: str) -> bool:
+        if ftp_config_name not in self.settings.ftp_configs:
+            logger.error(
+                "FTP configuration '%s' not found. Available configurations: %s",
+                ftp_config_name,
+                list(self.settings.ftp_configs.keys()),
+            )
+            self.ftp_datas[ftp_config_name] = FTPData()
+            return False
 
         ftp_config = self.settings.ftp_configs[ftp_config_name]
-        if ftp_config["no_certificate_check"]:
+        no_cert_check = ftp_config.get("no_certificate_check", False)
+        if no_cert_check:
             context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
             context.verify_mode = ssl.CERT_NONE
             context.check_hostname = False
@@ -235,7 +244,7 @@ class PostDownloader(object):
             context = ssl.create_default_context()
 
         if "bind_host" in ftp_config and ftp_config["bind_host"]:
-            if ftp_config["bind_port"] is None:
+            if ftp_config.get("bind_port") is None:
                 bind_port = 0
             else:
                 bind_port = ftp_config["bind_port"]
@@ -244,20 +253,109 @@ class PostDownloader(object):
             source_address = None
 
         ftp_data = FTPData()
+        raw_address = ftp_config.get("address", "<unknown>")
+        host = raw_address
+        port = 21
 
-        ftp_data.ftps = FTP_TLS(
-            host=ftp_config["address"],
-            user=ftp_config["user"],
-            passwd=ftp_config["passwd"],
-            context=context,
-            source_address=source_address,
-            timeout=self.settings.timeout_timer,
-        )
+        # Handle host:port formatting if present in address
+        if ":" in host and not host.startswith("["):
+            host_part, _, port_part = host.partition(":")
+            if port_part.isdigit():
+                host = host_part
+                port = int(port_part)
 
-        # Hath downloads
-        ftp_data.ftps.prot_p()
+        # Explicit port in ftp_config overrides default or parsed port
+        if "port" in ftp_config and ftp_config["port"] is not None:
+            try:
+                port = int(ftp_config["port"])
+            except (ValueError, TypeError):
+                pass
 
-        self.ftp_datas[ftp_config_name] = ftp_data
+        timeout = self.settings.timeout_timer
+        source_addr_str = f", source_address={source_address}" if source_address else ""
+
+        try:
+            if port != 21:
+                ftp_data.ftps = FTP_TLS(
+                    context=context,
+                    source_address=source_address,
+                    timeout=timeout,
+                )
+                ftp_data.ftps.connect(host, port, timeout=timeout)
+                ftp_data.ftps.login(
+                    user=ftp_config.get("user", ""),
+                    passwd=ftp_config.get("passwd", ""),
+                )
+            else:
+                ftp_data.ftps = FTP_TLS(
+                    host=host,
+                    user=ftp_config.get("user", ""),
+                    passwd=ftp_config.get("passwd", ""),
+                    context=context,
+                    source_address=source_address,
+                    timeout=timeout,
+                )
+
+            # Protect data channel (Hath downloads and secure transfers)
+            ftp_data.ftps.prot_p()
+            self.ftp_datas[ftp_config_name] = ftp_data
+            return True
+
+        except Exception as e:
+            ftp_data.ftps = None
+            self.ftp_datas[ftp_config_name] = ftp_data
+
+            # Diagnostic hint for common FTPS connection issues
+            hint = ""
+            if isinstance(e, ssl.SSLEOFError):
+                hint = (
+                    " Remote server closed the connection unexpectedly during TLS handshake. "
+                    "Common causes: the FTP server at this address:port does not support FTPS / explicit TLS "
+                    "(e.g. it is plain unencrypted FTP instead of FTPS), a TLS version or cipher mismatch occurred, "
+                    "or a firewall/proxy dropped the TLS handshake."
+                )
+            elif isinstance(e, ConnectionRefusedError):
+                hint = (
+                    f" Connection was refused by {host}:{port}. "
+                    "Please verify that the FTP service is running on the remote host and port, "
+                    "and that firewall rules allow the connection."
+                )
+            elif isinstance(e, (ssl.SSLCertVerificationError, ssl.CertificateError)):
+                hint = (
+                    f" SSL certificate verification failed for {host}:{port}. "
+                    f"If the server uses a self-signed certificate, consider setting "
+                    f"'no_certificate_check: true' in the '{ftp_config_name}' FTP configuration."
+                )
+            elif isinstance(e, (socket.gaierror, socket.herror)):
+                hint = f" Hostname resolution failed for '{host}'. Please verify the hostname and DNS configuration."
+            elif isinstance(e, (socket.timeout, TimeoutError)):
+                hint = f" Connection to {host}:{port} timed out after {timeout} seconds. Check network connectivity."
+            elif isinstance(e, ftplib.error_perm):
+                hint = f" FTP authentication or permission error received from {host}:{port}. Please verify credentials."
+            elif isinstance(e, ftplib.all_errors):
+                hint = f" FTP protocol error received from {host}:{port}."
+
+            logger.error(
+                "Failed to connect via FTPS to '%s:%s' (config: '%s', no_certificate_check: %s, "
+                "timeout: %ss%s): %s: %s.%s",
+                host,
+                port,
+                ftp_config_name,
+                no_cert_check,
+                timeout,
+                source_addr_str,
+                type(e).__name__,
+                e,
+                hint,
+            )
+            logger.debug(
+                "FTPS connection traceback for %s:%s (config: '%s'):",
+                host,
+                port,
+                ftp_config_name,
+                exc_info=True,
+            )
+            return False
 
     def set_current_dir(self, ftp_key: str, self_dir: str) -> None:
         ftp_data = self.ftp_datas[ftp_key]
@@ -357,14 +455,25 @@ class PostDownloader(object):
                                     ftp_key_hath,
                                     int(remote_file[1]),
                                 )
-                        except (ConnectionResetError, socket.timeout, TimeoutError):
+                        except (ConnectionResetError, socket.timeout, TimeoutError, ConnectionError, ssl.SSLError):
                             logger.warning(
                                 "Hath download failed for file {} of {}, restarting connection...".format(
                                     count, len(remote_ftp_tuples)
                                 )
                             )
-                            ftp_data_hath.ftps.close()
+                            if ftp_data_hath.ftps is not None:
+                                try:
+                                    ftp_data_hath.ftps.close()
+                                except Exception:
+                                    pass
                             self.start_connection(ftp_key_hath)
+                            if not ftp_data_hath.ftps:
+                                logger.error(
+                                    "Failed to reconnect to Hath FTP server for file {} of {}.".format(
+                                        count, len(remote_ftp_tuples)
+                                    )
+                                )
+                                break
                             self.set_current_dir(ftp_key_hath, self.settings.providers["panda"].remote_hath_dir)
                         else:
                             break
@@ -378,11 +487,17 @@ class PostDownloader(object):
 
                 self.process_downloaded_archive(matched_file_hath[3])
 
-            if ftp_key_hath != ftp_key_torrent:
-                ftp_data_hath.ftps.close()
+            if ftp_key_hath != ftp_key_torrent and ftp_data_hath.ftps is not None:
+                try:
+                    ftp_data_hath.ftps.close()
+                except Exception:
+                    pass
 
             if ftp_key_hath == ftp_key_torrent and ftp_data_hath.ftps is not None and len(files_torrent) == 0:
-                ftp_data_hath.ftps.close()
+                try:
+                    ftp_data_hath.ftps.close()
+                except Exception:
+                    pass
 
         # Torrent downloads
 
@@ -394,7 +509,7 @@ class PostDownloader(object):
             ftp_data_torrent = self.ftp_datas[ftp_key_torrent]
 
             if not ftp_data_torrent.ftps:
-                logger.error("Cannot download the archives, the Hath FTP connection is not initialized.")
+                logger.error("Cannot download the archives, the Torrent FTP connection is not initialized.")
                 return None
 
             self.set_current_dir(ftp_key_torrent, self.settings.ftps["remote_torrent_dir"])
@@ -458,10 +573,17 @@ class PostDownloader(object):
                                         ftp_key_torrent,
                                         int(img_file_tuple[1]["size"]),
                                     )
-                            except (ConnectionResetError, socket.timeout, TimeoutError):
+                            except (ConnectionResetError, socket.timeout, TimeoutError, ConnectionError, ssl.SSLError):
                                 logger.warning("Torrent download failed for folder, restarting connection...")
-                                ftp_data_torrent.ftps.close()
+                                if ftp_data_torrent.ftps is not None:
+                                    try:
+                                        ftp_data_torrent.ftps.close()
+                                    except Exception:
+                                        pass
                                 self.start_connection(ftp_key_torrent)
+                                if not ftp_data_torrent.ftps:
+                                    logger.error("Failed to reconnect to Torrent FTP server for folder.")
+                                    break
                                 self.set_current_dir(ftp_key_torrent, self.settings.ftps["remote_torrent_dir"])
                             else:
                                 break
@@ -491,10 +613,17 @@ class PostDownloader(object):
                                     ftp_key_torrent,
                                     matched_file_torrent[2],
                                 )
-                        except (ConnectionResetError, socket.timeout, TimeoutError):
+                        except (ConnectionResetError, socket.timeout, TimeoutError, ConnectionError, ssl.SSLError):
                             logger.warning("Torrent download failed for archive, restarting connection...")
-                            ftp_data_torrent.ftps.close()
+                            if ftp_data_torrent.ftps is not None:
+                                try:
+                                    ftp_data_torrent.ftps.close()
+                                except Exception:
+                                    pass
                             self.start_connection(ftp_key_torrent)
+                            if not ftp_data_torrent.ftps:
+                                logger.error("Failed to reconnect to Torrent FTP server for archive.")
+                                break
                             self.set_current_dir(ftp_key_torrent, self.settings.ftps["remote_torrent_dir"])
                         else:
                             break
@@ -520,11 +649,17 @@ class PostDownloader(object):
 
                 self.process_downloaded_archive(matched_file_torrent[3])
 
-            if ftp_key_hath != ftp_key_torrent:
-                ftp_data_torrent.ftps.close()
+            if ftp_key_hath != ftp_key_torrent and ftp_data_torrent.ftps is not None:
+                try:
+                    ftp_data_torrent.ftps.close()
+                except Exception:
+                    pass
 
             if ftp_key_hath == ftp_key_torrent and ftp_data_torrent.ftps is not None:
-                ftp_data_torrent.ftps.close()
+                try:
+                    ftp_data_torrent.ftps.close()
+                except Exception:
+                    pass
                 return None
             return None
         return None
@@ -737,7 +872,16 @@ class PostDownloader(object):
             for retry_count in range(3):
                 try:
                     self.download_all_missing(archives)
-                except (ConnectionResetError, socket.timeout, TimeoutError) as e:
+                except (
+                    ConnectionResetError,
+                    socket.timeout,
+                    TimeoutError,
+                    ConnectionRefusedError,
+                    ConnectionError,
+                    ssl.SSLError,
+                    socket.gaierror,
+                    ftplib.Error,
+                ) as e:
                     logger.warning(
                         "Download failed, restarting connection. Retry: {} of 3. Error: {}".format(retry_count + 1, e)
                     )

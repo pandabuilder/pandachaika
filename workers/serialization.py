@@ -74,6 +74,10 @@ def deserialize_settings_options(base_settings: Settings, options: Optional[dict
         new_settings.providers = cast(Any, dict(base_settings.providers))
     if not new_settings.downloaders and hasattr(base_settings, "downloaders"):
         new_settings.downloaders = dict(base_settings.downloaders)
+    if not new_settings.custom_downloaders and hasattr(base_settings, "custom_downloaders"):
+        new_settings.custom_downloaders = dict(base_settings.custom_downloaders)
+    if not new_settings.custom_downloader_providers and hasattr(base_settings, "custom_downloader_providers"):
+        new_settings.custom_downloader_providers = dict(base_settings.custom_downloader_providers)
 
     if not options or not isinstance(options, dict):
         return new_settings

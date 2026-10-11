@@ -384,6 +384,8 @@ class Settings:
         self.matchers: dict[str, int] = {}
         self.downloaders: dict[str, int] = {}
         self.back_up_downloaders: dict[str, int] = {}
+        self.custom_downloaders: dict[str, dict[str, int]] = {}
+        self.custom_downloader_providers: dict[str, str] = {}
 
         self.copy_match_file = True
 
@@ -548,18 +550,99 @@ class Settings:
                 self.downloaders[downloader] = -1
         self.replace_metadata = False
 
+    def parse_custom_downloaders(self, custom_dl_config: Any) -> None:
+        self.custom_downloaders = {}
+        self.custom_downloader_providers = {}
+        if not isinstance(custom_dl_config, dict):
+            return
+
+        for custom_name, custom_data in custom_dl_config.items():
+            provider: Optional[str] = None
+            raw_targets: Any = None
+
+            if isinstance(custom_data, dict):
+                if "downloaders" in custom_data:
+                    provider = custom_data.get("provider")
+                    raw_targets = custom_data.get("downloaders")
+                else:
+                    provider = custom_data.get("provider")
+                    raw_targets = {k: v for k, v in custom_data.items() if k != "provider"}
+            elif isinstance(custom_data, list):
+                raw_targets = custom_data
+
+            targets: dict[str, int] = {}
+            if isinstance(raw_targets, dict):
+                for k, v in raw_targets.items():
+                    try:
+                        targets[str(k)] = int(v)
+                    except (ValueError, TypeError):
+                        pass
+            elif isinstance(raw_targets, list):
+                for item in raw_targets:
+                    if isinstance(item, dict):
+                        for k, v in item.items():
+                            try:
+                                targets[str(k)] = int(v)
+                            except (ValueError, TypeError):
+                                pass
+                    elif isinstance(item, (list, tuple)) and len(item) == 2:
+                        try:
+                            targets[str(item[0])] = int(item[1])
+                        except (ValueError, TypeError):
+                            pass
+
+            if not provider:
+                target_providers = set()
+                for t in targets.keys():
+                    if "_" in t:
+                        target_providers.add(t.split("_", 1)[0])
+                if len(target_providers) == 1:
+                    provider = list(target_providers)[0]
+                elif "_" in custom_name:
+                    provider = custom_name.split("_", 1)[0]
+                elif target_providers:
+                    provider = list(target_providers)[0]
+
+            if provider:
+                provider_str = str(provider)
+                self.custom_downloader_providers[custom_name] = provider_str
+                filtered_targets: dict[str, int] = {}
+                for t, prio in targets.items():
+                    t_provider = t.split("_", 1)[0] if "_" in t else ""
+                    if not t_provider or t_provider == provider_str:
+                        filtered_targets[t] = prio
+                self.custom_downloaders[custom_name] = filtered_targets
+            else:
+                self.custom_downloaders[custom_name] = targets
+
+    def get_custom_downloader_provider(self, custom_name: str) -> Optional[str]:
+        if hasattr(self, "custom_downloader_providers") and custom_name in self.custom_downloader_providers:
+            return self.custom_downloader_providers[custom_name]
+        if "_" in custom_name:
+            return custom_name.split("_", maxsplit=1)[0]
+        return None
+
+    def get_downloader_provider(self, downloader_name: str) -> Optional[str]:
+        if hasattr(self, "custom_downloaders") and downloader_name in self.custom_downloaders:
+            return self.get_custom_downloader_provider(downloader_name)
+        if "_" in downloader_name:
+            return downloader_name.split("_", maxsplit=1)[0]
+        return None
+
     def disable_provider_downloaders(self, provider_name: str) -> None:
         for downloader in self.downloaders.keys():
-            downloader_provider = downloader.split("_", maxsplit=1)[0]
+            downloader_provider = self.get_downloader_provider(downloader)
             if downloader_provider == provider_name:
                 self.downloaders[downloader] = -1
 
     def enable_downloader_only(self, downloader_name: str) -> None:
         for downloader in self.downloaders.keys():
-            if downloader == downloader_name:
-                self.downloaders[downloader] = 1
-            else:
-                self.downloaders[downloader] = -1
+            self.downloaders[downloader] = -1
+        if hasattr(self, "custom_downloaders") and downloader_name in self.custom_downloaders:
+            for dl, prio in self.custom_downloaders[downloader_name].items():
+                self.downloaders[dl] = prio
+        else:
+            self.downloaders[downloader_name] = 1
 
     def allow_downloaders_only(
         self, downloaders: list[str], replace_existing: bool = True, retry_failed: bool = True, redownload: bool = False
@@ -567,7 +650,11 @@ class Settings:
         for downloader in self.downloaders.keys():
             self.downloaders[downloader] = -1
         for count, downloader in reversed(list(enumerate(downloaders))):
-            self.downloaders[downloader] = count + 1
+            if hasattr(self, "custom_downloaders") and downloader in self.custom_downloaders:
+                for target_downloader, priority in self.custom_downloaders[downloader].items():
+                    self.downloaders[target_downloader] = priority
+            else:
+                self.downloaders[downloader] = count + 1
         self.replace_metadata = replace_existing
         self.retry_failed = retry_failed
         self.redownload = redownload
@@ -731,6 +818,8 @@ class Settings:
             self.matchers = config["matchers"]
         if "downloaders" in config:
             self.downloaders = config["downloaders"]
+        if "custom_downloaders" in config:
+            self.parse_custom_downloaders(config["custom_downloaders"])
         if "auto_wanted" in config:
             if "enable" in config["auto_wanted"]:
                 self.auto_wanted.enable = config["auto_wanted"]["enable"]

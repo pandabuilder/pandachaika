@@ -114,6 +114,11 @@ downloaders:
   panda_torrent: 3
   panda_hath: -1
   panda_info: -1
+# Custom "virtual" downloaders combining multiple downloaders with custom priorities for a provider.
+# custom_downloaders:
+#   panda_archive_then_hath:
+#     - panda_archive: 1
+#     - panda_hath: 2
 auto_wanted:
   # Auto add entries as wanted galleries from providers based on filters.
   enable: true
