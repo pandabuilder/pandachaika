@@ -9,6 +9,7 @@ from datetime import datetime
 from django.conf import settings
 from django.contrib import messages
 from django.http import HttpResponse, QueryDict, HttpRequest
+from django.urls import reverse
 from django.views.generic.base import TemplateView
 from django.views import View
 
@@ -59,6 +60,13 @@ class ESHomePageView(TemplateView):
 
     extra_view_options = ("list", "extended")
     view_parameters_name = "parameters"
+    item_url_name = "viewer:archive"
+
+    def get_item_url_base(self) -> str:
+        try:
+            return reverse(self.item_url_name, args=[0])[:-2]
+        except Exception:
+            return f"/{self.item_url_name.split(':')[-1]}/"
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
 
@@ -107,6 +115,7 @@ class ESHomePageView(TemplateView):
             per_page = 48
 
         context = super(ESHomePageView, self).get_context_data(**kwargs)
+        item_url_base = self.get_item_url_base()
 
         if count_result > 0:
             # Sort
@@ -135,7 +144,7 @@ class ESHomePageView(TemplateView):
 
                 search_result = s.execute()
 
-                results_gallery = [self.convert_hit_to_template(c) for c in search_result]
+                results_gallery = [self.convert_hit_to_template(c, item_url_base) for c in search_result]
 
                 gallery_links = [x["source_url"] for x in results_gallery]
                 gallery_providers = list(set([x["provider"] for x in results_gallery]))
@@ -157,7 +166,7 @@ class ESHomePageView(TemplateView):
 
                 search_result = s.execute()
 
-                context["hits"] = [self.convert_hit_to_template(c) for c in search_result]
+                context["hits"] = [self.convert_hit_to_template(c, item_url_base) for c in search_result]
 
                 context["results"] = {
                     "from": es_pagination["search"]["from"] + 1,
@@ -170,21 +179,16 @@ class ESHomePageView(TemplateView):
         if self.extra_view_options:
             context["extra_view_options"] = self.extra_view_options
 
-        if self.view_parameters_name in self.request.session:
-            parameters = self.request.session[self.view_parameters_name]
-        else:
-            parameters = {}
+        parameters = self.request.session.get(self.view_parameters_name, {}).copy()
 
         view_option = self.request.GET.get("view", "")
-
-        if view_option:
+        if view_option and view_option != parameters.get("view"):
             parameters["view"] = view_option
+            self.request.session[self.view_parameters_name] = parameters
 
         # Fill default parameters
         if "view" not in parameters or parameters["view"] == "":
             parameters["view"] = "list"
-
-        self.request.session[self.view_parameters_name] = parameters
 
         context["view_parameters"] = parameters
         context["q"] = self.request.GET.get("q", "")
@@ -206,18 +210,24 @@ class ESHomePageView(TemplateView):
         return int(ceil(hits / float(per_page)))
 
     @staticmethod
-    def convert_hit_to_template(hit):
+    def convert_hit_to_template(hit, item_url_base: str = "/archive/"):
         hit.pk = hit.meta.id
+        hit.url = f"{item_url_base}{hit.pk}/"
         # 2014-09-04T21:34:00+00:00
         hit.create_date_c = datetime.strptime(hit.create_date.replace("+00:00", "+0000"), "%Y-%m-%dT%H:%M:%S%z")
+        hit.create_date_formatted = hit.create_date_c.strftime("%m/%d/%Y")
         if hit.public_date:
             hit.public_date_c = datetime.strptime(hit.public_date.replace("+00:00", "+0000"), "%Y-%m-%dT%H:%M:%S%z")
+            hit.public_date_formatted = hit.public_date_c.strftime("%m/%d/%Y")
         else:
             hit.public_date_c = None
+            hit.public_date_formatted = ""
         if hit.original_date:
             hit.original_date_c = datetime.strptime(hit.original_date.replace("+00:00", "+0000"), "%Y-%m-%dT%H:%M:%S%z")
+            hit.original_date_formatted = hit.original_date_c.strftime("%m/%d/%Y")
         else:
             hit.original_date_c = None
+            hit.original_date_formatted = ""
         return hit
 
     @staticmethod
@@ -343,16 +353,21 @@ class ESHomeGalleryPageView(ESHomePageView):
     public_sort_field = "posted_date"
 
     view_parameters_name = "gallery_parameters"
+    item_url_name = "viewer:gallery"
 
     @staticmethod
-    def convert_hit_to_template(hit):
+    def convert_hit_to_template(hit, item_url_base: str = "/gallery/"):
         hit.pk = hit.meta.id
+        hit.url = f"{item_url_base}{hit.pk}/"
         # 2014-09-04T21:34:00+00:00
         hit.create_date_c = datetime.strptime(hit.create_date.replace("+00:00", "+0000"), "%Y-%m-%dT%H:%M:%S%z")
+        hit.create_date_formatted = hit.create_date_c.strftime("%m/%d/%Y")
         if hit.posted_date:
             hit.posted_date_c = datetime.strptime(hit.posted_date.replace("+00:00", "+0000"), "%Y-%m-%dT%H:%M:%S%z")
+            hit.posted_date_formatted = hit.posted_date_c.strftime("%m/%d/%Y")
         else:
             hit.posted_date_c = None
+            hit.posted_date_formatted = ""
         return hit
 
     def post(self, request, *args, **kwargs):

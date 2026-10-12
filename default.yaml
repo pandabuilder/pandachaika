@@ -254,6 +254,10 @@ webserver:
   write_access_log: false
   # Log to screen.
   log_to_screen: false
+  # Socket queue size (backlog) for incoming connections (default 5, prod e.g. 128).
+  socket_queue_size: 5
+  # Number of worker threads for handling requests (default 10, prod e.g. 30).
+  thread_pool: 10
 urls:
   # URLs for webserver
   media_url: /media/

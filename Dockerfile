@@ -21,7 +21,7 @@ RUN pip install uv
 COPY requirements.txt /app/
 
 # Install Python dependencies
-RUN uv pip install --system --no-cache-dir -r requirements.txt psycopg[c]
+RUN uv pip install --system --no-cache-dir -r requirements.txt
 
 # Stage 2: Production stage
 FROM python:3.14-slim

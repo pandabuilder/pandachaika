@@ -82,7 +82,7 @@ dependencies = [
     "imagehash==4.3.2",
     "numpy==2.5.4",
     "pillow==12.3.0",
-    "psycopg==3.3.6",
+    "psycopg[c]==3.3.6; sys_platform != 'win32'",
     "psycopg-binary==3.3.6; sys_platform == 'win32'",
     "py7zr==1.1.3",
     "pysocks==1.7.1",

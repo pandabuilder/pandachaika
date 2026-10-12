@@ -126,6 +126,22 @@ if __name__ == "__main__":
         help="Store the process id in the given file.",
     )
 
+    parser.add_argument(
+        "--socket-queue-size",
+        type=int,
+        required=False,
+        action="store",
+        help="Override socket queue size (backlog).",
+    )
+
+    parser.add_argument(
+        "--thread-pool",
+        type=int,
+        required=False,
+        action="store",
+        help="Override thread pool size.",
+    )
+
     args = parser.parse_args()
 
     if args.config_dir:
@@ -144,10 +160,22 @@ if __name__ == "__main__":
     else:
         cherrypy_socket_file = crawler_settings.webserver.socket_file
 
+    if args.socket_queue_size:
+        cherrypy_socket_queue_size = args.socket_queue_size
+    else:
+        cherrypy_socket_queue_size = crawler_settings.webserver.socket_queue_size
+
+    if args.thread_pool:
+        cherrypy_thread_pool = args.thread_pool
+    else:
+        cherrypy_thread_pool = crawler_settings.webserver.thread_pool
+
     cherrypy_settings = {
         "server.socket_host": crawler_settings.webserver.bind_address,
         "server.socket_port": cherrypy_port,
         "server.socket_file": cherrypy_socket_file,
+        "server.socket_queue_size": cherrypy_socket_queue_size,
+        "server.thread_pool": cherrypy_thread_pool,
         "checker.on": False,
         "engine.autoreload.on": crawler_settings.cherrypy_auto_restart,
         "log.screen": crawler_settings.webserver.log_to_screen,

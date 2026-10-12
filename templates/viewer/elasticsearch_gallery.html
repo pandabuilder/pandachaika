@@ -9,25 +9,26 @@
   <div class="container-fluid">
     <div class="row">
       <div class="col-sm-3 col-md-2 sidebar">
+        {% url 'viewer:es-gallery-index-view' as es_url %}
         <ul class="nav flex-column nav-sidebar">
           <li class="nav-item"><a class="nav-link active" href=""><h3>FILTERS</h3><span class="sr-only">(current)</span></a></li>
         </ul>
         <ul class="nav flex-column nav-sidebar">
           <li class="nav-item"><a class="nav-link active" href="">Tag<span class="sr-only">(current)</span></a></li>
           {% for tag in aggregations.tags__full %}
-            <li class="nav-item"><a class="nav-link" href="{% url 'viewer:es-gallery-index-view'%}?{{tag.url_args}}">{{tag.name}}: {{tag.count}} ({% if tag.is_active %}-{% else %}+{% endif %})</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ es_url }}?{{tag.url_args}}">{{tag.name}}: {{tag.count}} ({% if tag.is_active %}-{% else %}+{% endif %})</a></li>
           {% endfor %}
           <li class="nav-item"><a class="nav-link active" href="">Category<span class="sr-only">(current)</span></a></li>
           {% for category in aggregations.category %}
-            <li class="nav-item"><a class="nav-link" href="{% url 'viewer:es-gallery-index-view'%}?{{category.url_args}}">{{category.name}}: {{category.count}} ({% if category.is_active %}-{% else %}+{% endif %})</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ es_url }}?{{category.url_args}}">{{category.name}}: {{category.count}} ({% if category.is_active %}-{% else %}+{% endif %})</a></li>
           {% endfor %}
           <li class="nav-item"><a class="nav-link active" href="">Source<span class="sr-only">(current)</span></a></li>
           {% for provider in aggregations.provider %}
-            <li class="nav-item"><a class="nav-link" href="{% url 'viewer:es-gallery-index-view'%}?{{provider.url_args}}">{{provider.name}}: {{provider.count}} ({% if provider.is_active %}-{% else %}+{% endif %})</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ es_url }}?{{provider.url_args}}">{{provider.name}}: {{provider.count}} ({% if provider.is_active %}-{% else %}+{% endif %})</a></li>
           {% endfor %}
           <li class="nav-item"><a class="nav-link active" href="">Reason<span class="sr-only">(current)</span></a></li>
           {% for reason in aggregations.reason %}
-            <li class="nav-item"><a class="nav-link" href="{% url 'viewer:es-gallery-index-view'%}?{{reason.url_args}}">{{reason.name}}: {{reason.count}} ({% if reason.is_active %}-{% else %}+{% endif %})</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ es_url }}?{{reason.url_args}}">{{reason.name}}: {{reason.count}} ({% if reason.is_active %}-{% else %}+{% endif %})</a></li>
           {% endfor %}
         </ul>
       </div>
@@ -205,7 +206,7 @@
                 <tbody>
                 {% for hit in hits %}
                   <tr>
-                    <td><a href="{% url 'viewer:gallery' hit.pk %}" {% if hit.thumbnail %} data-image-url="{{ hit.thumbnail }}" class="img-preview" rel="popover"{% else %} title ="{{ hit.title_jpn }}"{% endif %}>{{ hit.pk }}</a></td>
+                    <td><a href="{{ hit.url }}" {% if hit.thumbnail %} data-image-url="{{ hit.thumbnail }}" class="img-preview" rel="popover"{% else %} title ="{{ hit.title_jpn }}"{% endif %}>{{ hit.pk }}</a></td>
                     <td>{% firstof hit.title hit.title_jpn "No title" %}</td>
                     {% if request.GET.show_url == '1' %}
                     <td id="{{ hit.pk }}-url" class="url-container">{{ hit.source_url|urlize_all_rel }}</td>
@@ -214,9 +215,9 @@
                     <td>{{ hit.size|filesizeformat }}</td>
                     <td>{{ hit.category|default:'none' }}</td>
                     {% if user.is_authenticated %}
-                      <td>{{ hit.create_date_c|date:"SHORT_DATE_FORMAT" }}</td>
+                      <td>{{ hit.create_date_formatted }}</td>
                     {% endif %}
-                    <td>{{ hit.posted_date_c|date:"SHORT_DATE_FORMAT"|default:'none' }}</td>
+                    <td>{{ hit.posted_date_formatted|default:'none' }}</td>
                   </tr>
                 {% endfor %}
                 </tbody>
@@ -227,7 +228,7 @@
               {% for hit in hits %}
                 <tr>
                   <td class="td-extended">
-                    <a href="{% url 'viewer:gallery' hit.pk %}">
+                    <a href="{{ hit.url }}">
                       <img alt="" title="{{ hit.title }}" src="{{ hit.thumbnail }}"/>
                     </a>
                   </td>
@@ -242,7 +243,7 @@
                             <label class="label-extended">{{ tag_list.0 }}:</label>
                           {% endif %}
                           {% for tag in tag_list.1 %}
-                            <a href="{% url 'viewer:es-gallery-index-view'%}?tags__full={{ tag.full|escape_colon }}">
+                            <a href="{{ es_url }}?tags__full={{ tag.full|escape_colon }}">
                               {% if tag_list.0 %}{{ tag.name }}{% else %}
                                 {{ tag.full }}{% endif %}</a>
                           {% endfor %}
@@ -255,9 +256,9 @@
                     <div><label class="label-extended">Count:</label>{{ hit.image_count }}</div>
                     <div><label class="label-extended">Size:</label>{{ hit.size|filesizeformat }}</div>
                     <div><label class="label-extended">Category:</label>{{ hit.category }}</div>
-                    <div><label class="label-extended">Posted:</label>{{ hit.posted_date_c|date:"SHORT_DATE_FORMAT" }}</div>
+                    <div><label class="label-extended">Posted:</label>{{ hit.posted_date_formatted|default:'none' }}</div>
                     {% if user.is_authenticated %}
-                      <div><label class="label-extended">Created:</label>{{ hit.create_date_c|date:"SHORT_DATE_FORMAT" }}</div>
+                      <div><label class="label-extended">Created:</label>{{ hit.create_date_formatted }}</div>
                     {% endif %}
                     <div><label class="label-extended">Provider:</label>{{ hit.provider }}</div>
                     <div><label class="label-extended">Reason:</label>{{ hit.reason }}</div>

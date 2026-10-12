@@ -44,6 +44,35 @@ class CoreTest(TestCase):
         self.assertEqual(similar_list[0][0], "sample non public gallery 1")
         self.assertEqual(similar_list[0][2], 0.7441860465116279)
 
+    def test_webserver_settings_defaults(self):
+        settings = Settings(load_from_disk=False)
+        self.assertEqual(settings.webserver.socket_queue_size, 5)
+        self.assertEqual(settings.webserver.thread_pool, 10)
+
+    def test_webserver_settings_from_config(self):
+        config = {
+            "webserver": {
+                "socket_queue_size": 128,
+                "thread_pool": 30,
+            },
+            "providers": {},
+        }
+        settings = Settings(load_from_config=config)
+        self.assertEqual(settings.webserver.socket_queue_size, 128)
+        self.assertEqual(settings.webserver.thread_pool, 30)
+
+    def test_webserver_settings_from_config_strings(self):
+        config = {
+            "webserver": {
+                "socket_queue_size": "256",
+                "thread_pool": "50",
+            },
+            "providers": {},
+        }
+        settings = Settings(load_from_config=config)
+        self.assertEqual(settings.webserver.socket_queue_size, 256)
+        self.assertEqual(settings.webserver.thread_pool, 50)
+
 
 class WantedGalleryTest(TestCase):
     english_tag: Tag

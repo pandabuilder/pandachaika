@@ -254,6 +254,8 @@ if crawler_settings.db_engine == "mysql":
             "PASSWORD": crawler_settings.database["mysql_password"],
             "HOST": crawler_settings.database["mysql_host"],
             "PORT": crawler_settings.database["mysql_port"],
+            "CONN_MAX_AGE": 600,
+            "CONN_HEALTH_CHECKS": True,
             "OPTIONS": {"init_command": "SET sql_mode='STRICT_TRANS_TABLES'", "charset": "utf8mb4"},
         }
     }
@@ -266,6 +268,8 @@ elif crawler_settings.db_engine == "postgresql":
             "PASSWORD": crawler_settings.database["postgresql_password"],
             "HOST": crawler_settings.database["postgresql_host"],
             "PORT": crawler_settings.database["postgresql_port"],
+            "CONN_MAX_AGE": 600,
+            "CONN_HEALTH_CHECKS": True,
         }
     }
 else:
@@ -277,7 +281,7 @@ LANGUAGE_CODE = "en-us"
 
 TIME_ZONE = "UTC"
 
-USE_I18N = True
+USE_I18N = False
 
 USE_TZ = True
 

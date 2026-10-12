@@ -224,6 +224,8 @@ class WebServerSettings:
         "write_access_log",
         "log_to_screen",
         "socket_file",
+        "socket_queue_size",
+        "thread_pool",
     ]
 
     def __init__(self) -> None:
@@ -235,6 +237,8 @@ class WebServerSettings:
         self.ssl_private_key: str = ""
         self.write_access_log: bool = False
         self.log_to_screen: bool = True
+        self.socket_queue_size: int = 5
+        self.thread_pool: int = 10
 
 
 class UrlSettings:
@@ -964,6 +968,10 @@ class Settings:
                 self.webserver.write_access_log = config["webserver"]["write_access_log"]
             if "log_to_screen" in config["webserver"]:
                 self.webserver.log_to_screen = config["webserver"]["log_to_screen"]
+            if "socket_queue_size" in config["webserver"] and config["webserver"]["socket_queue_size"] is not None:
+                self.webserver.socket_queue_size = int(config["webserver"]["socket_queue_size"])
+            if "thread_pool" in config["webserver"] and config["webserver"]["thread_pool"] is not None:
+                self.webserver.thread_pool = int(config["webserver"]["thread_pool"])
         if "urls" in config:
             if "media_url" in config["urls"]:
                 self.urls.media_url = config["urls"]["media_url"]
