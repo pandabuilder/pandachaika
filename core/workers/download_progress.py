@@ -89,11 +89,6 @@ class DownloadProgressChecker(BaseScheduler):
             else:
                 time_passed_seconds = 0.0
 
-            logger.info(
-                f"{download_event.name} - seconds until torrent purge: "
-                f"{max_torrent_lifespan_seconds - time_passed_seconds}, "
-                f"--- {time_passed_seconds}/{max_torrent_lifespan_seconds}"
-            )
             if time_passed_seconds > max_torrent_lifespan_seconds:
                 logger.info(f"Torrent {download_event.name} has exceeded its lifespan.")
                 # Delete dead torrent archive
