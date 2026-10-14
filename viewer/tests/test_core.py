@@ -216,7 +216,7 @@ class CoreTest(TestCase):
         self.assertEqual(g_app.cfg.timeout, 45)
         self.assertIs(g_app.load(), handler)
 
-        # Verify run_gunicorn does not register on_exit
+        # Verify run_gunicorn does not register on_exit, registers post_fork, and closes DB connections
         import argparse
         from server import run_gunicorn
         args = argparse.Namespace(
@@ -230,11 +230,23 @@ class CoreTest(TestCase):
             daemonize=False,
         )
         settings = Settings(load_from_disk=False)
-        with patch("server.GunicornApplication") as mock_gapp, patch("pandabackup.settings.WORKERS.start_workers"):
+        with (
+            patch("server.GunicornApplication") as mock_gapp,
+            patch("pandabackup.settings.WORKERS.start_workers"),
+            patch("django.db.connections.close_all") as mock_close_all,
+            patch.object(Settings, "create_missing_directories") as mock_create_dirs,
+        ):
             run_gunicorn(settings, args)
             mock_gapp.assert_called_once()
             call_options = mock_gapp.call_args[0][1]
             self.assertNotIn("on_exit", call_options)
+            self.assertIn("post_fork", call_options)
+            self.assertTrue(callable(call_options["post_fork"]))
+            mock_close_all.assert_called()
+            mock_close_all.reset_mock()
+            call_options["post_fork"](None, None)
+            mock_close_all.assert_called_once()
+            mock_create_dirs.assert_called_once()
 
 
 class WantedGalleryTest(TestCase):

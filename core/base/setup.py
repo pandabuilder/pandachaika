@@ -1,10 +1,12 @@
-# -*- coding: utf-8 -*-
-from copy import deepcopy
-
-import yaml
+import logging
 import os
 import shutil
 import typing
+from copy import deepcopy
+
+import yaml
+
+logger = logging.getLogger(__name__)
 
 # Reads all providers, to parse each provider specific options into the general settings object.
 # Main concern with this first approach is that a provider could read settings from another provider (cookies, etc).
@@ -443,23 +445,27 @@ class Settings:
             self.dict_to_settings(self.config)
             self.load_from_environment()
 
-    def create_missing_directories(self):
+    def create_missing_directories(self) -> None:
+        def _ensure_dir(path: str) -> None:
+            if path and not os.path.exists(path):
+                try:
+                    os.makedirs(path, exist_ok=True)
+                except OSError as e:
+                    logger.warning(f"Could not create directory {path}: {e}")
+
         if self.archive_dl_folder:
-            if not os.path.exists(os.path.join(self.MEDIA_ROOT, self.archive_dl_folder)):
-                os.makedirs(os.path.join(self.MEDIA_ROOT, self.archive_dl_folder))
+            _ensure_dir(os.path.join(self.MEDIA_ROOT, self.archive_dl_folder))
         if self.torrent_dl_folder:
-            if not os.path.exists(os.path.join(self.MEDIA_ROOT, self.torrent_dl_folder)):
-                os.makedirs(os.path.join(self.MEDIA_ROOT, self.torrent_dl_folder))
-        if not os.path.exists(os.path.dirname(self.log_location)):
-            os.makedirs(os.path.dirname(self.log_location))
+            _ensure_dir(os.path.join(self.MEDIA_ROOT, self.torrent_dl_folder))
+        if self.log_location:
+            _ensure_dir(os.path.dirname(self.log_location))
 
         for provider_name, provider_settings in self.providers.items():
             folders = [a for a in dir(provider_settings) if a.endswith('_dl_folder')]
             for folder in folders:
                 folder_name = getattr(provider_settings, folder)
                 if folder_name:
-                    if not os.path.exists(os.path.join(self.MEDIA_ROOT, folder_name)):
-                        os.makedirs(os.path.join(self.MEDIA_ROOT, folder_name))
+                    _ensure_dir(os.path.join(self.MEDIA_ROOT, folder_name))
 
     def load_from_environment(self):
 

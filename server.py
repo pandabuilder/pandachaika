@@ -56,6 +56,7 @@ class DjangoAppPlugin(plugins.SimplePlugin):
         from pandabackup import settings
 
         settings.crawler_settings = self.crawler_settings
+        settings.CRAWLER_SETTINGS = self.crawler_settings
 
         os.environ["DJANGO_SETTINGS_MODULE"] = self.settings_module
 
@@ -75,8 +76,8 @@ class DjangoAppPlugin(plugins.SimplePlugin):
 
         cherrypy.tree.graft(self.wsgi_http_logger(get_wsgi_application(), self.crawler_settings))
 
-        settings.WORKERS.start_workers(settings.CRAWLER_SETTINGS)
-        settings.CRAWLER_SETTINGS.create_missing_directories()
+        settings.WORKERS.start_workers(self.crawler_settings)
+        self.crawler_settings.create_missing_directories()
 
         tool = cherrypy._cptools.HandlerTool(corsstaticdir)
         static_handler = tool.handler(
@@ -177,12 +178,13 @@ def run_gunicorn(crawler_settings: Settings, args: argparse.Namespace) -> None:
     from pandabackup import settings
 
     settings.crawler_settings = crawler_settings
+    settings.CRAWLER_SETTINGS = crawler_settings
 
     from django.core.wsgi import get_wsgi_application
 
     wsgi_app = get_wsgi_application()
-    settings.WORKERS.start_workers(settings.CRAWLER_SETTINGS)
-    settings.CRAWLER_SETTINGS.create_missing_directories()
+    settings.WORKERS.start_workers(crawler_settings)
+    crawler_settings.create_missing_directories()
 
     app = MediaAndStaticFilesHandler(wsgi_app)
 
@@ -208,6 +210,11 @@ def run_gunicorn(crawler_settings: Settings, args: argparse.Namespace) -> None:
                 os.chmod(socket_file, 0o777)
             except OSError:
                 pass
+
+    def post_fork(server: typing.Any, worker: typing.Any) -> None:
+        from django.db import connections
+
+        connections.close_all()
 
     log_base_dir = os.path.dirname(crawler_settings.log_location) if crawler_settings.log_location else ""
 
@@ -245,6 +252,7 @@ def run_gunicorn(crawler_settings: Settings, args: argparse.Namespace) -> None:
         "errorlog": error_log,
         "reload": crawler_settings.cherrypy_auto_restart,
         "when_ready": when_ready,
+        "post_fork": post_fork,
     }
 
     if threads > 1:
@@ -259,6 +267,10 @@ def run_gunicorn(crawler_settings: Settings, args: argparse.Namespace) -> None:
 
     if args.daemonize:
         options["daemon"] = True
+
+    from django.db import connections
+
+    connections.close_all()
 
     print(f"Loading and serving Panda Backup with Gunicorn. Listening on {listening_on_message}")
     GunicornApplication(app, options).run()
