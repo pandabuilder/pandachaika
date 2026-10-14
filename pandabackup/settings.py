@@ -374,10 +374,8 @@ if crawler_settings.elasticsearch.enable or crawler_settings.elasticsearch.enabl
     ES_CLIENT: Optional[Elasticsearch] = Elasticsearch(
         [crawler_settings.elasticsearch.url], request_timeout=crawler_settings.elasticsearch.timeout
     )
-    if crawler_settings.elasticsearch.enable:
-        ES_ENABLED = True
-    if crawler_settings.elasticsearch.enable_match:
-        ES_MATCH_ENABLED = True
+    ES_ENABLED = bool(crawler_settings.elasticsearch.enable)
+    ES_MATCH_ENABLED = bool(crawler_settings.elasticsearch.enable_match)
 else:
     ES_CLIENT = None
     ES_ENABLED = False

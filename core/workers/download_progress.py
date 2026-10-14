@@ -40,6 +40,123 @@ class DownloadProgressChecker(BaseScheduler):
     def timer_to_seconds(timer: float) -> float:
         return timer
 
+    def check_torrent_progress(self, download_event: DownloadEvent, download_progress: float) -> None:
+        download_event.progress = download_progress
+
+        archive_entry = None
+        archive_completed = False
+        try:
+            archive_entry = download_event.archive
+        except Exception:
+            archive_entry = None
+
+        if archive_entry:
+            try:
+                archive_entry.refresh_from_db(fields=["crc32"])
+            except Exception:
+                pass
+            archive_completed = bool(archive_entry.crc32)
+
+        if download_progress >= 100 or archive_completed:
+            download_event.finish_download()
+        elif self.settings.max_torrent_lifespan > 0 and not archive_completed:
+            if not self.settings.max_torrent_lifespan_type:
+                self.settings.max_torrent_lifespan_type = "days"
+            lifespan_type = str(self.settings.max_torrent_lifespan_type).strip().lower()
+            match lifespan_type:
+                case "sec" | "second" | "seconds" | "s":
+                    max_torrent_lifespan_seconds = float(self.settings.max_torrent_lifespan)
+                case "min" | "minute" | "minutes" | "m":
+                    max_torrent_lifespan_seconds = float(self.settings.max_torrent_lifespan) * 60
+                case "hour" | "hours" | "h":
+                    max_torrent_lifespan_seconds = float(self.settings.max_torrent_lifespan) * 60 * 60
+                case "days" | "day" | "d":
+                    max_torrent_lifespan_seconds = float(self.settings.max_torrent_lifespan) * 60 * 60 * 24
+                case _:
+                    logger.warning(
+                        f"Unknown max_torrent_lifespan_type '{self.settings.max_torrent_lifespan_type}', defaulting to days."
+                    )
+                    max_torrent_lifespan_seconds = float(self.settings.max_torrent_lifespan) * 60 * 60 * 24
+
+            if download_event.create_date:
+                now = django_tz.now()
+                if django_tz.is_aware(download_event.create_date) and django_tz.is_naive(now):
+                    now = django_tz.make_aware(now)
+                elif django_tz.is_naive(download_event.create_date) and django_tz.is_aware(now):
+                    now = django_tz.make_naive(now)
+                time_passed = now - download_event.create_date
+                time_passed_seconds = max(0.0, time_passed.total_seconds())
+            else:
+                time_passed_seconds = 0.0
+
+            logger.info(
+                f"{download_event.name} - seconds until torrent purge: "
+                f"{max_torrent_lifespan_seconds - time_passed_seconds}, "
+                f"--- {time_passed_seconds}/{max_torrent_lifespan_seconds}"
+            )
+            if time_passed_seconds > max_torrent_lifespan_seconds:
+                logger.info(f"Torrent {download_event.name} has exceeded its lifespan.")
+                # Delete dead torrent archive
+                bad_archive = archive_entry
+                bad_archive_id = getattr(bad_archive, "id", None)
+                # Detach the archive from the event so we don't get ForeignKey errors when saving later
+                download_event.archive = None
+                if bad_archive:
+                    try:
+                        bad_archive.delete_all_files(create_mark=False)
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to delete physical files for stalled Archive {bad_archive_id}: {e}"
+                        )
+                    try:
+                        bad_archive.delete()
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to delete stalled Archive {bad_archive_id}: {e}"
+                        )
+                download_event.set_as_failed()
+                # Requeue with torrent disabled
+                if hasattr(self, "web_queue") and self.web_queue:
+                    gallery = None
+                    try:
+                        gallery = download_event.gallery
+                    except Exception:
+                        gallery = None
+                    if not gallery and bad_archive:
+                        try:
+                            gallery = bad_archive.gallery
+                        except Exception:
+                            gallery = None
+
+                    if gallery:
+                        config = getattr(self.settings, "config", None)
+                        temp_settings = Settings(load_from_config=config) if config else Settings()
+                        if hasattr(temp_settings, "config") and isinstance(temp_settings.config, dict) and "downloaders" in temp_settings.config:
+                            temp_settings.config["downloaders"]["panda_torrent"] = -1
+                            temp_settings.config["downloaders"]["panda_torrent_api"] = -1
+                        if hasattr(temp_settings, "downloaders"):
+                            temp_settings.downloaders["panda_torrent"] = -1
+                            temp_settings.downloaders["panda_torrent_api"] = -1
+                        temp_settings.redownload = True
+                        temp_settings.replace_metadata = True
+                        temp_settings.retry_failed = True
+                        if bad_archive:
+                            if getattr(bad_archive, "reason", None):
+                                temp_settings.archive_reason = bad_archive.reason or ""
+                            if getattr(bad_archive, "user", None):
+                                temp_settings.archive_user = bad_archive.user
+                        try:
+                            gallery_link = gallery.get_link()
+                            if gallery_link:
+                                self.web_queue.enqueue_args_list(
+                                    (gallery_link,),
+                                    override_options=temp_settings,
+                                )
+                                logger.info(f"Requeued {download_event.name} because of a dead torrent.")
+                        except Exception as e:
+                            logger.error(f"Failed to requeue {download_event.name}: {e}")
+        download_event.save()
+
     def job(self) -> None:
         while not self.stop.is_set():
 
@@ -64,10 +181,7 @@ class DownloadProgressChecker(BaseScheduler):
                             client.connect()
                             download_progresses = client.get_download_progress(events_to_check)
                             for download_event, download_progress in download_progresses:
-                                download_event.progress = download_progress
-                                if download_progress >= 100:
-                                    download_event.finish_download()
-                                download_event.save()
+                                self.check_torrent_progress(download_event, download_progress)
                 elif download_method in self.HATH_METHODS:
                     mark_completed_and_failed_for_indirect_downloads(download_events)
                     archives_to_check = [(x.archive, x) for x in download_events if x.archive and not x.completed]

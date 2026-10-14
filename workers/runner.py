@@ -5,6 +5,7 @@ import os
 import signal
 import socket
 import sys
+import threading
 import time
 import traceback
 from typing import Optional
@@ -44,6 +45,8 @@ class WorkerRunner:
         self.last_heartbeat_time = 0.0
         self.current_job: Optional[TaskQueue] = None
         self.settings.is_worker_process = True
+        self.heartbeat_thread: Optional[threading.Thread] = None
+        self.heartbeat_stop_event = threading.Event()
 
     def setup_signals(self) -> None:
         signal.signal(signal.SIGINT, self._handle_shutdown)
@@ -64,7 +67,7 @@ class WorkerRunner:
                 last_run = getattr(s, "current_last_run", s.last_run)
                 next_run = (last_run + timedelta(seconds=s.timer)) if last_run else None
                 extra_data = {}
-                if s.thread_name == "timed_downloader" and hasattr(s, "current_download"):
+                if s.thread_name in ("timed_downloader", "post_downloader") and hasattr(s, "current_download"):
                     try:
                         downloads = s.current_download()
                         if downloads:
@@ -140,9 +143,9 @@ class WorkerRunner:
         except Exception as e:
             logger.warning("Error processing scheduler commands: %s", e)
 
-    def update_heartbeat(self) -> None:
+    def update_heartbeat(self, force: bool = False) -> None:
         now = time.time()
-        if now - self.last_heartbeat_time >= self.heartbeat_interval:
+        if force or (now - self.last_heartbeat_time >= self.heartbeat_interval):
             try:
                 db.close_old_connections()
                 WorkerProcess.objects.update_or_create(
@@ -159,6 +162,36 @@ class WorkerRunner:
                 self.last_heartbeat_time = now
             except Exception as e:
                 logger.warning("Failed to update worker heartbeat: %s", e)
+
+    def start_heartbeat_thread(self) -> None:
+        if self.heartbeat_thread is not None and self.heartbeat_thread.is_alive():
+            return
+        self.heartbeat_stop_event.clear()
+        self.heartbeat_thread = threading.Thread(
+            name="worker_heartbeat",
+            target=self._heartbeat_loop,
+            daemon=True,
+        )
+        self.heartbeat_thread.start()
+
+    def stop_heartbeat_thread(self) -> None:
+        if self.heartbeat_thread is not None:
+            self.heartbeat_stop_event.set()
+            self.heartbeat_thread.join(timeout=3.0)
+            self.heartbeat_thread = None
+
+    def _heartbeat_loop(self) -> None:
+        check_interval = min(self.heartbeat_interval / 2, 2.0)
+        while not self.heartbeat_stop_event.is_set():
+            try:
+                db.close_old_connections()
+                self.check_scheduler_commands()
+                self.update_heartbeat()
+            except Exception as e:
+                logger.warning("Error in heartbeat loop: %s", e)
+            finally:
+                db.close_old_connections()
+            self.heartbeat_stop_event.wait(timeout=check_interval)
 
     def register_start(self) -> None:
         db.close_old_connections()
@@ -300,6 +333,12 @@ class WorkerRunner:
         self.settings.is_worker_process = True
         self.settings.workers.start_workers(self.settings, start_threads=True)
 
+        # Clear any lingering / stale commands from previous dead worker sessions
+        try:
+            SchedulerState.objects.exclude(command_requested="").update(command_requested="", command_arg="")
+        except Exception as e:
+            logger.warning("Failed to clear stale scheduler commands: %s", e)
+
         if self.force_start_schedulers:
             logger.info("Force-starting all schedulers on worker startup (--all-schedulers)...")
             for s in self.settings.workers.get_active_initialized_workers():
@@ -332,6 +371,7 @@ class WorkerRunner:
         if self.enable_schedulers:
             self.start_schedulers_if_enabled()
 
+        self.start_heartbeat_thread()
         logger.info("Worker loop started. Waiting for tasks...")
 
         try:
@@ -345,6 +385,7 @@ class WorkerRunner:
                     db.close_old_connections()
                     time.sleep(self.poll_interval)
         finally:
+            self.stop_heartbeat_thread()
             if self.current_job:
                 try:
                     db.close_old_connections()

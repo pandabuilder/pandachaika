@@ -18,6 +18,7 @@ if typing.TYPE_CHECKING:
 
 
 class WorkerContext:
+    crawler_settings: Optional["setup.Settings"] = None
     web_queue: Optional["WebQueue"] = None
     archive_worker: Optional["ArchiveWorker"] = None
     folder_crawler: Optional["FolderCrawlerThread"] = None
@@ -109,6 +110,8 @@ class WorkerContext:
             link_monitor.start_running(timer=link_monitor.original_timer)
 
     def start_workers(self, crawler_settings: "setup.Settings", start_threads: bool = False) -> None:
+
+        self.crawler_settings = crawler_settings
 
         from core.downloaders.postdownload import TimedPostDownloader
         from core.workers.autoupdate import ProviderTimedAutoUpdater
@@ -213,23 +216,31 @@ class WorkerContext:
         if start_threads and crawler_settings.download_progress_checker_startup:
             self.download_progress_checker.start_running(timer=crawler_settings.download_progress_checker_cycle_timer)
 
-    def command_workers_to_stop(self) -> None:
+    @property
+    def is_worker_process(self) -> bool:
+        return bool(self.crawler_settings and getattr(self.crawler_settings, "is_worker_process", False))
+
+    def command_workers_to_stop(self, force_local: bool = False) -> None:
+        if not (force_local or self.is_worker_process):
+            return
 
         if self.timed_downloader:
-            self.timed_downloader.stop_running()
+            self.timed_downloader.stop_running(force_local=True)
         if self.download_progress_checker:
-            self.download_progress_checker.stop_running()
+            self.download_progress_checker.stop_running(force_local=True)
         if self.timed_auto_wanted:
-            self.timed_auto_wanted.stop_running()
+            self.timed_auto_wanted.stop_running(force_local=True)
         for provider_auto_updater in self.timed_auto_updaters:
-            provider_auto_updater.stop_running()
+            provider_auto_updater.stop_running(force_local=True)
         for link_monitor in self.timed_link_monitors:
-            link_monitor.stop_running()
+            link_monitor.stop_running(force_local=True)
 
     # TODO: improve this logic
-    def stop_workers_and_wait(self) -> None:
+    def stop_workers_and_wait(self, force_local: bool = False) -> None:
+        if not (force_local or self.is_worker_process):
+            return
 
-        self.command_workers_to_stop()
+        self.command_workers_to_stop(force_local=force_local)
 
         while check_for_running_threads():
             sleep(1)

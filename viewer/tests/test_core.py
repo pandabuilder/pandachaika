@@ -1,8 +1,9 @@
 import ssl
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
+import django.utils.timezone as django_tz
 from django.test import TestCase
 
 from core.base.comparison import get_list_closer_text_from_list
@@ -10,7 +11,8 @@ from core.base.setup import Settings
 from core.base.types import GalleryData
 from core.downloaders.postdownload import PostDownloader
 from core.providers.panda.parsers import Parser as PandaParser
-from viewer.models import FoundGallery, Gallery, Provider, Tag, WantedGallery
+from core.workers.download_progress import DownloadProgressChecker
+from viewer.models import Archive, DownloadEvent, FoundGallery, Gallery, Provider, Tag, WantedGallery
 
 
 class CoreTest(TestCase):
@@ -46,32 +48,193 @@ class CoreTest(TestCase):
 
     def test_webserver_settings_defaults(self):
         settings = Settings(load_from_disk=False)
+        self.assertEqual(settings.webserver.backend, "gunicorn")
         self.assertEqual(settings.webserver.socket_queue_size, 5)
         self.assertEqual(settings.webserver.thread_pool, 10)
+        self.assertEqual(settings.webserver.workers, 4)
+        self.assertEqual(settings.webserver.threads, 1)
+        self.assertEqual(settings.webserver.timeout, 60)
 
     def test_webserver_settings_from_config(self):
         config = {
             "webserver": {
+                "backend": "cherrypy",
                 "socket_queue_size": 128,
                 "thread_pool": 30,
+                "workers": 8,
+                "threads": 2,
+                "timeout": 120,
             },
             "providers": {},
         }
         settings = Settings(load_from_config=config)
+        self.assertEqual(settings.webserver.backend, "cherrypy")
         self.assertEqual(settings.webserver.socket_queue_size, 128)
         self.assertEqual(settings.webserver.thread_pool, 30)
+        self.assertEqual(settings.webserver.workers, 8)
+        self.assertEqual(settings.webserver.threads, 2)
+        self.assertEqual(settings.webserver.timeout, 120)
+
+    def test_webserver_settings_from_config_aliases(self):
+        config_engine = {
+            "webserver": {
+                "engine": "cherrypy",
+            },
+            "providers": {},
+        }
+        settings = Settings(load_from_config=config_engine)
+        self.assertEqual(settings.webserver.backend, "cherrypy")
+
+        config_type = {
+            "webserver": {
+                "type": "gunicorn",
+            },
+            "providers": {},
+        }
+        settings = Settings(load_from_config=config_type)
+        self.assertEqual(settings.webserver.backend, "gunicorn")
 
     def test_webserver_settings_from_config_strings(self):
         config = {
             "webserver": {
+                "backend": "GUNICORN",
                 "socket_queue_size": "256",
                 "thread_pool": "50",
+                "workers": "6",
+                "threads": "3",
+                "timeout": "90",
             },
             "providers": {},
         }
         settings = Settings(load_from_config=config)
+        self.assertEqual(settings.webserver.backend, "gunicorn")
         self.assertEqual(settings.webserver.socket_queue_size, 256)
         self.assertEqual(settings.webserver.thread_pool, 50)
+        self.assertEqual(settings.webserver.workers, 6)
+        self.assertEqual(settings.webserver.threads, 3)
+        self.assertEqual(settings.webserver.timeout, 90)
+
+    def test_webserver_settings_from_environment(self):
+        import os
+        old_backend = os.environ.get("WEBSERVER_BACKEND")
+        old_workers = os.environ.get("WEBSERVER_WORKERS")
+        old_threads = os.environ.get("WEBSERVER_THREADS")
+        old_timeout = os.environ.get("WEBSERVER_TIMEOUT")
+        try:
+            os.environ["WEBSERVER_BACKEND"] = "cherrypy"
+            os.environ["WEBSERVER_WORKERS"] = "12"
+            os.environ["WEBSERVER_THREADS"] = "4"
+            os.environ["WEBSERVER_TIMEOUT"] = "45"
+
+            config = {
+                "webserver": {
+                    "backend": "gunicorn",
+                    "workers": 2,
+                    "threads": 1,
+                    "timeout": 30,
+                },
+                "providers": {},
+            }
+            settings = Settings(load_from_config=config)
+            self.assertEqual(settings.webserver.backend, "cherrypy")
+            self.assertEqual(settings.webserver.workers, 12)
+            self.assertEqual(settings.webserver.threads, 4)
+            self.assertEqual(settings.webserver.timeout, 45)
+        finally:
+            if old_backend is not None:
+                os.environ["WEBSERVER_BACKEND"] = old_backend
+            else:
+                os.environ.pop("WEBSERVER_BACKEND", None)
+            if old_workers is not None:
+                os.environ["WEBSERVER_WORKERS"] = old_workers
+            else:
+                os.environ.pop("WEBSERVER_WORKERS", None)
+            if old_threads is not None:
+                os.environ["WEBSERVER_THREADS"] = old_threads
+            else:
+                os.environ.pop("WEBSERVER_THREADS", None)
+            if old_timeout is not None:
+                os.environ["WEBSERVER_TIMEOUT"] = old_timeout
+            else:
+                os.environ.pop("WEBSERVER_TIMEOUT", None)
+
+    def test_gunicorn_application_and_static_handler(self):
+        from server import MediaAndStaticFilesHandler, GunicornApplication
+        from django.http import HttpResponse
+
+        def dummy_app(environ, start_response):
+            start_response("200 OK", [("Content-Type", "text/plain")])
+            return [b"hello from dummy app"]
+
+        handler = MediaAndStaticFilesHandler(dummy_app)
+
+        import io
+
+        # Test dummy app pass-through
+        environ = {
+            "REQUEST_METHOD": "GET",
+            "PATH_INFO": "/api/test",
+            "SERVER_NAME": "localhost",
+            "SERVER_PORT": "80",
+            "wsgi.version": (1, 0),
+            "wsgi.url_scheme": "http",
+            "wsgi.input": io.BytesIO(b""),
+            "wsgi.errors": io.StringIO(),
+            "wsgi.multithread": False,
+            "wsgi.multiprocess": False,
+            "wsgi.run_once": False,
+        }
+        res_headers = []
+        def start_response(status, headers, exc_info=None):
+            res_headers.extend(headers)
+        result = handler(environ, start_response)
+        self.assertEqual(list(result), [b"hello from dummy app"])
+
+        # Test static file serving with CORS
+        static_environ = dict(environ)
+        static_environ["PATH_INFO"] = "/static/browserconfig.xml"
+        static_headers = []
+        static_status = []
+        def static_start_response(status, headers, exc_info=None):
+            static_status.append(status)
+            static_headers.extend(headers)
+
+        with patch("django.core.signals.request_started.send"), patch("django.core.signals.request_finished.send"):
+            handler(static_environ, static_start_response)
+        self.assertEqual(static_status[0], "200 OK")
+        headers_dict = dict(static_headers)
+        self.assertEqual(headers_dict.get("Access-Control-Allow-Origin"), "*")
+
+        # Test GunicornApplication config
+        g_app = GunicornApplication(handler, {
+            "bind": "127.0.0.1:9999",
+            "workers": 2,
+            "timeout": 45,
+        })
+        self.assertEqual(g_app.cfg.bind, ["127.0.0.1:9999"])
+        self.assertEqual(g_app.cfg.workers, 2)
+        self.assertEqual(g_app.cfg.timeout, 45)
+        self.assertIs(g_app.load(), handler)
+
+        # Verify run_gunicorn does not register on_exit
+        import argparse
+        from server import run_gunicorn
+        args = argparse.Namespace(
+            port=9999,
+            socket_file=None,
+            socket_queue_size=None,
+            workers=2,
+            threads=1,
+            timeout=30,
+            pidfile=None,
+            daemonize=False,
+        )
+        settings = Settings(load_from_disk=False)
+        with patch("server.GunicornApplication") as mock_gapp, patch("pandabackup.settings.WORKERS.start_workers"):
+            run_gunicorn(settings, args)
+            mock_gapp.assert_called_once()
+            call_options = mock_gapp.call_args[0][1]
+            self.assertNotIn("on_exit", call_options)
 
 
 class WantedGalleryTest(TestCase):
@@ -586,5 +749,299 @@ class PostDownloaderFTPTest(TestCase):
         self.assertEqual(mock_download.call_count, 3)
         log_output = "\n".join(cm.output)
         self.assertIn("Download failed, restarting connection", log_output)
+
+    def test_torrent_lifespan_settings_defaults(self):
+        settings = Settings(load_from_disk=False)
+        self.assertEqual(settings.max_torrent_lifespan, 0)
+        self.assertEqual(settings.max_torrent_lifespan_type, "days")
+
+    def test_torrent_lifespan_settings_from_config(self):
+        config = {
+            "general": {
+                "max_torrent_lifespan": 12,
+                "max_torrent_lifespan_type": "hours",
+            }
+        }
+        settings = Settings(load_from_config=config)
+        self.assertEqual(settings.max_torrent_lifespan, 12)
+        self.assertEqual(settings.max_torrent_lifespan_type, "hours")
+
+    def test_check_torrent_progress_finish_on_100_percent(self):
+        settings = Settings(load_from_disk=False)
+        settings.max_torrent_lifespan = 60
+        settings.max_torrent_lifespan_type = "seconds"
+        checker = DownloadProgressChecker(settings)
+
+        event = DownloadEvent.objects.create(
+            name="test_torrent_100",
+            method="torrent",
+            download_id="dl_100",
+            progress=50.0,
+        )
+        checker.check_torrent_progress(event, 100.0)
+        event.refresh_from_db()
+        self.assertEqual(event.progress, 100.0)
+        self.assertTrue(event.completed)
+        self.assertFalse(event.failed)
+
+    def test_check_torrent_progress_finish_when_archive_crc32_set(self):
+        settings = Settings(load_from_disk=False)
+        settings.max_torrent_lifespan = 10
+        settings.max_torrent_lifespan_type = "seconds"
+        checker = DownloadProgressChecker(settings)
+
+        archive = Archive.objects.create(
+            title="completed archive",
+            crc32="ABCD1234",
+            user=None,
+        )
+        event = DownloadEvent.objects.create(
+            name="test_torrent_crc32",
+            method="torrent",
+            download_id="dl_crc32",
+            archive=archive,
+            progress=30.0,
+        )
+        # Simulate create_date in the past (exceeding lifespan)
+        DownloadEvent.objects.filter(pk=event.pk).update(
+            create_date=django_tz.now() - timedelta(seconds=100)
+        )
+        event.refresh_from_db()
+
+        checker.check_torrent_progress(event, 40.0)
+        event.refresh_from_db()
+        # Because archive.crc32 is set, it should finish download, NOT purge!
+        self.assertTrue(event.completed)
+        self.assertFalse(event.failed)
+        self.assertTrue(Archive.objects.filter(pk=archive.pk).exists())
+        self.assertEqual(event.archive_id, archive.pk)
+
+    def test_check_torrent_progress_default_disabled_does_not_purge(self):
+        settings = Settings(load_from_disk=False)
+        self.assertEqual(settings.max_torrent_lifespan, 0)
+        checker = DownloadProgressChecker(settings)
+
+        archive = Archive.objects.create(
+            title="pending archive",
+            crc32="",
+            user=None,
+        )
+        event = DownloadEvent.objects.create(
+            name="test_torrent_default",
+            method="torrent",
+            download_id="dl_default",
+            archive=archive,
+            progress=20.0,
+        )
+        DownloadEvent.objects.filter(pk=event.pk).update(
+            create_date=django_tz.now() - timedelta(days=30)
+        )
+        event.refresh_from_db()
+
+        checker.check_torrent_progress(event, 25.0)
+        event.refresh_from_db()
+        self.assertFalse(event.completed)
+        self.assertFalse(event.failed)
+        self.assertEqual(event.progress, 25.0)
+        self.assertTrue(Archive.objects.filter(pk=archive.pk).exists())
+
+    def test_check_torrent_progress_not_exceeded_does_not_purge(self):
+        settings = Settings(load_from_disk=False)
+        settings.max_torrent_lifespan = 10
+        settings.max_torrent_lifespan_type = "hours"
+        checker = DownloadProgressChecker(settings)
+
+        archive = Archive.objects.create(
+            title="active archive",
+            crc32="",
+            user=None,
+        )
+        event = DownloadEvent.objects.create(
+            name="test_torrent_active",
+            method="torrent",
+            download_id="dl_active",
+            archive=archive,
+            progress=15.0,
+        )
+        # Only 5 minutes passed, limit is 10 hours
+        DownloadEvent.objects.filter(pk=event.pk).update(
+            create_date=django_tz.now() - timedelta(minutes=5)
+        )
+        event.refresh_from_db()
+
+        checker.check_torrent_progress(event, 20.0)
+        event.refresh_from_db()
+        self.assertFalse(event.completed)
+        self.assertFalse(event.failed)
+        self.assertEqual(event.progress, 20.0)
+        self.assertTrue(Archive.objects.filter(pk=archive.pk).exists())
+
+    def test_check_torrent_progress_lifespan_exceeded_purges_and_requeues(self):
+        config = {
+            "general": {
+                "max_torrent_lifespan": 60,
+                "max_torrent_lifespan_type": "seconds",
+            },
+            "downloaders": {
+                "panda_torrent": 1,
+                "panda_torrent_api": 2,
+                "panda_archive": 3,
+            },
+        }
+        settings = Settings(load_from_config=config)
+        mock_web_queue = MagicMock()
+        checker = DownloadProgressChecker(settings, web_queue=mock_web_queue)
+
+        gallery = Gallery.objects.create(title="gallery for dead torrent", gid="999", provider="panda")
+        archive = Archive.objects.create(
+            title="dead archive",
+            crc32="",
+            gallery=gallery,
+            reason="backup_reason",
+            user=None,
+        )
+        event = DownloadEvent.objects.create(
+            name="test_torrent_dead",
+            method="torrent",
+            download_id="dl_dead",
+            archive=archive,
+            gallery=gallery,
+            progress=10.0,
+        )
+        # Exceeded: 120s passed, limit is 60s
+        DownloadEvent.objects.filter(pk=event.pk).update(
+            create_date=django_tz.now() - timedelta(seconds=120)
+        )
+        event.refresh_from_db()
+
+        with patch.object(archive, "delete_all_files") as mock_delete_files:
+            checker.check_torrent_progress(event, 10.0)
+
+        event.refresh_from_db()
+        self.assertTrue(event.completed)
+        self.assertTrue(event.failed)
+        self.assertIsNone(event.archive)
+        # Archive should have been deleted from DB
+        self.assertFalse(Archive.objects.filter(pk=archive.pk).exists())
+
+        # Check requeue call
+        mock_web_queue.enqueue_args_list.assert_called_once()
+        call_args, call_kwargs = mock_web_queue.enqueue_args_list.call_args
+        self.assertEqual(call_args[0], (gallery.get_link(),))
+        override_options = call_kwargs["override_options"]
+        self.assertTrue(override_options.redownload)
+        self.assertTrue(override_options.replace_metadata)
+        self.assertTrue(override_options.retry_failed)
+        self.assertEqual(override_options.downloaders.get("panda_torrent"), -1)
+        self.assertEqual(override_options.downloaders.get("panda_torrent_api"), -1)
+        self.assertEqual(override_options.archive_reason, "backup_reason")
+
+    def test_check_torrent_progress_lifespan_exceeded_without_archive(self):
+        settings = Settings(load_from_disk=False)
+        settings.max_torrent_lifespan = 30
+        settings.max_torrent_lifespan_type = "sec"
+        mock_web_queue = MagicMock()
+        checker = DownloadProgressChecker(settings, web_queue=mock_web_queue)
+
+        gallery = Gallery.objects.create(title="gallery without archive", gid="888", provider="panda")
+        event = DownloadEvent.objects.create(
+            name="test_torrent_no_archive",
+            method="torrent",
+            download_id="dl_no_archive",
+            archive=None,
+            gallery=gallery,
+            progress=5.0,
+        )
+        DownloadEvent.objects.filter(pk=event.pk).update(
+            create_date=django_tz.now() - timedelta(seconds=60)
+        )
+        event.refresh_from_db()
+
+        checker.check_torrent_progress(event, 5.0)
+        event.refresh_from_db()
+        self.assertTrue(event.completed)
+        self.assertTrue(event.failed)
+        mock_web_queue.enqueue_args_list.assert_called_once()
+
+    def test_check_torrent_progress_lifespan_units(self):
+        settings = Settings(load_from_disk=False)
+        checker = DownloadProgressChecker(settings)
+
+        # 2 minutes = 120 seconds
+        settings.max_torrent_lifespan = 2
+        settings.max_torrent_lifespan_type = "minutes"
+        event = DownloadEvent.objects.create(
+            name="test_torrent_minutes",
+            method="torrent",
+            download_id="dl_min",
+            progress=10.0,
+        )
+        # 90 seconds passed -> not exceeded
+        DownloadEvent.objects.filter(pk=event.pk).update(
+            create_date=django_tz.now() - timedelta(seconds=90)
+        )
+        event.refresh_from_db()
+        checker.check_torrent_progress(event, 10.0)
+        event.refresh_from_db()
+        self.assertFalse(event.completed)
+
+        # 150 seconds passed -> exceeded
+        DownloadEvent.objects.filter(pk=event.pk).update(
+            create_date=django_tz.now() - timedelta(seconds=150)
+        )
+        event.refresh_from_db()
+        checker.check_torrent_progress(event, 10.0)
+        event.refresh_from_db()
+        self.assertTrue(event.completed)
+        self.assertTrue(event.failed)
+
+    @patch("core.workers.download_progress.close_old_connections")
+    @patch("core.workers.download_progress.get_torrent_client")
+    def test_job_integration_with_torrent_lifespan(self, mock_get_torrent_client, mock_close_old):
+        settings = Settings(load_from_disk=False)
+        settings.max_torrent_lifespan = 50
+        settings.max_torrent_lifespan_type = "seconds"
+        mock_web_queue = MagicMock()
+        checker = DownloadProgressChecker(settings, web_queue=mock_web_queue)
+
+        gallery = Gallery.objects.create(title="gallery job integration", gid="777", provider="panda")
+        archive = Archive.objects.create(
+            title="job archive",
+            crc32="",
+            gallery=gallery,
+            user=None,
+        )
+        event = DownloadEvent.objects.create(
+            name="test_job_torrent",
+            method="torrent",
+            download_id="dl_job",
+            archive=archive,
+            gallery=gallery,
+            progress=20.0,
+        )
+        # Exceeded: 100s passed, limit is 50s
+        DownloadEvent.objects.filter(pk=event.pk).update(
+            create_date=django_tz.now() - timedelta(seconds=100)
+        )
+        event.refresh_from_db()
+
+        mock_client = MagicMock()
+        mock_client.connect.return_value = True
+        mock_client.get_download_progress.return_value = [(event, 25.0)]
+        mock_get_torrent_client.return_value = mock_client
+
+        # Run job for exactly 1 cycle
+        checker.force_run_once = True
+        with patch.object(checker.stop, "wait", side_effect=[False, True]), \
+             patch.object(checker.stop, "is_set", side_effect=[False, True]):
+            checker.job()
+
+        event.refresh_from_db()
+        self.assertTrue(event.completed)
+        self.assertTrue(event.failed)
+        self.assertFalse(Archive.objects.filter(pk=archive.pk).exists())
+        mock_web_queue.enqueue_args_list.assert_called_once()
+
+
 
 

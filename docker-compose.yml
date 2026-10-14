@@ -23,6 +23,7 @@ services:
      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
      DATABASE_HOST: ${DATABASE_HOST}
      DATABASE_PORT: ${DATABASE_PORT}
+     WEBSERVER_BACKEND: ${WEBSERVER_BACKEND:-gunicorn}
     env_file:
       - .env
     depends_on:

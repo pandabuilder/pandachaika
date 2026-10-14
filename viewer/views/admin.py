@@ -406,7 +406,6 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         )
         return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "restart_viewer":
-        crawler_settings.workers.stop_workers_and_wait()
         if hasattr(signal, "SIGUSR2"):
             os.kill(os.getpid(), signal.SIGUSR2)
         else:
@@ -449,9 +448,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "force_run_timed_dl":
         if crawler_settings.workers.timed_downloader:
-            crawler_settings.workers.timed_downloader.stop_running()
-            crawler_settings.workers.timed_downloader.force_run_once = True
-            crawler_settings.workers.timed_downloader.start_running(timer=crawler_settings.timed_downloader_cycle_timer)
+            crawler_settings.workers.timed_downloader.force_run()
         return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "start_timed_updater":
         if tool_arg:
@@ -481,19 +478,11 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         if tool_arg:
             for provider_auto_updater in crawler_settings.workers.timed_auto_updaters:
                 if provider_auto_updater.provider_name == tool_arg:
-                    provider_auto_updater.stop_running()
-                    provider_auto_updater.force_run_once = True
-                    provider_auto_updater.start_running(
-                        timer=crawler_settings.providers[provider_auto_updater.provider_name].autoupdater_timer
-                    )
+                    provider_auto_updater.force_run()
                     break
         else:
             for provider_auto_updater in crawler_settings.workers.timed_auto_updaters:
-                provider_auto_updater.stop_running()
-                provider_auto_updater.force_run_once = True
-                provider_auto_updater.start_running(
-                    timer=crawler_settings.providers[provider_auto_updater.provider_name].autoupdater_timer
-                )
+                provider_auto_updater.force_run()
         return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "start_timed_auto_wanted":
         if crawler_settings.workers.timed_auto_wanted:
@@ -505,9 +494,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "force_run_timed_auto_wanted":
         if crawler_settings.workers.timed_auto_wanted:
-            crawler_settings.workers.timed_auto_wanted.stop_running()
-            crawler_settings.workers.timed_auto_wanted.force_run_once = True
-            crawler_settings.workers.timed_auto_wanted.start_running(timer=crawler_settings.auto_wanted.cycle_timer)
+            crawler_settings.workers.timed_auto_wanted.force_run()
         return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "start_web_queue":
         if crawler_settings.workers.web_queue:

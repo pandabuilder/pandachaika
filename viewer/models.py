@@ -5144,11 +5144,7 @@ class MonitoredLink(models.Model):
     def force_run(self):
         for timed_link_monitor in settings.WORKERS.timed_link_monitors:
             if timed_link_monitor.monitored_link.pk == self.pk:
-                timed_link_monitor.stop_running()
-                # TODO: Fix this hacky wait.
-                time.sleep(1)
-                timed_link_monitor.force_run_once = True
-                timed_link_monitor.start_running(timer=self.frequency.total_seconds())
+                timed_link_monitor.force_run()
 
     # Only works if the Link was already created when starting up.
     def stop_running(self):

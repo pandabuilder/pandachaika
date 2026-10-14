@@ -226,6 +226,10 @@ class WebServerSettings:
         "socket_file",
         "socket_queue_size",
         "thread_pool",
+        "backend",
+        "workers",
+        "threads",
+        "timeout",
     ]
 
     def __init__(self) -> None:
@@ -239,6 +243,10 @@ class WebServerSettings:
         self.log_to_screen: bool = True
         self.socket_queue_size: int = 5
         self.thread_pool: int = 10
+        self.backend: str = "gunicorn"
+        self.workers: int = 4
+        self.threads: int = 1
+        self.timeout: int = 60
 
 
 class UrlSettings:
@@ -330,6 +338,9 @@ class Settings:
         # The logic for a current link is provider-specific
         self.non_current_links_as_deleted = False
         self.recycle_failed_checks_downloads = False
+        # Option to auto-purge a torrent after a certain time has passed
+        self.max_torrent_lifespan = 0
+        self.max_torrent_lifespan_type = "days"
 
         self.MEDIA_ROOT: str = ""
         self.STATIC_ROOT: str = ""
@@ -372,6 +383,7 @@ class Settings:
         self.db_engine = "postgresql"
         self.database: dict[str, Any] = {}
         self.torrent: dict[str, Any] = {}
+        self.config: dict[str, Any] = {}
         self.webserver = WebServerSettings()
         self.urls = UrlSettings()
 
@@ -515,6 +527,18 @@ class Settings:
 
         if 'CORS_ALLOW_ALL_ORIGINS' in os.environ:
             self.urls.cors_allow_all_origins = os.getenv("CORS_ALLOW_ALL_ORIGINS", "False").lower() in ('true', '1', 't')
+
+        if 'WEBSERVER_BACKEND' in os.environ and os.environ['WEBSERVER_BACKEND']:
+            self.webserver.backend = os.environ['WEBSERVER_BACKEND'].lower()
+
+        if 'WEBSERVER_WORKERS' in os.environ and os.environ['WEBSERVER_WORKERS']:
+            self.webserver.workers = int(os.environ['WEBSERVER_WORKERS'])
+
+        if 'WEBSERVER_THREADS' in os.environ and os.environ['WEBSERVER_THREADS']:
+            self.webserver.threads = int(os.environ['WEBSERVER_THREADS'])
+
+        if 'WEBSERVER_TIMEOUT' in os.environ and os.environ['WEBSERVER_TIMEOUT']:
+            self.webserver.timeout = int(os.environ['WEBSERVER_TIMEOUT'])
 
     def load_config_from_file(self, default_dir: Optional[str] = None) -> None:
         if default_dir:
@@ -724,11 +748,17 @@ class Settings:
                 self.internal_matches_for_non_matches = config["allowed"]["internal_matches_for_non_matches"]
             if "convert_others_to_zip" in config["allowed"]:
                 self.convert_others_to_zip = config["allowed"]["convert_others_to_zip"]
+            if "non_current_links_as_deleted" in config["allowed"]:
+                self.non_current_links_as_deleted = config["allowed"]["non_current_links_as_deleted"]
+        if "general" in config:
             if "non_current_links_as_deleted" in config["general"]:
                 self.non_current_links_as_deleted = config["general"]["non_current_links_as_deleted"]
             if "recycle_failed_checks_downloads" in config["general"]:
                 self.recycle_failed_checks_downloads = config["general"]["recycle_failed_checks_downloads"]
-        if "general" in config:
+            if "max_torrent_lifespan" in config["general"]:
+                self.max_torrent_lifespan = config["general"]["max_torrent_lifespan"]
+            if "max_torrent_lifespan_type" in config["general"]:
+                self.max_torrent_lifespan_type = config["general"]["max_torrent_lifespan_type"]
             if "filename_filter" in config["general"]:
                 self.filename_filter = config["general"]["filename_filter"]
             if "db_engine" in config["general"]:
@@ -950,6 +980,12 @@ class Settings:
         if self.download_ftp_hath not in self.ftp_configs:
             self.ftp_configs[self.download_ftp_hath] = self.ftps
         if "webserver" in config:
+            if "backend" in config["webserver"] and config["webserver"]["backend"]:
+                self.webserver.backend = str(config["webserver"]["backend"]).lower()
+            elif "engine" in config["webserver"] and config["webserver"]["engine"]:
+                self.webserver.backend = str(config["webserver"]["engine"]).lower()
+            elif "type" in config["webserver"] and config["webserver"]["type"]:
+                self.webserver.backend = str(config["webserver"]["type"]).lower()
             if "bind_address" in config["webserver"]:
                 self.webserver.bind_address = config["webserver"]["bind_address"]
             if "bind_port" in config["webserver"]:
@@ -972,6 +1008,12 @@ class Settings:
                 self.webserver.socket_queue_size = int(config["webserver"]["socket_queue_size"])
             if "thread_pool" in config["webserver"] and config["webserver"]["thread_pool"] is not None:
                 self.webserver.thread_pool = int(config["webserver"]["thread_pool"])
+            if "workers" in config["webserver"] and config["webserver"]["workers"] is not None:
+                self.webserver.workers = int(config["webserver"]["workers"])
+            if "threads" in config["webserver"] and config["webserver"]["threads"] is not None:
+                self.webserver.threads = int(config["webserver"]["threads"])
+            if "timeout" in config["webserver"] and config["webserver"]["timeout"] is not None:
+                self.webserver.timeout = int(config["webserver"]["timeout"])
         if "urls" in config:
             if "media_url" in config["urls"]:
                 self.urls.media_url = config["urls"]["media_url"]
@@ -1014,7 +1056,7 @@ class Settings:
                 self.monitored_links.enable = config["monitored_links"]["enable"]
 
         for provider_name, parse_config in self.provider_context.settings_parsers:
-            if provider_name in config["providers"] and config["providers"][provider_name] is not None:
+            if "providers" in config and provider_name in config["providers"] and config["providers"][provider_name] is not None:
                 provider_sections = config["providers"][provider_name]
             else:
                 provider_sections = {}

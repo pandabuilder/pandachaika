@@ -15,6 +15,7 @@ chown -R $USER:$GROUP /app/
 export MEDIA_ROOT=/media/
 export STATIC_ROOT=/static/
 export PANDA_CONFIG_DIR=/config/
+export WEBSERVER_BACKEND=${WEBSERVER_BACKEND:-gunicorn}
 echo "Apply database migrations"
 gosu $USER:$GROUP python manage.py migrate
 echo "Adding provider data to database"
@@ -39,7 +40,7 @@ if [ "$START_WORKER" = "true" ] || [ "$START_WORKER" = "1" ]; then
     WORKER_PID=$!
 fi
 
-echo "Starting server"
+echo "Starting server ($WEBSERVER_BACKEND)"
 gosu $USER:$GROUP python server.py -c /config/ &
 SERVER_PID=$!
 
