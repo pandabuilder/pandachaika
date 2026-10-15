@@ -1,138 +1,218 @@
+import copy
+import logging
 from typing import Any, Optional, cast
 
 from core.base.setup import Settings
 
+logger = logging.getLogger(__name__)
+
+# Attributes that are sensitive credentials, runtime environment/paths,
+# or internal process state and should not be serialized into task options.
+EXCLUDED_SETTINGS_ATTRIBUTES = {
+    # Credentials & security
+    "config",
+    "database",
+    "django_secret_key",
+    "django_debug_mode",
+    "ftps",
+    "ftp_configs",
+    "torrent",
+    "remote_site",
+    # System / environment / paths
+    "db_engine",
+    "MEDIA_ROOT",
+    "STATIC_ROOT",
+    "default_dir",
+    "log_location",
+    "log_level",
+    "disable_sql_log",
+    # Runtime & worker process control
+    "is_worker_process",
+    "fatal",
+    "cherrypy_auto_restart",
+    "timed_downloader_startup",
+    "download_progress_checker_startup",
+    "webserver",
+    # Class attributes / internal contexts
+    "provider_context",
+    "workers",
+    "gallery_model",
+    "archive_model",
+    "found_gallery_model",
+    "wanted_gallery_model",
+    "archive_manage_entry_model",
+    "download_event_model",
+}
+
+
+def _to_serializable_value(val: Any) -> Any:
+    """Recursively convert values, including objects with __slots__ or __dict__, into JSON-serializable types."""
+    if val is None or isinstance(val, (int, float, str, bool)):
+        return val
+    if isinstance(val, (list, tuple, set)):
+        return [_to_serializable_value(x) for x in val]
+    if isinstance(val, dict):
+        return {str(k): _to_serializable_value(v) for k, v in val.items()}
+    if hasattr(val, "is_authenticated") and hasattr(val, "pk"):
+        return val.pk if val.is_authenticated else None
+    if hasattr(val, "__slots__"):
+        return {k: _to_serializable_value(getattr(val, k)) for k in val.__slots__ if hasattr(val, k)}
+    if hasattr(val, "__dict__"):
+        return {k: _to_serializable_value(v) for k, v in vars(val).items() if k not in EXCLUDED_SETTINGS_ATTRIBUTES}
+    return str(val)
+
+
+def _serialize_provider_settings(prov_settings: Any) -> dict[str, Any]:
+    """Serialize provider settings object or dict into a dictionary."""
+    if prov_settings is None:
+        return {}
+    if isinstance(prov_settings, dict):
+        return {str(k): _to_serializable_value(v) for k, v in prov_settings.items()}
+    prov_dict: dict[str, Any] = {}
+    if hasattr(prov_settings, "__slots__"):
+        for k in prov_settings.__slots__:
+            if hasattr(prov_settings, k):
+                prov_dict[k] = _to_serializable_value(getattr(prov_settings, k))
+    elif hasattr(prov_settings, "__dict__"):
+        for k, v in vars(prov_settings).items():
+            prov_dict[k] = _to_serializable_value(v)
+    return prov_dict
+
 
 def serialize_settings_options(options: Any) -> dict[str, Any]:
-    """Serialize Settings or dict into a JSON-serializable dictionary."""
+    """Serialize Settings, sub-settings, or dict into a JSON-serializable dictionary."""
     if options is None:
         return {}
+
     if isinstance(options, dict):
-        # Already a dict, make sure it's JSON serializable
-        clean_dict = {}
+        clean_dict: dict[str, Any] = {}
         for k, v in options.items():
-            if isinstance(v, (str, int, float, bool, list, dict, type(None))):
-                clean_dict[k] = v
+            if k == "archive_user" and v and getattr(v, "is_authenticated", False) and getattr(v, "pk", None):
+                clean_dict["user_id"] = v.pk
             else:
-                clean_dict[k] = str(v)
+                clean_dict[str(k)] = _to_serializable_value(v)
         return clean_dict
 
-    if isinstance(options, Settings):
-        data: dict[str, Any] = {
-            "redownload": getattr(options, "redownload", False),
-            "archive_reason": getattr(options, "archive_reason", ""),
-            "gallery_reason": getattr(options, "gallery_reason", ""),
-            "archive_origin": getattr(options, "archive_origin", None),
-            "silent_processing": getattr(options, "silent_processing", False),
-            "replace_metadata": getattr(options, "replace_metadata", False),
-            "keep_dl_type": getattr(options, "keep_dl_type", False),
-            "retry_failed": getattr(options, "retry_failed", False),
-            "event_action": getattr(options, "event_action", ""),
-            "submit_group_uuid": getattr(options, "submit_group_uuid", None),
-            "preserve_user_favorites": getattr(options, "preserve_user_favorites", []),
-            "preserve_extracted": getattr(options, "preserve_extracted", False),
-            "archive_source": getattr(options, "archive_source", ""),
-            "internal_matches_for_non_matches": getattr(options, "internal_matches_for_non_matches", False),
-        }
-        archive_user = getattr(options, "archive_user", None)
-        if archive_user and getattr(archive_user, "is_authenticated", False) and getattr(archive_user, "pk", None):
-            data["user_id"] = archive_user.pk
+    if hasattr(options, "__dict__") or hasattr(options, "__slots__"):
+        clean_dict = {}
 
-        if hasattr(options, "matchers") and isinstance(options.matchers, dict):
-            data["matchers"] = dict(options.matchers)
+        if hasattr(options, "__dict__"):
+            raw_items = vars(options).items()
+        elif hasattr(options, "__slots__"):
+            raw_items = [(k, getattr(options, k)) for k in options.__slots__ if hasattr(options, k)]
+        else:
+            raw_items = []
 
-        if hasattr(options, "downloaders") and isinstance(options.downloaders, dict):
-            data["downloaders"] = dict(options.downloaders)
+        for key, val in raw_items:
+            if key in EXCLUDED_SETTINGS_ATTRIBUTES:
+                continue
 
-        providers_data = {}
-        if hasattr(options, "providers") and isinstance(options.providers, dict):
-            for prov_name, prov_settings in options.providers.items():
-                prov_dict: dict[str, Any] = {}
-                if getattr(prov_settings, "proxy", None):
-                    prov_dict["proxy"] = prov_settings.proxy
-                if getattr(prov_settings, "stop_page_number", None) is not None:
-                    prov_dict["stop_page_number"] = prov_settings.stop_page_number
-                if prov_dict:
-                    providers_data[prov_name] = prov_dict
-        if providers_data:
-            data["providers"] = providers_data
+            if key == "archive_user":
+                if val and getattr(val, "is_authenticated", False) and getattr(val, "pk", None):
+                    clean_dict["user_id"] = val.pk
+                continue
 
-        return data
+            if key == "providers" and isinstance(val, dict):
+                providers_data: dict[str, Any] = {}
+                for prov_name, prov_settings in val.items():
+                    prov_serialized = _serialize_provider_settings(prov_settings)
+                    if prov_serialized:
+                        providers_data[prov_name] = prov_serialized
+                if providers_data:
+                    clean_dict["providers"] = providers_data
+                continue
+
+            clean_dict[key] = _to_serializable_value(val)
+
+        return clean_dict
 
     return {}
 
 
-def deserialize_settings_options(base_settings: Settings, options: Optional[dict[str, Any]]) -> Settings:
+def deserialize_settings_options(base_settings: Optional[Settings], options: Optional[dict[str, Any]]) -> Settings:
     """Create a new Settings instance and apply serialized options."""
-    config = getattr(base_settings, "config", None)
-    if config:
-        new_settings = Settings(load_from_config=config)
+    if base_settings is not None:
+        try:
+            new_settings = copy.deepcopy(base_settings)
+        except Exception:
+            config = getattr(base_settings, "config", None)
+            if config:
+                new_settings = Settings(load_from_config=config)
+            else:
+                new_settings = Settings(load_from_disk=False)
     else:
         new_settings = Settings(load_from_disk=False)
 
-    if not new_settings.providers and hasattr(base_settings, "providers"):
-        new_settings.providers = cast(Any, dict(base_settings.providers))
-    if not new_settings.downloaders and hasattr(base_settings, "downloaders"):
-        new_settings.downloaders = dict(base_settings.downloaders)
-    if not new_settings.custom_downloaders and hasattr(base_settings, "custom_downloaders"):
-        new_settings.custom_downloaders = dict(base_settings.custom_downloaders)
-    if not new_settings.custom_downloader_providers and hasattr(base_settings, "custom_downloader_providers"):
-        new_settings.custom_downloader_providers = dict(base_settings.custom_downloader_providers)
+    if base_settings is not None:
+        if not new_settings.providers and hasattr(base_settings, "providers"):
+            new_settings.providers = cast(Any, dict(base_settings.providers))
+        if not new_settings.downloaders and hasattr(base_settings, "downloaders"):
+            new_settings.downloaders = dict(base_settings.downloaders)
+        if not new_settings.custom_downloaders and hasattr(base_settings, "custom_downloaders"):
+            new_settings.custom_downloaders = dict(base_settings.custom_downloaders)
+        if not new_settings.custom_downloader_providers and hasattr(base_settings, "custom_downloader_providers"):
+            new_settings.custom_downloader_providers = dict(base_settings.custom_downloader_providers)
 
     if not options or not isinstance(options, dict):
         return new_settings
 
-    if "redownload" in options:
-        new_settings.redownload = bool(options["redownload"])
-    if "archive_reason" in options:
-        new_settings.archive_reason = str(options["archive_reason"])
-    if "gallery_reason" in options:
-        new_settings.gallery_reason = str(options["gallery_reason"])
-    if "archive_origin" in options and options["archive_origin"] is not None:
-        new_settings.archive_origin = int(options["archive_origin"])
     if "user_id" in options and options["user_id"] is not None:
         try:
             from django.contrib.auth import get_user_model
             User = get_user_model()
-            new_settings.archive_user = User.objects.filter(pk=options["user_id"]).first()
+            user = User.objects.filter(pk=options["user_id"]).first()
+            if user:
+                new_settings.archive_user = user
         except Exception:
             pass
-    if "silent_processing" in options:
-        new_settings.silent_processing = bool(options["silent_processing"])
-    if "replace_metadata" in options:
-        new_settings.replace_metadata = bool(options["replace_metadata"])
-        if new_settings.replace_metadata:
+
+    for k, v in options.items():
+        if k in ("user_id", "archive_user"):
+            continue
+
+        if k == "replace_metadata":
+            new_settings.replace_metadata = bool(v)
             if hasattr(new_settings, "config") and isinstance(new_settings.config, dict):
-                new_settings.config.setdefault("allowed", {})["replace_metadata"] = "yes"
-    if "keep_dl_type" in options:
-        new_settings.keep_dl_type = bool(options["keep_dl_type"])
-    if "retry_failed" in options:
-        new_settings.retry_failed = bool(options["retry_failed"])
-    if "event_action" in options:
-        new_settings.event_action = str(options["event_action"])
-    if "submit_group_uuid" in options and options["submit_group_uuid"] is not None:
-        new_settings.submit_group_uuid = str(options["submit_group_uuid"])
-    if "preserve_user_favorites" in options and isinstance(options["preserve_user_favorites"], list):
-        new_settings.preserve_user_favorites = list(options["preserve_user_favorites"])
-    if "preserve_extracted" in options:
-        new_settings.preserve_extracted = bool(options["preserve_extracted"])
-    if "archive_source" in options:
-        new_settings.archive_source = str(options["archive_source"])
-    if "internal_matches_for_non_matches" in options:
-        new_settings.internal_matches_for_non_matches = bool(options["internal_matches_for_non_matches"])
-    if "matchers" in options and isinstance(options["matchers"], dict):
-        new_settings.matchers = dict(options["matchers"])
+                new_settings.config.setdefault("allowed", {})["replace_metadata"] = "yes" if v else "no"
+            continue
 
-    if "downloaders" in options and isinstance(options["downloaders"], dict):
-        for dl_name, priority in options["downloaders"].items():
-            new_settings.downloaders[dl_name] = priority
+        if k == "downloaders" and isinstance(v, dict):
+            for dl_name, priority in v.items():
+                try:
+                    new_settings.downloaders[dl_name] = int(priority)
+                except (ValueError, TypeError):
+                    new_settings.downloaders[dl_name] = priority
+            continue
 
-    if "providers" in options and isinstance(options["providers"], dict):
-        for prov_name, prov_data in options["providers"].items():
-            if prov_name in new_settings.providers:
-                if "proxy" in prov_data:
-                    new_settings.providers[prov_name].proxy = prov_data["proxy"]
-                if "stop_page_number" in prov_data:
-                    new_settings.providers[prov_name].stop_page_number = prov_data["stop_page_number"]
+        if k == "matchers" and isinstance(v, dict):
+            for m_name, priority in v.items():
+                try:
+                    new_settings.matchers[m_name] = int(priority)
+                except (ValueError, TypeError):
+                    new_settings.matchers[m_name] = priority
+            continue
+
+        if k == "providers" and isinstance(v, dict):
+            for prov_name, prov_data in v.items():
+                if prov_name in new_settings.providers and isinstance(prov_data, dict):
+                    prov_obj = new_settings.providers[prov_name]
+                    for p_attr, p_val in prov_data.items():
+                        if hasattr(prov_obj, p_attr):
+                            setattr(prov_obj, p_attr, p_val)
+            continue
+
+        target_obj = getattr(new_settings, k, None)
+        if target_obj is not None and (hasattr(target_obj, "__slots__") or hasattr(target_obj, "__dict__")) and isinstance(v, dict):
+            for sub_k, sub_v in v.items():
+                if hasattr(target_obj, sub_k):
+                    setattr(target_obj, sub_k, sub_v)
+            continue
+
+        if isinstance(v, list):
+            setattr(new_settings, k, list(v))
+        elif isinstance(v, dict):
+            setattr(new_settings, k, dict(v))
+        else:
+            setattr(new_settings, k, v)
 
     return new_settings

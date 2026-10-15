@@ -133,6 +133,149 @@ class WorkersModelAndClientTests(TestCase):
         self.assertTrue(hydrated.preserve_extracted)
         self.assertEqual(len(hydrated.preserve_user_favorites), 1)
 
+    def test_crawler_frontend_options_serialization_and_override(self):
+        """Test options originating from the crawler view (admin.py) serialize and override correctly."""
+        base_settings = Settings(load_from_disk=False)
+        base_settings.downloaders = {"panda_archive": 1, "panda_info": 1, "panda_torrent": 1}
+        base_settings.non_current_links_as_deleted = False
+        base_settings.replace_metadata = True
+
+        # Simulate user changing options in crawler view
+        current_settings = Settings(load_from_disk=False)
+        current_settings.downloaders = {"panda_archive": -1, "panda_info": 1, "panda_torrent": -1}
+        current_settings.non_current_links_as_deleted = True
+        current_settings.replace_metadata = False
+        current_settings.archive_reason = "Crawl requested by admin"
+        current_settings.gallery_reason = "Crawl requested by admin"
+
+        data = serialize_settings_options(current_settings)
+        self.assertTrue(data["non_current_links_as_deleted"])
+        self.assertFalse(data["replace_metadata"])
+        self.assertEqual(data["archive_reason"], "Crawl requested by admin")
+        self.assertEqual(data["gallery_reason"], "Crawl requested by admin")
+        self.assertEqual(data["downloaders"]["panda_archive"], -1)
+        self.assertEqual(data["downloaders"]["panda_info"], 1)
+
+        hydrated = deserialize_settings_options(base_settings, data)
+        self.assertTrue(hydrated.non_current_links_as_deleted)
+        self.assertFalse(hydrated.replace_metadata)
+        self.assertEqual(hydrated.archive_reason, "Crawl requested by admin")
+        self.assertEqual(hydrated.gallery_reason, "Crawl requested by admin")
+        self.assertEqual(hydrated.downloaders["panda_archive"], -1)
+        self.assertEqual(hydrated.downloaders["panda_info"], 1)
+
+        # Ensure base_settings is not mutated
+        self.assertFalse(base_settings.non_current_links_as_deleted)
+        self.assertTrue(base_settings.replace_metadata)
+        self.assertEqual(base_settings.downloaders["panda_archive"], 1)
+
+    def test_foldercrawler_frontend_options_serialization_and_override(self):
+        """Test options originating from folder crawler view serialize and override correctly."""
+        base_settings = Settings(load_from_disk=False)
+        base_settings.matchers = {"panda_title": 1, "panda_image": -1}
+        base_settings.internal_matches_for_non_matches = False
+
+        current_settings = Settings(load_from_disk=False)
+        current_settings.matchers = {"panda_title": 5, "panda_image": 2}
+        current_settings.internal_matches_for_non_matches = True
+        current_settings.archive_source = "folder_import"
+        current_settings.archive_details = "import_batch_12"
+
+        data = serialize_settings_options(current_settings)
+        self.assertTrue(data["internal_matches_for_non_matches"])
+        self.assertEqual(data["archive_source"], "folder_import")
+        self.assertEqual(data["archive_details"], "import_batch_12")
+        self.assertEqual(data["matchers"]["panda_title"], 5)
+        self.assertEqual(data["matchers"]["panda_image"], 2)
+
+        hydrated = deserialize_settings_options(base_settings, data)
+        self.assertTrue(hydrated.internal_matches_for_non_matches)
+        self.assertEqual(hydrated.archive_source, "folder_import")
+        self.assertEqual(hydrated.archive_details, "import_batch_12")
+        self.assertEqual(hydrated.matchers["panda_title"], 5)
+        self.assertEqual(hydrated.matchers["panda_image"], 2)
+
+        # Base should remain unchanged
+        self.assertFalse(base_settings.internal_matches_for_non_matches)
+        self.assertEqual(base_settings.matchers["panda_title"], 1)
+
+    def test_provider_and_subsettings_serialization_and_override(self):
+        """Test complete serialization of provider settings and sub-settings objects."""
+        from core.providers.panda.settings import OwnSettings as PandaSettings
+        base_settings = Settings(load_from_disk=False)
+        panda_prov = PandaSettings(base_settings, {})
+        panda_prov.proxy = ""
+        panda_prov.wait_timer = 5
+        base_settings.providers = {"panda": panda_prov}
+
+        current_settings = Settings(load_from_disk=False)
+        panda_override = PandaSettings(current_settings, {})
+        panda_override.proxy = "http://proxy.test:8080"
+        panda_override.wait_timer = 20
+        panda_override.stop_page_number = 3
+        panda_override.use_ex_for_fjord = True
+        current_settings.providers = {"panda": panda_override}
+        current_settings.pushover.enable = True
+        current_settings.pushover.token = "secret_push_token"
+        current_settings.update_metadata_mode = True
+
+        data = serialize_settings_options(current_settings)
+        self.assertIn("providers", data)
+        self.assertEqual(data["providers"]["panda"]["proxy"], "http://proxy.test:8080")
+        self.assertEqual(data["providers"]["panda"]["wait_timer"], 20)
+        self.assertEqual(data["providers"]["panda"]["stop_page_number"], 3)
+        self.assertTrue(data["providers"]["panda"]["use_ex_for_fjord"])
+        self.assertTrue(data["pushover"]["enable"])
+        self.assertEqual(data["pushover"]["token"], "secret_push_token")
+        self.assertTrue(data["update_metadata_mode"])
+
+        hydrated = deserialize_settings_options(base_settings, data)
+        self.assertEqual(hydrated.providers["panda"].proxy, "http://proxy.test:8080")
+        self.assertEqual(hydrated.providers["panda"].wait_timer, 20)
+        self.assertEqual(hydrated.providers["panda"].stop_page_number, 3)
+        self.assertTrue(hydrated.providers["panda"].use_ex_for_fjord)
+        self.assertTrue(hydrated.pushover.enable)
+        self.assertEqual(hydrated.pushover.token, "secret_push_token")
+        self.assertTrue(hydrated.update_metadata_mode)
+
+        # Base remains untouched
+        self.assertEqual(base_settings.providers["panda"].proxy, "")
+        self.assertEqual(base_settings.providers["panda"].wait_timer, 5)
+
+    def test_sensitive_attributes_not_serialized(self):
+        """Verify sensitive credentials and paths are never included in serialized data."""
+        settings = Settings(load_from_disk=False)
+        settings.django_secret_key = "super_secret_key"
+        settings.database = {"postgresql_password": "db_password"}
+        settings.MEDIA_ROOT = "/secret/path"
+        settings.ftps = {"passwd": "ftp_password"}
+        settings.torrent = {"pass": "torrent_password"}
+        settings.remote_site = {"user_token": "token123"}
+        settings.config = {"database": {"postgresql_password": "db_password"}}
+
+        data = serialize_settings_options(settings)
+        for sensitive_key in ("django_secret_key", "database", "MEDIA_ROOT", "ftps", "torrent", "remote_site", "config"):
+            self.assertNotIn(sensitive_key, data)
+
+    def test_dict_options_dynamic_override(self):
+        """Verify that passing a dict of override options works dynamically."""
+        base_settings = Settings(load_from_disk=False)
+        base_settings.non_current_links_as_deleted = False
+
+        dict_options = {
+            "non_current_links_as_deleted": True,
+            "downloaders": {"panda_info": 10},
+            "custom_flag": "test_value",
+        }
+        serialized = serialize_settings_options(dict_options)
+        self.assertTrue(serialized["non_current_links_as_deleted"])
+
+        hydrated = deserialize_settings_options(base_settings, serialized)
+        self.assertTrue(hydrated.non_current_links_as_deleted)
+        self.assertEqual(hydrated.downloaders["panda_info"], 10)
+        self.assertEqual(getattr(hydrated, "custom_flag"), "test_value")
+
+
 
 class CallbackMigrationTests(TestCase):
 
