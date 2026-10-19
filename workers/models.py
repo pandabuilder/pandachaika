@@ -95,6 +95,9 @@ class WorkerProcess(models.Model):
         dead_pids = list(cls.objects.filter(status="running", last_heartbeat__lt=cutoff).values_list("pid", flat=True))
         if dead_pids:
             SchedulerState.objects.filter(worker_pid__in=dead_pids).update(is_running=False)
+            TaskQueue.objects.filter(
+                worker_pid__in=dead_pids, status=TaskQueue.Status.PROCESSING
+            ).update(status=TaskQueue.Status.PENDING, worker_pid=None)
         return cls.objects.filter(status="running", last_heartbeat__lt=cutoff).update(status="stopped")
 
 

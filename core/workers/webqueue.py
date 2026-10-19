@@ -28,7 +28,7 @@ class WebQueue(object):
         """Return the number of pending tasks in the queue."""
         try:
             from workers.client import queue_size
-            return queue_size()
+            return queue_size(task_type="web_crawler")
         except Exception:
             return 0
 
@@ -37,7 +37,7 @@ class WebQueue(object):
         """Return currently processing task for stats display."""
         try:
             from workers.client import get_processing_task
-            return get_processing_task()
+            return get_processing_task(task_type="web_crawler")
         except Exception:
             return None
 
@@ -46,7 +46,7 @@ class WebQueue(object):
         """Return list of pending tasks for stats display."""
         try:
             from workers.client import get_pending_tasks
-            return list(get_pending_tasks())
+            return list(get_pending_tasks(task_type="web_crawler"))
         except Exception:
             return []
 
@@ -54,7 +54,7 @@ class WebQueue(object):
         """Remove/cancel a pending task by its index."""
         try:
             from workers.client import remove_by_index
-            return remove_by_index(index)
+            return remove_by_index(index, task_type="web_crawler")
         except Exception:
             return False
 

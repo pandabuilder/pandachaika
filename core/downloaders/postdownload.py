@@ -52,7 +52,7 @@ class PostDownloader(object):
 
     def __init__(self, settings: "Settings", web_queue=None) -> None:
         self.settings = settings
-        self.web_queue = web_queue
+        self.web_queue = web_queue or getattr(settings.workers, "web_queue", None)
         self.ftp_datas: dict[str, FTPData] = {}
         self.current_download: CurrentDownload = CurrentDownload()
         self.ftp_key_torrent = self.settings.download_ftp_torrent

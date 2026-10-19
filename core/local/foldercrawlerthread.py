@@ -20,8 +20,7 @@ class FolderCrawlerThread(threading.Thread):
         self.argv = argv if argv is not None else []
 
     def start(self, force_local: bool = False) -> None:
-        is_worker = force_local or getattr(self.settings, "is_worker_process", False)
-        if is_worker:
+        if force_local:
             super().start()
         else:
             from workers.client import enqueue

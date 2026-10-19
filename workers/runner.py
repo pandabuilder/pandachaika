@@ -16,6 +16,7 @@ from django.db import transaction
 
 from core.base.setup import Settings
 from core.web.crawler import WebCrawler
+from workers.client import expand_task_type_aliases
 from workers.models import TaskQueue, WorkerProcess, SchedulerState
 from workers.serialization import deserialize_settings_options
 
@@ -44,7 +45,14 @@ class WorkerRunner:
         self.hostname = socket.gethostname()
         self.last_heartbeat_time = 0.0
         self.current_job: Optional[TaskQueue] = None
+        self.active_jobs: dict[int, TaskQueue] = {}
+        self.active_threads: dict[int, threading.Thread] = {}
+        self._jobs_lock = threading.Lock()
+        self._job_finished_event = threading.Event()
         self.settings.is_worker_process = True
+        if self.settings.workers.web_queue is None:
+            from core.workers.webqueue import WebQueue
+            self.settings.workers.web_queue = WebQueue(self.settings)
         self.heartbeat_thread: Optional[threading.Thread] = None
         self.heartbeat_stop_event = threading.Event()
 
@@ -55,6 +63,7 @@ class WorkerRunner:
     def _handle_shutdown(self, signum: int, frame: object) -> None:
         logger.info("Received shutdown signal (%d). Shutting down worker...", signum)
         self.running = False
+        self._job_finished_event.set()
 
     def sync_schedulers_state(self) -> None:
         """Sync live running status and heartbeats of local schedulers to SchedulerState."""
@@ -205,6 +214,12 @@ class WorkerRunner:
                 "last_heartbeat": django_tz.now(),
             },
         )
+        WorkerProcess.cleanup_dead_workers()
+        running_pids = list(WorkerProcess.objects.filter(status="running").values_list("pid", flat=True))
+        stale_qs = TaskQueue.objects.filter(status=TaskQueue.Status.PROCESSING).exclude(
+            worker_pid__in=[p for p in running_pids if p != self.pid]
+        )
+        stale_qs.update(status=TaskQueue.Status.PENDING, worker_pid=None)
         self.last_heartbeat_time = time.time()
         logger.info("Worker process registered with PID %d on %s", self.pid, self.hostname)
 
@@ -223,12 +238,18 @@ class WorkerRunner:
     def claim_next_job(self) -> Optional[TaskQueue]:
         try:
             with transaction.atomic():
-                job = (
-                    TaskQueue.objects.select_for_update(skip_locked=True)
-                    .filter(status=TaskQueue.Status.PENDING)
-                    .order_by("priority", "created_at", "id")
-                    .first()
+                processing_types = set(
+                    TaskQueue.objects.filter(status=TaskQueue.Status.PROCESSING).values_list("task_type", flat=True)
                 )
+                with self._jobs_lock:
+                    processing_types.update(j.task_type for j in self.active_jobs.values())
+                busy_types = expand_task_type_aliases(processing_types)
+
+                qs = TaskQueue.objects.select_for_update(skip_locked=True).filter(status=TaskQueue.Status.PENDING)
+                if busy_types:
+                    qs = qs.exclude(task_type__in=busy_types)
+
+                job = qs.order_by("priority", "created_at", "id").first()
                 if job:
                     job.status = TaskQueue.Status.PROCESSING
                     job.started_at = django_tz.now()
@@ -239,9 +260,36 @@ class WorkerRunner:
             logger.critical("Error while claiming next job:\n%s", traceback.format_exc())
         return None
 
+    def start_job_thread(self, job: TaskQueue) -> threading.Thread:
+        with self._jobs_lock:
+            self.active_jobs[job.pk] = job
+            self.current_job = job
+        thread = threading.Thread(
+            name=f"worker_task_{job.task_type}_{job.pk}",
+            target=self._run_job_thread,
+            args=(job,),
+            daemon=True,
+        )
+        with self._jobs_lock:
+            self.active_threads[job.pk] = thread
+        thread.start()
+        return thread
+
+    def _run_job_thread(self, job: TaskQueue) -> None:
+        try:
+            db.close_old_connections()
+            self.execute_job(job)
+        finally:
+            with self._jobs_lock:
+                self.active_threads.pop(job.pk, None)
+            self._job_finished_event.set()
+            db.connections.close_all()
+
     def execute_job(self, job: TaskQueue) -> None:
         logger.info("Starting execution of Task #%d (%s), args: %s", job.pk, job.task_type, job.args)
-        self.current_job = job
+        with self._jobs_lock:
+            self.active_jobs[job.pk] = job
+            self.current_job = job
         start_time = time.time()
 
         try:
@@ -275,9 +323,9 @@ class WorkerRunner:
             elif job.task_type in ("match_unmatched_worker", "web_match_worker", "generate_possible_matches_internally"):
                 from viewer.utils.matching import generate_possible_matches_for_archives
                 from viewer.models import Archive
-                archives = Archive.objects.filter(pk__in=job.args) if job.args else None
+                match_archives = Archive.objects.filter(pk__in=job.args) if job.args else None
                 kwargs = job.options.get("matching_kwargs", {})
-                generate_possible_matches_for_archives(archives, **kwargs)
+                generate_possible_matches_for_archives(match_archives, **kwargs)
             elif job.task_type in ("web_search_worker", "search_wanted_galleries_provider_titles"):
                 from viewer.utils.matching import create_matches_wanted_galleries_from_providers
                 from viewer.models import WantedGallery
@@ -324,7 +372,9 @@ class WorkerRunner:
             except Exception:
                 logger.critical("Failed to save error state for Task #%d", job.pk)
         finally:
-            self.current_job = None
+            with self._jobs_lock:
+                self.active_jobs.pop(job.pk, None)
+                self.current_job = next(iter(self.active_jobs.values()), None)
 
     def start_schedulers_if_enabled(self) -> None:
         if not self.enable_schedulers:
@@ -378,22 +428,31 @@ class WorkerRunner:
             while self.running:
                 self.update_heartbeat()
                 self.check_scheduler_commands()
-                job = self.claim_next_job()
-                if job:
-                    self.execute_job(job)
-                else:
-                    db.close_old_connections()
-                    time.sleep(self.poll_interval)
+                while self.running:
+                    job = self.claim_next_job()
+                    if job:
+                        self.start_job_thread(job)
+                    else:
+                        break
+                if not self.running:
+                    break
+                db.close_old_connections()
+                self._job_finished_event.wait(timeout=self.poll_interval)
+                self._job_finished_event.clear()
         finally:
             self.stop_heartbeat_thread()
-            if self.current_job:
+            with self._jobs_lock:
+                interrupted_jobs = list(self.active_jobs.values())
+            if self.current_job and all(j.pk != self.current_job.pk for j in interrupted_jobs):
+                interrupted_jobs.append(self.current_job)
+            for active_job in interrupted_jobs:
                 try:
                     db.close_old_connections()
-                    self.current_job.refresh_from_db()
-                    if self.current_job.status == TaskQueue.Status.PROCESSING:
-                        self.current_job.status = TaskQueue.Status.PENDING
-                        self.current_job.save(update_fields=["status"])
-                        logger.info("Reverted interrupted Task #%d back to PENDING", self.current_job.pk)
+                    active_job.refresh_from_db()
+                    if active_job.status == TaskQueue.Status.PROCESSING:
+                        active_job.status = TaskQueue.Status.PENDING
+                        active_job.save(update_fields=["status"])
+                        logger.info("Reverted interrupted Task #%d back to PENDING", active_job.pk)
                 except Exception:
                     pass
 

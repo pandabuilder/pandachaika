@@ -11,7 +11,7 @@ Django==6.1.2
 django-compressor==4.6.0
 django-db-logger==0.1.13
 django-cors-headers==4.9.0
-Pillow==12.3.0
+Pillow==13.0.0
 rarfile==4.5
 py7zr==1.1.4
 requests==2.34.2

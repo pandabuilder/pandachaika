@@ -343,8 +343,8 @@ class WorkerRunnerClaimTests(TestCase):
         self.runner = WorkerRunner(self.settings, enable_schedulers=False)
 
     def test_claim_next_job_atomic(self):
-        task1 = client.enqueue(args=["arg1"], priority=10)
-        task2 = client.enqueue(args=["arg2"], priority=1)
+        task1 = client.enqueue(args=["arg1"], task_type="web_crawler", priority=10)
+        task2 = client.enqueue(args=["arg2"], task_type="web_crawler", priority=1)
 
         claimed = self.runner.claim_next_job()
         self.assertIsNotNone(claimed)
@@ -352,13 +352,136 @@ class WorkerRunnerClaimTests(TestCase):
         self.assertEqual(claimed.status, TaskQueue.Status.PROCESSING)
         self.assertEqual(claimed.worker_pid, self.runner.pid)
 
-        # Claim again gets task1
+        # While task2 (web_crawler) is still PROCESSING, another web_crawler task (task1) cannot be claimed yet
+        self.assertIsNone(self.runner.claim_next_job())
+
+        # Once task2 completes, task1 can be claimed
+        claimed.status = TaskQueue.Status.COMPLETED
+        claimed.save(update_fields=["status"])
+
         claimed2 = self.runner.claim_next_job()
         self.assertIsNotNone(claimed2)
         self.assertEqual(claimed2.pk, task1.pk)
 
         # Claim again when empty
         self.assertIsNone(self.runner.claim_next_job())
+
+    def test_claim_different_task_types_in_parallel_while_same_type_queued(self):
+        folder_task_low = client.enqueue(args=["/folder/low"], task_type="folder_crawler", priority=10)
+        folder_task_high = client.enqueue(args=["/folder/high"], task_type="folder_crawler", priority=2)
+        web_task_low = client.enqueue(args=["https://example.com/low"], task_type="web_crawler", priority=10)
+        web_task_high = client.enqueue(args=["https://example.com/high"], task_type="web_crawler", priority=5)
+
+        # 1st claim picks highest priority overall: folder_task_high (priority 2)
+        claimed_folder = self.runner.claim_next_job()
+        self.assertIsNotNone(claimed_folder)
+        self.assertEqual(claimed_folder.pk, folder_task_high.pk)
+        self.assertEqual(claimed_folder.task_type, "folder_crawler")
+        self.assertEqual(claimed_folder.status, TaskQueue.Status.PROCESSING)
+
+        # 2nd claim while folder_crawler is still PROCESSING must skip folder_task_low
+        # and pick highest priority from other task_types: web_task_high (priority 5)
+        claimed_web = self.runner.claim_next_job()
+        self.assertIsNotNone(claimed_web)
+        self.assertEqual(claimed_web.pk, web_task_high.pk)
+        self.assertEqual(claimed_web.task_type, "web_crawler")
+        self.assertEqual(claimed_web.status, TaskQueue.Status.PROCESSING)
+
+        # 3rd claim while both folder_crawler and web_crawler are PROCESSING returns None
+        self.assertIsNone(self.runner.claim_next_job())
+
+        # When web_crawler finishes (even while folder_crawler is still PROCESSING),
+        # next claim picks web_task_low
+        claimed_web.status = TaskQueue.Status.COMPLETED
+        claimed_web.save(update_fields=["status"])
+
+        claimed_web_2 = self.runner.claim_next_job()
+        self.assertIsNotNone(claimed_web_2)
+        self.assertEqual(claimed_web_2.pk, web_task_low.pk)
+
+        # When folder_crawler finishes, next claim picks folder_task_low
+        claimed_folder.status = TaskQueue.Status.COMPLETED
+        claimed_folder.save(update_fields=["status"])
+
+        claimed_folder_2 = self.runner.claim_next_job()
+        self.assertIsNotNone(claimed_folder_2)
+        self.assertEqual(claimed_folder_2.pk, folder_task_low.pk)
+
+    def test_parallel_execution_and_folder_crawler_enqueues_web_crawler(self):
+        import threading
+        from unittest.mock import patch
+
+        folder_started = threading.Event()
+        allow_folder_finish = threading.Event()
+        web_executed_while_folder_running = []
+        enqueued_from_folder = []
+
+        folder_task = client.enqueue(args=["/scan/folder"], task_type="folder_crawler", priority=5)
+        web_task = client.enqueue(args=["https://example.com/1"], task_type="web_crawler", priority=10)
+
+        claimed_folder = self.runner.claim_next_job()
+        claimed_web = self.runner.claim_next_job()
+        self.assertEqual(claimed_folder.pk, folder_task.pk)
+        self.assertEqual(claimed_web.pk, web_task.pk)
+
+        orig_enqueue = client.enqueue
+
+        def thread_safe_enqueue(*args, **kwargs):
+            enqueued_from_folder.append((args, kwargs))
+
+        def fake_folder_crawl(args):
+            folder_started.set()
+            # Folder crawler queues a new task back for web_crawler while running
+            with patch("workers.client.enqueue", side_effect=thread_safe_enqueue):
+                self.runner.settings.workers.web_queue.enqueue_args_list(["https://example.com/from_folder"])
+            allow_folder_finish.wait(timeout=5.0)
+
+        def fake_web_crawl(args):
+            folder_started.wait(timeout=5.0)
+            # Record that web_crawler ran while folder_crawler was still active
+            with self.runner._jobs_lock:
+                web_executed_while_folder_running.append(folder_task.pk in self.runner.active_jobs)
+
+        with (
+            patch("core.local.foldercrawler.FolderCrawler.start_crawling", side_effect=fake_folder_crawl),
+            patch("core.web.crawler.WebCrawler.start_crawling", side_effect=fake_web_crawl),
+            patch.object(TaskQueue, "refresh_from_db"),
+            patch.object(TaskQueue, "save"),
+        ):
+            t_folder = self.runner.start_job_thread(claimed_folder)
+            t_web = self.runner.start_job_thread(claimed_web)
+
+            t_web.join(timeout=5.0)
+            self.assertFalse(t_web.is_alive())
+            self.assertEqual(web_executed_while_folder_running, [True])
+
+            allow_folder_finish.set()
+            t_folder.join(timeout=5.0)
+            self.assertFalse(t_folder.is_alive())
+
+        self.assertEqual(len(enqueued_from_folder), 1)
+        call_args, call_kwargs = enqueued_from_folder[0]
+        orig_enqueue(*call_args, **call_kwargs)
+
+        # Verify the web_crawler task enqueued by folder_crawler is in the web_crawler queue
+        pending_web = list(client.get_pending_tasks(task_type="web_crawler"))
+        self.assertEqual(len(pending_web), 1)
+        self.assertEqual(pending_web[0].args, ["https://example.com/from_folder"])
+
+    def test_webqueue_isolated_to_web_crawler_tasks(self):
+        web_queue = WebQueue(self.settings)
+        client.enqueue(args=["/folder/1"], task_type="folder_crawler", priority=1)
+        client.enqueue(args=[1, 2], task_type="fileinfo_worker", priority=2)
+        web_task = client.enqueue(args=["https://example.com/web"], task_type="web_crawler", priority=10)
+
+        # WebQueue only counts and lists web_crawler tasks
+        self.assertEqual(web_queue.queue_size(), 1)
+        self.assertEqual([t.pk for t in web_queue.queue], [web_task.pk])
+        self.assertTrue(web_queue.remove_by_index(0))
+        self.assertEqual(web_queue.queue_size(), 0)
+        # Other task_types remain pending
+        self.assertEqual(client.queue_size(task_type="folder_crawler"), 1)
+        self.assertEqual(client.queue_size(task_type="fileinfo_worker"), 1)
 
     def test_execute_job_success(self):
         from unittest.mock import patch

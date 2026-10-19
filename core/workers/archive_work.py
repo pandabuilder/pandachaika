@@ -92,8 +92,7 @@ class ArchiveWorker(object):
 
     def recalc_all_file_info(self, archives: typing.Any = None, user: typing.Any = None, force_local: bool = False) -> None:
         """Enqueue or run file info recalculation for all or specific archives."""
-        is_worker = force_local or (self.settings and getattr(self.settings, "is_worker_process", False))
-        if is_worker:
+        if force_local:
             import os
             from viewer.models import Archive
             archive_qs = archives if archives is not None else Archive.objects.all()
@@ -117,8 +116,7 @@ class ArchiveWorker(object):
 
     def regenerate_all_thumbs(self, archives: typing.Any = None, user: typing.Any = None, force_local: bool = False) -> None:
         """Enqueue or run thumbnail regeneration for all or specific archives."""
-        is_worker = force_local or (self.settings and getattr(self.settings, "is_worker_process", False))
-        if is_worker:
+        if force_local:
             import os
             from viewer.models import Archive
             archive_qs = archives if archives is not None else Archive.objects.all()
@@ -141,8 +139,7 @@ class ArchiveWorker(object):
             logger.info("Enqueued thumbnails_worker task to worker process (archive count: %d)", len(archive_pks) if archive_pks else -1)
 
     def start_info_thread(self, force_local: bool = False) -> None:
-        is_worker = force_local or (self.settings and getattr(self.settings, "is_worker_process", False))
-        if is_worker:
+        if force_local:
             thread_array = []
 
             for x in range(1, self.worker_number):
@@ -177,8 +174,7 @@ class ArchiveWorker(object):
             logger.info("Enqueued fileinfo_worker task to worker process (archive count: %d)", len(archive_pks) if archive_pks else -1)
 
     def start_thumbs_thread(self, force_local: bool = False) -> None:
-        is_worker = force_local or (self.settings and getattr(self.settings, "is_worker_process", False))
-        if is_worker:
+        if force_local:
             thread_array = []
 
             for x in range(1, self.worker_number):

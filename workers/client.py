@@ -89,24 +89,62 @@ def enqueue_matching_task(
     )
 
 
-def get_pending_tasks():
-    """Return pending tasks ordered by priority and creation time."""
-    return TaskQueue.objects.filter(status=TaskQueue.Status.PENDING).order_by("priority", "created_at", "id")
+TASK_TYPE_ALIAS_GROUPS: list[set[str]] = [
+    {"web_crawler", "webcrawler"},
+    {"folder_crawler", "foldercrawler"},
+    {"fileinfo_worker", "recalc_all_file_info"},
+    {"thumbnails_worker", "regenerate_all_thumbs"},
+    {"match_unmatched_worker", "generate_possible_matches_internally"},
+    {"web_search_worker", "search_wanted_galleries_provider_titles"},
+    {"wanted_local_search_worker", "wanted_galleries_possible_matches"},
+    {"match_unmatched_gallery_groups_worker"},
+    {"web_match_worker"},
+]
 
 
-def get_processing_task() -> Optional[TaskQueue]:
-    """Return the currently processing task if any."""
-    return TaskQueue.objects.filter(status=TaskQueue.Status.PROCESSING).order_by("-started_at").first()
+def get_task_type_aliases(task_type: str) -> set[str]:
+    """Return all task_type strings belonging to the same logical queue as task_type."""
+    for group in TASK_TYPE_ALIAS_GROUPS:
+        if task_type in group:
+            return set(group)
+    return {task_type}
 
 
-def queue_size() -> int:
-    """Return the number of pending tasks."""
-    return TaskQueue.objects.filter(status=TaskQueue.Status.PENDING).count()
+def expand_task_type_aliases(task_types: Iterable[str]) -> set[str]:
+    """Expand an iterable of task_types to include all aliases for each type."""
+    expanded: set[str] = set()
+    for t in task_types:
+        expanded.update(get_task_type_aliases(t))
+    return expanded
 
 
-def remove_by_index(index: int) -> bool:
+def get_pending_tasks(task_type: Optional[str] = None):
+    """Return pending tasks ordered by priority and creation time, optionally filtered by task_type."""
+    qs = TaskQueue.objects.filter(status=TaskQueue.Status.PENDING)
+    if task_type:
+        qs = qs.filter(task_type__in=get_task_type_aliases(task_type))
+    return qs.order_by("priority", "created_at", "id")
+
+
+def get_processing_task(task_type: Optional[str] = None) -> Optional[TaskQueue]:
+    """Return the currently processing task if any, optionally filtered by task_type."""
+    qs = TaskQueue.objects.filter(status=TaskQueue.Status.PROCESSING)
+    if task_type:
+        qs = qs.filter(task_type__in=get_task_type_aliases(task_type))
+    return qs.order_by("-started_at").first()
+
+
+def queue_size(task_type: Optional[str] = None) -> int:
+    """Return the number of pending tasks, optionally filtered by task_type."""
+    qs = TaskQueue.objects.filter(status=TaskQueue.Status.PENDING)
+    if task_type:
+        qs = qs.filter(task_type__in=get_task_type_aliases(task_type))
+    return qs.count()
+
+
+def remove_by_index(index: int, task_type: Optional[str] = None) -> bool:
     """Remove/cancel a pending task by its index in the queue."""
-    pending = list(get_pending_tasks().values_list("id", flat=True))
+    pending = list(get_pending_tasks(task_type=task_type).values_list("id", flat=True))
     if 0 <= index < len(pending):
         task_id = pending[index]
         return cancel_by_id(task_id)

@@ -276,7 +276,7 @@ def match_archives_from_gallery_titles(
 
 # Archive
 def generate_possible_matches_for_archives(
-    archives: "QuerySet[Archive]",
+    archives: Optional["QuerySet[Archive]"],
     cutoff: float = 0.4,
     max_matches: int = 20,
     filters: Iterable[str] = (),
@@ -743,8 +743,7 @@ class MatchingThread(threading.Thread):
     def start(self, force_local: bool = False) -> None:
         from django.conf import settings as django_settings
         c_settings = self.settings or getattr(django_settings, "CRAWLER_SETTINGS", None)
-        is_worker = force_local or (c_settings and getattr(c_settings, "is_worker_process", False))
-        if is_worker:
+        if force_local:
             super().start()
         else:
             from workers.client import enqueue_matching_task

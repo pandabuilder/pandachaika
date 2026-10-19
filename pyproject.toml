@@ -82,7 +82,7 @@ dependencies = [
     "gunicorn==26.2.0; sys_platform != 'win32'",
     "imagehash==4.3.2",
     "numpy==2.5.4",
-    "pillow==12.3.0",
+    "pillow==13.0.0",
     "psycopg[c]==3.3.6; sys_platform != 'win32'",
     "psycopg-binary==3.3.6; sys_platform == 'win32'",
     "py7zr==1.1.4",

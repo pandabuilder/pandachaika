@@ -206,7 +206,7 @@ def queue_operations(request: HttpRequest, operation: str, arguments: str = "") 
     if operation == "remove_by_index":
         if arguments:
             try:
-                client.remove_by_index(int(arguments))
+                client.remove_by_index(int(arguments), task_type="web_crawler")
             except ValueError:
                 return render_error(request, "Invalid index.")
         else:

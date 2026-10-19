@@ -277,8 +277,8 @@ def convert_rar_to_zip(filepath: str, temp_path: typing.Optional[str] = None) ->
 
     filtered_files = list(filter(discard_zipfile_extra_files, sorted(my_rar.namelist())))
     for filename in filtered_files:
-        my_rar.extract(filename, path=dirpath)
-        new_zipfile.write(os.path.join(dirpath, filename.replace("\\", "/")), arcname=os.path.basename(filename))
+        extracted_filename = my_rar.extract(filename, path=dirpath)
+        new_zipfile.write(extracted_filename, arcname=os.path.basename(extracted_filename))
 
     my_rar.close()
     new_zipfile.close()
