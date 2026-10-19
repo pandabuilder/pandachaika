@@ -11,6 +11,7 @@ from core.base.utilities import timestamp_or_zero, timestamp_or_null
 
 from viewer.models import Gallery, Archive, Image, ArchiveGroupEntry, WantedGallery, FoundGallery
 from viewer.utils.actions import event_log
+from workers import client
 
 
 def send_mass_html_mail(datatuple, fail_silently=False, user=None, password=None, connection=None):
@@ -196,18 +197,18 @@ def gallery_search_dict_to_json(request: HttpRequest, galleries: dict[Gallery, l
 
 def galleries_update_metadata(gallery_links, gallery_providers, user, reason, cs):
     current_settings = Settings(load_from_config=cs.config)
-    if current_settings.workers.web_queue:
-        current_settings.set_update_metadata_options(providers=gallery_providers)
-        current_settings.archive_user = user
-        current_settings.event_action = "UPDATE_METADATA"
+    current_settings.set_update_metadata_options(providers=gallery_providers)
+    current_settings.archive_user = user
+    current_settings.event_action = "UPDATE_METADATA"
 
-        current_settings.workers.web_queue.enqueue_args_list(
-            gallery_links,
-            override_options=current_settings,
-            user=user,
-            reason=reason,
-            event_action="UPDATE_METADATA",
-        )
+    client.enqueue(
+        args=gallery_links,
+        task_type="web_crawler",
+        override_options=current_settings,
+        user=user,
+        reason=reason,
+        event_action="UPDATE_METADATA",
+    )
 
 
 def images_data_to_json(images: Iterable[Image]) -> dict[int, dict[str, Any]]:

@@ -277,7 +277,11 @@ class ArchiveDownloader(BaseDownloader[PandaSettings]):
                                 self.return_code = 1
                                 break
 
-                    except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout) as e:
+                    except (
+                        requests.exceptions.ConnectionError,
+                        requests.exceptions.ReadTimeout,
+                        requests.exceptions.ChunkedEncodingError
+                    ) as e:
                         logger.warning("Download failed on attempt {}/3 with error: {}".format(attempt + 1, str(e)))
                         if self.download_event:
                             self.download_event.set_as_failed()
@@ -804,7 +808,11 @@ class PandaChaikaDownloader(BaseDownloader):
                     self.return_code = 1
                     break
 
-            except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout) as e:
+            except (
+                requests.exceptions.ConnectionError,
+                requests.exceptions.ReadTimeout,
+                requests.exceptions.ChunkedEncodingError
+            ) as e:
                 logger.warning("Download failed on attempt {}/3 with error: {}".format(attempt + 1, str(e)))
                 if self.download_event:
                     self.download_event.set_as_failed()

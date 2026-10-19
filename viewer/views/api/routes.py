@@ -23,6 +23,7 @@ from viewer.models import Archive, Gallery, UserArchivePrefs
 from viewer.utils.matching import generate_possible_matches_for_archives
 from viewer.utils.requests import authenticate_by_token, double_check_auth
 from viewer.views.head import gallery_filter_keys
+from workers import client
 from viewer.views.api.dispatch import (
     json_api_handle_delete,
     json_api_handle_get,
@@ -132,36 +133,34 @@ def json_parser(request: HttpRequest) -> HttpResponse:
             response = {}
             # Used by internal pages and userscript
             if data["operation"] == "webcrawler" and "link" in args:
-                if not crawler_settings.workers.web_queue:
-                    response["error"] = "The webqueue is not running"
-                elif "downloader" in args:
+                if "downloader" in args:
                     current_settings = Settings(load_from_config=crawler_settings.config)
-                    if not current_settings.workers.web_queue:
-                        response["error"] = "The webqueue is not running"
+                    current_settings.allow_downloaders_only([args["downloader"]], True, True, True)
+                    archive = None
+                    parsers = current_settings.provider_context.get_parsers(current_settings)
+                    current_settings.archive_user = actual_user
+                    current_settings.archive_origin = Archive.ORIGIN_ADD_URL
+                    for parser in parsers:
+                        if parser.id_from_url_implemented():
+                            urls_filtered = parser.filter_accepted_urls((args["link"],))
+                            for url_filtered in urls_filtered:
+                                gallery_gid = parser.id_from_url(url_filtered)
+                                if gallery_gid:
+                                    archive = Archive.objects.filter(
+                                        gallery__gid=gallery_gid, gallery__provider=parser.name
+                                    ).first()
+                            if urls_filtered:
+                                break
+                    client.enqueue(
+                        args=[args["link"]],
+                        task_type="web_crawler",
+                        override_options=current_settings,
+                        user=actual_user,
+                    )
+                    if archive:
+                        response["message"] = "Archive exists, crawling to check for redownload: " + args["link"]
                     else:
-                        current_settings.allow_downloaders_only([args["downloader"]], True, True, True)
-                        archive = None
-                        parsers = current_settings.provider_context.get_parsers(current_settings)
-                        current_settings.archive_user = actual_user
-                        current_settings.archive_origin = Archive.ORIGIN_ADD_URL
-                        for parser in parsers:
-                            if parser.id_from_url_implemented():
-                                urls_filtered = parser.filter_accepted_urls((args["link"],))
-                                for url_filtered in urls_filtered:
-                                    gallery_gid = parser.id_from_url(url_filtered)
-                                    if gallery_gid:
-                                        archive = Archive.objects.filter(
-                                            gallery__gid=gallery_gid, gallery__provider=parser.name
-                                        ).first()
-                                if urls_filtered:
-                                    break
-                        current_settings.workers.web_queue.enqueue_args_list(
-                            (args["link"],), override_options=current_settings
-                        )
-                        if archive:
-                            response["message"] = "Archive exists, crawling to check for redownload: " + args["link"]
-                        else:
-                            response["message"] = "Crawling: " + args["link"]
+                        response["message"] = "Crawling: " + args["link"]
                 else:
                     current_settings = Settings(load_from_config=crawler_settings.config)
                     current_settings.archive_user = actual_user
@@ -172,9 +171,6 @@ def json_parser(request: HttpRequest) -> HttpResponse:
 
                     if "parentLink" in args:
                         parent_archive = None
-                        if not current_settings.workers.web_queue:
-                            response["error"] = "The webqueue is not running"
-                            return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
                         parsers = current_settings.provider_context.get_parsers(current_settings)
                         for parser in parsers:
                             if parser.id_from_url_implemented():
@@ -208,14 +204,19 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                                 current_settings.preserve_user_favorites = old_user_favorites
                                 current_settings.preserve_extracted = bool(old_extracted)
 
-                                current_settings.workers.web_queue.enqueue_args_list(
-                                    [args["link"]] + extra_args,
+                                client.enqueue(
+                                    args=[args["link"]] + extra_args,
+                                    task_type="web_crawler",
                                     override_options=current_settings,
+                                    user=actual_user,
                                 )
                             elif "action" in args and args["action"] == "queueFound":
                                 response["message"] = "Crawling: " + args["link"] + ", keeping parent: " + link
-                                current_settings.workers.web_queue.enqueue_args_list(
-                                    [args["link"]] + extra_args, override_options=current_settings
+                                client.enqueue(
+                                    args=[args["link"]] + extra_args,
+                                    task_type="web_crawler",
+                                    override_options=current_settings,
+                                    user=actual_user,
                                 )
                             else:
                                 response["message"] = "Please confirm deletion of parent: " + link
@@ -241,14 +242,14 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                             else:
                                 response["message"] = "Crawling: " + args["link"]
 
-                            current_settings.workers.web_queue.enqueue_args_list(
-                                [args["link"]] + extra_args, override_options=current_settings
+                            client.enqueue(
+                                args=[args["link"]] + extra_args,
+                                task_type="web_crawler",
+                                override_options=current_settings,
+                                user=actual_user,
                             )
                     else:
                         archive = None
-                        if not current_settings.workers.web_queue:
-                            response["error"] = "The webqueue is not running"
-                            return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
                         parsers = current_settings.provider_context.get_parsers(current_settings)
                         for parser in parsers:
                             if parser.id_from_url_implemented():
@@ -265,8 +266,11 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                             response["message"] = "Archive exists, crawling to check for redownload: " + args["link"]
                         else:
                             response["message"] = "Crawling: " + args["link"]
-                        current_settings.workers.web_queue.enqueue_args_list(
-                            [args["link"]] + extra_args, override_options=current_settings
+                        client.enqueue(
+                            args=[args["link"]] + extra_args,
+                            task_type="web_crawler",
+                            override_options=current_settings,
+                            user=actual_user,
                         )
                 if not response:
                     response["error"] = "Could not parse request"
@@ -306,14 +310,14 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                         current_settings.archive_details = data["archive_details"]
                     current_settings.allow_type_downloaders_only("fake")
                     current_settings.set_enable_download()
-                    if current_settings.workers.web_queue:
-                        current_settings.archive_user = actual_user
-                        current_settings.archive_origin = Archive.ORIGIN_ADD_URL
-                        current_settings.workers.web_queue.enqueue_args_list(
-                            pages_links, override_options=current_settings
-                        )
-                    else:
-                        pages_links = []
+                    current_settings.archive_user = actual_user
+                    current_settings.archive_origin = Archive.ORIGIN_ADD_URL
+                    client.enqueue(
+                        args=pages_links,
+                        task_type="web_crawler",
+                        override_options=current_settings,
+                        user=actual_user,
+                    )
                 return HttpResponse(
                     json.dumps({"result": str(len(pages_links))}), content_type="application/json; charset=utf-8"
                 )
@@ -371,22 +375,22 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                         if "archive_details" in data:
                             current_settings.archive_details = data["archive_details"]
                         current_settings.allow_type_downloaders_only("fake")
-                    if current_settings.workers.web_queue:
-                        current_settings.archive_user = actual_user
-                        current_settings.archive_origin = Archive.ORIGIN_ADD_URL
-                        current_settings.workers.web_queue.enqueue_args_list(
-                            pages_links, override_options=current_settings
-                        )
-                    else:
-                        pages_links = []
+                    current_settings.archive_user = actual_user
+                    current_settings.archive_origin = Archive.ORIGIN_ADD_URL
+                    client.enqueue(
+                        args=pages_links,
+                        task_type="web_crawler",
+                        override_options=current_settings,
+                        user=actual_user,
+                    )
                 return HttpResponse(
                     json.dumps({"result": str(len(pages_links))}), content_type="application/json; charset=utf-8"
                 )
             # Used by remotesite command
             elif data["operation"] == "links":
                 links = args
-                if len(links) > 0 and crawler_settings.workers.web_queue:
-                    crawler_settings.workers.web_queue.enqueue_args_list(links)
+                if len(links) > 0:
+                    client.enqueue(args=links, task_type="web_crawler", user=actual_user)
                 return HttpResponse(
                     json.dumps({"result": str(len(links))}), content_type="application/json; charset=utf-8"
                 )

@@ -27,6 +27,7 @@ from django.utils.html import urlize, linebreaks
 from core.base.setup import Settings
 from core.base.types import DataDict
 from viewer.utils.actions import event_log
+from workers import client
 
 from viewer.forms import (
     ArchiveSearchForm,
@@ -355,20 +356,24 @@ def process_gallery_page(request: HttpRequest, gallery: Gallery, tool: Optional[
         if "downloader" in request.GET and request.user.is_staff:
             current_settings = Settings(load_from_config=crawler_settings.config)
             current_settings.allow_downloaders_only([request.GET["downloader"]], True, True, True)
-            if current_settings.workers.web_queue:
-                current_settings.workers.web_queue.enqueue_args_list(
-                    (gallery.get_link(),), override_options=current_settings
-                )
+            client.enqueue(
+                args=[gallery.get_link()],
+                task_type="web_crawler",
+                override_options=current_settings,
+                user=request.user,
+            )
         else:
             # Since this is used from the gallery page mainly to download an already added gallery using
             # downloader settings, force replace_metadata and retry_failed
             current_settings = Settings(load_from_config=crawler_settings.config)
             current_settings.replace_metadata = True
             current_settings.retry_failed = True
-            if current_settings.workers.web_queue:
-                current_settings.workers.web_queue.enqueue_args_list(
-                    (gallery.get_link(),), override_options=current_settings
-                )
+            client.enqueue(
+                args=[gallery.get_link()],
+                task_type="web_crawler",
+                override_options=current_settings,
+                user=request.user,
+            )
         return response
 
     if request.user.is_staff and tool == "toggle-hidden":
@@ -404,14 +409,15 @@ def process_gallery_page(request: HttpRequest, gallery: Gallery, tool: Optional[
 
         current_settings = Settings(load_from_config=crawler_settings.config)
 
-        if current_settings.workers.web_queue and gallery.provider:
+        if gallery.provider:
 
             current_settings.archive_user = request.user
             current_settings.event_action = "UPDATE_METADATA"
             current_settings.set_update_metadata_options(providers=(gallery.provider,))
 
-            current_settings.workers.web_queue.enqueue_args_list(
-                (gallery.get_link(),),
+            client.enqueue(
+                args=[gallery.get_link()],
+                task_type="web_crawler",
                 override_options=current_settings,
                 user=request.user,
                 event_action="UPDATE_METADATA",
@@ -525,20 +531,24 @@ def gallery_enter_reason(request: HttpRequest, pk: int, tool: Optional[str] = No
                 if "downloader" in request.GET and request.user.is_staff:
                     current_settings = Settings(load_from_config=crawler_settings.config)
                     current_settings.allow_downloaders_only([request.GET["downloader"]], True, True, True)
-                    if current_settings.workers.web_queue:
-                        current_settings.workers.web_queue.enqueue_args_list(
-                            (gallery.get_link(),), override_options=current_settings
-                        )
+                    client.enqueue(
+                        args=[gallery.get_link()],
+                        task_type="web_crawler",
+                        override_options=current_settings,
+                        user=request.user,
+                    )
                 else:
                     # Since this is used from the gallery page mainly to download an already added gallery using
                     # downloader settings, force replace_metadata and retry_failed
                     current_settings = Settings(load_from_config=crawler_settings.config)
                     current_settings.replace_metadata = True
                     current_settings.retry_failed = True
-                    if current_settings.workers.web_queue:
-                        current_settings.workers.web_queue.enqueue_args_list(
-                            (gallery.get_link(),), override_options=current_settings
-                        )
+                    client.enqueue(
+                        args=[gallery.get_link()],
+                        task_type="web_crawler",
+                        override_options=current_settings,
+                        user=request.user,
+                    )
                 return HttpResponseRedirect(gallery.get_absolute_url())
 
             if request.user.is_staff and tool == "toggle-hidden":
@@ -612,7 +622,7 @@ def gallery_enter_reason(request: HttpRequest, pk: int, tool: Optional[str] = No
 
                 current_settings = Settings(load_from_config=crawler_settings.config)
 
-                if current_settings.workers.web_queue and gallery.provider:
+                if gallery.provider:
 
                     current_settings.archive_user = request.user
                     current_settings.event_action = "UPDATE_METADATA"
@@ -620,8 +630,9 @@ def gallery_enter_reason(request: HttpRequest, pk: int, tool: Optional[str] = No
                     current_settings.gallery_reason = user_reason
                     current_settings.set_update_metadata_options(providers=(gallery.provider,))
 
-                    current_settings.workers.web_queue.enqueue_args_list(
-                        (gallery.get_link(),),
+                    client.enqueue(
+                        args=[gallery.get_link()],
+                        task_type="web_crawler",
                         override_options=current_settings,
                         user=request.user,
                         reason=user_reason,
@@ -1474,9 +1485,6 @@ def url_submit(request: HttpRequest) -> HttpResponse:
 
     if p and "submit" in p:
         current_settings = Settings(load_from_config=crawler_settings.config)
-        if not current_settings.workers.web_queue:
-            messages.error(request, "Cannot submit link currently. Please contact an admin.")
-            return HttpResponseRedirect(reverse("viewer:url-submit"))
         url_set = set()
         # create dictionary of properties for each url
         current_settings.back_up_downloaders = current_settings.downloaders.copy()
@@ -1630,8 +1638,12 @@ def url_submit(request: HttpRequest) -> HttpResponse:
 
         current_settings.submit_group_uuid = str(uuid_group)
 
-        current_settings.workers.web_queue.enqueue_args_list(
-            no_commands_in_args_list, override_options=current_settings
+        client.enqueue(
+            args=no_commands_in_args_list,
+            task_type="web_crawler",
+            override_options=current_settings,
+            user=request.user,
+            reason=reason,
         )
 
         if reason:

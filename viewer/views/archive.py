@@ -1237,13 +1237,14 @@ def recall_api(request: HttpRequest, pk: int) -> HttpResponse:
 
     current_settings = Settings(load_from_config=crawler_settings.config)
 
-    if current_settings.workers.web_queue and gallery.provider:
+    if gallery.provider:
         current_settings.archive_user = request.user
         current_settings.event_action = "UPDATE_METADATA"
         current_settings.set_update_metadata_options(providers=(gallery.provider,))
 
-        current_settings.workers.web_queue.enqueue_args_list(
-            (gallery.get_link(),),
+        client.enqueue(
+            args=[gallery.get_link()],
+            task_type="web_crawler",
             override_options=current_settings,
             user=request.user,
             event_action="UPDATE_METADATA",

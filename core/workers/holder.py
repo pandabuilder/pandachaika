@@ -14,7 +14,8 @@ if typing.TYPE_CHECKING:
     from core.workers.link_monitor import LinkMonitor
     from core.workers.archive_work import ArchiveWorker
     from core.local.foldercrawlerthread import FolderCrawlerThread
-    from viewer.models import Scheduler, MonitoredLink
+    from viewer.models import MonitoredLink
+    from workers.models import SchedulerState
 
 
 class WorkerContext:
@@ -82,7 +83,7 @@ class WorkerContext:
         self, crawler_settings: "setup.Settings", monitored_link: "MonitoredLink", start_thread: bool = False
     ):
 
-        from viewer.models import Scheduler
+        from workers.models import SchedulerState
         from core.workers.link_monitor import LinkMonitor
 
         setup.GlobalInfo.worker_threads.append(
@@ -101,11 +102,12 @@ class WorkerContext:
             web_queue=self.web_queue,
         )
         self.timed_link_monitors.append(link_monitor)
-        obj = Scheduler.objects.get_or_create(
+        obj, _ = SchedulerState.objects.get_or_create(
             name=link_monitor.thread_name,
+            defaults={"schedule_type": "scheduler"},
         )
-        link_monitor.last_run = obj[0].last_run
-        link_monitor.pk = obj[0].pk
+        link_monitor.last_run = obj.last_run
+        link_monitor.pk = obj.name
         if start_thread and link_monitor.monitored_link.auto_start:
             link_monitor.start_running(timer=link_monitor.original_timer)
 
@@ -121,7 +123,8 @@ class WorkerContext:
         from core.workers.webqueue import WebQueue
         from core.workers.archive_work import ArchiveWorker
         from core.local.foldercrawlerthread import FolderCrawlerThread
-        from viewer.models import Scheduler, MonitoredLink
+        from viewer.models import MonitoredLink
+        from workers.models import SchedulerState
 
         self.web_queue = WebQueue(crawler_settings)
         self.archive_worker = ArchiveWorker(crawler_settings, 4)
@@ -151,11 +154,12 @@ class WorkerContext:
             )
             self.timed_auto_updaters.append(provider_auto_updater)
 
-        obj = Scheduler.objects.get_or_create(
+        obj, _ = SchedulerState.objects.get_or_create(
             name=self.timed_downloader.thread_name,
+            defaults={"schedule_type": "scheduler"},
         )
-        self.timed_downloader.last_run = obj[0].last_run
-        self.timed_downloader.pk = obj[0].pk
+        self.timed_downloader.last_run = obj.last_run
+        self.timed_downloader.pk = obj.name
         if start_threads and crawler_settings.timed_downloader_startup:
             self.timed_downloader.start_running(timer=crawler_settings.timed_downloader_cycle_timer)
 
@@ -180,39 +184,43 @@ class WorkerContext:
                 )
                 self.timed_link_monitors.append(link_monitor)
 
-        obj = Scheduler.objects.get_or_create(
+        obj, _ = SchedulerState.objects.get_or_create(
             name=self.timed_auto_wanted.thread_name,
+            defaults={"schedule_type": "scheduler"},
         )
-        self.timed_auto_wanted.last_run = obj[0].last_run
-        self.timed_auto_wanted.pk = obj[0].pk
+        self.timed_auto_wanted.last_run = obj.last_run
+        self.timed_auto_wanted.pk = obj.name
         if start_threads and crawler_settings.auto_wanted.startup:
             self.timed_auto_wanted.start_running(timer=crawler_settings.auto_wanted.cycle_timer)
 
         for provider_auto_updater in self.timed_auto_updaters:
-            obj = Scheduler.objects.get_or_create(
+            obj, _ = SchedulerState.objects.get_or_create(
                 name=provider_auto_updater.thread_name,
+                defaults={"schedule_type": "scheduler"},
             )
-            provider_auto_updater.last_run = obj[0].last_run
-            provider_auto_updater.pk = obj[0].pk
+            provider_auto_updater.last_run = obj.last_run
+            provider_auto_updater.pk = obj.name
             if start_threads and crawler_settings.autoupdater.startup:
                 provider_auto_updater.start_running(timer=provider_auto_updater.original_timer)
 
         for link_monitor in self.timed_link_monitors:
-            obj = Scheduler.objects.get_or_create(
+            obj, _ = SchedulerState.objects.get_or_create(
                 name=link_monitor.thread_name,
+                defaults={"schedule_type": "scheduler"},
             )
-            link_monitor.last_run = obj[0].last_run
-            link_monitor.pk = obj[0].pk
+            link_monitor.last_run = obj.last_run
+            link_monitor.pk = obj.name
             if start_threads and link_monitor.monitored_link.auto_start:
                 link_monitor.start_running(timer=link_monitor.original_timer)
 
         self.download_progress_checker = DownloadProgressChecker(crawler_settings, web_queue=self.web_queue, timer=10)
 
-        obj = Scheduler.objects.get_or_create(
+        obj, _ = SchedulerState.objects.get_or_create(
             name=self.download_progress_checker.thread_name,
+            defaults={"schedule_type": "scheduler"},
         )
-        self.download_progress_checker.last_run = obj[0].last_run
-        self.download_progress_checker.pk = obj[0].pk
+        self.download_progress_checker.last_run = obj.last_run
+        self.download_progress_checker.pk = obj.name
         if start_threads and crawler_settings.download_progress_checker_startup:
             self.download_progress_checker.start_running(timer=crawler_settings.download_progress_checker_cycle_timer)
 

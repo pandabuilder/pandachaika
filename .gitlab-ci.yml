@@ -20,9 +20,9 @@ test-all:
   parallel:
     matrix:
       - PYTHON_VERSION:
-        - '3.12'
         - '3.13'
         - '3.14'
+        - '3.15'
   cache:
     <<: *global_cache
     key: "$CI_JOB_NAME-$CI_COMMIT_REF_SLUG"
@@ -63,9 +63,9 @@ static-test:
   parallel:
     matrix:
       - PYTHON_VERSION:
-        - '3.12'
         - '3.13'
         - '3.14'
+        - '3.15'
   cache:
     <<: *global_cache
     key: "$CI_JOB_NAME-$CI_COMMIT_REF_SLUG"
@@ -82,10 +82,10 @@ static-test:
     - panda
 
 build:
-  image: docker:29.9.0
+  image: docker:29.9.1
   when: manual
   services:
-    - docker:29.9.0-dind
+    - docker:29.9.1-dind
   before_script:
     - docker info
   stage: build

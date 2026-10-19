@@ -837,24 +837,41 @@ class OnDemandWorkerTests(TestCase):
         self.assertEqual(claimed4.status, TaskQueue.Status.COMPLETED)
 
     def test_thread_exists_integration(self):
-        from core.base.utilities import thread_exists
+        import threading
+        from core.base.utilities import thread_exists, thread_exists_in_db
 
-        # Initially empty
-        self.assertFalse(thread_exists("fileinfo_worker"))
-        self.assertFalse(thread_exists("recalc_all_file_info"))
-        self.assertFalse(thread_exists("folder_crawler"))
+        # Initially empty in DB
+        self.assertFalse(thread_exists_in_db("fileinfo_worker"))
+        self.assertFalse(thread_exists_in_db("recalc_all_file_info"))
+        self.assertFalse(thread_exists_in_db("folder_crawler"))
 
         # When a fileinfo task is pending
         t1 = client.enqueue(task_type="fileinfo_worker", args=[])
-        self.assertTrue(thread_exists("fileinfo_worker"))
-        self.assertTrue(thread_exists("recalc_all_file_info"))
-        self.assertFalse(thread_exists("folder_crawler"))
+        self.assertTrue(thread_exists_in_db("fileinfo_worker"))
+        self.assertTrue(thread_exists_in_db("recalc_all_file_info"))
+        self.assertFalse(thread_exists_in_db("folder_crawler"))
 
-        # When completed, thread_exists returns False
+        # Local thread check does not see DB task
+        self.assertFalse(thread_exists("fileinfo_worker"))
+
+        # When completed, thread_exists_in_db returns False
         t1.status = TaskQueue.Status.COMPLETED
         t1.save()
-        self.assertFalse(thread_exists("fileinfo_worker"))
-        self.assertFalse(thread_exists("recalc_all_file_info"))
+        self.assertFalse(thread_exists_in_db("fileinfo_worker"))
+        self.assertFalse(thread_exists_in_db("recalc_all_file_info"))
+
+        # Local thread check detects actual running thread
+        stop_event = threading.Event()
+        dummy_thread = threading.Thread(name="test_local_thread_check", target=stop_event.wait, args=(5.0,))
+        dummy_thread.daemon = True
+        self.assertFalse(thread_exists("test_local_thread_check"))
+        dummy_thread.start()
+        try:
+            self.assertTrue(thread_exists("test_local_thread_check"))
+        finally:
+            stop_event.set()
+            dummy_thread.join(timeout=2.0)
+        self.assertFalse(thread_exists("test_local_thread_check"))
 
     def test_worker_context_attributes(self):
         from core.workers.archive_work import ArchiveWorker

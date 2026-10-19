@@ -10,7 +10,7 @@ from django.shortcuts import render
 from django.conf import settings
 
 from core.base.setup import Settings
-from core.base.utilities import thread_exists, clamp
+from core.base.utilities import thread_exists_in_db, clamp
 from viewer.forms import GallerySearchForm, ArchiveSearchForm, WantedGallerySearchForm, GallerySearchFields
 from viewer.models import (
     Archive,
@@ -358,27 +358,26 @@ def archives_not_present_in_filesystem(request: HttpRequest) -> HttpResponse:
                 # Force replace_metadata when queueing from this list, since it's mostly used to download non-used.
                 current_settings = Settings(load_from_config=crawler_settings.config)
 
-                if current_settings.workers.web_queue:
+                current_settings.replace_metadata = True
+                current_settings.retry_failed = True
+                current_settings.redownload = True
 
-                    current_settings.replace_metadata = True
-                    current_settings.retry_failed = True
-                    current_settings.redownload = True
+                if archive.reason:
+                    current_settings.archive_reason = archive.reason
 
-                    if archive.reason:
-                        current_settings.archive_reason = archive.reason
+                reason = archive.reason
 
-                    reason = archive.reason
+                current_settings.archive_user = request.user
+                current_settings.event_action = "DOWNLOAD"
 
-                    current_settings.archive_user = request.user
-                    current_settings.event_action = "DOWNLOAD"
-
-                    current_settings.workers.web_queue.enqueue_args_list(
-                        (archive.gallery.get_link(),),
-                        override_options=current_settings,
-                        user=request.user,
-                        reason=reason,
-                        event_action="DOWNLOAD",
-                    )
+                client.enqueue(
+                    args=[archive.gallery.get_link()],
+                    task_type="web_crawler",
+                    override_options=current_settings,
+                    user=request.user,
+                    reason=reason,
+                    event_action="DOWNLOAD",
+                )
         if "delete_archives" in p:
             pks = []
             for k, v in p.items():
@@ -509,7 +508,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                 archive.delete_files_but_archive()
                 archive.delete()
         elif "create_possible_matches" in p:
-            if thread_exists("web_match_worker"):
+            if thread_exists_in_db("web_match_worker"):
                 return render_error(request, "Web match worker is already running.")
 
             matcher_filter = p["create_possible_matches"]
@@ -536,7 +535,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
             )
             messages.success(request, "Starting web match worker.")
         elif "create_possible_matches_internal" in p:
-            if thread_exists("match_unmatched_worker"):
+            if thread_exists_in_db("match_unmatched_worker"):
                 return render_error(request, "Local matching worker is already running.")
             provider = p["create_possible_matches_internal"]
             try:
@@ -689,7 +688,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
                 logger.info(message)
                 messages.success(request, message)
         elif "search_provider_galleries" in p:
-            if thread_exists("web_search_worker"):
+            if thread_exists_in_db("web_search_worker"):
                 messages.error(request, "Web search worker is already running.", extra_tags="danger")
                 return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
             pks = []
@@ -726,7 +725,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
                 user=request.user,
             )
         elif "search_provider_galleries_internal" in p:
-            if thread_exists("wanted_local_search_worker"):
+            if thread_exists_in_db("wanted_local_search_worker"):
                 messages.error(request, "Wanted local matching worker is already running.", extra_tags="danger")
                 return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
             pks = []

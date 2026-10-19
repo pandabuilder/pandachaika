@@ -18,7 +18,7 @@ from django.urls import reverse
 from django.utils.crypto import get_random_string
 
 from core.base.setup import Settings
-from core.base.utilities import thread_exists, clamp, get_schedulers_status
+from core.base.utilities import thread_exists_in_db, clamp, get_schedulers_status
 from viewer.management.commands import update_provider_wanted
 from viewer.utils.functions import (
     archive_manage_results_to_json,
@@ -226,33 +226,32 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
                     # Force replace_metadata when queueing from this list, since it's mostly used to download non used.
                     current_settings = Settings(load_from_config=crawler_settings.config)
 
-                    if current_settings.workers.web_queue:
-
-                        current_settings.replace_metadata = True
-                        current_settings.retry_failed = True
-                        if request.user.is_authenticated:
-                            current_settings.archive_user = request.user
-                        current_settings.archive_origin = Archive.ORIGIN_ACCEPT_SUBMITTED
-
-                        if "reason" in p and p["reason"] != "":
-                            reason = p["reason"]
-                            # Force limit string length (reason field max_length)
-                            current_settings.archive_reason = reason[:200]
-                            current_settings.archive_details = gallery.reason or ""
-                            current_settings.gallery_reason = reason[:200]
-                        elif gallery.reason:
-                            current_settings.archive_reason = gallery.reason
-
+                    current_settings.replace_metadata = True
+                    current_settings.retry_failed = True
+                    if request.user.is_authenticated:
                         current_settings.archive_user = request.user
-                        current_settings.event_action = "ADD"
+                    current_settings.archive_origin = Archive.ORIGIN_ACCEPT_SUBMITTED
 
-                        current_settings.workers.web_queue.enqueue_args_list(
-                            (gallery.get_link(),),
-                            override_options=current_settings,
-                            user=request.user,
-                            reason=user_reason,
-                            event_action="ADD",
-                        )
+                    if "reason" in p and p["reason"] != "":
+                        reason = p["reason"]
+                        # Force limit string length (reason field max_length)
+                        current_settings.archive_reason = reason[:200]
+                        current_settings.archive_details = gallery.reason or ""
+                        current_settings.gallery_reason = reason[:200]
+                    elif gallery.reason:
+                        current_settings.archive_reason = gallery.reason
+
+                    current_settings.archive_user = request.user
+                    current_settings.event_action = "ADD"
+
+                    client.enqueue(
+                        args=[gallery.get_link()],
+                        task_type="web_crawler",
+                        override_options=current_settings,
+                        user=request.user,
+                        reason=user_reason,
+                        event_action="ADD",
+                    )
 
                     event_log(
                         request.user, "ACCEPT_GALLERY", reason=entry_reason, content_object=gallery, result="accepted"
@@ -269,35 +268,34 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
 
                     current_settings = Settings(load_from_config=crawler_settings.config)
 
-                    if current_settings.workers.web_queue:
+                    current_settings.replace_metadata = True
+                    current_settings.retry_failed = True
 
-                        current_settings.replace_metadata = True
-                        current_settings.retry_failed = True
+                    if "reason" in p and p["reason"] != "":
+                        reason = p["reason"]
+                        # Force limit string length (reason field max_length)
+                        current_settings.archive_reason = reason[:200]
+                        current_settings.gallery_reason = reason[:200]
 
-                        if "reason" in p and p["reason"] != "":
-                            reason = p["reason"]
-                            # Force limit string length (reason field max_length)
-                            current_settings.archive_reason = reason[:200]
-                            current_settings.gallery_reason = reason[:200]
+                    current_settings.archive_user = request.user
+                    current_settings.event_action = "ADD"
 
-                        current_settings.archive_user = request.user
-                        current_settings.event_action = "ADD"
+                    client.enqueue(
+                        args=[gallery_entry.submit_url],
+                        task_type="web_crawler",
+                        override_options=current_settings,
+                        user=request.user,
+                        reason=user_reason,
+                        event_action="ADD",
+                    )
 
-                        current_settings.workers.web_queue.enqueue_args_list(
-                            (gallery_entry.submit_url,),
-                            override_options=current_settings,
-                            user=request.user,
-                            reason=user_reason,
-                            event_action="ADD",
-                        )
-
-                        event_log(
-                            request.user,
-                            "ACCEPT_URL",
-                            reason=entry_reason,
-                            content_object=gallery_entry,
-                            result="accepted",
-                        )
+                    event_log(
+                        request.user,
+                        "ACCEPT_URL",
+                        reason=entry_reason,
+                        content_object=gallery_entry,
+                        result="accepted",
+                    )
 
     providers = Gallery.objects.all().values_list("provider", flat=True).distinct()
 
@@ -711,20 +709,20 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
 
             current_settings = Settings(load_from_config=crawler_settings.config)
 
-            if current_settings.workers.web_queue:
-                current_settings.set_update_metadata_options(providers=providers_filtered)
-                current_settings.archive_user = actual_user
-                current_settings.event_action = "UPDATE_METADATA"
+            current_settings.set_update_metadata_options(providers=providers_filtered)
+            current_settings.archive_user = actual_user
+            current_settings.event_action = "UPDATE_METADATA"
 
-                gallery_links = [x.get_link() for x in galleries_from_archives]
+            gallery_links = [x.get_link() for x in galleries_from_archives]
 
-                current_settings.workers.web_queue.enqueue_args_list(
-                    gallery_links,
-                    override_options=current_settings,
-                    user=actual_user,
-                    reason=user_reason,
-                    event_action="UPDATE_METADATA",
-                )
+            client.enqueue(
+                args=gallery_links,
+                task_type="web_crawler",
+                override_options=current_settings,
+                user=actual_user,
+                reason=user_reason,
+                event_action="UPDATE_METADATA",
+            )
 
         elif "recalc_fileinfo" in p and actual_user.has_perm("viewer.recalc_fileinfo"):
             for archive in archives:
@@ -1140,29 +1138,28 @@ def manage_galleries(request: HttpRequest) -> HttpResponse:
                 # Force replace_metadata when queueing from this list, since it's mostly used to download non used.
                 current_settings = Settings(load_from_config=crawler_settings.config)
 
-                if current_settings.workers.web_queue:
+                current_settings.replace_metadata = True
+                current_settings.retry_failed = True
 
-                    current_settings.replace_metadata = True
-                    current_settings.retry_failed = True
+                if reason:
+                    # Force limit string length (reason field max_length)
+                    current_settings.archive_reason = reason[:200]
+                    current_settings.archive_details = gallery.reason or ""
+                    current_settings.gallery_reason = reason[:200]
+                elif gallery.reason:
+                    current_settings.archive_reason = gallery.reason
 
-                    if reason:
-                        # Force limit string length (reason field max_length)
-                        current_settings.archive_reason = reason[:200]
-                        current_settings.archive_details = gallery.reason or ""
-                        current_settings.gallery_reason = reason[:200]
-                    elif gallery.reason:
-                        current_settings.archive_reason = gallery.reason
+                current_settings.archive_user = request.user
+                current_settings.event_action = "DOWNLOAD"
 
-                    current_settings.archive_user = request.user
-                    current_settings.event_action = "DOWNLOAD"
-
-                    current_settings.workers.web_queue.enqueue_args_list(
-                        (gallery.get_link(),),
-                        override_options=current_settings,
-                        user=request.user,
-                        reason=reason,
-                        event_action="DOWNLOAD",
-                    )
+                client.enqueue(
+                    args=[gallery.get_link()],
+                    task_type="web_crawler",
+                    override_options=current_settings,
+                    user=request.user,
+                    reason=reason,
+                    event_action="DOWNLOAD",
+                )
         elif "recall_api" in p and request.user.has_perm("viewer.update_metadata"):
             message = "Recalling API for {} galleries".format(results_gallery.count())
             logger.info(message)
@@ -1190,7 +1187,7 @@ def manage_galleries(request: HttpRequest) -> HttpResponse:
 
             gallery_match_groups = GalleryMatchGroup.objects.filter(pk__in=gallery_match_group_pks)
 
-            if thread_exists("match_unmatched_gallery_groups_worker"):
+            if thread_exists_in_db("match_unmatched_gallery_groups_worker"):
                 return render_error(request, "Gallery Groups matching worker is already running.")
             provider = p["create_gallery_match_groups"]
             methods = p.getlist("matcher_type", ["title", "comment"])
@@ -1389,7 +1386,7 @@ def gallery_match_groups_possibles(request: HttpRequest) -> HttpResponse:
 
             gallery_match_groups = GalleryMatchGroup.objects.filter(pk__in=gallery_match_group_pks)
 
-            if thread_exists("match_unmatched_gallery_groups_worker"):
+            if thread_exists_in_db("match_unmatched_gallery_groups_worker"):
                 return render_error(request, "Gallery Groups matching worker is already running.")
             provider = p["create_gallery_match_groups"]
             methods = p.getlist("matcher_type", ["title", "comment"])
@@ -1759,9 +1756,6 @@ def user_crawler(request: AuthenticatedHttpRequest) -> HttpResponse:
 
     if p:
         current_settings = Settings(load_from_config=crawler_settings.config)
-        if not current_settings.workers.web_queue:
-            messages.error(request, "Cannot submit links currently. Please contact an admin.")
-            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
         url_set = set()
         # create a dictionary of properties for each archive
         current_settings.replace_metadata = False
@@ -1825,13 +1819,13 @@ def user_crawler(request: AuthenticatedHttpRequest) -> HttpResponse:
         current_settings.archive_user = request.user
         current_settings.event_action = "ADD"
 
-        current_settings.workers.web_queue.enqueue_args_list(
-            urls,
+        client.enqueue(
+            args=urls,
+            task_type="web_crawler",
             override_options=current_settings,
             user=request.user,
             reason=user_reason,
             event_action="ADD",
-            use_argparser=False,
         )
 
         messages.success(
@@ -1965,7 +1959,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
 
         archives = Archive.objects.filter(id__in=pks).order_by(preserved)
         if "create_possible_matches" in p:
-            if thread_exists("match_unmatched_worker"):
+            if thread_exists_in_db("match_unmatched_worker"):
                 return render_error(request, "Local matching worker is already running.")
             provider = p["create_possible_matches"]
             method = p.get("matcher_type", "title")
@@ -2635,29 +2629,28 @@ def missing_archives_for_galleries(request: HttpRequest) -> HttpResponse:
                 # Force replace_metadata when queueing from this list, since it's mostly used to download non used.
                 current_settings = Settings(load_from_config=crawler_settings.config)
 
-                if current_settings.workers.web_queue:
+                current_settings.replace_metadata = True
+                current_settings.retry_failed = True
 
-                    current_settings.replace_metadata = True
-                    current_settings.retry_failed = True
+                if reason:
+                    # Force limit string length (reason field max_length)
+                    current_settings.archive_reason = reason[:200]
+                    current_settings.archive_details = gallery.reason or ""
+                    current_settings.gallery_reason = reason[:200]
+                elif gallery.reason:
+                    current_settings.archive_reason = gallery.reason
 
-                    if reason:
-                        # Force limit string length (reason field max_length)
-                        current_settings.archive_reason = reason[:200]
-                        current_settings.archive_details = gallery.reason or ""
-                        current_settings.gallery_reason = reason[:200]
-                    elif gallery.reason:
-                        current_settings.archive_reason = gallery.reason
+                current_settings.archive_user = request.user
+                current_settings.event_action = "DOWNLOAD"
 
-                    current_settings.archive_user = request.user
-                    current_settings.event_action = "DOWNLOAD"
-
-                    current_settings.workers.web_queue.enqueue_args_list(
-                        (gallery.get_link(),),
-                        override_options=current_settings,
-                        user=request.user,
-                        reason=reason,
-                        event_action="DOWNLOAD",
-                    )
+                client.enqueue(
+                    args=[gallery.get_link()],
+                    task_type="web_crawler",
+                    override_options=current_settings,
+                    user=request.user,
+                    reason=reason,
+                    event_action="DOWNLOAD",
+                )
         elif "recall_api" in p and request.user.has_perm("viewer.update_metadata"):
             message = "Recalling API for {} galleries".format(results_gallery.count())
             logger.info(message)

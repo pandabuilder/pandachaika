@@ -188,7 +188,11 @@ class GenericArchiveDownloader(BaseDownloader):
                     self.return_code = 1
                     break
 
-            except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout) as e:
+            except (
+                requests.exceptions.ConnectionError,
+                requests.exceptions.ReadTimeout,
+                requests.exceptions.ChunkedEncodingError
+            ) as e:
                 logger.warning("Download failed on attempt {}/3 with error: {}".format(attempt + 1, str(e)))
                 if hasattr(self.gallery, 'filename') and self.gallery.filename:
                     filepath = os.path.join(self.settings.MEDIA_ROOT, self.gallery.filename)

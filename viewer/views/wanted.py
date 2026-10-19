@@ -14,6 +14,7 @@ from viewer.models import Gallery, WantedGallery, FoundGallery, GalleryMatch, Ar
 from viewer.utils.general import clean_up_referer
 from viewer.utils.tags import sort_tags
 from viewer.utils.actions import event_log
+from workers import client
 
 
 crawler_settings = settings.CRAWLER_SETTINGS
@@ -134,8 +135,8 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
 
             current_settings = Settings(load_from_config=crawler_settings.config)
 
-            if urls_to_match and url_query and current_settings.workers.web_queue:
-                
+            if urls_to_match and url_query:
+
                 current_settings.silent_processing = True
                 current_settings.replace_metadata = True
                 current_settings.archive_origin = Archive.ORIGIN_WANTED_GALLERY
@@ -146,8 +147,9 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
                 current_settings.archive_user = request.user
                 current_settings.event_action = "WANTED_GALLERY_MATCH"
 
-                current_settings.workers.web_queue.enqueue_args_list(
-                    arguments_to_crawler,
+                client.enqueue(
+                    args=arguments_to_crawler,
+                    task_type="web_crawler",
                     override_options=current_settings,
                     user=request.user,
                     event_action="WANTED_GALLERY_MATCH",

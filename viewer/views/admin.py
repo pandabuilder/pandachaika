@@ -20,7 +20,7 @@ from viewer.utils.actions import event_log
 
 from core.base.setup import Settings
 from core.base.setup_utilities import get_thread_status, get_thread_status_bool
-from core.base.utilities import thread_exists, get_schedulers_status, \
+from core.base.utilities import thread_exists_in_db, get_schedulers_status, \
     timestamp_or_zero
 from core.workers.archive_work import ArchiveWorker
 
@@ -204,8 +204,11 @@ def queue_operations(request: HttpRequest, operation: str, arguments: str = "") 
     if not request.user.is_staff:
         return render_error(request, "You need to be an admin to operate the queue.")
     if operation == "remove_by_index":
-        if arguments and crawler_settings.workers.web_queue:
-            crawler_settings.workers.web_queue.remove_by_index(int(arguments))
+        if arguments:
+            try:
+                client.remove_by_index(int(arguments))
+            except ValueError:
+                return render_error(request, "Invalid index.")
         else:
             return render_error(request, "Unknown argument.")
     else:
@@ -221,24 +224,18 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
     if not request.user.is_staff:
         return render_error(request, "You need to be an admin to use the tools.")
     if tool == "transfer_missing_downloads":
-        if crawler_settings.workers.web_queue:
-            crawler_settings.workers.web_queue.enqueue_args_list(("-tmd",), override_options=crawler_settings, user=request.user)
-        else:
-            client.enqueue(args=["-tmd"], task_type="web_crawler", override_options=crawler_settings, user=request.user)
+        client.enqueue(args=["-tmd"], task_type="web_crawler", override_options=crawler_settings, user=request.user)
         return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "retry_failed":
-        if crawler_settings.workers.web_queue:
-            crawler_settings.workers.web_queue.enqueue_args_list(("--retry-failed",), override_options=crawler_settings, user=request.user)
-        else:
-            client.enqueue(args=["--retry-failed"], task_type="web_crawler", override_options=crawler_settings, user=request.user)
+        client.enqueue(args=["--retry-failed"], task_type="web_crawler", override_options=crawler_settings, user=request.user)
         return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "update_newer_than":
         p = request.GET
         if p and "newer_than" in p:
             newer_than_date = p["newer_than"]
             try:
-                if parse_date(newer_than_date) is not None and crawler_settings.workers.web_queue:
-                    crawler_settings.workers.web_queue.enqueue_args_list(("-unt", newer_than_date))
+                if parse_date(newer_than_date) is not None:
+                    client.enqueue(args=["-unt", newer_than_date], task_type="web_crawler", override_options=crawler_settings, user=request.user)
                     messages.success(request, "Updating galleries posted after " + newer_than_date)
                 else:
                     messages.error(request, "Invalid date format.", extra_tags="danger")
@@ -247,16 +244,16 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
             return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "update_missing_thumbnails":
         p = request.GET
-        if p and "limit_number" in p and crawler_settings.workers.web_queue:
+        if p and "limit_number" in p:
 
             try:
                 limit_number = int(p["limit_number"])
 
                 provider = request.GET.get("provider", "")
                 if provider:
-                    crawler_settings.workers.web_queue.enqueue_args_list(("-umt", str(limit_number), "-ip", provider))
+                    client.enqueue(args=["-umt", str(limit_number), "-ip", provider], task_type="web_crawler", override_options=crawler_settings, user=request.user)
                 else:
-                    crawler_settings.workers.web_queue.enqueue_args_list(("-umt", str(limit_number)))
+                    client.enqueue(args=["-umt", str(limit_number)], task_type="web_crawler", override_options=crawler_settings, user=request.user)
                 messages.success(
                     request, "Updating galleries missing thumbnails, limiting to older {}".format(limit_number)
                 )
@@ -277,7 +274,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
             archive.recalc_fileinfo()
         return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "recalc_all_file_info":
-        if thread_exists("fileinfo_worker"):
+        if thread_exists_in_db("fileinfo_worker"):
             return render_error(request, "File info worker is already running.")
 
         logger.info("Recalculating file info for all archives")
@@ -302,7 +299,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
 
         return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "regenerate_all_thumbs":
-        if thread_exists("thumbnails_worker"):
+        if thread_exists_in_db("thumbnails_worker"):
             return render_error(request, "Thumbnails worker is already running.")
 
         logger.info("Generating thumbs for all archives")
@@ -314,7 +311,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         messages.success(request, "Thumbnails worker started in background.")
         return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "generate_possible_matches_internally":
-        if thread_exists("match_unmatched_worker"):
+        if thread_exists_in_db("match_unmatched_worker"):
             return render_error(request, "Matching worker is already running.")
         provider = request.GET.get("provider", "")
         try:
@@ -352,7 +349,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         messages.success(request, "Clearing all possible matches for archives.")
         return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "search_wanted_galleries_provider_titles":
-        if thread_exists("web_search_worker"):
+        if thread_exists_in_db("web_search_worker"):
             messages.error(request, "Web search worker is already running.", extra_tags="danger")
             return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
         results = WantedGallery.objects.eligible_to_search()
@@ -375,7 +372,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         )
         return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "wanted_galleries_possible_matches":
-        if thread_exists("wanted_local_search_worker"):
+        if thread_exists_in_db("wanted_local_search_worker"):
             return render_error(request, "Wanted local matching worker is already running.")
 
         non_match_wanted = WantedGallery.objects.eligible_to_search()
@@ -729,18 +726,13 @@ def crawler(request: HttpRequest) -> HttpResponse:
             current_settings.non_current_links_as_deleted = True
 
         priority = 5 if "run_separate" in p else 10
-        if current_settings.workers.web_queue:
-            current_settings.workers.web_queue.enqueue_args_list(
-                urls, override_options=current_settings, user=request.user, priority=priority
-            )
-        else:
-            client.enqueue(
-                args=urls,
-                task_type="web_crawler",
-                override_options=current_settings,
-                user=request.user,
-                priority=priority,
-            )
+        client.enqueue(
+            args=urls,
+            task_type="web_crawler",
+            override_options=current_settings,
+            user=request.user,
+            priority=priority,
+        )
         messages.success(request, "Starting Crawler, check the logs for a report.")
         # Not really optimal when there's many commands being queued
         # for command in url_list:

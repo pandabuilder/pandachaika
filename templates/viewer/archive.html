@@ -541,15 +541,36 @@
     <div class="mt-4">The file is still being downloaded, cannot operate it unless it finishes</div>
   </li>
   {% endif %}
-  {% if images %}
+  {% if images and images.paginator.num_pages > 1 %}
   <!-- Next/Prev page links  -->
   <li class="text-center mt-4">
-    <span class="step-links">
-      {% if images.has_previous %}
-      <a id="prev-page" href="?page={{ images.previous_page_number }}">previous &lt;&lt; </a> {% endif %}
-      <span class="current">&nbsp;Page {{ images.number }} of {{ images.paginator.num_pages }} </span>
-      {% if images.has_next %} <a id="next-page" href="?page={{ images.next_page_number }}">&gt;&gt; next</a> {% endif %}
-    </span>
+    <nav aria-label="Middle navigation">
+      <ul class="pagination justify-content-center my-0">
+        <li class="page-item{% if images.number == 1 %} disabled{% endif %}">
+          <a class="page-link" href="?{% url_replace 'page' '1' %}" aria-label="First">
+            <span aria-hidden="true">&laquo;</span>
+          </a>
+        </li>
+        {% if images.has_previous %}
+          <li class="page-item"><a id="prev-page" class="page-link" href="?{% url_replace 'page' images.previous_page_number %}">Previous</a></li>
+        {% else %}
+          <li class="page-item disabled"><a class="page-link" href="#">Previous</a></li>
+        {% endif %}
+        <li class="page-item">
+          <div class="mid-item">Page {{ images.number }} of {{ images.paginator.num_pages }}</div>
+        </li>
+        {% if images.has_next %}
+          <li class="page-item"><a id="next-page" class="page-link" href="?{% url_replace 'page' images.next_page_number %}">Next</a></li>
+        {% else %}
+          <li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
+        {% endif %}
+        <li class="page-item{% if images.number == images.paginator.num_pages %} disabled{% endif %}">
+          <a class="page-link" href="?{% url_replace 'page' images.paginator.num_pages %}" aria-label="Last">
+            <span aria-hidden="true">&raquo;</span>
+          </a>
+        </li>
+      </ul>
+    </nav>
   </li>
   {% endif %}
   {% endif %}
@@ -606,25 +627,37 @@
       {% endif %}
     </form>
     <!-- Next/Prev page links  -->
+    {% if image_queryset and image_queryset.paginator.num_pages > 1 %}
     <div>
-      <span class="step-links">
-        <a href="?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
-        {% if image_queryset.has_previous %}
-        <a href="?{% url_replace 'page' image_queryset.previous_page_number %}"> previous &lt;&lt; </a>
-        {% else %}
-        <span> previous &lt;&lt; </span>
-        {% endif %}
-        <span class="current">
-          &nbsp;Page {{ image_queryset.number }} of {{ image_queryset.paginator.num_pages }}
-        </span>
-        {% if image_queryset.has_next %}
-        <a href="?{% url_replace 'page' image_queryset.next_page_number %}"> &gt;&gt; next</a>
-        {% else %}
-        <span> &gt;&gt; next</span>
-        {% endif %}
-        <a href="?{% url_replace 'page' image_queryset.paginator.num_pages %}"> &gt;&gt; last</a>
-      </span>
+      <nav aria-label="Middle navigation">
+        <ul class="pagination justify-content-center my-0">
+          <li class="page-item{% if image_queryset.number == 1 %} disabled{% endif %}">
+            <a class="page-link" href="?{% url_replace 'page' '1' %}" aria-label="First">
+              <span aria-hidden="true">&laquo;</span>
+            </a>
+          </li>
+          {% if image_queryset.has_previous %}
+            <li class="page-item"><a class="page-link" href="?{% url_replace 'page' image_queryset.previous_page_number %}">Previous</a></li>
+          {% else %}
+            <li class="page-item disabled"><a class="page-link" href="#">Previous</a></li>
+          {% endif %}
+          <li class="page-item">
+            <div class="mid-item">Page {{ image_queryset.number }} of {{ image_queryset.paginator.num_pages }}</div>
+          </li>
+          {% if image_queryset.has_next %}
+            <li class="page-item"><a class="page-link" href="?{% url_replace 'page' image_queryset.next_page_number %}">Next</a></li>
+          {% else %}
+            <li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
+          {% endif %}
+          <li class="page-item{% if image_queryset.number == image_queryset.paginator.num_pages %} disabled{% endif %}">
+            <a class="page-link" href="?{% url_replace 'page' image_queryset.paginator.num_pages %}" aria-label="Last">
+              <span aria-hidden="true">&raquo;</span>
+            </a>
+          </li>
+        </ul>
+      </nav>
     </div>
+    {% endif %}
   </li>
   {% else %}
   <!-- COVER VIEW  -->
@@ -655,15 +688,37 @@
   </li>
   {% endif %}
   <!-- Next/Prev page links  -->
-  {% if images %}
+  {% if images and images.paginator.num_pages > 1 %}
   <li class="text-center">
-    <span class="step-links">
-      {% if images.has_previous %}
-      <a href="?page={{ images.previous_page_number }}">previous &lt;&lt; </a> {% endif %}
-      <span class="current">&nbsp;Page {{ images.number }} of {{ images.paginator.num_pages }} </span>
-      {% if images.has_next %}<a href="?page={{ images.next_page_number }}">&gt;&gt; next</a> {% endif %}
-    </span>
-  </li> {% endif %}
+    <nav aria-label="Middle navigation">
+      <ul class="pagination justify-content-center">
+        <li class="page-item{% if images.number == 1 %} disabled{% endif %}">
+          <a class="page-link" href="?{% url_replace 'page' '1' %}" aria-label="First">
+            <span aria-hidden="true">&laquo;</span>
+          </a>
+        </li>
+        {% if images.has_previous %}
+          <li class="page-item"><a class="page-link" href="?{% url_replace 'page' images.previous_page_number %}">Previous</a></li>
+        {% else %}
+          <li class="page-item disabled"><a class="page-link" href="#">Previous</a></li>
+        {% endif %}
+        <li class="page-item">
+          <div class="mid-item">Page {{ images.number }} of {{ images.paginator.num_pages }}</div>
+        </li>
+        {% if images.has_next %}
+          <li class="page-item"><a class="page-link" href="?{% url_replace 'page' images.next_page_number %}">Next</a></li>
+        {% else %}
+          <li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
+        {% endif %}
+        <li class="page-item{% if images.number == images.paginator.num_pages %} disabled{% endif %}">
+          <a class="page-link" href="?{% url_replace 'page' images.paginator.num_pages %}" aria-label="Last">
+            <span aria-hidden="true">&raquo;</span>
+          </a>
+        </li>
+      </ul>
+    </nav>
+  </li>
+  {% endif %}
   {% endif %}
 </ul>
 {% endblock %}

@@ -689,9 +689,6 @@ def get_schedulers_status(
                         is_running = bool(is_running and scheduler.last_heartbeat >= cutoff)
                     except Exception:
                         pass
-            if not is_running and thread_exists(name):
-                is_running = True
-
             last_run = getattr(scheduler, "current_last_run", getattr(scheduler, "last_run", None))
 
             if hasattr(scheduler, "cycle_timer"):
@@ -744,6 +741,10 @@ def thread_exists(thread_name: str) -> bool:
         if thread_name == thread.name:
             return True
 
+    return False
+
+
+def thread_exists_in_db(thread_name: str) -> bool:
     try:
         from workers.models import TaskQueue
         alias_groups = [
@@ -772,6 +773,9 @@ def thread_exists(thread_name: str) -> bool:
         pass
 
     return False
+
+
+task_exists = thread_exists_in_db
 
 
 def module_exists(module_name: str) -> bool:
@@ -829,7 +833,11 @@ def request_with_retries(
                 r = requests.get(url, **request_dict)
             return r
 
-        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+        except (
+            requests.exceptions.Timeout,
+            requests.exceptions.ConnectionError,
+            requests.exceptions.ChunkedEncodingError
+        ) as e:
             if retry_count < retries - 1:
                 logger.warning("Request failed, attempt: {} of {}: {}".format(retry_count + 1, retries, str(e)))
                 continue

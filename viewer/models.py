@@ -4931,23 +4931,6 @@ class TweetPost(models.Model):
     media_url = models.CharField(max_length=200, blank=True, null=True, default="")
 
 
-class Scheduler(models.Model):
-    name = models.CharField(max_length=50)
-    description = models.CharField(max_length=200, default="", blank=True)
-    # module_location = models.CharField(max_length=500, default='')
-    # class_name = models.CharField(max_length=50, default='')
-    # enabled = models.BooleanField(default=False)
-    # auto_start = models.BooleanField(default=False)
-    # uses_web_queue = models.BooleanField(default=False)
-    last_run = models.DateTimeField("last run", blank=True, null=True, default=django_tz.now)
-    # timer = models.FloatField('Timer')
-    # create_date = models.DateTimeField(auto_now_add=True)
-    # last_modified = models.DateTimeField(auto_now=True, blank=True, null=True)
-
-    def __str__(self) -> str:
-        return self.name
-
-
 class Provider(models.Model):
     name = models.CharField(max_length=100, help_text=_("User friendly name"))
     slug = models.SlugField(unique=True)

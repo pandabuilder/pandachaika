@@ -8,8 +8,6 @@ from typing import Optional
 import django.utils.timezone as django_tz
 
 from core.base.setup import Settings
-from viewer.models import Scheduler
-
 logger = logging.getLogger(__name__)
 
 
@@ -47,13 +45,6 @@ class BaseScheduler(object):
         return seconds_until
 
     def update_last_run(self, last_run: datetime.datetime) -> None:
-        try:
-            schedule = Scheduler.objects.get(pk=self.pk)
-            if schedule:
-                schedule.last_run = last_run
-                schedule.save(update_fields=["last_run"])
-        except Exception:
-            pass
         self.last_run = last_run
         try:
             from workers.models import SchedulerState
@@ -97,9 +88,10 @@ class BaseScheduler(object):
                 return
 
             try:
-                schedule = Scheduler.objects.get(pk=self.pk)
-                if schedule:
-                    self.last_run = schedule.last_run
+                from workers.models import SchedulerState
+                state = SchedulerState.objects.filter(name=self.thread_name).first()
+                if state and state.last_run:
+                    self.last_run = state.last_run
             except Exception:
                 pass
 
@@ -174,13 +166,6 @@ class BaseScheduler(object):
             state = SchedulerState.objects.filter(name=self.thread_name).first()
             if state and state.last_run:
                 return state.last_run
-        except Exception:
-            pass
-        try:
-            if self.pk:
-                return Scheduler.objects.filter(pk=self.pk).values_list("last_run", flat=True).first()
-            elif self.thread_name:
-                return Scheduler.objects.filter(name=self.thread_name).values_list("last_run", flat=True).first()
         except Exception:
             pass
         return self.last_run

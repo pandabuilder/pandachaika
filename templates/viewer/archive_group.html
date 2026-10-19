@@ -32,19 +32,33 @@
   <!-- Next/Prev page links  -->
     {% if results.object_list and results.paginator.num_pages > 1 %}
       <div>
-          <span class="step-links">
-              <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
+        <nav aria-label="Middle navigation">
+          <ul class="pagination justify-content-center my-0">
+            <li class="page-item{% if results.number == 1 %} disabled{% endif %}">
+              <a class="page-link" href="?{% url_replace 'page' '1' %}" aria-label="First">
+                <span aria-hidden="true">&laquo;</span>
+              </a>
+            </li>
             {% if results.has_previous %}
-              <a href= "?{% url_replace 'page' results.previous_page_number %}"> previous &lt;&lt; </a>
+              <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.previous_page_number %}">Previous</a></li>
+            {% else %}
+              <li class="page-item disabled"><a class="page-link" href="#">Previous</a></li>
             {% endif %}
-            <span class="current">
-                  &nbsp;Page {{ results.number }} of {{ results.paginator.num_pages }}, {{ results.paginator.count }} archives
-              </span>
+            <li class="page-item">
+              <div class="mid-item">Page {{ results.number }} of {{ results.paginator.num_pages }}, {{ results.paginator.count }} archives</div>
+            </li>
             {% if results.has_next %}
-              <a href="?{% url_replace 'page' results.next_page_number %}"> &gt;&gt; next</a>
+              <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.next_page_number %}">Next</a></li>
+            {% else %}
+              <li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
             {% endif %}
-            <a href="?{% url_replace 'page' results.paginator.num_pages %}"> &gt;&gt; last</a>
-          </span>
+            <li class="page-item{% if results.number == results.paginator.num_pages %} disabled{% endif %}">
+              <a class="page-link" href="?{% url_replace 'page' results.paginator.num_pages %}" aria-label="Last">
+                <span aria-hidden="true">&raquo;</span>
+              </a>
+            </li>
+          </ul>
+        </nav>
       </div>
     {% endif %}
   {% for archive_entry in results %}
@@ -53,19 +67,33 @@
   <!-- Next/Prev page links  -->
     {% if results.object_list and results.paginator.num_pages > 1 %}
       <div>
-          <span class="step-links">
-              <a href= "?{% url_replace 'page' '1' %}">first &lt;&lt;</a>
+        <nav aria-label="Middle navigation">
+          <ul class="pagination justify-content-center my-0">
+            <li class="page-item{% if results.number == 1 %} disabled{% endif %}">
+              <a class="page-link" href="?{% url_replace 'page' '1' %}" aria-label="First">
+                <span aria-hidden="true">&laquo;</span>
+              </a>
+            </li>
             {% if results.has_previous %}
-              <a href= "?{% url_replace 'page' results.previous_page_number %}"> previous &lt;&lt; </a>
+              <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.previous_page_number %}">Previous</a></li>
+            {% else %}
+              <li class="page-item disabled"><a class="page-link" href="#">Previous</a></li>
             {% endif %}
-            <span class="current">
-                  &nbsp;Page {{ results.number }} of {{ results.paginator.num_pages }}, {{ results.paginator.count }} archives
-              </span>
+            <li class="page-item">
+              <div class="mid-item">Page {{ results.number }} of {{ results.paginator.num_pages }}, {{ results.paginator.count }} archives</div>
+            </li>
             {% if results.has_next %}
-              <a href="?{% url_replace 'page' results.next_page_number %}"> &gt;&gt; next</a>
+              <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.next_page_number %}">Next</a></li>
+            {% else %}
+              <li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
             {% endif %}
-            <a href="?{% url_replace 'page' results.paginator.num_pages %}"> &gt;&gt; last</a>
-          </span>
+            <li class="page-item{% if results.number == results.paginator.num_pages %} disabled{% endif %}">
+              <a class="page-link" href="?{% url_replace 'page' results.paginator.num_pages %}" aria-label="Last">
+                <span aria-hidden="true">&raquo;</span>
+              </a>
+            </li>
+          </ul>
+        </nav>
       </div>
     {% endif %}
   </div>

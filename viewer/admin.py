@@ -25,7 +25,6 @@ from viewer.models import (
     GalleryMatch,
     TweetPost,
     FoundGallery,
-    Scheduler,
     ArchiveMatches,
     EventLog,
     Provider,
@@ -55,6 +54,7 @@ from django import forms
 
 from core.base.setup import Settings
 from viewer.utils.types import AuthenticatedHttpRequest
+from workers import client
 
 
 crawler_settings = settings.CRAWLER_SETTINGS
@@ -213,13 +213,14 @@ class TagAdmin(admin.ModelAdmin):
         for gallery in galleries:
             current_settings = Settings(load_from_config=crawler_settings.config)
 
-            if current_settings.workers.web_queue and gallery.provider:
+            if gallery.provider:
                 current_settings.set_update_metadata_options(providers=(gallery.provider,))
                 current_settings.archive_user = request.user
                 current_settings.event_action = "UPDATE_METADATA"
 
-                current_settings.workers.web_queue.enqueue_args_list(
-                    (gallery.get_link(),),
+                client.enqueue(
+                    args=[gallery.get_link()],
+                    task_type="web_crawler",
                     override_options=current_settings,
                     user=request.user,
                     event_action="UPDATE_METADATA",
@@ -784,11 +785,6 @@ class FoundGalleryAdmin(admin.ModelAdmin):
     # list_filter = ["source"]
 
 
-class SchedulerAdmin(admin.ModelAdmin):
-    search_fields = ["name", "description"]
-    list_display = ["id", "name", "description", "last_run"]
-
-
 class ArchiveMatchesAdmin(admin.ModelAdmin):
     search_fields = ["archive__title", "archive__title_jpn", "gallery__title", "gallery__title_jpn"]
     raw_id_fields = (
@@ -1067,7 +1063,6 @@ admin.site.register(WantedGallery, WantedGalleryAdmin)
 admin.site.register(GalleryMatch, GalleryMatchAdmin)
 admin.site.register(TweetPost, TweetPostAdmin)
 admin.site.register(FoundGallery, FoundGalleryAdmin)
-admin.site.register(Scheduler, SchedulerAdmin)
 admin.site.register(ArchiveMatches, ArchiveMatchesAdmin)
 admin.site.register(Provider, ProviderAdmin)
 admin.site.register(EventLog, EventLogAdmin)

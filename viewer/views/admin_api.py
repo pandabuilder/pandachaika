@@ -8,7 +8,7 @@ from django.conf import settings
 from django.utils.dateparse import parse_date
 
 from core.base.setup_utilities import get_thread_status_bool
-from core.base.utilities import thread_exists
+from core.base.utilities import thread_exists_in_db
 from core.workers.archive_work import ArchiveWorker
 
 from viewer.models import Archive, ArchiveMatches, WantedGallery
@@ -28,24 +28,18 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         response["error"] = "Not allowed"
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status_code=401)
     if tool == "transfer_missing_downloads":
-        if crawler_settings.workers.web_queue:
-            crawler_settings.workers.web_queue.enqueue_args_list(("-tmd",), override_options=crawler_settings, user=request.user)
-        else:
-            client.enqueue(args=["-tmd"], task_type="web_crawler", override_options=crawler_settings, user=request.user)
+        client.enqueue(args=["-tmd"], task_type="web_crawler", override_options=crawler_settings, user=request.user)
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
     elif tool == "retry_failed":
-        if crawler_settings.workers.web_queue:
-            crawler_settings.workers.web_queue.enqueue_args_list(("--retry-failed",), override_options=crawler_settings, user=request.user)
-        else:
-            client.enqueue(args=["--retry-failed"], task_type="web_crawler", override_options=crawler_settings, user=request.user)
+        client.enqueue(args=["--retry-failed"], task_type="web_crawler", override_options=crawler_settings, user=request.user)
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
     elif tool == "update_newer_than":
         p = request.GET
-        if p and "newer_than" in p and crawler_settings.workers.web_queue:
+        if p and "newer_than" in p:
             newer_than_date = p["newer_than"]
             try:
                 if parse_date(newer_than_date) is not None:
-                    crawler_settings.workers.web_queue.enqueue_args_list(("-unt", newer_than_date))
+                    client.enqueue(args=["-unt", newer_than_date], task_type="web_crawler", override_options=crawler_settings, user=request.user)
                     return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
                 else:
                     response["error"] = "Invalid date format."
@@ -54,16 +48,16 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
             return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status_code=401)
     elif tool == "update_missing_thumbnails":
         p = request.GET
-        if p and "limit_number" in p and crawler_settings.workers.web_queue:
+        if p and "limit_number" in p:
 
             try:
                 limit_number = int(p["limit_number"])
 
                 provider = request.GET.get("provider", "")
                 if provider:
-                    crawler_settings.workers.web_queue.enqueue_args_list(("-umt", str(limit_number), "-ip", provider))
+                    client.enqueue(args=["-umt", str(limit_number), "-ip", provider], task_type="web_crawler", override_options=crawler_settings, user=request.user)
                 else:
-                    crawler_settings.workers.web_queue.enqueue_args_list(("-umt", str(limit_number)))
+                    client.enqueue(args=["-umt", str(limit_number)], task_type="web_crawler", override_options=crawler_settings, user=request.user)
                 return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
 
             except ValueError:
@@ -82,7 +76,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
             archive.recalc_fileinfo()
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
     elif tool == "recalc_all_file_info":
-        if thread_exists("fileinfo_worker"):
+        if thread_exists_in_db("fileinfo_worker"):
             response["error"] = "File info worker is already running."
             return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status_code=401)
 
@@ -108,7 +102,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
 
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
     elif tool == "regenerate_all_thumbs":
-        if thread_exists("thumbnails_worker"):
+        if thread_exists_in_db("thumbnails_worker"):
             response["error"] = "Thumbnails worker is already running."
             return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
 
@@ -121,7 +115,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         response["message"] = "Thumbnails worker started in background."
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
     elif tool == "generate_possible_matches_internally":
-        if thread_exists("match_unmatched_worker"):
+        if thread_exists_in_db("match_unmatched_worker"):
             response["error"] = "Matching worker is already running."
             return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status_code=401)
         provider = request.GET.get("provider", "")
@@ -160,7 +154,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         response["message"] = "Clearing all possible matches for archives."
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
     elif tool == "search_wanted_galleries_provider_titles":
-        if thread_exists("web_search_worker"):
+        if thread_exists_in_db("web_search_worker"):
             response["error"] = "Web search worker is already running."
             return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status_code=401)
         results = WantedGallery.objects.eligible_to_search()
@@ -182,7 +176,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         )
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
     elif tool == "wanted_galleries_possible_matches":
-        if thread_exists("wanted_local_search_worker"):
+        if thread_exists_in_db("wanted_local_search_worker"):
             response["error"] = "Wanted local matching worker is already running."
             return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status_code=401)
 
