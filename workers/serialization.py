@@ -32,6 +32,7 @@ EXCLUDED_SETTINGS_ATTRIBUTES = {
     "cherrypy_auto_restart",
     "timed_downloader_startup",
     "download_progress_checker_startup",
+    "archive_download_queue_startup",
     "webserver",
     # Class attributes / internal contexts
     "provider_context",

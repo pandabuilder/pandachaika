@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from django.contrib import admin
-from workers.models import TaskQueue, WorkerProcess, SchedulerState
+from workers.models import TaskQueue, WorkerProcess, SchedulerState, ProviderRateLimit
 
 
 @admin.register(TaskQueue)
@@ -22,4 +22,11 @@ class SchedulerStateAdmin(admin.ModelAdmin):
     list_display = ("name", "is_running", "worker_pid", "last_run", "next_run", "last_heartbeat", "command_requested")
     list_filter = ("is_running", "schedule_type")
     search_fields = ("name", "display_name")
+
+
+@admin.register(ProviderRateLimit)
+class ProviderRateLimitAdmin(admin.ModelAdmin):
+    list_display = ("name", "calls", "period", "updated_at")
+    search_fields = ("name",)
+
 

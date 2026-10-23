@@ -1692,8 +1692,15 @@ def download_history(request: AuthenticatedHttpRequest) -> HttpResponse:
             download_events = download_events.filter(method__icontains=data["method"])
         
         status = data.get("status")
+        if not status and "status" not in request.GET:
+            status = "in_progress"
+
         if status == "in_progress":
             download_events = download_events.filter(completed=False)
+        elif status == "queued":
+            download_events = download_events.filter(status=DownloadEvent.Status.QUEUED, completed=False)
+        elif status == "downloading":
+            download_events = download_events.filter(status=DownloadEvent.Status.IN_PROGRESS, completed=False)
         elif status == "finished":
             download_events = download_events.filter(completed=True, failed=False)
         elif status == "failed":
@@ -1706,8 +1713,8 @@ def download_history(request: AuthenticatedHttpRequest) -> HttpResponse:
         if data.get("create_date_to"):
             download_events = download_events.filter(create_date__date__lte=data["create_date_to"])
 
-        sort_by = data.get("sort_by", "create_date")
-        direction = data.get("direction", "desc")
+        sort_by = data.get("sort_by") or "create_date"
+        direction = data.get("direction") or "desc"
         
         if direction == "desc":
             sort_by = f"-{sort_by}"
@@ -1732,6 +1739,84 @@ def download_history(request: AuthenticatedHttpRequest) -> HttpResponse:
         results_page = paginator.page(page)
     except (InvalidPage, EmptyPage):
         results_page = paginator.page(paginator.num_pages)
+
+    if request.GET.get("json"):
+        from django.template.defaultfilters import filesizeformat
+        from django.urls import reverse
+
+        serialized_results = []
+        for event in results_page:
+            archive_dict = None
+            if event.archive:
+                thumb_url = (
+                    event.archive.thumbnail.url
+                    if getattr(event.archive, "thumbnail", None) and event.archive.thumbnail.name
+                    else ""
+                )
+                archive_dict = {
+                    "id": event.archive.pk,
+                    "title": event.archive.title,
+                    "url": reverse("viewer:archive", args=[event.archive.pk]),
+                    "thumb_url": thumb_url,
+                }
+
+            gallery_dict = None
+            if event.gallery:
+                thumb_url = (
+                    event.gallery.thumbnail.url
+                    if getattr(event.gallery, "thumbnail", None) and event.gallery.thumbnail.name
+                    else ""
+                )
+                gallery_dict = {
+                    "id": event.gallery.pk,
+                    "title": event.gallery.title,
+                    "url": reverse("viewer:gallery", args=[event.gallery.pk]),
+                    "thumb_url": thumb_url,
+                }
+
+            end_date_str = ""
+            if event.completed:
+                end_date_str = event.completed_date.strftime("%Y-%m-%d %H:%M:%S") if event.completed_date else ""
+            else:
+                eta_val = event.eta()
+                if eta_val:
+                    end_date_str = eta_val.strftime("%Y-%m-%d %H:%M:%S")
+
+            create_date_str = event.create_date.strftime("%Y-%m-%d %H:%M:%S") if event.create_date else ""
+
+            serialized_results.append(
+                {
+                    "id": event.id,
+                    "name": event.name,
+                    "method": event.method,
+                    "provider": event.provider,
+                    "status": event.status,
+                    "status_display": event.get_status_display()
+                    if hasattr(event, "get_status_display")
+                    else event.status,
+                    "archive": archive_dict,
+                    "gallery": gallery_dict,
+                    "total_size": event.total_size,
+                    "total_size_formatted": filesizeformat(event.total_size) if event.total_size else "0 Bytes",
+                    "progress": round(float(event.progress), 1),
+                    "failed": bool(event.failed),
+                    "completed": bool(event.completed),
+                    "error_message": event.error_message,
+                    "create_date": create_date_str,
+                    "end_date_or_eta": end_date_str,
+                }
+            )
+
+        response_dict = {
+            "results": serialized_results,
+            "has_previous": results_page.has_previous(),
+            "has_next": results_page.has_next(),
+            "num_pages": paginator.num_pages,
+            "count": paginator.count,
+            "in_page_count": len(results_page),
+            "number": results_page.number,
+        }
+        return HttpResponse(json.dumps(response_dict), content_type="application/json; charset=utf-8")
 
     d = {"results": results_page, "form": form}
     return render(request, "viewer/collaborators/download_history.html", d)

@@ -938,25 +938,29 @@ class MonitoredLinkAdmin(admin.ModelAdmin):
 class DownloadEventAdmin(admin.ModelAdmin):
 
     raw_id_fields = ["archive", "gallery"]
-    list_filter = ["completed", "failed", "method"]
+    list_filter = ["status", "completed", "failed", "method", "provider"]
     list_display = [
         "id",
         "name",
         "archive",
+        "provider",
+        "status",
         "progress",
         "total_size",
+        "attempts",
         "failed",
         "completed",
         "method",
         "download_id",
         "create_date",
+        "started_date",
         "completed_date",
     ]
     actions = ["mark_as_failed_completed"]
 
     def mark_as_failed_completed(self, request: HttpRequest, queryset: "QuerySet[DownloadEvent]") -> None:
         rows_updated = queryset.count()
-        queryset.update(completed=True, failed=True)
+        queryset.update(completed=True, failed=True, status=DownloadEvent.Status.FAILED)
         if rows_updated == 1:
             message_bit = "1 download event was"
         else:

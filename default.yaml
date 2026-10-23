@@ -26,6 +26,20 @@ general:
   timed_downloader_cycle_timer: 5.0
   # Number of parallel post downloaders (each one opens a FTP connection).
   parallel_post_downloaders: 4
+  # Maximum number of concurrent archive downloads across providers.
+  # Set to 0 to download archives synchronously inline (default legacy behavior).
+  # Set to 1 or more to enable the background archive download queue.
+  parallel_archive_downloaders: 0
+  # Optional explicit boolean toggle to queue archive HTTP downloads (can also be enabled per-provider).
+  queue_archive_downloads: false
+  # Start the archive download queue scheduler on worker startup.
+  archive_download_queue_startup: true
+  # Archive download queue cycle timer (in seconds).
+  archive_download_queue_cycle_timer: 2.0
+  # Start the download progress checker scheduler on startup.
+  download_progress_checker_startup: true
+  # Download progress checker cycle timer (in seconds).
+  download_progress_checker_cycle_timer: 10.0
   # Reload the server when it detects file changes (CherryPy feature).
   cherrypy_auto_restart: false
   # Auto discard galleries that contain these tags. For new downloads and matches.
@@ -71,6 +85,12 @@ general:
   # Option to auto-purge a torrent after a certain time has passed (0 means disabled)
   max_torrent_lifespan: 0
   max_torrent_lifespan_type: days
+  # If set to yes, failed downloaded archives (e.g. corrupt zip, size mismatch) will be requeued for download.
+  requeue_failed_downloads: true
+  # Downloader or custom downloader to use when requeueing a failed download.
+  failed_download_downloader: panda_archive
+  # Option to automatically move downloaded archives that fail checks to the recycle bin.
+  recycle_failed_checks_downloads: false
 # Extra tool to apply to images when using the cloning tool, use 'input' and 'output' kwargs on executable_path to replace on runtime
 cloning_image_tool:
   enable: false

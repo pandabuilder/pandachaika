@@ -8,6 +8,7 @@ from core.base.setup_utilities import check_for_running_threads
 if typing.TYPE_CHECKING:
     from core.downloaders.postdownload import TimedPostDownloader
     from core.workers.download_progress import DownloadProgressChecker
+    from core.workers.archive_download_queue import ArchiveDownloadQueue
     from core.workers.autoupdate import ProviderTimedAutoUpdater
     from core.workers.auto_wanted import TimedAutoWanted
     from core.workers.webqueue import WebQueue
@@ -26,6 +27,7 @@ class WorkerContext:
     timed_auto_wanted: Optional["TimedAutoWanted"] = None
     timed_downloader: Optional["TimedPostDownloader"] = None
     download_progress_checker: Optional["DownloadProgressChecker"] = None
+    archive_download_queue: Optional["ArchiveDownloadQueue"] = None
     timed_auto_updaters: list["ProviderTimedAutoUpdater"] = []
     timed_link_monitors: list["LinkMonitor"] = []
 
@@ -37,6 +39,8 @@ class WorkerContext:
             workers.append(self.timed_downloader)
         if self.download_progress_checker:
             workers.append(self.download_progress_checker)
+        if self.archive_download_queue:
+            workers.append(self.archive_download_queue)
         workers.extend(self.timed_auto_updaters)
         workers.extend(self.timed_link_monitors)
         return workers
@@ -224,6 +228,23 @@ class WorkerContext:
         if start_threads and crawler_settings.download_progress_checker_startup:
             self.download_progress_checker.start_running(timer=crawler_settings.download_progress_checker_cycle_timer)
 
+        from core.workers.archive_download_queue import ArchiveDownloadQueue
+
+        self.archive_download_queue = ArchiveDownloadQueue(
+            crawler_settings,
+            web_queue=self.web_queue,
+            timer=crawler_settings.archive_download_queue_cycle_timer,
+        )
+
+        obj, _ = SchedulerState.objects.get_or_create(
+            name=self.archive_download_queue.thread_name,
+            defaults={"schedule_type": "scheduler"},
+        )
+        self.archive_download_queue.last_run = obj.last_run
+        self.archive_download_queue.pk = obj.name
+        if start_threads and crawler_settings.archive_download_queue_startup:
+            self.archive_download_queue.start_running(timer=crawler_settings.archive_download_queue_cycle_timer)
+
     @property
     def is_worker_process(self) -> bool:
         return bool(self.crawler_settings and getattr(self.crawler_settings, "is_worker_process", False))
@@ -236,6 +257,8 @@ class WorkerContext:
             self.timed_downloader.stop_running(force_local=True)
         if self.download_progress_checker:
             self.download_progress_checker.stop_running(force_local=True)
+        if self.archive_download_queue:
+            self.archive_download_queue.stop_running(force_local=True)
         if self.timed_auto_wanted:
             self.timed_auto_wanted.stop_running(force_local=True)
         for provider_auto_updater in self.timed_auto_updaters:

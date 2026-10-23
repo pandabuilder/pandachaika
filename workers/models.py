@@ -98,6 +98,19 @@ class WorkerProcess(models.Model):
             TaskQueue.objects.filter(
                 worker_pid__in=dead_pids, status=TaskQueue.Status.PROCESSING
             ).update(status=TaskQueue.Status.PENDING, worker_pid=None)
+            try:
+                from viewer.models import DownloadEvent
+                DownloadEvent.objects.filter(
+                    worker_pid__in=dead_pids,
+                    completed=False,
+                    status=DownloadEvent.Status.IN_PROGRESS,
+                ).exclude(download_url="").update(
+                    status=DownloadEvent.Status.QUEUED,
+                    worker_pid=None,
+                    progress=0.0,
+                )
+            except Exception:
+                pass
         return cls.objects.filter(status="running", last_heartbeat__lt=cutoff).update(status="stopped")
 
 
@@ -176,3 +189,20 @@ class SchedulerState(models.Model):
         )
         all_names = list(cls.objects.values_list("name", flat=True))
         return {name: (name in active_names) for name in all_names}
+
+
+class ProviderRateLimit(models.Model):
+    """Tracks rate limit call timestamps per provider across threads, processes, and hosts."""
+
+    name = models.CharField(max_length=100, primary_key=True)
+    calls = models.IntegerField(default=1)
+    period = models.FloatField(default=1.0)
+    call_timestamps = models.JSONField(default=list, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return f"ProviderRateLimit {self.name} ({self.calls} calls / {self.period}s)"
+

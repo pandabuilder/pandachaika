@@ -542,6 +542,7 @@ class BaseParser(typing.Generic[T_ProviderSettings]):
             if (
                 self.last_used_downloader is not None
                 and self.last_used_downloader.type not in self.__SKIP_WAIT_TIME_DOWNLOADER_TYPES
+                and getattr(self.last_used_downloader, "queued_download_data", None) is None
             ):
                 # We can't assume that every parser has its own downloader,
                 # could be from another provider, so we can't directly use self.own_settings

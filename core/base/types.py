@@ -128,10 +128,18 @@ class ProviderSettings:
         self.autoupdater_buffer_back: int = global_settings.autoupdater.buffer_back
         self.autoupdater_buffer_after: int = global_settings.autoupdater.buffer_after
 
+        # Archive download queue settings (per-provider override)
+        self.queue_archive_downloads: Optional[bool] = None
+        self.max_parallel_archive_downloads: int = 1
+
         if "cookies" in config:
             self.cookies.update(config["cookies"])
         if "headers" in config:
             self.headers.update(config["headers"])
+        if "queue_archive_downloads" in config and config["queue_archive_downloads"] is not None:
+            self.queue_archive_downloads = bool(config["queue_archive_downloads"])
+        if "max_parallel_archive_downloads" in config and config["max_parallel_archive_downloads"] is not None:
+            self.max_parallel_archive_downloads = int(config["max_parallel_archive_downloads"])
         if "general" in config:
             if "proxy" in config["general"]:
                 self.proxy = config["general"]["proxy"]
@@ -150,6 +158,13 @@ class ProviderSettings:
                 self.autoupdater_buffer_after = int(config["general"]["autoupdater_buffer_after"])
             if "stop_page_number" in config["general"]:
                 self.stop_page_number = int(config["general"]["stop_page_number"])
+            if "queue_archive_downloads" in config["general"] and config["general"]["queue_archive_downloads"] is not None:
+                self.queue_archive_downloads = bool(config["general"]["queue_archive_downloads"])
+            if (
+                "max_parallel_archive_downloads" in config["general"]
+                and config["general"]["max_parallel_archive_downloads"] is not None
+            ):
+                self.max_parallel_archive_downloads = int(config["general"]["max_parallel_archive_downloads"])
         if "proxies" in config:
             self.proxies.update(config["proxies"])
 

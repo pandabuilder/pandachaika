@@ -186,20 +186,23 @@ def get_images_from_zip(current_zip: zipfile.ZipFile) -> list[tuple[str, Optiona
         if IMAGES_REGEX.search(current_file):
             nested_files.append((current_file, None, current_file))
         elif ZIP_CONTAINER_REGEX.search(current_file):
-            with current_zip.open(current_file) as current_nested_zip_file:
-                try:
-                    nested_zip = zipfile.ZipFile(current_nested_zip_file, "r")
-                except zipfile.BadZipFile:
-                    continue
-                nested_filtered_files = list(
-                    filter(accept_images_only, sorted(nested_zip.namelist(), key=zfill_to_four))
-                )
-                found_files = [
-                    (x, current_file, "{}_{}".format(os.path.splitext(current_file)[0], x))
-                    for x in nested_filtered_files
-                ]
-                nested_files.extend(found_files)
-                nested_zip.close()
+            try:
+                with current_zip.open(current_file) as current_nested_zip_file:
+                    try:
+                        nested_zip = zipfile.ZipFile(current_nested_zip_file, "r")
+                    except (zipfile.BadZipFile, NotImplementedError):
+                        continue
+                    nested_filtered_files = list(
+                        filter(accept_images_only, sorted(nested_zip.namelist(), key=zfill_to_four))
+                    )
+                    found_files = [
+                        (x, current_file, "{}_{}".format(os.path.splitext(current_file)[0], x))
+                        for x in nested_filtered_files
+                    ]
+                    nested_files.extend(found_files)
+                    nested_zip.close()
+            except (zipfile.BadZipFile, NotImplementedError):
+                continue
 
     return nested_files
 
@@ -207,7 +210,7 @@ def get_images_from_zip(current_zip: zipfile.ZipFile) -> list[tuple[str, Optiona
 def filecount_in_zip(filepath: str) -> int:
     try:
         my_zip = zipfile.ZipFile(filepath, "r")
-    except zipfile.BadZipFile:
+    except (zipfile.BadZipFile, NotImplementedError):
         return 0
 
     total_count = 0
@@ -218,14 +221,17 @@ def filecount_in_zip(filepath: str) -> int:
         if IMAGES_REGEX.search(current_file):
             total_count += 1
         elif ZIP_CONTAINER_REGEX.search(current_file):
-            with my_zip.open(current_file) as current_nested_zip_file:
-                try:
-                    nested_zip = zipfile.ZipFile(current_nested_zip_file, "r")
-                except zipfile.BadZipFile:
-                    continue
-                nested_files = list(filter(accept_images_only, nested_zip.namelist()))
-                total_count += len(nested_files)
-                nested_zip.close()
+            try:
+                with my_zip.open(current_file) as current_nested_zip_file:
+                    try:
+                        nested_zip = zipfile.ZipFile(current_nested_zip_file, "r")
+                    except (zipfile.BadZipFile, NotImplementedError):
+                        continue
+                    nested_files = list(filter(accept_images_only, nested_zip.namelist()))
+                    total_count += len(nested_files)
+                    nested_zip.close()
+            except (zipfile.BadZipFile, NotImplementedError):
+                continue
 
     my_zip.close()
 
@@ -235,7 +241,7 @@ def filecount_in_zip(filepath: str) -> int:
 def get_zip_filesize(filepath: str) -> int:
     try:
         my_zip = zipfile.ZipFile(filepath, "r")
-    except zipfile.BadZipFile:
+    except (zipfile.BadZipFile, NotImplementedError):
         return -1
 
     total_size = 0
@@ -246,16 +252,19 @@ def get_zip_filesize(filepath: str) -> int:
         if IMAGES_REGEX.search(current_file_info.filename):
             total_size += int(current_file_info.file_size)
         elif ZIP_CONTAINER_REGEX.search(current_file_info.filename):
-            with my_zip.open(current_file_info.filename) as current_nested_zip_file:
-                try:
-                    nested_zip = zipfile.ZipFile(current_nested_zip_file, "r")
-                except zipfile.BadZipFile:
-                    continue
-                nested_files = list(
-                    filter(accept_images_only_info, sorted(nested_zip.infolist(), key=lambda x: x.filename))
-                )
-                total_size += sum([x.file_size for x in nested_files])
-                nested_zip.close()
+            try:
+                with my_zip.open(current_file_info.filename) as current_nested_zip_file:
+                    try:
+                        nested_zip = zipfile.ZipFile(current_nested_zip_file, "r")
+                    except (zipfile.BadZipFile, NotImplementedError):
+                        continue
+                    nested_files = list(
+                        filter(accept_images_only_info, sorted(nested_zip.infolist(), key=lambda x: x.filename))
+                    )
+                    total_size += sum([x.file_size for x in nested_files])
+                    nested_zip.close()
+            except (zipfile.BadZipFile, NotImplementedError):
+                continue
 
     my_zip.close()
 
@@ -347,7 +356,7 @@ def get_zip_fileinfo(
 ) -> tuple[int, int, Optional[list[ArchiveGenericFile]]]:
     try:
         my_zip = zipfile.ZipFile(filepath, "r")
-    except zipfile.BadZipFile:
+    except (zipfile.BadZipFile, NotImplementedError):
         return -1, -1, None
 
     total_size = 0
@@ -365,17 +374,20 @@ def get_zip_fileinfo(
             total_size += int(current_file_info.file_size)
             total_count += 1
         elif ZIP_CONTAINER_REGEX.search(current_file_info.filename):
-            with my_zip.open(current_file_info.filename) as current_nested_zip_file:
-                try:
-                    nested_zip = zipfile.ZipFile(current_nested_zip_file, "r")
-                except zipfile.BadZipFile:
-                    continue
-                nested_files = list(
-                    filter(accept_images_only_info, sorted(nested_zip.infolist(), key=lambda x: x.filename))
-                )
-                total_count += len(nested_files)
-                total_size += sum([x.file_size for x in nested_files])
-                nested_zip.close()
+            try:
+                with my_zip.open(current_file_info.filename) as current_nested_zip_file:
+                    try:
+                        nested_zip = zipfile.ZipFile(current_nested_zip_file, "r")
+                    except (zipfile.BadZipFile, NotImplementedError):
+                        continue
+                    nested_files = list(
+                        filter(accept_images_only_info, sorted(nested_zip.infolist(), key=lambda x: x.filename))
+                    )
+                    total_count += len(nested_files)
+                    total_size += sum([x.file_size for x in nested_files])
+                    nested_zip.close()
+            except (zipfile.BadZipFile, NotImplementedError):
+                continue
         elif other_file_data is not None and not current_file_info.is_dir():
             file_generic_data = ArchiveGenericFile(
                 file_name=current_file_info.filename, file_size=int(current_file_info.file_size), position=index
@@ -390,7 +402,7 @@ def get_zip_fileinfo(
 def get_zip_fileinfo_for_gallery(filepath: str) -> tuple[int, int]:
     try:
         my_zip = zipfile.ZipFile(filepath, "r")
-    except zipfile.BadZipFile:
+    except (zipfile.BadZipFile, NotImplementedError):
         return -1, -1
 
     total_size = 0
@@ -403,17 +415,20 @@ def get_zip_fileinfo_for_gallery(filepath: str) -> tuple[int, int]:
             total_size += int(current_file_info.file_size)
             total_count += 1
         elif ZIP_CONTAINER_REGEX.search(current_file_info.filename):
-            with my_zip.open(current_file_info.filename) as current_nested_zip_file:
-                try:
-                    nested_zip = zipfile.ZipFile(current_nested_zip_file, "r")
-                except zipfile.BadZipFile:
-                    continue
-                nested_files = list(
-                    filter(accept_images_only_info, sorted(nested_zip.infolist(), key=lambda x: x.filename))
-                )
-                total_count += len(nested_files)
-                total_size += sum([x.file_size for x in nested_files])
-                nested_zip.close()
+            try:
+                with my_zip.open(current_file_info.filename) as current_nested_zip_file:
+                    try:
+                        nested_zip = zipfile.ZipFile(current_nested_zip_file, "r")
+                    except (zipfile.BadZipFile, NotImplementedError):
+                        continue
+                    nested_files = list(
+                        filter(accept_images_only_info, sorted(nested_zip.infolist(), key=lambda x: x.filename))
+                    )
+                    total_count += len(nested_files)
+                    total_size += sum([x.file_size for x in nested_files])
+                    nested_zip.close()
+            except (zipfile.BadZipFile, NotImplementedError):
+                continue
 
     my_zip.close()
 
@@ -450,10 +465,22 @@ def available_filename(root: str, filename: str) -> str:
         candidate_tail = truncated_name + suffix + ext
         candidate_full = os.path.join(root, file_head, candidate_tail)
 
-        if not os.path.isfile(candidate_full):
+        if not os.path.isfile(candidate_full) and not _is_filename_reserved_in_db(candidate_full):
             return os.path.join(file_head, candidate_tail)
 
         extra_text += 1
+
+
+def _is_filename_reserved_in_db(candidate_full: str) -> bool:
+    try:
+        from viewer.models import DownloadEvent
+        return DownloadEvent.objects.filter(
+            completed=False,
+            failed=False,
+            download_id=candidate_full,
+        ).exists()
+    except Exception:
+        return False
 
 
 def get_base_filename_string_from_gallery_data(gallery_data: GalleryData) -> str:
@@ -831,15 +858,27 @@ def request_with_retries(
                 r = requests.post(url, **request_dict)
             else:
                 r = requests.get(url, **request_dict)
+
+            if r.status_code in (500, 502, 503, 504):
+                if retry_count < retries - 1:
+                    logger.warning(
+                        "Request returned HTTP {}, attempt {} of {}: retrying {}".format(
+                            r.status_code, retry_count + 1, retries, url
+                        )
+                    )
+                    time.sleep(2 ** retry_count)
+                    continue
+
             return r
 
         except (
             requests.exceptions.Timeout,
             requests.exceptions.ConnectionError,
-            requests.exceptions.ChunkedEncodingError
+            requests.exceptions.ChunkedEncodingError,
         ) as e:
             if retry_count < retries - 1:
                 logger.warning("Request failed, attempt: {} of {}: {}".format(retry_count + 1, retries, str(e)))
+                time.sleep(2 ** retry_count)
                 continue
             else:
                 logger.error(
@@ -850,8 +889,9 @@ def request_with_retries(
 
 
 REQUESTER_BY_PROVIDER: dict[
-    str, typing.Callable[[str, dict[str, Any], bool, int], Optional[requests.models.Response]]
+    str, typing.Callable[..., Optional[requests.models.Response]]
 ] = {}
+PROVIDER_RATE_LIMIT_CONFIG: dict[str, tuple[int, float]] = {}
 
 
 # Modified ratelimit function
@@ -862,21 +902,85 @@ def sleep_log_and_retry(func):
             try:
                 return func(*args, **kwargs)
             except RateLimitException as exception:
-                url = args[0]
+                url = args[0] if args else ""
                 logger.info("Request limited for URL: {}, sleeping for {} seconds".format(url, exception.period_remaining))
                 time.sleep(exception.period_remaining)
 
     return wrapper
 
 
+def acquire_provider_rate_limit_slot(
+    provider_name: str,
+    provider_calls: int,
+    provider_limit: float,
+    url: str = "",
+) -> bool:
+    """Acquire a rate-limit slot for provider_name using PostgreSQL ProviderRateLimit with select_for_update.
+    Returns True if handled by the database rate limiter, or False if DB is unavailable.
+    """
+    period = float(provider_limit)
+    if period <= 0:
+        return True
+
+    clamped_calls = max(1, int(provider_calls))
+
+    try:
+        from django.db import transaction
+        from workers.models import ProviderRateLimit
+
+        while True:
+            wait_time = 0.0
+            with transaction.atomic():
+                ProviderRateLimit.objects.get_or_create(
+                    name=provider_name,
+                    defaults={
+                        "calls": clamped_calls,
+                        "period": period,
+                        "call_timestamps": [],
+                    },
+                )
+                rl_obj = ProviderRateLimit.objects.select_for_update().get(name=provider_name)
+                now = time.time()
+                raw_ts = rl_obj.call_timestamps if isinstance(rl_obj.call_timestamps, list) else []
+                valid_ts = [float(ts) for ts in raw_ts if (now - float(ts)) < period]
+                if len(valid_ts) < clamped_calls:
+                    valid_ts.append(now)
+                    rl_obj.call_timestamps = valid_ts
+                    rl_obj.calls = clamped_calls
+                    rl_obj.period = period
+                    rl_obj.save(update_fields=["call_timestamps", "calls", "period", "updated_at"])
+                    return True
+                else:
+                    oldest = min(valid_ts)
+                    wait_time = max(0.01, period - (now - oldest))
+                    if len(valid_ts) != len(raw_ts):
+                        rl_obj.call_timestamps = valid_ts
+                        rl_obj.save(update_fields=["call_timestamps", "updated_at"])
+
+            logger.info("Request limited for URL: {}, sleeping for {} seconds".format(url, wait_time))
+            time.sleep(wait_time)
+    except Exception:
+        return False
+
+
 def request_by_provider(provider_name: str, provider_calls: int, provider_limit: float):
+    PROVIDER_RATE_LIMIT_CONFIG[provider_name] = (int(provider_calls), float(provider_limit))
     if provider_name not in REQUESTER_BY_PROVIDER:
 
         def call_requests():
             @sleep_log_and_retry
-            @limits(calls=provider_calls, period=provider_limit, name=provider_name)
-            def inner_function(*args, **kwargs):
+            @limits(calls=max(1, int(provider_calls)), period=max(0.001, float(provider_limit)), name=provider_name)
+            def fallback_in_memory(*args, **kwargs):
                 return request_with_retries(*args, **kwargs)
+
+            def inner_function(*args, **kwargs):
+                calls, limit = PROVIDER_RATE_LIMIT_CONFIG.get(
+                    provider_name, (int(provider_calls), float(provider_limit))
+                )
+                url = str(args[0]) if args else str(kwargs.get("url", ""))
+                if acquire_provider_rate_limit_slot(provider_name, calls, limit, url=url):
+                    return request_with_retries(*args, **kwargs)
+                return fallback_in_memory(*args, **kwargs)
 
             return inner_function
 

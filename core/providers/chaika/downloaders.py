@@ -10,6 +10,7 @@ from core.base.utilities import (
     get_zip_fileinfo_for_gallery,
     construct_request_dict,
     request_with_retries,
+    request_by_provider,
     get_base_filename_string_from_gallery_data,
     replace_illegal_name,
 )
@@ -53,19 +54,29 @@ class PandaBackupHttpFileDownloader(BaseDownloader):
             self.settings.MEDIA_ROOT, os.path.join(self.own_settings.archive_dl_folder, to_use_filename + ".zip")
         )  # TODO: File could be cbz.
 
+        filepath = os.path.join(self.settings.MEDIA_ROOT, self.gallery.filename)
         request_dict = construct_request_dict(self.settings, self.own_settings)
+
+        if self.should_queue_archive_download():
+            self.enqueue_archive_download(
+                self.gallery.temp_archive["link"],
+                filepath,
+                request_dict=request_dict,
+                rate_limit_provider=self.provider,
+                rate_limit_period=self.own_settings.wait_timer,
+            )
+            return
+
         request_dict["stream"] = True
         for attempt in range(3):
             try:
-                request_file = request_with_retries(
+                request_file = self.web_request_function(
                     self.gallery.temp_archive["link"],
                     request_dict,
                 )
                 if not request_file:
                     logger.error("Could not download archive (Attempt {}/3)".format(attempt + 1))
                     continue
-
-                filepath = os.path.join(self.settings.MEDIA_ROOT, self.gallery.filename)
 
                 total_size = int(request_file.headers.get("Content-Length", 0))
                 self.download_event = self.create_download_event(self.gallery.link, self.type, filepath, total_size=total_size)
@@ -120,6 +131,9 @@ class PandaBackupHttpFileDownloader(BaseDownloader):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.gallery: Optional[ChaikaGalleryData] = None
+        self.web_request_function = request_by_provider(
+            self.provider + "_web", 1, self.own_settings.wait_timer
+        )
 
 
 API = (PandaBackupHttpFileDownloader,)

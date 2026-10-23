@@ -261,6 +261,34 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         if crawler_settings.workers.timed_downloader:
             crawler_settings.workers.timed_downloader.force_run()
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
+    elif tool == "start_archive_download_queue":
+        if crawler_settings.workers.archive_download_queue:
+            crawler_settings.workers.archive_download_queue.start_running(
+                timer=crawler_settings.archive_download_queue_cycle_timer
+            )
+        return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
+    elif tool == "stop_archive_download_queue":
+        if crawler_settings.workers.archive_download_queue:
+            crawler_settings.workers.archive_download_queue.stop_running()
+        return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
+    elif tool == "force_archive_download_queue":
+        if crawler_settings.workers.archive_download_queue:
+            crawler_settings.workers.archive_download_queue.force_run()
+        return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
+    elif tool == "start_download_progress_checker":
+        if crawler_settings.workers.download_progress_checker:
+            crawler_settings.workers.download_progress_checker.start_running(
+                timer=crawler_settings.download_progress_checker_cycle_timer
+            )
+        return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
+    elif tool == "stop_download_progress_checker":
+        if crawler_settings.workers.download_progress_checker:
+            crawler_settings.workers.download_progress_checker.stop_running()
+        return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
+    elif tool == "force_download_progress_checker":
+        if crawler_settings.workers.download_progress_checker:
+            crawler_settings.workers.download_progress_checker.force_run()
+        return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
     elif tool == "start_timed_updater":
         if tool_arg:
             for provider_auto_updater in crawler_settings.workers.timed_auto_updaters:

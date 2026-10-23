@@ -476,14 +476,22 @@ class FolderCrawler(object):
                     # Test for corrupt files
                     except_at_open = False
                     return_error = None
+                    error_details = ""
                     try:
                         my_zip = ZipFile(os.path.join(self.settings.MEDIA_ROOT, filepath), "r")
                         return_error = my_zip.testzip()
                         my_zip.close()
-                    except (BadZipFile, NotImplementedError, zlib.error):
+                    except (BadZipFile, NotImplementedError, zlib.error) as e:
                         except_at_open = True
+                        error_details = f"{type(e).__name__}: {e}"
+                    if return_error:
+                        error_details = f"Corrupt file: {return_error}"
                     if except_at_open or return_error:
-                        logger.warning("File check on zipfile failed on file: {}, marking as corrupt.".format(filepath))
+                        logger.warning(
+                            "File check on zipfile failed ({}) on file: {}, marking as corrupt.".format(
+                                error_details or "unknown error", filepath
+                            )
+                        )
                         filesize, filecount, other_file_datas = get_zip_fileinfo(
                             os.path.join(self.settings.MEDIA_ROOT, filepath), get_extra_data=True
                         )

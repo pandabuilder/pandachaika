@@ -62,11 +62,16 @@ def stats_workers(request: HttpRequest) -> HttpResponse:
         from core.workers.webqueue import WebQueue
         crawler_settings.workers.web_queue = WebQueue(crawler_settings)
 
+    if crawler_settings.workers.archive_download_queue is None:
+        from core.workers.archive_download_queue import ArchiveDownloadQueue
+        crawler_settings.workers.archive_download_queue = ArchiveDownloadQueue(crawler_settings)
+
     stats_dict = {
         "current_settings": crawler_settings,
         "thread_status": get_thread_status(),
         "web_queue": crawler_settings.workers.web_queue,
         "post_downloader": crawler_settings.workers.timed_downloader,
+        "archive_download_queue": crawler_settings.workers.archive_download_queue,
         "download_progress_checker": DownloadEvent.objects.in_progress().select_related("archive", "gallery"),
         "schedulers": get_schedulers_status(crawler_settings.workers.get_active_initialized_workers_from_db()),
     }
@@ -446,6 +451,34 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
     elif tool == "force_run_timed_dl":
         if crawler_settings.workers.timed_downloader:
             crawler_settings.workers.timed_downloader.force_run()
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+    elif tool == "start_archive_download_queue":
+        if crawler_settings.workers.archive_download_queue:
+            crawler_settings.workers.archive_download_queue.start_running(
+                timer=crawler_settings.archive_download_queue_cycle_timer
+            )
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+    elif tool == "stop_archive_download_queue":
+        if crawler_settings.workers.archive_download_queue:
+            crawler_settings.workers.archive_download_queue.stop_running()
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+    elif tool == "force_archive_download_queue":
+        if crawler_settings.workers.archive_download_queue:
+            crawler_settings.workers.archive_download_queue.force_run()
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+    elif tool == "start_download_progress_checker":
+        if crawler_settings.workers.download_progress_checker:
+            crawler_settings.workers.download_progress_checker.start_running(
+                timer=crawler_settings.download_progress_checker_cycle_timer
+            )
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+    elif tool == "stop_download_progress_checker":
+        if crawler_settings.workers.download_progress_checker:
+            crawler_settings.workers.download_progress_checker.stop_running()
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+    elif tool == "force_download_progress_checker":
+        if crawler_settings.workers.download_progress_checker:
+            crawler_settings.workers.download_progress_checker.force_run()
         return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "start_timed_updater":
         if tool_arg:

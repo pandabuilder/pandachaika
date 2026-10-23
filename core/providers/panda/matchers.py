@@ -90,22 +90,29 @@ class ImageMatcher(Matcher):
             self.gallery_links = []
             return False
 
-        filtered_files = get_images_from_zip(my_zip)
+        try:
+            filtered_files = get_images_from_zip(my_zip)
 
-        if not filtered_files:
+            if not filtered_files:
+                my_zip.close()
+                self.gallery_links = []
+                return False
+
+            first_file = filtered_files[0]
+
+            if first_file[1] is None:
+                with my_zip.open(first_file[0]) as current_img:
+                    first_file_sha1 = sha1_from_file_object(current_img)
+            else:
+                with my_zip.open(first_file[1]) as current_zip:
+                    with zipfile.ZipFile(current_zip) as my_nested_zip:
+                        with my_nested_zip.open(first_file[0]) as current_img:
+                            first_file_sha1 = sha1_from_file_object(current_img)
+            my_zip.close()
+        except (zipfile.BadZipFile, NotImplementedError):
+            my_zip.close()
             self.gallery_links = []
             return False
-
-        first_file = filtered_files[0]
-
-        if first_file[1] is None:
-            with my_zip.open(first_file[0]) as current_img:
-                first_file_sha1 = sha1_from_file_object(current_img)
-        else:
-            with my_zip.open(first_file[1]) as current_zip:
-                with zipfile.ZipFile(current_zip) as my_nested_zip:
-                    with my_nested_zip.open(first_file[0]) as current_img:
-                        first_file_sha1 = sha1_from_file_object(current_img)
 
         payload = {
             "f_shash": first_file_sha1,

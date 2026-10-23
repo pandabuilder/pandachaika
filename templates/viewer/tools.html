@@ -117,6 +117,10 @@
       </div>
       <div class="list-group col-lg-3 col-md-4 col-sm-6 col-xs-12">
         <div class="list-group-item active">Workers</div>
+        {% if not threads_status.download_progress_checker %}<a class="list-group-item" href="{% url 'viewer:tools-id' 'start_download_progress_checker' %}">Start Download progress checker</a>{% else %}<a class="list-group-item" href="{% url 'viewer:tools-id' 'stop_download_progress_checker' %}">Stop Download progress checker</a>{% endif %}
+        <a class="list-group-item" href="{% url 'viewer:tools-id' 'force_download_progress_checker' %}">Force run Download progress checker</a>
+        {% if not threads_status.archive_download_queue %}<a class="list-group-item" href="{% url 'viewer:tools-id' 'start_archive_download_queue' %}">Start Archive download queue</a>{% else %}<a class="list-group-item" href="{% url 'viewer:tools-id' 'stop_archive_download_queue' %}">Stop Archive download queue</a>{% endif %}
+        <a class="list-group-item" href="{% url 'viewer:tools-id' 'force_archive_download_queue' %}">Force run Archive download queue</a>
         {% if not threads_status.post_downloader %}<a class="list-group-item" href="{% url 'viewer:tools-id' 'start_timed_dl' %}">Start Post downloader</a>{% else %}<a class="list-group-item" href="{% url 'viewer:tools-id' 'stop_timed_dl' %}">Stop Post downloader</a>{% endif %}
         <a class="list-group-item" href="{% url 'viewer:tools-id' 'force_run_timed_dl' %}">Force run Post downloader</a>
         {% if not threads_status.auto_wanted %}<a class="list-group-item" href="{% url 'viewer:tools-id' 'start_timed_auto_wanted' %}">Start Auto wanted</a>{% else %}<a class="list-group-item" href="{% url 'viewer:tools-id' 'stop_timed_auto_wanted' %}">Stop Auto Wanted</a>{% endif %}

@@ -766,6 +766,7 @@ class PostDownloaderFTPTest(TestCase):
         settings = Settings(load_from_disk=False)
         self.assertEqual(settings.max_torrent_lifespan, 0)
         self.assertEqual(settings.max_torrent_lifespan_type, "days")
+        self.assertTrue(settings.download_progress_checker_startup)
 
     def test_torrent_lifespan_settings_from_config(self):
         config = {
@@ -777,6 +778,16 @@ class PostDownloaderFTPTest(TestCase):
         settings = Settings(load_from_config=config)
         self.assertEqual(settings.max_torrent_lifespan, 12)
         self.assertEqual(settings.max_torrent_lifespan_type, "hours")
+        self.assertTrue(settings.download_progress_checker_startup)
+
+    def test_download_progress_checker_startup_disabled_in_config(self):
+        config = {
+            "general": {
+                "download_progress_checker_startup": False,
+            }
+        }
+        settings = Settings(load_from_config=config)
+        self.assertFalse(settings.download_progress_checker_startup)
 
     def test_check_torrent_progress_finish_on_100_percent(self):
         settings = Settings(load_from_disk=False)
@@ -1053,6 +1064,601 @@ class PostDownloaderFTPTest(TestCase):
         self.assertTrue(event.failed)
         self.assertFalse(Archive.objects.filter(pk=archive.pk).exists())
         mock_web_queue.enqueue_args_list.assert_called_once()
+
+    @patch("core.workers.download_progress.close_old_connections")
+    @patch("core.workers.download_progress.get_torrent_client")
+    def test_job_integration_torrent_not_in_client_still_expires_and_requeues(
+        self, mock_get_torrent_client, mock_close_old
+    ):
+        settings = Settings(load_from_disk=False)
+        settings.max_torrent_lifespan = 50
+        settings.max_torrent_lifespan_type = "seconds"
+        mock_web_queue = MagicMock()
+        checker = DownloadProgressChecker(settings, web_queue=mock_web_queue)
+
+        gallery = Gallery.objects.create(title="gallery missing in client", gid="666", provider="panda")
+        archive = Archive.objects.create(title="job archive missing", crc32="", gallery=gallery, user=None)
+        event = DownloadEvent.objects.create(
+            name="test_missing_torrent",
+            method="torrent",
+            download_id="dl_missing",
+            archive=archive,
+            gallery=gallery,
+            progress=10.0,
+        )
+        DownloadEvent.objects.filter(pk=event.pk).update(
+            create_date=django_tz.now() - timedelta(seconds=100)
+        )
+        event.refresh_from_db()
+
+        mock_client = MagicMock()
+        mock_client.connect.return_value = True
+        # Torrent client returns nothing (torrent removed or ID not found)
+        mock_client.get_download_progress.return_value = []
+        mock_get_torrent_client.return_value = mock_client
+
+        checker.force_run_once = True
+        with patch.object(checker.stop, "wait", side_effect=[False, True]), \
+             patch.object(checker.stop, "is_set", side_effect=[False, True]):
+            checker.job()
+
+        event.refresh_from_db()
+        self.assertTrue(event.completed)
+        self.assertTrue(event.failed)
+        self.assertFalse(Archive.objects.filter(pk=archive.pk).exists())
+        mock_web_queue.enqueue_args_list.assert_called_once()
+
+    @patch("core.workers.download_progress.close_old_connections")
+    @patch("core.workers.download_progress.get_torrent_client")
+    def test_job_integration_client_connect_failure_still_expires_and_requeues(
+        self, mock_get_torrent_client, mock_close_old
+    ):
+        settings = Settings(load_from_disk=False)
+        settings.max_torrent_lifespan = 50
+        settings.max_torrent_lifespan_type = "seconds"
+        mock_web_queue = MagicMock()
+        checker = DownloadProgressChecker(settings, web_queue=mock_web_queue)
+
+        gallery = Gallery.objects.create(title="gallery client failure", gid="555", provider="panda")
+        archive = Archive.objects.create(title="job archive client failure", crc32="", gallery=gallery, user=None)
+        event = DownloadEvent.objects.create(
+            name="test_connect_failure_torrent",
+            method="torrent",
+            download_id="dl_failure",
+            archive=archive,
+            gallery=gallery,
+            progress=10.0,
+        )
+        DownloadEvent.objects.filter(pk=event.pk).update(
+            create_date=django_tz.now() - timedelta(seconds=100)
+        )
+        event.refresh_from_db()
+
+        mock_client = MagicMock()
+        mock_client.connect.return_value = False
+        mock_get_torrent_client.return_value = mock_client
+
+        checker.force_run_once = True
+        with patch.object(checker.stop, "wait", side_effect=[False, True]), \
+             patch.object(checker.stop, "is_set", side_effect=[False, True]):
+            checker.job()
+
+        event.refresh_from_db()
+        self.assertTrue(event.completed)
+        self.assertTrue(event.failed)
+        self.assertFalse(Archive.objects.filter(pk=archive.pk).exists())
+        mock_web_queue.enqueue_args_list.assert_called_once()
+
+    def test_check_torrent_progress_fallback_to_event_name_url(self):
+        settings = Settings(load_from_disk=False)
+        settings.max_torrent_lifespan = 30
+        settings.max_torrent_lifespan_type = "seconds"
+        mock_web_queue = MagicMock()
+        checker = DownloadProgressChecker(settings, web_queue=mock_web_queue)
+
+        event = DownloadEvent.objects.create(
+            name="https://e-hentai.org/g/12345/67890abcdef/",
+            method="torrent",
+            download_id="dl_no_gallery",
+            archive=None,
+            gallery=None,
+            progress=5.0,
+        )
+        DownloadEvent.objects.filter(pk=event.pk).update(
+            create_date=django_tz.now() - timedelta(seconds=60)
+        )
+        event.refresh_from_db()
+
+        checker.check_torrent_progress(event, 5.0)
+        event.refresh_from_db()
+        self.assertTrue(event.completed)
+        self.assertTrue(event.failed)
+        mock_web_queue.enqueue_args_list.assert_called_once()
+        call_args, _ = mock_web_queue.enqueue_args_list.call_args
+        self.assertEqual(call_args[0], ("https://e-hentai.org/g/12345/67890abcdef/",))
+
+    def test_check_torrent_progress_disables_custom_downloader_wrapping_torrent(self):
+        config = {
+            "general": {
+                "max_torrent_lifespan": 30,
+                "max_torrent_lifespan_type": "seconds",
+            },
+            "downloaders": {
+                "custom_with_torrent": 1,
+                "panda_torrent": 2,
+                "panda_archive": 3,
+            },
+        }
+        settings = Settings(load_from_config=config)
+        settings.custom_downloaders = {
+            "custom_with_torrent": {"panda_torrent": 1, "panda_archive": 2}
+        }
+        mock_web_queue = MagicMock()
+        checker = DownloadProgressChecker(settings, web_queue=mock_web_queue)
+
+        gallery = Gallery.objects.create(title="gallery custom dl", gid="444", provider="panda")
+        event = DownloadEvent.objects.create(
+            name="test_custom_dl_event",
+            method="torrent",
+            download_id="dl_custom",
+            archive=None,
+            gallery=gallery,
+            progress=5.0,
+        )
+        DownloadEvent.objects.filter(pk=event.pk).update(
+            create_date=django_tz.now() - timedelta(seconds=60)
+        )
+        event.refresh_from_db()
+
+        checker.check_torrent_progress(event, 5.0)
+        event.refresh_from_db()
+        self.assertTrue(event.completed)
+        self.assertTrue(event.failed)
+        mock_web_queue.enqueue_args_list.assert_called_once()
+        _, call_kwargs = mock_web_queue.enqueue_args_list.call_args
+        override = call_kwargs["override_options"]
+        self.assertEqual(override.downloaders.get("panda_torrent"), -1)
+        self.assertEqual(override.downloaders.get("custom_with_torrent"), -1)
+        self.assertEqual(override.downloaders.get("panda_archive"), 3)
+
+    def test_transmission_get_download_progress_handles_invalid_ids(self):
+        from core.downloaders.torrent.transmission import Transmission
+        client = Transmission()
+        client.trans = MagicMock()
+        # transmission mock returns progress for id 10
+        mock_torr = MagicMock()
+        mock_torr.id = 10
+        mock_torr.progress = 75.0
+        client.trans.get_torrents.return_value = [mock_torr]
+
+        dummy_key = MagicMock()
+        results = client.get_download_progress([
+            ("", dummy_key),
+            ("not_an_int", dummy_key),
+            ("10", dummy_key),
+        ])
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0], (dummy_key, 75.0))
+        # Ensure get_torrents was called only with valid integer IDs: [10]
+        client.trans.get_torrents.assert_called_once_with([10], timeout=25)
+
+    @patch("zipfile.ZipFile")
+    def test_archive_save_with_unsupported_zip_compression(self, mock_zipfile):
+        mock_zip_instance = MagicMock()
+        mock_zip_instance.testzip.side_effect = NotImplementedError("That compression method is not supported")
+        mock_zipfile.return_value = mock_zip_instance
+
+        with patch("os.path.isfile", return_value=True):
+            archive = Archive.objects.create(
+                title="unsupported zip archive",
+                zipped="test.zip",
+                crc32="12345678",
+                user=None,
+            )
+            # save() should catch NotImplementedError without crashing
+            with self.assertLogs("viewer.models", level="ERROR") as cm:
+                archive.save()
+            self.assertTrue(any("That compression method is not supported" in msg for msg in cm.output))
+
+    @patch("core.downloaders.postdownload.ZipFile")
+    def test_postdownload_process_archive_unsupported_compression(self, mock_zipfile):
+        mock_zip_instance = MagicMock()
+        mock_zip_instance.testzip.side_effect = NotImplementedError("That compression method is not supported")
+        mock_zipfile.return_value = mock_zip_instance
+
+        settings = Settings(load_from_disk=False)
+        mock_web_queue = MagicMock()
+        post_downloader = PostDownloader(settings=settings, web_queue=mock_web_queue)
+
+        gallery = Gallery.objects.create(title="gallery panda", gid="888", provider="panda")
+        archive = Archive.objects.create(
+            title="panda archive",
+            zipped="panda_dl.zip",
+            crc32="87654321",
+            source_type="panda",
+            gallery=gallery,
+            user=None,
+        )
+
+        with patch("os.path.isfile", return_value=True), \
+             patch.object(archive, "save") as mock_save:
+            with self.assertLogs("core.downloaders.postdownload", level="ERROR") as cm:
+                post_downloader.process_downloaded_archive(archive)
+
+            self.assertTrue(any("NotImplementedError: That compression method is not supported" in msg for msg in cm.output))
+            mock_save.assert_called_once()
+            mock_web_queue.enqueue_args_list.assert_called_once()
+
+    @patch("time.sleep", return_value=None)
+    @patch("requests.get")
+    def test_request_with_retries_on_503_and_success(self, mock_get, mock_sleep):
+        from core.base.utilities import request_with_retries
+
+        resp_503 = MagicMock()
+        resp_503.status_code = 503
+        resp_200 = MagicMock()
+        resp_200.status_code = 200
+
+        mock_get.side_effect = [resp_503, resp_200]
+
+        res = request_with_retries("https://example.com", {})
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(mock_get.call_count, 2)
+        mock_sleep.assert_called_once_with(1)
+
+    @patch("time.sleep", return_value=None)
+    @patch("requests.post")
+    def test_request_with_retries_on_continuous_504(self, mock_post, mock_sleep):
+        from core.base.utilities import request_with_retries
+
+        resp_504 = MagicMock()
+        resp_504.status_code = 504
+
+        mock_post.return_value = resp_504
+
+        res = request_with_retries("https://example.com", {}, post=True, retries=3)
+        self.assertEqual(res.status_code, 504)
+        self.assertEqual(mock_post.call_count, 3)
+        self.assertEqual(mock_sleep.call_count, 2)
+
+    @patch("time.sleep", return_value=None)
+    def test_hath_downloader_retries_on_cache_error(self, mock_sleep):
+        from core.providers.panda.downloaders import HathDownloader
+        from core.providers.panda.settings import OwnSettings as PandaSettings
+        from core.base.types import GalleryData
+
+        settings = Settings(load_from_disk=False)
+        settings.providers["panda"] = PandaSettings(settings, {})
+        general_utils = MagicMock()
+        downloader = HathDownloader(settings, general_utils)
+
+        gallery = GalleryData("123456", "panda")
+        gallery.root = "https://exhentai.org"
+        gallery.token = "abcdef1234"
+        gallery.title = "Test Gallery"
+        downloader.gallery = gallery
+
+        resp_cache_error = MagicMock()
+        resp_cache_error.status_code = 200
+        resp_cache_error.content = b"<html><body><p>Cache error</p></body></html>"
+        resp_cache_error.text = "Cache error"
+
+        resp_success = MagicMock()
+        resp_success.status_code = 200
+        resp_success.content = b"<html><body><div><p>An original resolution download has been queued for client <strong>12345</strong></p></div></body></html>"
+        resp_success.text = "Queued"
+
+        with patch.object(downloader, "request_hath_download", side_effect=[resp_cache_error, resp_success]) as mock_req, \
+             patch("core.providers.panda.downloaders.available_filename", return_value="/tmp/test.zip"):
+            downloader.start_download()
+
+            self.assertEqual(downloader.return_code, 1)
+            self.assertEqual(downloader.fileDownloaded, 1)
+            self.assertEqual(mock_req.call_count, 2)
+            mock_sleep.assert_called_once_with(2)
+
+
+class RequeueFailedDownloadTest(TestCase):
+    def test_settings_requeue_defaults(self):
+        settings = Settings(load_from_disk=False)
+        self.assertTrue(settings.requeue_failed_downloads)
+        self.assertEqual(settings.failed_download_downloader, "panda_archive")
+        self.assertEqual(settings.requeue_downloader, "panda_archive")
+
+    def test_settings_requeue_from_config(self):
+        config = {
+            "general": {
+                "requeue_failed_downloads": False,
+                "failed_download_downloader": "panda_hath",
+            },
+            "downloaders": {},
+            "providers": {},
+        }
+        settings = Settings(load_from_config=config)
+        self.assertFalse(settings.requeue_failed_downloads)
+        self.assertEqual(settings.failed_download_downloader, "panda_hath")
+        self.assertEqual(settings.requeue_downloader, "panda_hath")
+
+    def test_settings_requeue_from_allowed_and_aliases(self):
+        config = {
+            "allowed": {
+                "requeue_failed": "no",
+                "requeue_downloader": "custom_dl",
+            },
+            "downloaders": {},
+            "providers": {},
+        }
+        settings = Settings(load_from_config=config)
+        self.assertFalse(settings.requeue_failed_downloads)
+        self.assertEqual(settings.failed_download_downloader, "custom_dl")
+        self.assertEqual(settings.requeue_downloader, "custom_dl")
+
+    @patch("core.downloaders.postdownload.ZipFile")
+    def test_process_downloaded_archive_requeue_disabled(self, mock_zipfile):
+        mock_zip = MagicMock()
+        mock_zip.testzip.side_effect = NotImplementedError("Corrupt zip")
+        mock_zipfile.return_value = mock_zip
+
+        settings = Settings(load_from_disk=False)
+        settings.requeue_failed_downloads = False
+        mock_web_queue = MagicMock()
+        post_downloader = PostDownloader(settings=settings, web_queue=mock_web_queue)
+
+        gallery = Gallery.objects.create(title="gallery panda", gid="111", provider="panda")
+        archive = Archive.objects.create(
+            title="panda archive",
+            zipped="panda_dl.zip",
+            crc32="11111111",
+            source_type="panda",
+            gallery=gallery,
+            user=None,
+        )
+
+        with patch("os.path.isfile", return_value=True), \
+             patch.object(archive, "save"):
+            with self.assertLogs("core.downloaders.postdownload", level="WARNING") as cm:
+                post_downloader.process_downloaded_archive(archive)
+
+            self.assertTrue(any("Check the file manually" in msg for msg in cm.output))
+            mock_web_queue.enqueue_args_list.assert_not_called()
+
+    @patch("core.downloaders.postdownload.ZipFile")
+    def test_process_downloaded_archive_requeue_custom_downloader(self, mock_zipfile):
+        mock_zip = MagicMock()
+        mock_zip.testzip.side_effect = NotImplementedError("Corrupt zip")
+        mock_zipfile.return_value = mock_zip
+
+        config = {
+            "custom_downloaders": {
+                "panda_archive_then_hath": [
+                    {"panda_archive": 1},
+                    {"panda_hath": 2},
+                ]
+            },
+            "general": {
+                "requeue_failed_downloads": True,
+                "failed_download_downloader": "panda_archive_then_hath",
+            },
+            "downloaders": {
+                "panda_archive": 4,
+                "panda_torrent": 3,
+                "chaika_archive": 5,
+            },
+            "providers": {},
+        }
+        settings = Settings(load_from_config=config)
+        mock_web_queue = MagicMock()
+        post_downloader = PostDownloader(settings=settings, web_queue=mock_web_queue)
+
+        gallery = Gallery.objects.create(title="gallery panda", gid="222", provider="panda")
+        archive = Archive.objects.create(
+            title="panda archive",
+            zipped="panda_dl.zip",
+            crc32="22222222",
+            source_type="panda",
+            gallery=gallery,
+            user=None,
+        )
+
+        with patch("os.path.isfile", return_value=True), \
+             patch.object(archive, "save"):
+            with self.assertLogs("core.downloaders.postdownload", level="ERROR") as cm:
+                post_downloader.process_downloaded_archive(archive)
+
+            self.assertTrue(any("forcing download as panda_archive_then_hath to fix it" in msg for msg in cm.output))
+            mock_web_queue.enqueue_args_list.assert_called_once()
+            call_args, call_kwargs = mock_web_queue.enqueue_args_list.call_args
+            override_options = call_kwargs.get("override_options")
+            self.assertIsNotNone(override_options)
+            self.assertEqual(override_options.downloaders["panda_archive"], 1)
+            self.assertEqual(override_options.downloaders["panda_hath"], 2)
+            self.assertEqual(override_options.downloaders.get("chaika_archive"), -1)
+
+    @patch("core.downloaders.postdownload.ZipFile")
+    def test_process_downloaded_archive_provider_mismatch_no_requeue(self, mock_zipfile):
+        mock_zip = MagicMock()
+        mock_zip.testzip.side_effect = NotImplementedError("Corrupt zip")
+        mock_zipfile.return_value = mock_zip
+
+        settings = Settings(load_from_disk=False)
+        settings.requeue_failed_downloads = True
+        settings.failed_download_downloader = "panda_archive"
+        mock_web_queue = MagicMock()
+        post_downloader = PostDownloader(settings=settings, web_queue=mock_web_queue)
+
+        gallery = Gallery.objects.create(title="gallery chaika", gid="333", provider="chaika")
+        archive = Archive.objects.create(
+            title="chaika archive",
+            zipped="chaika_dl.zip",
+            crc32="33333333",
+            source_type="chaika",
+            gallery=gallery,
+            user=None,
+        )
+
+        with patch("os.path.isfile", return_value=True), \
+             patch.object(archive, "save"):
+            with self.assertLogs("core.downloaders.postdownload", level="WARNING") as cm:
+                post_downloader.process_downloaded_archive(archive)
+
+            self.assertTrue(any("Check the file manually" in msg for msg in cm.output))
+            mock_web_queue.enqueue_args_list.assert_not_called()
+
+    @patch("core.downloaders.postdownload.ZipFile")
+    def test_process_downloaded_archive_filesize_mismatch_custom_downloader(self, mock_zipfile):
+        mock_zip = MagicMock()
+        mock_zip.testzip.return_value = None
+        mock_zipfile.return_value = mock_zip
+
+        config = {
+            "custom_downloaders": {
+                "panda_archive_then_hath": [
+                    {"panda_archive": 1},
+                    {"panda_hath": 2},
+                ]
+            },
+            "general": {
+                "requeue_failed_downloads": True,
+                "failed_download_downloader": "panda_archive_then_hath",
+            },
+            "downloaders": {
+                "panda_archive": 4,
+            },
+            "providers": {},
+        }
+        settings = Settings(load_from_config=config)
+        mock_web_queue = MagicMock()
+        post_downloader = PostDownloader(settings=settings, web_queue=mock_web_queue)
+
+        gallery = Gallery.objects.create(title="gallery panda", gid="444", provider="panda", filesize=2000)
+        archive = Archive.objects.create(
+            title="panda archive",
+            zipped="panda_dl.zip",
+            crc32="44444444",
+            source_type="panda",
+            gallery=gallery,
+            filesize=1000,
+            user=None,
+        )
+
+        with patch("os.path.isfile", return_value=True), \
+             patch.object(archive, "save"), \
+             patch.object(archive, "recalc_fileinfo"):
+            archive.filesize = 1000
+            with self.assertLogs("core.downloaders.postdownload", level="INFO") as cm:
+                post_downloader.process_downloaded_archive(archive)
+
+            self.assertTrue(any("downloading again from panda_archive_then_hath" in msg for msg in cm.output))
+            mock_web_queue.enqueue_args_list.assert_called_once()
+            call_args, call_kwargs = mock_web_queue.enqueue_args_list.call_args
+            override_options = call_kwargs.get("override_options")
+            self.assertIsNotNone(override_options)
+            self.assertEqual(override_options.downloaders["panda_archive"], 1)
+            self.assertEqual(override_options.downloaders["panda_hath"], 2)
+
+    @patch("core.downloaders.postdownload.ZipFile")
+    def test_process_downloaded_archive_sha1_mismatch_custom_downloader(self, mock_zipfile):
+        mock_zip = MagicMock()
+        mock_zip.testzip.return_value = None
+        mock_zipfile.return_value = mock_zip
+
+        config = {
+            "custom_downloaders": {
+                "panda_archive_then_hath": [
+                    {"panda_archive": 1},
+                    {"panda_hath": 2},
+                ]
+            },
+            "general": {
+                "requeue_failed_downloads": True,
+                "failed_download_downloader": "panda_archive_then_hath",
+            },
+            "downloaders": {
+                "panda_archive": 4,
+            },
+            "providers": {},
+        }
+        settings = Settings(load_from_config=config)
+        panda_settings = MagicMock()
+        panda_settings.confirm_files_after_download = True
+        settings.providers["panda"] = panda_settings
+
+        mock_parser = MagicMock(spec=PandaParser)
+        mock_parser.get_sha1_hashes_from_panda.return_value = ["hash_panda"]
+        settings.provider_context.get_parsers = MagicMock(return_value=[mock_parser])
+
+        mock_web_queue = MagicMock()
+        post_downloader = PostDownloader(settings=settings, web_queue=mock_web_queue)
+
+        gallery = Gallery.objects.create(title="gallery panda", gid="555", provider="panda", filesize=2000)
+        archive = Archive.objects.create(
+            title="panda archive",
+            zipped="panda_dl.zip",
+            crc32="55555555",
+            source_type="panda",
+            match_type="torrent",
+            gallery=gallery,
+            filesize=2000,
+            user=None,
+        )
+
+        with patch("os.path.isfile", return_value=True), \
+             patch.object(archive, "save"), \
+             patch.object(archive, "recalc_fileinfo"):
+            archive.filesize = 2000
+            with self.assertLogs("core.downloaders.postdownload", level="WARNING") as cm:
+                post_downloader.process_downloaded_archive(archive)
+
+            self.assertTrue(any("forcing download as panda_archive_then_hath to fix it" in msg for msg in cm.output))
+            mock_web_queue.enqueue_args_list.assert_called_once()
+            call_args, call_kwargs = mock_web_queue.enqueue_args_list.call_args
+            override_options = call_kwargs.get("override_options")
+            self.assertIsNotNone(override_options)
+            self.assertEqual(override_options.downloaders["panda_archive"], 1)
+            self.assertEqual(override_options.downloaders["panda_hath"], 2)
+
+    @patch("core.downloaders.postdownload.ZipFile")
+    def test_process_downloaded_archive_sha1_mismatch_requeue_disabled(self, mock_zipfile):
+        mock_zip = MagicMock()
+        mock_zip.testzip.return_value = None
+        mock_zipfile.return_value = mock_zip
+
+        settings = Settings(load_from_disk=False)
+        settings.requeue_failed_downloads = False
+        panda_settings = MagicMock()
+        panda_settings.confirm_files_after_download = True
+        settings.providers["panda"] = panda_settings
+
+        mock_parser = MagicMock(spec=PandaParser)
+        mock_parser.get_sha1_hashes_from_panda.return_value = ["hash_panda"]
+        settings.provider_context.get_parsers = MagicMock(return_value=[mock_parser])
+
+        mock_web_queue = MagicMock()
+        post_downloader = PostDownloader(settings=settings, web_queue=mock_web_queue)
+
+        gallery = Gallery.objects.create(title="gallery panda", gid="666", provider="panda", filesize=2000)
+        archive = Archive.objects.create(
+            title="panda archive",
+            zipped="panda_dl.zip",
+            crc32="66666666",
+            source_type="panda",
+            match_type="torrent",
+            gallery=gallery,
+            filesize=2000,
+            user=None,
+        )
+
+        with patch("os.path.isfile", return_value=True), \
+             patch.object(archive, "save"), \
+             patch.object(archive, "recalc_fileinfo"):
+            archive.filesize = 2000
+            with self.assertLogs("core.downloaders.postdownload", level="WARNING") as cm:
+                post_downloader.process_downloaded_archive(archive)
+
+            self.assertTrue(any("Check the file manually" in msg for msg in cm.output))
+            mock_web_queue.enqueue_args_list.assert_not_called()
+
+
 
 
 

@@ -1,5 +1,5 @@
 {% extends "viewer/base.html" %}
-{% block title %}Download history | {{ block.super }}{% endblock %}
+{% block title %}Download Monitor | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
 {% load static %}
 
@@ -10,12 +10,29 @@
 <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
 {% endfor %}
 {% endif %}
-<!-- Galleries not used  -->
-<div class="page-header">
-  <h2>Download History</h2>
-  <p class="lead">Number of downloads (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
+
+<div class="page-header mb-4">
+  <div class="d-flex justify-content-between align-items-center">
+    <div>
+      <h2>Download Monitor</h2>
+      <p class="lead mb-0" id="download-counts">Number of downloads (in page, total): <span id="count-in-page">{{ results|length }}</span>, <span id="count-total">{{ results.paginator.count }}</span></p>
+    </div>
+    <div class="input-group" style="width: auto;">
+      <button class="btn btn-outline-light" id="auto-refresh" title="Auto-refresh downloads">
+        <i class="fas fa-sync"></i> Auto-refresh
+      </button>
+      <select class="form-select bg-dark text-light border-light" id="refresh-interval" data-bs-theme="dark" title="Auto-refresh frequency" style="width: auto;">
+        <option value="1000">1s</option>
+        <option value="5000" selected>5s</option>
+        <option value="10000">10s</option>
+        <option value="30000">30s</option>
+        <option value="60000">1m</option>
+      </select>
+    </div>
+  </div>
 </div>
-<form action="{{ request.get_full_path }}" method="GET">
+
+<form action="{{ request.get_full_path }}" method="GET" class="mb-4">
   <div class="row g-2 align-items-end">
     <div class="col-md-3">
       {{ form.name.label_tag }}
@@ -25,21 +42,13 @@
       {{ form.title.label_tag }}
       {{ form.title }}
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
       {{ form.method.label_tag }}
       {{ form.method }}
     </div>
     <div class="col-md-2">
       {{ form.status.label_tag }}
       {{ form.status }}
-    </div>
-    <div class="col-md-2">
-      {{ form.create_date_from.label_tag }}
-      {{ form.create_date_from }}
-    </div>
-    <div class="col-md-2">
-      {{ form.create_date_to.label_tag }}
-      {{ form.create_date_to }}
     </div>
     <div class="col-md-2">
       {{ form.sort_by.label_tag }}
@@ -49,6 +58,14 @@
       {{ form.direction.label_tag }}
       {{ form.direction }}
     </div>
+    <div class="col-md-2">
+      {{ form.create_date_from.label_tag }}
+      {{ form.create_date_from }}
+    </div>
+    <div class="col-md-2">
+      {{ form.create_date_to.label_tag }}
+      {{ form.create_date_to }}
+    </div>
 
     <div class="col-md-auto">
       <button type="submit" class="btn btn-info">Apply Filters</button>
@@ -56,31 +73,46 @@
     </div>
   </div>
 </form>
-<div class="mt-2" id="contained-data">
-  <table class="table table-striped">
+
+<div class="mt-2 table-responsive" id="contained-data">
+  <table class="table table-striped table-hover align-middle">
     <thead>
       <tr>
-        <th>URL</th>
-        <th>Download method</th>
+        <th style="min-width: 250px;">URL</th>
+        <th>Method</th>
+        <th>Status</th>
         <th>Archive</th>
         <th>Gallery</th>
         <th>Size</th>
-        <th>Progress</th>
+        <th style="min-width: 140px;">Progress</th>
         <th>Failed</th>
         <th>Start date</th>
         <th>End date (or ETA)</th>
       </tr>
     </thead>
-    <tbody>
+    <tbody id="download-table">
       {% for download_event in results %}
-      <tr>
-        <td>
+      <tr id="event-{{ download_event.id }}">
+        <td class="event-name" style="word-break: break-all; max-width: 320px;">
           {{ download_event.name|urlize_all_rel }}
         </td>
-        <td>
-          {{ download_event.method }}
+        <td class="event-method">
+          <span class="badge bg-dark">{{ download_event.method }}</span>
         </td>
-        <td>
+        <td class="event-status">
+          {% if download_event.status == "queued" %}
+          <span class="badge bg-warning text-dark"><i class="fas fa-clock me-1"></i>Queued</span>
+          {% elif download_event.status == "in_progress" %}
+          <span class="badge bg-primary"><i class="fas fa-spinner fa-spin me-1"></i>Downloading</span>
+          {% elif download_event.status == "completed" %}
+          <span class="badge bg-success"><i class="fas fa-check me-1"></i>Completed</span>
+          {% elif download_event.status == "failed" %}
+          <span class="badge bg-danger" {% if download_event.error_message %}title="{{ download_event.error_message }}"{% endif %}><i class="fas fa-times me-1"></i>Failed</span>
+          {% else %}
+          <span class="badge bg-secondary">{{ download_event.get_status_display|default:download_event.status }}</span>
+          {% endif %}
+        </td>
+        <td class="event-archive">
           {% if download_event.archive %}
           {% if download_event.archive.thumbnail.name %}
           <a href="{% url 'viewer:archive' download_event.archive.pk %}"
@@ -89,10 +121,10 @@
           <a href="{% url 'viewer:archive' download_event.archive.pk %}">{{ download_event.archive.pk }}</a>
           {% endif %}
           {% else %}
-          Not set
+          <span class="text-white-50">Not set</span>
           {% endif %}
         </td>
-        <td>
+        <td class="event-gallery">
           {% if download_event.gallery %}
           {% if download_event.gallery.thumbnail.name %}
           <a href="{% url 'viewer:gallery' download_event.gallery.pk %}"
@@ -101,22 +133,32 @@
           <a href="{% url 'viewer:gallery' download_event.gallery.pk %}">{{ download_event.gallery.pk }}</a>
           {% endif %}
           {% else %}
-          Not set
+          <span class="text-white-50">Not set</span>
           {% endif %}
         </td>
-        <td>
+        <td class="event-size text-nowrap">
           {{ download_event.total_size|filesizeformat }}
         </td>
-        <td>
-          {{ download_event.progress }}%
+        <td class="event-progress" style="min-width: 140px;">
+          <div class="progress" style="height: 18px;">
+            <div class="progress-bar {% if download_event.failed %}bg-danger{% elif download_event.completed %}bg-success{% else %}bg-primary progress-bar-striped progress-bar-animated{% endif %}"
+                 role="progressbar" style="width: {{ download_event.progress }}%;"
+                 aria-valuenow="{{ download_event.progress }}" aria-valuemin="0" aria-valuemax="100">
+              {{ download_event.progress|floatformat:1 }}%
+            </div>
+          </div>
         </td>
-        <td>
-          {{ download_event.failed|yesno }}
+        <td class="event-failed text-center text-white">
+          {% if download_event.failed %}
+          <span class="text-danger fw-bold">Yes</span>
+          {% else %}
+          <span class="text-white">No</span>
+          {% endif %}
         </td>
-        <td>
+        <td class="event-create-date text-nowrap small text-white">
           {{ download_event.create_date|date:"DATETIME_FORMAT" }}
         </td>
-        <td>
+        <td class="event-end-date text-nowrap small text-white">
           {% if download_event.completed %}
           {{ download_event.completed_date|date:"DATETIME_FORMAT" }}
           {% else %}
@@ -124,9 +166,256 @@
           {% endif %}
         </td>
       </tr>
+      {% empty %}
+      <tr id="no-downloads-row">
+        <td colspan="10" class="text-center text-muted py-4">No download events found.</td>
+      </tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
 
+{% if results.has_other_pages %}
+<nav aria-label="Page navigation" class="mt-3">
+  <ul class="pagination justify-content-center">
+    {% if results.has_previous %}
+    <li class="page-item"><a class="page-link" href="?page={{ results.previous_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' and key != 'json' %}&{{ key }}={{ value }}{% endif %}{% endfor %}">&laquo; Previous</a></li>
+    {% else %}
+    <li class="page-item disabled"><span class="page-link">&laquo; Previous</span></li>
+    {% endif %}
+    <li class="page-item active"><span class="page-link">Page {{ results.number }} of {{ results.paginator.num_pages }}</span></li>
+    {% if results.has_next %}
+    <li class="page-item"><a class="page-link" href="?page={{ results.next_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' and key != 'json' %}&{{ key }}={{ value }}{% endif %}{% endfor %}">Next &raquo;</a></li>
+    {% else %}
+    <li class="page-item disabled"><span class="page-link">Next &raquo;</span></li>
+    {% endif %}
+  </ul>
+</nav>
+{% endif %}
+
+{% load compress %}
+{% compress js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const autoRefreshBtn = document.getElementById('auto-refresh');
+  const refreshIntervalSelect = document.getElementById('refresh-interval');
+  let refreshInterval = null;
+  let isRefreshing = false;
+
+  const savedDownloadInterval = localStorage.getItem('download_monitor_refresh_interval');
+  if (savedDownloadInterval && refreshIntervalSelect) {
+    refreshIntervalSelect.value = savedDownloadInterval;
+  }
+
+  function getIntervalMs() {
+    return parseInt(refreshIntervalSelect ? refreshIntervalSelect.value : 5000, 10) || 5000;
+  }
+
+  function initPopovers(container) {
+    if (typeof bootstrap !== 'undefined' && bootstrap.Popover) {
+      const scope = container || document;
+      scope.querySelectorAll('.img-preview').forEach(function(el) {
+        if (!el._popoverInitialized) {
+          el._popoverInitialized = true;
+          new bootstrap.Popover(el, {
+            trigger: 'hover',
+            html: true,
+            content: function() {
+              const url = el.dataset['imageUrl'] || el.getAttribute('data-image-url');
+              return url ? '<img alt="" class="img-fluid" style="max-width: 250px; max-height: 250px;" src="' + url + '">' : '';
+            }
+          });
+        }
+      });
+    }
+  }
+
+  function renderRowContent(item) {
+    let archiveHtml = '<span class="text-white-50">Not set</span>';
+    if (item.archive) {
+      if (item.archive.thumb_url) {
+        archiveHtml = `<a href="${item.archive.url}" data-image-url="${item.archive.thumb_url}" class="img-preview" rel="popover">${item.archive.id}</a>`;
+      } else {
+        archiveHtml = `<a href="${item.archive.url}">${item.archive.id}</a>`;
+      }
+    }
+
+    let galleryHtml = '<span class="text-white-50">Not set</span>';
+    if (item.gallery) {
+      if (item.gallery.thumb_url) {
+        galleryHtml = `<a href="${item.gallery.url}" data-image-url="${item.gallery.thumb_url}" class="img-preview" rel="popover">${item.gallery.id}</a>`;
+      } else {
+        galleryHtml = `<a href="${item.gallery.url}">${item.gallery.id}</a>`;
+      }
+    }
+
+    let statusBadge = '';
+    if (item.status === 'queued') {
+      statusBadge = '<span class="badge bg-warning text-dark"><i class="fas fa-clock me-1"></i>Queued</span>';
+    } else if (item.status === 'in_progress') {
+      statusBadge = '<span class="badge bg-primary"><i class="fas fa-spinner fa-spin me-1"></i>Downloading</span>';
+    } else if (item.status === 'completed') {
+      statusBadge = '<span class="badge bg-success"><i class="fas fa-check me-1"></i>Completed</span>';
+    } else if (item.status === 'failed') {
+      const errTitle = item.error_message ? ` title="${item.error_message.replace(/"/g, '&quot;')}"` : '';
+      statusBadge = `<span class="badge bg-danger"${errTitle}><i class="fas fa-times me-1"></i>Failed</span>`;
+    } else {
+      statusBadge = `<span class="badge bg-secondary">${item.status_display || item.status}</span>`;
+    }
+
+    let barClass = 'bg-primary progress-bar-striped progress-bar-animated';
+    if (item.failed) {
+      barClass = 'bg-danger';
+    } else if (item.completed) {
+      barClass = 'bg-success';
+    }
+
+    const failedText = item.failed
+      ? '<span class="text-danger fw-bold">Yes</span>'
+      : '<span class="text-white">No</span>';
+
+    let nameHtml = item.name;
+    if (item.name && (item.name.startsWith('http://') || item.name.startsWith('https://'))) {
+      nameHtml = `<a href="${item.name}" target="_blank" rel="noopener noreferrer">${item.name}</a>`;
+    }
+
+    return `
+      <td class="event-name" style="word-break: break-all; max-width: 320px;">${nameHtml}</td>
+      <td class="event-method"><span class="badge bg-dark">${item.method}</span></td>
+      <td class="event-status">${statusBadge}</td>
+      <td class="event-archive">${archiveHtml}</td>
+      <td class="event-gallery">${galleryHtml}</td>
+      <td class="event-size text-nowrap">${item.total_size_formatted}</td>
+      <td class="event-progress" style="min-width: 140px;">
+        <div class="progress" style="height: 18px;">
+          <div class="progress-bar ${barClass}" role="progressbar" style="width: ${item.progress}%;" aria-valuenow="${item.progress}" aria-valuemin="0" aria-valuemax="100">
+            ${item.progress}%
+          </div>
+        </div>
+      </td>
+      <td class="event-failed text-center text-white">${failedText}</td>
+      <td class="event-create-date text-nowrap small text-white">${item.create_date}</td>
+      <td class="event-end-date text-nowrap small text-white">${item.end_date_or_eta}</td>
+    `;
+  }
+
+  async function refreshDownloads() {
+    if (isRefreshing) return;
+    isRefreshing = true;
+
+    try {
+      const currentURL = new URL(window.location.href);
+      currentURL.searchParams.set("json", "1");
+      const fetchURL = currentURL.toString();
+
+      const response = await fetch(fetchURL);
+      if (!response.ok) return;
+      const data = await response.json();
+
+      const tableBody = document.getElementById('download-table');
+      if (!tableBody) return;
+
+      const countInPage = document.getElementById('count-in-page');
+      const countTotal = document.getElementById('count-total');
+      if (countInPage) countInPage.textContent = data.in_page_count;
+      if (countTotal) countTotal.textContent = data.count;
+
+      if (!data.results || data.results.length === 0) {
+        tableBody.innerHTML = '<tr id="no-downloads-row"><td colspan="10" class="text-center text-muted py-4">No download events found.</td></tr>';
+        return;
+      }
+
+      const noDownloadsRow = document.getElementById('no-downloads-row');
+      if (noDownloadsRow) {
+        noDownloadsRow.remove();
+      }
+
+      const incomingIds = new Set(data.results.map(r => r.id));
+
+      Array.from(tableBody.children).forEach(function(row) {
+        const idMatch = row.id && row.id.match(/^event-(\d+)$/);
+        if (idMatch && !incomingIds.has(parseInt(idMatch[1]))) {
+          row.remove();
+        }
+      });
+
+      data.results.forEach(function(item, index) {
+        let row = document.getElementById(`event-${item.id}`);
+        if (!row) {
+          row = document.createElement('tr');
+          row.id = `event-${item.id}`;
+          if (index < tableBody.children.length) {
+            tableBody.insertBefore(row, tableBody.children[index]);
+          } else {
+            tableBody.appendChild(row);
+          }
+        } else {
+          if (tableBody.children[index] !== row) {
+            tableBody.insertBefore(row, tableBody.children[index]);
+          }
+        }
+        row.innerHTML = renderRowContent(item);
+        initPopovers(row);
+      });
+    } catch (error) {
+      console.error('Error refreshing downloads:', error);
+    } finally {
+      isRefreshing = false;
+    }
+  }
+
+  function startAutoRefresh() {
+    refreshDownloads();
+    refreshInterval = setInterval(refreshDownloads, getIntervalMs());
+    if (autoRefreshBtn) {
+      autoRefreshBtn.classList.add('active');
+      autoRefreshBtn.classList.remove('btn-outline-light');
+      autoRefreshBtn.classList.add('btn-success');
+      autoRefreshBtn.innerHTML = '<i class="fas fa-stop"></i> Stop refresh';
+    }
+  }
+
+  function stopAutoRefresh() {
+    if (refreshInterval) {
+      clearInterval(refreshInterval);
+      refreshInterval = null;
+    }
+    if (autoRefreshBtn) {
+      autoRefreshBtn.classList.remove('active');
+      autoRefreshBtn.classList.remove('btn-success');
+      autoRefreshBtn.classList.add('btn-outline-light');
+      autoRefreshBtn.innerHTML = '<i class="fas fa-sync"></i> Auto-refresh';
+    }
+  }
+
+  if (autoRefreshBtn) {
+    autoRefreshBtn.addEventListener('click', function() {
+      if (refreshInterval) {
+        stopAutoRefresh();
+        sessionStorage.removeItem('download_monitor_auto_refresh');
+      } else {
+        startAutoRefresh();
+        sessionStorage.setItem('download_monitor_auto_refresh', '1');
+      }
+    });
+
+    if (sessionStorage.getItem('download_monitor_auto_refresh') === '1') {
+      startAutoRefresh();
+    }
+  }
+
+  if (refreshIntervalSelect) {
+    refreshIntervalSelect.addEventListener('change', function() {
+      localStorage.setItem('download_monitor_refresh_interval', this.value);
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+        refreshInterval = setInterval(refreshDownloads, getIntervalMs());
+      }
+    });
+  }
+
+  initPopovers(document);
+});
+</script>
+{% endcompress %}
 {% endblock %}

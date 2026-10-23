@@ -443,7 +443,9 @@ class ArchiveModForm(forms.ModelForm):
 class DownloadHistoryForm(forms.Form):
     STATUS_CHOICES = [
         ("all", "All"),
-        ("in_progress", "In Progress"),
+        ("in_progress", "In Progress (Queued & Downloading)"),
+        ("queued", "Queued"),
+        ("downloading", "Downloading"),
         ("finished", "Finished"),
         ("failed", "Failed"),
     ]
@@ -452,6 +454,7 @@ class DownloadHistoryForm(forms.Form):
         ("create_date", "Date"),
         ("total_size", "Size"),
         ("progress", "Progress"),
+        ("status", "Status"),
     ]
 
     DIRECTION_CHOICES = [

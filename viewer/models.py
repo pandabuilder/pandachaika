@@ -2,6 +2,7 @@ import base64
 import io
 import itertools
 import json
+import logging
 import multiprocessing
 import os
 import re
@@ -11,6 +12,7 @@ import time
 import typing
 import uuid
 import zipfile
+import zlib
 from collections import Counter, defaultdict
 from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime, timedelta, timezone, date
@@ -80,6 +82,8 @@ from viewer.utils.tags import sort_tags, sort_tags_str
 
 if typing.TYPE_CHECKING:
     from core.base.setup import CloningImageToolSettings
+
+logger = logging.getLogger(__name__)
 
 
 T = typing.TypeVar("T")
@@ -2086,13 +2090,29 @@ class Archive(models.Model):
         if images.count() != len(sha1s):
             return None, "Image count different from SHA1 values"
 
+        my_zip = None
         try:
             my_zip = zipfile.ZipFile(self.zipped.path, "r")
-        except (zipfile.BadZipFile, NotImplementedError):
-            return None, "Bad original zip file"
-
-        if my_zip.testzip():
-            return None, "Bad original zip file"
+            bad_file = my_zip.testzip()
+            if bad_file:
+                logger.error(
+                    "Zip file CRC check failed on file %s for archive: %s on file: %s",
+                    bad_file,
+                    self,
+                    self.zipped.path,
+                )
+                my_zip.close()
+                return None, f"Bad original zip file CRC: {bad_file}"
+        except (zipfile.BadZipFile, NotImplementedError, zlib.error) as e:
+            logger.error(
+                "Error opening or testing zipfile for archive: %s on file: %s: %s",
+                self,
+                self.zipped.path,
+                e,
+            )
+            if my_zip:
+                my_zip.close()
+            return None, f"Bad original zip file: {e}"
 
         filtered_files = get_images_from_zip(my_zip)
 
@@ -2174,13 +2194,29 @@ class Archive(models.Model):
         if images.count() != len(local_sha1s):
             return None, "Image count different from SHA1 values"
 
+        my_zip = None
         try:
             my_zip = zipfile.ZipFile(self.zipped.path, "r")
-        except (zipfile.BadZipFile, NotImplementedError):
-            return None, "Bad original zip file"
-
-        if my_zip.testzip():
-            return None, "Bad original zip file"
+            bad_file = my_zip.testzip()
+            if bad_file:
+                logger.error(
+                    "Zip file CRC check failed on file %s for archive: %s on file: %s",
+                    bad_file,
+                    self,
+                    self.zipped.path,
+                )
+                my_zip.close()
+                return None, f"Bad original zip file CRC: {bad_file}"
+        except (zipfile.BadZipFile, NotImplementedError, zlib.error) as e:
+            logger.error(
+                "Error opening or testing zipfile for archive: %s on file: %s: %s",
+                self,
+                self.zipped.path,
+                e,
+            )
+            if my_zip:
+                my_zip.close()
+            return None, f"Bad original zip file: {e}"
 
         filtered_files = get_images_from_zip(my_zip)
 
@@ -2329,13 +2365,29 @@ class Archive(models.Model):
         if images.count() != self.filecount:
             return None, "Image count different from filecount"
 
+        my_zip = None
         try:
             my_zip = zipfile.ZipFile(self.zipped.path, "r")
-        except (zipfile.BadZipFile, NotImplementedError):
-            return None, "Bad original zip file"
-
-        if my_zip.testzip():
-            return None, "Bad original zip file"
+            bad_file = my_zip.testzip()
+            if bad_file:
+                logger.error(
+                    "Zip file CRC check failed on file %s for archive: %s on file: %s",
+                    bad_file,
+                    self,
+                    self.zipped.path,
+                )
+                my_zip.close()
+                return None, f"Bad original zip file CRC: {bad_file}"
+        except (zipfile.BadZipFile, NotImplementedError, zlib.error) as e:
+            logger.error(
+                "Error opening or testing zipfile for archive: %s on file: %s: %s",
+                self,
+                self.zipped.path,
+                e,
+            )
+            if my_zip:
+                my_zip.close()
+            return None, f"Bad original zip file: {e}"
 
         if not self.zipped.name:
             return None, "Original file is not set"
@@ -2465,13 +2517,28 @@ class Archive(models.Model):
             process_archive_statistics: bool = True
     ) -> bool:
 
+        my_zip = None
         try:
             my_zip = zipfile.ZipFile(self.zipped.path, "r")
-        except (zipfile.BadZipFile, NotImplementedError):
-            return False
-
-        if my_zip.testzip():
-            my_zip.close()
+            bad_file = my_zip.testzip()
+            if bad_file:
+                logger.error(
+                    "Zip file CRC check failed on file %s for archive: %s on file: %s",
+                    bad_file,
+                    self,
+                    self.zipped.path,
+                )
+                my_zip.close()
+                return False
+        except (zipfile.BadZipFile, NotImplementedError, zlib.error) as e:
+            logger.error(
+                "Error opening or testing zipfile for archive: %s on file: %s: %s",
+                self,
+                self.zipped.path,
+                e,
+            )
+            if my_zip:
+                my_zip.close()
             return False
 
         # --- Initial Setup ---
@@ -2632,12 +2699,28 @@ class Archive(models.Model):
 
         image_result: dict[int, str] = {}
 
+        my_zip = None
         try:
             my_zip = zipfile.ZipFile(self.zipped.path, "r")
-        except (zipfile.BadZipFile, NotImplementedError):
-            return image_result
-
-        if my_zip.testzip():
+            bad_file = my_zip.testzip()
+            if bad_file:
+                logger.error(
+                    "Zip file CRC check failed on file %s for archive: %s on file: %s",
+                    bad_file,
+                    self,
+                    self.zipped.path,
+                )
+                my_zip.close()
+                return image_result
+        except (zipfile.BadZipFile, NotImplementedError, zlib.error) as e:
+            logger.error(
+                "Error opening or testing zipfile for archive: %s on file: %s: %s",
+                self,
+                self.zipped.path,
+                e,
+            )
+            if my_zip:
+                my_zip.close()
             return image_result
 
         filtered_files = get_images_from_zip(my_zip)
@@ -2708,13 +2791,28 @@ class Archive(models.Model):
     def extract(self, resized=False):
         if self.extracted:
             return False
+        my_zip = None
         try:
             my_zip = zipfile.ZipFile(self.zipped.path, "r")
-        except (zipfile.BadZipFile, NotImplementedError):
-            return False
-
-        if my_zip.testzip():
-            my_zip.close()
+            bad_file = my_zip.testzip()
+            if bad_file:
+                logger.error(
+                    "Zip file CRC check failed on file %s for archive: %s on file: %s",
+                    bad_file,
+                    self,
+                    self.zipped.path,
+                )
+                my_zip.close()
+                return False
+        except (zipfile.BadZipFile, NotImplementedError, zlib.error) as e:
+            logger.error(
+                "Error opening or testing zipfile for archive: %s on file: %s: %s",
+                self,
+                self.zipped.path,
+                e,
+            )
+            if my_zip:
+                my_zip.close()
             return False
 
         os.makedirs(pjoin(settings.MEDIA_ROOT, "images/extracted/archive_{id}/full/".format(id=self.pk)), exist_ok=True)
@@ -2812,12 +2910,28 @@ class Archive(models.Model):
             return False
         # large thumbnail and image set
         if force or not bool(self.image_set.all()):
+            my_zip = None
             try:
                 my_zip = zipfile.ZipFile(self.zipped.path, "r")
-            except (zipfile.BadZipFile, NotImplementedError):
-                return False
-            if my_zip.testzip():
-                my_zip.close()
+                bad_file = my_zip.testzip()
+                if bad_file:
+                    logger.error(
+                        "Zip file CRC check failed on file %s for archive: %s on file: %s",
+                        bad_file,
+                        self,
+                        self.zipped.path,
+                    )
+                    my_zip.close()
+                    return False
+            except (zipfile.BadZipFile, NotImplementedError, zlib.error) as e:
+                logger.error(
+                    "Error opening or testing zipfile for archive: %s on file: %s: %s",
+                    self,
+                    self.zipped.path,
+                    e,
+                )
+                if my_zip:
+                    my_zip.close()
                 return False
 
             filtered_files = get_images_from_zip(my_zip)
@@ -2905,13 +3019,29 @@ class Archive(models.Model):
         image_set_present = bool(self.image_set.all())
         # large thumbnail and image set
         if not self.thumbnail or not image_set_present:
+            my_zip = None
             try:
                 my_zip = zipfile.ZipFile(self.zipped.path, "r")
-            except (zipfile.BadZipFile, NotImplementedError):
-                self.simple_save(force_update=True)
-                return
-            if my_zip.testzip():
-                my_zip.close()
+                bad_file = my_zip.testzip()
+                if bad_file:
+                    logger.error(
+                        "Zip file CRC check failed on file %s for archive: %s on file: %s",
+                        bad_file,
+                        self,
+                        self.zipped.path,
+                    )
+                    my_zip.close()
+                    self.simple_save(force_update=True)
+                    return
+            except (zipfile.BadZipFile, NotImplementedError, zlib.error) as e:
+                logger.error(
+                    "Error opening or testing zipfile for archive: %s on file: %s: %s",
+                    self,
+                    self.zipped.path,
+                    e,
+                )
+                if my_zip:
+                    my_zip.close()
                 self.simple_save(force_update=True)
                 return
             filtered_files = get_images_from_zip(my_zip)
@@ -3666,16 +3796,31 @@ class Archive(models.Model):
     def test_zip_file(self) -> None:
         if not os.path.exists(self.zipped.path):
             raise FileNotFoundError("Zipped file not found: {}.".format(self.zipped.path))
+        my_zip = None
         try:
             my_zip = zipfile.ZipFile(self.zipped.path, "r")
-        except (zipfile.BadZipFile, NotImplementedError):
-            raise zipfile.BadZipFile("Bad ZIP file: {}.".format(self.zipped.path))
-
-        bad_files = my_zip.testzip()
-
-        if bad_files:
-            my_zip.close()
-            raise zipfile.BadZipFile("Bad CRC check on files: {}.".format(bad_files))
+            bad_files = my_zip.testzip()
+            if bad_files:
+                my_zip.close()
+                logger.error(
+                    "Zip file CRC check failed on file %s for archive: %s on file: %s",
+                    bad_files,
+                    self,
+                    self.zipped.path,
+                )
+                raise zipfile.BadZipFile("Bad CRC check on files: {}.".format(bad_files))
+        except (zipfile.BadZipFile, NotImplementedError, zlib.error) as e:
+            if my_zip:
+                my_zip.close()
+            logger.error(
+                "Error opening or testing zipfile for archive: %s on file: %s: %s",
+                self,
+                self.zipped.path,
+                e,
+            )
+            if isinstance(e, zipfile.BadZipFile):
+                raise
+            raise zipfile.BadZipFile("Bad ZIP file: {}. Error: {}".format(self.zipped.path, e))
 
     def set_original_filename(self) -> None:
         if os.path.isfile(self.zipped.path) and self.zipped.name:
@@ -3686,13 +3831,28 @@ class Archive(models.Model):
 
         if not os.path.exists(self.zipped.path):
             return False
+        my_zip = None
         try:
             my_zip = zipfile.ZipFile(self.zipped.path, "r")
-        except (zipfile.BadZipFile, NotImplementedError):
-            return False
-
-        if my_zip.testzip():
-            my_zip.close()
+            bad_file = my_zip.testzip()
+            if bad_file:
+                logger.error(
+                    "Zip file CRC check failed on file %s for archive: %s on file: %s",
+                    bad_file,
+                    self,
+                    self.zipped.path,
+                )
+                my_zip.close()
+                return False
+        except (zipfile.BadZipFile, NotImplementedError, zlib.error) as e:
+            logger.error(
+                "Error opening or testing zipfile for archive: %s on file: %s: %s",
+                self,
+                self.zipped.path,
+                e,
+            )
+            if my_zip:
+                my_zip.close()
             return False
 
         self.thumbnail.delete(save=False)
@@ -3776,7 +3936,13 @@ class Archive(models.Model):
                             with my_nested_zip.open(first_file[0]) as current_img:
                                 return current_img.read()
 
-        except (zipfile.BadZipFile, NotImplementedError):
+        except (zipfile.BadZipFile, NotImplementedError, zlib.error) as e:
+            logger.error(
+                "Error reading image data from zipfile for archive: %s on file: %s: %s",
+                self,
+                self.zipped.path,
+                e,
+            )
             return None
 
     def release_gallery(self):
@@ -5333,6 +5499,12 @@ class DownloadEventQuerySet(models.QuerySet):
     def in_progress(self, **kwargs: typing.Any) -> QuerySet:
         return self.filter(completed=False, **kwargs)
 
+    def queued(self, **kwargs: typing.Any) -> QuerySet:
+        return self.filter(completed=False, failed=False, status=DownloadEvent.Status.QUEUED, **kwargs)
+
+    def downloading(self, **kwargs: typing.Any) -> QuerySet:
+        return self.filter(completed=False, failed=False, status=DownloadEvent.Status.IN_PROGRESS, **kwargs)
+
 
 class DownloadEventManager(models.Manager["DownloadEvent"]):
     def get_queryset(self) -> DownloadEventQuerySet:
@@ -5341,8 +5513,21 @@ class DownloadEventManager(models.Manager["DownloadEvent"]):
     def in_progress(self, **kwargs: typing.Any) -> QuerySet:
         return self.get_queryset().in_progress(**kwargs)
 
+    def queued(self, **kwargs: typing.Any) -> QuerySet:
+        return self.get_queryset().queued(**kwargs)
+
+    def downloading(self, **kwargs: typing.Any) -> QuerySet:
+        return self.get_queryset().downloading(**kwargs)
+
 
 class DownloadEvent(models.Model):
+    class Status(models.TextChoices):
+        QUEUED = "queued", "Queued"
+        IN_PROGRESS = "in_progress", "In Progress"
+        COMPLETED = "completed", "Completed"
+        FAILED = "failed", "Failed"
+        CANCELLED = "cancelled", "Cancelled"
+
     name = models.CharField()
     archive = models.ForeignKey(Archive, on_delete=models.SET_NULL, blank=True, null=True)
     gallery = models.ForeignKey(Gallery, on_delete=models.SET_NULL, blank=True, null=True)
@@ -5353,7 +5538,22 @@ class DownloadEvent(models.Model):
     method = models.CharField()
     agent = models.CharField()
     download_id = models.CharField()
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.IN_PROGRESS,
+        db_index=True,
+    )
+    provider = models.CharField(max_length=50, blank=True, default="", db_index=True)
+    download_url = models.TextField(blank=True, default="")
+    request_options = models.JSONField(default=dict, blank=True)
+    attempts = models.IntegerField(default=0)
+    max_attempts = models.IntegerField(default=3)
+    error_message = models.TextField(blank=True, default="")
+    priority = models.IntegerField(default=10, db_index=True)
+    worker_pid = models.IntegerField(blank=True, null=True)
     create_date = models.DateTimeField(auto_now_add=True)
+    started_date = models.DateTimeField("Started date", blank=True, null=True)
     completed_date = models.DateTimeField("Posted date", blank=True, null=True)
 
     objects = DownloadEventManager()
@@ -5361,17 +5561,27 @@ class DownloadEvent(models.Model):
     def finish_download(self):
         self.progress = 100
         self.completed = True
+        self.status = self.Status.COMPLETED
         self.completed_date = django_tz.now()
 
-    def set_as_failed(self):
+    def set_as_failed(self, error_message: str = ""):
         self.failed = True
         self.completed = True
+        self.status = self.Status.FAILED
+        if error_message:
+            self.error_message = error_message
         self.completed_date = django_tz.now()
 
+    def set_as_cancelled(self):
+        self.failed = True
+        self.completed = True
+        self.status = self.Status.CANCELLED
+        self.completed_date = django_tz.now()
 
     def eta(self):
-        if self.create_date.tzinfo is not None:
-            now = datetime.now(self.create_date.tzinfo)
+        ref_date = self.started_date or self.create_date
+        if ref_date.tzinfo is not None:
+            now = datetime.now(ref_date.tzinfo)
         else:
             now = datetime.now()
         if self.progress <= 0:
@@ -5380,7 +5590,7 @@ class DownloadEvent(models.Model):
         if self.progress >= 100:
             return now
 
-        elapsed_time = now - self.create_date
+        elapsed_time = now - ref_date
 
         remaining_seconds = elapsed_time.total_seconds() * ((100 / self.progress) - 1)
 

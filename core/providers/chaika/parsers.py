@@ -12,13 +12,14 @@ from urllib.parse import urljoin
 
 from core.base.parsers import BaseParser
 from viewer.models import Gallery
-from core.base.utilities import chunks, request_with_retries, construct_request_dict
+from core.base.utilities import chunks, request_with_retries, request_by_provider, construct_request_dict
 
 from .utilities import ChaikaGalleryData
 from . import constants
 
 if typing.TYPE_CHECKING:
     from viewer.models import WantedGallery
+    from core.base.setup import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,12 @@ class Parser(BaseParser):
     name = constants.provider_name
     ignore = False
     accepted_urls = ["gs=", "as=", "gsp=", "gd=", "/archive/", "/gallery/", "/es-gallery-json/"]
+
+    def __init__(self, settings: "Settings") -> None:
+        super().__init__(settings)
+        self.web_request_function = request_by_provider(
+            self.name + "_web", 1, self.own_settings.wait_timer
+        )
 
     def filter_accepted_urls(self, urls: Iterable[str]) -> list[str]:
         return [x for x in urls if any(word in x for word in self.accepted_urls) and self.own_settings.url in x]
@@ -41,7 +48,7 @@ class Parser(BaseParser):
 
         request_dict = construct_request_dict(self.settings, self.own_settings)
 
-        response = request_with_retries(
+        response = self.web_request_function(
             feed_url,
             request_dict,
             post=False,
@@ -96,7 +103,7 @@ class Parser(BaseParser):
 
             request_dict = construct_request_dict(self.settings, self.own_settings)
 
-            response = request_with_retries(
+            response = self.web_request_function(
                 feed_url,
                 request_dict,
                 post=False,
@@ -164,7 +171,7 @@ class Parser(BaseParser):
 
         request_dict = construct_request_dict(self.settings, self.own_settings)
 
-        response = request_with_retries(
+        response = self.web_request_function(
             feed_url,
             request_dict,
             post=False,
@@ -233,7 +240,7 @@ class Parser(BaseParser):
                 if match_archive_pk:
                     api_url = urljoin(self.own_settings.url, constants.api_path)
                     request_dict["params"] = {"archive": match_archive_pk.group(1)}
-                    archive_response = request_with_retries(
+                    archive_response = self.web_request_function(
                         api_url,
                         request_dict,
                         post=False,
@@ -248,7 +255,7 @@ class Parser(BaseParser):
                         continue
                     if json_decoded["gallery"]:
                         request_dict["params"] = {"gd": json_decoded["gallery"]}
-                        gallery_response = request_with_retries(
+                        gallery_response = self.web_request_function(
                             api_url,
                             request_dict,
                             post=False,
@@ -270,7 +277,7 @@ class Parser(BaseParser):
                 if match_gallery_pk:
                     api_url = urljoin(self.own_settings.url, constants.api_path)
                     request_dict["params"] = {"gd": match_gallery_pk.group(1)}
-                    gallery_response = request_with_retries(
+                    gallery_response = self.web_request_function(
                         api_url,
                         request_dict,
                         post=False,
@@ -296,7 +303,7 @@ class Parser(BaseParser):
                         )
                     )
             else:
-                response = request_with_retries(
+                response = self.web_request_function(
                     url,
                     request_dict,
                     post=False,

@@ -111,8 +111,17 @@ class uTorrent(TorrentClient):
         except RequestException:
             return results
 
-        torrent_progress = {x[0]: x[4] * 1000 for x in response["torrents"]}
+        torrent_progress = {x[0]: x[4] * 1000 for x in response.get("torrents", [])}
 
-        results = [(x[1], torrent_progress[int(x[0])]) for x in download_list if int(x[0]) in torrent_progress]
+        for dl_id_str, key in download_list:
+            if dl_id_str in torrent_progress:
+                results.append((key, torrent_progress[dl_id_str]))
+            else:
+                try:
+                    int_id = int(dl_id_str)
+                    if int_id in torrent_progress:
+                        results.append((key, torrent_progress[int_id]))
+                except (ValueError, TypeError):
+                    pass
 
         return results

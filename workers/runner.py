@@ -76,22 +76,24 @@ class WorkerRunner:
                 last_run = getattr(s, "current_last_run", s.last_run)
                 next_run = (last_run + timedelta(seconds=s.timer)) if last_run else None
                 extra_data = {}
-                if s.thread_name in ("timed_downloader", "post_downloader") and hasattr(s, "current_download"):
+                if (
+                    s.thread_name in ("timed_downloader", "post_downloader", "archive_download_queue")
+                    and hasattr(s, "current_download")
+                ):
                     try:
                         downloads = s.current_download()
-                        if downloads:
-                            extra_data["current_download"] = [
-                                {
-                                    "filename": getattr(d, "filename", ""),
-                                    "speed": getattr(d, "speed", 0.0),
-                                    "index": getattr(d, "index", 0),
-                                    "total": getattr(d, "total", 0),
-                                    "downloaded": getattr(d, "downloaded", 0),
-                                    "filesize": getattr(d, "filesize", 0),
-                                }
-                                for d in downloads
-                                if getattr(d, "filename", "")
-                            ]
+                        extra_data["current_download"] = [
+                            {
+                                "filename": getattr(d, "filename", ""),
+                                "speed": getattr(d, "speed", 0.0),
+                                "index": getattr(d, "index", 0),
+                                "total": getattr(d, "total", 0),
+                                "downloaded": getattr(d, "downloaded", 0),
+                                "filesize": getattr(d, "filesize", 0),
+                            }
+                            for d in (downloads or [])
+                            if getattr(d, "filename", "")
+                        ]
                     except Exception:
                         pass
 

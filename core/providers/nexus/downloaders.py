@@ -10,6 +10,7 @@ from core.base.utilities import (
     get_base_filename_string_from_gallery_data,
     get_zip_fileinfo_for_gallery,
     construct_request_dict,
+    request_by_provider,
 )
 from core.downloaders.handlers import BaseDownloader, BaseInfoDownloader, BaseGalleryDLDownloader
 from viewer.models import Archive
@@ -24,6 +25,12 @@ class ArchiveDownloader(BaseDownloader):
     type = "archive"
     provider = constants.provider_name
 
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.web_request_function = request_by_provider(
+            self.provider + "_web", 1, self.own_settings.wait_timer
+        )
+
     def start_download(self) -> None:
 
         if not self.gallery or not self.gallery.link or not self.gallery.archiver_key:
@@ -37,13 +44,28 @@ class ArchiveDownloader(BaseDownloader):
             self.settings.MEDIA_ROOT, os.path.join(self.own_settings.archive_dl_folder, to_use_filename + ".zip")
         )
 
+        filepath = os.path.join(self.settings.MEDIA_ROOT, self.gallery.filename)
         request_dict = construct_request_dict(self.settings, self.own_settings)
+
+        if self.should_queue_archive_download():
+            self.enqueue_archive_download(
+                self.gallery.archiver_key,
+                filepath,
+                request_dict=request_dict,
+                rate_limit_provider=self.provider,
+                rate_limit_period=self.own_settings.wait_timer,
+            )
+            return
+
+        request_dict["stream"] = True
 
         for attempt in range(3):
             try:
-                request_file = requests.get(self.gallery.archiver_key, stream=True, **request_dict)
+                request_file = self.web_request_function(self.gallery.archiver_key, request_dict)
+                if not request_file:
+                    logger.error("Could not download archive (Attempt {}/3)".format(attempt + 1))
+                    continue
 
-                filepath = os.path.join(self.settings.MEDIA_ROOT, self.gallery.filename)
                 total_size = int(request_file.headers.get("Content-Length", 0))
                 self.download_event = self.create_download_event(self.gallery.link, self.type, filepath, total_size=total_size)
                 with open(filepath, "wb") as fo:

@@ -150,6 +150,33 @@ class GenericArchiveDownloader(BaseDownloader):
 
         request_dict = construct_request_dict(self.settings, self.own_settings)
 
+        if self.should_queue_archive_download():
+            filename = ""
+            if "/" in self.gallery.link:
+                filename = self.gallery.link.rstrip("/").rsplit("/", 1)[1]
+            if not filename:
+                filename = f"archive_{self.gallery.gid or 'generic'}.zip"
+            filename = replace_illegal_name(filename)
+            if not filename.lower().endswith(".zip") and not filename.lower().endswith(".cbz"):
+                filename += ".zip"
+            self.gallery.title = remove_archive_extensions(filename)
+            self.gallery.filename = available_filename(
+                self.settings.MEDIA_ROOT, os.path.join(self.own_settings.archive_dl_folder, filename)
+            )
+            filepath = os.path.join(self.settings.MEDIA_ROOT, self.gallery.filename)
+            self.enqueue_archive_download(
+                self.gallery.link,
+                filepath,
+                request_dict=request_dict,
+                rate_limit_provider=self.provider,
+                rate_limit_period=self.own_settings.wait_timer,
+                extra_options={
+                    "determine_filename_from_cd": True,
+                    "archive_dl_folder": self.own_settings.archive_dl_folder,
+                },
+            )
+            return
+
         for attempt in range(3):
             try:
                 request_file = requests.get(self.gallery.link, stream=True, **request_dict)

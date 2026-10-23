@@ -17,13 +17,22 @@
         <h2>Server logs</h2>
         <p class="lead mb-0">Current server time: {% now "y-m-d, H:i:s" %}</p>
       </div>
-      <div class="btn-group">
+      <div class="d-flex flex-wrap gap-2 align-items-center">
         <button class="btn btn-outline-light" id="copy-logs" title="Copy visible logs to clipboard">
           <i class="fas fa-copy"></i> Copy
         </button>
-        <button class="btn btn-outline-light" id="auto-refresh" title="Auto-refresh logs every 5 seconds">
-          <i class="fas fa-sync"></i> Auto-refresh
-        </button>
+        <div class="input-group" style="width: auto;">
+          <button class="btn btn-outline-light" id="auto-refresh" title="Auto-refresh logs">
+            <i class="fas fa-sync"></i> Auto-refresh
+          </button>
+          <select class="form-select bg-dark text-light border-light" id="refresh-interval" data-bs-theme="dark" title="Auto-refresh frequency" style="width: auto;">
+            <option value="1000">1s</option>
+            <option value="5000" selected>5s</option>
+            <option value="10000">10s</option>
+            <option value="30000">30s</option>
+            <option value="60000">1m</option>
+          </select>
+        </div>
         <div class="btn-group" role="group">
           <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteLogsModal" title="Delete logs">
             <i class="fas fa-trash-alt"></i> Delete logs
@@ -391,24 +400,60 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // Auto-refresh functionality
   const autoRefreshBtn = document.getElementById('auto-refresh');
+  const refreshIntervalSelect = document.getElementById('refresh-interval');
   let refreshInterval = null;
   let isRefreshing = false;
 
-  autoRefreshBtn.addEventListener('click', function() {
+  const savedLogsInterval = localStorage.getItem('logs_refresh_interval');
+  if (savedLogsInterval && refreshIntervalSelect) {
+    refreshIntervalSelect.value = savedLogsInterval;
+  }
+
+  function getIntervalMs() {
+    return parseInt(refreshIntervalSelect ? refreshIntervalSelect.value : 5000, 10) || 5000;
+  }
+
+  function startAutoRefresh() {
+    refreshLogs(); // Call immediately
+    refreshInterval = setInterval(refreshLogs, getIntervalMs());
+    if (autoRefreshBtn) {
+      autoRefreshBtn.classList.add('active', 'btn-success');
+      autoRefreshBtn.classList.remove('btn-outline-light');
+      autoRefreshBtn.innerHTML = '<i class="fas fa-stop"></i> Stop refresh';
+    }
+  }
+
+  function stopAutoRefresh() {
     if (refreshInterval) {
-      // Stop refreshing
       clearInterval(refreshInterval);
       refreshInterval = null;
-      this.classList.remove('active');
-      this.innerHTML = '<i class="fas fa-sync"></i> Auto-refresh';
-    } else {
-      // Start refreshing
-      refreshLogs(); // Call immediately
-      refreshInterval = setInterval(refreshLogs, 5000);
-      this.classList.add('active');
-      this.innerHTML = '<i class="fas fa-stop"></i> Stop refresh';
     }
-  });
+    if (autoRefreshBtn) {
+      autoRefreshBtn.classList.remove('active', 'btn-success');
+      autoRefreshBtn.classList.add('btn-outline-light');
+      autoRefreshBtn.innerHTML = '<i class="fas fa-sync"></i> Auto-refresh';
+    }
+  }
+
+  if (autoRefreshBtn) {
+    autoRefreshBtn.addEventListener('click', function() {
+      if (refreshInterval) {
+        stopAutoRefresh();
+      } else {
+        startAutoRefresh();
+      }
+    });
+  }
+
+  if (refreshIntervalSelect) {
+    refreshIntervalSelect.addEventListener('change', function() {
+      localStorage.setItem('logs_refresh_interval', this.value);
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+        refreshInterval = setInterval(refreshLogs, getIntervalMs());
+      }
+    });
+  }
 
   async function refreshLogs() {
     if (isRefreshing) return;

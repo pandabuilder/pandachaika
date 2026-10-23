@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+import time
 from datetime import datetime, timezone, timedelta
 from typing import Any, Optional
 import html
@@ -68,62 +69,77 @@ class CostTracker:
         request_dict = construct_request_dict(downloader.settings, downloader.own_settings)
         request_dict["params"] = params
 
-        response = downloader.web_request_function(
-            url,
-            request_dict,
-            post=False,
-        )
+        for attempt in range(3):
+            response = downloader.web_request_function(
+                url,
+                request_dict,
+                post=False,
+            )
 
-        if not response:
-            logger.error("Could not get download page.")
-            return None
+            if not response or response.status_code != 200:
+                logger.warning(
+                    "Cost check attempt {} of 3 for gid {} failed (status: {}). Retrying in 2s...".format(
+                        attempt + 1, gid, getattr(response, "status_code", "None")
+                    )
+                )
+                if attempt < 2:
+                    time.sleep(2)
+                continue
 
-        response.encoding = "utf-8"
-        soup = BeautifulSoup(response.text, "html.parser")
+            response.encoding = "utf-8"
+            soup = BeautifulSoup(response.text, "html.parser")
 
-        # <input type="hidden" name="dltype" value="org" />
-        input_org_dl_archive = soup.find("input", attrs={'type': "hidden", 'name': "dltype", 'value': "org"})
+            # <input type="hidden" name="dltype" value="org" />
+            input_org_dl_archive = soup.find("input", attrs={'type': "hidden", 'name': "dltype", 'value': "org"})
 
-        if input_org_dl_archive:
-            if input_org_dl_archive.parent is not None:
-                if input_org_dl_archive.parent.parent is not None:
-                    div_container = input_org_dl_archive.parent.parent
-                    cost_div = div_container.find("strong")
-                    if cost_div is not None:
-                        cost_text = cost_div.get_text()
-                        # Look for: 2,853 GP or Free!
-                        if 'Free' in cost_text:
-                            self.add_cost(gid, 'archive', 0)
-                        else:
-                            cleaned_cost_text = cost_text.strip().replace("GP", "").replace(",", "")
-                            cost_number = float(cleaned_cost_text)
-                            self.add_cost(gid, 'archive', cost_number)
-
-        # <a href="#" onclick="return do_hathdl('org')">Original</a>
-
-        a_org_dl_hath = soup.find("a", attrs={'href': "#", 'onclick': "return do_hathdl('org')"}, string="Original")  # type: ignore
-
-        if a_org_dl_hath:
-            if a_org_dl_hath.parent is not None:
-                if a_org_dl_hath.parent.parent is not None:
-                    div_container = a_org_dl_hath.parent.parent
-                    cost_ps = div_container.find_all("p")
-                    for cost_p in cost_ps:
-                        cost_text = cost_p.get_text()
-                        if 'Free' in cost_text or ' GP' in cost_text:
+            if input_org_dl_archive:
+                if input_org_dl_archive.parent is not None:
+                    if input_org_dl_archive.parent.parent is not None:
+                        div_container = input_org_dl_archive.parent.parent
+                        cost_div = div_container.find("strong")
+                        if cost_div is not None:
+                            cost_text = cost_div.get_text()
                             # Look for: 2,853 GP or Free!
                             if 'Free' in cost_text:
-                                self.add_cost(gid, 'hath', 0)
+                                self.add_cost(gid, 'archive', 0)
                             else:
                                 cleaned_cost_text = cost_text.strip().replace("GP", "").replace(",", "")
                                 cost_number = float(cleaned_cost_text)
-                                self.add_cost(gid, 'hath', cost_number)
-                            break
+                                self.add_cost(gid, 'archive', cost_number)
 
-        found_cost = self.get_cost(gid, method_name)
+            # <a href="#" onclick="return do_hathdl('org')">Original</a>
 
-        if found_cost is not None:
-            return found_cost
+            a_org_dl_hath = soup.find("a", attrs={'href': "#", 'onclick': "return do_hathdl('org')"}, string="Original")  # type: ignore
+
+            if a_org_dl_hath:
+                if a_org_dl_hath.parent is not None:
+                    if a_org_dl_hath.parent.parent is not None:
+                        div_container = a_org_dl_hath.parent.parent
+                        cost_ps = div_container.find_all("p")
+                        for cost_p in cost_ps:
+                            cost_text = cost_p.get_text()
+                            if 'Free' in cost_text or ' GP' in cost_text:
+                                # Look for: 2,853 GP or Free!
+                                if 'Free' in cost_text:
+                                    self.add_cost(gid, 'hath', 0)
+                                else:
+                                    cleaned_cost_text = cost_text.strip().replace("GP", "").replace(",", "")
+                                    cost_number = float(cleaned_cost_text)
+                                    self.add_cost(gid, 'hath', cost_number)
+                                break
+
+            found_cost = self.get_cost(gid, method_name)
+
+            if found_cost is not None:
+                return found_cost
+
+            if attempt < 2:
+                logger.warning(
+                    "Cost check attempt {} of 3 for gid {} could not find cost in HTML response. Retrying in 2s...".format(
+                        attempt + 1, gid
+                    )
+                )
+                time.sleep(2)
 
         return None
 
@@ -225,73 +241,100 @@ class ArchiveDownloader(BaseDownloader[PandaSettings]):
                 return
             logger.info("Download cost: {} for gallery: {} using method: {} is the lowest or equal to alternative {}, continuing download.".format(cost, self.gallery.link, self.type, other_type))
 
-        r = self.request_archive_download(self.gallery.root, self.gallery.gid, self.gallery.token)
+        r = None
+        archive_link = ""
+        for attempt in range(3):
+            r = self.request_archive_download(self.gallery.root, self.gallery.gid, self.gallery.token)
 
-        if not r:
-            logger.error("Could not get download link.")
+            if not r or r.status_code != 200:
+                logger.warning(
+                    "Archive request attempt {} of 3 for gid {} failed (status: {}). Retrying in 2s...".format(
+                        attempt + 1, self.gallery.gid, getattr(r, "status_code", "None")
+                    )
+                )
+            else:
+                r.encoding = "utf-8"
+                if "Invalid archiver key" in r.text:
+                    logger.error("Invalid archiver key received.")
+                    self.return_code = 0
+                    return
+                archive_link = get_archive_link_from_html_page(r.text)
+                if archive_link:
+                    break
+                logger.warning(
+                    "Archive request attempt {} of 3 for gid {} returned no archive link (text: {}). Retrying in 2s...".format(
+                        attempt + 1, self.gallery.gid, r.text.strip()[:150]
+                    )
+                )
+            if attempt < 2:
+                time.sleep(2)
+
+        if not r or archive_link == "":
+            if not r:
+                logger.error("Could not get download link.")
+            else:
+                logger.error("Could not find archive link, page text: {}".format(r.text.strip()[:300]))
             self.return_code = 0
             return
 
-        r.encoding = "utf-8"
+        m = re.match(r"(.*?)(\?.*?)", archive_link)
+        if m:
+            archive_link = m.group(1)
 
-        if "Invalid archiver key" in r.text:
-            logger.error("Invalid archiver key received.")
+        logger.info("Got link: {}, from url: {}".format(archive_link, r.url))
+
+        request_dict = construct_request_dict(self.settings, self.own_settings)
+        filepath = os.path.join(self.settings.MEDIA_ROOT, self.gallery.filename)
+        download_url = archive_link + "?start=1"
+
+        if self.should_queue_archive_download():
+            self.enqueue_archive_download(
+                download_url,
+                filepath,
+                request_dict=request_dict,
+                rate_limit_provider=self.provider,
+                rate_limit_period=self.own_settings.wait_timer,
+            )
+            return
+
+        request_dict['stream'] = True
+
+        for attempt in range(3):
+            try:
+                request_file = self.web_request_function(download_url, request_dict)
+
+                if r and r.status_code == 200 and request_file:
+                    logger.info("Downloading gallery: {}.zip (Attempt {}/3)".format(to_use_filename, attempt + 1))
+                    total_size = int(request_file.headers.get("Content-Length", 0))
+                    self.download_event = self.create_download_event(
+                        self.gallery.link, self.type, filepath, total_size=total_size
+                    )
+                    with open(filepath, "wb") as fo:
+                        for chunk in request_file.iter_content(4096):
+                            fo.write(chunk)
+
+                    self.gallery.filesize, self.gallery.filecount = get_zip_fileinfo_for_gallery(filepath)
+                    if self.gallery.filesize > 0:
+                        self.crc32 = calc_crc32(filepath)
+
+                        self.fileDownloaded = 1
+                        self.return_code = 1
+                        break
+
+            except (
+                requests.exceptions.ConnectionError,
+                requests.exceptions.ReadTimeout,
+                requests.exceptions.ChunkedEncodingError
+            ) as e:
+                logger.warning("Download failed on attempt {}/3 with error: {}".format(attempt + 1, str(e)))
+                if self.download_event:
+                    self.download_event.set_as_failed()
+                    self.download_event.save()
+                    self.download_event = None
+
+        if self.return_code != 1:
+            logger.error("Could not download archive")
             self.return_code = 0
-        else:
-
-            archive_link = get_archive_link_from_html_page(r.text)
-
-            if archive_link == "":
-                logger.error("Could not find archive link, page text: {}".format(r.text))
-                self.return_code = 0
-            else:
-                m = re.match(r"(.*?)(\?.*?)", archive_link)
-                if m:
-                    archive_link = m.group(1)
-
-                logger.info("Got link: {}, from url: {}".format(archive_link, r.url))
-
-                request_dict = construct_request_dict(self.settings, self.own_settings)
-                request_dict['stream'] = True
-
-                for attempt in range(3):
-                    try:
-                        request_file = self.web_request_function(archive_link + "?start=1", request_dict)
-
-                        if r and r.status_code == 200 and request_file:
-                            logger.info("Downloading gallery: {}.zip (Attempt {}/3)".format(to_use_filename, attempt + 1))
-                            filepath = os.path.join(self.settings.MEDIA_ROOT, self.gallery.filename)
-                            total_size = int(request_file.headers.get("Content-Length", 0))
-                            self.download_event = self.create_download_event(
-                                self.gallery.link, self.type, filepath, total_size=total_size
-                            )
-                            with open(filepath, "wb") as fo:
-                                for chunk in request_file.iter_content(4096):
-                                    fo.write(chunk)
-
-                            self.gallery.filesize, self.gallery.filecount = get_zip_fileinfo_for_gallery(filepath)
-                            if self.gallery.filesize > 0:
-                                self.crc32 = calc_crc32(filepath)
-
-                                self.fileDownloaded = 1
-                                self.return_code = 1
-                                break
-
-                    except (
-                        requests.exceptions.ConnectionError,
-                        requests.exceptions.ReadTimeout,
-                        requests.exceptions.ChunkedEncodingError
-                    ) as e:
-                        logger.warning("Download failed on attempt {}/3 with error: {}".format(attempt + 1, str(e)))
-                        if self.download_event:
-                            self.download_event.set_as_failed()
-                            self.download_event.save()
-                            self.download_event = None
-
-
-                if self.return_code != 1:
-                    logger.error("Could not download archive")
-                    self.return_code = 0
 
     def update_archive_db(self, default_values: DataDict) -> Optional["Archive"]:
 
@@ -607,47 +650,64 @@ class HathDownloader(BaseDownloader):
                 return
             logger.info("Download cost: {} for gallery: {} using method: {} is the lowest or equal to alternative {}, continuing download.".format(cost, self.gallery.link, self.type, other_type))
 
-        r = self.request_hath_download(self.gallery.root, self.gallery.gid, self.gallery.token)
+        r = None
+        container = None
+        for attempt in range(3):
+            r = self.request_hath_download(self.gallery.root, self.gallery.gid, self.gallery.token)
 
-        if r and r.status_code == 200:
+            if r and r.status_code == 200:
+                r.encoding = "utf-8"
+                soup = BeautifulSoup(r.content, "html.parser")
+                container = soup.find(text=re.compile("An original resolution download has been queued for client"))
+                if container:
+                    break
+                logger.warning(
+                    "Hath request attempt {} of 3 for gid {} did not return confirmation (text: {}). Retrying in 2s...".format(
+                        attempt + 1, self.gallery.gid, r.text.strip()[:150]
+                    )
+                )
+            else:
+                status = getattr(r, "status_code", "No response")
+                logger.warning(
+                    "Hath request attempt {} of 3 for gid {} failed with status {}. Retrying in 2s...".format(
+                        attempt + 1, self.gallery.gid, status
+                    )
+                )
+            if attempt < 2:
+                time.sleep(2)
 
-            r.encoding = "utf-8"
-            soup = BeautifulSoup(r.content, "html.parser")
-
-            container = soup.find(text=re.compile("An original resolution download has been queued for client"))
-
-            if not container:
-                logger.error("Could not find expected text in response.")
-                self.return_code = 0
-                return
-            client_parent = container.parent
-            if not client_parent:
-                logger.error("Could not find expected HTML structure.")
-                self.return_code = 0
-                return
-            client_id = client_parent.find("strong")
-            if client_id:
-                logger.info("Queued download to client: {}".format(client_id.get_text()))
-
-            to_use_filename = get_base_filename_string_from_gallery_data(self.gallery)
-
-            self.gallery.filename = available_filename(
-                self.settings.MEDIA_ROOT,
-                os.path.join(
-                    self.own_settings.hath_dl_folder,
-                    replace_illegal_name(to_use_filename + " [" + str(self.gallery.gid) + "]") + ".zip",
-                ),
-            )
-
-            self.download_id = self.gallery.gid
-            self.fileDownloaded = 1
-            self.return_code = 1
-        else:
-            if r:
-                logger.error("Did not get a 200 response, text: {}".format(r.text))
+        if not container:
+            if r and r.status_code == 200:
+                logger.error("Could not find expected text in response, text: {}".format(r.text.strip()[:300]))
+            elif r:
+                logger.error("Did not get a 200 response, text: {}".format(r.text.strip()[:300]))
             else:
                 logger.error("Did not get a response")
             self.return_code = 0
+            return
+
+        client_parent = container.parent
+        if not client_parent:
+            logger.error("Could not find expected HTML structure.")
+            self.return_code = 0
+            return
+        client_id = client_parent.find("strong")
+        if client_id:
+            logger.info("Queued download to client: {}".format(client_id.get_text()))
+
+        to_use_filename = get_base_filename_string_from_gallery_data(self.gallery)
+
+        self.gallery.filename = available_filename(
+            self.settings.MEDIA_ROOT,
+            os.path.join(
+                self.own_settings.hath_dl_folder,
+                replace_illegal_name(to_use_filename + " [" + str(self.gallery.gid) + "]") + ".zip",
+            ),
+        )
+
+        self.download_id = self.gallery.gid
+        self.fileDownloaded = 1
+        self.return_code = 1
 
     def request_hath_download(self, root: str, gid: str, token: str) -> Optional[requests.models.Response]:
 
@@ -730,11 +790,14 @@ class PandaChaikaDownloader(BaseDownloader):
             return
 
         api_url = urljoin(chaika_provider_settings.url, "api/")
+        chaika_web_request = request_by_provider(
+            "chaika_web", 1, chaika_provider_settings.wait_timer
+        )
 
         request_dict = construct_request_dict(self.settings, chaika_provider_settings)
         request_dict["params"] = {"gid": self.gallery.gid, "provider": self.provider}
 
-        response = request_with_retries(
+        response = chaika_web_request(
             api_url,
             request_dict,
             post=False,
@@ -778,20 +841,30 @@ class PandaChaikaDownloader(BaseDownloader):
             self.settings.MEDIA_ROOT, os.path.join(chaika_provider_settings.archive_dl_folder, to_use_filename + ".zip")
         )
 
+        filepath = os.path.join(self.settings.MEDIA_ROOT, self.gallery.filename)
         download_request_dict = construct_request_dict(self.settings, chaika_provider_settings)
+
+        if self.should_queue_archive_download(provider_settings=chaika_provider_settings) or self.should_queue_archive_download():
+            self.enqueue_archive_download(
+                download_url,
+                filepath,
+                request_dict=download_request_dict,
+                rate_limit_provider="chaika",
+                rate_limit_period=chaika_provider_settings.wait_timer,
+            )
+            return
+
         download_request_dict["stream"] = True
 
         for attempt in range(3):
             try:
-                request_file = request_with_retries(
+                request_file = chaika_web_request(
                     download_url,
                     download_request_dict,
                 )
                 if not request_file:
                     logger.error("Could not download archive (Attempt {}/3)".format(attempt + 1))
                     continue
-
-                filepath = os.path.join(self.settings.MEDIA_ROOT, self.gallery.filename)
 
                 total_size = int(request_file.headers.get("Content-Length", 0))
                 self.download_event = self.create_download_event(self.gallery.link, self.type, filepath, total_size=total_size)

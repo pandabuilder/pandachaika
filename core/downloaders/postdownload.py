@@ -58,33 +58,88 @@ class PostDownloader(object):
         self.ftp_key_torrent = self.settings.download_ftp_torrent
         self.ftp_key_hath = self.settings.download_ftp_hath
 
+    def get_requeue_downloader(self) -> str | list[str]:
+        return (
+            getattr(self.settings, "failed_download_downloader", None)
+            or getattr(self.settings, "requeue_downloader", None)
+            or "panda_archive"
+        )
+
+    def _should_requeue_download(self, archive: Archive) -> bool:
+        if not getattr(self.settings, "requeue_failed_downloads", True):
+            return False
+
+        downloader = self.get_requeue_downloader()
+        downloaders = downloader if isinstance(downloader, list) else [downloader]
+
+        archive_provider = (
+            getattr(archive.gallery, "provider", None)
+            or getattr(archive, "source_type", None)
+            or ""
+        )
+
+        for dl in downloaders:
+            dl_provider = self.settings.get_downloader_provider(dl)
+            if not dl_provider or not archive_provider:
+                return True
+            if dl_provider in archive_provider or archive_provider in dl_provider:
+                return True
+
+        return False
+
+    def _requeue_archive(self, archive: Archive, downloader: str | list[str]) -> None:
+        if self.web_queue and archive.gallery:
+            config = getattr(self.settings, "config", None)
+            temp_settings = Settings(load_from_config=config) if config else Settings(load_from_disk=False)
+            if hasattr(self.settings, "custom_downloaders") and self.settings.custom_downloaders:
+                temp_settings.custom_downloaders.update(self.settings.custom_downloaders)
+            if hasattr(self.settings, "custom_downloader_providers") and self.settings.custom_downloader_providers:
+                temp_settings.custom_downloader_providers.update(self.settings.custom_downloader_providers)
+            if hasattr(self.settings, "downloaders") and self.settings.downloaders:
+                for k, v in self.settings.downloaders.items():
+                    temp_settings.downloaders.setdefault(k, v)
+
+            downloaders = downloader if isinstance(downloader, list) else [downloader]
+            temp_settings.allow_downloaders_only(downloaders, True, True, True)
+            if archive.reason:
+                temp_settings.archive_reason = archive.reason
+            self.web_queue.enqueue_args_list((archive.gallery.get_link(),), override_options=temp_settings)
+
     def process_downloaded_archive(self, archive: Archive) -> None:
         if os.path.isfile(archive.zipped.path):
             except_at_open = False
             return_error = None
+            error_details = ""
             try:
                 my_zip = ZipFile(archive.zipped.path, "r")
                 return_error = my_zip.testzip()
                 my_zip.close()
-            except (BadZipFile, NotImplementedError, zlib.error):
+            except (BadZipFile, NotImplementedError, zlib.error) as e:
                 except_at_open = True
+                error_details = f"{type(e).__name__}: {e}"
+            if return_error:
+                error_details = f"Corrupt file: {return_error}"
             if except_at_open or return_error:
-                if archive.source_type and "panda" in archive.source_type:
+                if self._should_requeue_download(archive):
+                    requeue_dl = self.get_requeue_downloader()
+                    dl_name = ", ".join(requeue_dl) if isinstance(requeue_dl, list) else requeue_dl
                     logger.error(
-                        "For archive: {}, file check on downloaded zipfile failed on file: {}, "
-                        "forcing download as panda_archive to fix it.".format(archive, archive.zipped.path)
+                        "For archive: {}, file check on downloaded zipfile failed ({}) on file: {}, "
+                        "forcing download as {} to fix it.".format(
+                            archive, error_details or "unknown error", archive.zipped.path, dl_name
+                        )
                     )
-                    archive.save()
-                    if self.web_queue and archive.gallery:
-                        temp_settings = Settings(load_from_config=self.settings.config)
-                        temp_settings.allow_downloaders_only(["panda_archive"], True, True, True)
-                        if archive.reason:
-                            temp_settings.archive_reason = archive.reason
-                        self.web_queue.enqueue_args_list((archive.gallery.get_link(),), override_options=temp_settings)
+                    try:
+                        archive.save()
+                    except Exception as e:
+                        logger.error("Error saving archive %s after failed zip check: %s", archive, e)
+                    self._requeue_archive(archive, requeue_dl)
                 else:
                     logger.warning(
-                        "For archive: {}, File check on downloaded zipfile: {}. "
-                        "Check the file manually.".format(archive, archive.zipped.path)
+                        "For archive: {}, file check on downloaded zipfile failed ({}): {}. "
+                        "Check the file manually.".format(
+                            archive, error_details or "unknown error", archive.zipped.path
+                        )
                     )
                 if self.settings.recycle_failed_checks_downloads:
                     archive.move_to_recycle_bin(reason="Failed on ZIP file opening")
@@ -126,17 +181,14 @@ class PostDownloader(object):
                         "but there's already another archive that matches.".format(archive)
                     )
                     return
-                if archive.source_type and "panda" in archive.source_type:
+                if self._should_requeue_download(archive):
+                    requeue_dl = self.get_requeue_downloader()
+                    dl_name = ", ".join(requeue_dl) if isinstance(requeue_dl, list) else requeue_dl
                     logger.info(
                         "For archive: {} size does not match gallery, "
-                        "downloading again from panda_archive.".format(archive)
+                        "downloading again from {}.".format(archive, dl_name)
                     )
-                    if self.web_queue:
-                        temp_settings = Settings(load_from_config=self.settings.config)
-                        temp_settings.allow_downloaders_only(["panda_archive"], True, True, True)
-                        if archive.reason:
-                            temp_settings.archive_reason = archive.reason
-                        self.web_queue.enqueue_args_list((archive.gallery.get_link(),), override_options=temp_settings)
+                    self._requeue_archive(archive, requeue_dl)
                 else:
                     logger.warning(
                         "For archive: {} size does not match gallery. Check the file manually.".format(archive)
@@ -162,18 +214,18 @@ class PostDownloader(object):
                         panda_sha1_list = panda_parser.get_sha1_hashes_from_panda(gallery_url)
 
                         if panda_sha1_list != downloaded_sha1_list:
-                            if archive.source_type and "panda" in archive.source_type:
+                            if self._should_requeue_download(archive):
+                                requeue_dl = self.get_requeue_downloader()
+                                dl_name = ", ".join(requeue_dl) if isinstance(requeue_dl, list) else requeue_dl
                                 logger.warning(
                                     "For archive: {}, SHA1 mismatch on downloaded zipfile failed on file: {}, "
-                                    "forcing download as panda_archive to fix it.".format(archive, archive.zipped.path)
+                                    "forcing download as {} to fix it.".format(archive, archive.zipped.path, dl_name)
                                 )
-                                archive.save()
-                                if self.web_queue and archive.gallery:
-                                    temp_settings = Settings(load_from_config=self.settings.config)
-                                    temp_settings.allow_downloaders_only(["panda_archive"], True, True, True)
-                                    if archive.reason:
-                                        temp_settings.archive_reason = archive.reason
-                                    self.web_queue.enqueue_args_list((archive.gallery.get_link(),), override_options=temp_settings)
+                                try:
+                                    archive.save()
+                                except Exception as e:
+                                    logger.error("Error saving archive %s after failed SHA1 check: %s", archive, e)
+                                self._requeue_archive(archive, requeue_dl)
                             else:
                                 logger.warning(
                                     "For archive: {}, SHA1 mismatch on downloaded zipfile: {}. "
@@ -995,12 +1047,13 @@ class TimedPostDownloader(BaseScheduler):
                 logger.critical("Error downloading Archive: {}\n{}".format(item.title, traceback.format_exc()))
 
     def current_download(self) -> list[CurrentDownload]:
-        local_downloads = [x.current_download for x in self.post_downloader.values()]
-        if local_downloads:
-            return local_downloads
+        if self.is_running_locally():
+            return [x.current_download for x in self.post_downloader.values()]
         try:
             from workers.models import SchedulerState
             state = SchedulerState.objects.filter(name=self.thread_name).first()
+            if not state or not state.is_running:
+                return []
             if state and state.extra_data and "current_download" in state.extra_data:
                 return [
                     CurrentDownload(

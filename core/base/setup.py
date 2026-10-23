@@ -88,12 +88,19 @@ class GlobalInfo:
         ("foldercrawler", "Processes galleries on the filesystem", "processor"),
         ("download_progress_checker", "Checks for progress on downloads", "processor"),
         ("post_downloader", "Transfers archives downloaded with other programs (torrent, hath)", "scheduler"),
+        ("archive_download_queue", "Downloads queued archives in background", "scheduler"),
         ("auto_wanted", "Parses providers for new galleries to create wanted galleries entries", "scheduler"),
     ]
 
 
 class ConfigFileError(Exception):
     pass
+
+
+def _parse_bool(val: Any) -> bool:
+    if isinstance(val, str):
+        return val.lower() in ("true", "1", "t", "yes", "y")
+    return bool(val)
 
 
 # Each sub setting that doesn't need attribute creating is created using __slots__:
@@ -340,6 +347,9 @@ class Settings:
         # The logic for a current link is provider-specific
         self.non_current_links_as_deleted = False
         self.recycle_failed_checks_downloads = False
+        self.requeue_failed_downloads = True
+        self.failed_download_downloader = "panda_archive"
+        self.requeue_downloader = "panda_archive"
         # Option to auto-purge a torrent after a certain time has passed
         self.max_torrent_lifespan = 0
         self.max_torrent_lifespan_type = "days"
@@ -379,8 +389,13 @@ class Settings:
         self.cherrypy_auto_restart = False
         self.add_as_public = False
 
-        self.download_progress_checker_startup = False
+        self.download_progress_checker_startup = True
         self.download_progress_checker_cycle_timer: float = 10
+
+        self.queue_archive_downloads: bool = False
+        self.archive_download_queue_startup: bool = True
+        self.archive_download_queue_cycle_timer: float = 2.0
+        self.parallel_archive_downloaders: int = 0
 
         self.db_engine = "postgresql"
         self.database: dict[str, Any] = {}
@@ -756,11 +771,31 @@ class Settings:
                 self.convert_others_to_zip = config["allowed"]["convert_others_to_zip"]
             if "non_current_links_as_deleted" in config["allowed"]:
                 self.non_current_links_as_deleted = config["allowed"]["non_current_links_as_deleted"]
+            if "requeue_failed_downloads" in config["allowed"]:
+                self.requeue_failed_downloads = _parse_bool(config["allowed"]["requeue_failed_downloads"])
+            if "requeue_failed" in config["allowed"]:
+                self.requeue_failed_downloads = _parse_bool(config["allowed"]["requeue_failed"])
+            if "failed_download_downloader" in config["allowed"]:
+                self.failed_download_downloader = config["allowed"]["failed_download_downloader"]
+                self.requeue_downloader = self.failed_download_downloader
+            if "requeue_downloader" in config["allowed"]:
+                self.requeue_downloader = config["allowed"]["requeue_downloader"]
+                self.failed_download_downloader = self.requeue_downloader
         if "general" in config:
             if "non_current_links_as_deleted" in config["general"]:
                 self.non_current_links_as_deleted = config["general"]["non_current_links_as_deleted"]
             if "recycle_failed_checks_downloads" in config["general"]:
                 self.recycle_failed_checks_downloads = config["general"]["recycle_failed_checks_downloads"]
+            if "requeue_failed_downloads" in config["general"]:
+                self.requeue_failed_downloads = _parse_bool(config["general"]["requeue_failed_downloads"])
+            if "requeue_failed" in config["general"]:
+                self.requeue_failed_downloads = _parse_bool(config["general"]["requeue_failed"])
+            if "failed_download_downloader" in config["general"]:
+                self.failed_download_downloader = config["general"]["failed_download_downloader"]
+                self.requeue_downloader = self.failed_download_downloader
+            if "requeue_downloader" in config["general"]:
+                self.requeue_downloader = config["general"]["requeue_downloader"]
+                self.failed_download_downloader = self.requeue_downloader
             if "max_torrent_lifespan" in config["general"]:
                 self.max_torrent_lifespan = config["general"]["max_torrent_lifespan"]
             if "max_torrent_lifespan_type" in config["general"]:
@@ -790,13 +825,23 @@ class Settings:
             if "timed_downloader_startup" in config["general"]:
                 self.timed_downloader_startup = config["general"]["timed_downloader_startup"]
             if "download_progress_checker_startup" in config["general"]:
-                self.download_progress_checker_startup = config["general"]["download_progress_checker_startup"]
+                self.download_progress_checker_startup = _parse_bool(config["general"]["download_progress_checker_startup"])
             if "download_progress_checker_cycle_timer" in config["general"]:
                 self.download_progress_checker_cycle_timer = config["general"]["download_progress_checker_cycle_timer"]
             if "timed_downloader_cycle_timer" in config["general"]:
                 self.timed_downloader_cycle_timer = config["general"]["timed_downloader_cycle_timer"]
             if "parallel_post_downloaders" in config["general"]:
                 self.parallel_post_downloaders = config["general"]["parallel_post_downloaders"]
+            if "queue_archive_downloads" in config["general"]:
+                self.queue_archive_downloads = bool(config["general"]["queue_archive_downloads"])
+            if "archive_download_queue_startup" in config["general"]:
+                self.archive_download_queue_startup = bool(config["general"]["archive_download_queue_startup"])
+            if "archive_download_queue_cycle_timer" in config["general"]:
+                self.archive_download_queue_cycle_timer = float(
+                    config["general"]["archive_download_queue_cycle_timer"]
+                )
+            if "parallel_archive_downloaders" in config["general"]:
+                self.parallel_archive_downloaders = int(config["general"]["parallel_archive_downloaders"])
             if "cherrypy_auto_restart" in config["general"]:
                 self.cherrypy_auto_restart = config["general"]["cherrypy_auto_restart"]
             if "discard_tags" in config["general"]:
@@ -858,8 +903,31 @@ class Settings:
             self.matchers = config["matchers"]
         if "downloaders" in config:
             self.downloaders = config["downloaders"]
+        if "requeue_failed_downloads" in config:
+            self.requeue_failed_downloads = _parse_bool(config["requeue_failed_downloads"])
+        if "requeue_failed" in config:
+            self.requeue_failed_downloads = _parse_bool(config["requeue_failed"])
+        if "failed_download_downloader" in config:
+            self.failed_download_downloader = config["failed_download_downloader"]
+            self.requeue_downloader = self.failed_download_downloader
+        if "requeue_downloader" in config:
+            self.requeue_downloader = config["requeue_downloader"]
+            self.failed_download_downloader = self.requeue_downloader
         if "custom_downloaders" in config:
             self.parse_custom_downloaders(config["custom_downloaders"])
+        if "archive_download_queue" in config and isinstance(config["archive_download_queue"], dict):
+            adq_cfg = config["archive_download_queue"]
+            if "enable" in adq_cfg:
+                self.queue_archive_downloads = bool(adq_cfg["enable"])
+            if "queue_archive_downloads" in adq_cfg:
+                self.queue_archive_downloads = bool(adq_cfg["queue_archive_downloads"])
+            if "startup" in adq_cfg:
+                self.archive_download_queue_startup = bool(adq_cfg["startup"])
+            if "cycle_timer" in adq_cfg:
+                self.archive_download_queue_cycle_timer = float(adq_cfg["cycle_timer"])
+            if "parallel_downloaders" in adq_cfg:
+                self.parallel_archive_downloaders = int(adq_cfg["parallel_downloaders"])
+
         if "auto_wanted" in config:
             if "enable" in config["auto_wanted"]:
                 self.auto_wanted.enable = config["auto_wanted"]["enable"]

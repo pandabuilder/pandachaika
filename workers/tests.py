@@ -1229,6 +1229,447 @@ class WorkerHeartbeatAndControlTests(TestCase):
             st2 = SchedulerState.objects.get(name="auto_wanted")
             self.assertEqual(st2.command_requested, "force_run")
 
+        # Test force_archive_download_queue
+        req3 = factory.get("/tools/force_archive_download_queue")
+        req3.user = user
+        req3.META["HTTP_REFERER"] = "/tools/"
+        with patch("viewer.views.admin.crawler_settings", self.settings):
+            resp3 = tools(req3, "force_archive_download_queue")
+            self.assertEqual(resp3.status_code, 302)
+            st3 = SchedulerState.objects.get(name="archive_download_queue")
+            self.assertEqual(st3.command_requested, "force_run")
+
+        # Test start_archive_download_queue
+        req4 = factory.get("/tools/start_archive_download_queue")
+        req4.user = user
+        req4.META["HTTP_REFERER"] = "/tools/"
+        with patch("viewer.views.admin.crawler_settings", self.settings):
+            resp4 = tools(req4, "start_archive_download_queue")
+            self.assertEqual(resp4.status_code, 302)
+            st4 = SchedulerState.objects.get(name="archive_download_queue")
+            self.assertEqual(st4.command_requested, "start")
+
+        # Test stop_archive_download_queue
+        req5 = factory.get("/tools/stop_archive_download_queue")
+        req5.user = user
+        req5.META["HTTP_REFERER"] = "/tools/"
+        with patch("viewer.views.admin.crawler_settings", self.settings):
+            resp5 = tools(req5, "stop_archive_download_queue")
+            self.assertEqual(resp5.status_code, 302)
+            st5 = SchedulerState.objects.get(name="archive_download_queue")
+            self.assertEqual(st5.command_requested, "stop")
+
+
+class ArchiveDownloadQueueTests(TestCase):
+
+    def setUp(self):
+        import tempfile
+        self.temp_dir = tempfile.mkdtemp()
+        self.user, _ = User.objects.get_or_create(id=1, defaults={"username": "testarchiveuser", "password": "password123"})
+        self.settings = Settings(load_from_disk=False)
+        self.settings.MEDIA_ROOT = self.temp_dir
+        self.settings.queue_archive_downloads = True
+        self.settings.parallel_archive_downloaders = 2
+
+    def tearDown(self):
+        import shutil
+        import os
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_provider_rate_limit_slot_acquisition(self):
+        from core.base.utilities import acquire_provider_rate_limit_slot
+        from workers.models import ProviderRateLimit
+
+        # Clean slate
+        ProviderRateLimit.objects.filter(name="test_prov_slot").delete()
+
+        # Slot 1
+        res1 = acquire_provider_rate_limit_slot("test_prov_slot", provider_calls=2, provider_limit=1.0, url="http://test.com/1")
+        self.assertTrue(res1)
+        # Slot 2
+        res2 = acquire_provider_rate_limit_slot("test_prov_slot", provider_calls=2, provider_limit=1.0, url="http://test.com/2")
+        self.assertTrue(res2)
+
+        rl_entry = ProviderRateLimit.objects.get(name="test_prov_slot")
+        self.assertEqual(len(rl_entry.call_timestamps), 2)
+        self.assertEqual(rl_entry.calls, 2)
+        self.assertEqual(rl_entry.period, 1.0)
+
+    def test_download_event_querysets_and_status(self):
+        from viewer.models import DownloadEvent
+
+        ev_queued = DownloadEvent.objects.create(
+            name="dl1",
+            method="archive",
+            status=DownloadEvent.Status.QUEUED,
+            download_url="http://example.com/1.zip",
+        )
+        ev_progress = DownloadEvent.objects.create(
+            name="dl2",
+            method="archive",
+            status=DownloadEvent.Status.IN_PROGRESS,
+            download_url="http://example.com/2.zip",
+        )
+        ev_completed = DownloadEvent.objects.create(
+            name="dl3",
+            method="archive",
+            status=DownloadEvent.Status.COMPLETED,
+            completed=True,
+        )
+
+        queued_ids = list(DownloadEvent.objects.queued().values_list("id", flat=True))
+        downloading_ids = list(DownloadEvent.objects.downloading().values_list("id", flat=True))
+        in_prog_ids = list(DownloadEvent.objects.in_progress().values_list("id", flat=True))
+
+        self.assertIn(ev_queued.id, queued_ids)
+        self.assertNotIn(ev_progress.id, queued_ids)
+        self.assertNotIn(ev_completed.id, queued_ids)
+
+        self.assertIn(ev_progress.id, downloading_ids)
+        self.assertNotIn(ev_queued.id, downloading_ids)
+
+        self.assertIn(ev_queued.id, in_prog_ids)
+        self.assertIn(ev_progress.id, in_prog_ids)
+        self.assertNotIn(ev_completed.id, in_prog_ids)
+
+    def test_archive_download_queue_claim_concurrency_and_priority(self):
+        from core.workers.archive_download_queue import ArchiveDownloadQueue
+        from viewer.models import DownloadEvent
+
+        # Setup mock provider settings: chaika max 1, nexus max 2
+        self.settings.parallel_archive_downloaders = 3
+        chaika_settings = type("MockProvSettings", (), {"max_parallel_archive_downloads": 1})()
+        nexus_settings = type("MockProvSettings", (), {"max_parallel_archive_downloads": 2})()
+        self.settings.providers = {"chaika": chaika_settings, "nexus": nexus_settings}
+
+        adq = ArchiveDownloadQueue(self.settings)
+
+        # Chaika 1 (priority 10), Chaika 2 (priority 20 - higher)
+        c1 = DownloadEvent.objects.create(
+            name="c1",
+            method="archive",
+            provider="chaika",
+            priority=10,
+            status=DownloadEvent.Status.QUEUED,
+            download_url="http://chaika.moe/1.zip",
+        )
+        c2 = DownloadEvent.objects.create(
+            name="c2",
+            method="archive",
+            provider="chaika",
+            priority=20,
+            status=DownloadEvent.Status.QUEUED,
+            download_url="http://chaika.moe/2.zip",
+        )
+        # Nexus 1 and 2
+        n1 = DownloadEvent.objects.create(
+            name="n1",
+            method="archive",
+            provider="nexus",
+            priority=10,
+            status=DownloadEvent.Status.QUEUED,
+            download_url="http://nexus.moe/1.zip",
+        )
+        n2 = DownloadEvent.objects.create(
+            name="n2",
+            method="archive",
+            provider="nexus",
+            priority=10,
+            status=DownloadEvent.Status.QUEUED,
+            download_url="http://nexus.moe/2.zip",
+        )
+
+        # Claim up to 3 slots
+        claimed = adq.claim_next_events(3)
+        self.assertEqual(len(claimed), 3)
+
+        # Higher priority chaika (c2) should be claimed, c1 should be skipped because chaika max is 1
+        self.assertIn(c2.id, claimed)
+        self.assertNotIn(c1.id, claimed)
+        # Both nexus events should be claimed because nexus max is 2
+        self.assertIn(n1.id, claimed)
+        self.assertIn(n2.id, claimed)
+
+        # Verify DB state of claimed events
+        c2.refresh_from_db()
+        self.assertEqual(c2.status, DownloadEvent.Status.IN_PROGRESS)
+        self.assertIsNotNone(c2.started_date)
+        self.assertIsNotNone(c2.worker_pid)
+        self.assertEqual(c2.attempts, 1)
+
+    def test_archive_download_worker_successful_download(self):
+        import io
+        import os
+        import uuid
+        import zipfile
+        from PIL import Image
+        from unittest.mock import MagicMock, patch
+        from core.workers.archive_download_queue import ArchiveDownloadQueue
+        from viewer.models import Archive, DownloadEvent
+
+        # Create dummy valid zip with a real valid JPEG
+        img = Image.new("RGB", (10, 10), color="red")
+        img_byte_arr = io.BytesIO()
+        img.save(img_byte_arr, format="JPEG")
+        valid_jpg_bytes = img_byte_arr.getvalue()
+
+        zip_buf = io.BytesIO()
+        with zipfile.ZipFile(zip_buf, "w") as zf:
+            zf.writestr("001.jpg", valid_jpg_bytes)
+        zip_bytes = zip_buf.getvalue()
+
+        zip_name = f"test_download_{uuid.uuid4().hex[:8]}.zip"
+        archive = Archive.objects.create(
+            title="Test Gallery",
+            zipped=zip_name,
+            crc32="",
+            user=self.user,
+        )
+
+        target_path = archive.zipped.path
+
+        event = DownloadEvent.objects.create(
+            name="Test Gallery Event",
+            method="archive",
+            provider="chaika",
+            download_id=target_path,
+            download_url="http://example.com/archive.zip",
+            archive=archive,
+            status=DownloadEvent.Status.QUEUED,
+            request_options={"rate_limit_name": "chaika_web", "rate_limit_calls": 1, "rate_limit_period": 0.01},
+        )
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.headers = {"Content-Length": str(len(zip_bytes))}
+        mock_resp.iter_content.return_value = [zip_bytes]
+
+        adq = ArchiveDownloadQueue(self.settings)
+
+        with patch("core.workers.archive_download_queue.request_by_provider") as mock_req_prov:
+            mock_web_request = MagicMock(return_value=mock_resp)
+            mock_req_prov.return_value = mock_web_request
+
+            adq._download_worker(event.id)
+
+        event.refresh_from_db()
+        self.assertEqual(event.status, DownloadEvent.Status.COMPLETED)
+        self.assertTrue(event.completed)
+        self.assertEqual(event.progress, 100)
+
+        # Verify archive was updated with CRC32 and fileinfo
+        archive.refresh_from_db()
+        self.assertTrue(bool(archive.crc32))
+        self.assertGreater(archive.filesize, 0)
+        self.assertEqual(archive.filecount, 1)
+        self.assertTrue(os.path.exists(target_path))
+        if os.path.exists(target_path):
+            os.remove(target_path)
+
+    def test_archive_download_worker_retry_then_fail(self):
+        from unittest.mock import MagicMock, patch
+        import requests
+        from core.workers.archive_download_queue import ArchiveDownloadQueue
+        from viewer.models import DownloadEvent
+
+        import os
+        target_path = os.path.join(self.temp_dir, "test_retry.zip")
+
+        event = DownloadEvent.objects.create(
+            name="Test Retry Event",
+            method="archive",
+            provider="chaika",
+            download_id=target_path,
+            download_url="http://example.com/fail.zip",
+            status=DownloadEvent.Status.QUEUED,
+            attempts=0,
+            max_attempts=2,
+            request_options={"rate_limit_name": "chaika_web"},
+        )
+
+        adq = ArchiveDownloadQueue(self.settings)
+
+        with patch("core.workers.archive_download_queue.request_by_provider") as mock_req_prov:
+            mock_web_request = MagicMock(side_effect=requests.exceptions.ConnectionError("Connection refused"))
+            mock_req_prov.return_value = mock_web_request
+
+            # First attempt (attempts will become 1, less than max_attempts 2)
+            event.status = DownloadEvent.Status.IN_PROGRESS
+            event.attempts = 1
+            event.save()
+            adq._download_worker(event.id)
+
+            event.refresh_from_db()
+            self.assertEqual(event.status, DownloadEvent.Status.QUEUED)
+            self.assertIn("Connection refused", event.error_message)
+
+            # Second attempt (attempts reaches max_attempts 2)
+            event.status = DownloadEvent.Status.IN_PROGRESS
+            event.attempts = 2
+            event.save()
+            adq._download_worker(event.id)
+
+            event.refresh_from_db()
+            self.assertEqual(event.status, DownloadEvent.Status.FAILED)
+            self.assertTrue(event.failed)
+            self.assertTrue(event.completed)
+
+    def test_cleanup_dead_workers_reverts_orphaned_archive_downloads(self):
+        from datetime import timedelta
+        import django.utils.timezone as django_tz
+        from workers.models import WorkerProcess
+        from viewer.models import DownloadEvent
+
+        dead_worker = WorkerProcess.objects.create(
+            pid=999999,
+            hostname="deadhost",
+            status="running",
+            last_heartbeat=django_tz.now() - timedelta(minutes=10),
+        )
+
+        orphaned_event = DownloadEvent.objects.create(
+            name="Orphaned Event",
+            method="archive",
+            provider="chaika",
+            download_url="http://example.com/orphan.zip",
+            status=DownloadEvent.Status.IN_PROGRESS,
+            worker_pid=999999,
+        )
+
+        WorkerProcess.cleanup_dead_workers(threshold_seconds=30)
+
+        dead_worker.refresh_from_db()
+        self.assertEqual(dead_worker.status, "stopped")
+
+        orphaned_event.refresh_from_db()
+        self.assertEqual(orphaned_event.status, DownloadEvent.Status.QUEUED)
+        self.assertIsNone(orphaned_event.worker_pid)
+
+    def test_download_progress_checker_skips_queued_archives(self):
+        from core.workers.download_progress import DownloadProgressChecker
+        from viewer.models import Archive, DownloadEvent
+
+        archive_pending = Archive.objects.create(
+            title="Pending Archive",
+            zipped="pending.zip",
+            crc32="",
+            user=self.user,
+        )
+
+        queued_event = DownloadEvent.objects.create(
+            name="Queued Event",
+            method="archive",
+            provider="chaika",
+            download_url="http://example.com/pending.zip",
+            archive=archive_pending,
+            status=DownloadEvent.Status.QUEUED,
+            completed=False,
+        )
+
+        checker = DownloadProgressChecker(self.settings)
+        # Run one check cycle via the logic inside check
+        download_events = list(DownloadEvent.objects.in_progress().filter(id=queued_event.id))
+        self.assertEqual(len(download_events), 1)
+
+        # ARCHIVE_METHODS loop
+        for ev in download_events:
+            if ev.status == DownloadEvent.Status.QUEUED:
+                continue
+            if ev.archive and ev.archive.crc32:
+                ev.finish_download()
+                ev.save()
+
+        queued_event.refresh_from_db()
+        self.assertFalse(queued_event.completed)
+        self.assertEqual(queued_event.status, DownloadEvent.Status.QUEUED)
+
+    def test_download_monitor_view_html_and_json(self):
+        import json
+        from django.contrib.auth.models import Permission
+        from django.test import RequestFactory
+        from viewer.models import DownloadEvent
+        from viewer.views.collaborators import download_history
+
+        # Grant download_history permission
+        perm = Permission.objects.filter(codename="download_history").first()
+        if perm:
+            self.user.user_permissions.add(perm)
+
+        # Create sample events
+        ev_queued = DownloadEvent.objects.create(
+            name="https://example.com/1.zip",
+            method="archive",
+            status=DownloadEvent.Status.QUEUED,
+            progress=0.0,
+            total_size=1048576,
+        )
+        ev_active = DownloadEvent.objects.create(
+            name="https://example.com/2.zip",
+            method="archive",
+            status=DownloadEvent.Status.IN_PROGRESS,
+            progress=45.5,
+            total_size=2097152,
+        )
+        ev_done = DownloadEvent.objects.create(
+            name="https://example.com/3.zip",
+            method="archive",
+            status=DownloadEvent.Status.COMPLETED,
+            completed=True,
+            progress=100.0,
+            total_size=5242880,
+        )
+
+        factory = RequestFactory()
+
+        # 1. HTML view test
+        req_html = factory.get("/downloads/")
+        req_html.user = self.user
+        resp_html = download_history(req_html)
+        self.assertEqual(resp_html.status_code, 200)
+        content = resp_html.content.decode("utf-8")
+        self.assertIn("Download Monitor", content)
+        self.assertIn("id=\"auto-refresh\"", content)
+        self.assertIn("id=\"download-table\"", content)
+
+        # 2. JSON view test
+        req_json = factory.get("/downloads/?json=1")
+        req_json.user = self.user
+        resp_json = download_history(req_json)
+        self.assertEqual(resp_json.status_code, 200)
+        data = json.loads(resp_json.content.decode("utf-8"))
+        self.assertIn("results", data)
+        self.assertIn("count", data)
+        self.assertEqual(data["count"], 2)  # default filter is in_progress (queued + active)
+        result_ids = [r["id"] for r in data["results"]]
+        self.assertIn(ev_queued.id, result_ids)
+        self.assertIn(ev_active.id, result_ids)
+        self.assertNotIn(ev_done.id, result_ids)
+
+        # Check serialized fields
+        active_res = next(r for r in data["results"] if r["id"] == ev_active.id)
+        self.assertEqual(active_res["progress"], 45.5)
+        self.assertEqual(active_res["status"], "in_progress")
+        self.assertEqual(active_res["total_size"], 2097152)
+
+        # 3. Filter status=queued
+        req_q = factory.get("/downloads/?json=1&status=queued")
+        req_q.user = self.user
+        resp_q = download_history(req_q)
+        data_q = json.loads(resp_q.content.decode("utf-8"))
+        self.assertEqual(data_q["count"], 1)
+        self.assertEqual(data_q["results"][0]["id"], ev_queued.id)
+
+        # 4. Filter status=downloading
+        req_dl = factory.get("/downloads/?json=1&status=downloading")
+        req_dl.user = self.user
+        resp_dl = download_history(req_dl)
+        data_dl = json.loads(resp_dl.content.decode("utf-8"))
+        self.assertEqual(data_dl["count"], 1)
+        self.assertEqual(data_dl["results"][0]["id"], ev_active.id)
+
+
+
 
 
 

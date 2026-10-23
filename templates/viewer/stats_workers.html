@@ -190,6 +190,37 @@
     {% endfor %}
     </tbody>
   </table>
+  <h3>Archive download queue</h3>
+  <table class="table table-striped">
+    <thead>
+    <tr>
+      <th>File</th><th>Size</th><th>Downloaded</th><th>Speed</th><th>Progress</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for item in stats.archive_download_queue.current_download %}
+      <tr>
+        <td>
+          {{ item.filename }}
+        </td>
+        <td>
+          {{ item.filesize|filesizeformat }}
+        </td>
+        <td>
+          {{ item.downloaded|filesizeformat }}
+        </td>
+        <td>
+          {{ item.speed|filesizeformat }}/s
+        </td>
+        <td>
+          {% if item.filesize %}{% widthratio item.downloaded item.filesize 100 %}%{% else %}0%{% endif %}
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="5">No active archive downloads.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
   <h3>Schedulers</h3>
   <table class="table table-striped">
     <thead>

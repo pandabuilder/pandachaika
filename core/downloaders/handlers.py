@@ -58,6 +58,7 @@ class BaseDownloader(typing.Generic[T_ProviderSettings], metaclass=Meta):
         self.gallery: Optional[GalleryData] = None
         self.download_id: Optional[str] = None
         self.download_event: Optional["DownloadEvent"] = None
+        self.queued_download_data: Optional[dict[str, Any]] = None
 
     def __str__(self) -> str:
         return "{}_{}".format(self.provider, self.type)
@@ -179,6 +180,61 @@ class BaseDownloader(typing.Generic[T_ProviderSettings], metaclass=Meta):
                             },
                         )
 
+    def should_queue_archive_download(self, provider_settings: Optional[Any] = None) -> bool:
+        target_settings = provider_settings or self.own_settings
+        if target_settings is not None and getattr(target_settings, "queue_archive_downloads", None) is not None:
+            return bool(target_settings.queue_archive_downloads)
+        if getattr(self.settings, "queue_archive_downloads", False):
+            return True
+        return int(getattr(self.settings, "parallel_archive_downloaders", 0) or 0) > 0
+
+    def enqueue_archive_download(
+        self,
+        download_url: str,
+        filepath: str,
+        request_dict: Optional[dict[str, Any]] = None,
+        rate_limit_provider: Optional[str] = None,
+        rate_limit_calls: int = 1,
+        rate_limit_period: Optional[float] = None,
+        extra_options: Optional[dict[str, Any]] = None,
+    ) -> None:
+        req_opts: dict[str, Any] = {}
+        if request_dict:
+            for k in ("headers", "cookies", "proxies", "timeout", "params", "data"):
+                if k in request_dict and request_dict[k] is not None:
+                    req_opts[k] = request_dict[k]
+        provider_key = rate_limit_provider or self.provider
+        if rate_limit_period is None:
+            if self.own_settings and hasattr(self.own_settings, "wait_timer"):
+                rate_limit_period = float(self.own_settings.wait_timer)
+            else:
+                rate_limit_period = float(getattr(self.settings, "wait_timer", 0))
+        req_opts["rate_limit_provider"] = provider_key
+        req_opts["rate_limit_name"] = provider_key if provider_key.endswith("_web") else f"{provider_key}_web"
+        req_opts["rate_limit_calls"] = int(rate_limit_calls)
+        req_opts["rate_limit_period"] = float(rate_limit_period)
+        req_opts["mark_similar_new_archives"] = bool(getattr(self.settings, "mark_similar_new_archives", False))
+        req_opts["preserve_extracted"] = bool(getattr(self.settings, "preserve_extracted", False))
+        req_opts["archive_only"] = bool(self.archive_only)
+        if getattr(self.settings, "archive_user", None):
+            req_opts["archive_user_id"] = getattr(self.settings.archive_user, "id", None)
+        if getattr(self.settings, "archive_reason", None):
+            req_opts["archive_reason"] = getattr(self.settings, "archive_reason", "")
+        if getattr(self.settings, "event_action", None):
+            req_opts["event_action"] = getattr(self.settings, "event_action", "")
+        if extra_options:
+            req_opts.update(extra_options)
+
+        self.queued_download_data = {
+            "download_url": download_url,
+            "filepath": filepath,
+            "provider": provider_key,
+            "request_options": req_opts,
+        }
+        self.crc32 = ""
+        self.fileDownloaded = 1
+        self.return_code = 1
+
     def create_download_event(
         self,
         name,
@@ -188,21 +244,34 @@ class BaseDownloader(typing.Generic[T_ProviderSettings], metaclass=Meta):
         gallery: Optional["Gallery"] = None,
         progress: float = 0.0,
         total_size: int = 0,
+        status: Optional[str] = None,
+        provider: Optional[str] = None,
+        download_url: str = "",
+        request_options: Optional[dict[str, Any]] = None,
     ) -> Optional["DownloadEvent"]:
         if not self.settings.download_event_model:
             return None
         if not total_size and archive and archive.filesize:
             total_size = archive.filesize
 
-        download_event = self.settings.download_event_model(
-            name=name,
-            method=method,
-            download_id=download_id,
-            archive=archive,
-            gallery=gallery,
-            progress=progress,
-            total_size=total_size,
-        )
+        kwargs: dict[str, Any] = {
+            "name": name,
+            "method": method,
+            "download_id": download_id,
+            "archive": archive,
+            "gallery": gallery,
+            "progress": progress,
+            "total_size": total_size,
+            "provider": provider if provider is not None else self.provider,
+        }
+        if status is not None:
+            kwargs["status"] = status
+        if download_url:
+            kwargs["download_url"] = download_url
+        if request_options is not None:
+            kwargs["request_options"] = request_options
+
+        download_event = self.settings.download_event_model(**kwargs)
 
         download_event.save()
 
@@ -210,6 +279,15 @@ class BaseDownloader(typing.Generic[T_ProviderSettings], metaclass=Meta):
         # result, torrent_id
 
     def init_download(self, gallery: GalleryData, wanted_gallery_list: Optional[list["WantedGallery"]] = None) -> None:
+
+        self.fileDownloaded = 0
+        self.return_code = 0
+        self.crc32 = ""
+        self.download_id = None
+        self.download_event = None
+        self.queued_download_data = None
+        self.gallery_db_entry = None
+        self.archive_db_entry = None
 
         self.original_gallery = copy.deepcopy(gallery)
         self.gallery = gallery
@@ -253,24 +331,58 @@ class BaseDownloader(typing.Generic[T_ProviderSettings], metaclass=Meta):
 
             self.archive_db_entry = self.update_archive_db(default_values)
 
-            if self.direct_downloader and self.download_event:
+            linked_gallery = self.gallery_db_entry or (
+                self.archive_db_entry.gallery if self.archive_db_entry else None
+            )
+
+            if self.queued_download_data is not None:
+                total_size = int(self.gallery.filesize or 0) if self.gallery else 0
+                event_name = (
+                    self.gallery.link
+                    if self.gallery and self.gallery.link
+                    else self.queued_download_data["download_url"]
+                )
+                self.download_event = self.create_download_event(
+                    event_name,
+                    self.type,
+                    self.queued_download_data["filepath"],
+                    archive=self.archive_db_entry,
+                    gallery=linked_gallery,
+                    total_size=total_size,
+                    status="queued",
+                    provider=self.queued_download_data["provider"],
+                    download_url=self.queued_download_data["download_url"],
+                    request_options=self.queued_download_data["request_options"],
+                )
+                logger.info(
+                    "Queued archive download event #%s for archive %s (provider: %s, url: %s)",
+                    getattr(self.download_event, "pk", None),
+                    getattr(self.archive_db_entry, "pk", None),
+                    self.queued_download_data["provider"],
+                    self.queued_download_data["download_url"],
+                )
+            elif self.direct_downloader and self.download_event:
                 if self.archive_db_entry is not None:
                     self.download_event.archive = self.archive_db_entry
-                if self.gallery_db_entry is not None:
-                    self.download_event.gallery = self.gallery_db_entry
+                if linked_gallery is not None:
+                    self.download_event.gallery = linked_gallery
                 self.download_event.finish_download()
                 self.download_event.save()
 
-            if not self.direct_downloader and self.download_id is not None:
+            elif not self.direct_downloader and self.download_id is not None:
                 self.create_download_event(
                     self.gallery.link,
                     self.type,
                     self.download_id,
                     archive=self.archive_db_entry,
-                    gallery=self.gallery_db_entry,
+                    gallery=linked_gallery,
                 )
 
-            if self.archive_db_entry and self.settings.mark_similar_new_archives:
+            if (
+                self.archive_db_entry
+                and self.settings.mark_similar_new_archives
+                and self.queued_download_data is None
+            ):
                 self.archive_db_entry.create_marks_for_similar_archives()
 
 

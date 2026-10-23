@@ -1,3 +1,4 @@
+import logging
 from typing import Union, Optional, Literal, cast, Any
 from urllib.parse import urlparse
 
@@ -5,6 +6,8 @@ import transmission_rpc
 import os
 
 from core.base.types import TorrentClient
+
+logger = logging.getLogger(__name__)
 
 
 class Transmission(TorrentClient):
@@ -93,11 +96,26 @@ class Transmission(TorrentClient):
         if not self.trans:
             return []
 
-        torrent_ids: list[int | str] = [int(x[0]) for x in download_list]
-        torrents = self.trans.get_torrents(torrent_ids, timeout=25)
+        torrent_id_map: dict[int, TorrentClient.TorrentKey] = {}
+        for dl_id_str, key in download_list:
+            try:
+                int_id = int(dl_id_str)
+                torrent_id_map[int_id] = key
+            except (ValueError, TypeError):
+                continue
 
-        torrent_progress = {x.id: x.progress for x in torrents}
+        if not torrent_id_map:
+            return []
 
-        results = [(x[1], torrent_progress[int(x[0])]) for x in download_list if int(x[0]) in torrent_progress]
+        try:
+            torrents = self.trans.get_torrents(list(torrent_id_map.keys()), timeout=25)
+        except Exception as e:
+            logger.warning(f"Failed to get torrent progress from Transmission: {e}")
+            return []
+
+        results: list[tuple[TorrentClient.TorrentKey, float]] = []
+        for torr in torrents:
+            if torr.id in torrent_id_map:
+                results.append((torrent_id_map[torr.id], torr.progress))
 
         return results

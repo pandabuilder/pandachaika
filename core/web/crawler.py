@@ -227,6 +227,14 @@ class WebCrawler(object):
             help="Only compare wanted galleries specified by their ID.",
         )
 
+        parser.add_argument(
+            "-qad",
+            "--queue-archive-downloads",
+            required=False,
+            action="store_true",
+            help="Queue archive HTTP downloads to the background download queue instead of downloading inline.",
+        )
+
         try:
             args = parser.parse_args(arg_line)
             self.parse_error = False
@@ -317,6 +325,9 @@ class WebCrawler(object):
 
         if args.wait_timer:
             current_settings.wait_timer = args.wait_timer
+
+        if getattr(args, "queue_archive_downloads", False):
+            current_settings.queue_archive_downloads = True
 
         if args.retry_failed:
             current_settings.retry_failed = True
