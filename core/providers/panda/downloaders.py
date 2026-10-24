@@ -247,6 +247,9 @@ class ArchiveDownloader(BaseDownloader[PandaSettings]):
             r = self.request_archive_download(self.gallery.root, self.gallery.gid, self.gallery.token)
 
             if not r or r.status_code != 200:
+                # 404 means removed gallery.
+                if r and r.status_code == 404:
+                    break
                 logger.warning(
                     "Archive request attempt {} of 3 for gid {} failed (status: {}). Retrying in 2s...".format(
                         attempt + 1, self.gallery.gid, getattr(r, "status_code", "None")
