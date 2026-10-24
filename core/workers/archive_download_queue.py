@@ -10,7 +10,7 @@ from django.db import close_old_connections, connection, models, transaction
 
 from core.base.setup import Settings
 from core.base.utilities import calc_crc32, request_by_provider
-from core.downloaders.postdownload import CurrentDownload
+from core.downloaders.postdownload import CurrentDownload, PostDownloader
 from core.workers.schedulers import BaseScheduler
 from viewer.models import DownloadEvent
 
@@ -323,6 +323,20 @@ class ArchiveDownloadQueue(BaseScheduler):
                             )
                     except Exception as e:
                         logger.warning("Failed to log download action for archive #%s: %s", archive.pk, e)
+
+                panda_settings = self.settings.providers.get("panda") if hasattr(self.settings, "providers") else None
+                if (
+                    panda_settings
+                    and getattr(panda_settings, "confirm_files_after_download", False)
+                    and archive.match_type
+                    and ("chaika" in archive.match_type or archive.match_type == "panda_chaika")
+                ):
+                    post_downloader = PostDownloader(self.settings, web_queue=self.web_queue)
+                    success = post_downloader.process_downloaded_archive(archive)
+                    if not success:
+                        event.set_as_failed(error_message="SHA1 mismatch on downloaded zipfile")
+                        event.save()
+                        return
 
             event.finish_download()
             event.save()

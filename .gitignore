@@ -30,3 +30,4 @@ aux_*.txt
 aux_*.json
 .env
 docker-compose.local.yml
+.agents

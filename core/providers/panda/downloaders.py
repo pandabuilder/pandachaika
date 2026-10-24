@@ -870,7 +870,9 @@ class PandaChaikaDownloader(BaseDownloader):
                     continue
 
                 total_size = int(request_file.headers.get("Content-Length", 0))
-                self.download_event = self.create_download_event(self.gallery.link, self.type, filepath, total_size=total_size)
+                self.download_event = self.create_download_event(
+                    self.gallery.link, self.type, filepath, total_size=total_size, download_url=download_url
+                )
 
                 with open(filepath, "wb") as fo:
                     for chunk in request_file.iter_content(4096):
@@ -916,6 +918,21 @@ class PandaChaikaDownloader(BaseDownloader):
         return Archive.objects.update_or_create_by_values_and_gid(
             default_values, (self.gallery.gid, self.gallery.provider), zipped=self.gallery.filename
         )
+
+    def init_download(
+        self, gallery: Any, wanted_gallery_list: Optional[list[Any]] = None
+    ) -> None:
+        super().init_download(gallery, wanted_gallery_list=wanted_gallery_list)
+        if self.fileDownloaded == 1 and self.archive_db_entry and self.queued_download_data is None:
+            panda_settings = self.settings.providers.get("panda") if hasattr(self.settings, "providers") else None
+            if panda_settings and getattr(panda_settings, "confirm_files_after_download", False):
+                from core.downloaders.postdownload import PostDownloader
+                post_downloader = PostDownloader(
+                    self.settings, web_queue=getattr(self.settings.workers, "web_queue", None)
+                )
+                success = post_downloader.process_downloaded_archive(self.archive_db_entry)
+                if not success:
+                    self.return_code = 0
 
 
 API = (

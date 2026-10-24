@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from ftplib import FTP_TLS
 from tempfile import mkdtemp
 from typing import Any, Optional, TypeVar
+from urllib.parse import urljoin
 from zipfile import ZipFile, BadZipFile
 import ftplib
 
@@ -23,6 +24,7 @@ import re
 
 from core.base.setup import Settings
 from core.base.utilities import convert_rar_to_zip, replace_illegal_name, convert_7z_to_zip
+from core.providers.chaika import constants as chaika_constants
 from core.providers.panda.parsers import Parser as PandaParser
 from core.workers.schedulers import BaseScheduler
 from viewer.models import Archive, ArchiveManageEntry
@@ -105,139 +107,229 @@ class PostDownloader(object):
                 temp_settings.archive_reason = archive.reason
             self.web_queue.enqueue_args_list((archive.gallery.get_link(),), override_options=temp_settings)
 
-    def process_downloaded_archive(self, archive: Archive) -> None:
-        if os.path.isfile(archive.zipped.path):
-            except_at_open = False
-            return_error = None
-            error_details = ""
+    def _get_chaika_archive_link(self, archive: Archive) -> str:
+        download_event = None
+        if hasattr(archive, "downloadevent_set"):
             try:
-                my_zip = ZipFile(archive.zipped.path, "r")
-                return_error = my_zip.testzip()
-                my_zip.close()
-            except (BadZipFile, NotImplementedError, zlib.error) as e:
-                except_at_open = True
-                error_details = f"{type(e).__name__}: {e}"
-            if return_error:
-                error_details = f"Corrupt file: {return_error}"
-            if except_at_open or return_error:
-                if self._should_requeue_download(archive):
-                    requeue_dl = self.get_requeue_downloader()
-                    dl_name = ", ".join(requeue_dl) if isinstance(requeue_dl, list) else requeue_dl
-                    logger.error(
-                        "For archive: {}, file check on downloaded zipfile failed ({}) on file: {}, "
-                        "forcing download as {} to fix it.".format(
-                            archive, error_details or "unknown error", archive.zipped.path, dl_name
-                        )
-                    )
-                    try:
-                        archive.save()
-                    except Exception as e:
-                        logger.error("Error saving archive %s after failed zip check: %s", archive, e)
-                    self._requeue_archive(archive, requeue_dl)
-                else:
-                    logger.warning(
-                        "For archive: {}, file check on downloaded zipfile failed ({}): {}. "
-                        "Check the file manually.".format(
-                            archive, error_details or "unknown error", archive.zipped.path
-                        )
-                    )
-                if self.settings.recycle_failed_checks_downloads:
-                    archive.move_to_recycle_bin(reason="Failed on ZIP file opening")
-                return
-            # crc32 = calc_crc32(archive.zipped.path)
-            # filesize, filecount = get_zip_fileinfo(archive.zipped.path)
-            # values = {
-            #     'crc32': crc32,
-            #     'filesize': filesize,
-            #     'filecount': filecount,
-            # }
-            # updated_archive = Archive.objects.add_or_update_from_values(values, pk=archive.pk)
-
-            archive.recalc_fileinfo()
-            archive.save()
-
-            if self.settings.mark_similar_new_archives:
-                archive.create_marks_for_similar_archives()
-
-            if archive.gallery and archive.filesize != archive.gallery.filesize:
-                mark_comment = (
-                    "Torrent downloaded has not the same file as the matched gallery"
-                    " (different filesize or filecount). This file must be replaced if the correct one"
-                    " is found."
+                download_event = (
+                    archive.downloadevent_set.exclude(download_url="").order_by("id").last()
                 )
-                manager_entry, _ = ArchiveManageEntry.objects.update_or_create(
-                    archive=archive,
-                    mark_reason="wrong_file",
-                    defaults={
-                        "mark_comment": mark_comment,
-                        "mark_priority": 4.3,
-                        "mark_check": True,
-                        "origin": ArchiveManageEntry.ORIGIN_SYSTEM,
-                    },
+            except Exception:
+                pass
+        if not download_event:
+            dl_model = getattr(self.settings, "download_event_model", None)
+            if dl_model is not None:
+                try:
+                    download_event = (
+                        dl_model.objects.filter(archive=archive)
+                        .exclude(download_url="")
+                        .order_by("id")
+                        .last()
+                    )
+                except Exception:
+                    pass
+        if not download_event and archive.gallery:
+            try:
+                from viewer.models import DownloadEvent
+                download_event = (
+                    DownloadEvent.objects.filter(gallery=archive.gallery)
+                    .exclude(download_url="")
+                    .order_by("id")
+                    .last()
                 )
-                if Archive.objects.filter(gallery=archive.gallery, filesize=archive.gallery.filesize):
-                    logger.info(
-                        "For archive: {} size does not match gallery, "
-                        "but there's already another archive that matches.".format(archive)
+            except Exception:
+                pass
+
+        chaika_provider_settings = (
+            self.settings.providers.get("chaika") if hasattr(self.settings, "providers") else None
+        )
+        chaika_base_url = (
+            getattr(chaika_provider_settings, "url", None)
+            or chaika_constants.base_url
+        )
+
+        if download_event and download_event.download_url:
+            dl_url = download_event.download_url
+            m = re.search(r"/archive/(\d+)/", dl_url)
+            if m:
+                archive_id = m.group(1)
+                archive_page_url = urljoin(dl_url, f"/archive/{archive_id}/")
+                if archive_page_url != dl_url:
+                    return f"{archive_page_url} (download: {dl_url})"
+            return dl_url
+
+        if archive.gallery and archive.gallery.gid:
+            gid = archive.gallery.gid
+            provider = archive.gallery.provider or "panda"
+            return urljoin(chaika_base_url, f"?gid={gid}&provider={provider}")
+
+        return chaika_base_url
+
+    def process_downloaded_archive(self, archive: Archive) -> bool:
+        if not os.path.isfile(archive.zipped.path):
+            return False
+
+        except_at_open = False
+        return_error = None
+        error_details = ""
+        try:
+            my_zip = ZipFile(archive.zipped.path, "r")
+            return_error = my_zip.testzip()
+            my_zip.close()
+        except (BadZipFile, NotImplementedError, zlib.error) as e:
+            except_at_open = True
+            error_details = f"{type(e).__name__}: {e}"
+        if return_error:
+            error_details = f"Corrupt file: {return_error}"
+        if except_at_open or return_error:
+            if self._should_requeue_download(archive):
+                requeue_dl = self.get_requeue_downloader()
+                dl_name = ", ".join(requeue_dl) if isinstance(requeue_dl, list) else requeue_dl
+                logger.error(
+                    "For archive: {}, file check on downloaded zipfile failed ({}) on file: {}, "
+                    "forcing download as {} to fix it.".format(
+                        archive, error_details or "unknown error", archive.zipped.path, dl_name
                     )
-                    return
-                if self._should_requeue_download(archive):
-                    requeue_dl = self.get_requeue_downloader()
-                    dl_name = ", ".join(requeue_dl) if isinstance(requeue_dl, list) else requeue_dl
-                    logger.info(
-                        "For archive: {} size does not match gallery, "
-                        "downloading again from {}.".format(archive, dl_name)
+                )
+                try:
+                    archive.save()
+                except Exception as e:
+                    logger.error("Error saving archive %s after failed zip check: %s", archive, e)
+                self._requeue_archive(archive, requeue_dl)
+            else:
+                logger.warning(
+                    "For archive: {}, file check on downloaded zipfile failed ({}): {}. "
+                    "Check the file manually.".format(
+                        archive, error_details or "unknown error", archive.zipped.path
                     )
-                    self._requeue_archive(archive, requeue_dl)
+                )
+            if self.settings.recycle_failed_checks_downloads:
+                archive.move_to_recycle_bin(reason="Failed on ZIP file opening")
+            return False
+        # crc32 = calc_crc32(archive.zipped.path)
+        # filesize, filecount = get_zip_fileinfo(archive.zipped.path)
+        # values = {
+        #     'crc32': crc32,
+        #     'filesize': filesize,
+        #     'filecount': filecount,
+        # }
+        # updated_archive = Archive.objects.add_or_update_from_values(values, pk=archive.pk)
+
+        archive.recalc_fileinfo()
+        archive.save()
+
+        if self.settings.mark_similar_new_archives:
+            archive.create_marks_for_similar_archives()
+
+        is_chaika = bool(
+            archive.match_type and ("chaika" in archive.match_type or archive.match_type == "panda_chaika")
+        )
+        is_torrent = bool(
+            archive.match_type and "torrent" in archive.match_type
+        )
+
+        if archive.gallery and archive.filesize != archive.gallery.filesize:
+            source_name = "Chaika" if is_chaika else "Torrent"
+            mark_comment = (
+                f"{source_name} downloaded has not the same file as the matched gallery"
+                " (different filesize or filecount). This file must be replaced if the correct one"
+                " is found."
+            )
+            manager_entry, _ = ArchiveManageEntry.objects.update_or_create(
+                archive=archive,
+                mark_reason="wrong_file",
+                defaults={
+                    "mark_comment": mark_comment,
+                    "mark_priority": 4.3,
+                    "mark_check": True,
+                    "origin": ArchiveManageEntry.ORIGIN_SYSTEM,
+                },
+            )
+            if Archive.objects.filter(gallery=archive.gallery, filesize=archive.gallery.filesize):
+                logger.info(
+                    "For archive: {} size does not match gallery, "
+                    "but there's already another archive that matches.".format(archive)
+                )
+                return False
+            if self._should_requeue_download(archive):
+                requeue_dl = self.get_requeue_downloader()
+                dl_name = ", ".join(requeue_dl) if isinstance(requeue_dl, list) else requeue_dl
+                logger.info(
+                    "For archive: {} size does not match gallery, "
+                    "downloading again from {}.".format(archive, dl_name)
+                )
+                self._requeue_archive(archive, requeue_dl)
+            else:
+                logger.warning(
+                    "For archive: {} size does not match gallery. Check the file manually.".format(archive)
+                )
+            if self.settings.recycle_failed_checks_downloads:
+                archive.move_to_recycle_bin(reason="Size does not match gallery")
+            return False
+        elif (
+            archive.gallery
+            and archive.filesize == archive.gallery.filesize
+            and (is_torrent or is_chaika)
+        ):
+            panda_provider_settings = (
+                self.settings.providers.get("panda")
+                if hasattr(self.settings, "providers")
+                else None
+            )
+
+            if panda_provider_settings and getattr(panda_provider_settings, "confirm_files_after_download", False):
+                logger.info(
+                    "For archive: {} checking if the SHA1 for each downloaded image matches with panda's page data.".format(archive)
+                )
+
+                image_set = archive.image_set.all()
+                if hasattr(image_set, "order_by"):
+                    downloaded_sha1_list = [x.sha1 for x in image_set.order_by("archive_position")]
                 else:
-                    logger.warning(
-                        "For archive: {} size does not match gallery. Check the file manually.".format(archive)
-                    )
-                if self.settings.recycle_failed_checks_downloads:
-                    archive.move_to_recycle_bin(reason="Size does not match gallery")
-            elif archive.gallery and archive.filesize == archive.gallery.filesize and archive.match_type and 'torrent' in archive.match_type:
-                panda_provider_settings = self.settings.providers["panda"]
+                    downloaded_sha1_list = [x.sha1 for x in image_set]
 
-                if panda_provider_settings.confirm_files_after_download:
-                    logger.info(
-                        "For archive: {} checking if the SHA1 for each downloaded image matches with panda's page data.".format(archive)
-                    )
-                    
-                    downloaded_sha1_list = [x.sha1 for x in archive.image_set.all()]
+                gallery_url = archive.gallery.get_link()
 
-                    gallery_url = archive.gallery.get_link()
+                parsers = self.settings.provider_context.get_parsers(self.settings, filter_name='panda')
 
-                    parsers = self.settings.provider_context.get_parsers(self.settings, filter_name='panda')
-                    
-                    if len(parsers) > 0 and isinstance(parsers[0], PandaParser):
-                        panda_parser = parsers[0]
-                        panda_sha1_list = panda_parser.get_sha1_hashes_from_panda(gallery_url)
+                if len(parsers) > 0 and isinstance(parsers[0], PandaParser):
+                    panda_parser = parsers[0]
+                    panda_sha1_list = panda_parser.get_sha1_hashes_from_panda(gallery_url)
 
-                        if panda_sha1_list != downloaded_sha1_list:
-                            if self._should_requeue_download(archive):
-                                requeue_dl = self.get_requeue_downloader()
-                                dl_name = ", ".join(requeue_dl) if isinstance(requeue_dl, list) else requeue_dl
-                                logger.warning(
-                                    "For archive: {}, SHA1 mismatch on downloaded zipfile failed on file: {}, "
-                                    "forcing download as {} to fix it.".format(archive, archive.zipped.path, dl_name)
+                    if panda_sha1_list != downloaded_sha1_list:
+                        if is_chaika:
+                            chaika_link = self._get_chaika_archive_link(archive)
+                            logger.warning(
+                                "For archive: {}, SHA1 mismatch detected for Chaika download. Relevant links: Panda: {}, Chaika: {}".format(
+                                    archive, gallery_url, chaika_link
                                 )
-                                try:
-                                    archive.save()
-                                except Exception as e:
-                                    logger.error("Error saving archive %s after failed SHA1 check: %s", archive, e)
-                                self._requeue_archive(archive, requeue_dl)
-                            else:
-                                logger.warning(
-                                    "For archive: {}, SHA1 mismatch on downloaded zipfile: {}. "
-                                    "Check the file manually.".format(archive, archive.zipped.path)
-                                )
-                            if self.settings.recycle_failed_checks_downloads:
-                                archive.move_to_recycle_bin(reason="SHA1 mismatch on downloaded zipfile")
-                            return
+                            )
+
+                        if self._should_requeue_download(archive):
+                            requeue_dl = self.get_requeue_downloader()
+                            dl_name = ", ".join(requeue_dl) if isinstance(requeue_dl, list) else requeue_dl
+                            logger.warning(
+                                "For archive: {}, SHA1 mismatch on downloaded zipfile failed on file: {}, "
+                                "forcing download as {} to fix it.".format(archive, archive.zipped.path, dl_name)
+                            )
+                            try:
+                                archive.save()
+                            except Exception as e:
+                                logger.error("Error saving archive %s after failed SHA1 check: %s", archive, e)
+                            self._requeue_archive(archive, requeue_dl)
                         else:
-                            logger.info("For archive: {} local SHA1 matches with gallery page sha1, validation passes.".format(archive))
+                            logger.warning(
+                                "For archive: {}, SHA1 mismatch on downloaded zipfile: {}. "
+                                "Check the file manually.".format(archive, archive.zipped.path)
+                            )
+                        if self.settings.recycle_failed_checks_downloads:
+                            archive.move_to_recycle_bin(reason="SHA1 mismatch on downloaded zipfile")
+                        return False
                     else:
-                        logger.warning("For archive: {} could not obtain the needed parser.".format(archive))
+                        logger.info("For archive: {} local SHA1 matches with gallery page sha1, validation passes.".format(archive))
+                else:
+                    logger.warning("For archive: {} could not obtain the needed parser.".format(archive))
+        return True
 
 
     def write_file_update_progress(

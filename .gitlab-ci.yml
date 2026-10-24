@@ -82,10 +82,10 @@ static-test:
     - panda
 
 build:
-  image: docker:29.9.1
+  image: docker:29.9.2
   when: manual
   services:
-    - docker:29.9.1-dind
+    - docker:29.9.2-dind
   before_script:
     - docker info
   stage: build
