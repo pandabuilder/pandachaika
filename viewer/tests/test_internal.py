@@ -5,12 +5,14 @@ unittest). These will both pass when you run "manage.py test".
 Replace these with more appropriate tests for your application.
 """
 
-from django.test import TestCase, Client
+from django.test import TestCase, Client, override_settings
 from django.contrib.auth.models import User, Permission
 from django.urls import reverse
 from django.core.files.uploadedfile import SimpleUploadedFile
 
 import json
+import shutil
+import tempfile
 
 from viewer.models import Tag, Archive, Gallery, WantedGallery, ArchiveTag, FoundGallery
 
@@ -805,7 +807,16 @@ class OperationalFixesTest(TestCase):
             self.assertEqual(json.loads(resp.content), {})
 
 
+_TEMP_MEDIA_DIR = tempfile.mkdtemp(prefix="panda_test_media_")
+
+
+@override_settings(MEDIA_ROOT=_TEMP_MEDIA_DIR)
 class GalleryAndArchiveViewsTest(TestCase):
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        shutil.rmtree(_TEMP_MEDIA_DIR, ignore_errors=True)
+
     @classmethod
     def setUpTestData(cls):
         cls.test_admin = User.objects.create_user(username="test_admin_views", password="password123", is_staff=True)

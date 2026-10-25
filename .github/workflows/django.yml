@@ -38,6 +38,8 @@ jobs:
       DATABASE_HOST: localhost
       DATABASE_PORT: "5432"
       DEBUG: "true"
+      MEDIA_ROOT: /tmp/media/
+      STATIC_ROOT: /tmp/static/
 
     steps:
     - uses: actions/checkout@v7
