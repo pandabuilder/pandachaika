@@ -16,7 +16,7 @@ if typing.TYPE_CHECKING:
 HANDLE = "wanimagazine"
 
 
-def get_image_link_from_tweet_text(tweet_text: str, settings: "Settings") -> typing.Optional[str]:
+def get_image_link_from_tweet_text(tweet_text: str, settings: "Settings") -> str | None:
     tweet_links = re.findall(r"https://t.co/\w+", tweet_text)
     for tweet_link in tweet_links:
         request_dict = {"timeout": settings.timeout_timer, "allow_redirects": False}

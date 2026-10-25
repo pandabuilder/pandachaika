@@ -1,5 +1,5 @@
 import logging
-from typing import Optional, Any
+from typing import Any
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
@@ -100,7 +100,7 @@ def archive_groups_explorer(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
-def archive_group_details(request: HttpRequest, pk: Optional[int] = None, slug: Optional[str] = None) -> HttpResponse:
+def archive_group_details(request: HttpRequest, pk: int | None = None, slug: str | None = None) -> HttpResponse:
     """ArchiveGroup listing."""
     try:
         if pk is not None:
@@ -147,7 +147,7 @@ def archive_group_details(request: HttpRequest, pk: Optional[int] = None, slug: 
 
 
 @permission_required("viewer.change_archivegroup")
-def archive_group_edit(request: HttpRequest, pk: Optional[int] = None, slug: Optional[str] = None) -> HttpResponse:
+def archive_group_edit(request: HttpRequest, pk: int | None = None, slug: str | None = None) -> HttpResponse:
     """ArchiveGroup listing."""
     try:
         if pk is not None:
@@ -325,7 +325,7 @@ def archive_group_edit(request: HttpRequest, pk: Optional[int] = None, slug: Opt
 
 @login_required
 def archive_group_enter_reason(
-    request: HttpRequest, pk: Optional[int] = None, slug: Optional[str] = None, tool: Optional[str] = None
+    request: HttpRequest, pk: int | None = None, slug: str | None = None, tool: str | None = None
 ) -> HttpResponse:
     try:
         if pk is not None:

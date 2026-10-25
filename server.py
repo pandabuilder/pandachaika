@@ -34,7 +34,7 @@ class DjangoAppPlugin(plugins.SimplePlugin):
         bus: Bus,
         settings_module: str = "settings",
         wsgi_http_logger: type = HTTPLogger,
-        local_settings: typing.Optional[Settings] = None,
+        local_settings: Settings | None = None,
     ) -> None:
         """CherryPy engine plugin to configure and mount
         the Django application onto the CherryPy server.
@@ -148,7 +148,7 @@ if BaseApplication is not None:
     class GunicornApplication(BaseApplication):
         """Custom Gunicorn Application instance configured from dictionary options."""
 
-        def __init__(self, app: typing.Any, options: typing.Optional[dict[str, typing.Any]] = None) -> None:
+        def __init__(self, app: typing.Any, options: dict[str, typing.Any] | None = None) -> None:
             self.options = options or {}
             self.application = app
             super().__init__()

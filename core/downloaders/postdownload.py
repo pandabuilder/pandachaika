@@ -10,7 +10,7 @@ from collections.abc import Iterable, Callable
 from dataclasses import dataclass
 from ftplib import FTP_TLS
 from tempfile import mkdtemp
-from typing import Any, Optional, TypeVar
+from typing import Any
 from urllib.parse import urljoin
 from zipfile import ZipFile, BadZipFile
 import ftplib
@@ -31,8 +31,6 @@ from viewer.models import Archive, ArchiveManageEntry
 
 logger = logging.getLogger(__name__)
 
-ArchiveKey = TypeVar("ArchiveKey")
-
 
 @dataclass
 class CurrentDownload:
@@ -46,8 +44,8 @@ class CurrentDownload:
 
 @dataclass
 class FTPData:
-    ftps: Optional[FTP_TLS] = None
-    current_ftp_dir: Optional[str] = None
+    ftps: FTP_TLS | None = None
+    current_ftp_dir: str | None = None
 
 
 class PostDownloader(object):
@@ -339,7 +337,7 @@ class PostDownloader(object):
         ftp_key: str,
         filesize: int = 0,
         blocksize: int = 8192,
-        rest: Optional[bool] = None,
+        rest: bool | None = None,
     ) -> str:
         ftp_data = self.ftp_datas[ftp_key]
         if ftp_data.ftps is None:
@@ -508,7 +506,7 @@ class PostDownloader(object):
             return None
         ftp_data.ftps.cwd(self_dir)
 
-    def download_all_missing(self, archives: Optional[Iterable[Archive]] = None) -> None:
+    def download_all_missing(self, archives: Iterable[Archive] | None = None) -> None:
 
         ftp_key_torrent = self.ftp_key_torrent
         ftp_key_hath = self.ftp_key_hath
@@ -808,7 +806,7 @@ class PostDownloader(object):
             return None
         return None
 
-    def copy_all_missing(self, mode, archives: Optional[Iterable[Archive]] = None):
+    def copy_all_missing(self, mode, archives: Iterable[Archive] | None = None):
         files_torrent = []
         files_hath = []
 
@@ -992,7 +990,7 @@ class PostDownloader(object):
 
                 self.process_downloaded_archive(matched_archive)
 
-    def transfer_all_missing(self, archives: Optional[Iterable[Archive]] = None) -> None:
+    def transfer_all_missing(self, archives: Iterable[Archive] | None = None) -> None:
 
         method_for_torrents = self.settings.download_handler_torrent or self.settings.download_handler
         method_for_hath = self.settings.download_handler_hath or self.settings.download_handler
@@ -1009,7 +1007,7 @@ class PostDownloader(object):
         else:
             self.do_transfer_by_method(method_for_torrents, archives)
 
-    def do_transfer_by_method(self, method_to_use: str, archives: Optional[Iterable[Archive]] = None) -> None:
+    def do_transfer_by_method(self, method_to_use: str, archives: Iterable[Archive] | None = None) -> None:
         if method_to_use.startswith("local"):
             self.copy_all_missing(method_to_use, archives)
         else:
@@ -1033,7 +1031,7 @@ class PostDownloader(object):
                     return
             logger.error("Download failed, restart limit reached (3), ending")
 
-    def check_download_progress_archives(
+    def check_download_progress_archives[ArchiveKey](
         self, archives: Iterable[tuple[Archive, ArchiveKey]]
     ) -> dict[ArchiveKey, float]:
 

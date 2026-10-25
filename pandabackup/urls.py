@@ -1,4 +1,3 @@
-from typing import Union
 
 from django.conf import settings
 from django.conf.urls.static import static
@@ -41,7 +40,7 @@ from viewer.views.complete import (
 
 admin.autodiscover()
 
-urlpatterns: list[Union[URLPattern, URLResolver]] = [
+urlpatterns: list[URLPattern | URLResolver] = [
     re_path(r"^" + settings.MAIN_URL + r"admin/", admin.site.urls),
 ]
 

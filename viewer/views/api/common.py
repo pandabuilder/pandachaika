@@ -1,7 +1,7 @@
 """Shared helpers for the JSON API package."""
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Optional
+from typing import Any
 
 from django.db.models import QuerySet
 from django.http.request import QueryDict
@@ -78,7 +78,7 @@ def get_tag_objects_from_tag_list(tag_list) -> list[Tag]:
     return tag_objects
 
 
-def parse_wait_for_time(val: Any) -> Optional[timedelta]:
+def parse_wait_for_time(val: Any) -> timedelta | None:
     if val is None or val == "":
         return None
     if isinstance(val, timedelta):
@@ -95,7 +95,7 @@ def parse_wait_for_time(val: Any) -> Optional[timedelta]:
     return None
 
 
-def parse_datetime_or_timestamp(val: Any) -> Optional[datetime]:
+def parse_datetime_or_timestamp(val: Any) -> datetime | None:
     if val is None or val == "":
         return None
     if isinstance(val, datetime):

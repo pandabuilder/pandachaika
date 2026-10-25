@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from datetime import timedelta, datetime
-from typing import Any, Optional
+from typing import Any
 
 import django.utils.timezone as django_tz
 from django.conf import settings
@@ -146,7 +146,7 @@ class SchedulerState(models.Model):
         return self.cycle_timer
 
     @property
-    def current_last_run(self) -> Optional[datetime]:
+    def current_last_run(self) -> datetime | None:
         return self.last_run
 
     @property

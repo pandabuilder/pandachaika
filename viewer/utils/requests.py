@@ -1,4 +1,3 @@
-from typing import Optional
 
 from django.contrib.auth.models import User
 from django.utils.timezone import now
@@ -6,7 +5,7 @@ from django.utils.timezone import now
 from viewer.models import UserLongLivedToken
 
 
-def get_long_token(request) -> Optional[str]:
+def get_long_token(request) -> str | None:
     header_value = request.META.get("HTTP_AUTHORIZATION")
 
     if not header_value:
@@ -16,7 +15,7 @@ def get_long_token(request) -> Optional[str]:
     return cleaned_header_value
 
 
-def authenticate_by_token(request) -> tuple[bool, Optional[User]]:
+def authenticate_by_token(request) -> tuple[bool, User | None]:
     try:
 
         long_token = get_long_token(request)
@@ -32,7 +31,7 @@ def authenticate_by_token(request) -> tuple[bool, Optional[User]]:
         return False, None
 
 
-def double_check_auth(request) -> tuple[bool, Optional[User]]:
+def double_check_auth(request) -> tuple[bool, User | None]:
 
     if request.user.is_authenticated:
         return True, request.user

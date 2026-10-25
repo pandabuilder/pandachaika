@@ -3,7 +3,7 @@ import os
 import re
 import time
 from datetime import datetime, timezone, timedelta
-from typing import Any, Optional
+from typing import Any
 import html
 from urllib.parse import urljoin
 
@@ -156,7 +156,7 @@ class ArchiveDownloader(BaseDownloader[PandaSettings]):
             self.provider + "_web", 1, self.own_settings.wait_timer
         )
 
-    def request_archive_download(self, root: str, gid: str, token: str) -> Optional[requests.models.Response]:
+    def request_archive_download(self, root: str, gid: str, token: str) -> requests.models.Response | None:
 
         url = root + "/archiver.php"
 
@@ -339,7 +339,7 @@ class ArchiveDownloader(BaseDownloader[PandaSettings]):
             logger.error("Could not download archive")
             self.return_code = 0
 
-    def update_archive_db(self, default_values: DataDict) -> Optional["Archive"]:
+    def update_archive_db(self, default_values: DataDict) -> "Archive | None":
 
         if not self.gallery:
             return None
@@ -368,7 +368,7 @@ class TorrentDownloader(BaseTorrentDownloader):
             self.provider + "_web", 1, self.own_settings.wait_timer
         )
 
-    def request_torrent_download(self, root: str, gid: str, token: str) -> Optional[requests.models.Response]:
+    def request_torrent_download(self, root: str, gid: str, token: str) -> requests.models.Response | None:
 
         url = root + "/gallerytorrents.php"
 
@@ -387,7 +387,7 @@ class TorrentDownloader(BaseTorrentDownloader):
 
     @staticmethod
     def validate_torrent(
-        torrent_link: str, seeds: int, posted_date: str, gallery_posted_date: Optional[datetime]
+        torrent_link: str, seeds: int, posted_date: str, gallery_posted_date: datetime | None
     ) -> tuple[bool, list[str]]:
         validated = True
         reasons = []
@@ -466,7 +466,7 @@ class TorrentDownloader(BaseTorrentDownloader):
         logger.info("Adding torrent to client, seeds: {}".format(torrent_page_parser.seeds))
         self.connect_and_download(client, torrent_link)
 
-    def update_archive_db(self, default_values: DataDict) -> Optional["Archive"]:
+    def update_archive_db(self, default_values: DataDict) -> "Archive | None":
 
         if not self.gallery:
             return None
@@ -494,13 +494,13 @@ class TorrentAPIDownloader(BaseTorrentDownloader):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
 
-    def choose_torrent(self, torrents: list[dict]) -> Optional[dict]:
+    def choose_torrent(self, torrents: list[dict]) -> dict | None:
 
         if not self.gallery:
             return None
 
-        chosen_torrent_date: Optional[dict] = None
-        chosen_torrent_size: Optional[dict] = None
+        chosen_torrent_date: dict | None = None
+        chosen_torrent_size: dict | None = None
         chosen_size_difference: int = -1
         chosen_date_difference: timedelta = timedelta.max
 
@@ -579,7 +579,7 @@ class TorrentAPIDownloader(BaseTorrentDownloader):
         )
         self.connect_and_download(client, torrent_magnet_url)
 
-    def update_archive_db(self, default_values: DataDict) -> Optional["Archive"]:
+    def update_archive_db(self, default_values: DataDict) -> "Archive | None":
 
         if not self.gallery:
             return None
@@ -712,7 +712,7 @@ class HathDownloader(BaseDownloader):
         self.fileDownloaded = 1
         self.return_code = 1
 
-    def request_hath_download(self, root: str, gid: str, token: str) -> Optional[requests.models.Response]:
+    def request_hath_download(self, root: str, gid: str, token: str) -> requests.models.Response | None:
 
         url = root + "/archiver.php"
 
@@ -732,7 +732,7 @@ class HathDownloader(BaseDownloader):
         
         return response
 
-    def update_archive_db(self, default_values: DataDict) -> Optional["Archive"]:
+    def update_archive_db(self, default_values: DataDict) -> "Archive | None":
 
         if not self.gallery:
             return None
@@ -901,7 +901,7 @@ class PandaChaikaDownloader(BaseDownloader):
             logger.error("Could not download archive")
             self.return_code = 0
 
-    def update_archive_db(self, default_values: DataDict) -> Optional["Archive"]:
+    def update_archive_db(self, default_values: DataDict) -> "Archive | None":
 
         if not self.gallery:
             return None
@@ -920,7 +920,7 @@ class PandaChaikaDownloader(BaseDownloader):
         )
 
     def init_download(
-        self, gallery: Any, wanted_gallery_list: Optional[list[Any]] = None
+        self, gallery: Any, wanted_gallery_list: list[Any] | None = None
     ) -> None:
         super().init_download(gallery, wanted_gallery_list=wanted_gallery_list)
         if self.fileDownloaded == 1 and self.archive_db_entry and self.queued_download_data is None:

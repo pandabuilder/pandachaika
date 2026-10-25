@@ -3,7 +3,6 @@ import logging
 
 import datetime
 import traceback
-from typing import Optional
 
 import django.utils.timezone as django_tz
 
@@ -21,8 +20,8 @@ class BaseScheduler(object):
         self.web_queue = web_queue
         self.original_timer = timer
         self.timer = self.timer_to_seconds(timer)
-        self.job_thread: Optional[threading.Thread] = None
-        self.last_run: Optional[datetime.datetime] = None
+        self.job_thread: threading.Thread | None = None
+        self.last_run: datetime.datetime | None = None
         self.force_run_once: bool = False
         self.pk = pk
 
@@ -58,6 +57,9 @@ class BaseScheduler(object):
             self.job()
         except BaseException:
             logger.critical(traceback.format_exc())
+        finally:
+            from django.db import connections
+            connections.close_all()
 
     def job(self) -> None:
         raise NotImplementedError
@@ -160,7 +162,7 @@ class BaseScheduler(object):
                 logger.warning("Failed to dispatch scheduler force_run command: %s", e)
 
     @property
-    def current_last_run(self) -> Optional[datetime.datetime]:
+    def current_last_run(self) -> datetime.datetime | None:
         try:
             from workers.models import SchedulerState
             state = SchedulerState.objects.filter(name=self.thread_name).first()

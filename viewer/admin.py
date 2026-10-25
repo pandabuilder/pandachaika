@@ -1,4 +1,3 @@
-from typing import Optional
 
 from django.db.models import F, QuerySet, Count
 from django.forms import ModelForm, BaseFormSet
@@ -114,7 +113,6 @@ class ArchiveAdmin(SimpleHistoryAdmin):
 
     mark_source_custom.short_description = "Update source of selected archives"  # type: ignore
 
-    # TODO: Use the string value, not the integer.
     def mark_origin(self, request: HttpRequest, queryset: ArchiveQuerySet) -> None:
         origin = request.POST["extra_field"]
         rows_updated = queryset.update(origin=origin)
@@ -137,7 +135,7 @@ class ArchiveAdmin(SimpleHistoryAdmin):
 
     set_reason.short_description = "Set reason of selected archives"  # type: ignore
 
-    def gallery_id(self, obj: Archive) -> Optional[int]:
+    def gallery_id(self, obj: Archive) -> int | None:
         if obj.gallery:
             return obj.gallery.id
         else:

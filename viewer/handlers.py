@@ -21,7 +21,7 @@ crawler_settings = settings.CRAWLER_SETTINGS
 @receiver(wanted_gallery_found, sender=Gallery)
 def wanted_gallery_found_handler(sender: typing.Any, **kwargs: typing.Any) -> None:
     gallery: Gallery = kwargs["gallery"]
-    archive: typing.Optional[Archive] = kwargs["archive"]
+    archive: Archive | None = kwargs["archive"]
     wanted_gallery_list: list[WantedGallery] = kwargs["wanted_gallery_list"]
 
     if archive:

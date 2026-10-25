@@ -1,6 +1,5 @@
 import logging
 import os
-from typing import Optional
 
 import requests
 
@@ -98,7 +97,7 @@ class ArchiveDownloader(BaseDownloader):
                  os.remove(filepath)
             self.return_code = 0
 
-    def update_archive_db(self, default_values: DataDict) -> Optional["Archive"]:
+    def update_archive_db(self, default_values: DataDict) -> "Archive | None":
 
         if not self.gallery:
             return None

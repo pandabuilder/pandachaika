@@ -25,7 +25,7 @@ def change_log(request: HttpRequest, pk: int) -> HttpResponse:
         page = 1
 
     try:
-        results: typing.Optional[Page] = paginator.page(page)
+        results: Page | None = paginator.page(page)
     except (InvalidPage, EmptyPage):
         results = paginator.page(paginator.num_pages)
 

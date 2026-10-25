@@ -2,7 +2,8 @@ import logging
 import threading
 import traceback
 import typing
-from typing import Any, Callable, Optional
+from typing import Any
+from collections.abc import Callable
 
 import time
 from collections.abc import Iterable
@@ -276,7 +277,7 @@ def match_archives_from_gallery_titles(
 
 # Archive
 def generate_possible_matches_for_archives(
-    archives: Optional["QuerySet[Archive]"],
+    archives: "QuerySet[Archive] | None",
     cutoff: float = 0.4,
     max_matches: int = 20,
     filters: Iterable[str] = (),
@@ -285,7 +286,6 @@ def generate_possible_matches_for_archives(
     update_if_local: bool = False,
     method_filter: str = "title",
 ) -> None:
-    # TODO: Not implemented: update_if_local, expose match_by_filesize.
     try:
         if not archives:
             non_match_archives: "QuerySet[Archive]" = Archive.objects.filter(match_type="non-match")
@@ -729,9 +729,9 @@ class MatchingThread(threading.Thread):
         name: str,
         target: Callable,
         args: Iterable = (),
-        kwargs: Optional[dict[str, Any]] = None,
+        kwargs: dict[str, Any] | None = None,
         user: Any = None,
-        settings: Optional[Any] = None,
+        settings: Any | None = None,
     ) -> None:
         super().__init__(name=name)
         self.target = target

@@ -1,0 +1,667 @@
+{% extends "viewer/base.html" %}
+{% load static %}
+{% load viewer_extras %}
+
+{% block extra_head %}
+  <script>
+    try {
+      if (localStorage.getItem('hideRegularViewer') === 'true') {
+        document.documentElement.classList.add('hide-regular-viewer');
+      }
+      if (localStorage.getItem('inlineCoverPreview') === 'true') {
+        document.documentElement.classList.add('show-inline-cover');
+      }
+    } catch (e) {}
+  </script>
+{% endblock %}
+
+{% block title %}{{ gallery.best_title }} | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+
+{% block content %}
+{% if messages %}
+  {% for message in messages %}
+    <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %} alert-dismissible fade show" role="alert">
+      {{ message }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+  {% endfor %}
+{% endif %}
+
+<!-- Header Card: Title & Status Badges (Always First) -->
+<div class="card bg-dark border-secondary mb-3 shadow-sm header-card">
+  <div class="card-body p-3">
+    <div class="header-title-area">
+      <h2 class="h4 fw-bold text-white header-main-title{% if not gallery.title_jpn %} header-main-title-multiline{% else %} text-truncate{% endif %}" title="{{ gallery.best_title }}">{{ gallery.best_title }}</h2>
+      {% if gallery.title_jpn %}
+        <div class="header-sub-title text-truncate" title="{{ gallery.title_jpn }}">{{ gallery.title_jpn }}</div>
+      {% endif %}
+    </div>
+
+    <!-- Badges Row -->
+    <div class="d-flex flex-wrap align-items-center gap-1 mt-2 header-badges-row">
+      <span class="badge bg-secondary py-1 px-2">#{{ gallery.id }}</span>
+      {% if gallery.category %}
+        <a href="{% url 'viewer:archive-search' %}?category={{ gallery.category }}" class="badge bg-primary text-decoration-none py-1 px-2">
+          {{ gallery.category }}
+        </a>
+      {% endif %}
+      <span class="badge bg-dark border border-secondary text-light py-1 px-2">{{ gallery.provider }}</span>
+      {% if gallery.rating %}
+        <span class="badge bg-warning text-dark py-1 px-2">
+          <i class="fas fa-star me-1"></i>{{ gallery.rating }}
+        </span>
+      {% endif %}
+      {% if user.is_authenticated %}
+        <span class="badge {% if gallery.is_normal %}bg-success{% elif gallery.is_deleted %}bg-danger{% else %}bg-secondary{% endif %} py-1 px-2">
+          {{ gallery.get_status_display }}
+        </span>
+        {{ gallery.public|boolean_badge:"Public,Private" }}
+      {% endif %}
+      {% if gallery.disowned %}
+        {{ gallery.disowned|boolean_badge:"Disowned,Owned,warning" }}
+      {% endif %}
+      {% if gallery.expunged %}
+        {{ gallery.expunged|boolean_badge:"Expunged,Active,danger" }}
+      {% endif %}
+      {% if gallery.fjord %}
+        {{ gallery.fjord|boolean_badge:"Fjord,No,info" }}
+      {% endif %}
+      {% if user.is_authenticated and gallery.hidden %}
+        {{ gallery.hidden|boolean_badge:"Hidden,Visible,warning" }}
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Primary Action Toolbar (Below Title Block) -->
+<div class="card bg-dark border-secondary mb-3 shadow-sm action-toolbar-card">
+  <div class="card-body py-2 px-3 d-flex flex-wrap align-items-center gap-2">
+    <a class="btn btn-outline-light btn-sm" href="{% url 'viewer:api' %}?gallery={{ gallery.pk }}">
+      <i class="fas fa-code me-1"></i>JSON
+    </a>
+    <a class="btn btn-outline-light btn-sm" href="{% url 'viewer:gallery-change-log' gallery.pk %}">
+      <i class="fas fa-history me-1"></i>Change Log
+    </a>
+    {% if perms.viewer.read_activity_logs %}
+      <a class="btn btn-outline-light btn-sm" href="{% url 'viewer:activity-event-log' %}?content_type=gallery&content_id={{ gallery.pk }}">
+        <i class="fas fa-stream me-1"></i>Activity Log
+      </a>
+    {% endif %}
+    {% if gallery.thumbnail.name %}
+      <a class="btn btn-outline-light btn-sm img-preview" data-image-url="{{ gallery.thumbnail.url }}" rel="popover">
+        <i class="fas fa-image me-1"></i>Hover for cover
+      </a>
+      <button type="button" class="btn btn-outline-light btn-sm" id="btn-toggle-inline-cover" title="Toggle inline cover preview">
+        <i class="fas fa-thumbtack me-1"></i><span class="inline-cover-btn-text">Inline cover</span>
+      </button>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Tools Row (if authenticated, placed in fixed position right below actions) -->
+{% if user.is_authenticated %}
+<div class="card bg-dark border-secondary mb-3 shadow-sm tools-toolbar-card">
+  <div class="card-body py-2 px-3 d-flex flex-wrap align-items-center gap-2">
+    <span class="card-field-title me-1"><i class="fas fa-tools me-1"></i>Tools:</span>
+
+    {% if perms.viewer.publish_gallery %}
+      <a class="btn btn-outline-warning btn-sm" href="{% url 'viewer:gallery-tool' gallery.pk 'toggle-public' %}">
+        <i class="fas fa-exchange-alt me-1"></i>Set {% if gallery.public %}Private{% else %}Public{% endif %}
+      </a>
+    {% endif %}
+
+    <div class="dropdown">
+      <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+        <i class="fas fa-tag me-1"></i>Mark Status
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end bg-dark border-secondary">
+        {% if perms.viewer.mark_delete_gallery %}
+          <li><span class="dropdown-item-text text-info small fw-bold">Current: {{ gallery.get_status_display }}</span></li>
+          <li><hr class="dropdown-divider border-secondary"></li>
+          <li>
+            <a class="open-modal dropdown-item text-light{% if gallery.is_normal %} disabled opacity-50{% endif %}"
+               href="{% if gallery.is_normal %}#{% else %}{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-normal' %}{% endif %}"
+               data-popup-url="{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-normal' %}?inline=1">
+              <i class="fas fa-check-circle text-success me-2"></i>Normal
+            </a>
+          </li>
+          <li>
+            <a class="open-modal dropdown-item text-light{% if gallery.is_deleted %} disabled opacity-50{% endif %}"
+               href="{% if gallery.is_deleted %}#{% else %}{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-deleted' %}{% endif %}"
+               data-popup-url="{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-deleted' %}?inline=1">
+              <i class="fas fa-trash-alt text-danger me-2"></i>Deleted
+            </a>
+          </li>
+        {% endif %}
+        {% if perms.viewer.approve_gallery %}
+          <li>
+            <a class="open-modal dropdown-item text-light{% if gallery.is_denied %} disabled opacity-50{% endif %}"
+               href="{% if gallery.is_denied %}#{% else %}{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-denied' %}{% endif %}"
+               data-popup-url="{% url 'viewer:gallery-tool-reason' gallery.pk 'mark-denied' %}?inline=1">
+              <i class="fas fa-ban text-warning me-2"></i>Denied
+            </a>
+          </li>
+        {% endif %}
+      </ul>
+    </div>
+
+    <div class="dropdown">
+      <button class="btn btn-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+        <i class="fas fa-cog me-1"></i>Operations
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end bg-dark border-secondary">
+        {% if perms.viewer.update_metadata %}
+          <li>
+            <a class="dropdown-item text-light" href="{% url 'viewer:gallery-tool' gallery.pk 'recall-api' %}">
+              <i class="fas fa-sync-alt me-2 text-info"></i>Recall API
+            </a>
+          </li>
+          <li>
+            <a class="dropdown-item text-light" href="{% url 'viewer:gallery-tool' gallery.pk 'refetch-thumbnail' %}">
+              <i class="fas fa-image me-2 text-info"></i>Refetch Thumbnail
+            </a>
+          </li>
+        {% endif %}
+        {% if perms.viewer.download_gallery %}
+          <li>
+            <a class="dropdown-item text-light" href="{% url 'viewer:gallery-tool' gallery.pk 'download' %}">
+              <i class="fas fa-download me-2 text-success"></i>Default Download
+            </a>
+          </li>
+        {% endif %}
+        {% if perms.viewer.upload_with_metadata_archive %}
+          <li>
+            <a class="dropdown-item text-light" href="{% url 'viewer:upload-archive' %}?gallery={{ gallery.id }}">
+              <i class="fas fa-upload me-2 text-primary"></i>Upload Archive
+            </a>
+          </li>
+        {% endif %}
+        {% if user.is_staff %}
+          <li><hr class="dropdown-divider border-secondary"></li>
+          <li class="dropdown-header text-info small fw-bold">Admin Actions</li>
+          <li>
+            <a class="dropdown-item text-light" href="{% url 'viewer:gallery-tool' gallery.pk 'toggle-hidden' %}">
+              <i class="fas fa-eye-slash me-2 text-warning"></i>Toggle Hidden
+            </a>
+          </li>
+          <li>
+            <a class="dropdown-item text-light" href="{% url 'admin:viewer_gallery_change' gallery.pk %}">
+              <i class="fas fa-cog me-2 text-secondary"></i>Django Admin
+            </a>
+          </li>
+          {% if settings.downloaders %}
+            <li><hr class="dropdown-divider border-secondary"></li>
+            <li class="dropdown-header text-info small fw-bold">Force Download</li>
+            {% for downloader, priority in settings.downloaders.items %}
+              <li>
+                <a class="dropdown-item text-light small" href="#"
+                   onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{% static 'favicon-160.png' %}', 'webcrawler', {link: '{{ gallery.get_link }}', downloader: '{{ downloader }}'}); return false;">
+                  <i class="fas fa-cloud-download-alt me-2 text-muted"></i>{{ downloader }}
+                </a>
+              </li>
+            {% endfor %}
+          {% endif %}
+        {% endif %}
+      </ul>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Main Content Grid -->
+<div class="row g-3 mb-3">
+  <!-- Left / Main Area -->
+  <div class="col-12" id="gallery-main-col">
+    <div class="unified-panel mb-3 shadow-sm">
+      <div class="row g-0">
+        <!-- Core Information (Left) -->
+        <div class="col-xxl-3 col-xl-4 col-lg-5 col-12 unified-border-end">
+          <div class="unified-panel-header">
+            <span class="card-field-title"><i class="fas fa-info-circle me-1"></i>Core Information</span>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table">
+              <tbody>
+                <tr>
+                  <th>Source URL</th>
+                  <td>{{ gallery.get_link|urlize_all_rel }}</td>
+                </tr>
+                <tr>
+                  <th>Uploader</th>
+                  <td>{{ gallery.uploader|default:"None provided" }}</td>
+                </tr>
+                <tr>
+                  <th>Category</th>
+                  <td>
+                    {% if gallery.category %}
+                      <a href="{% url 'viewer:archive-search' %}?category={{ gallery.category }}" class="badge bg-primary text-decoration-none">
+                        {{ gallery.category }}
+                      </a>
+                    {% else %}
+                      <span class="text-secondary">None provided</span>
+                    {% endif %}
+                  </td>
+                </tr>
+                <tr>
+                  <th>Rating</th>
+                  <td>{{ gallery.rating|default:"None provided" }}</td>
+                </tr>
+                <tr>
+                  <th>File Count</th>
+                  <td>{{ gallery.filecount|default:"None provided" }}</td>
+                </tr>
+                <tr>
+                  <th>Unpacked File Size</th>
+                  <td>
+                    {% if gallery.filesize %}
+                      {{ gallery.filesize|filesizeformat }}, {{ gallery.filesize }}
+                    {% else %}
+                      <span class="text-secondary">None provided</span>
+                    {% endif %}
+                  </td>
+                </tr>
+                <tr>
+                  <th>Posted Date</th>
+                  <td>{{ gallery.posted|date:"DATETIME_FORMAT"|default:"None provided" }}</td>
+                </tr>
+                <tr>
+                  <th>Added to Backup</th>
+                  <td>{{ gallery.create_date|date:"DATETIME_FORMAT" }}</td>
+                </tr>
+                <tr>
+                  <th>Hierarchy / Relations</th>
+                  <td>
+                    <div class="d-flex flex-column gap-1 small">
+                      <div>
+                        <span class="card-field-title">Contained in:</span>
+                        {% if gallery.gallery_container %}
+                          <a href="{% url 'viewer:gallery' gallery.gallery_container.id %}">{{ gallery.gallery_container }}</a>
+                        {% else %}
+                          <span class="text-secondary">None</span>
+                        {% endif %}
+                      </div>
+                      <div>
+                        <span class="card-field-title">Magazine:</span>
+                        {% if gallery.magazine %}
+                          <a href="{% url 'viewer:gallery' gallery.magazine.id %}">{{ gallery.magazine }}</a>
+                        {% else %}
+                          <span class="text-secondary">None</span>
+                        {% endif %}
+                      </div>
+                      <div>
+                        <span class="card-field-title">Parent:</span>
+                        {% if gallery.parent_gallery %}
+                          <a href="{% url 'viewer:gallery' gallery.parent_gallery.id %}">{{ gallery.parent_gallery }}</a>
+                        {% else %}
+                          <span class="text-secondary">None</span>
+                        {% endif %}
+                      </div>
+                      <div>
+                        <span class="card-field-title">First:</span>
+                        {% if gallery.first_gallery %}
+                          <a href="{% url 'viewer:gallery' gallery.first_gallery.id %}">{{ gallery.first_gallery }}</a>
+                        {% else %}
+                          <span class="text-secondary">None</span>
+                        {% endif %}
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+                {% if user.is_authenticated %}
+                <tr>
+                  <th>Origin</th>
+                  <td>{{ gallery.get_origin_display }}</td>
+                </tr>
+                <tr>
+                  <th>Status Reason</th>
+                  <td>{{ gallery.reason|default:"None" }}</td>
+                </tr>
+                <tr>
+                  <th>Download Type</th>
+                  <td>{{ gallery.dl_type|default:"None" }}</td>
+                </tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Tags (Right) -->
+        <div class="col-xxl-9 col-xl-8 col-lg-7 col-12">
+          <div class="unified-panel-header">
+            <span class="card-field-title"><i class="fas fa-tags me-1"></i>Tags</span>
+          </div>
+          <div class="p-3">
+            {% if tag_lists %}
+              {% for tag_list in tag_lists %}
+              <div class="tag-group-row">
+                <span class="card-field-title text-capitalize tag-group-label">
+                  {% if tag_list.0 %}{{ tag_list.0 }}:{% else %}misc:{% endif %}
+                </span>
+                <div class="tag-group-items">
+                  {% for tag in tag_list.1 %}
+                    <a href="{% url 'viewer:gallery-tag-search' 'gallery-tag' tag %}" class="tag-badge">
+                      {% if tag_list.0 %}{{ tag.name }}{% else %}{{ tag }}{% endif %}
+                    </a>
+                  {% endfor %}
+                </div>
+              </div>
+              {% endfor %}
+            {% else %}
+              <span class="text-secondary fst-italic">No tags available</span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Description / Comment (below Core Info & Tags) -->
+      {% if gallery.comment %}
+      <hr class="unified-divider">
+      <div>
+        <div class="unified-panel-header">
+          <span class="card-field-title"><i class="fas fa-comment-alt me-1"></i>Description</span>
+        </div>
+        <div class="p-3 text-light">
+          {{ gallery.comment|safe }}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Right Sidebar Column (Inline cover, hidden by default) -->
+  {% if gallery.thumbnail.name %}
+  <div class="col-lg-4 col-xl-3 d-none" id="inline-cover-container">
+    <div class="card bg-dark border-secondary shadow-sm text-center">
+      <div class="card-header bg-dark border-secondary py-2 text-start">
+        <span class="card-field-title"><i class="fas fa-image me-1"></i>Cover Preview</span>
+      </div>
+      <div class="card-body p-3 d-flex flex-column align-items-center">
+        <img src="{{ gallery.thumbnail.url }}" alt="{{ gallery.best_title }}" class="img-fluid rounded border border-secondary mb-2" style="max-height: 420px; object-fit: contain;">
+        <a class="btn btn-sm btn-outline-info img-preview mt-1 w-100" data-image-url="{{ gallery.thumbnail.url }}" rel="popover">
+          <i class="fas fa-search-plus me-1"></i>Hover for large cover
+        </a>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Related Records & Relationships -->
+<div class="row g-3 mt-1">
+  <!-- Related Archives -->
+  <div class="col-12">
+    <div class="card bg-dark border-secondary mb-3 shadow-sm">
+      <div class="card-header bg-dark border-secondary py-2 d-flex justify-content-between align-items-center">
+        <span class="card-field-title"><i class="fas fa-file-archive me-1"></i>Related Archives</span>
+      </div>
+      <div class="card-body p-0">
+        {% if gallery.archive_set.all %}
+          <div class="table-responsive">
+            <table class="table table-dark table-hover table-sm mb-0 align-middle">
+              <thead class="table-secondary text-dark">
+                <tr>
+                  <th scope="col" class="ps-3">Archive</th>
+                  <th scope="col" style="width: 120px;">Images</th>
+                  <th scope="col" style="width: 130px;">Size</th>
+                  <th scope="col" style="width: 110px;">Recycled</th>
+                  <th scope="col" style="width: 130px;" class="pe-3">File Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for archive in gallery.archive_set.all %}
+                  {% if archive.public or user.is_authenticated %}
+                  <tr>
+                    <td class="ps-3">
+                      <a href="{% url 'viewer:archive' archive.id %}" class="{{ archive|archive_title_class }} fw-semibold text-decoration-none">
+                        {{ archive }}
+                      </a>
+                    </td>
+                    <td><span class="badge bg-secondary">{{ archive.filecount }}</span></td>
+                    <td>{{ archive.filesize|filesizeformat }}</td>
+                    <td>{{ archive.is_recycled|boolean_badge:"Recycled,Active,danger" }}</td>
+                    <td class="pe-3">{{ archive.is_file_deleted|boolean_badge:"Deleted,Exists,danger" }}</td>
+                  </tr>
+                  {% endif %}
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="p-3 text-secondary fst-italic">No related archives linked to this gallery.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Alternative Archives (if present) -->
+  {% if gallery.alternative_sources.all %}
+  <div class="col-12">
+    <div class="card bg-dark border-secondary mb-3 shadow-sm">
+      <div class="card-header bg-dark border-secondary py-2">
+        <span class="card-field-title"><i class="fas fa-exchange-alt me-1"></i>Alternative Archives</span>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-dark table-hover table-sm mb-0 align-middle">
+            <thead class="table-secondary text-dark">
+              <tr>
+                <th scope="col" class="ps-3">Archive</th>
+                <th scope="col" style="width: 120px;">Images</th>
+                <th scope="col" style="width: 130px;" class="pe-3">Size</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for archive in gallery.alternative_sources.all %}
+                {% if archive.public or user.is_authenticated %}
+                <tr>
+                  <td class="ps-3">
+                    <a href="{% url 'viewer:archive' archive.id %}" class="{{ archive|archive_title_class }} fw-semibold text-decoration-none">
+                      {{ archive }}
+                    </a>
+                  </td>
+                  <td><span class="badge bg-secondary">{{ archive.filecount }}</span></td>
+                  <td class="pe-3">{{ archive.filesize|filesizeformat }}</td>
+                </tr>
+                {% endif %}
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Contained Galleries & Magazine Chapters -->
+  {% if gallery.gallery_contains.all or gallery.magazine_chapters.all %}
+  <div class="col-md-6">
+    {% if gallery.gallery_contains.all %}
+    <div class="card bg-dark border-secondary mb-3 shadow-sm">
+      <div class="card-header bg-dark border-secondary py-2">
+        <span class="card-field-title"><i class="fas fa-folder-open me-1"></i>Contained Galleries</span>
+      </div>
+      <ul class="list-group list-group-flush">
+        {% for contained_gallery in gallery.gallery_contains.all %}
+          {% if contained_gallery.public or user.is_authenticated %}
+          <li class="list-group-item bg-dark text-light border-secondary py-2 px-3">
+            <a href="{% url 'viewer:gallery' contained_gallery.id %}" class="text-decoration-none text-light">
+              <i class="fas fa-book me-2 text-info"></i>{{ contained_gallery }}
+            </a>
+          </li>
+          {% endif %}
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="col-md-6">
+    {% if gallery.magazine_chapters.all %}
+    <div class="card bg-dark border-secondary mb-3 shadow-sm">
+      <div class="card-header bg-dark border-secondary py-2">
+        <span class="card-field-title"><i class="fas fa-book-open me-1"></i>Magazine Chapters</span>
+      </div>
+      <ul class="list-group list-group-flush">
+        {% for chapter in gallery.magazine_chapters.all %}
+          {% if chapter.public or user.is_authenticated %}
+          <li class="list-group-item bg-dark text-light border-secondary py-2 px-3">
+            <a href="{% url 'viewer:gallery' chapter.id %}" class="text-decoration-none text-light">
+              <i class="fas fa-bookmark me-2 text-warning"></i>{{ chapter }}
+            </a>
+          </li>
+          {% endif %}
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- Matched Wanted Galleries -->
+  {% if perms.viewer.view_wantedgallery and gallery.foundgallery_set.all %}
+  <div class="col-12">
+    <div class="card bg-dark border-secondary mb-3 shadow-sm">
+      <div class="card-header bg-dark border-secondary py-2">
+        <span class="card-field-title"><i class="fas fa-crosshairs me-1"></i>Matched Wanted Galleries</span>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-dark table-hover table-sm mb-0 align-middle">
+            <thead class="table-secondary text-dark">
+              <tr>
+                <th scope="col" class="ps-3">Wanted Gallery</th>
+                <th scope="col" style="width: 220px;" class="pe-3">Found Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for found_entry in gallery.foundgallery_set.all %}
+              <tr>
+                <td class="ps-3">
+                  <a href="{% url 'viewer:wanted-gallery' found_entry.wanted_gallery.id %}" class="text-decoration-none text-info fw-semibold">
+                    {{ found_entry.wanted_gallery }}
+                  </a>
+                </td>
+                <td class="pe-3">{{ found_entry.create_date|date:"DATETIME_FORMAT" }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Gallery Chain (if present) -->
+  {% if gallery_chain %}
+  <div class="col-12">
+    <div class="card bg-dark border-secondary mb-3 shadow-sm">
+      <div class="card-header bg-dark border-secondary py-2">
+        <span class="card-field-title"><i class="fas fa-link me-1"></i>Galleries in Chain</span>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-dark table-hover table-sm mb-0 align-middle">
+            <thead class="table-secondary text-dark">
+              <tr>
+                <th scope="col" class="ps-3" style="width: 60px;">#</th>
+                <th scope="col" style="width: 200px;">Posted Date</th>
+                <th scope="col" class="pe-3">Gallery</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for gallery_chained in gallery_chain %}
+                {% if gallery_chained.public or user.is_authenticated %}
+                <tr{% if gallery_chained.pk == gallery.pk %} class="table-active"{% endif %}>
+                  <td class="ps-3">
+                    <span class="badge bg-secondary">#{{ forloop.counter }}</span>
+                  </td>
+                  <td class="text-nowrap">
+                    {{ gallery_chained.posted|date:"DATETIME_FORMAT"|default:"-" }}
+                  </td>
+                  <td class="pe-3">
+                    {% if gallery_chained.pk == gallery.pk %}
+                      <span class="fw-bold text-info"><i class="fas fa-chevron-right me-1"></i>{{ gallery_chained }}</span>
+                      <span class="badge bg-primary ms-1">Current</span>
+                    {% else %}
+                      <a href="{% url 'viewer:gallery' gallery_chained.id %}" class="text-decoration-none text-light">
+                        {{ gallery_chained }}
+                      </a>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endif %}
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Gallery Match Group (if present) -->
+  {% if gallery_group %}
+  <div class="col-md-6">
+    <div class="card bg-dark border-secondary mb-3 shadow-sm">
+      <div class="card-header bg-dark border-secondary py-2">
+        <span class="card-field-title"><i class="fas fa-layer-group me-1"></i>Galleries in Match Group</span>
+      </div>
+      <ul class="list-group list-group-flush">
+        {% for gallery_from_group in gallery_group.galleries.all %}
+          {% if gallery_from_group.public or user.is_authenticated %}
+          <li class="list-group-item bg-dark text-light border-secondary py-2 px-3 d-flex align-items-center">
+            <span class="badge bg-secondary me-2">#{{ forloop.counter }}</span>
+            {% if gallery_from_group.pk == gallery.pk %}
+              <span class="fw-bold text-info"><i class="fas fa-chevron-right me-1"></i>{{ gallery_from_group }}</span>
+              <span class="badge bg-primary ms-auto">Current</span>
+            {% else %}
+              <a href="{% url 'viewer:gallery' gallery_from_group.id %}" class="text-decoration-none text-light">
+                {{ gallery_from_group }}
+              </a>
+            {% endif %}
+          </li>
+          {% endif %}
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Extra Provider Metadata (if present) -->
+  {% if gallery_provider_data %}
+  <div class="col-12">
+    <div class="card bg-dark border-secondary mb-3 shadow-sm">
+      <div class="card-header bg-dark border-secondary py-2">
+        <span class="card-field-title"><i class="fas fa-server me-1"></i>Extra Provider Metadata</span>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="data-table">
+            <tbody>
+              {% for provider_data in gallery_provider_data %}
+              <tr>
+                <th>{{ provider_data.name|capfirst }}</th>
+                <td>{{ provider_data.value|urlize_all_rel }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}
+
+{% block afterJQ %}
+<script type="text/javascript" src="{% static 'js/view_toggles.js' %}"></script>
+{% if user.is_staff %}
+  <script type="text/javascript" src="{% static 'js/admin.js' %}"></script>
+  {% include "viewer/include/viewer_modal.html" %}
+{% endif %}
+{% endblock %}

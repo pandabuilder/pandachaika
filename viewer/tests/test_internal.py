@@ -8,6 +8,7 @@ Replace these with more appropriate tests for your application.
 from django.test import TestCase, Client
 from django.contrib.auth.models import User, Permission
 from django.urls import reverse
+from django.core.files.uploadedfile import SimpleUploadedFile
 
 import json
 
@@ -350,6 +351,54 @@ class GeneralPagesTest(TestCase):
         response = c_normal.get(reverse("viewer:wanted-gallery", args=[self.test_wanted_gallery2.pk]))
         self.assertEqual(response.status_code, 200)
 
+    def test_wanted_gallery_permissions_and_aliases(self):
+        from django.contrib.auth.models import Permission
+
+        collab_user = User.objects.create_user(username="collab1", password="12345")
+        perm_view = Permission.objects.get(codename="view_wantedgallery")
+        collab_user.user_permissions.add(perm_view)
+
+        c_collab = Client()
+        c_collab.login(username="collab1", password="12345")
+
+        # Collaborator can view private wanted gallery
+        response = c_collab.get(reverse("viewer:wanted-gallery", args=[self.test_wanted_gallery1.pk]))
+        self.assertEqual(response.status_code, 200)
+
+        # Alias col-wanted-gallery works and renders the same view
+        response = c_collab.get(reverse("viewer:col-wanted-gallery", args=[self.test_wanted_gallery1.pk]))
+        self.assertEqual(response.status_code, 200)
+
+        # Collaborator can access wanted-galleries list
+        response = c_collab.get(reverse("viewer:wanted-galleries"))
+        self.assertEqual(response.status_code, 200)
+
+        # Alias col-wanted-galleries works
+        response = c_collab.get(reverse("viewer:col-wanted-galleries"))
+        self.assertEqual(response.status_code, 200)
+
+        # Anonymous can view wanted-galleries (public list)
+        c_anon = Client()
+        response = c_anon.get(reverse("viewer:wanted-galleries"))
+        self.assertEqual(response.status_code, 200)
+
+        # Collaborator with change permission can edit
+        perm_change = Permission.objects.get(codename="change_wantedgallery")
+        collab_user.user_permissions.add(perm_change)
+        response = c_collab.post(
+            reverse("viewer:wanted-gallery", args=[self.test_wanted_gallery1.pk]),
+            {
+                "submit-wanted-gallery": "Submit",
+                "title": "updated title",
+                "search_title": "sample non",
+                "page_count": 25,
+                "reason": "wanimagazine",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.test_wanted_gallery1.refresh_from_db()
+        self.assertEqual(self.test_wanted_gallery1.title, "updated title")
+
 
 class JsonApiEndpointsTest(GeneralPagesTest):
     """API handlers: gid, gids, wanted-gallery, wanted-galleries, wanted-galleries-search."""
@@ -664,3 +713,266 @@ class JsonApiEndpointsTest(GeneralPagesTest):
         self.assertIn("found_galleries", found_entry)
         self.assertEqual(len(found_entry["found_galleries"]), 1)
         self.assertEqual(found_entry["found_galleries"][0]["gid"], self.test_gallery3.gid)
+
+
+class OperationalFixesTest(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.admin_user = User.objects.create_user(username="admin_op", password="password")
+        cls.admin_user.is_staff = True
+        cls.admin_user.save()
+
+        cls.normal_user = User.objects.create_user(username="user_op", password="password")
+
+        cls.archive_without_thumb = Archive.objects.create(
+            title="Archive No Thumb",
+            user=cls.admin_user,
+            public=True,
+        )
+        cls.gallery_without_thumb = Gallery.objects.create(
+            title="Gallery No Thumb",
+            gid="99901",
+            provider="test",
+            public=True,
+        )
+
+    def test_admin_api_status_code_unauthorized_and_invalid(self):
+        c = Client()
+        # 1. Anonymous user to tools-api -> 401
+        response = c.get(reverse("viewer:tools-api", args=["main"]))
+        self.assertEqual(response.status_code, 401)
+        data = json.loads(response.content)
+        self.assertEqual(data.get("error"), "Not allowed")
+
+        # 2. Non-staff user to tools-api -> 401
+        c.login(username="user_op", password="password")
+        response = c.get(reverse("viewer:tools-api", args=["main"]))
+        self.assertEqual(response.status_code, 401)
+        data = json.loads(response.content)
+        self.assertEqual(data.get("error"), "Not allowed")
+
+        # 3. Staff user with invalid arguments -> 401
+        c_staff = Client()
+        c_staff.login(username="admin_op", password="password")
+        response = c_staff.get(reverse("viewer:tools-api", args=["update_newer_than"]) + "?newer_than=invalid-date")
+        self.assertEqual(response.status_code, 401)
+        data = json.loads(response.content)
+        self.assertEqual(data.get("error"), "Invalid date format.")
+
+        response = c_staff.get(reverse("viewer:tools-api", args=["update_missing_thumbnails"]) + "?limit_number=notanumber")
+        self.assertEqual(response.status_code, 401)
+        data = json.loads(response.content)
+        self.assertEqual(data.get("error"), "Invalid limit.")
+
+    def test_thumbnail_missing_fallback(self):
+        c = Client()
+        # Archive with no thumbnail file
+        response = c.get(reverse("viewer:archive-thumb", args=[self.archive_without_thumb.pk]))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/static/imgs/no_cover.png", response.url)
+
+        # Gallery with no thumbnail file
+        response = c.get(reverse("viewer:gallery-thumb", args=[self.gallery_without_thumb.pk]))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/static/imgs/no_cover.png", response.url)
+
+    def test_elasticsearch_views_empty_json_response(self):
+        from unittest.mock import patch
+        from viewer.views.elasticsearch import (
+            autocomplete_view,
+            title_suggest_view,
+            title_suggest_archive_view,
+        )
+        from django.test.client import RequestFactory
+
+        rf = RequestFactory()
+        req = rf.get("/elasticsearch/autocomplete/?q=test")
+
+        with patch("viewer.views.elasticsearch.settings.ES_ENABLED", False):
+            resp = autocomplete_view(req)
+            self.assertEqual(resp.status_code, 200)
+            self.assertTrue(resp.headers.get("Content-Type", "").startswith("application/json"))
+            self.assertEqual(json.loads(resp.content), {})
+
+            resp = title_suggest_view(req)
+            self.assertEqual(resp.status_code, 200)
+            self.assertTrue(resp.headers.get("Content-Type", "").startswith("application/json"))
+            self.assertEqual(json.loads(resp.content), {})
+
+            resp = title_suggest_archive_view(req)
+            self.assertEqual(resp.status_code, 200)
+            self.assertTrue(resp.headers.get("Content-Type", "").startswith("application/json"))
+            self.assertEqual(json.loads(resp.content), {})
+
+
+class GalleryAndArchiveViewsTest(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.test_admin = User.objects.create_user(username="test_admin_views", password="password123", is_staff=True)
+        cls.test_user = User.objects.create_user(username="test_user_views", password="password123")
+
+        small_gif = (
+            b'\x47\x49\x46\x38\x39\x61\x01\x00\x01\x00\x00\x00\x00\x21\xf9\x04'
+            b'\x01\x0a\x00\x01\x00\x2c\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02'
+            b'\x02\x4c\x01\x00\x3b'
+        )
+        thumb_file1 = SimpleUploadedFile("thumb1.gif", small_gif, content_type="image/gif")
+        thumb_file2 = SimpleUploadedFile("thumb2.gif", small_gif, content_type="image/gif")
+
+        cls.gallery_public = Gallery.objects.create(
+            title="Sample Public Gallery",
+            gid="1001",
+            provider="panda",
+            category="Manga",
+            public=True,
+            rating=4.5,
+            comment="This is a test comment",
+            thumbnail=thumb_file1,
+        )
+        cls.gallery_private = Gallery.objects.create(
+            title="Sample Private Gallery",
+            gid="1002",
+            provider="panda",
+            category="Non-H",
+            public=False,
+            disowned=True,
+            expunged=True,
+        )
+
+        cls.archive_public = Archive.objects.create(
+            title="Sample Public Archive",
+            user=cls.test_admin,
+            public=True,
+            gallery=cls.gallery_public,
+            crc32="ABCD1234",
+            filecount=10,
+            filesize=1048576,
+            thumbnail=thumb_file2,
+        )
+        cls.archive_private = Archive.objects.create(
+            title="Sample Private Archive",
+            user=cls.test_admin,
+            public=False,
+            gallery=cls.gallery_private,
+            crc32="EFGH5678",
+            filecount=5,
+            filesize=524288,
+        )
+
+    def test_gallery_view_anonymous_public(self):
+        resp = self.client.get(reverse("viewer:gallery", args=[self.gallery_public.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Sample Public Gallery")
+        self.assertContains(resp, "Public")
+        self.assertNotContains(resp, "btn-toggle-inline-cover")
+        self.assertNotContains(resp, "inline-cover-container")
+
+    def test_gallery_view_anonymous_private_redirect_or_404(self):
+        resp = self.client.get(reverse("viewer:gallery", args=[self.gallery_private.pk]))
+        self.assertEqual(resp.status_code, 404)
+
+    def test_gallery_view_authenticated_private(self):
+        self.client.login(username="test_user_views", password="password123")
+        resp = self.client.get(reverse("viewer:gallery", args=[self.gallery_private.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Sample Private Gallery")
+        self.assertContains(resp, "Disowned")
+        self.assertContains(resp, "Expunged")
+
+    def test_archive_view_anonymous_public(self):
+        resp = self.client.get(reverse("viewer:archive", args=[self.archive_public.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Sample Public Archive")
+        self.assertContains(resp, "ABCD1234")
+        self.assertNotContains(resp, "btn-toggle-inline-cover")
+        self.assertNotContains(resp, "inline-cover-container")
+
+    def test_archive_view_anonymous_private_404(self):
+        resp = self.client.get(reverse("viewer:archive", args=[self.archive_private.pk]))
+        self.assertEqual(resp.status_code, 404)
+
+    def test_archive_view_authenticated_private(self):
+        self.client.login(username="test_user_views", password="password123")
+        resp = self.client.get(reverse("viewer:archive", args=[self.archive_private.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Sample Private Archive")
+        self.assertContains(resp, "EFGH5678")
+
+    def test_refined_views_opt_in_routing(self):
+        from unittest.mock import patch
+        from django.conf import settings
+
+        # 1. When refined_archive_gallery_views is False (default):
+        # Authenticated user gets old design
+        self.client.login(username="test_user_views", password="password123")
+        with patch.object(settings.CRAWLER_SETTINGS, "refined_archive_gallery_views", False):
+            resp = self.client.get(reverse("viewer:gallery", args=[self.gallery_public.pk]))
+            self.assertEqual(resp.status_code, 200)
+            self.assertNotContains(resp, "btn-toggle-inline-cover")
+
+            resp = self.client.get(reverse("viewer:archive", args=[self.archive_public.pk]))
+            self.assertEqual(resp.status_code, 200)
+            self.assertNotContains(resp, "btn-toggle-inline-cover")
+
+        # 2. When refined_archive_gallery_views is True:
+        # Authenticated user gets new design
+        with patch.object(settings.CRAWLER_SETTINGS, "refined_archive_gallery_views", True):
+            resp = self.client.get(reverse("viewer:gallery", args=[self.gallery_public.pk]))
+            self.assertEqual(resp.status_code, 200)
+            self.assertContains(resp, "btn-toggle-inline-cover")
+            self.assertContains(resp, "inline-cover-container")
+
+            resp = self.client.get(reverse("viewer:archive", args=[self.archive_public.pk]))
+            self.assertEqual(resp.status_code, 200)
+            self.assertContains(resp, "btn-toggle-inline-cover")
+            self.assertContains(resp, "inline-cover-container")
+
+            # 3. Authenticated user can explicitly choose old design via ?view_style=old
+            resp = self.client.get(reverse("viewer:gallery", args=[self.gallery_public.pk]) + "?view_style=old")
+            self.assertEqual(resp.status_code, 200)
+            self.assertNotContains(resp, "btn-toggle-inline-cover")
+
+            # 4. Anonymous user STILL gets old design even when setting is True
+            self.client.logout()
+            resp = self.client.get(reverse("viewer:gallery", args=[self.gallery_public.pk]))
+            self.assertEqual(resp.status_code, 200)
+            self.assertNotContains(resp, "btn-toggle-inline-cover")
+
+            resp = self.client.get(reverse("viewer:archive", args=[self.archive_public.pk]))
+            self.assertEqual(resp.status_code, 200)
+            self.assertNotContains(resp, "btn-toggle-inline-cover")
+
+
+class TemplateTagsTest(TestCase):
+    def test_boolean_badge_defaults(self):
+        from viewer.templatetags.viewer_extras import boolean_badge
+        self.assertIn("bg-success", boolean_badge(True))
+        self.assertIn("Yes", boolean_badge(True))
+        self.assertIn("bg-secondary", boolean_badge(False))
+        self.assertIn("No", boolean_badge(False))
+
+    def test_boolean_badge_custom_labels(self):
+        from viewer.templatetags.viewer_extras import boolean_badge
+        res = boolean_badge(True, "Public,Private")
+        self.assertIn("bg-success", res)
+        self.assertIn("Public", res)
+
+        res_false = boolean_badge(False, "Public,Private")
+        self.assertIn("bg-secondary", res_false)
+        self.assertIn("Private", res_false)
+
+    def test_boolean_badge_danger(self):
+        from viewer.templatetags.viewer_extras import boolean_badge
+        res = boolean_badge(True, "danger")
+        self.assertIn("bg-danger", res)
+        self.assertIn("Yes", res)
+
+        res_custom = boolean_badge(True, "Expunged,Active,danger")
+        self.assertIn("bg-danger", res_custom)
+        self.assertIn("Expunged", res_custom)
+
+    def test_boolean_text(self):
+        from viewer.templatetags.viewer_extras import boolean_text
+        self.assertIn("text-success", boolean_text(True))
+        self.assertIn("text-secondary", boolean_text(False))
+        self.assertIn("text-danger", boolean_text(True, "danger"))

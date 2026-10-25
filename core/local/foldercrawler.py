@@ -6,7 +6,7 @@ import re
 import time
 import argparse
 import zlib
-from typing import Union, NoReturn
+from typing import NoReturn
 from zipfile import BadZipFile
 from zipfile import ZipFile
 
@@ -36,7 +36,7 @@ class FolderCrawler(object):
         self.settings = settings
         self.parse_error = False
 
-    def get_args(self, arg_line: list[str]) -> Union[argparse.Namespace, ArgumentParserError]:
+    def get_args(self, arg_line: list[str]) -> argparse.Namespace | ArgumentParserError:
 
         parser = YieldingArgumentParser(prog="PandaBackupFolder")
 

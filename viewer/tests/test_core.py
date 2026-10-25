@@ -1,4 +1,6 @@
+import os
 import ssl
+import subprocess
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
@@ -1242,6 +1244,232 @@ class PostDownloaderFTPTest(TestCase):
         # Ensure get_torrents was called only with valid integer IDs: [10]
         client.trans.get_torrents.assert_called_once_with([10], timeout=25)
 
+    def test_qbittorrent_initialization_and_url_building(self):
+        from core.downloaders.torrent.qbittorrent import qBittorrent
+
+        client = qBittorrent(address="localhost", port=8080)
+        self.assertEqual(client.name, "qbittorrent")
+        self.assertEqual(str(client), "qbittorrent")
+        self.assertFalse(client.convert_to_base64)
+        self.assertFalse(client.send_url)
+        self.assertEqual(client._build_base_url(), "http://localhost:8080")
+
+        client2 = qBittorrent(address="http://127.0.0.1:9090/", port=8080)
+        self.assertEqual(client2._build_base_url(), "http://127.0.0.1:9090")
+
+        client3 = qBittorrent(address="https://seedbox.local/qbt/", port=8080)
+        self.assertEqual(client3._build_base_url(), "https://seedbox.local:8080/qbt")
+
+    @patch("requests.Session")
+    def test_qbittorrent_connect_with_auth_success(self, mock_session_cls):
+        from core.downloaders.torrent.qbittorrent import qBittorrent
+
+        mock_session = MagicMock()
+        mock_session_cls.return_value = mock_session
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = "Ok."
+        mock_session.post.return_value = mock_resp
+
+        client = qBittorrent(address="http://localhost:8080", user="admin", password="password123")
+        self.assertTrue(client.connect())
+        mock_session.post.assert_called_once_with(
+            "http://localhost:8080/api/v2/auth/login",
+            data={"username": "admin", "password": "password123"},
+            timeout=25,
+        )
+
+    @patch("requests.Session")
+    def test_qbittorrent_connect_with_auth_failure(self, mock_session_cls):
+        from core.downloaders.torrent.qbittorrent import qBittorrent
+
+        mock_session = MagicMock()
+        mock_session_cls.return_value = mock_session
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = "Fails."
+        mock_session.post.return_value = mock_resp
+
+        client = qBittorrent(address="http://localhost:8080", user="admin", password="wrongpassword")
+        self.assertFalse(client.connect())
+        self.assertIn("Authentication failed", client.error)
+
+    @patch("requests.Session")
+    def test_qbittorrent_connect_without_auth(self, mock_session_cls):
+        from core.downloaders.torrent.qbittorrent import qBittorrent
+
+        mock_session = MagicMock()
+        mock_session_cls.return_value = mock_session
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_session.get.return_value = mock_resp
+
+        client = qBittorrent(address="http://localhost:8080", user="", password="")
+        self.assertTrue(client.connect())
+        mock_session.get.assert_called_once_with("http://localhost:8080/api/v2/app/version", timeout=25)
+
+    @patch("requests.Session")
+    def test_qbittorrent_add_torrent_success(self, mock_session_cls):
+        from core.downloaders.torrent.qbittorrent import qBittorrent
+        from core.libs.bencoding import Encoder
+
+        mock_session = MagicMock()
+        mock_session_cls.return_value = mock_session
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = "Ok."
+        mock_session.post.return_value = mock_resp
+
+        torrent_payload = {
+            b"announce": b"http://tracker.example.com",
+            b"info": {
+                b"name": b"sample_archive.zip",
+                b"length": 1048576,
+                b"piece length": 32768,
+                b"pieces": b"12345678901234567890",
+            },
+        }
+        torrent_bytes = bytes(Encoder(torrent_payload).encode())
+
+        client = qBittorrent(address="http://localhost:8080")
+        client.session = mock_session
+        client.base_url = "http://localhost:8080"
+
+        success, info_hash = client.add_torrent(torrent_bytes, download_dir="/downloads/100")
+        self.assertTrue(success)
+        self.assertIsNotNone(info_hash)
+        assert info_hash is not None
+        self.assertEqual(len(info_hash), 40)
+        self.assertEqual(client.expected_torrent_name, "sample_archive")
+        self.assertEqual(client.expected_torrent_extension, ".zip")
+        self.assertEqual(client.total_size, 1048576)
+
+        mock_session.post.assert_called_once()
+        call_args, call_kwargs = mock_session.post.call_args
+        self.assertEqual(call_args[0], "http://localhost:8080/api/v2/torrents/add")
+        self.assertEqual(call_kwargs["data"], {"savepath": "/downloads/100"})
+        self.assertIn("torrents", call_kwargs["files"])
+
+    @patch("requests.Session")
+    def test_qbittorrent_add_torrent_duplicate(self, mock_session_cls):
+        from core.downloaders.torrent.qbittorrent import qBittorrent
+        from core.libs.bencoding import Encoder
+
+        mock_session = MagicMock()
+        mock_session_cls.return_value = mock_session
+        mock_resp = MagicMock()
+        mock_resp.status_code = 409
+        mock_resp.text = "Conflict"
+        mock_session.post.return_value = mock_resp
+
+        torrent_payload = {
+            b"info": {
+                b"name": b"dup_archive.zip",
+                b"length": 2048,
+                b"piece length": 2048,
+                b"pieces": b"12345678901234567890",
+            },
+        }
+        torrent_bytes = bytes(Encoder(torrent_payload).encode())
+
+        client = qBittorrent(address="http://localhost:8080")
+        client.session = mock_session
+        client.base_url = "http://localhost:8080"
+
+        success, info_hash = client.add_torrent(torrent_bytes)
+        self.assertTrue(success)
+        self.assertIsNotNone(info_hash)
+
+    @patch("requests.Session")
+    def test_qbittorrent_add_url_magnet(self, mock_session_cls):
+        from core.downloaders.torrent.qbittorrent import qBittorrent
+
+        mock_session = MagicMock()
+        mock_session_cls.return_value = mock_session
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = "Ok."
+        mock_session.post.return_value = mock_resp
+
+        client = qBittorrent(address="http://localhost:8080")
+        client.session = mock_session
+        client.base_url = "http://localhost:8080"
+
+        magnet_link = (
+            "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567"
+            "&dn=Sample%20Gallery.zip&tr=http%3A%2F%2Ftracker"
+        )
+        success, info_hash = client.add_url(magnet_link, download_dir="/downloads/200")
+        self.assertTrue(success)
+        self.assertEqual(info_hash, "0123456789abcdef0123456789abcdef01234567")
+        self.assertEqual(client.expected_torrent_name, "Sample Gallery")
+        self.assertEqual(client.expected_torrent_extension, ".zip")
+
+        mock_session.post.assert_called_once_with(
+            "http://localhost:8080/api/v2/torrents/add",
+            data={"urls": magnet_link, "savepath": "/downloads/200"},
+            timeout=25,
+        )
+
+    @patch("requests.Session")
+    def test_qbittorrent_get_download_progress(self, mock_session_cls):
+        from core.downloaders.torrent.qbittorrent import qBittorrent
+
+        mock_session = MagicMock()
+        mock_session_cls.return_value = mock_session
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = [
+            {"hash": "0123456789abcdef0123456789abcdef01234567", "progress": 0.852},
+            {"hash": "fedcba9876543210fedcba9876543210fedcba98", "progress": 1.0},
+        ]
+        mock_session.get.return_value = mock_resp
+
+        client = qBittorrent(address="http://localhost:8080")
+        client.session = mock_session
+        client.base_url = "http://localhost:8080"
+
+        key1 = MagicMock()
+        key2 = MagicMock()
+        results = client.get_download_progress([
+            ("0123456789abcdef0123456789abcdef01234567", key1),
+            ("fedcba9876543210fedcba9876543210fedcba98", key2),
+            ("invalid_hash", MagicMock()),
+            ("", MagicMock()),
+        ])
+
+        self.assertEqual(len(results), 2)
+        self.assertEqual(results[0], (key1, 85.2))
+        self.assertEqual(results[1], (key2, 100.0))
+
+        mock_session.get.assert_called_once()
+        call_args, call_kwargs = mock_session.get.call_args
+        self.assertEqual(call_args[0], "http://localhost:8080/api/v2/torrents/info")
+        self.assertIn("hashes", call_kwargs["params"])
+        self.assertIn("0123456789abcdef0123456789abcdef01234567", call_kwargs["params"]["hashes"])
+        self.assertIn("fedcba9876543210fedcba9876543210fedcba98", call_kwargs["params"]["hashes"])
+
+    def test_get_torrent_client_factory(self):
+        from core.downloaders.torrent import get_torrent_client
+        from core.downloaders.torrent.qbittorrent import qBittorrent
+        from core.downloaders.torrent.transmission import Transmission
+
+        qbt = get_torrent_client({"client": "qbittorrent", "address": "localhost", "port": 8080})
+        self.assertIsInstance(qbt, qBittorrent)
+
+        qbt_case = get_torrent_client({"client": "qBittorrent", "address": "localhost", "port": 8080})
+        self.assertIsInstance(qbt_case, qBittorrent)
+
+        trans = get_torrent_client({"client": "transmission", "address": "http://localhost", "port": 9091})
+        self.assertIsInstance(trans, Transmission)
+
+        # uTorrent is removed and must return None
+        utorrent_client = get_torrent_client({"client": "utorrent", "address": "localhost", "port": 8080})
+        self.assertIsNone(utorrent_client)
+
+        unknown = get_torrent_client({"client": "unknown_client"})
+        self.assertIsNone(unknown)
+
     @patch("zipfile.ZipFile")
     def test_archive_save_with_unsupported_zip_compression(self, mock_zipfile):
         mock_zip_instance = MagicMock()
@@ -1914,6 +2142,127 @@ class RequeueFailedDownloadTest(TestCase):
             event.refresh_from_db()
             self.assertTrue(event.failed)
             self.assertTrue(any("SHA1 mismatch detected for Chaika download" in msg for msg in cm.output))
+
+    def test_gallery_dl_downloader_stderr_and_cleanup(self):
+        from core.base.setup_utilities import GeneralUtils
+        from core.providers.generic.downloaders import GenericGalleryDLDownloader
+
+        settings = Settings(load_from_disk=True)
+        gen_utils = GeneralUtils(settings)
+        downloader = GenericGalleryDLDownloader(settings, gen_utils)
+        downloader.gallery = GalleryData(
+            gid="123",
+            provider="generic",
+            link="https://example.com/gallery/123",
+            title="Sample Generic Gallery",
+        )
+
+        captured_dir = []
+
+        def mock_subprocess_run(cmd, **kwargs):
+            dest_idx = cmd.index("--dest") + 1
+            dest_dir = cmd[dest_idx]
+            captured_dir.append(dest_dir)
+            mock_zip = os.path.join(dest_dir, "test_gallery.zip")
+            with open(mock_zip, "w") as f:
+                f.write("mock zip content")
+            return subprocess.CompletedProcess(
+                args=cmd,
+                returncode=0,
+                stdout="Downloaded 1 item",
+                stderr="WARNING: non-fatal warning occurred",
+            )
+
+        with patch("shutil.which", return_value="/usr/bin/gallery-dl"), \
+             patch("subprocess.run", side_effect=mock_subprocess_run), \
+             patch("shutil.move"), \
+             patch("core.downloaders.handlers.get_zip_fileinfo_for_gallery", return_value=(100, 5)), \
+             patch("core.downloaders.handlers.calc_crc32", return_value="1234abcd"):
+            downloader.start_download()
+
+        # Non-fatal stderr warning should NOT cause download failure
+        self.assertEqual(downloader.return_code, 1)
+        self.assertEqual(downloader.fileDownloaded, 1)
+        # Temporary directory must be cleaned up
+        self.assertTrue(len(captured_dir) > 0)
+        self.assertFalse(os.path.exists(captured_dir[0]))
+
+        # Failure with non-zero returncode should clean up directory as well
+        failed_dir = []
+
+        def mock_subprocess_failed(cmd, **kwargs):
+            dest_idx = cmd.index("--dest") + 1
+            dest_dir = cmd[dest_idx]
+            failed_dir.append(dest_dir)
+            return subprocess.CompletedProcess(
+                args=cmd,
+                returncode=1,
+                stdout="",
+                stderr="ERROR: Failed to download",
+            )
+
+        downloader.return_code = 0
+        downloader.fileDownloaded = 0
+        with patch("shutil.which", return_value="/usr/bin/gallery-dl"), \
+             patch("subprocess.run", side_effect=mock_subprocess_failed):
+            downloader.start_download()
+
+        self.assertEqual(downloader.return_code, 0)
+        self.assertEqual(downloader.fileDownloaded, 0)
+        self.assertTrue(len(failed_dir) > 0)
+        self.assertFalse(os.path.exists(failed_dir[0]))
+
+    def test_autoupdate_provider_name_formatting(self):
+        from core.workers.autoupdate import ProviderTimedAutoUpdater
+
+        settings = Settings(load_from_disk=True)
+        updater = ProviderTimedAutoUpdater(settings, provider_name="panda")
+        start_date = django_tz.now()
+        end_date = django_tz.now()
+        msg = "No galleries posted from {} to {} need updating. Provider: {}".format(
+            start_date, end_date, updater.provider_name
+        )
+        self.assertIn("Provider: panda", msg)
+        self.assertNotIn("p, a, n, d, a", msg)
+
+    def test_settings_load_elasticsearch_from_environment(self):
+        settings = Settings(load_from_disk=False)
+        self.assertFalse(settings.elasticsearch.enable)
+
+        env = {
+            "ELASTICSEARCH_ENABLE": "true",
+            "ELASTICSEARCH_ENABLE_MATCH": "1",
+            "ELASTICSEARCH_URL": "http://elasticsearch:9200/",
+            "ELASTICSEARCH_INDEX_NAME": "custom_viewer",
+            "ELASTICSEARCH_GALLERY_INDEX_NAME": "custom_gallery",
+            "ELASTICSEARCH_TIMEOUT": "45",
+        }
+        with patch.dict(os.environ, env):
+            settings.load_from_environment()
+
+        self.assertTrue(settings.elasticsearch.enable)
+        self.assertTrue(settings.elasticsearch.enable_match)
+        self.assertEqual(settings.elasticsearch.url, "http://elasticsearch:9200/")
+        self.assertEqual(settings.elasticsearch.index_name, "custom_viewer")
+        self.assertEqual(settings.elasticsearch.gallery_index_name, "custom_gallery")
+        self.assertEqual(settings.elasticsearch.timeout, 45)
+
+    def test_settings_load_elasticsearch_empty_environment_ignored(self):
+        settings = Settings(load_from_disk=False)
+        settings.elasticsearch.enable = False
+        settings.elasticsearch.url = "http://localhost:9200/"
+
+        env = {
+            "ELASTICSEARCH_ENABLE": "",
+            "ELASTICSEARCH_URL": "",
+        }
+        with patch.dict(os.environ, env):
+            settings.load_from_environment()
+
+        self.assertFalse(settings.elasticsearch.enable)
+        self.assertEqual(settings.elasticsearch.url, "http://localhost:9200/")
+
+
 
 
 

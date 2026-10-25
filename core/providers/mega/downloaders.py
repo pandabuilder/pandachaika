@@ -3,7 +3,7 @@ import os
 import shutil
 import subprocess
 from tempfile import mkdtemp
-from typing import Any, Optional
+from typing import Any
 
 from core.base.types import DataDict
 from core.base.utilities import replace_illegal_name, available_filename, calc_crc32, get_zip_fileinfo_for_gallery
@@ -110,7 +110,7 @@ class MegaArchiveDownloader(BaseDownloader):
             logger.error("Could not download archive, filesize resulted in 0 at path: {}".format(filepath))
             self.return_code = 0
 
-    def update_archive_db(self, default_values: DataDict) -> Optional["Archive"]:
+    def update_archive_db(self, default_values: DataDict) -> "Archive | None":
 
         if not self.gallery:
             return None

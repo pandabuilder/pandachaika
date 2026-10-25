@@ -2,7 +2,6 @@
 import logging
 import re
 import typing
-from typing import Optional
 from urllib.parse import urljoin
 from collections import defaultdict
 
@@ -26,7 +25,7 @@ class Parser(BaseParser):
     ]
 
     @staticmethod
-    def id_from_url(url: str) -> typing.Optional[str]:
+    def id_from_url(url: str) -> str | None:
         m = re.search(r"/view/(\d+)", url)
         if m and m.group(1):
             return m.group(1)
@@ -38,7 +37,7 @@ class Parser(BaseParser):
         urls: list[str],
         wanted_filters=None,
         wanted_only: bool = False,
-        preselected_wanted_matches: Optional[dict[str, list["WantedGallery"]]] = None,
+        preselected_wanted_matches: dict[str, list["WantedGallery"]] | None = None,
     ) -> None:
 
         unique_urls = set()

@@ -5,7 +5,6 @@ import zipfile
 from os.path import basename
 from urllib.parse import quote, urlparse, unquote
 import typing
-from typing import Optional
 import base64
 
 from django.contrib import messages
@@ -15,6 +14,7 @@ from django.urls import reverse
 from django.db import transaction
 from django.http import Http404, HttpRequest
 from django.http import HttpResponseRedirect, HttpResponse
+from django.templatetags.static import static
 from django.shortcuts import render
 from django.conf import settings
 
@@ -37,7 +37,7 @@ from viewer.models import (
     ArchiveOption,
     ArchiveStatistics,
 )
-from viewer.utils.general import clean_up_referer
+from viewer.utils.general import clean_up_referer, should_use_refined_views
 from viewer.utils.requests import double_check_auth, authenticate_by_token
 from viewer.views.head import render_error
 
@@ -96,7 +96,7 @@ def archive_details(request: HttpRequest, pk: int, mode: str = "view") -> HttpRe
                 page = 1
 
             try:
-                images_page: typing.Optional[Page] = paginator.page(page)
+                images_page: Page | None = paginator.page(page)
             except (InvalidPage, EmptyPage):
                 images_page = paginator.page(paginator.num_pages)
 
@@ -149,7 +149,6 @@ def archive_details(request: HttpRequest, pk: int, mode: str = "view") -> HttpRe
             edit_form = ArchiveEditForm(request.POST, instance=archive)
             # check whether it's valid:
             if edit_form.is_valid():
-                # TODO: Maybe this should be in save method for the form
                 new_archive: Archive = edit_form.save(commit=False)
                 new_archive.simple_save()
                 edit_form.save_m2m()
@@ -259,12 +258,17 @@ def archive_details(request: HttpRequest, pk: int, mode: str = "view") -> HttpRe
 
     d.update({"archive_statistics": ArchiveStatistics.objects.filter(archive=archive).first()})
 
-    return render(request, "viewer/archive.html", d)
+    template = (
+        "viewer/archive_new.html"
+        if should_use_refined_views(request, crawler_settings)
+        else "viewer/archive_old.html"
+    )
+    return render(request, template, d)
 
 
 @login_required
 def archive_update(
-    request: HttpRequest, pk: int, tool: Optional[str] = None, tool_use_id: Optional[str] = None
+    request: HttpRequest, pk: int, tool: str | None = None, tool_use_id: str | None = None
 ) -> HttpResponse:
     """Update archive title, rating, tags, archives."""
     if not request.user.is_staff:
@@ -418,7 +422,7 @@ def archive_auth(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
-def archive_enter_reason(request: HttpRequest, pk: int, tool: Optional[str] = None) -> HttpResponse:
+def archive_enter_reason(request: HttpRequest, pk: int, tool: str | None = None) -> HttpResponse:
     try:
         archive = Archive.objects.get(pk=pk)
     except Archive.DoesNotExist:
@@ -545,15 +549,36 @@ def archive_thumb(request: HttpRequest, pk: int) -> HttpResponse:
         raise Http404("Archive does not exist")
     if not archive.public and not request.user.is_authenticated:
         raise Http404("Archive does not exist")
+
+    thumb = archive.thumbnail
+    try:
+        has_thumb = bool(thumb and thumb.name)
+    except ValueError:
+        has_thumb = False
+
+    if not has_thumb and archive.gallery:
+        try:
+            if archive.gallery.thumbnail and archive.gallery.thumbnail.name:
+                thumb = archive.gallery.thumbnail
+                has_thumb = True
+        except ValueError:
+            has_thumb = False
+
+    if not has_thumb:
+        return HttpResponseRedirect(static("imgs/no_cover.png"))
+
     if "HTTP_X_FORWARDED_HOST" in request.META:
         response = HttpResponse()
         response["Content-Type"] = "image/jpeg"
         # response["Content-Disposition"] = 'attachment; filename*=UTF-8\'\'{0}'.format(
         #         archive.pretty_name)
-        response["X-Accel-Redirect"] = "/image/{0}".format(archive.thumbnail.name)
+        response["X-Accel-Redirect"] = "/image/{0}".format(thumb.name)
         return response
     else:
-        return HttpResponseRedirect(archive.thumbnail.url)
+        try:
+            return HttpResponseRedirect(thumb.url)
+        except ValueError:
+            return HttpResponseRedirect(static("imgs/no_cover.png"))
 
 
 def image_data_list(request: HttpRequest, pk: int) -> HttpResponse:
@@ -573,7 +598,7 @@ def image_data_list(request: HttpRequest, pk: int) -> HttpResponse:
         page = 1
 
     try:
-        results: typing.Optional[Page] = paginator.page(page)
+        results: Page | None = paginator.page(page)
     except (InvalidPage, EmptyPage):
         results = paginator.page(paginator.num_pages)
 
@@ -600,7 +625,7 @@ def change_log(request: HttpRequest, pk: int) -> HttpResponse:
         page = 1
 
     try:
-        results: typing.Optional[Page] = paginator.page(page)
+        results: Page | None = paginator.page(page)
     except (InvalidPage, EmptyPage):
         results = paginator.page(paginator.num_pages)
 
@@ -1145,7 +1170,6 @@ def private(request: HttpRequest, pk: int) -> HttpResponse:
 def calculate_images_sha1(request: HttpRequest, pk: int) -> HttpResponse:
     """Calculate archive's images SHA1."""
 
-    # TODO: Different permission
     if not request.user.has_perm("viewer.publish_archive"):
         return render_error(request, "You don't have the permission to calculate SHA1.")
 

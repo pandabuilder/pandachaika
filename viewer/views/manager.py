@@ -11,7 +11,13 @@ from django.conf import settings
 
 from core.base.setup import Settings
 from core.base.utilities import thread_exists_in_db, clamp
-from viewer.forms import GallerySearchForm, ArchiveSearchForm, WantedGallerySearchForm, GallerySearchFields
+from viewer.forms import (
+    GallerySearchForm,
+    ArchiveSearchForm,
+    WantedGallerySearchForm,
+    GallerySearchFields,
+    WantedGalleryCreateOrEditForm,
+)
 from viewer.models import (
     Archive,
     Gallery,
@@ -623,6 +629,12 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
     p = request.POST
     get = request.GET
 
+    is_staff = request.user.is_staff
+    has_view_perm = request.user.has_perm("viewer.view_wantedgallery")
+    has_add_perm = request.user.has_perm("viewer.add_wantedgallery")
+    is_collaborator_or_staff = is_staff or has_view_perm
+    can_add = is_staff or has_add_perm
+
     title = get.get("title", "")
     tags = get.get("tags", "")
 
@@ -636,15 +648,23 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
     else:
         form = WantedGallerySearchForm(initial={"title": title, "tags": tags})
 
-    if not request.user.is_staff:
-        results = (
-            WantedGallery.objects.filter(Q(should_search=True) & Q(found=False) & Q(public=True))
-            .prefetch_related("artists", "mentions")
-            .order_by("-release_date")
-        )
-        return render(request, "viewer/wanted_galleries.html", {"results": results})
+    # Add wanted gallery for collaborators or staff
+    edit_form = None
+    if can_add:
+        if p.get("submit-wanted-gallery"):
+            edit_form = WantedGalleryCreateOrEditForm(request.POST)
+            if edit_form.is_valid():
+                new_wanted_gallery = edit_form.save()
+                message = "New wanted gallery successfully created"
+                messages.success(request, message)
+                logger.info("User {}: {}".format(request.user.username, message))
+                event_log(request.user, "ADD_WANTED_GALLERY", content_object=new_wanted_gallery, result="created")
+            else:
+                messages.error(request, "The provided data is not valid", extra_tags="danger")
+        else:
+            edit_form = WantedGalleryCreateOrEditForm()
 
-    if p and request.user.is_staff:
+    if p and is_staff:
         if "delete_galleries" in p:
             pks = []
             for k, v in p.items():
@@ -673,7 +693,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
                 message = "Marking gallery as to search for: {}".format(wanted_gallery.title)
                 logger.info(message)
                 messages.success(request, message)
-        elif "toggle-public" in p:
+        elif "toggle-public" in p or "set-public" in p:
             pks = []
             for k, v in p.items():
                 if k.startswith("sel-") and isinstance(v, str):
@@ -782,20 +802,32 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
         if k not in params:
             params[k] = ""
 
-    results_filtered = filter_wanted_galleries_simple(params)
+    if not is_collaborator_or_staff:
+        if not get:
+            params["wanted-should-search"] = "1"
+            params["wanted-not-found"] = "1"
+        results_filtered = filter_wanted_galleries_simple(params).filter(public=True)
+    else:
+        results_filtered = filter_wanted_galleries_simple(params)
 
-    results_filtered = results_filtered.prefetch_related( # type:ignore[misc]
-        Prefetch(
-            "gallerymatch_set",
-            queryset=GalleryMatch.objects.select_related("gallery", "wanted_gallery").prefetch_related(
-                Prefetch("gallery__tags", queryset=Tag.objects.filter(scope__exact="artist"), to_attr="artist_tags")
+    if is_collaborator_or_staff:
+        results_filtered = results_filtered.prefetch_related(  # type:ignore[misc]
+            Prefetch(
+                "gallerymatch_set",
+                queryset=GalleryMatch.objects.select_related("gallery", "wanted_gallery").prefetch_related(
+                    Prefetch("gallery__tags", queryset=Tag.objects.filter(scope__exact="artist"), to_attr="artist_tags")
+                ),
+                to_attr="possible_galleries",
             ),
-            to_attr="possible_galleries",
-        ),
-        "possible_galleries__gallery__archive_set",
-        "artists",
-        "mentions",
-    )
+            "possible_galleries__gallery__archive_set",
+            "artists",
+            "mentions",
+        )
+    else:
+        results_filtered = results_filtered.prefetch_related(
+            "artists",
+            "mentions",
+        )
 
     paginator = Paginator(results_filtered, 100)
     try:
@@ -803,7 +835,13 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
     except (InvalidPage, EmptyPage):
         results_page = paginator.page(paginator.num_pages)
 
-    d = {"results": results_page, "form": form}
+    d = {
+        "results": results_page,
+        "form": form,
+        "edit_form": edit_form,
+        "can_add": can_add,
+        "can_view_internal": is_collaborator_or_staff,
+    }
     return render(request, "viewer/wanted_galleries.html", d)
 
 

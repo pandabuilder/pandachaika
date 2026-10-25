@@ -27,7 +27,6 @@ from django.db.backends.base.base import BaseDatabaseWrapper
 from django.templatetags.static import static
 from os.path import join as pjoin, basename
 from tempfile import NamedTemporaryFile, mkdtemp
-from typing import Optional
 from urllib.parse import quote, urlparse
 
 import requests
@@ -85,9 +84,6 @@ if typing.TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-
-T = typing.TypeVar("T")
-
 options.DEFAULT_NAMES += "es_index_name", "es_mapping"
 PImage.MAX_IMAGE_PIXELS = 200000000
 EMPTY_TITLE = "No title"
@@ -96,7 +92,7 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 IMAGE_PHASH_BLACK = "0000000000000000"
 IMAGE_PHASH_WHITE = "8000000000000000"
 
-SortedTagList = list[tuple[str, list["Tag"]]]
+type SortedTagList = list[tuple[str, list[Tag]]]
 
 
 class OriginalFilenameFileSystemStorage(FileSystemStorage):
@@ -146,7 +142,7 @@ class TagQuerySet(models.QuerySet["Tag"]):
     def not_custom(self) -> QuerySet:
         return self.exclude(source="user")
 
-    def first_artist_tag(self, **kwargs: typing.Any) -> Optional["Tag"]:
+    def first_artist_tag(self, **kwargs: typing.Any) -> "Tag | None":
         return self.filter(scope__exact="artist", **kwargs).first()
 
 
@@ -157,7 +153,7 @@ class TagManager(models.Manager["Tag"]):
     def are_custom(self) -> QuerySet:
         return self.get_queryset().are_custom()
 
-    def first_artist_tag(self, **kwargs: typing.Any) -> Optional["Tag"]:
+    def first_artist_tag(self, **kwargs: typing.Any) -> "Tag | None":
         return self.get_queryset().first_artist_tag(**kwargs)
 
 
@@ -360,7 +356,7 @@ class GalleryManager(models.Manager["Gallery"]):
     ) -> QuerySet:
         return self.filter(posted__gte=start_date, posted__lte=end_date, dl_type__icontains=dl_type_filter)
 
-    def filter_first(self, **kwargs: typing.Any) -> Optional["Gallery"]:
+    def filter_first(self, **kwargs: typing.Any) -> "Gallery | None":
         return self.filter(**kwargs).first()
 
     def update_by_gid_provider(self, gallery_data: GalleryData) -> bool:
@@ -590,7 +586,7 @@ class GalleryManager(models.Manager["Gallery"]):
         return gallery
 
     # This method is mainly used to update own fields, no related fields need to be checked
-    def update_by_dl_type(self, values: DataDict, gallery_id: str, dl_type: str) -> typing.Optional["Gallery"]:
+    def update_by_dl_type(self, values: DataDict, gallery_id: str, dl_type: str) -> "Gallery | None":
 
         instance = self.filter(id=gallery_id, dl_type__contains=dl_type).first()
         if instance:
@@ -633,13 +629,13 @@ class ArchiveManager(models.Manager["Archive"]):
         else:
             return self.get_queryset().filter(public=True, **kwargs)
 
-    def filter_matching_gallery_filesize(self, gid: str, provider: str) -> Optional["Archive"]:
+    def filter_matching_gallery_filesize(self, gid: str, provider: str) -> "Archive | None":
         return self.filter(
             Q(gallery__gid=gid), Q(gallery__provider=provider), Q(filesize=F("gallery__filesize"))
         ).first()
 
     def update_or_create_by_values_and_gid(
-        self, values: DataDict, gid_provider: Optional[tuple[str, str]], **kwargs: typing.Any
+        self, values: DataDict, gid_provider: tuple[str, str] | None, **kwargs: typing.Any
     ) -> "Archive":
         archive, _ = self.update_or_create(defaults=values, **kwargs)
         if gid_provider:
@@ -651,7 +647,7 @@ class ArchiveManager(models.Manager["Archive"]):
         return archive
 
     @staticmethod
-    def create_by_values_and_gid(values: DataDict, gid_provider: Optional[tuple[str, str]]) -> "Archive":
+    def create_by_values_and_gid(values: DataDict, gid_provider: tuple[str, str] | None) -> "Archive":
         archive = Archive(**values)
         archive.simple_save()
         if gid_provider:
@@ -957,19 +953,19 @@ class Gallery(models.Model):
             title_input.append(self.title_jpn)
         return title_input
 
-    def get_es_size(self) -> Optional[int]:
+    def get_es_size(self) -> int | None:
         return self.filesize
 
-    def get_es_image_count(self) -> Optional[int]:
+    def get_es_image_count(self) -> int | None:
         return self.filecount
 
-    def get_es_posted_date(self) -> typing.Optional[str]:
+    def get_es_posted_date(self) -> str | None:
         data = None
         if self.posted:
             data = self.posted.replace(tzinfo=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S%z")
         return data
 
-    def get_es_create_date(self) -> typing.Optional[str]:
+    def get_es_create_date(self) -> str | None:
         if self.create_date:
             return self.create_date.replace(tzinfo=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S%z")
         else:
@@ -993,13 +989,13 @@ class Gallery(models.Model):
             data += [c.scope for c in self.tags.all()]
         return data
 
-    def get_es_thumbnail(self) -> typing.Optional[str]:
+    def get_es_thumbnail(self) -> str | None:
         if self.thumbnail:
             return self.thumbnail.url
         else:
             return None
 
-    def get_es_source_thumbnail(self) -> typing.Optional[str]:
+    def get_es_source_thumbnail(self) -> str | None:
         if self.thumbnail_url:
             return self.thumbnail_url
         else:
@@ -1052,7 +1048,7 @@ class Gallery(models.Model):
     def tag_lists(self) -> list[tuple[str, list["Tag"]]]:
         return sort_tags(self.tags.all())
 
-    def get_available_thumbnail_plus_size(self) -> tuple[str, Optional[int], Optional[int]]:
+    def get_available_thumbnail_plus_size(self) -> tuple[str, int | None, int | None]:
         if self.thumbnail.name and self.thumbnail.url:
             return self.thumbnail.url, None, 196
         else:
@@ -1168,7 +1164,7 @@ class Gallery(models.Model):
                     )
         self.fetch_thumbnail()
 
-    def fetch_thumbnail(self, force_redownload: bool = False, force_provider: Optional[str] = None) -> bool:
+    def fetch_thumbnail(self, force_redownload: bool = False, force_provider: str | None = None) -> bool:
         if self.thumbnail_url and (not self.thumbnail or force_redownload):
             request_dict = {
                 "stream": True,
@@ -1295,7 +1291,7 @@ class Gallery(models.Model):
         self.save()
 
     def match_against_wanted_galleries(
-        self, wanted_filters: Optional["QuerySet[WantedGallery]"] = None, skip_already_found: bool = True
+        self, wanted_filters: "QuerySet[WantedGallery] | None" = None, skip_already_found: bool = True
     ) -> "list[WantedGallery]":
 
         found_wanted_galleries = []
@@ -1454,7 +1450,7 @@ class Gallery(models.Model):
         return found_wanted_galleries
 
 
-FetchTypes = typing.Union[str, float, int, datetime, timedelta, bool, None]
+type FetchTypes = str | float | int | datetime | timedelta | bool | None
 
 
 class GalleryProviderData(models.Model):
@@ -1834,31 +1830,31 @@ class Archive(models.Model):
             title_input.append(self.title_jpn)
         return title_input
 
-    def get_es_size(self) -> Optional[int]:
+    def get_es_size(self) -> int | None:
         return self.filesize
 
-    def get_es_category(self) -> Optional[str]:
+    def get_es_category(self) -> str | None:
         data = None
         if self.gallery:
             data = self.gallery.category
         return data
 
-    def get_es_image_count(self) -> Optional[int]:
+    def get_es_image_count(self) -> int | None:
         return self.filecount
 
-    def get_es_original_date(self) -> typing.Optional[str]:
+    def get_es_original_date(self) -> str | None:
         data = None
         if self.gallery and self.gallery.posted:
             data = self.gallery.posted.replace(tzinfo=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S%z")
         return data
 
-    def get_es_public_date(self) -> typing.Optional[str]:
+    def get_es_public_date(self) -> str | None:
         if self.public_date:
             return self.public_date.replace(tzinfo=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S%z")
         else:
             return None
 
-    def get_es_create_date(self) -> typing.Optional[str]:
+    def get_es_create_date(self) -> str | None:
         if self.create_date:
             return self.create_date.replace(tzinfo=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S%z")
         else:
@@ -1882,7 +1878,7 @@ class Archive(models.Model):
             data += [c.scope for c in self.tags.all()]
         return data
 
-    def get_es_thumbnail(self) -> typing.Optional[str]:
+    def get_es_thumbnail(self) -> str | None:
         if self.thumbnail:
             return self.thumbnail.url
         else:
@@ -2006,7 +2002,7 @@ class Archive(models.Model):
         if reason:
             self.reason = reason
         self.simple_save()
-        self.simple_save()  # TODO: Check why the first simple_save isn't adding to the index.
+        self.simple_save()
         if self.gallery:
             if reason:
                 self.gallery.reason = reason
@@ -2082,7 +2078,7 @@ class Archive(models.Model):
         else:
             return ""
 
-    def create_new_archive_ordered_by_sha1(self, sha1s: list[str]) -> "tuple[Optional[Archive], str]":
+    def create_new_archive_ordered_by_sha1(self, sha1s: list[str]) -> "tuple[Archive | None, str]":
         images = self.image_set.filter(sha1__isnull=False)
         if images.count() != self.filecount:
             return None, "Image count different from filecount"
@@ -2178,8 +2174,8 @@ class Archive(models.Model):
         return new_archive, ""
 
     def clone_archive_plus(
-        self, sha1s: Optional[list[str]] = None, image_tool: Optional["CloningImageToolSettings"] = None
-    ) -> "tuple[Optional[Archive], str]":
+        self, sha1s: list[str] | None = None, image_tool: "CloningImageToolSettings | None" = None
+    ) -> "tuple[Archive | None, str]":
 
         images = self.image_set.filter(sha1__isnull=False)
         if images.count() != self.filecount:
@@ -2358,8 +2354,8 @@ class Archive(models.Model):
         return new_archive, ""
 
     def split_archive(
-        self, split_data: list[tuple[int, int, Optional[str], bool]], split_from_nested: bool = False
-    ) -> "tuple[Optional[list[Archive]], str]":
+        self, split_data: list[tuple[int, int, str | None, bool]], split_from_nested: bool = False
+    ) -> "tuple[list[Archive] | None, str]":
 
         images = self.image_set.all()
         if images.count() != self.filecount:
@@ -2504,7 +2500,7 @@ class Archive(models.Model):
 
         return new_archives, ""
 
-    def get_available_thumbnail_plus_size(self) -> tuple[str, Optional[int], Optional[int]]:
+    def get_available_thumbnail_plus_size(self) -> tuple[str, int | None, int | None]:
         if self.thumbnail.name and self.thumbnail.url:
             return self.thumbnail.url, self.thumbnail_height, self.thumbnail_width
         elif self.gallery and self.gallery.thumbnail.name and self.gallery.thumbnail.url:
@@ -2759,8 +2755,6 @@ class Archive(models.Model):
         self.extracted = False
         self.simple_save()
 
-    # TODO: Replace every use of extract toggle for extract and reduce, to avoid race conditions.
-    # TODO: The ones left are used from JS and API.
     def extract_toggle(self, resized=True):
 
         if self.extracted:
@@ -2893,11 +2887,14 @@ class Archive(models.Model):
             im = PImage.open(full_img_name)
             im = img_to_thumbnail(im)
             im.save(pjoin(settings.MEDIA_ROOT, thumb_img_name), "JPEG")
-            image.thumbnail.name = thumb_img_name
+            im_size = im.size
+            im.close()
+            image.thumbnail = thumb_img_name
+            if im_size:
+                image.thumbnail_width, image.thumbnail_height = im_size
 
             image.extracted = True
             image.save()
-            im.close()
 
         my_zip.close()
         self.extracted = True
@@ -3210,6 +3207,13 @@ class Archive(models.Model):
 
         self.create_mark_if_parent_gallery()
 
+        if self.thumbnail and (not self.thumbnail_width or not self.thumbnail_height):
+            try:
+                if os.path.isfile(self.thumbnail.path):
+                    self.thumbnail = self.thumbnail.name
+            except Exception:
+                pass
+
         self.simple_save(force_update=True)
 
     def create_mark_if_parent_gallery(self):
@@ -3259,7 +3263,7 @@ class Archive(models.Model):
                     defaults={"value": hash_result},
                 )
 
-    def fill_other_file_data(self, other_file_datas: Optional[list[ArchiveGenericFile]]):
+    def fill_other_file_data(self, other_file_datas: list[ArchiveGenericFile] | None):
         self.archivefileentry_set.all().delete()
         if other_file_datas:
             for other_file_data in other_file_datas:
@@ -3279,8 +3283,11 @@ class Archive(models.Model):
         thumb_name = thumb_path_handler(self, "thumb2.jpg")
         os.makedirs(os.path.dirname(pjoin(settings.MEDIA_ROOT, thumb_name)), exist_ok=True)
         im.save(pjoin(settings.MEDIA_ROOT, thumb_name), "JPEG")
+        im_size = im.size
         im.close()
-        self.thumbnail.name = thumb_name
+        self.thumbnail = thumb_name
+        if im_size:
+            self.thumbnail_width, self.thumbnail_height = im_size
 
     def rename_zipped_tail(self, new_file_name: str) -> bool:
         if not self.zipped.name:
@@ -3364,7 +3371,7 @@ class Archive(models.Model):
 
                 ArchiveMatches.objects.create(archive=self, gallery=gallery, match_type="size", match_accuracy=1)
 
-    def create_marks_for_similar_archives(self, excluded_archives: Optional[list[int]] = None, use_recycled_archives: bool = False) -> None:
+    def create_marks_for_similar_archives(self, excluded_archives: list[int] | None = None, use_recycled_archives: bool = False) -> None:
         if self.crc32:
             if use_recycled_archives:
                 similar_crc32 = Archive.objects.filter(crc32=self.crc32).exclude(pk=self.pk)
@@ -3454,7 +3461,7 @@ class Archive(models.Model):
         self.create_phash_gallery_similarity_mark()
         self.create_wanted_image_similarity_mark()
 
-    def create_sha1_similarity_mark(self, excluded_archives: Optional[list[int]] = None, use_recycled_archives: bool = False) -> None:
+    def create_sha1_similarity_mark(self, excluded_archives: list[int] | None = None, use_recycled_archives: bool = False) -> None:
         images_from_archive = self.image_set.filter(sha1__isnull=False)
 
         if images_from_archive:
@@ -3532,7 +3539,7 @@ class Archive(models.Model):
             archive=self, mark_reason="images_sha1_similarity", mark_user__isnull=True
         ).delete()
 
-    def create_phash_similarity_mark(self, excluded_archives: Optional[list[int]] = None, use_recycled_archives: bool = False, match_similar_tags: bool = False) -> None:
+    def create_phash_similarity_mark(self, excluded_archives: list[int] | None = None, use_recycled_archives: bool = False, match_similar_tags: bool = False) -> None:
         images_from_archive = self.image_set.all()
 
         algorithm = "phash"
@@ -3751,7 +3758,7 @@ class Archive(models.Model):
             archive=self, mark_reason="wanted_images_found", mark_user__isnull=True
         ).delete()
 
-    def get_wanted_images_similarity_mark(self) -> tuple[int, list[tuple["WantedImage", int, bool, Optional[bytes]]]]:
+    def get_wanted_images_similarity_mark(self) -> tuple[int, list[tuple["WantedImage", int, bool, bytes | None]]]:
         per_wanted_data = []
 
         if image_processing.CAN_USE_IMAGE_MATCH and self.thumbnail:
@@ -3900,7 +3907,7 @@ class Archive(models.Model):
         super(Archive, self).save()
         return True
 
-    def get_image_data_from_position(self, position: int) -> Optional[bytes]:
+    def get_image_data_from_position(self, position: int) -> bytes | None:
         real_position = position - 1
         if real_position < 0:
             return None
@@ -4465,7 +4472,7 @@ class Image(models.Model):
 
         return image_dict
 
-    def fetch_image_data(self, use_original_image=False) -> Optional[bytes]:
+    def fetch_image_data(self, use_original_image=False) -> bytes | None:
         if self.extracted:
             if use_original_image:
                 with self.image.open() as fp:
@@ -4515,7 +4522,7 @@ class Image(models.Model):
         return self.image.url
 
     def set_attributes_from_image(
-        self, image_object: typing.IO[bytes], image_size: Optional[int] = None, image_name: Optional[str] = None
+        self, image_object: typing.IO[bytes], image_size: int | None = None, image_name: str | None = None
     ) -> None:
         try:
             im = PImage.open(image_object)
@@ -4527,7 +4534,6 @@ class Image(models.Model):
             self.image_size = image_size
             self.image_name = image_name
         except PImage.UnidentifiedImageError:
-            # TODO: Log errors
             pass
 
 
@@ -4718,8 +4724,11 @@ class Mention(models.Model):
         thumb_fn = pjoin(settings.MEDIA_ROOT, thumb_relative_path)
         os.makedirs(os.path.dirname(thumb_fn), exist_ok=True)
         im.save(thumb_fn, "JPEG")
-        self.thumbnail.name = thumb_relative_path
+        im_size = im.size
         im.close()
+        self.thumbnail = thumb_relative_path
+        if im_size:
+            self.thumbnail_width, self.thumbnail_height = im_size
 
         self.save()
 
@@ -5139,7 +5148,7 @@ class Category(models.Model):
 
 
 class AttributeQuerySet(models.QuerySet):
-    def fetch_value(self, name: str) -> typing.Optional[T]:
+    def fetch_value[T](self, name: str) -> T | None:
         attr = self.filter(name=name).first()
 
         if attr:
@@ -5152,7 +5161,7 @@ class AttributeManager(models.Manager["Attribute"]):
     def get_queryset(self) -> AttributeQuerySet:
         return AttributeQuerySet(self.model, using=self._db)
 
-    def fetch_value(self, name: str) -> Optional[typing.Union[str, float, int, datetime, timedelta, bool]]:
+    def fetch_value(self, name: str) -> FetchTypes:
         return self.get_queryset().fetch_value(name)
 
 
@@ -5283,51 +5292,130 @@ class MonitoredLink(models.Model):
     def __str__(self) -> str:
         return self.name
 
-    # Only works if the Link was already created when starting up.
-    def start_running(self):
-        for timed_link_monitor in settings.WORKERS.timed_link_monitors:
-            if timed_link_monitor.monitored_link.pk == self.pk:
-                timed_link_monitor.start_running(timer=self.frequency.total_seconds())
+    @property
+    def scheduler_name(self) -> str:
+        return f"link_monitor_{self.pk}"
 
-    # Only works if the Link was already created when starting up.
-    def force_run(self):
-        for timed_link_monitor in settings.WORKERS.timed_link_monitors:
-            if timed_link_monitor.monitored_link.pk == self.pk:
-                timed_link_monitor.force_run()
+    @property
+    def is_running(self) -> bool:
+        """Check whether this monitored link's scheduler is currently active."""
+        crawler_settings = getattr(settings, "CRAWLER_SETTINGS", None)
+        if getattr(crawler_settings, "is_worker_process", False):
+            workers = getattr(settings, "WORKERS", None)
+            if workers:
+                for lm in getattr(workers, "timed_link_monitors", []):
+                    if lm.monitored_link.pk == self.pk:
+                        return lm.is_running_locally()
+        from workers.models import SchedulerState
+        return SchedulerState.is_scheduler_running(self.scheduler_name)
 
-    # Only works if the Link was already created when starting up.
-    def stop_running(self):
-        for timed_link_monitor in settings.WORKERS.timed_link_monitors:
-            if timed_link_monitor.monitored_link.pk == self.pk:
-                timed_link_monitor.stop_running()
+    def get_scheduler_state(self) -> typing.Any | None:
+        from workers.models import SchedulerState
+        return SchedulerState.objects.filter(name=self.scheduler_name).first()
+
+    def start_running(self) -> None:
+        """Start running this monitored link. In webapp, dispatches command to worker process."""
+        crawler_settings = getattr(settings, "CRAWLER_SETTINGS", None)
+        if getattr(crawler_settings, "is_worker_process", False):
+            workers = getattr(settings, "WORKERS", None)
+            if workers:
+                for lm in getattr(workers, "timed_link_monitors", []):
+                    if lm.monitored_link.pk == self.pk:
+                        lm.start_running(timer=self.frequency.total_seconds(), force_local=True)
+                        return
+        from workers.models import SchedulerState
+        SchedulerState.request_command(self.scheduler_name, "start", str(self.frequency.total_seconds()))
+
+    def force_run(self) -> None:
+        """Force an immediate execution of this monitored link."""
+        crawler_settings = getattr(settings, "CRAWLER_SETTINGS", None)
+        if getattr(crawler_settings, "is_worker_process", False):
+            workers = getattr(settings, "WORKERS", None)
+            if workers:
+                for lm in getattr(workers, "timed_link_monitors", []):
+                    if lm.monitored_link.pk == self.pk:
+                        lm.force_run(force_local=True)
+                        return
+        from workers.models import SchedulerState
+        SchedulerState.request_command(self.scheduler_name, "force_run")
+
+    def stop_running(self) -> None:
+        """Stop running this monitored link."""
+        crawler_settings = getattr(settings, "CRAWLER_SETTINGS", None)
+        if getattr(crawler_settings, "is_worker_process", False):
+            workers = getattr(settings, "WORKERS", None)
+            if workers:
+                for lm in getattr(workers, "timed_link_monitors", []):
+                    if lm.monitored_link.pk == self.pk:
+                        lm.stop_running(force_local=True)
+                        return
+        from workers.models import SchedulerState
+        SchedulerState.request_command(self.scheduler_name, "stop")
 
     def save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
-        super(MonitoredLink, self).save(*args, **kwargs)
-        is_present = False
-        for timed_link_monitor in settings.WORKERS.timed_link_monitors:
-            if timed_link_monitor.monitored_link.pk == self.pk:
-                is_present = True
-                timed_link_monitor.monitored_link = self
-                timed_link_monitor.timer = self.frequency.total_seconds()
-                timed_link_monitor.link_name = self.name
-                # Stop and start to refresh the wait method.
-                timed_link_monitor.stop_running()
-                # TODO: Fix this hacky wait.
-                time.sleep(1)
-                timed_link_monitor.start_running()
+        is_new = self.pk is None
+        super().save(*args, **kwargs)
+        from workers.models import SchedulerState
 
-        if settings.CRAWLER_SETTINGS.monitored_links.enable and not is_present:
-            settings.WORKERS.add_new_link_monitor(settings.CRAWLER_SETTINGS, self)
-
-    # We assume there won't be race conditions by the way this method is called.
-    def delete(self, *args: typing.Any, **kwargs: typing.Any) -> tuple[int, dict[str, int]]:
-        for timed_link_monitor in settings.WORKERS.timed_link_monitors:
-            if timed_link_monitor.monitored_link.pk == self.pk:
-                timed_link_monitor.stop_running()
-        settings.WORKERS.timed_link_monitors = list(
-            filter(lambda x: x.monitored_link.pk != self.pk, settings.WORKERS.timed_link_monitors)
+        SchedulerState.objects.update_or_create(
+            name=self.scheduler_name,
+            defaults={
+                "display_name": f"MonitoredLink: {self.name}",
+                "schedule_type": "scheduler",
+                "cycle_timer": self.frequency.total_seconds(),
+            },
         )
-        deleted = super(MonitoredLink, self).delete(*args, **kwargs)
+
+        crawler_settings = getattr(settings, "CRAWLER_SETTINGS", None)
+        is_worker = bool(getattr(crawler_settings, "is_worker_process", False))
+
+        if is_worker:
+            workers = getattr(settings, "WORKERS", None)
+            if workers:
+                is_present = False
+                for timed_link_monitor in workers.timed_link_monitors:
+                    if timed_link_monitor.monitored_link.pk == self.pk:
+                        is_present = True
+                        timed_link_monitor.monitored_link = self
+                        timed_link_monitor.timer = self.frequency.total_seconds()
+                        timed_link_monitor.original_timer = self.frequency
+                        timed_link_monitor.link_name = self.name
+                        if not self.enabled:
+                            timed_link_monitor.stop_running(force_local=True)
+                        elif timed_link_monitor.is_running_locally():
+                            timed_link_monitor.stop_running(force_local=True)
+                            timed_link_monitor.start_running(force_local=True)
+                        break
+                if not is_present and getattr(getattr(crawler_settings, "monitored_links", None), "enable", False):
+                    workers.add_new_link_monitor(crawler_settings, self, start_thread=self.auto_start and self.enabled)
+        else:
+            if self.enabled:
+                if is_new and self.auto_start:
+                    SchedulerState.request_command(self.scheduler_name, "start", str(self.frequency.total_seconds()))
+                else:
+                    SchedulerState.request_command(self.scheduler_name, "reload", str(self.frequency.total_seconds()))
+            else:
+                SchedulerState.request_command(self.scheduler_name, "stop")
+
+    def delete(self, *args: typing.Any, **kwargs: typing.Any) -> tuple[int, dict[str, int]]:
+        sched_name = self.scheduler_name
+        crawler_settings = getattr(settings, "CRAWLER_SETTINGS", None)
+        is_worker = bool(getattr(crawler_settings, "is_worker_process", False))
+
+        if is_worker:
+            workers = getattr(settings, "WORKERS", None)
+            if workers:
+                for timed_link_monitor in list(workers.timed_link_monitors):
+                    if timed_link_monitor.monitored_link.pk == self.pk:
+                        timed_link_monitor.stop_running(force_local=True)
+                        workers.timed_link_monitors.remove(timed_link_monitor)
+            from workers.models import SchedulerState
+            SchedulerState.objects.filter(name=sched_name).delete()
+        else:
+            from workers.models import SchedulerState
+            SchedulerState.request_command(sched_name, "delete")
+
+        deleted = super().delete(*args, **kwargs)
         return deleted
 
 
@@ -5430,8 +5518,11 @@ class WantedImage(models.Model):
             thumb_fn = pjoin(settings.MEDIA_ROOT, thumb_img_name)
             os.makedirs(os.path.dirname(thumb_fn), exist_ok=True)
             im.save(thumb_fn, "JPEG")
-            self.thumbnail.name = thumb_img_name
+            im_size = im.size
             im.close()
+            self.thumbnail = thumb_img_name
+            if im_size:
+                self.thumbnail_width, self.thumbnail_height = im_size
             super(WantedImage, self).save()
 
     def simple_save(self, *args: typing.Any, **kwargs: typing.Any) -> None:

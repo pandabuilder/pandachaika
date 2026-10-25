@@ -1,6 +1,5 @@
 import typing
 from time import sleep
-from typing import Optional
 
 from core.base import setup
 from core.base.setup_utilities import check_for_running_threads
@@ -20,14 +19,14 @@ if typing.TYPE_CHECKING:
 
 
 class WorkerContext:
-    crawler_settings: Optional["setup.Settings"] = None
-    web_queue: Optional["WebQueue"] = None
-    archive_worker: Optional["ArchiveWorker"] = None
-    folder_crawler: Optional["FolderCrawlerThread"] = None
-    timed_auto_wanted: Optional["TimedAutoWanted"] = None
-    timed_downloader: Optional["TimedPostDownloader"] = None
-    download_progress_checker: Optional["DownloadProgressChecker"] = None
-    archive_download_queue: Optional["ArchiveDownloadQueue"] = None
+    crawler_settings: "setup.Settings | None" = None
+    web_queue: "WebQueue | None" = None
+    archive_worker: "ArchiveWorker | None" = None
+    folder_crawler: "FolderCrawlerThread | None" = None
+    timed_auto_wanted: "TimedAutoWanted | None" = None
+    timed_downloader: "TimedPostDownloader | None" = None
+    download_progress_checker: "DownloadProgressChecker | None" = None
+    archive_download_queue: "ArchiveDownloadQueue | None" = None
     timed_auto_updaters: list["ProviderTimedAutoUpdater"] = []
     timed_link_monitors: list["LinkMonitor"] = []
 
@@ -85,10 +84,20 @@ class WorkerContext:
 
     def add_new_link_monitor(
         self, crawler_settings: "setup.Settings", monitored_link: "MonitoredLink", start_thread: bool = False
-    ):
+    ) -> "LinkMonitor":
 
         from workers.models import SchedulerState
         from core.workers.link_monitor import LinkMonitor
+
+        for existing in self.timed_link_monitors:
+            if existing.monitored_link.pk == monitored_link.pk:
+                existing.monitored_link = monitored_link
+                existing.timer = monitored_link.frequency.total_seconds()
+                existing.original_timer = monitored_link.frequency
+                existing.link_name = monitored_link.name
+                if start_thread and not existing.is_running_locally() and monitored_link.enabled and monitored_link.auto_start:
+                    existing.start_running(timer=existing.timer, force_local=True)
+                return existing
 
         setup.GlobalInfo.worker_threads.append(
             (
@@ -112,8 +121,15 @@ class WorkerContext:
         )
         link_monitor.last_run = obj.last_run
         link_monitor.pk = obj.name
-        if start_thread and link_monitor.monitored_link.auto_start:
-            link_monitor.start_running(timer=link_monitor.original_timer)
+        if start_thread and link_monitor.monitored_link.auto_start and link_monitor.monitored_link.enabled:
+            link_monitor.start_running(timer=link_monitor.original_timer, force_local=True)
+        return link_monitor
+
+    def remove_link_monitor(self, link_pk: int) -> None:
+        for lm in list(self.timed_link_monitors):
+            if lm.monitored_link.pk == link_pk:
+                lm.stop_running(force_local=True)
+                self.timed_link_monitors.remove(lm)
 
     def start_workers(self, crawler_settings: "setup.Settings", start_threads: bool = False) -> None:
 
@@ -214,7 +230,7 @@ class WorkerContext:
             )
             link_monitor.last_run = obj.last_run
             link_monitor.pk = obj.name
-            if start_threads and link_monitor.monitored_link.auto_start:
+            if start_threads and link_monitor.monitored_link.auto_start and link_monitor.monitored_link.enabled:
                 link_monitor.start_running(timer=link_monitor.original_timer)
 
         self.download_progress_checker = DownloadProgressChecker(crawler_settings, web_queue=self.web_queue, timer=10)
@@ -266,7 +282,6 @@ class WorkerContext:
         for link_monitor in self.timed_link_monitors:
             link_monitor.stop_running(force_local=True)
 
-    # TODO: improve this logic
     def stop_workers_and_wait(self, force_local: bool = False) -> None:
         if not (force_local or self.is_worker_process):
             return

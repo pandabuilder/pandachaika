@@ -26,7 +26,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
     response = {}
     if not request.user.is_staff:
         response["error"] = "Not allowed"
-        return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status_code=401)
+        return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status=401)
     if tool == "transfer_missing_downloads":
         client.enqueue(args=["-tmd"], task_type="web_crawler", override_options=crawler_settings, user=request.user)
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
@@ -45,7 +45,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
                     response["error"] = "Invalid date format."
             except ValueError:
                 response["error"] = "Invalid date."
-            return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status_code=401)
+            return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status=401)
     elif tool == "update_missing_thumbnails":
         p = request.GET
         if p and "limit_number" in p:
@@ -62,7 +62,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
 
             except ValueError:
                 response["error"] = "Invalid limit."
-            return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status_code=401)
+            return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status=401)
     elif tool == "generate_missing_thumbs":
         archives = Archive.objects.filter(thumbnail="")
         for archive in archives:
@@ -78,7 +78,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
     elif tool == "recalc_all_file_info":
         if thread_exists_in_db("fileinfo_worker"):
             response["error"] = "File info worker is already running."
-            return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status_code=401)
+            return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status=401)
 
         logger.info("Recalculating file info for all archives")
         if crawler_settings.workers.archive_worker:
@@ -117,7 +117,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
     elif tool == "generate_possible_matches_internally":
         if thread_exists_in_db("match_unmatched_worker"):
             response["error"] = "Matching worker is already running."
-            return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status_code=401)
+            return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status=401)
         provider = request.GET.get("provider", "")
         try:
             cutoff = float(request.GET.get("cutoff", "0.4"))
@@ -156,7 +156,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
     elif tool == "search_wanted_galleries_provider_titles":
         if thread_exists_in_db("web_search_worker"):
             response["error"] = "Web search worker is already running."
-            return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status_code=401)
+            return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status=401)
         results = WantedGallery.objects.eligible_to_search()
 
         if not results:
@@ -178,7 +178,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
     elif tool == "wanted_galleries_possible_matches":
         if thread_exists_in_db("wanted_local_search_worker"):
             response["error"] = "Wanted local matching worker is already running."
-            return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status_code=401)
+            return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status=401)
 
         non_match_wanted = WantedGallery.objects.eligible_to_search()
 
@@ -212,20 +212,20 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
             os.kill(os.getpid(), signal.SIGUSR2)
         else:
             response["error"] = "This OS does not support signal SIGUSR2"
-            return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status_code=401)
+            return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status=401)
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
     elif tool == "settings":
         if request.method == "POST":
             if not request.body:
                 response["error"] = "Empty body"
                 return HttpResponse(
-                    json.dumps(response), content_type="application/json; charset=utf-8", status_code=401
+                    json.dumps(response), content_type="application/json; charset=utf-8", status=401
                 )
             data = json.loads(request.body.decode("utf-8"))
             if "data" not in data:
                 response["error"] = "Missing data"
                 return HttpResponse(
-                    json.dumps(response), content_type="application/json; charset=utf-8", status_code=401
+                    json.dumps(response), content_type="application/json; charset=utf-8", status=401
                 )
             settings_text = data["data"]
             if os.path.isfile(os.path.join(crawler_settings.default_dir, "settings.yaml")):

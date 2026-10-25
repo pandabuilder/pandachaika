@@ -1,6 +1,6 @@
 import re
 from collections.abc import Iterable
-from typing import Any, Optional
+from typing import Any
 
 import typing
 from dal import autocomplete
@@ -256,29 +256,29 @@ class ArchiveManageEntryFieldAutocomplete(ListView):
 
         return HttpResponse(self.autocomplete_html_format % html)
 
-    def choice_html(self, choice: Optional[str]) -> str:
+    def choice_html(self, choice: str | None) -> str:
         return self.choice_html_format % (self.get_result_value(choice), self.get_result_label(choice))
 
     @staticmethod
-    def get_result_value(result: Optional[str]) -> str:
+    def get_result_value(result: str | None) -> str:
         if result:
             return result
         else:
             return ""
 
     @staticmethod
-    def get_result_label(result: Optional[str]) -> str:
+    def get_result_label(result: str | None) -> str:
         if result:
             return result
         else:
             return ""
 
-    def choices_for_request(self) -> "Iterable[Optional[str]]":
+    def choices_for_request(self) -> "Iterable[str | None]":
         raise NotImplementedError
 
 
 class ArchiveManageEntryMarkReasonAutocomplete(ArchiveManageEntryFieldAutocomplete):
-    def choices_for_request(self) -> "Iterable[Optional[str]]":
+    def choices_for_request(self) -> "Iterable[str | None]":
 
         q = self.request.GET.get("q", "")
 
@@ -313,24 +313,24 @@ class ArchiveFieldAutocomplete(ListView):
 
         return HttpResponse(self.autocomplete_html_format % html)
 
-    def choice_html(self, choice: Optional[str]) -> str:
+    def choice_html(self, choice: str | None) -> str:
         return self.choice_html_format % (self.get_result_value(choice), self.get_result_label(choice))
 
     @staticmethod
-    def get_result_value(result: Optional[str]) -> str:
+    def get_result_value(result: str | None) -> str:
         if result:
             return result
         else:
             return ""
 
     @staticmethod
-    def get_result_label(result: Optional[str]) -> str:
+    def get_result_label(result: str | None) -> str:
         if result:
             return result
         else:
             return ""
 
-    def choices_for_request(self) -> "ValuesQuerySet[Archive, Optional[str]]":
+    def choices_for_request(self) -> "ValuesQuerySet[Archive, str | None]":
         raise NotImplementedError
 
 
@@ -354,24 +354,24 @@ class GalleryFieldAutocomplete(ListView):
 
         return HttpResponse(self.autocomplete_html_format % html)
 
-    def choice_html(self, choice: Optional[str]) -> str:
+    def choice_html(self, choice: str | None) -> str:
         return self.choice_html_format % (self.get_result_value(choice), self.get_result_label(choice))
 
     @staticmethod
-    def get_result_value(result: Optional[str]) -> str:
+    def get_result_value(result: str | None) -> str:
         if result:
             return result
         else:
             return ""
 
     @staticmethod
-    def get_result_label(result: Optional[str]) -> str:
+    def get_result_label(result: str | None) -> str:
         if result:
             return result
         else:
             return ""
 
-    def choices_for_request(self) -> "ValuesQuerySet[Gallery, Optional[str]]":
+    def choices_for_request(self) -> "ValuesQuerySet[Gallery, str | None]":
         raise NotImplementedError
 
 
@@ -403,7 +403,7 @@ class GalleryFieldJSONAutocompleteMixin:
 
 class SourceAutocomplete(ArchiveFieldAutocomplete):
 
-    def choices_for_request(self) -> "ValuesQuerySet[Archive, Optional[str]]":
+    def choices_for_request(self) -> "ValuesQuerySet[Archive, str | None]":
 
         q = self.request.GET.get("q", "")
 
@@ -427,7 +427,7 @@ class SourceAutocomplete(ArchiveFieldAutocomplete):
 
 class ProviderAutocomplete(ArchiveFieldAutocomplete):
 
-    def choices_for_request(self) -> "ValuesQuerySet[Archive, Optional[str]]":
+    def choices_for_request(self) -> "ValuesQuerySet[Archive, str | None]":
 
         q = self.request.GET.get("q", "")
 
@@ -451,7 +451,7 @@ class ProviderAutocomplete(ArchiveFieldAutocomplete):
 
 class ReasonAutocomplete(ArchiveFieldAutocomplete):
 
-    def choices_for_request(self) -> "ValuesQuerySet[Archive, Optional[str]]":
+    def choices_for_request(self) -> "ValuesQuerySet[Archive, str | None]":
 
         q = self.request.GET.get("q", "")
 
@@ -475,7 +475,7 @@ class ReasonAutocomplete(ArchiveFieldAutocomplete):
 
 class UploaderAutocomplete(ArchiveFieldAutocomplete):
 
-    def choices_for_request(self) -> "ValuesQuerySet[Archive, Optional[str]]":
+    def choices_for_request(self) -> "ValuesQuerySet[Archive, str | None]":
 
         q = self.request.GET.get("q", "")
 
@@ -499,7 +499,7 @@ class UploaderAutocomplete(ArchiveFieldAutocomplete):
 
 class CategoryAutocomplete(ArchiveFieldAutocomplete):
 
-    def choices_for_request(self) -> "ValuesQuerySet[Archive, Optional[str]]":
+    def choices_for_request(self) -> "ValuesQuerySet[Archive, str | None]":
 
         q = self.request.GET.get("q", "")
 
@@ -524,7 +524,7 @@ class CategoryAutocomplete(ArchiveFieldAutocomplete):
 # Gallery-based autocompletes
 class GalleryProviderAutocomplete(GalleryFieldAutocomplete):
 
-    def choices_for_request(self) -> "ValuesQuerySet[Gallery, Optional[str]]":
+    def choices_for_request(self) -> "ValuesQuerySet[Gallery, str | None]":
 
         q = self.request.GET.get("q", "")
 
@@ -548,7 +548,7 @@ class GalleryProviderAutocomplete(GalleryFieldAutocomplete):
 
 class GalleryCategoryAutocomplete(GalleryFieldAutocomplete):
 
-    def choices_for_request(self) -> "ValuesQuerySet[Gallery, Optional[str]]":
+    def choices_for_request(self) -> "ValuesQuerySet[Gallery, str | None]":
 
         q = self.request.GET.get("q", "")
 
@@ -572,7 +572,7 @@ class GalleryCategoryAutocomplete(GalleryFieldAutocomplete):
 
 class GalleryUploaderAutocomplete(GalleryFieldAutocomplete):
 
-    def choices_for_request(self) -> "ValuesQuerySet[Gallery, Optional[str]]":
+    def choices_for_request(self) -> "ValuesQuerySet[Gallery, str | None]":
 
         q = self.request.GET.get("q", "")
 
@@ -596,7 +596,7 @@ class GalleryUploaderAutocomplete(GalleryFieldAutocomplete):
 
 class GalleryReasonAutocomplete(GalleryFieldAutocomplete):
 
-    def choices_for_request(self) -> "ValuesQuerySet[Gallery, Optional[str]]":
+    def choices_for_request(self) -> "ValuesQuerySet[Gallery, str | None]":
 
         q = self.request.GET.get("q", "")
 

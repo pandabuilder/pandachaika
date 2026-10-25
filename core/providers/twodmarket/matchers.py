@@ -1,7 +1,6 @@
 import logging
 import os
 import re
-from typing import Optional
 from urllib.parse import urljoin
 
 import bs4
@@ -39,7 +38,7 @@ class TitleMatcher(Matcher):
     def search_method(self, title_to_search: str) -> bool:
         return self.compare_by_title(title_to_search)
 
-    def format_match_values(self) -> Optional[DataDict]:
+    def format_match_values(self) -> DataDict | None:
 
         if not self.match_values:
             return None

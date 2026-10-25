@@ -1,0 +1,123 @@
+{% extends "viewer/base.html" %}
+{% block title %}{{ title }} | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+{% load static %}
+
+{% block content %}
+    {% if messages %}
+        {% for message in messages %}
+        <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+        {% endfor %}
+    {% endif %}
+
+    <div class="container py-3" style="max-width: 800px;">
+        <div class="card shadow-sm">
+            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                <h4 class="mb-0">{{ title }}</h4>
+                <a href="{% url 'viewer:monitored-links' %}" class="btn btn-outline-light btn-sm">
+                    <i class="fas fa-arrow-left"></i> Back to Monitored Links
+                </a>
+            </div>
+            <div class="card-body">
+                <form action="" method="POST">
+                    {% csrf_token %}
+                    {% if edit_form.non_field_errors %}
+                        <div class="alert alert-danger" role="alert">
+                            {{ edit_form.non_field_errors }}
+                        </div>
+                    {% endif %}
+
+                    <div class="mb-3">
+                        <label class="form-label" for="id_name"><strong>Name</strong></label>
+                        {{ edit_form.name }}
+                        {% if edit_form.name.errors %}<div class="text-danger small">{{ edit_form.name.errors }}</div>{% endif %}
+                        <div class="form-text text-muted">{{ edit_form.name.help_text }}</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label" for="id_url"><strong>URL</strong></label>
+                        {{ edit_form.url }}
+                        {% if edit_form.url.errors %}<div class="text-danger small">{{ edit_form.url.errors }}</div>{% endif %}
+                        <div class="form-text text-muted">{{ edit_form.url.help_text }}</div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label" for="id_provider"><strong>Provider</strong></label>
+                            {{ edit_form.provider }}
+                            {% if edit_form.provider.errors %}<div class="text-danger small">{{ edit_form.provider.errors }}</div>{% endif %}
+                            <div class="form-text text-muted">{{ edit_form.provider.help_text }}</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="id_frequency"><strong>Frequency</strong> (Duration format)</label>
+                            {{ edit_form.frequency }}
+                            {% if edit_form.frequency.errors %}<div class="text-danger small">{{ edit_form.frequency.errors }}</div>{% endif %}
+                            <div class="form-text text-muted">{{ edit_form.frequency.help_text }}</div>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label" for="id_proxy"><strong>Proxy</strong></label>
+                            {{ edit_form.proxy }}
+                            {% if edit_form.proxy.errors %}<div class="text-danger small">{{ edit_form.proxy.errors }}</div>{% endif %}
+                            <div class="form-text text-muted">{{ edit_form.proxy.help_text }}</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="id_stop_page"><strong>Stop page</strong></label>
+                            {{ edit_form.stop_page }}
+                            {% if edit_form.stop_page.errors %}<div class="text-danger small">{{ edit_form.stop_page.errors }}</div>{% endif %}
+                            <div class="form-text text-muted">{{ edit_form.stop_page.help_text }}</div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label" for="id_description"><strong>Description</strong></label>
+                        {{ edit_form.description }}
+                        {% if edit_form.description.errors %}<div class="text-danger small">{{ edit_form.description.errors }}</div>{% endif %}
+                        <div class="form-text text-muted">{{ edit_form.description.help_text }}</div>
+                    </div>
+
+                    <div class="mb-3 p-3 bg-light rounded border">
+                        <div class="form-check mb-2">
+                            {{ edit_form.enabled }}
+                            <label class="form-check-label" for="id_enabled"><strong>Enabled</strong></label>
+                            <div class="form-text text-muted">{{ edit_form.enabled.help_text }}</div>
+                        </div>
+                        <div class="form-check mb-2">
+                            {{ edit_form.auto_start }}
+                            <label class="form-check-label" for="id_auto_start"><strong>Auto-start on worker boot</strong></label>
+                            <div class="form-text text-muted">{{ edit_form.auto_start.help_text }}</div>
+                        </div>
+                        <div class="form-check">
+                            {{ edit_form.use_limited_wanted_galleries }}
+                            <label class="form-check-label" for="id_use_limited_wanted_galleries"><strong>Restrict to specific Wanted Galleries</strong></label>
+                            <div class="form-text text-muted">{{ edit_form.use_limited_wanted_galleries.help_text }}</div>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label" for="id_limited_wanted_galleries"><strong>Limited Wanted Galleries</strong></label>
+                        {{ edit_form.limited_wanted_galleries }}
+                        {% if edit_form.limited_wanted_galleries.errors %}<div class="text-danger small">{{ edit_form.limited_wanted_galleries.errors }}</div>{% endif %}
+                        <div class="form-text text-muted">{{ edit_form.limited_wanted_galleries.help_text }}</div>
+                    </div>
+
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <button type="submit" class="btn btn-primary px-4">
+                                <i class="fas fa-save"></i> Save Monitored Link
+                            </button>
+                            <a href="{% url 'viewer:monitored-links' %}" class="btn btn-light ms-2">Cancel</a>
+                        </div>
+                        {% if not is_create and link %}
+                            <a href="{% url 'viewer:col-delete-monitored-link' link.pk %}" class="btn btn-outline-danger">
+                                <i class="fas fa-trash"></i> Delete
+                            </a>
+                        {% endif %}
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+{% endblock %}

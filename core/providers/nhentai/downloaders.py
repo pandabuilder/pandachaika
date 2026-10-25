@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import urljoin
 
 from core.base.types import DataDict
@@ -43,7 +43,7 @@ class TorrentDownloader(BaseTorrentDownloader):
         logger.info("Adding torrent to client. Link: {}".format(torrent_link))
         self.connect_and_download(client, torrent_link)
 
-    def update_archive_db(self, default_values: DataDict) -> Optional["Archive"]:
+    def update_archive_db(self, default_values: DataDict) -> Archive | None:
 
         if not self.gallery:
             return None

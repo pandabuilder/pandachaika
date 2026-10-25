@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class ArchiveWorker(object):
     """Worker for recalculating file info and generating thumbnails for archives."""
 
-    def __init__(self, settings: typing.Union[int, "Settings", None] = None, worker_number: int = 4) -> None:
+    def __init__(self, settings: "int | Settings | None" = None, worker_number: int = 4) -> None:
         if isinstance(settings, int):
             self.worker_number = settings + 1
             self.settings = None

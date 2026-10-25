@@ -6,7 +6,7 @@ import os
 import typing
 from collections import defaultdict
 from collections.abc import Callable
-from typing import Union, Optional, NoReturn, Any
+from typing import NoReturn, Any
 
 import requests
 from django.db.models import QuerySet, Q
@@ -37,7 +37,7 @@ class WebCrawler(object):
         self.settings = settings
         self.parse_error = False
 
-    def get_args(self, arg_line: list[str]) -> Union[argparse.Namespace, ArgumentParserError]:
+    def get_args(self, arg_line: list[str]) -> argparse.Namespace | ArgumentParserError:
         parser = YieldingArgumentParser(prog="PandaBackupLinks")
 
         parser.add_argument(
@@ -230,9 +230,19 @@ class WebCrawler(object):
         parser.add_argument(
             "-qad",
             "--queue-archive-downloads",
+            dest="queue_archive_downloads",
             required=False,
             action="store_true",
+            default=None,
             help="Queue archive HTTP downloads to the background download queue instead of downloading inline.",
+        )
+        parser.add_argument(
+            "-nqad",
+            "--no-queue-archive-downloads",
+            dest="queue_archive_downloads",
+            required=False,
+            action="store_false",
+            help="Download archives synchronously inline instead of queueing to the background queue.",
         )
 
         try:
@@ -252,13 +262,13 @@ class WebCrawler(object):
     def start_crawling(
         self,
         arg_line: list[str],
-        override_options: "Optional[Settings]" = None,
-        archive_callback: "Optional[Callable[[Optional[Archive], Optional[str], str], None]]" = None,
-        gallery_callback: "Optional[Callable[[Optional[Gallery], Optional[str], str], None]]" = None,
+        override_options: "Settings | None" = None,
+        archive_callback: "Callable[[Archive | None, str | None, str], None] | None" = None,
+        gallery_callback: "Callable[[Gallery | None, str | None, str], None] | None" = None,
         use_argparser: bool = True,
         user: Any = None,
-        reason: Optional[str] = None,
-        event_action: Optional[str] = None,
+        reason: str | None = None,
+        event_action: str | None = None,
     ):
 
         if use_argparser:
@@ -297,12 +307,12 @@ class WebCrawler(object):
     def start_crawling_parse_args(
         self,
         arg_line: list[str],
-        override_options: "Optional[Settings]" = None,
-        archive_callback: "Optional[Callable[[Optional[Archive], Optional[str], str], None]]" = None,
-        gallery_callback: "Optional[Callable[[Optional[Gallery], Optional[str], str], None]]" = None,
+        override_options: "Settings | None" = None,
+        archive_callback: "Callable[[Archive | None, str | None, str], None] | None" = None,
+        gallery_callback: "Callable[[Gallery | None, str | None, str], None] | None" = None,
         user: Any = None,
-        reason: Optional[str] = None,
-        event_action: Optional[str] = None,
+        reason: str | None = None,
+        event_action: str | None = None,
     ):
 
         args = self.get_args(arg_line)
@@ -326,8 +336,8 @@ class WebCrawler(object):
         if args.wait_timer:
             current_settings.wait_timer = args.wait_timer
 
-        if getattr(args, "queue_archive_downloads", False):
-            current_settings.queue_archive_downloads = True
+        if getattr(args, "queue_archive_downloads", None) is not None:
+            current_settings.queue_archive_downloads = bool(args.queue_archive_downloads)
 
         if args.retry_failed:
             current_settings.retry_failed = True
@@ -385,7 +395,7 @@ class WebCrawler(object):
         else:
             current_settings.link_newer = None
 
-        preselected_wanted_matches: Optional[dict[str, list["WantedGallery"]]] = None
+        preselected_wanted_matches: dict[str, list["WantedGallery"]] | None = None
 
         if args.preselect_wanted_match:
             logger.info("Note: Preselected WantedGallery matches were provided.")
@@ -421,7 +431,7 @@ class WebCrawler(object):
         to_use_urls = set(args.url)
 
         if args.update_mode or current_settings.update_metadata_mode:
-            wanted_filters: Optional[QuerySet] = None
+            wanted_filters: QuerySet | None = None
             current_settings.update_metadata_mode = True
         elif args.no_wanted_check:
             wanted_filters = None
@@ -480,12 +490,12 @@ class WebCrawler(object):
     def start_crawling_no_argparser(
         self,
         arg_line: list[str],
-        override_options: "Optional[Settings]" = None,
-        archive_callback: "Optional[Callable[[Optional[Archive], Optional[str], str], None]]" = None,
-        gallery_callback: "Optional[Callable[[Optional[Gallery], Optional[str], str], None]]" = None,
+        override_options: "Settings | None" = None,
+        archive_callback: "Callable[[Archive | None, str | None, str], None] | None" = None,
+        gallery_callback: "Callable[[Gallery | None, str | None, str], None] | None" = None,
         user: Any = None,
-        reason: Optional[str] = None,
-        event_action: Optional[str] = None,
+        reason: str | None = None,
+        event_action: str | None = None,
     ):
 
         if override_options:
@@ -516,7 +526,7 @@ class WebCrawler(object):
         to_use_urls = set(arg_line)
 
         if current_settings.update_metadata_mode:
-            wanted_filters: Optional[QuerySet] = None
+            wanted_filters: QuerySet | None = None
             current_settings.update_metadata_mode = True
         else:
             wanted_filters = WantedGallery.objects.eligible_to_search()

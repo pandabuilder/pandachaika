@@ -1,6 +1,5 @@
 import logging
 import os
-from typing import Optional
 
 from core.base.matchers import Matcher
 from core.base.types import GalleryData, DataDict
@@ -43,7 +42,7 @@ class TitleMatcher(Matcher):
     def search_method(self, title_to_search: str) -> bool:
         return self.search_using_xml_api(title_to_search)
 
-    def format_match_values(self) -> Optional[DataDict]:
+    def format_match_values(self) -> DataDict | None:
 
         if not self.match_values:
             return None

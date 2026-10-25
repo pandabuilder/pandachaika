@@ -6,7 +6,7 @@ from functools import reduce
 from random import randint
 
 import operator
-from typing import Any, Optional, Union
+from typing import Any
 
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
@@ -18,6 +18,7 @@ from django.urls import reverse
 from django.db.models import Q, Avg, Max, Min, Sum, Count, QuerySet, F, Prefetch
 from django.http import Http404, BadHeaderError
 from django.http import HttpResponseRedirect, HttpResponse
+from django.templatetags.static import static
 from django.http.request import QueryDict
 from django.shortcuts import redirect, render
 from django.conf import settings
@@ -52,7 +53,7 @@ from viewer.models import (
     GalleryProviderData, GalleryMatchGroup,
 )
 from viewer.utils.functions import send_mass_html_mail, gallery_search_results_to_json, archive_search_result_to_json
-from viewer.utils.general import valid_sha1_string, clean_up_referer
+from viewer.utils.general import valid_sha1_string, clean_up_referer, should_use_refined_views
 from viewer.utils.tags import sort_tags
 from viewer.utils.types import AuthenticatedHttpRequest
 
@@ -344,7 +345,7 @@ def image_url(request: HttpRequest, pk: int) -> HttpResponse:
         return HttpResponseRedirect(image.image.url)
 
 
-def process_gallery_page(request: HttpRequest, gallery: Gallery, tool: Optional[str] = None) -> HttpResponse:
+def process_gallery_page(request: HttpRequest, gallery: Gallery, tool: str | None = None) -> HttpResponse:
 
     if "HTTP_REFERER" in request.META:
         response = HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
@@ -478,10 +479,15 @@ def process_gallery_page(request: HttpRequest, gallery: Gallery, tool: Optional[
         }
     )
 
-    return render(request, "viewer/gallery.html", d)
+    template = (
+        "viewer/gallery_new.html"
+        if should_use_refined_views(request, crawler_settings)
+        else "viewer/gallery_old.html"
+    )
+    return render(request, template, d)
 
 
-def gallery_details_gid_provider(request: HttpRequest, tool: Optional[str] = None) -> HttpResponse:
+def gallery_details_gid_provider(request: HttpRequest, tool: str | None = None) -> HttpResponse:
     if "gid" in request.GET:
         gallery_gid = request.GET["gid"]
         if "provider" in request.GET:
@@ -500,7 +506,7 @@ def gallery_details_gid_provider(request: HttpRequest, tool: Optional[str] = Non
     return process_gallery_page(request, gallery, tool)
 
 
-def gallery_details(request: HttpRequest, pk: int, tool: Optional[str] = None) -> HttpResponse:
+def gallery_details(request: HttpRequest, pk: int, tool: str | None = None) -> HttpResponse:
     try:
         gallery = Gallery.objects.get(pk=pk)
     except Gallery.DoesNotExist:
@@ -512,7 +518,7 @@ def gallery_details(request: HttpRequest, pk: int, tool: Optional[str] = None) -
 
 
 @login_required
-def gallery_enter_reason(request: HttpRequest, pk: int, tool: Optional[str] = None) -> HttpResponse:
+def gallery_enter_reason(request: HttpRequest, pk: int, tool: str | None = None) -> HttpResponse:
     try:
         gallery = Gallery.objects.get(pk=pk)
     except Gallery.DoesNotExist:
@@ -686,18 +692,31 @@ def gallery_thumb(request: HttpRequest, pk: int) -> HttpResponse:
         raise Http404("Gallery does not exist")
     if not gallery.public and not request.user.is_authenticated:
         raise Http404("Gallery is not public")
+
+    thumb = gallery.thumbnail
+    try:
+        has_thumb = bool(thumb and thumb.name)
+    except ValueError:
+        has_thumb = False
+
+    if not has_thumb:
+        return HttpResponseRedirect(static("imgs/no_cover.png"))
+
     if "HTTP_X_FORWARDED_HOST" in request.META:
         response = HttpResponse()
         response["Content-Type"] = "image/jpeg"
         # response["Content-Disposition"] = 'attachment; filename*=UTF-8\'\'{0}'.format(
         #         archive.pretty_name)
-        response["X-Accel-Redirect"] = "/image/{0}".format(gallery.thumbnail.name)
+        response["X-Accel-Redirect"] = "/image/{0}".format(thumb.name)
         return response
     else:
-        return HttpResponseRedirect(gallery.thumbnail.url)
+        try:
+            return HttpResponseRedirect(thumb.url)
+        except ValueError:
+            return HttpResponseRedirect(static("imgs/no_cover.png"))
 
 
-def gallery_list(request: HttpRequest, mode: str = "none", tag: Optional[str] = None) -> HttpResponse:
+def gallery_list(request: HttpRequest, mode: str = "none", tag: str | None = None) -> HttpResponse:
     """Search, filter, sort galleries."""
     try:
         page = int(request.GET.get("page", "1"))
@@ -855,7 +874,7 @@ filter_galleries_defer = (
 
 def filter_galleries(
     request: HttpRequest, session_filters: dict[str, str], request_filters: dict[str, str], json_request: bool = False
-) -> Union[GalleryQuerySet, QuerySet[Gallery]]:
+) -> GalleryQuerySet | QuerySet[Gallery]:
     """Filter gallery results through parameters and return a result list."""
 
     # sort and filter results by parameters
@@ -863,7 +882,7 @@ def filter_galleries(
     if session_filters["sort"]:
         order = session_filters["sort"]
     if session_filters["asc_desc"] == "desc":
-        results: Union[GalleryQuerySet, QuerySet[Gallery]] = Gallery.objects.order_by(F(order).desc(nulls_last=True))
+        results: GalleryQuerySet | QuerySet[Gallery] = Gallery.objects.order_by(F(order).desc(nulls_last=True))
     else:
         results = Gallery.objects.order_by(F(order).asc(nulls_last=True))
 
@@ -1032,7 +1051,7 @@ def filter_galleries(
     return results
 
 
-def search(request: HttpRequest, mode: str = "none", tag: Optional[str] = None) -> HttpResponse:
+def search(request: HttpRequest, mode: str = "none", tag: str | None = None) -> HttpResponse:
     """Search, filter, sort archives."""
     try:
         page = int(request.GET.get("page", "1"))
@@ -1384,7 +1403,7 @@ def quick_search(request: HttpRequest, parameters: DataDict, display_parameters:
             operator.or_, (Q(gallery__gid=gid, gallery__provider=provider) for gid, provider in gallery_ids_providers)
         )
 
-        results_url: Optional[QuerySet[Archive]] = results.filter(query)
+        results_url: QuerySet[Archive] | None = results.filter(query)
     else:
         results_url = None
 
@@ -1424,7 +1443,6 @@ def quick_search(request: HttpRequest, parameters: DataDict, display_parameters:
     return results
 
 
-# TODO: Expose this search somewhere.
 def quick_gallery_search(request: HttpRequest) -> QuerySet[Gallery]:
     """Quick search of galleries."""
     # sort and filter results by parameters
@@ -1450,7 +1468,7 @@ def quick_gallery_search(request: HttpRequest) -> QuerySet[Gallery]:
     if gallery_ids_providers:
         query = reduce(operator.or_, (Q(gid=gid, provider=provider) for gid, provider in gallery_ids_providers))
 
-        results_url: Optional[QuerySet[Gallery]] = results.filter(query)
+        results_url: QuerySet[Gallery] | None = results.filter(query)
     else:
         results_url = None
 

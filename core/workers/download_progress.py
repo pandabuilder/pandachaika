@@ -1,7 +1,6 @@
 import logging
 import os
 from itertools import groupby
-from typing import Optional
 
 import django.utils.timezone as django_tz
 from django.db import close_old_connections
@@ -45,7 +44,7 @@ class DownloadProgressChecker(BaseScheduler):
         return timer
 
     def check_torrent_progress(
-        self, download_event: DownloadEvent, download_progress: Optional[float] = None
+        self, download_event: DownloadEvent, download_progress: float | None = None
     ) -> None:
         if download_progress is not None:
             download_event.progress = download_progress

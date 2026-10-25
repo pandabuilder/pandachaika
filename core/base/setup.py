@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 # Main concern with this first approach is that a provider could read settings from another provider (cookies, etc).
 # Another option is to have each provider construct it's own settings object, inheriting from this,
 # is that it would need to copy the original settings object each time a provider specific setting is needed.
-from typing import Any, Optional, Union
+from typing import Any
 
 from core.base.providers import ProviderContext
 from core.base.types import DataDict
@@ -188,7 +188,7 @@ class MailSettings:
         self.mailhost: str = ""
         self.from_: str = ""
         self.to: str = ""
-        self.credentials: Optional[tuple[str, str]] = None
+        self.credentials: tuple[str, str] | None = None
         self.username: str = ""
         self.password: str = ""
         self.subject: str = "CherryPy Error"
@@ -244,7 +244,7 @@ class WebServerSettings:
     def __init__(self) -> None:
         self.bind_address: str = "127.0.0.1"
         self.bind_port: int = 8090
-        self.socket_file: Optional[str] = None
+        self.socket_file: str | None = None
         self.enable_ssl: bool = False
         self.ssl_certificate: str = ""
         self.ssl_private_key: str = ""
@@ -302,34 +302,34 @@ class Settings:
     # We are storing the context here, but it should be somewhere else, available globally.
     provider_context = ProviderContext()
     workers = WorkerContext()
-    gallery_model: Optional["typing.Type[Gallery]"] = None
-    archive_model: Optional["typing.Type[Archive]"] = None
-    found_gallery_model: Optional["typing.Type[FoundGallery]"] = None
-    wanted_gallery_model: Optional["typing.Type[WantedGallery]"] = None
-    archive_manage_entry_model: Optional["typing.Type[ArchiveManageEntry]"] = None
-    download_event_model: Optional["typing.Type[DownloadEvent]"] = None
+    gallery_model: "type[Gallery] | None" = None
+    archive_model: "type[Archive] | None" = None
+    found_gallery_model: "type[FoundGallery] | None" = None
+    wanted_gallery_model: "type[WantedGallery] | None" = None
+    archive_manage_entry_model: "type[ArchiveManageEntry] | None" = None
+    download_event_model: "type[DownloadEvent] | None" = None
 
     def __init__(
         self,
         load_from_disk: bool = False,
-        default_dir: Optional[str] = None,
-        load_from_config: Optional[DataDict] = None,
+        default_dir: str | None = None,
+        load_from_config: DataDict | None = None,
     ) -> None:
         # INTERNAL USE
-        self.gallery_reason: Optional[str] = None
+        self.gallery_reason: str | None = None
         self.stop_nested = False
-        self.link_child: Optional[str] = None
-        self.link_newer: Optional[str] = None
+        self.link_child: str | None = None
+        self.link_newer: str | None = None
         self.stop_nested = False
         # Used by autoupdater to not overwrite original value, since it would be replaced by provider_info
         self.keep_dl_type = False
         self.archive_reason = ""
         self.archive_source = ""
         self.archive_details = ""
-        self.archive_origin: Optional[int] = None
-        self.archive_user: Optional[Union[User, AnonymousUser]] = None
-        self.event_action: Optional[str] = None
-        self.submit_group_uuid: Optional[str] = None
+        self.archive_origin: int | None = None
+        self.archive_user: User | AnonymousUser | None = None
+        self.event_action: str | None = None
+        self.submit_group_uuid: str | None = None
         self.preserve_user_favorites: list[Any] = []
         self.preserve_extracted: bool = False
         self.silent_processing = False
@@ -353,13 +353,15 @@ class Settings:
         # Option to auto-purge a torrent after a certain time has passed
         self.max_torrent_lifespan = 0
         self.max_torrent_lifespan_type = "days"
+        # Option to enable refined archive and gallery views for authenticated users
+        self.refined_archive_gallery_views: bool = False
 
         self.MEDIA_ROOT: str = ""
         self.STATIC_ROOT: str = ""
         self.django_secret_key: str = ""
         self.django_debug_mode: bool = False
         self.download_handler: str = "local"
-        self.temp_directory_path: Optional[str] = None
+        self.temp_directory_path: str | None = None
         # More specific, if not set, will use 'download_handler'
         self.download_handler_torrent = ""
         self.download_handler_hath = ""
@@ -392,10 +394,10 @@ class Settings:
         self.download_progress_checker_startup = True
         self.download_progress_checker_cycle_timer: float = 10
 
-        self.queue_archive_downloads: bool = False
+        self.queue_archive_downloads: bool = True
         self.archive_download_queue_startup: bool = True
         self.archive_download_queue_cycle_timer: float = 2.0
-        self.parallel_archive_downloaders: int = 0
+        self.parallel_archive_downloaders: int = 1
 
         self.db_engine = "postgresql"
         self.database: dict[str, Any] = {}
@@ -561,7 +563,31 @@ class Settings:
         if 'WEBSERVER_TIMEOUT' in os.environ and os.environ['WEBSERVER_TIMEOUT']:
             self.webserver.timeout = int(os.environ['WEBSERVER_TIMEOUT'])
 
-    def load_config_from_file(self, default_dir: Optional[str] = None) -> None:
+        if 'ELASTICSEARCH_ENABLE' in os.environ and os.environ['ELASTICSEARCH_ENABLE'] != '':
+            self.elasticsearch.enable = os.environ['ELASTICSEARCH_ENABLE'].lower() in ('true', '1', 't')
+
+        if 'ELASTICSEARCH_ENABLE_MATCH' in os.environ and os.environ['ELASTICSEARCH_ENABLE_MATCH'] != '':
+            self.elasticsearch.enable_match = os.environ['ELASTICSEARCH_ENABLE_MATCH'].lower() in ('true', '1', 't')
+
+        if 'ELASTICSEARCH_URL' in os.environ and os.environ['ELASTICSEARCH_URL']:
+            self.elasticsearch.url = os.environ['ELASTICSEARCH_URL']
+
+        if 'ELASTICSEARCH_INDEX_NAME' in os.environ and os.environ['ELASTICSEARCH_INDEX_NAME']:
+            self.elasticsearch.index_name = os.environ['ELASTICSEARCH_INDEX_NAME']
+
+        if 'ELASTICSEARCH_GALLERY_INDEX_NAME' in os.environ and os.environ['ELASTICSEARCH_GALLERY_INDEX_NAME']:
+            self.elasticsearch.gallery_index_name = os.environ['ELASTICSEARCH_GALLERY_INDEX_NAME']
+
+        if 'ELASTICSEARCH_MATCH_INDEX_NAME' in os.environ and os.environ['ELASTICSEARCH_MATCH_INDEX_NAME']:
+            self.elasticsearch.match_index_name = os.environ['ELASTICSEARCH_MATCH_INDEX_NAME']
+
+        if 'ELASTICSEARCH_TIMEOUT' in os.environ and os.environ['ELASTICSEARCH_TIMEOUT']:
+            try:
+                self.elasticsearch.timeout = int(os.environ['ELASTICSEARCH_TIMEOUT'])
+            except ValueError:
+                pass
+
+    def load_config_from_file(self, default_dir: str | None = None) -> None:
         if default_dir:
             self.default_dir = default_dir
         elif self.default_dir:
@@ -606,7 +632,7 @@ class Settings:
             return
 
         for custom_name, custom_data in custom_dl_config.items():
-            provider: Optional[str] = None
+            provider: str | None = None
             raw_targets: Any = None
 
             if isinstance(custom_data, dict):
@@ -664,14 +690,14 @@ class Settings:
             else:
                 self.custom_downloaders[custom_name] = targets
 
-    def get_custom_downloader_provider(self, custom_name: str) -> Optional[str]:
+    def get_custom_downloader_provider(self, custom_name: str) -> str | None:
         if hasattr(self, "custom_downloader_providers") and custom_name in self.custom_downloader_providers:
             return self.custom_downloader_providers[custom_name]
         if "_" in custom_name:
             return custom_name.split("_", maxsplit=1)[0]
         return None
 
-    def get_downloader_provider(self, downloader_name: str) -> Optional[str]:
+    def get_downloader_provider(self, downloader_name: str) -> str | None:
         if hasattr(self, "custom_downloaders") and downloader_name in self.custom_downloaders:
             return self.get_custom_downloader_provider(downloader_name)
         if "_" in downloader_name:
@@ -708,7 +734,7 @@ class Settings:
         self.retry_failed = retry_failed
         self.redownload = redownload
 
-    def set_update_metadata_options(self, providers: Optional[typing.Iterable[str]] = None) -> None:
+    def set_update_metadata_options(self, providers: typing.Iterable[str] | None = None) -> None:
         if not providers:
             for downloader in self.downloaders.keys():
                 if downloader.endswith("info"):
@@ -739,12 +765,12 @@ class Settings:
     @classmethod
     def set_models(
         cls,
-        gallery_model: "typing.Type[Gallery]",
-        archive_model: "typing.Type[Archive]",
-        found_gallery_model: "typing.Type[FoundGallery]",
-        wanted_gallery_model: "typing.Type[WantedGallery]",
-        archive_manage_entry_model: "typing.Type[ArchiveManageEntry]",
-        download_event_model: "typing.Type[DownloadEvent]",
+        gallery_model: "type[Gallery]",
+        archive_model: "type[Archive]",
+        found_gallery_model: "type[FoundGallery]",
+        wanted_gallery_model: "type[WantedGallery]",
+        archive_manage_entry_model: "type[ArchiveManageEntry]",
+        download_event_model: "type[DownloadEvent]",
     ):
         cls.gallery_model = gallery_model
         cls.archive_model = archive_model
@@ -882,6 +908,10 @@ class Settings:
                 self.vertical_image_max_width = config["general"]["vertical_image_max_width"]
             if "horizontal_image_max_width" in config["general"]:
                 self.horizontal_image_max_width = config["general"]["horizontal_image_max_width"]
+            if "refined_archive_gallery_views" in config["general"]:
+                self.refined_archive_gallery_views = _parse_bool(config["general"]["refined_archive_gallery_views"])
+            elif "refined_views" in config["general"]:
+                self.refined_archive_gallery_views = _parse_bool(config["general"]["refined_views"])
 
         if "cloning_image_tool" in config:
             if "enable" in config["cloning_image_tool"]:

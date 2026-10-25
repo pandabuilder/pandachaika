@@ -37,6 +37,8 @@ from viewer.models import (
     ArchiveManageEntry,
     GalleryMatchGroup,
     GalleryMatchGroupEntry,
+    MonitoredLink,
+    Provider,
 )
 
 from dal.widgets import WidgetMixin
@@ -1577,3 +1579,97 @@ GalleryMatchGroupEntryFormSet = inlineformset_factory(
     can_delete=True,
     can_order=True,
 )
+
+
+class MonitoredLinkCreateOrEditForm(ModelForm):
+
+    class Meta:
+        model = MonitoredLink
+        fields = [
+            "name",
+            "url",
+            "description",
+            "provider",
+            "proxy",
+            "stop_page",
+            "enabled",
+            "auto_start",
+            "frequency",
+            "use_limited_wanted_galleries",
+            "limited_wanted_galleries",
+        ]
+        help_texts = {
+            "name": "Name/identifier for this monitored link",
+            "url": "Target URL to crawl periodically (e.g. RSS/API/feed link)",
+            "description": "Optional notes or description",
+            "provider": "Provider associated with this link",
+            "proxy": "Proxy to use when querying this URL (e.g. socks5://localhost:9050)",
+            "stop_page": "Stop page limit for paginated feeds",
+            "enabled": "Whether periodic monitoring is currently enabled",
+            "auto_start": "Automatically start this monitor when workers start",
+            "frequency": "Crawl interval in Duration format (e.g. 01:00:00 for 1h, 00:30:00 for 30m, 1 00:00:00 for 1d)",
+            "use_limited_wanted_galleries": "Restrict matches to selected WantedGalleries only",
+            "limited_wanted_galleries": "Select WantedGalleries to restrict matching against",
+        }
+        widgets = {
+            "name": forms.widgets.TextInput(attrs={"class": "form-control", "placeholder": "Name"}),
+            "url": forms.widgets.URLInput(attrs={"class": "form-control", "placeholder": "https://..."}),
+            "description": forms.widgets.Textarea(attrs={"class": "form-control", "rows": 2}),
+            "provider": forms.widgets.Select(attrs={"class": "form-select form-control"}),
+            "proxy": forms.widgets.TextInput(attrs={"class": "form-control", "placeholder": "socks5://127.0.0.1:9050"}),
+            "stop_page": forms.widgets.NumberInput(attrs={"class": "form-control", "placeholder": "Optional stop page"}),
+            "enabled": forms.widgets.CheckboxInput(attrs={"class": "form-check-input"}),
+            "auto_start": forms.widgets.CheckboxInput(attrs={"class": "form-check-input"}),
+            "frequency": forms.widgets.TextInput(attrs={"class": "form-control", "placeholder": "01:00:00"}),
+            "use_limited_wanted_galleries": forms.widgets.CheckboxInput(attrs={"class": "form-check-input"}),
+            "limited_wanted_galleries": forms.widgets.SelectMultiple(attrs={"class": "form-control", "size": 5}),
+        }
+
+
+class MonitoredLinkSearchForm(forms.Form):
+    name = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "Search name..."}),
+    )
+    url = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "Search URL..."}),
+    )
+    provider = forms.ModelChoiceField(
+        queryset=Provider.objects.all(),
+        required=False,
+        empty_label="All providers",
+        widget=forms.Select(attrs={"class": "form-select form-control"}),
+    )
+    enabled = forms.ChoiceField(
+        choices=[("", "All status"), ("yes", "Enabled"), ("no", "Disabled")],
+        required=False,
+        widget=forms.Select(attrs={"class": "form-select form-control"}),
+    )
+    auto_start = forms.ChoiceField(
+        choices=[("", "All auto start"), ("yes", "Auto start: Yes"), ("no", "Auto start: No")],
+        required=False,
+        widget=forms.Select(attrs={"class": "form-select form-control"}),
+    )
+    status = forms.ChoiceField(
+        choices=[("", "All activity"), ("running", "Running"), ("stopped", "Stopped")],
+        required=False,
+        widget=forms.Select(attrs={"class": "form-select form-control"}),
+    )
+    sort = forms.ChoiceField(
+        choices=[
+            ("create_date", "Created date"),
+            ("name", "Name"),
+            ("last_modified", "Last modified"),
+            ("frequency", "Frequency"),
+        ],
+        required=False,
+        initial="create_date",
+        widget=forms.Select(attrs={"class": "form-select form-control"}),
+    )
+    asc_desc = forms.ChoiceField(
+        choices=[("desc", "Descending"), ("asc", "Ascending")],
+        required=False,
+        initial="desc",
+        widget=forms.Select(attrs={"class": "form-select form-control"}),
+    )

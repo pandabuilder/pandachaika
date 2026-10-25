@@ -3,7 +3,6 @@ import json
 import typing
 from datetime import datetime, timezone
 import time
-from typing import Optional
 
 import django.utils.timezone as django_tz
 import logging
@@ -19,17 +18,13 @@ from django.db.models.functions import Concat, Replace
 
 from core.base import setup_utilities
 from core.base.utilities import send_pushover_notification, chunks
-from core.base.types import GalleryData
+from core.base.types import GalleryData, ProviderSettings
 from viewer.signals import wanted_gallery_found
 
 if typing.TYPE_CHECKING:
     from core.downloaders.handlers import BaseDownloader
     from core.base.setup import Settings, ProvidersDict
     from viewer.models import Gallery, WantedGallery, Archive
-    from core.base.types import ProviderSettings
-    T_ProviderSettings = typing.TypeVar("T_ProviderSettings", bound=ProviderSettings)
-else:
-    T_ProviderSettings = typing.TypeVar("T_ProviderSettings")
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +39,7 @@ def aggregate_wanted_time_taken(func):
     return wrapper_save_time_taken
 
 
-class BaseParser(typing.Generic[T_ProviderSettings]):
+class BaseParser[T_ProviderSettings: ProviderSettings]:
     name = ""
     ignore = False
     accepted_urls: list[str] = []
@@ -63,12 +58,12 @@ class BaseParser(typing.Generic[T_ProviderSettings]):
         self.downloaders: list[tuple["BaseDownloader", int]] = self.settings.provider_context.get_downloaders(
             self.settings, self.general_utils, filter_provider=self.name
         )
-        self.last_used_downloader: Optional["BaseDownloader"] = None
+        self.last_used_downloader: "BaseDownloader" | None = None
         self.time_taken_wanted: float = 0
-        self.archive_callback: Optional[Callable[[Optional["Archive"], Optional[str], str], None]] = None
-        self.gallery_callback: Optional[Callable[[Optional["Gallery"], Optional[str], str], None]] = None
+        self.archive_callback: Callable[["Archive" | None, str | None, str], None] | None = None
+        self.gallery_callback: Callable[["Gallery" | None, str | None, str], None] | None = None
 
-    def notify_archive(self, archive: Optional["Archive"], crawled_url: Optional[str], result: str) -> None:
+    def notify_archive(self, archive: "Archive | None", crawled_url: str | None, result: str) -> None:
         if archive:
             if getattr(self.settings, "preserve_user_favorites", None):
                 try:
@@ -111,7 +106,7 @@ class BaseParser(typing.Generic[T_ProviderSettings]):
             except Exception:
                 logger.critical(traceback.format_exc())
 
-    def notify_gallery(self, gallery: Optional["Gallery"], crawled_url: Optional[str], result: str) -> None:
+    def notify_gallery(self, gallery: "Gallery | None", crawled_url: str | None, result: str) -> None:
         if getattr(self.settings, "submit_group_uuid", None):
             try:
                 from viewer.models import GallerySubmitEntry
@@ -153,10 +148,10 @@ class BaseParser(typing.Generic[T_ProviderSettings]):
     # Each provider should set in this method how it needs to call everything, and could even check against a setting
     # to decide (cookie is set, page is available, etc).
     # It should at least check for str (URL) and list (list of URLs).
-    def fetch_gallery_data(self, url: str) -> Optional[GalleryData]:
+    def fetch_gallery_data(self, url: str) -> GalleryData | None:
         return None
 
-    def fetch_multiple_gallery_data(self, url_list: list[str]) -> Optional[list[GalleryData]]:
+    def fetch_multiple_gallery_data(self, url_list: list[str]) -> list[GalleryData] | None:
         return None
 
     def filter_accepted_urls(self, urls: Iterable[str]) -> list[str]:
@@ -168,19 +163,14 @@ class BaseParser(typing.Generic[T_ProviderSettings]):
     # Skipped galleries are not processed again.
     # We don't log directly here because some methods would spam otherwise (feed crawling)
     def discard_gallery_by_internal_checks(
-        self, gallery_id: Optional[str] = None, link: str = "", gallery: Optional["Gallery"] = None
+        self, gallery_id: str | None = None, link: str = "", gallery: "Gallery | None" = None
     ) -> tuple[bool, str]:
 
         discarded, reason = self.do_get_gallery_discard_reason(gallery_id, link, gallery)
 
-        # TODO: Why was this added? It calls the callback when processing a child due to adding parent, discarding the gallery even when it's already present.
-        # if discarded:
-        #     if self.gallery_callback:
-        #         self.gallery_callback(gallery, link, "discarded")
-
         return discarded, reason
 
-    def do_get_gallery_discard_reason(self, gallery_id: Optional[str] = None, link: str = "", gallery: Optional["Gallery"] = None) -> tuple[bool, str]:
+    def do_get_gallery_discard_reason(self, gallery_id: str | None = None, link: str = "", gallery: "Gallery | None" = None) -> tuple[bool, str]:
         if self.settings.update_metadata_mode:
             return False, "Gallery link {ext_link} running in update metadata mode, processing.".format(
                 ext_link=link,
@@ -452,11 +442,11 @@ class BaseParser(typing.Generic[T_ProviderSettings]):
             return
 
     @staticmethod
-    def id_from_url(url: str) -> Optional[str]:
+    def id_from_url(url: str) -> str | None:
         pass
 
     @staticmethod
-    def token_from_url(url: str) -> Optional[str]:
+    def token_from_url(url: str) -> str | None:
         pass
 
     @classmethod
@@ -482,9 +472,9 @@ class BaseParser(typing.Generic[T_ProviderSettings]):
     def crawl_urls_caller(
         self,
         urls: list[str],
-        wanted_filters: Optional[QuerySet] = None,
+        wanted_filters: QuerySet | None = None,
         wanted_only: bool = False,
-        preselected_wanted_matches: Optional[dict[str, list["WantedGallery"]]] = None,
+        preselected_wanted_matches: dict[str, list["WantedGallery"]] | None = None,
     ):
         try:
             self.crawl_urls(
@@ -500,9 +490,9 @@ class BaseParser(typing.Generic[T_ProviderSettings]):
     def crawl_urls(
         self,
         urls: list[str],
-        wanted_filters: Optional[QuerySet] = None,
+        wanted_filters: QuerySet | None = None,
         wanted_only: bool = False,
-        preselected_wanted_matches: Optional[dict[str, list["WantedGallery"]]] = None,
+        preselected_wanted_matches: dict[str, list["WantedGallery"]] | None = None,
     ) -> None:
         pass
 
@@ -801,7 +791,7 @@ class InternalParser(BaseParser):
     ignore = True
 
     def crawl_json(
-        self, json_string: str, wanted_filters: Optional[QuerySet] = None, wanted_only: bool = False
+        self, json_string: str, wanted_filters: QuerySet | None = None, wanted_only: bool = False
     ) -> None:
 
         if not self.settings.gallery_model:

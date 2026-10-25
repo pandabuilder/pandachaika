@@ -1,4 +1,3 @@
-from typing import Union
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
@@ -17,7 +16,6 @@ class Command(BaseCommand):
         super().__init__(*args, **kwargs)
         from elasticsearch import Elasticsearch
 
-        # TODO: Timeout as option.
         self.es_client = Elasticsearch(
             [crawler_settings.elasticsearch.url],
             request_timeout=crawler_settings.elasticsearch.timeout,
@@ -120,7 +118,7 @@ class Command(BaseCommand):
         )
         indices_client.open(index=index_name)
 
-    def recreate_index_model(self, model: Union[type[Gallery], type[Archive]]):
+    def recreate_index_model(self, model: type[Gallery] | type[Archive]):
 
         from elasticsearch.client import IndicesClient
 
@@ -152,7 +150,7 @@ class Command(BaseCommand):
         )
         indices_client.open(index=index_name)
 
-    def push_db_to_index_model(self, model: Union[type[Gallery], type[Archive]], bulk_size: int = 0):
+    def push_db_to_index_model(self, model: type[Gallery] | type[Archive], bulk_size: int = 0):
 
         from elasticsearch.helpers import bulk
 

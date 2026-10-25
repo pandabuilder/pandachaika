@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
-from typing import Any, Iterable, Optional
+from typing import Any
+from collections.abc import Iterable
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
@@ -16,8 +17,8 @@ def enqueue(
     task_type: str = "web_crawler",
     override_options: Any = None,
     user: Any = None,
-    reason: Optional[str] = None,
-    event_action: Optional[str] = None,
+    reason: str | None = None,
+    event_action: str | None = None,
     priority: int = 10,
 ) -> TaskQueue:
     """Enqueue a new task into PostgreSQL TaskQueue."""
@@ -55,8 +56,8 @@ def enqueue(
 def enqueue_matching_task(
     task_type: str,
     args: Any = None,
-    matching_kwargs: Optional[dict[str, Any]] = None,
-    provider: Optional[str] = None,
+    matching_kwargs: dict[str, Any] | None = None,
+    provider: str | None = None,
     user: Any = None,
     priority: int = 10,
 ) -> TaskQueue:
@@ -118,7 +119,7 @@ def expand_task_type_aliases(task_types: Iterable[str]) -> set[str]:
     return expanded
 
 
-def get_pending_tasks(task_type: Optional[str] = None):
+def get_pending_tasks(task_type: str | None = None):
     """Return pending tasks ordered by priority and creation time, optionally filtered by task_type."""
     qs = TaskQueue.objects.filter(status=TaskQueue.Status.PENDING)
     if task_type:
@@ -126,7 +127,7 @@ def get_pending_tasks(task_type: Optional[str] = None):
     return qs.order_by("priority", "created_at", "id")
 
 
-def get_processing_task(task_type: Optional[str] = None) -> Optional[TaskQueue]:
+def get_processing_task(task_type: str | None = None) -> TaskQueue | None:
     """Return the currently processing task if any, optionally filtered by task_type."""
     qs = TaskQueue.objects.filter(status=TaskQueue.Status.PROCESSING)
     if task_type:
@@ -134,7 +135,7 @@ def get_processing_task(task_type: Optional[str] = None) -> Optional[TaskQueue]:
     return qs.order_by("-started_at").first()
 
 
-def queue_size(task_type: Optional[str] = None) -> int:
+def queue_size(task_type: str | None = None) -> int:
     """Return the number of pending tasks, optionally filtered by task_type."""
     qs = TaskQueue.objects.filter(status=TaskQueue.Status.PENDING)
     if task_type:
@@ -142,7 +143,7 @@ def queue_size(task_type: Optional[str] = None) -> int:
     return qs.count()
 
 
-def remove_by_index(index: int, task_type: Optional[str] = None) -> bool:
+def remove_by_index(index: int, task_type: str | None = None) -> bool:
     """Remove/cancel a pending task by its index in the queue."""
     pending = list(get_pending_tasks(task_type=task_type).values_list("id", flat=True))
     if 0 <= index < len(pending):

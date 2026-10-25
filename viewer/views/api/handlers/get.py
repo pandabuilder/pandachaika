@@ -2,7 +2,7 @@
 
 import json
 from collections import defaultdict
-from typing import Any, Optional
+from typing import Any
 
 from django.core.paginator import Paginator, EmptyPage
 from django.db.models import Q, QuerySet, Prefetch
@@ -325,7 +325,7 @@ def _gallery_by_gid_to_json(gallery: Gallery, user_is_authenticated: bool) -> di
     }
 
 
-def _gallery_for_gid(data: QueryDict, gallery_gid: str | list[object]) -> Optional[Gallery]:
+def _gallery_for_gid(data: QueryDict, gallery_gid: str | list[object]) -> Gallery | None:
     if "provider" in data:
         return Gallery.objects.filter_first(gid=gallery_gid, provider=data["provider"])
     return Gallery.objects.filter_first(gid=gallery_gid)

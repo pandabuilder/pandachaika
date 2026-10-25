@@ -2,7 +2,6 @@ import logging
 import os
 import time
 from datetime import datetime, timezone
-from typing import Optional
 from urllib.parse import urljoin
 
 from core.base.matchers import Matcher
@@ -61,7 +60,7 @@ class BaseExactMatcher(Matcher):
             return 0
 
     def create_closer_matches_values(
-        self, zip_path: str, cutoff: Optional[float] = None, max_matches: int = 20
+        self, zip_path: str, cutoff: float | None = None, max_matches: int = 20
     ) -> list[MatchesValues]:
 
         self.values_array = []
@@ -83,7 +82,7 @@ class BaseExactMatcher(Matcher):
                     results = [(gallery.title or gallery.title_jpn or "", gallery, 1) for gallery in galleries_data]
         return results
 
-    def format_match_values(self) -> Optional[DataDict]:
+    def format_match_values(self) -> DataDict | None:
 
         if not self.match_values:
             return None
@@ -202,7 +201,7 @@ class TitleMatcher(Matcher):
     def search_method(self, title_to_search: str) -> bool:
         return self.compare_by_title(title_to_search)
 
-    def format_match_values(self) -> Optional[DataDict]:
+    def format_match_values(self) -> DataDict | None:
 
         if not self.match_values:
             return None
@@ -320,7 +319,7 @@ class TitleMetaMatcher(Matcher):
     def search_method(self, title_to_search: str) -> bool:
         return self.compare_by_title(title_to_search)
 
-    def format_match_values(self) -> Optional[DataDict]:
+    def format_match_values(self) -> DataDict | None:
 
         if not self.match_values:
             return None

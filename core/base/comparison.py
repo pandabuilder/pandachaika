@@ -1,5 +1,4 @@
 import difflib
-from typing import Optional
 
 from core.base.utilities import get_scored_matches
 from core.base.types import GalleryData
@@ -7,7 +6,7 @@ from core.base.types import GalleryData
 
 def get_closer_gallery_title_from_list(
     original: str, titles: list[tuple[str, str]], cutoff: float
-) -> Optional[tuple[str, str]]:
+) -> tuple[str, str] | None:
 
     compare_titles = []
     compare_ids = []
@@ -30,7 +29,7 @@ def get_closer_gallery_title_from_list(
 
 def get_list_closer_text_from_list(
     original: str, texts: list[tuple[str, str]], cutoff: float, max_matches: int
-) -> Optional[list[tuple[str, str, float]]]:
+) -> list[tuple[str, str, float]] | None:
 
     compare_texts = []
     compare_ids = []
@@ -88,9 +87,9 @@ def get_list_closer_gallery_titles_from_dict(
 
 class ResultContainer:
     def __init__(self) -> None:
-        self.match_title: Optional[str] = ""
-        self.match_link: Optional[str] = ""
-        self.match_values: Optional[GalleryData] = None
+        self.match_title: str | None = ""
+        self.match_link: str | None = ""
+        self.match_values: GalleryData | None = None
 
 
 def get_gallery_closer_title_from_gallery_values(

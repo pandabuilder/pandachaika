@@ -1,5 +1,5 @@
 import logging
-from typing import Union, Optional, Literal, cast, Any
+from typing import Literal, cast, Any
 from urllib.parse import urlparse
 
 import transmission_rpc
@@ -21,21 +21,21 @@ class Transmission(TorrentClient):
         self, address: str = "localhost", port: int = 9091, user: str = "", password: str = "", secure: bool = True
     ) -> None:
         super().__init__(address=address, port=port, user=user, password=password, secure=secure)
-        self.trans: Optional[transmission_rpc.Client] = None
+        self.trans: transmission_rpc.Client | None = None
         self.error = ""
 
     def __str__(self) -> str:
         return self.name
 
-    def add_url(self, torrent_data: str, download_dir: Optional[str] = None) -> tuple[bool, Optional[str]]:
+    def add_url(self, torrent_data: str, download_dir: str | None = None) -> tuple[bool, str | None]:
         result, torrent_id = self.add_torrent(torrent_data, download_dir=download_dir)
         if self.expected_torrent_name and not self.expected_torrent_extension:
             self.expected_torrent_name = os.path.splitext(self.expected_torrent_name)[0]
         return result, torrent_id
 
     def add_torrent(
-        self, torrent_data: Union[str, bytes], download_dir: Optional[str] = None
-    ) -> tuple[bool, Optional[str]]:
+        self, torrent_data: str | bytes, download_dir: str | None = None
+    ) -> tuple[bool, str | None]:
 
         if not self.trans:
             return False, None
@@ -89,14 +89,14 @@ class Transmission(TorrentClient):
             return False
         return True
 
-    def get_download_progress(
-        self, download_list: list[tuple[str, TorrentClient.TorrentKey]]
-    ) -> list[tuple[TorrentClient.TorrentKey, float]]:
+    def get_download_progress[TorrentKey](
+        self, download_list: list[tuple[str, TorrentKey]]
+    ) -> list[tuple[TorrentKey, float]]:
 
         if not self.trans:
             return []
 
-        torrent_id_map: dict[int, TorrentClient.TorrentKey] = {}
+        torrent_id_map: dict[int, TorrentKey] = {}
         for dl_id_str, key in download_list:
             try:
                 int_id = int(dl_id_str)
@@ -113,7 +113,7 @@ class Transmission(TorrentClient):
             logger.warning(f"Failed to get torrent progress from Transmission: {e}")
             return []
 
-        results: list[tuple[TorrentClient.TorrentKey, float]] = []
+        results: list[tuple[TorrentKey, float]] = []
         for torr in torrents:
             if torr.id in torrent_id_map:
                 results.append((torrent_id_map[torr.id], torr.progress))

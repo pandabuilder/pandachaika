@@ -99,7 +99,7 @@ def get_gid_token_from_link(link: str) -> tuple[str, str]:
         return "", ""
 
 
-def root_gid_token_from_link(link: str) -> tuple[typing.Optional[str], typing.Optional[str], typing.Optional[str]]:
+def root_gid_token_from_link(link: str) -> tuple[str | None, str | None, str | None]:
     m = re.search(r"(.+)/g/(\d+)/(\w+)", link)
     if m:
         return m.group(1), m.group(2), m.group(3)
@@ -115,7 +115,7 @@ def request_data_from_gid_token_iterable(api_token_iterable: typing.Iterable[tup
     return {"method": "gdata", "namespace": "1", "gidlist": api_token_iterable}
 
 
-AttrList = list[tuple[str, typing.Optional[str]]]
+type AttrList = list[tuple[str, str | None]]
 
 
 class OrderedSet(list[str]):

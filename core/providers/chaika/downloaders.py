@@ -1,7 +1,7 @@
 import logging
 import os
 import requests
-from typing import Optional, Any
+from typing import Any
 
 from core.base.types import DataDict
 from core.base.utilities import (
@@ -52,7 +52,7 @@ class PandaBackupHttpFileDownloader(BaseDownloader):
 
         self.gallery.filename = available_filename(
             self.settings.MEDIA_ROOT, os.path.join(self.own_settings.archive_dl_folder, to_use_filename + ".zip")
-        )  # TODO: File could be cbz.
+        )
 
         filepath = os.path.join(self.settings.MEDIA_ROOT, self.gallery.filename)
         request_dict = construct_request_dict(self.settings, self.own_settings)
@@ -108,7 +108,7 @@ class PandaBackupHttpFileDownloader(BaseDownloader):
             logger.error("Could not download archive")
             self.return_code = 0
 
-    def update_archive_db(self, default_values: DataDict) -> Optional["Archive"]:
+    def update_archive_db(self, default_values: DataDict) -> "Archive | None":
 
         if not self.gallery or not self.gallery.temp_archive:
             return None
@@ -130,7 +130,7 @@ class PandaBackupHttpFileDownloader(BaseDownloader):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self.gallery: Optional[ChaikaGalleryData] = None
+        self.gallery: ChaikaGalleryData | None = None
         self.web_request_function = request_by_provider(
             self.provider + "_web", 1, self.own_settings.wait_timer
         )

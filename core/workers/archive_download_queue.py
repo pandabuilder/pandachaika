@@ -2,7 +2,7 @@ import logging
 import os
 import threading
 import time
-from typing import Any, Optional
+from typing import Any
 
 import django.utils.timezone as django_tz
 import requests
@@ -180,7 +180,7 @@ class ArchiveDownloadQueue(BaseScheduler):
     def _download_worker(self, event_id: int) -> None:
         """Execute the HTTP download for a single claimed DownloadEvent."""
         _safe_close_old_connections()
-        event: Optional[DownloadEvent] = None
+        event: DownloadEvent | None = None
         part_filepath: str = ""
         filepath: str = ""
 
@@ -289,7 +289,14 @@ class ArchiveDownloadQueue(BaseScheduler):
             # Update archive metadata and calculate CRC32
             archive = event.archive
             if archive:
+                archive.refresh_from_db()
                 archive.recalc_fileinfo()
+                archive.save()
+                if not archive.thumbnail:
+                    try:
+                        archive.generate_thumbnails()
+                    except Exception as e:
+                        logger.warning("Failed to generate thumbnails for archive #%s: %s", archive.pk, e)
                 if req_opts.get("mark_similar_new_archives"):
                     try:
                         archive.create_marks_for_similar_archives()

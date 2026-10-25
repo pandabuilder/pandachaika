@@ -2,7 +2,7 @@ import base64
 import logging
 import threading
 import typing
-from typing import Union, Optional, Any
+from typing import Any
 
 import requests
 
@@ -22,10 +22,10 @@ class GeneralUtils:
 
     def discard_by_gallery_data(
         self,
-        tag_list: Optional[list[str]],
-        uploader: Optional[str] = None,
+        tag_list: list[str] | None,
+        uploader: str | None = None,
         force_check: bool = False,
-        gallery_data: Optional["GalleryData"] = None,
+        gallery_data: "GalleryData | None" = None,
     ) -> tuple[bool, list[str]]:
 
         from viewer.utils.elasticsearch import (
@@ -66,7 +66,7 @@ class GeneralUtils:
 
     def get_torrent(
         self, torrent_url: str, cookies: dict[str, Any], convert_to_base64: bool = False
-    ) -> Union[str, bytes]:
+    ) -> str | bytes:
 
         r = requests.get(
             torrent_url, cookies=cookies, headers=self.settings.requests_headers, timeout=self.settings.timeout_timer

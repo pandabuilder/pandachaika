@@ -2,7 +2,6 @@
 
 import json
 import logging
-from typing import Optional
 
 from django.contrib.auth.models import User, AnonymousUser
 from django.http import HttpResponse, HttpRequest, HttpResponseBadRequest, HttpResponseNotFound
@@ -27,7 +26,7 @@ from viewer.views.api.common import (
 
 logger = logging.getLogger(__name__)
 
-def handle_post_archive_group(request: HttpRequest, data: QueryDict, body: dict, user: Optional[User | AnonymousUser]):
+def handle_post_archive_group(request: HttpRequest, data: QueryDict, body: dict, user: User | AnonymousUser | None):
     try:
         archive_group = ArchiveGroup(
             title=body["title"],
@@ -87,7 +86,7 @@ def handle_post_archive_group(request: HttpRequest, data: QueryDict, body: dict,
 
 
 def handle_post_archive_group_entry(
-    request: HttpRequest, data: QueryDict, body: dict, user: Optional[User | AnonymousUser]
+    request: HttpRequest, data: QueryDict, body: dict, user: User | AnonymousUser | None
 ):
     try:
         archive_group_id = _get_int(data, "archive-group-entry")
@@ -127,7 +126,7 @@ def handle_post_archive_group_entry(
         )
 
 
-def handle_post_wanted_gallery(request: HttpRequest, data: QueryDict, body: dict, user: Optional[User | AnonymousUser]):
+def handle_post_wanted_gallery(request: HttpRequest, data: QueryDict, body: dict, user: User | AnonymousUser | None):
     try:
         wanted_gallery = WantedGallery()
         apply_wanted_gallery_fields(wanted_gallery, body, is_create=True)

@@ -2,7 +2,6 @@
 
 import json
 import logging
-from typing import Optional
 
 from django.contrib.auth.models import User, AnonymousUser
 from django.db import transaction
@@ -22,7 +21,7 @@ from viewer.views.api.common import (
 
 logger = logging.getLogger(__name__)
 
-def handle_put_archive_group(request: HttpRequest, data: QueryDict, body: dict, user: Optional[User | AnonymousUser]):
+def handle_put_archive_group(request: HttpRequest, data: QueryDict, body: dict, user: User | AnonymousUser | None):
     try:
         archive_group_id = _get_int(data, "archive-group")
     except ValueError:
@@ -93,7 +92,7 @@ def handle_put_archive_group(request: HttpRequest, data: QueryDict, body: dict, 
 
 
 def handle_put_archive_group_entry(
-    request: HttpRequest, data: QueryDict, body: dict, user: Optional[User | AnonymousUser]
+    request: HttpRequest, data: QueryDict, body: dict, user: User | AnonymousUser | None
 ):
     try:
         archive_group_entry_id = _get_int(data, "archive-group-entry")
@@ -144,7 +143,7 @@ def handle_put_archive_group_entry(
 
 
 def handle_put_wanted_gallery(
-    request: HttpRequest, data: QueryDict, body: dict, user: Optional[User | AnonymousUser]
+    request: HttpRequest, data: QueryDict, body: dict, user: User | AnonymousUser | None
 ):
     try:
         wanted_gallery_id = _get_int_from_data_or_body(data, "wanted-gallery", body)

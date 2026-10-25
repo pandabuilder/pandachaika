@@ -1,7 +1,6 @@
 import os
 import re
 import zipfile
-from typing import Optional
 
 import requests
 import time
@@ -38,7 +37,7 @@ class ImageMatcher(Matcher):
         return self.compare_by_image(title_to_search, False)
 
     def create_closer_matches_values(
-        self, zip_path: str, cutoff: Optional[float] = None, max_matches: int = 20
+        self, zip_path: str, cutoff: float | None = None, max_matches: int = 20
     ) -> list[MatchesValues]:
 
         self.values_array = []
@@ -59,7 +58,7 @@ class ImageMatcher(Matcher):
                     results = [(gallery.title or gallery.title_jpn or "", gallery, 1) for gallery in galleries_data]
         return results
 
-    def format_match_values(self) -> Optional[DataDict]:
+    def format_match_values(self) -> DataDict | None:
 
         if not self.match_values:
             return None
@@ -171,7 +170,7 @@ class TitleMatcher(Matcher):
     def search_method(self, title_to_search: str) -> bool:
         return self.compare_by_title(title_to_search)
 
-    def format_match_values(self) -> Optional[DataDict]:
+    def format_match_values(self) -> DataDict | None:
 
         if not self.match_values:
             return None
@@ -280,7 +279,7 @@ class TitleGidMatcher(Matcher):
     def search_method(self, title_to_search: str) -> bool:
         return self.compare_by_title(title_to_search)
 
-    def format_match_values(self) -> Optional[DataDict]:
+    def format_match_values(self) -> DataDict | None:
 
         if not self.match_values:
             return None

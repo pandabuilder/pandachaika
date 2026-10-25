@@ -1463,6 +1463,11 @@ class ArchiveDownloadQueueTests(TestCase):
         self.assertTrue(bool(archive.crc32))
         self.assertGreater(archive.filesize, 0)
         self.assertEqual(archive.filecount, 1)
+        self.assertTrue(bool(archive.thumbnail.name))
+        self.assertIsNotNone(archive.thumbnail_width)
+        self.assertIsNotNone(archive.thumbnail_height)
+        if archive.thumbnail and os.path.exists(archive.thumbnail.path):
+            os.remove(archive.thumbnail.path)
         self.assertTrue(os.path.exists(target_path))
         if os.path.exists(target_path):
             os.remove(target_path)
@@ -1667,6 +1672,69 @@ class ArchiveDownloadQueueTests(TestCase):
         data_dl = json.loads(resp_dl.content.decode("utf-8"))
         self.assertEqual(data_dl["count"], 1)
         self.assertEqual(data_dl["results"][0]["id"], ev_active.id)
+
+    def test_default_queue_archive_downloads_settings(self):
+        default_settings = Settings(load_from_disk=False)
+        self.assertTrue(default_settings.queue_archive_downloads)
+        self.assertEqual(default_settings.parallel_archive_downloaders, 1)
+
+    def test_should_queue_archive_download_precedence(self):
+        from types import SimpleNamespace
+        from core.base.setup_utilities import GeneralUtils
+        from core.downloaders.handlers import BaseDownloader
+
+        class DummyDownloader(BaseDownloader):
+            provider = "test_prov"
+
+        self.settings.providers["test_prov"] = SimpleNamespace(queue_archive_downloads=None)
+        gen_utils = GeneralUtils(self.settings)
+        dl = DummyDownloader(self.settings, gen_utils)
+
+        # Global True
+        self.settings.queue_archive_downloads = True
+        self.settings.parallel_archive_downloaders = 1
+        self.assertTrue(dl.should_queue_archive_download())
+
+        # Global False should NOT be overridden by parallel_archive_downloaders > 0
+        self.settings.queue_archive_downloads = False
+        self.settings.parallel_archive_downloaders = 1
+        self.assertFalse(dl.should_queue_archive_download())
+
+        # Provider override: False overrides global True
+        self.settings.queue_archive_downloads = True
+        prov_settings = SimpleNamespace(queue_archive_downloads=False)
+        self.assertFalse(dl.should_queue_archive_download(provider_settings=prov_settings))
+
+        # Provider override: True overrides global False
+        self.settings.queue_archive_downloads = False
+        prov_settings_true = SimpleNamespace(queue_archive_downloads=True)
+        self.assertTrue(dl.should_queue_archive_download(provider_settings=prov_settings_true))
+
+    def test_crawler_cli_queue_archive_downloads_flags(self):
+        from core.web.crawler import WebCrawler
+
+        crawler = WebCrawler(self.settings)
+
+        # --no-queue-archive-downloads
+        args = crawler.get_args(["--no-queue-archive-downloads", "https://example.com"])
+        self.assertFalse(args.queue_archive_downloads)
+
+        # -nqad
+        args_short = crawler.get_args(["-nqad", "https://example.com"])
+        self.assertFalse(args_short.queue_archive_downloads)
+
+        # --queue-archive-downloads
+        args_qad = crawler.get_args(["--queue-archive-downloads", "https://example.com"])
+        self.assertTrue(args_qad.queue_archive_downloads)
+
+        # -qad
+        args_qad_short = crawler.get_args(["-qad", "https://example.com"])
+        self.assertTrue(args_qad_short.queue_archive_downloads)
+
+        # Default without flag should be None (inheriting settings)
+        args_default = crawler.get_args(["https://example.com"])
+        self.assertIsNone(args_default.queue_archive_downloads)
+
 
 
 

@@ -99,7 +99,7 @@
                 <a class="dropdown-item" href="{% url 'viewer:match-archives' %}">Match archives</a>
                 {% endif %}
                 {% if perms.viewer.view_wantedgallery %}
-                <a class="dropdown-item" href="{% url 'viewer:col-wanted-galleries' %}">Wanted galleries</a>
+                <a class="dropdown-item" href="{% url 'viewer:wanted-galleries' %}">Wanted galleries</a>
                 {% endif %}
                 {% if perms.viewer.manage_missing_archives %}
                 <a class="dropdown-item" href="{% url 'viewer:col-missing-archives' %}?provider=panda">Manage missing
@@ -164,7 +164,7 @@
                 <a class="dropdown-item" href="{% url 'viewer:upload-archive' %}">Upload archive</a>
                 <a class="dropdown-item" href="{% url 'viewer:upload-gallery' %}">Add gallery</a>
                 <a class="dropdown-item" href="{% url 'viewer:match-archives' %}">Match archives</a>
-                <a class="dropdown-item" href="{% url 'viewer:col-wanted-galleries' %}">Wanted galleries</a>
+                <a class="dropdown-item" href="{% url 'viewer:wanted-galleries' %}">Wanted galleries</a>
                 <a class="dropdown-item" href="{% url 'viewer:col-missing-archives' %}?provider=panda">Manage missing
                   archives</a>
                 <a class="dropdown-item" href="{% url 'viewer:activity-event-log' %}">Activity log</a>

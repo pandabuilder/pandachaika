@@ -5,7 +5,6 @@ import time
 import typing
 from collections import defaultdict
 from datetime import datetime
-from typing import Optional
 from urllib.parse import urljoin
 
 import bs4
@@ -29,7 +28,7 @@ class Parser(BaseParser):
     name = constants.provider_name
     accepted_urls = [constants.manga_no_scheme_url]
 
-    def get_values_from_gallery_link(self, link: str) -> Optional[GalleryData]:
+    def get_values_from_gallery_link(self, link: str) -> GalleryData | None:
 
         request_dict = construct_request_dict(self.settings, self.own_settings)
 
@@ -96,22 +95,22 @@ class Parser(BaseParser):
                 continue
         return response
 
-    def fetch_gallery_data(self, url) -> Optional[GalleryData]:
+    def fetch_gallery_data(self, url) -> GalleryData | None:
         return self.get_values_from_gallery_link(url)
 
-    def fetch_multiple_gallery_data(self, url_list: list[str]) -> Optional[list[GalleryData]]:
+    def fetch_multiple_gallery_data(self, url_list: list[str]) -> list[GalleryData] | None:
         return self.get_values_from_gallery_link_list(url_list)
 
     @staticmethod
-    def id_from_url(url: str) -> Optional[str]:
+    def id_from_url(url: str) -> str | None:
         return url.replace(constants.main_url, "").replace("/manga/", "")
 
     def crawl_urls(
         self,
         urls: list[str],
-        wanted_filters: Optional[QuerySet] = None,
+        wanted_filters: QuerySet | None = None,
         wanted_only: bool = False,
-        preselected_wanted_matches: Optional[dict[str, list["WantedGallery"]]] = None,
+        preselected_wanted_matches: dict[str, list["WantedGallery"]] | None = None,
     ) -> None:
 
         unique_urls = set()

@@ -3,7 +3,6 @@ import re
 import logging
 
 import time
-from typing import Optional
 import typing
 
 from core.base.comparison import get_gallery_closer_title_from_gallery_values, get_list_closer_gallery_titles_from_dict
@@ -39,19 +38,19 @@ class Matcher(metaclass=Meta):
         self.general_utils = GeneralUtils(global_settings=settings)
         self.parser = self.settings.provider_context.get_parsers(self.settings, filter_name=self.provider)[0]
         self.found_by = ""
-        self.match_gid: Optional[str] = None
-        self.match_provider: Optional[str] = None
-        self.match_link: Optional[str] = None
+        self.match_gid: str | None = None
+        self.match_provider: str | None = None
+        self.match_link: str | None = None
         self.values_array: list[GalleryData] = []
         self.match_count = 0
-        self.match_title: Optional[str] = None
+        self.match_title: str | None = None
         self.api_galleries: list[GalleryData] = []
-        self.crc32: Optional[str] = None
+        self.crc32: str | None = None
         self.file_path: str = ""
         # self.file_title = None
         self.return_code: int = 0
         self.gallery_links: list[str] = []
-        self.match_values: Optional[GalleryData] = None
+        self.match_values: GalleryData | None = None
 
     def __str__(self) -> str:
         return "{}_{}".format(self.provider, self.name)
@@ -85,7 +84,7 @@ class Matcher(metaclass=Meta):
             return 0
 
     def create_closer_matches_values(
-        self, title: str, cutoff: Optional[float] = None, max_matches: int = 20
+        self, title: str, cutoff: float | None = None, max_matches: int = 20
     ) -> list[tuple[str, GalleryData, float]]:
 
         if cutoff is None:
@@ -114,10 +113,10 @@ class Matcher(metaclass=Meta):
                 )
         return results
 
-    def get_metadata_after_matching(self) -> Optional[list[GalleryData]]:
+    def get_metadata_after_matching(self) -> list[GalleryData] | None:
         return self.parser.fetch_multiple_gallery_data(self.gallery_links)
 
-    def format_match_values(self) -> Optional[DataDict]:
+    def format_match_values(self) -> DataDict | None:
         raise NotImplementedError
 
     def format_to_search_title(self, file_name: str) -> str:

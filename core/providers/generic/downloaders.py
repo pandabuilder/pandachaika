@@ -1,7 +1,7 @@
 import base64
 import logging
 import os
-from typing import Any, Optional, cast
+from typing import Any, cast
 
 import requests
 
@@ -111,7 +111,7 @@ class GenericTorrentDownloader(BaseDownloader):
                 )
             )
 
-    def update_archive_db(self, default_values: DataDict) -> Optional["Archive"]:
+    def update_archive_db(self, default_values: DataDict) -> "Archive | None":
 
         if not self.gallery:
             return None
@@ -234,7 +234,7 @@ class GenericArchiveDownloader(BaseDownloader):
             logger.error("Could not download archive")
             self.return_code = 0
 
-    def update_archive_db(self, default_values: DataDict) -> Optional["Archive"]:
+    def update_archive_db(self, default_values: DataDict) -> "Archive | None":
 
         if not self.gallery:
             return None

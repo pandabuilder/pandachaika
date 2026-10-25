@@ -1,0 +1,36 @@
+{% extends "viewer/base.html" %}
+{% block title %}{{ title }} | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+
+{% block content %}
+    <div class="container py-4" style="max-width: 600px;">
+        <div class="card border-danger shadow-sm">
+            <div class="card-header bg-danger text-white">
+                <h4 class="mb-0"><i class="fas fa-exclamation-triangle"></i> Confirm Delete Monitored Link</h4>
+            </div>
+            <div class="card-body">
+                <p class="lead">Are you sure you want to delete the following monitored link?</p>
+                <div class="alert alert-secondary">
+                    <p class="mb-1"><strong>Name:</strong> {{ link.name }}</p>
+                    <p class="mb-1"><strong>URL:</strong> {{ link.url }}</p>
+                    <p class="mb-1"><strong>Frequency:</strong> {{ link.frequency }}</p>
+                    <p class="mb-0"><strong>Enabled:</strong> {{ link.enabled|yesno }}</p>
+                </div>
+                <p class="text-muted small">
+                    This will permanently remove the link and instruct the background worker to terminate and clean up its scheduled monitoring task.
+                </p>
+                <form action="" method="POST">
+                    {% csrf_token %}
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'viewer:monitored-links' %}" class="btn btn-secondary">
+                            Cancel
+                        </a>
+                        <button type="submit" class="btn btn-danger">
+                            <i class="fas fa-trash"></i> Yes, Delete Monitored Link
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+{% endblock %}

@@ -5,7 +5,7 @@ import shutil
 import subprocess
 import typing
 from tempfile import mkdtemp
-from typing import Optional, Any
+from typing import Any
 
 from core.base.setup_utilities import GeneralUtils
 from core.base.utilities import (
@@ -15,15 +15,11 @@ from core.base.utilities import (
     get_zip_fileinfo_for_gallery,
     calc_crc32,
 )
-from core.base.types import GalleryData, TorrentClient, DataDict
+from core.base.types import GalleryData, TorrentClient, DataDict, ProviderSettings
 
 if typing.TYPE_CHECKING:
     from core.base.setup import Settings
     from viewer.models import Gallery, Archive, WantedGallery, DownloadEvent
-    from core.base.types import ProviderSettings
-    T_ProviderSettings = typing.TypeVar("T_ProviderSettings", bound=ProviderSettings)
-else:
-    T_ProviderSettings = typing.TypeVar("T_ProviderSettings")
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +32,7 @@ class Meta(type):
         return "{}_{}".format(self.provider, self.type)
 
 
-class BaseDownloader(typing.Generic[T_ProviderSettings], metaclass=Meta):
+class BaseDownloader[T_ProviderSettings: ProviderSettings](metaclass=Meta):
 
     type = ""
     provider = ""
@@ -51,14 +47,14 @@ class BaseDownloader(typing.Generic[T_ProviderSettings], metaclass=Meta):
         self.own_settings: T_ProviderSettings = settings.providers[self.provider]
         self.fileDownloaded = 0
         self.return_code = 0
-        self.gallery_db_entry: Optional["Gallery"] = None
-        self.archive_db_entry: Optional["Archive"] = None
+        self.gallery_db_entry: "Gallery" | None = None
+        self.archive_db_entry: "Archive" | None = None
         self.crc32: str = ""
-        self.original_gallery: Optional[GalleryData] = None
-        self.gallery: Optional[GalleryData] = None
-        self.download_id: Optional[str] = None
-        self.download_event: Optional["DownloadEvent"] = None
-        self.queued_download_data: Optional[dict[str, Any]] = None
+        self.original_gallery: GalleryData | None = None
+        self.gallery: GalleryData | None = None
+        self.download_id: str | None = None
+        self.download_event: "DownloadEvent" | None = None
+        self.queued_download_data: dict[str, Any] | None = None
 
     def __str__(self) -> str:
         return "{}_{}".format(self.provider, self.type)
@@ -73,7 +69,7 @@ class BaseDownloader(typing.Generic[T_ProviderSettings], metaclass=Meta):
     def start_download(self) -> None:
         pass
 
-    def update_archive_db(self, default_values: DataDict) -> Optional["Archive"]:
+    def update_archive_db(self, default_values: DataDict) -> "Archive | None":
         pass
 
     def update_gallery_db(self) -> None:
@@ -90,7 +86,6 @@ class BaseDownloader(typing.Generic[T_ProviderSettings], metaclass=Meta):
             self.original_gallery.reason = self.settings.gallery_reason
         self.gallery_db_entry = gallery_model.objects.update_or_create_from_values(self.original_gallery)
         if self.gallery_db_entry:
-            # TODO: Investigate why we need a new update_index here to push to ES index.
             self.gallery_db_entry.update_index()
 
             if self.settings.link_child is not None:
@@ -180,23 +175,23 @@ class BaseDownloader(typing.Generic[T_ProviderSettings], metaclass=Meta):
                             },
                         )
 
-    def should_queue_archive_download(self, provider_settings: Optional[Any] = None) -> bool:
+    def should_queue_archive_download(self, provider_settings: Any | None = None) -> bool:
         target_settings = provider_settings or self.own_settings
         if target_settings is not None and getattr(target_settings, "queue_archive_downloads", None) is not None:
             return bool(target_settings.queue_archive_downloads)
-        if getattr(self.settings, "queue_archive_downloads", False):
-            return True
+        if getattr(self.settings, "queue_archive_downloads", None) is not None:
+            return bool(self.settings.queue_archive_downloads)
         return int(getattr(self.settings, "parallel_archive_downloaders", 0) or 0) > 0
 
     def enqueue_archive_download(
         self,
         download_url: str,
         filepath: str,
-        request_dict: Optional[dict[str, Any]] = None,
-        rate_limit_provider: Optional[str] = None,
+        request_dict: dict[str, Any] | None = None,
+        rate_limit_provider: str | None = None,
         rate_limit_calls: int = 1,
-        rate_limit_period: Optional[float] = None,
-        extra_options: Optional[dict[str, Any]] = None,
+        rate_limit_period: float | None = None,
+        extra_options: dict[str, Any] | None = None,
     ) -> None:
         req_opts: dict[str, Any] = {}
         if request_dict:
@@ -240,15 +235,15 @@ class BaseDownloader(typing.Generic[T_ProviderSettings], metaclass=Meta):
         name,
         method,
         download_id,
-        archive: Optional["Archive"] = None,
-        gallery: Optional["Gallery"] = None,
+        archive: "Archive | None" = None,
+        gallery: "Gallery | None" = None,
         progress: float = 0.0,
         total_size: int = 0,
-        status: Optional[str] = None,
-        provider: Optional[str] = None,
+        status: str | None = None,
+        provider: str | None = None,
         download_url: str = "",
-        request_options: Optional[dict[str, Any]] = None,
-    ) -> Optional["DownloadEvent"]:
+        request_options: dict[str, Any] | None = None,
+    ) -> "DownloadEvent | None":
         if not self.settings.download_event_model:
             return None
         if not total_size and archive and archive.filesize:
@@ -278,7 +273,7 @@ class BaseDownloader(typing.Generic[T_ProviderSettings], metaclass=Meta):
         return download_event
         # result, torrent_id
 
-    def init_download(self, gallery: GalleryData, wanted_gallery_list: Optional[list["WantedGallery"]] = None) -> None:
+    def init_download(self, gallery: GalleryData, wanted_gallery_list: list["WantedGallery"] | None = None) -> None:
 
         self.fileDownloaded = 0
         self.return_code = 0
@@ -411,7 +406,7 @@ class BaseFakeDownloader(BaseDownloader):
         self.fileDownloaded = 1
         self.return_code = 1
 
-    def update_archive_db(self, default_values: DataDict) -> Optional["Archive"]:
+    def update_archive_db(self, default_values: DataDict) -> "Archive | None":
 
         if not self.gallery or not self.settings.archive_model:
             return None
@@ -520,72 +515,69 @@ class BaseGalleryDLDownloader(BaseDownloader):
             return
 
         directory_path = mkdtemp(dir=self.settings.temp_directory_path)
+        try:
+            arguments = ["--zip", "--dest", "{}".format(directory_path)]
 
-        arguments = ["--zip", "--dest", "{}".format(directory_path)]
+            if self.own_settings.proxy:
+                arguments.append("--proxy")
+                arguments.append("{}".format(self.own_settings.proxy))
 
-        if self.own_settings.proxy:
-            arguments.append("--proxy")
-            arguments.append("{}".format(self.own_settings.proxy))
+            if self.settings.gallery_dl.config_file:
+                arguments.append("--config")
+                arguments.append("{}".format(self.settings.gallery_dl.config_file))
 
-        if self.settings.gallery_dl.config_file:
-            arguments.append("--config")
-            arguments.append("{}".format(self.settings.gallery_dl.config_file))
+            if self.settings.gallery_dl.extra_arguments:
+                arguments.append("{}".format(self.settings.gallery_dl.extra_arguments))
 
-        if self.settings.gallery_dl.extra_arguments:
-            arguments.append("{}".format(self.settings.gallery_dl.extra_arguments))
+            arguments.append("{}".format(self.gallery.link))
 
-        arguments.append("{}".format(self.gallery.link))
+            logger.info("Calling gallery-dl: {}.".format(" ".join([exe_path_to_use, *arguments])))
 
-        logger.info("Calling gallery-dl: {}.".format(" ".join([exe_path_to_use, *arguments])))
+            self.download_event = self.create_download_event(self.gallery.link, self.type, "")
 
-        self.download_event = self.create_download_event(self.gallery.link, self.type, "")
+            process_result = subprocess.run(
+                [exe_path_to_use, *arguments], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True
+            )
 
-        process_result = subprocess.run(
-            [exe_path_to_use, *arguments], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True
-        )
+            if process_result.returncode != 0:
+                self.return_code = 0
+                if process_result.stderr:
+                    logger.error("An error was captured when running gallery-dl: {}".format(process_result.stderr))
+                else:
+                    logger.error("Return code was not 0: {}".format(process_result.returncode))
+                return
 
-        if process_result.stderr:
-            self.return_code = 0
-            logger.error("An error was captured when running gallery-dl: {}".format(process_result.stderr))
-            return
+            if process_result.stderr:
+                logger.warning("gallery-dl produced warnings: {}".format(process_result.stderr))
 
-        if process_result.returncode != 0:
-            self.return_code = 0
-            logger.error("Return code was not 0: {}".format(process_result.returncode))
-            return
+            # If we downloaded more than one file, get the latest one
+            output_path = ""
+            file_name = ""
+            for dir_path, dir_names, filenames in os.walk(directory_path):
+                for current_file in filenames:
+                    file_name = current_file
+                    output_path = os.path.join(dir_path, current_file)
 
-        # If we downloaded more than one file, get the latest one
-        output_path = ""
-        file_name = ""
-        for dir_path, dir_names, filenames in os.walk(directory_path):
-            for current_file in filenames:
-                file_name = current_file
-                output_path = os.path.join(dir_path, current_file)
+            if not output_path or not os.path.isfile(output_path):
+                self.return_code = 0
+                logger.error("The resulting download file was not found: {}".format(file_name))
+                return
 
-        if not output_path:
-            self.return_code = 0
-            logger.error("The resulting download file was not found")
-            return
+            self.gallery.filename = available_filename(
+                self.settings.MEDIA_ROOT, os.path.join(self.own_settings.archive_dl_folder, replace_illegal_name(file_name))
+            )
 
-        if not output_path or not os.path.isfile(output_path):
-            self.return_code = 0
-            logger.error("The resulting download file was not found: {}".format(file_name))
-            return
+            if self.download_event:
+                self.download_event.name = self.gallery.filename
+                self.download_event.save()
 
-        self.gallery.filename = available_filename(
-            self.settings.MEDIA_ROOT, os.path.join(self.own_settings.archive_dl_folder, replace_illegal_name(file_name))
-        )
+            self.gallery.title = os.path.splitext(file_name)[0]
 
-        if self.download_event:
-            self.download_event.name = self.gallery.filename
-            self.download_event.save()
+            filepath = os.path.join(self.settings.MEDIA_ROOT, self.gallery.filename)
 
-        self.gallery.title = os.path.splitext(file_name)[0]
-
-        filepath = os.path.join(self.settings.MEDIA_ROOT, self.gallery.filename)
-
-        shutil.move(output_path, filepath)
-        shutil.rmtree(directory_path, ignore_errors=True)
+            shutil.move(output_path, filepath)
+        finally:
+            shutil.rmtree(directory_path, ignore_errors=True)
 
         self.gallery.filesize, self.gallery.filecount = get_zip_fileinfo_for_gallery(filepath)
         if self.gallery.filesize > 0:
@@ -598,7 +590,7 @@ class BaseGalleryDLDownloader(BaseDownloader):
             logger.error("Could not download archive")
             self.return_code = 0
 
-    def update_archive_db(self, default_values: DataDict) -> Optional["Archive"]:
+    def update_archive_db(self, default_values: DataDict) -> "Archive | None":
 
         if not self.gallery or not self.settings.archive_model:
             return None

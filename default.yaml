@@ -27,11 +27,11 @@ general:
   # Number of parallel post downloaders (each one opens a FTP connection).
   parallel_post_downloaders: 4
   # Maximum number of concurrent archive downloads across providers.
-  # Set to 0 to download archives synchronously inline (default legacy behavior).
+  # Set to 0 to download archives synchronously inline (legacy behavior).
   # Set to 1 or more to enable the background archive download queue.
-  parallel_archive_downloaders: 0
+  parallel_archive_downloaders: 1
   # Optional explicit boolean toggle to queue archive HTTP downloads (can also be enabled per-provider).
-  queue_archive_downloads: false
+  queue_archive_downloads: true
   # Start the archive download queue scheduler on worker startup.
   archive_download_queue_startup: true
   # Archive download queue cycle timer (in seconds).
@@ -42,6 +42,10 @@ general:
   download_progress_checker_cycle_timer: 10.0
   # Reload the server when it detects file changes (CherryPy feature).
   cherrypy_auto_restart: false
+  # Enable refined archive and gallery views for authenticated users (opt-in).
+  # When false (default), all users see the legacy/old design.
+  # When true, authenticated users see the refined/new design, while public users continue to see the old design.
+  refined_archive_gallery_views: false
   # Auto discard galleries that contain these tags. For new downloads and matches.
   banned_tags:
     - language:thai
@@ -240,13 +244,13 @@ database:
   postgresql_host: localhost
   postgresql_port: '5432'
 torrent:
-  # Parameters needed if using a torrent downloader to configure the connection to the torrent client. Possible clients: Transmission, uTorrent.
+  # Parameters needed if using a torrent downloader to configure the connection to the torrent client. Possible clients: Transmission, qBittorrent.
   client: transmission
   user: panda
   pass: panda
   address: http://localhost/transmission/rpc
   port: 9091
-  # download_dir only implemented for Transmission
+  # download_dir implemented for Transmission and qBittorrent
   download_dir: /home/panda/downloads/torrents
   # By default, the validity of the server certificate is checked. If it's a self-signed cert for example, set it to "yes".
   no_certificate_check: false

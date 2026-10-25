@@ -5,7 +5,6 @@ import time
 import typing
 from collections import defaultdict
 from collections.abc import Iterable
-from typing import Optional
 
 from django.db.models import QuerySet
 
@@ -68,7 +67,7 @@ class Parser(BaseParser):
 
         return galleries
 
-    def fetch_gallery_data(self, url: str) -> Optional[GalleryData]:
+    def fetch_gallery_data(self, url: str) -> GalleryData | None:
         # Ideally we always call with a link, since there is a daily limit in API calls
         response = self.get_galleries_from_xml((url,))
         if response:
@@ -79,7 +78,7 @@ class Parser(BaseParser):
         return self.get_galleries_from_xml(url_list)
 
     @staticmethod
-    def id_from_url(url: str) -> Optional[str]:
+    def id_from_url(url: str) -> str | None:
         m = re.search(r"/book/(\w+)/.*", url)
         if m and m.group(1):
             return "mugi-B" + m.group(1)
@@ -89,9 +88,9 @@ class Parser(BaseParser):
     def crawl_urls(
         self,
         urls: list[str],
-        wanted_filters: Optional[QuerySet] = None,
+        wanted_filters: QuerySet | None = None,
         wanted_only: bool = False,
-        preselected_wanted_matches: Optional[dict[str, list["WantedGallery"]]] = None,
+        preselected_wanted_matches: dict[str, list["WantedGallery"]] | None = None,
     ) -> None:
 
         unique_urls = set()

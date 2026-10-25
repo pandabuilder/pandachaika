@@ -14,9 +14,10 @@ import fnmatch
 from datetime import timedelta, datetime, timezone
 from difflib import SequenceMatcher
 from functools import wraps
+from collections.abc import Sequence, Iterator
 from itertools import tee, islice, chain
 from tempfile import mkdtemp
-from typing import Union, Optional, Any
+from typing import Any
 
 from ratelimit import limits, RateLimitException
 
@@ -109,10 +110,10 @@ def calc_crc32(filename: str) -> str:
     return "%X" % (prev & 0xFFFFFFFF)
 
 
-def sha1_from_file_object(fp: Union[typing.IO, str], close_object: bool = False):
+def sha1_from_file_object(fp: typing.IO | str, close_object: bool = False):
 
     if isinstance(fp, str):
-        file_object: Union[typing.IO, typing.BinaryIO] = open(fp, "rb")
+        file_object: typing.IO | typing.BinaryIO = open(fp, "rb")
     else:
         file_object = fp
 
@@ -127,10 +128,7 @@ def sha1_from_file_object(fp: Union[typing.IO, str], close_object: bool = False)
     return hasher.hexdigest()
 
 
-T = typing.TypeVar("T")
-
-
-def chunks(sequence: typing.Sequence[T], n: int):
+def chunks[T](sequence: Sequence[T], n: int):
     """Yield successive n-sized chunks from l."""
     for i in range(0, len(sequence), n):
         yield sequence[i : i + n]
@@ -148,28 +146,28 @@ def zfill_to_four(namefile: str) -> str:
     return filename.lower()
 
 
-def accept_images_only(name: str) -> Optional[str]:
+def accept_images_only(name: str) -> str | None:
     if IMAGES_REGEX.search(name) and "__MACOSX" not in name:
         return name
     else:
         return None
 
 
-def discard_zipfile_extra_files(name: str) -> Optional[str]:
+def discard_zipfile_extra_files(name: str) -> str | None:
     if "__MACOSX" not in name:
         return name
     else:
         return None
 
 
-def accept_images_only_info(fileinfo: zipfile.ZipInfo) -> Optional[zipfile.ZipInfo]:
+def accept_images_only_info(fileinfo: zipfile.ZipInfo) -> zipfile.ZipInfo | None:
     if IMAGES_REGEX.search(fileinfo.filename) and "__MACOSX" not in fileinfo.filename:
         return fileinfo
     else:
         return None
 
 
-def discard_zipfile_extra_files_info(fileinfo: zipfile.ZipInfo) -> Optional[zipfile.ZipInfo]:
+def discard_zipfile_extra_files_info(fileinfo: zipfile.ZipInfo) -> zipfile.ZipInfo | None:
     if "__MACOSX" not in fileinfo.filename:
         return fileinfo
     else:
@@ -177,10 +175,10 @@ def discard_zipfile_extra_files_info(fileinfo: zipfile.ZipInfo) -> Optional[zipf
 
 
 # Allows 1 nested zip level, returns tuple: filename, containing zip(nested), extracted_name (adds nested zipfile)
-def get_images_from_zip(current_zip: zipfile.ZipFile) -> list[tuple[str, Optional[str], str]]:
+def get_images_from_zip(current_zip: zipfile.ZipFile) -> list[tuple[str, str | None, str]]:
     filtered_files = list(filter(discard_zipfile_extra_files, sorted(current_zip.namelist(), key=zfill_to_four)))
 
-    nested_files: list[tuple[str, Optional[str], str]] = []
+    nested_files: list[tuple[str, str | None, str]] = []
 
     for current_file in filtered_files:
         if IMAGES_REGEX.search(current_file):
@@ -271,7 +269,7 @@ def get_zip_filesize(filepath: str) -> int:
     return total_size
 
 
-def convert_rar_to_zip(filepath: str, temp_path: typing.Optional[str] = None) -> int:
+def convert_rar_to_zip(filepath: str, temp_path: str | None = None) -> int:
     try:
         file_name = os.path.splitext(filepath)[0]
         temp_rar_file = file_name + ".rar"
@@ -297,7 +295,7 @@ def convert_rar_to_zip(filepath: str, temp_path: typing.Optional[str] = None) ->
     return 0
 
 
-def convert_7z_to_zip(filepath: str, temp_path: typing.Optional[str] = None) -> int:
+def convert_7z_to_zip(filepath: str, temp_path: str | None = None) -> int:
     try:
         file_name = os.path.splitext(filepath)[0]
         temp_7z_file = file_name + ".t7z"
@@ -325,7 +323,7 @@ def convert_7z_to_zip(filepath: str, temp_path: typing.Optional[str] = None) -> 
     return 0
 
 
-def check_and_convert_to_zip(filepath: str, temp_path: typing.Optional[str] = None) -> tuple[str, int]:
+def check_and_convert_to_zip(filepath: str, temp_path: str | None = None) -> tuple[str, int]:
     try:
         zipfile.ZipFile(filepath, "r")
         return "zip", 0
@@ -353,7 +351,7 @@ def check_and_convert_to_zip(filepath: str, temp_path: typing.Optional[str] = No
 
 def get_zip_fileinfo(
     filepath: str, get_extra_data: bool = False
-) -> tuple[int, int, Optional[list[ArchiveGenericFile]]]:
+) -> tuple[int, int, list[ArchiveGenericFile] | None]:
     try:
         my_zip = zipfile.ZipFile(filepath, "r")
     except (zipfile.BadZipFile, NotImplementedError):
@@ -363,7 +361,7 @@ def get_zip_fileinfo(
     total_count = 0
 
     if get_extra_data:
-        other_file_data: Optional[list[ArchiveGenericFile]] = []
+        other_file_data: list[ArchiveGenericFile] | None = []
     else:
         other_file_data = None
 
@@ -548,18 +546,18 @@ def artist_from_title(title: str) -> str:
     return artist
 
 
-def str_to_int(number: Optional[str]) -> Union[str, int]:
+def str_to_int(number: str | None) -> str | int:
     return number or 0
 
 
-def timestamp_or_zero(posted: Optional[datetime]) -> float:
+def timestamp_or_zero(posted: datetime | None) -> float:
     if posted:
         return posted.timestamp()
     else:
         return 0.0
 
 
-def timestamp_or_null(posted: Optional[datetime]) -> Optional[int]:
+def timestamp_or_null(posted: datetime | None) -> int | None:
     if posted:
         return int(posted.timestamp())
     else:
@@ -648,16 +646,16 @@ def get_dict_allowed_fields(gallery_data: GalleryData) -> dict[str, Any]:
     return gallery_dict
 
 
-def previous_and_next(
-    some_iterable: typing.Sequence[Optional[T]],
-) -> typing.Iterator[tuple[Optional[T], Optional[T], Optional[T]]]:
+def previous_and_next[T](
+    some_iterable: Sequence[T | None],
+) -> Iterator[tuple[T | None, T | None, T | None]]:
     prevs, items, nexts = tee(some_iterable, 3)
     prevs = chain([None], prevs)
     nexts = chain(islice(nexts, 1, None), [None])
     return zip(prevs, items, nexts)
 
 
-def unescape(text: Optional[str]) -> Optional[str]:
+def unescape(text: str | None) -> str | None:
     if text is None:
         return None
     else:
@@ -688,10 +686,10 @@ def unescape(text: Optional[str]) -> Optional[str]:
 class SchedulerStatusInfo(typing.NamedTuple):
     name: str
     is_running: bool
-    last_run: Optional[datetime]
+    last_run: datetime | None
     cycle_timer: str
-    next_run: Optional[datetime]
-    worker_pid: Optional[int] = None
+    next_run: datetime | None
+    worker_pid: int | None = None
 
 
 def get_schedulers_status(
@@ -729,6 +727,9 @@ def get_schedulers_status(
                 next_run = scheduler.next_run
             elif last_run and timer:
                 next_run = last_run + timedelta(seconds=timer)
+            elif is_running:
+                import django.utils.timezone as django_tz
+                next_run = django_tz.now()
             else:
                 next_run = None
 
@@ -751,7 +752,7 @@ def get_schedulers_status(
 
 
 def get_schedulers_status_from_db(
-    schedulers: Optional[typing.Sequence[Any]] = None,
+    schedulers: typing.Sequence[Any] | None = None,
 ) -> list[SchedulerStatusInfo]:
     if schedulers is None:
         try:
@@ -851,7 +852,7 @@ def send_pushover_notification(
 
 def request_with_retries(
     url: str, request_dict: dict[str, Any], post: bool = False, retries: int = 3
-) -> Optional[requests.models.Response]:
+) -> requests.models.Response | None:
     for retry_count in range(retries):
         try:
             if post:
@@ -889,7 +890,7 @@ def request_with_retries(
 
 
 REQUESTER_BY_PROVIDER: dict[
-    str, typing.Callable[..., Optional[requests.models.Response]]
+    str, typing.Callable[..., requests.models.Response | None]
 ] = {}
 PROVIDER_RATE_LIMIT_CONFIG: dict[str, tuple[int, float]] = {}
 
@@ -989,7 +990,7 @@ def request_by_provider(provider_name: str, provider_calls: int, provider_limit:
     return REQUESTER_BY_PROVIDER[provider_name]
 
 
-def get_filename_from_cd(cd: typing.Optional[str] = None):
+def get_filename_from_cd(cd: str | None = None):
     """
     Get filename from content-disposition
     """
@@ -1011,7 +1012,7 @@ def remove_archive_extensions(filename: str):
     return filename
 
 
-def get_oldest_entry_from_wayback(url: str) -> Optional[datetime]:
+def get_oldest_entry_from_wayback(url: str) -> datetime | None:
     request_url = WAYBACK_API_URL + "?url={}&output=json&fl=timestamp&limit=1&filter=statuscode:200".format(url)
     r = request_with_retries(request_url, {})
     if r is None:

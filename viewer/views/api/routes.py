@@ -3,7 +3,7 @@
 import json
 import logging
 from collections import defaultdict
-from typing import Any, Optional
+from typing import Any
 
 from django.conf import settings
 from django.contrib.auth import authenticate, login, logout

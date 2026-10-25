@@ -61,8 +61,6 @@ class LinkMonitor(BaseScheduler):
             if monitored_link.use_limited_wanted_galleries:
                 for wanted_gallery in monitored_link.limited_wanted_galleries.all():
                     arguments_to_crawler.extend(["--restrict-wanted-galleries", str(wanted_gallery.pk)])
-            # TODO: This currently sets the proxy for both the queried page and the resulting downloads.
-            # Could be beneficial to have a separate setting.
             if monitored_link.proxy:
                 logger.info("Using proxy: {}".format(monitored_link.proxy))
                 for provider_settings in current_settings.providers.values():

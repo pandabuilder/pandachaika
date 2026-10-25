@@ -87,7 +87,7 @@ dependencies = [
     "psycopg-binary==3.3.6; sys_platform == 'win32'",
     "py7zr==1.1.4",
     "pysocks==1.7.1",
-    "python-dateutil==2.9.0.post0",
+    "python-dateutil==3.0.0",
     "pytz==2026.5",
     "pyyaml==6.0.3",
     "rarfile==4.5",

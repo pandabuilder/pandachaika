@@ -4,7 +4,6 @@ import logging
 from collections.abc import Callable
 from operator import itemgetter
 from types import ModuleType
-from typing import Optional, Union
 import typing
 
 from core.base.types import ProviderSettings
@@ -18,7 +17,7 @@ if typing.TYPE_CHECKING:
     from core.base import setup
 
 
-AcceptableModules = Union[type["BaseParser"], type["Matcher"], type["BaseDownloader"]]
+type AcceptableModules = type[BaseParser] | type[Matcher] | type[BaseDownloader]
 logger = logging.getLogger(__name__)
 
 
@@ -36,7 +35,7 @@ def _get_provider_submodule_api(module_name: str, submodule_name: str) -> list[A
     return []
 
 
-def _get_provider_submodule_method(module_name: str, submodule_name: str, method_name: str) -> Optional[Callable]:
+def _get_provider_submodule_method(module_name: str, submodule_name: str, method_name: str) -> Callable | None:
     sub_module = "{}.{}".format(module_name, submodule_name)
     try:
         importlib.import_module(module_name, package="__path__")
@@ -51,7 +50,7 @@ def _get_provider_submodule_method(module_name: str, submodule_name: str, method
     return None
 
 
-def _get_provider_submodule(module_name: str, submodule_name: str) -> Optional[ModuleType]:
+def _get_provider_submodule(module_name: str, submodule_name: str) -> ModuleType | None:
     sub_module = "{}.{}".format(module_name, submodule_name)
     try:
         importlib.import_module(module_name, package="__path__")
@@ -143,7 +142,7 @@ class ProviderContext:
         self.constants.append((provider_name, obj))
 
     def get_parsers(
-        self, settings: "setup.Settings", filter_name: Optional[str] = None, filter_names: Optional[list[str]] = None
+        self, settings: "setup.Settings", filter_name: str | None = None, filter_names: list[str] | None = None
     ) -> list["BaseParser"]:
         parsers_list = list()
         for parser in self.parsers:
@@ -172,7 +171,7 @@ class ProviderContext:
 
         return parsers_list
 
-    def get_parsers_classes(self, filter_name: Optional[str] = None) -> list[type["BaseParser"]]:
+    def get_parsers_classes(self, filter_name: str | None = None) -> list[type["BaseParser"]]:
         parsers_list = list()
         for parser in self.parsers:
             parser_name = getattr(parser, "name")
@@ -194,10 +193,10 @@ class ProviderContext:
         self,
         settings: "setup.Settings",
         general_utils: GeneralUtils,
-        filter_provider: Optional[str] = None,
-        filter_type: Optional[str] = None,
+        filter_provider: str | None = None,
+        filter_type: str | None = None,
         force: bool = False,
-        priorities: Optional[dict[str, int]] = None,
+        priorities: dict[str, int] | None = None,
     ) -> list[tuple["BaseDownloader", int]]:
 
         # Use provided priorities, or fall back to the ones in settings.
@@ -245,8 +244,8 @@ class ProviderContext:
 
     def get_downloaders_name_priority(
         self, settings: "setup.Settings",
-            filter_provider: Optional[str] = None,
-            filter_type: Optional[str] = None
+            filter_provider: str | None = None,
+            filter_type: str | None = None
     ) -> list[tuple[str, int]]:
         downloaders = list()
         for downloader_class in self.downloaders:
@@ -279,7 +278,7 @@ class ProviderContext:
         return sorted(downloaders, key=itemgetter(1), reverse=True)
 
     def get_matchers(
-        self, settings: "setup.Settings", filter_name: Optional[str] = None, force: bool = False, matcher_type: str = ""
+        self, settings: "setup.Settings", filter_name: str | None = None, force: bool = False, matcher_type: str = ""
     ) -> list[tuple["Matcher", int]]:
         matchers_list = list()
         if matcher_type:
@@ -309,7 +308,7 @@ class ProviderContext:
         return sorted(matchers_list, key=itemgetter(1))
 
     def get_matchers_name_priority(
-        self, settings: "setup.Settings", filter_name: Optional[str] = None, matcher_type: str = ""
+        self, settings: "setup.Settings", filter_name: str | None = None, matcher_type: str = ""
     ) -> list[tuple[str, int]]:
         matchers_list = list()
         if matcher_type:
@@ -338,7 +337,7 @@ class ProviderContext:
             return method(gallery)
         return "Can't reconstruct URL"
 
-    def get_resolve_methods(self, filter_name: Optional[str] = None) -> list[Callable]:
+    def get_resolve_methods(self, filter_name: str | None = None) -> list[Callable]:
         method_list = list()
         for method_tuple in self.resolvers:
             method_name = method_tuple[0]
@@ -350,7 +349,7 @@ class ProviderContext:
 
         return method_list
 
-    def get_wanted_generators(self, filter_name: Optional[str] = None) -> list[Callable]:
+    def get_wanted_generators(self, filter_name: str | None = None) -> list[Callable]:
         method_list = list()
         for method_tuple in self.wanted_generators:
             method_name = method_tuple[0]
@@ -362,7 +361,7 @@ class ProviderContext:
 
         return method_list
 
-    def get_constants(self, filter_name: Optional[str] = None) -> list[ModuleType]:
+    def get_constants(self, filter_name: str | None = None) -> list[ModuleType]:
         constants_list = list()
         for module_tuple in self.constants:
             module_name = module_tuple[0]

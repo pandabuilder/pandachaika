@@ -5,7 +5,7 @@ Django settings for pandabackup project.
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 import os
 import sys
-from typing import Any, Optional
+from typing import Any
 import typing
 
 from core.base.setup import Settings
@@ -371,7 +371,7 @@ if crawler_settings.mail_logging.enable:
 if crawler_settings.elasticsearch.enable or crawler_settings.elasticsearch.enable_match:
     from elasticsearch import Elasticsearch
 
-    ES_CLIENT: Optional[Elasticsearch] = Elasticsearch(
+    ES_CLIENT: Elasticsearch | None = Elasticsearch(
         [crawler_settings.elasticsearch.url], request_timeout=crawler_settings.elasticsearch.timeout
     )
     ES_ENABLED = bool(crawler_settings.elasticsearch.enable)

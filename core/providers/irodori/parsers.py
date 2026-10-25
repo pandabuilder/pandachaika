@@ -5,7 +5,6 @@ import re
 import time
 import typing
 from collections import defaultdict
-from typing import Optional
 from urllib.parse import urlparse, urljoin
 
 import bs4
@@ -29,7 +28,7 @@ class Parser(BaseParser):
     name = constants.provider_name
     accepted_urls = [constants.no_scheme_url]
 
-    def get_values_from_gallery_link(self, link: str) -> Optional[GalleryData]:
+    def get_values_from_gallery_link(self, link: str) -> GalleryData | None:
 
         request_dict = construct_request_dict(self.settings, self.own_settings)
 
@@ -52,7 +51,7 @@ class Parser(BaseParser):
     OTHER_LANGUAGE_REGEX = re.compile(r"\*This work is in (\w+). For the English version", re.IGNORECASE)
     ID_NUM_REGEX = re.compile(r"product/product/cattags&product_id=(\d+)", re.IGNORECASE)
 
-    def process_regular_gallery_page_v2(self, link: str, response_text: str) -> Optional[GalleryData]:
+    def process_regular_gallery_page_v2(self, link: str, response_text: str) -> GalleryData | None:
 
         soup = BeautifulSoup(response_text, "html.parser")
         gallery = GalleryData(link.replace(constants.main_url + "/", ""), self.name)
@@ -144,7 +143,7 @@ class Parser(BaseParser):
 
         return gallery
 
-    def process_regular_gallery_page(self, link: str, response_text: str) -> Optional[GalleryData]:
+    def process_regular_gallery_page(self, link: str, response_text: str) -> GalleryData | None:
 
         soup = BeautifulSoup(response_text, "html.parser")
         gallery = GalleryData(link.replace(constants.main_url + "/", ""), self.name)
@@ -244,14 +243,14 @@ class Parser(BaseParser):
                 continue
         return response
 
-    def fetch_gallery_data(self, url) -> Optional[GalleryData]:
+    def fetch_gallery_data(self, url) -> GalleryData | None:
         return self.get_values_from_gallery_link(url)
 
-    def fetch_multiple_gallery_data(self, url_list: list[str]) -> Optional[list[GalleryData]]:
+    def fetch_multiple_gallery_data(self, url_list: list[str]) -> list[GalleryData] | None:
         return self.get_values_from_gallery_link_list(url_list)
 
     @staticmethod
-    def id_from_url(url: str) -> Optional[str]:
+    def id_from_url(url: str) -> str | None:
         m = re.search(constants.main_url + "/(.+)", url)
         if m and m.group(1):
             return m.group(1)
@@ -261,9 +260,9 @@ class Parser(BaseParser):
     def crawl_urls(
         self,
         urls: list[str],
-        wanted_filters: Optional[QuerySet] = None,
+        wanted_filters: QuerySet | None = None,
         wanted_only: bool = False,
-        preselected_wanted_matches: Optional[dict[str, list["WantedGallery"]]] = None,
+        preselected_wanted_matches: dict[str, list["WantedGallery"]] | None = None,
     ) -> None:
 
         unique_urls = set()

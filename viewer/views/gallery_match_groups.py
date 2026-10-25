@@ -1,5 +1,5 @@
 import logging
-from typing import Optional, Any
+from typing import Any
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
@@ -98,7 +98,7 @@ def gallery_match_groups_explorer(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
-def gallery_match_group_details(request: HttpRequest, pk: Optional[int] = None) -> HttpResponse:
+def gallery_match_group_details(request: HttpRequest, pk: int | None = None) -> HttpResponse:
     """GalleryMatchGroup listing."""
     try:
         if pk is not None:
@@ -132,7 +132,7 @@ def gallery_match_group_details(request: HttpRequest, pk: Optional[int] = None) 
 
 
 @permission_required("viewer.change_gallerymatchgroup")
-def gallery_match_group_edit(request: HttpRequest, pk: Optional[int] = None) -> HttpResponse:
+def gallery_match_group_edit(request: HttpRequest, pk: int | None = None) -> HttpResponse:
     """GalleryMatchGroup listing."""
     try:
         if pk is not None:
@@ -303,7 +303,7 @@ def gallery_match_group_edit(request: HttpRequest, pk: Optional[int] = None) -> 
 
 @permission_required("viewer.change_gallerymatchgroup")
 def gallery_match_group_enter_reason(
-    request: HttpRequest, pk: Optional[int] = None, tool: Optional[str] = None
+    request: HttpRequest, pk: int | None = None, tool: str | None = None
 ) -> HttpResponse:
     try:
         if pk is not None:

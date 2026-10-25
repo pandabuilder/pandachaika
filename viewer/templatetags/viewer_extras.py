@@ -2,7 +2,8 @@ import html
 import json
 import re
 from json import JSONDecodeError
-from typing import Any, TypeVar, Union, ItemsView, Optional
+from typing import Any
+from collections.abc import ItemsView
 
 from django import template
 from django.template import RequestContext
@@ -18,8 +19,6 @@ from viewer.models import Archive, Tag
 from viewer.utils.tags import sort_tags
 
 register = template.Library()
-
-T = TypeVar("T", float, int)
 
 
 @register.simple_tag(takes_context=True)
@@ -50,7 +49,7 @@ def url_multi_replace(context: RequestContext, **kwargs: Any) -> str:
 
 
 @register.filter
-def subtract(value: T, arg: T) -> T:
+def subtract[T: (float, int)](value: T, arg: T) -> T:
     return value - arg
 
 
@@ -98,6 +97,81 @@ def mark_color(mark_priority: float) -> str:
         return "mark-mid-low"
     else:
         return "mark-low"
+
+
+@register.filter(is_safe=True)
+def boolean_badge(value: Any, arg: str | None = None) -> SafeText:
+    """
+    Renders a boolean or truthy value as a styled Bootstrap badge.
+    arg format: 'TrueLabel,FalseLabel[,color_type]' or just 'color_type'
+    color_type can be: success (default), danger, warning, info, primary, secondary.
+    """
+    true_label = "Yes"
+    false_label = "No"
+    color_type = "success"
+
+    if arg:
+        parts = [p.strip() for p in arg.split(",")]
+        if len(parts) == 1:
+            if parts[0] in ("danger", "warning", "info", "primary", "secondary", "success", "dark", "light"):
+                color_type = parts[0]
+            else:
+                true_label = parts[0]
+        elif len(parts) >= 2:
+            true_label, false_label = parts[0], parts[1]
+            if len(parts) >= 3:
+                color_type = parts[2]
+
+    if value:
+        if color_type == "warning":
+            badge_class = "badge bg-warning text-dark"
+        elif color_type == "info":
+            badge_class = "badge bg-info text-dark"
+        elif color_type in ("danger", "primary", "secondary", "light", "dark"):
+            badge_class = f"badge bg-{color_type}"
+        else:
+            badge_class = "badge bg-success"
+        label = true_label
+    else:
+        badge_class = "badge bg-secondary"
+        label = false_label
+
+    return mark_safe(f'<span class="{badge_class}">{escape(label)}</span>')
+
+
+@register.filter(is_safe=True)
+def boolean_text(value: Any, arg: str | None = None) -> SafeText:
+    """
+    Renders a boolean or truthy value as styled colored text.
+    arg format: 'TrueLabel,FalseLabel[,color_type]' or just 'color_type'
+    """
+    true_label = "Yes"
+    false_label = "No"
+    color_type = "success"
+
+    if arg:
+        parts = [p.strip() for p in arg.split(",")]
+        if len(parts) == 1:
+            if parts[0] in ("danger", "warning", "info", "primary", "secondary", "success", "dark", "light"):
+                color_type = parts[0]
+            else:
+                true_label = parts[0]
+        elif len(parts) >= 2:
+            true_label, false_label = parts[0], parts[1]
+            if len(parts) >= 3:
+                color_type = parts[2]
+
+    if value:
+        if color_type == "warning":
+            text_class = "text-warning fw-semibold"
+        else:
+            text_class = f"text-{color_type} fw-semibold"
+        label = true_label
+    else:
+        text_class = "text-secondary"
+        label = false_label
+
+    return mark_safe(f'<span class="{text_class}">{escape(label)}</span>')
 
 
 @register.filter
@@ -221,7 +295,7 @@ def get_list(dictionary, key):
 
 
 @register.filter
-def artist_name_from_str(title: Optional[str]) -> str:
+def artist_name_from_str(title: str | None) -> str:
     if title:
         return translate_tag(artist_from_title(title))
     else:
@@ -327,7 +401,7 @@ def gallery_history_fields(new_record, is_authenticated=False):
 
 
 @register.filter
-def format_json(maybe_json: Optional[str]) -> str:
+def format_json(maybe_json: str | None) -> str:
     if maybe_json is None:
         return "None"
     try:

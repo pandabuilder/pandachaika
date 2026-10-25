@@ -1,7 +1,7 @@
 """DELETE command handlers for the public JSON API."""
 
 import json
-from typing import Any, Optional
+from typing import Any
 
 from django.contrib.auth.models import User, AnonymousUser
 from django.db import transaction
@@ -12,7 +12,7 @@ from viewer.models import ArchiveGroup, ArchiveGroupEntry, WantedGallery
 from viewer.views.api.common import _get_int, _get_int_from_data_or_body
 
 def handle_delete_archive_group(
-    request: HttpRequest, data: QueryDict, body: dict, user: Optional[User | AnonymousUser]
+    request: HttpRequest, data: QueryDict, body: dict, user: User | AnonymousUser | None
 ):
     try:
         archive_group_id = _get_int(data, "archive-group")
@@ -35,7 +35,7 @@ def handle_delete_archive_group(
 
 
 def handle_delete_archive_group_entry(
-    request: HttpRequest, data: QueryDict, body: dict, user: Optional[User | AnonymousUser]
+    request: HttpRequest, data: QueryDict, body: dict, user: User | AnonymousUser | None
 ):
     try:
         archive_group_entry_id = _get_int(data, "archive-group-entry")
@@ -62,7 +62,7 @@ def handle_delete_archive_group_entry(
 
 
 def handle_delete_wanted_gallery(
-    request: HttpRequest, data: QueryDict, body: dict, user: Optional[User | AnonymousUser]
+    request: HttpRequest, data: QueryDict, body: dict, user: User | AnonymousUser | None
 ):
     try:
         wanted_gallery_id = _get_int_from_data_or_body(data, "wanted-gallery", body)

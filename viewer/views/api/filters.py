@@ -1,7 +1,7 @@
 """Archive and gallery filter helpers used by the JSON API."""
 
 import re
-from typing import Any, Union
+from typing import Any
 
 from django.db.models import Q, QuerySet
 from django.http.request import QueryDict
@@ -79,7 +79,7 @@ def simple_archive_filter(args: str, public: bool = True) -> "QuerySet[Archive]"
     return results
 
 
-def filter_galleries_no_request(filter_args: Union[dict[str, Any], QueryDict]) -> "QuerySet[Gallery]":
+def filter_galleries_no_request(filter_args: dict[str, Any] | QueryDict) -> "QuerySet[Gallery]":
 
     # sort and filter results by parameters
     order = "posted"

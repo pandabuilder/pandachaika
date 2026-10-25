@@ -57,7 +57,7 @@ class ProviderTimedAutoUpdater(BaseScheduler):
                 if not galleries:
                     logger.info(
                         "No galleries posted from {} to {} need updating. Provider: {}".format(
-                            start_date, end_date, ", ".join(self.provider_name)
+                            start_date, end_date, self.provider_name
                         )
                     )
                 else:

@@ -7,7 +7,6 @@ import typing
 import urllib.parse
 from collections import defaultdict
 from collections.abc import Iterable
-from typing import Optional
 
 import feedparser
 import bs4
@@ -313,7 +312,7 @@ class Parser(BaseParser):
 
         return galleries_data
 
-    def get_values_from_gallery_link(self, link: str) -> Optional[GalleryData]:
+    def get_values_from_gallery_link(self, link: str) -> GalleryData | None:
 
         link_root, gid, token = root_gid_token_from_link(link)
 
@@ -456,14 +455,14 @@ class Parser(BaseParser):
                 urls.append(item["link"])
         return urls
 
-    def fetch_gallery_data(self, url: str) -> Optional[GalleryData]:
+    def fetch_gallery_data(self, url: str) -> GalleryData | None:
         return self.get_values_from_gallery_link(url)
 
     def fetch_multiple_gallery_data(self, url_list: list[str]) -> list[GalleryData]:
         return self.get_values_from_gallery_link_list(url_list)
 
     @staticmethod
-    def id_from_url(url: str) -> Optional[str]:
+    def id_from_url(url: str) -> str | None:
         m = re.search(r"(.+)/g/(\d+)/(\w+)", url)
         if m and m.group(2):
             return m.group(2)
@@ -471,7 +470,7 @@ class Parser(BaseParser):
             return None
 
     @staticmethod
-    def token_from_url(url: str) -> Optional[str]:
+    def token_from_url(url: str) -> str | None:
         m = re.search(r"(.+)/g/(\d+)/(\w+)", url)
         if m and m.group(3):
             return m.group(3)
@@ -481,9 +480,9 @@ class Parser(BaseParser):
     def crawl_urls(
         self,
         urls: list[str],
-        wanted_filters: Optional[QuerySet] = None,
+        wanted_filters: QuerySet | None = None,
         wanted_only: bool = False,
-        preselected_wanted_matches: Optional[dict[str, list["WantedGallery"]]] = None,
+        preselected_wanted_matches: dict[str, list["WantedGallery"]] | None = None,
     ) -> None:
 
         unique_urls = set()

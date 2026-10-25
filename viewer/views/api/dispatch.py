@@ -1,7 +1,7 @@
 """Dispatch GET/POST/PUT/DELETE requests to registered API handlers."""
 
 import json
-from typing import Any, Optional
+from typing import Any
 
 from django.contrib.auth.models import User, AnonymousUser
 from django.http import (
@@ -27,7 +27,7 @@ def json_api_handle_get(request: HttpRequest, user_is_authenticated: bool):
     return HttpResponse(json.dumps({"result": "Unknown command"}), content_type="application/json; charset=utf-8")
 
 
-def json_api_handle_post(request: HttpRequest, user: Optional[User | AnonymousUser]):
+def json_api_handle_post(request: HttpRequest, user: User | AnonymousUser | None):
     data = request.GET
     try:
         body = json.loads(request.body) if request.body else {}
@@ -46,7 +46,7 @@ def json_api_handle_post(request: HttpRequest, user: Optional[User | AnonymousUs
     return HttpResponse(json.dumps({"result": "Unknown command"}), content_type="application/json; charset=utf-8")
 
 
-def json_api_handle_put(request: HttpRequest, user: Optional[User | AnonymousUser]):
+def json_api_handle_put(request: HttpRequest, user: User | AnonymousUser | None):
     data = request.GET
     try:
         body = json.loads(request.body) if request.body else {}
@@ -65,7 +65,7 @@ def json_api_handle_put(request: HttpRequest, user: Optional[User | AnonymousUse
     return HttpResponse(json.dumps({"result": "Unknown command"}), content_type="application/json; charset=utf-8")
 
 
-def json_api_handle_delete(request: HttpRequest, user: Optional[User | AnonymousUser]):
+def json_api_handle_delete(request: HttpRequest, user: User | AnonymousUser | None):
     data = request.GET
     body: dict[str, Any] = {}
     for key, required_perm, handler in DELETE_HANDLERS:

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
 from collections.abc import Callable, Iterable
-from typing import Any, Optional
+from typing import Any
 
 from core.base.setup import Settings
 from core.base.types import QueueItem
@@ -61,13 +61,13 @@ class WebQueue(object):
     def enqueue_args_list(
         self,
         args: Iterable[str],
-        override_options: "Optional[Settings]" = None,
-        archive_callback: "Optional[Callable[[Optional[Any], Optional[str], str], None]]" = None,
-        gallery_callback: "Optional[Callable[[Optional[Any], Optional[str], str], None]]" = None,
+        override_options: "Settings | None" = None,
+        archive_callback: "Callable[[Any | None, str | None, str], None] | None" = None,
+        gallery_callback: "Callable[[Any | None, str | None, str], None] | None" = None,
         use_argparser: bool = True,
         user: Any = None,
-        reason: Optional[str] = None,
-        event_action: Optional[str] = None,
+        reason: str | None = None,
+        event_action: str | None = None,
         priority: int = 10,
     ) -> None:
         """Enqueue crawler task to the database task queue for processing by the worker process.

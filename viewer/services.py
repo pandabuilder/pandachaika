@@ -1,7 +1,6 @@
 import io
 import typing
 import zipfile
-from typing import Optional, Union
 
 from PIL import Image as PImage
 from PIL import UnidentifiedImageError
@@ -31,7 +30,7 @@ class CompareObjectsService:
 
     @staticmethod
     def image_loader(hashfunc, hash_size=8):
-        def inner_function(path: Union[typing.IO, typing.BinaryIO, str]):
+        def inner_function(path: typing.IO | typing.BinaryIO | str):
             try:
                 image = CompareObjectsService.alpha_remover(PImage.open(path))
                 return str(hashfunc(image))
@@ -47,8 +46,8 @@ class CompareObjectsService:
         algorithms: list[str],
         thumbnails: bool = True,
         images: bool = True,
-        item_model: typing.Optional["typing.Type[ItemProperties]"] = None,
-        image_model: typing.Optional["typing.Type[Image]"] = None,
+        item_model: "type[ItemProperties] | None" = None,
+        image_model: "type[Image] | None" = None,
         no_live_data: bool = False,
     ) -> dict:
 
@@ -110,10 +109,10 @@ class CompareObjectsService:
         return results_per_algorithm
 
     @classmethod
-    def hash_thumbnail(cls, fp: Union[typing.IO, str], algorithm: str) -> Optional[str]:
+    def hash_thumbnail(cls, fp: typing.IO | str, algorithm: str) -> str | None:
 
         if isinstance(fp, str):
-            file_object: Union[typing.IO, typing.BinaryIO] = open(fp, "rb")
+            file_object: typing.IO | typing.BinaryIO = open(fp, "rb")
         else:
             file_object = fp
 

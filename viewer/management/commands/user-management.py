@@ -1,5 +1,4 @@
 import time
-from typing import Optional
 
 from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand

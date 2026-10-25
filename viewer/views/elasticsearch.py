@@ -8,7 +8,7 @@ from datetime import datetime
 
 from django.conf import settings
 from django.contrib import messages
-from django.http import HttpResponse, QueryDict, HttpRequest
+from django.http import HttpResponse, QueryDict, HttpRequest, JsonResponse
 from django.urls import reverse
 from django.views.generic.base import TemplateView
 from django.views import View
@@ -399,13 +399,12 @@ class ESHomeGalleryPageView(ESHomePageView):
         return self.render_to_response(context)
 
 
-# TODO: This method doesn't seem to be returning (response object)
 # Not being used client-side
 def autocomplete_view(request: HttpRequest) -> HttpResponse:
     if not settings.ES_ENABLED or not es_client:
-        return HttpResponse({})
+        return JsonResponse({})
     if not es_client.indices.exists(index=es_index_name):
-        return HttpResponse({})
+        return JsonResponse({})
 
     query = request.GET.get("q", "")
 
@@ -428,9 +427,9 @@ def autocomplete_view(request: HttpRequest) -> HttpResponse:
 
 def title_suggest_view(request: HttpRequest) -> HttpResponse:
     if not settings.ES_ENABLED or not es_client:
-        return HttpResponse({})
+        return JsonResponse({})
     if not es_client.indices.exists(index=es_index_name):
-        return HttpResponse({})
+        return JsonResponse({})
 
     query = request.GET.get("q", "")
     s = Search(using=es_client, index=es_index_name).suggest(
@@ -462,9 +461,9 @@ def title_suggest_view(request: HttpRequest) -> HttpResponse:
 
 def title_suggest_archive_view(request: HttpRequest) -> HttpResponse:
     if not settings.ES_ENABLED or not es_client:
-        return HttpResponse({})
+        return JsonResponse({})
     if not es_client.indices.exists(index=es_index_name):
-        return HttpResponse({})
+        return JsonResponse({})
 
     query = request.GET.get("q", "")
     s = (
@@ -482,9 +481,9 @@ def title_suggest_archive_view(request: HttpRequest) -> HttpResponse:
 
 def title_pk_suggest_archive_view(request: HttpRequest) -> HttpResponse:
     if not settings.ES_ENABLED or not es_client:
-        return HttpResponse({})
+        return JsonResponse({})
     if not es_client.indices.exists(index=es_index_name):
-        return HttpResponse({})
+        return JsonResponse({})
 
     query = request.GET.get("q", "")
     s = (
@@ -508,9 +507,9 @@ def title_pk_suggest_archive_view(request: HttpRequest) -> HttpResponse:
 
 def archive_simple(request: HttpRequest) -> HttpResponse:
     if not settings.ES_ENABLED or not es_client:
-        return HttpResponse({})
+        return JsonResponse({})
     if not es_client.indices.exists(index=es_index_name):
-        return HttpResponse({})
+        return JsonResponse({})
 
     query = request.GET.get("q", "")
     s = Search(using=es_client, index=es_index_name).source(["title", "thumbnail"]).query("term", _id=query)
@@ -528,9 +527,9 @@ def archive_simple(request: HttpRequest) -> HttpResponse:
 
 def archives_simple(request: HttpRequest) -> HttpResponse:
     if not settings.ES_ENABLED or not es_client:
-        return HttpResponse({})
+        return JsonResponse({})
     if not es_client.indices.exists(index=es_index_name):
-        return HttpResponse({})
+        return JsonResponse({})
 
     query = request.GET.getlist("q", "")
     s = Search(using=es_client, index=es_index_name).source(["title", "thumbnail"]).query("terms", _id=query)

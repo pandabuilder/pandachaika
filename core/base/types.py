@@ -2,7 +2,7 @@ import statistics
 from dataclasses import dataclass, field
 from datetime import datetime
 import typing
-from typing import Optional, Union, Any
+from typing import Any
 
 if typing.TYPE_CHECKING:
     from core.base.setup import Settings
@@ -14,42 +14,42 @@ class GalleryData:
         self,
         gid: str,
         provider: str,
-        token: Optional[str] = None,
-        link: Optional[str] = None,
-        tags: Optional[list[str]] = None,
-        title: Optional[str] = None,
-        title_jpn: Optional[str] = None,
-        comment: Optional[str] = None,
-        gallery_container_gid: Optional[str] = None,
-        gallery_contains_gids: Optional[list[str]] = None,
-        magazine_gid: Optional[str] = None,
-        magazine_chapters_gids: Optional[list[str]] = None,
-        category: Optional[str] = None,
-        posted: Optional[datetime] = None,
-        filesize: Optional[int] = None,
-        filecount: Optional[int] = None,
-        expunged: Optional[int] = None,
-        rating: Optional[str] = None,
-        fjord: Optional[bool] = None,
-        hidden: Optional[bool] = None,
-        disowned: Optional[bool] = None,
-        uploader: Optional[str] = None,
-        thumbnail_url: Optional[str] = None,
-        dl_type: Optional[str] = None,
-        public: Optional[bool] = None,
-        content: Optional[str] = None,
-        archiver_key: Optional[str] = None,
-        root: Optional[str] = None,
-        filename: Optional[str] = None,
-        queries: Optional[int] = None,
-        thumbnail: Optional[str] = None,
-        status: Optional[int] = None,
-        origin: Optional[int] = None,
-        first_gallery_gid: Optional[str] = None,
-        parent_gallery_gid: Optional[str] = None,
-        extra_provider_data: Optional[list[tuple[str, str, Any]]] = None,
-        provider_metadata: Optional[str] = None,
-        reason: Optional[str] = None,
+        token: str | None = None,
+        link: str | None = None,
+        tags: list[str] | None = None,
+        title: str | None = None,
+        title_jpn: str | None = None,
+        comment: str | None = None,
+        gallery_container_gid: str | None = None,
+        gallery_contains_gids: list[str] | None = None,
+        magazine_gid: str | None = None,
+        magazine_chapters_gids: list[str] | None = None,
+        category: str | None = None,
+        posted: datetime | None = None,
+        filesize: int | None = None,
+        filecount: int | None = None,
+        expunged: int | None = None,
+        rating: str | None = None,
+        fjord: bool | None = None,
+        hidden: bool | None = None,
+        disowned: bool | None = None,
+        uploader: str | None = None,
+        thumbnail_url: str | None = None,
+        dl_type: str | None = None,
+        public: bool | None = None,
+        content: str | None = None,
+        archiver_key: str | None = None,
+        root: str | None = None,
+        filename: str | None = None,
+        queries: int | None = None,
+        thumbnail: str | None = None,
+        status: int | None = None,
+        origin: int | None = None,
+        first_gallery_gid: str | None = None,
+        parent_gallery_gid: str | None = None,
+        extra_provider_data: list[tuple[str, str, Any]] | None = None,
+        provider_metadata: str | None = None,
+        reason: str | None = None,
         **kwargs: Any,
     ) -> None:
         self.gid = gid
@@ -107,9 +107,9 @@ class GalleryData:
         return self.__dict__ == other.__dict__
 
 
-DataDict = dict[str, Any]
+type DataDict = dict[str, Any]
 
-MatchesValues = tuple[str, GalleryData, float]
+type MatchesValues = tuple[str, GalleryData, float]
 
 
 class ProviderSettings:
@@ -120,7 +120,7 @@ class ProviderSettings:
         self.headers: DataDict = {}
         self.timeout_timer: int = global_settings.timeout_timer
         self.wait_timer: int = global_settings.wait_timer
-        self.stop_page_number: Optional[int] = None
+        self.stop_page_number: int | None = None
 
         # Auto updater
         self.autoupdater_enable: bool = global_settings.autoupdater.enable
@@ -129,7 +129,7 @@ class ProviderSettings:
         self.autoupdater_buffer_after: int = global_settings.autoupdater.buffer_after
 
         # Archive download queue settings (per-provider override)
-        self.queue_archive_downloads: Optional[bool] = None
+        self.queue_archive_downloads: bool | None = None
         self.max_parallel_archive_downloads: int = 1
 
         if "cookies" in config:
@@ -170,8 +170,6 @@ class ProviderSettings:
 
 
 class TorrentClient:
-    TorrentKey = typing.TypeVar("TorrentKey")
-
     name = "torrent"
     convert_to_base64 = False
     send_url = False
@@ -192,21 +190,21 @@ class TorrentClient:
         self.error = ""
 
     def add_torrent(
-        self, torrent_data: Union[str, bytes], download_dir: Optional[str] = None
-    ) -> tuple[bool, Optional[str]]:
+        self, torrent_data: str | bytes, download_dir: str | None = None
+    ) -> tuple[bool, str | None]:
         return False, None
 
-    def add_url(self, torrent_data: str, download_dir: Optional[str] = None) -> tuple[bool, Optional[str]]:
+    def add_url(self, torrent_data: str, download_dir: str | None = None) -> tuple[bool, str | None]:
         return False, None
 
-    def get_download_progress(self, download_list: list[tuple[str, TorrentKey]]) -> list[tuple[TorrentKey, float]]:
+    def get_download_progress[TorrentKey](self, download_list: list[tuple[str, TorrentKey]]) -> list[tuple[TorrentKey, float]]:
         return []
 
     def connect(self) -> bool:
         return False
 
 
-QueueItem = dict[str, Any]
+type QueueItem = dict[str, Any]
 
 
 @dataclass

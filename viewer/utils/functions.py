@@ -1,6 +1,6 @@
 from collections.abc import Iterable
 from datetime import timedelta
-from typing import Any, Optional
+from typing import Any
 
 from django.core.mail import get_connection, EmailMultiAlternatives
 from django.http import HttpRequest
@@ -315,7 +315,7 @@ def found_gallery_to_json(found_gallery: FoundGallery, user_is_authenticated: bo
 def wanted_gallery_to_json(
     wanted_gallery: WantedGallery,
     *,
-    request: Optional[HttpRequest] = None,
+    request: HttpRequest | None = None,
     user_is_authenticated: bool = False,
     include_found_galleries: bool = False,
 ) -> dict[str, Any]:

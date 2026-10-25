@@ -1,6 +1,6 @@
 import copy
 import logging
-from typing import Any, Optional, cast
+from typing import Any, cast
 
 from core.base.setup import Settings
 
@@ -130,7 +130,7 @@ def serialize_settings_options(options: Any) -> dict[str, Any]:
     return {}
 
 
-def deserialize_settings_options(base_settings: Optional[Settings], options: Optional[dict[str, Any]]) -> Settings:
+def deserialize_settings_options(base_settings: Settings | None, options: dict[str, Any] | None) -> Settings:
     """Create a new Settings instance and apply serialized options."""
     if base_settings is not None:
         try:

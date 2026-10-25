@@ -3,34 +3,163 @@
 {% block sidebar %}{% endblock %}
 {% load static %}
 {% load dict_key %}
+{% load viewer_extras %}
+
 {% block content %}
     {% if messages %}
         {% for message in messages %}
         <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
         {% endfor %}
     {% endif %}
-    <div class="page-header">
-    <h2>{{ title }}</h2>
-    <p class="lead">Number of monitored links (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h2>{{ title }}</h2>
+            <p class="lead mb-0">Showing {{ results|length }} of {{ results.paginator.count }} monitored links</p>
+        </div>
+        <div>
+            <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#add-monitored-link-form" aria-expanded="false" aria-controls="add-monitored-link-form">
+                <i class="fas fa-plus"></i> Add Monitored Link
+            </button>
+            <a class="btn btn-outline-secondary ms-1" href="{% url 'viewer:col-create-monitored-link' %}">
+                <i class="fas fa-external-link-alt"></i> New Page
+            </a>
+        </div>
     </div>
-    {% load viewer_extras %}
-    <!-- Next/Prev page links  -->
+
+    <!-- Collapsible Add Form -->
+    <div class="collapse mb-4" id="add-monitored-link-form">
+        <style>
+            #add-monitored-link-form label,
+            #add-monitored-link-form .form-label,
+            #add-monitored-link-form .form-check-label,
+            #add-monitored-link-form .card-title {
+                color: #212529 !important;
+            }
+        </style>
+        <div class="card card-body bg-light text-dark" style="color: #212529;">
+            <h4 class="card-title text-dark">Add New Monitored Link</h4>
+            <p class="card-subtitle text-secondary mb-3">Create a new monitored URL that worker schedulers will crawl periodically.</p>
+            <form action="{% url 'viewer:monitored-links' %}" method="POST">
+                {% csrf_token %}
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label text-dark" for="id_name"><strong>Name</strong></label>
+                        {{ edit_form.name }}
+                        {% if edit_form.name.errors %}<div class="text-danger small">{{ edit_form.name.errors }}</div>{% endif %}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label text-dark" for="id_url"><strong>URL</strong></label>
+                        {{ edit_form.url }}
+                        {% if edit_form.url.errors %}<div class="text-danger small">{{ edit_form.url.errors }}</div>{% endif %}
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label text-dark" for="id_provider"><strong>Provider</strong></label>
+                        {{ edit_form.provider }}
+                        {% if edit_form.provider.errors %}<div class="text-danger small">{{ edit_form.provider.errors }}</div>{% endif %}
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label text-dark" for="id_frequency"><strong>Frequency</strong> (e.g. 01:00:00)</label>
+                        {{ edit_form.frequency }}
+                        {% if edit_form.frequency.errors %}<div class="text-danger small">{{ edit_form.frequency.errors }}</div>{% endif %}
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label text-dark" for="id_stop_page"><strong>Stop page</strong> (optional)</label>
+                        {{ edit_form.stop_page }}
+                        {% if edit_form.stop_page.errors %}<div class="text-danger small">{{ edit_form.stop_page.errors }}</div>{% endif %}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label text-dark" for="id_proxy"><strong>Proxy</strong> (optional)</label>
+                        {{ edit_form.proxy }}
+                        {% if edit_form.proxy.errors %}<div class="text-danger small">{{ edit_form.proxy.errors }}</div>{% endif %}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label text-dark" for="id_description"><strong>Description</strong></label>
+                        {{ edit_form.description }}
+                        {% if edit_form.description.errors %}<div class="text-danger small">{{ edit_form.description.errors }}</div>{% endif %}
+                    </div>
+                    <div class="col-md-12">
+                        <div class="form-check form-check-inline">
+                            {{ edit_form.enabled }}
+                            <label class="form-check-label text-dark" for="id_enabled">Enabled</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            {{ edit_form.auto_start }}
+                            <label class="form-check-label text-dark" for="id_auto_start">Auto-start on worker boot</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            {{ edit_form.use_limited_wanted_galleries }}
+                            <label class="form-check-label text-dark" for="id_use_limited_wanted_galleries">Restrict to specific Wanted Galleries</label>
+                        </div>
+                    </div>
+                    <div class="col-md-12">
+                        <label class="form-label text-dark" for="id_limited_wanted_galleries"><strong>Limited Wanted Galleries</strong></label>
+                        {{ edit_form.limited_wanted_galleries }}
+                        {% if edit_form.limited_wanted_galleries.errors %}<div class="text-danger small">{{ edit_form.limited_wanted_galleries.errors }}</div>{% endif %}
+                    </div>
+                    <div class="col-12">
+                        <button type="submit" name="submit-monitored-link" value="1" class="btn btn-primary">Create Monitored Link</button>
+                        <button type="button" class="btn btn-secondary ms-2" data-bs-toggle="collapse" data-bs-target="#add-monitored-link-form">Cancel</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Filter and Search Bar -->
+    <div class="card mb-3">
+        <div class="card-body py-2">
+            <form action="{% url 'viewer:monitored-links' %}" method="GET">
+                <div class="row g-2 align-items-center">
+                    <div class="col-md-2">
+                        {{ filter_form.name }}
+                    </div>
+                    <div class="col-md-2">
+                        {{ filter_form.url }}
+                    </div>
+                    <div class="col-md-2">
+                        {{ filter_form.provider }}
+                    </div>
+                    <div class="col-md-2">
+                        {{ filter_form.enabled }}
+                    </div>
+                    <div class="col-md-2">
+                        {{ filter_form.status }}
+                    </div>
+                    <div class="col-md-1">
+                        {{ filter_form.sort }}
+                    </div>
+                    <div class="col-md-1">
+                        {{ filter_form.asc_desc }}
+                    </div>
+                    <div class="col-12 d-flex gap-2">
+                        <button type="submit" class="btn btn-info btn-sm">
+                            <i class="fas fa-search"></i> Search
+                        </button>
+                        <a href="{% url 'viewer:monitored-links' %}" class="btn btn-light btn-sm">
+                            Clear
+                        </a>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Pagination Top -->
     {% if results.object_list and results.paginator.num_pages > 1 %}
-      <div>
-        <nav aria-label="Middle navigation">
-          <ul class="pagination justify-content-center my-0">
+      <div class="mb-2">
+        <nav aria-label="Monitored links pagination">
+          <ul class="pagination pagination-sm justify-content-center my-0">
             <li class="page-item{% if results.number == 1 %} disabled{% endif %}">
-              <a class="page-link" href="?{% url_replace 'page' '1' %}" aria-label="First">
-                <span aria-hidden="true">&laquo;</span>
-              </a>
+              <a class="page-link" href="?{% url_replace 'page' '1' %}" aria-label="First">&laquo;</a>
             </li>
             {% if results.has_previous %}
               <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.previous_page_number %}">Previous</a></li>
             {% else %}
               <li class="page-item disabled"><a class="page-link" href="#">Previous</a></li>
             {% endif %}
-            <li class="page-item">
-              <div class="mid-item">Page {{ results.number }} of {{ results.paginator.num_pages }}</div>
+            <li class="page-item disabled">
+              <span class="page-link text-dark">Page {{ results.number }} of {{ results.paginator.num_pages }}</span>
             </li>
             {% if results.has_next %}
               <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.next_page_number %}">Next</a></li>
@@ -38,106 +167,170 @@
               <li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
             {% endif %}
             <li class="page-item{% if results.number == results.paginator.num_pages %} disabled{% endif %}">
-              <a class="page-link" href="?{% url_replace 'page' results.paginator.num_pages %}" aria-label="Last">
-                <span aria-hidden="true">&raquo;</span>
-              </a>
+              <a class="page-link" href="?{% url_replace 'page' results.paginator.num_pages %}" aria-label="Last">&raquo;</a>
             </li>
           </ul>
         </nav>
       </div>
     {% endif %}
-      <table class="table table-bordered table-sm generic-table">
-        <thead>
+
+    <!-- Table of Monitored Links -->
+    <div class="table-responsive">
+      <table class="table table-bordered table-hover table-sm generic-table align-middle">
+        <thead class="table-dark">
         <tr>
-          <th>Name</th><th>URL</th><th>Enabled</th><th>Description</th><th>Provider</th><th>Wanted Galleries Restriction</th><th title="Applies on paginated pages">Stop page</th><th>Frequency</th><th>Created on</th><th>Last run</th><th>Next run</th><th>Next run in</th>
+          <th>Status</th>
+          <th>Name</th>
+          <th>URL</th>
+          <th>Provider</th>
+          <th>Frequency</th>
+          <th>Config</th>
+          <th>Restriction</th>
+          <th title="Stop crawling at page number">Stop page</th>
+          <th>Last Run</th>
+          <th>Next Run</th>
+          <th>Next In</th>
+          <th class="text-center" style="min-width: 170px;">Actions</th>
         </tr>
         </thead>
         <tbody>
         {% for monitored_link in results %}
-            {% with link_pk=monitored_link.pk %}
+            {% with sched=schedulers|dict_key:monitored_link.pk %}
           <tr>
-            <td>
-              {{ monitored_link.name }}
+            <td class="text-center">
+                {% if sched and sched.is_running %}
+                    <span class="badge bg-success" title="Running in background worker"><i class="fas fa-play"></i> Running</span>
+                {% else %}
+                    <span class="badge bg-secondary" title="Stopped"><i class="fas fa-stop"></i> Stopped</span>
+                {% endif %}
             </td>
-            <td class="text-break">
+            <td>
+              <a href="{% url 'viewer:col-edit-monitored-link' monitored_link.pk %}" class="fw-bold text-decoration-none">
+                  {{ monitored_link.name }}
+              </a>
+              {% if monitored_link.description %}
+                  <div class="small">{{ monitored_link.description|truncatechars:60 }}</div>
+              {% endif %}
+            </td>
+            <td class="text-break" style="max-width: 280px;">
                 {{ monitored_link.url|urlize_all_rel }}
             </td>
             <td>
-              {{ monitored_link.enabled|yesno }}
+              {{ monitored_link.provider.slug|default:"-" }}
             </td>
             <td>
-              {{ monitored_link.description }}
+              <code>{{ monitored_link.frequency }}</code>
             </td>
             <td>
-              {{ monitored_link.provider.slug }}
+              {% if monitored_link.enabled %}
+                  <span class="badge bg-primary">Enabled</span>
+              {% else %}
+                  <span class="badge bg-dark">Disabled</span>
+              {% endif %}
+              {% if monitored_link.auto_start %}
+                  <span class="badge bg-info text-dark" title="Auto-starts when workers boot">Auto</span>
+              {% endif %}
             </td>
             <td>
-              {{ monitored_link.use_limited_wanted_galleries|yesno }}: 
-                  {% for wanted_gallery in monitored_link.limited_wanted_galleries.all %}
-                    <span style="padding-right: 10px;">
-                        <a href="{% url 'viewer:col-wanted-gallery' wanted_gallery.pk %}" rel="popover">{{ wanted_gallery.pk }}</a>
-                    </span>
+              {% if monitored_link.use_limited_wanted_galleries %}
+                  {% for wg in monitored_link.limited_wanted_galleries.all %}
+                    <a href="{% url 'viewer:wanted-gallery' wg.pk %}" class="badge bg-light text-dark border text-decoration-none">{{ wg.pk }}</a>
+                  {% empty %}
+                    <span class="small">None</span>
                   {% endfor %}
+              {% else %}
+                  <span class="small">All</span>
+              {% endif %}
             </td>
             <td>
-              {{ monitored_link.stop_page }}
+              {{ monitored_link.stop_page|default:"-" }}
             </td>
-            <td>
-              {{ monitored_link.frequency }}
-            </td>
-            <td>
-              {{ monitored_link.create_date|date:"y-m-d, H:i:s" }}
-            </td>
-            <td>
-                {% if schedulers %}
-                    {{ schedulers|dict_key:link_pk|dict_key:2|date:"y-m-d, H:i:s" }}
+            <td class="small">
+                {% if sched and sched.last_run %}
+                    {{ sched.last_run|date:"y-m-d, H:i:s" }}
+                {% else %}
+                    -
                 {% endif %}
             </td>
-            <td>
-                {% if schedulers %}
-                    {{ schedulers|dict_key:link_pk|dict_key:4|date:"y-m-d, H:i:s" }}
+            <td class="small">
+                {% if sched and sched.next_run %}
+                    {{ sched.next_run|date:"y-m-d, H:i:s" }}
+                {% else %}
+                    -
                 {% endif %}
             </td>
-            <td>
-                {% if schedulers %}
-                    {{ schedulers|dict_key:link_pk|dict_key:4|timeuntil }}
+            <td class="small">
+                {% if sched and sched.next_run %}
+                    {% if sched.is_running %}
+                        {{ sched.next_run|timeuntil }}
+                    {% else %}
+                        <span class="text-secondary" title="Scheduler is stopped">{{ sched.next_run|timeuntil }} (stopped)</span>
+                    {% endif %}
+                {% else %}
+                    -
                 {% endif %}
+            </td>
+            <td class="text-center">
+              <div class="btn-group btn-group-sm" role="group">
+                {% if sched and sched.is_running %}
+                  <a href="{% url 'viewer:col-monitored-link-action' monitored_link.pk 'stop' %}" class="btn btn-outline-warning" title="Stop scheduler">
+                    <i class="fas fa-stop"></i>
+                  </a>
+                {% else %}
+                  <a href="{% url 'viewer:col-monitored-link-action' monitored_link.pk 'start' %}" class="btn btn-outline-success" title="Start scheduler">
+                    <i class="fas fa-play"></i>
+                  </a>
+                {% endif %}
+                <a href="{% url 'viewer:col-monitored-link-action' monitored_link.pk 'force_run' %}" class="btn btn-outline-primary" title="Force immediate run">
+                  <i class="fas fa-bolt"></i>
+                </a>
+                <a href="{% url 'viewer:col-edit-monitored-link' monitored_link.pk %}" class="btn btn-outline-secondary" title="Edit">
+                  <i class="fas fa-edit"></i>
+                </a>
+                <a href="{% url 'viewer:col-delete-monitored-link' monitored_link.pk %}" class="btn btn-outline-danger" title="Delete">
+                  <i class="fas fa-trash"></i>
+                </a>
+              </div>
             </td>
           </tr>
             {% endwith %}
+        {% empty %}
+          <tr>
+            <td colspan="12" class="text-center py-4">
+              <em>No monitored links found matching your filters.</em>
+            </td>
+          </tr>
         {% endfor %}
         </tbody>
       </table>
-    <!-- Next/Prev page links  -->
-      {% if results.object_list and results.paginator.num_pages > 1 %}
-        <div>
-          <nav aria-label="Middle navigation">
-            <ul class="pagination justify-content-center">
-              <li class="page-item{% if results.number == 1 %} disabled{% endif %}">
-                <a class="page-link" href="?{% url_replace 'page' '1' %}" aria-label="First">
-                  <span aria-hidden="true">&laquo;</span>
-                </a>
-              </li>
-              {% if results.has_previous %}
-                <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.previous_page_number %}">Previous</a></li>
-              {% else %}
-                <li class="page-item disabled"><a class="page-link" href="#">Previous</a></li>
-              {% endif %}
-              <li class="page-item">
-                <div class="mid-item">Page {{ results.number }} of {{ results.paginator.num_pages }}</div>
-              </li>
-              {% if results.has_next %}
-                <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.next_page_number %}">Next</a></li>
-              {% else %}
-                <li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
-              {% endif %}
-              <li class="page-item{% if results.number == results.paginator.num_pages %} disabled{% endif %}">
-                <a class="page-link" href="?{% url_replace 'page' results.paginator.num_pages %}" aria-label="Last">
-                  <span aria-hidden="true">&raquo;</span>
-                </a>
-              </li>
-            </ul>
-          </nav>
-        </div>
-      {% endif %}
+    </div>
+
+    <!-- Pagination Bottom -->
+    {% if results.object_list and results.paginator.num_pages > 1 %}
+      <div class="mt-3">
+        <nav aria-label="Monitored links pagination bottom">
+          <ul class="pagination pagination-sm justify-content-center">
+            <li class="page-item{% if results.number == 1 %} disabled{% endif %}">
+              <a class="page-link" href="?{% url_replace 'page' '1' %}" aria-label="First">&laquo;</a>
+            </li>
+            {% if results.has_previous %}
+              <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.previous_page_number %}">Previous</a></li>
+            {% else %}
+              <li class="page-item disabled"><a class="page-link" href="#">Previous</a></li>
+            {% endif %}
+            <li class="page-item disabled">
+              <span class="page-link text-dark">Page {{ results.number }} of {{ results.paginator.num_pages }}</span>
+            </li>
+            {% if results.has_next %}
+              <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.next_page_number %}">Next</a></li>
+            {% else %}
+              <li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
+            {% endif %}
+            <li class="page-item{% if results.number == results.paginator.num_pages %} disabled{% endif %}">
+              <a class="page-link" href="?{% url_replace 'page' results.paginator.num_pages %}" aria-label="Last">&raquo;</a>
+            </li>
+          </ul>
+        </nav>
+      </div>
+    {% endif %}
 {% endblock %}

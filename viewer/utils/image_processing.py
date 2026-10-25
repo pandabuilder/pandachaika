@@ -28,7 +28,7 @@ def get_image_thumbnail_and_grayscale(archive: "Archive") -> tuple[np.ndarray, n
 
 def compare_wanted_with_image(
     img_gray: np.ndarray, img_thumbnail: np.ndarray, wanted_image: "WantedImage", skip_minimum: bool = False
-) -> tuple[bool, int, typing.Optional[PImage.Image]]:
+) -> tuple[bool, int, PImage.Image | None]:
     template_img = cv.imread(wanted_image.thumbnail.path)
     template_gray = cv.cvtColor(template_img, cv.COLOR_BGR2GRAY)
     sift = cv.SIFT.create()

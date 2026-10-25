@@ -2,7 +2,6 @@
 import logging
 import time
 import typing
-from typing import Optional
 import urllib
 from collections import defaultdict
 from collections.abc import Iterable
@@ -211,21 +210,13 @@ class Parser(BaseParser):
         urls: list[str],
         wanted_filters=None,
         wanted_only: bool = False,
-        preselected_wanted_matches: Optional[dict[str, list["WantedGallery"]]] = None,
+        preselected_wanted_matches: dict[str, list["WantedGallery"]] | None = None,
     ) -> None:
 
         # If we are crawling an url from a Wanted source (MonitoredLinks), force download using default downloaders
         # from each gallery's original provider, instead of just downloading the archive from chaika
         # This helps in providing a way of having a high frequency crawler that captures most links, then having
         # another instance that parses the results from that one.
-
-        # TODO: The problem with this implementation is that we are forcing downloaders from other providers when using
-        # WantedGallery checks, you could still want to just download metadata only.
-        # we could expose an option per MonitoredLink (argument to crawler), that gets here through crawl_urls.
-        # if wanted_only:
-        #     force_provider = True
-        # else:
-        #     force_provider = False
 
         for url in urls:
 
@@ -418,12 +409,7 @@ class Parser(BaseParser):
                             gallery.temp_archive = archive
                             self.pass_gallery_data_to_downloaders([gallery], gallery_wanted_lists)
 
-            # TODO: We are assuming that only when running wanted_only is when we'll want to use each gallery's own
-            # provider. Might need a way to also force this when crawling a link.
             if wanted_only:
-                # This doesn't work, specifically with providers that get extra data from their own APIs (panda)
-                # conv_data_list = [x.to_gallery_data() for x in gallery_data_list]
-                # self.pass_gallery_data_to_downloaders(conv_data_list, gallery_wanted_lists, force_provider=force_provider)
 
                 gallery_links = [x.link for x in gallery_data_list if x.link]
 

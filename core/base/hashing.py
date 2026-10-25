@@ -1,4 +1,4 @@
-from typing import Callable
+from collections.abc import Callable
 
 from core.base.utilities import sha1_from_file_object
 

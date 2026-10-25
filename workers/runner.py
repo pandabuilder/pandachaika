@@ -8,7 +8,6 @@ import sys
 import threading
 import time
 import traceback
-from typing import Optional
 
 import django.utils.timezone as django_tz
 from django import db
@@ -32,7 +31,7 @@ class WorkerRunner:
         heartbeat_interval: float = 10.0,
         enable_schedulers: bool = True,
         force_start_schedulers: bool = False,
-        schedulers_to_start: Optional[list[str]] = None,
+        schedulers_to_start: list[str] | None = None,
     ) -> None:
         self.settings = settings
         self.poll_interval = poll_interval
@@ -44,7 +43,7 @@ class WorkerRunner:
         self.pid = os.getpid()
         self.hostname = socket.gethostname()
         self.last_heartbeat_time = 0.0
-        self.current_job: Optional[TaskQueue] = None
+        self.current_job: TaskQueue | None = None
         self.active_jobs: dict[int, TaskQueue] = {}
         self.active_threads: dict[int, threading.Thread] = {}
         self._jobs_lock = threading.Lock()
@@ -53,7 +52,7 @@ class WorkerRunner:
         if self.settings.workers.web_queue is None:
             from core.workers.webqueue import WebQueue
             self.settings.workers.web_queue = WebQueue(self.settings)
-        self.heartbeat_thread: Optional[threading.Thread] = None
+        self.heartbeat_thread: threading.Thread | None = None
         self.heartbeat_stop_event = threading.Event()
 
     def setup_signals(self) -> None:
@@ -113,6 +112,21 @@ class WorkerRunner:
         except Exception as e:
             logger.warning("Failed to sync schedulers state: %s", e)
 
+    def sync_monitored_links(self) -> None:
+        """Keep timed_link_monitors in sync with the database, stopping and pruning deleted links."""
+        if not self.enable_schedulers:
+            return
+        try:
+            from viewer.models import MonitoredLink
+            existing_pks = set(MonitoredLink.objects.values_list("pk", flat=True))
+            for lm in list(self.settings.workers.timed_link_monitors):
+                if lm.monitored_link.pk not in existing_pks:
+                    lm.stop_running(force_local=True)
+                    self.settings.workers.timed_link_monitors.remove(lm)
+                    SchedulerState.objects.filter(name=lm.thread_name).delete()
+        except Exception as e:
+            logger.warning("Error syncing monitored links: %s", e)
+
     def check_scheduler_commands(self) -> None:
         """Check and process pending start/stop/force_run commands from SchedulerState."""
         if not self.enable_schedulers:
@@ -133,11 +147,60 @@ class WorkerRunner:
                 name = state.name
                 scheduler = schedulers_by_name.get(name)
 
+                # Special handling for MonitoredLink dynamic schedulers
+                if name.startswith("link_monitor_"):
+                    try:
+                        link_pk = int(name.replace("link_monitor_", ""))
+                    except ValueError:
+                        link_pk = None
+
+                    if cmd == "delete":
+                        logger.info("Executing requested 'delete' for link monitor '%s'", name)
+                        if scheduler:
+                            scheduler.stop_running(force_local=True)
+                            if link_pk is not None:
+                                self.settings.workers.remove_link_monitor(link_pk)
+                        state.delete()
+                        continue
+
+                    if link_pk is not None:
+                        from viewer.models import MonitoredLink
+                        link = MonitoredLink.objects.filter(pk=link_pk).first()
+                        if not link:
+                            # Link was removed from database
+                            if scheduler:
+                                scheduler.stop_running(force_local=True)
+                                self.settings.workers.remove_link_monitor(link_pk)
+                            state.delete()
+                            continue
+
+                        if not scheduler:
+                            scheduler = self.settings.workers.add_new_link_monitor(self.settings, link)
+                            schedulers_by_name[name] = scheduler
+                        else:
+                            scheduler.monitored_link = link
+                            scheduler.link_name = link.name
+                            scheduler.timer = link.frequency.total_seconds()
+                            scheduler.original_timer = link.frequency
+
+                        if cmd == "reload":
+                            logger.info("Executing requested 'reload' for link monitor '%s'", name)
+                            if not link.enabled:
+                                if scheduler.is_running_locally():
+                                    scheduler.stop_running(force_local=True)
+                            elif scheduler.is_running_locally():
+                                scheduler.stop_running(force_local=True)
+                                timer = float(state.command_arg) if state.command_arg else link.frequency.total_seconds()
+                                scheduler.start_running(timer=timer, force_local=True)
+                            elif link.auto_start:
+                                timer = float(state.command_arg) if state.command_arg else link.frequency.total_seconds()
+                                scheduler.start_running(timer=timer, force_local=True)
+
                 if scheduler:
                     if cmd == "start":
                         logger.info("Executing requested 'start' for scheduler '%s'", name)
-                        timer = float(state.command_arg) if state.command_arg else None
-                        scheduler.start_running(timer=timer, force_local=True)
+                        start_timer: float | None = float(state.command_arg) if state.command_arg else None
+                        scheduler.start_running(timer=start_timer, force_local=True)
                     elif cmd == "stop":
                         logger.info("Executing requested 'stop' for scheduler '%s'", name)
                         scheduler.stop_running(force_local=True)
@@ -169,6 +232,7 @@ class WorkerRunner:
                     },
                 )
                 WorkerProcess.cleanup_dead_workers()
+                self.sync_monitored_links()
                 self.sync_schedulers_state()
                 self.last_heartbeat_time = now
             except Exception as e:
@@ -237,7 +301,7 @@ class WorkerRunner:
         except Exception as e:
             logger.warning("Failed to mark worker process as stopped: %s", e)
 
-    def claim_next_job(self) -> Optional[TaskQueue]:
+    def claim_next_job(self) -> TaskQueue | None:
         try:
             with transaction.atomic():
                 processing_types = set(

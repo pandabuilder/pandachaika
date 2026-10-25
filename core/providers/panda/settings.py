@@ -57,7 +57,6 @@ def parse_config(global_settings: "Settings", config: dict[str, typing.Any]) -> 
             settings.auto_process_first = config["general"]["auto_process_first"]
         if "auto_process_parent" in config["general"]:
             settings.auto_process_parent = config["general"]["auto_process_parent"]
-        # TODO: Mark galleries when a new gallery in chain is detected
         if "mark_relationships" in config["general"]:
             settings.mark_relationships = config["general"]["mark_relationships"]
         if "maximum_gp_cost_for_dls" in config["general"]:

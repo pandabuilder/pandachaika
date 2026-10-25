@@ -1,5 +1,5 @@
 from collections.abc import Iterable
-from typing import Any, Optional
+from typing import Any
 
 from datetime import datetime
 from django.contrib.syndication.views import Feed
@@ -59,5 +59,5 @@ class LatestArchivesFeed(Feed):
     def item_description(self, item: Archive) -> str:
         return item.tags_str()
 
-    def item_pubdate(self, item: Archive) -> Optional[datetime]:
+    def item_pubdate(self, item: Archive) -> datetime | None:
         return item.public_date
