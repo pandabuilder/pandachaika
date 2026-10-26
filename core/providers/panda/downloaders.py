@@ -109,7 +109,7 @@ class CostTracker:
 
             # <a href="#" onclick="return do_hathdl('org')">Original</a>
 
-            a_org_dl_hath = soup.find("a", attrs={'href': "#", 'onclick': "return do_hathdl('org')"}, string="Original")  # type: ignore
+            a_org_dl_hath = soup.find("a", attrs={'href': "#", 'onclick': "return do_hathdl('org')"}, string="Original")
 
             if a_org_dl_hath:
                 if a_org_dl_hath.parent is not None:

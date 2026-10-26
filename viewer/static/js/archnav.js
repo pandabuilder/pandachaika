@@ -40,7 +40,16 @@
 
      */
     function toggleArchive() {
-    	window.location.replace("extract-toggle/");
+        const reduceBtn = document.getElementById("btn-reduce-archive");
+        if (reduceBtn && reduceBtn.href) {
+            window.location.assign(reduceBtn.href);
+            return;
+        }
+        const extractBtn = document.getElementById("btn-extract-archive");
+        if (extractBtn && extractBtn.href) {
+            window.location.assign(extractBtn.href);
+            return;
+        }
     }
     function openViewer() {
 	    const button = document.getElementById("view-online");

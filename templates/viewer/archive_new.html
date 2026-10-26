@@ -11,6 +11,9 @@
       if (localStorage.getItem('inlineCoverPreview') === 'true') {
         document.documentElement.classList.add('show-inline-cover');
       }
+      if (localStorage.getItem('showArchiveFilePath') === 'true') {
+        document.documentElement.classList.add('show-archive-filepath');
+      }
     } catch (e) {}
   </script>
 {% endblock %}
@@ -91,14 +94,14 @@
           <a class="btn btn-info btn-sm" href="{% url 'viewer:new-image-viewer' archive.pk '1' %}" id="view-online">
             <i class="fas fa-eye me-1"></i>View online
           </a>
-          <a class="btn btn-outline-light btn-sm" href="{% url 'viewer:archive-reduce' archive.pk %}">
+          <a class="btn btn-outline-light btn-sm" href="{% url 'viewer:archive-reduce' archive.pk %}" id="btn-reduce-archive">
             <i class="fas fa-compress-alt me-1"></i>Reduce archive
           </a>
         {% else %}
-          <a class="btn btn-outline-light btn-sm" href="{% url 'viewer:archive-extract' archive.pk %}">
+          <a class="btn btn-outline-light btn-sm" href="{% url 'viewer:archive-extract' archive.pk %}" id="btn-extract-archive">
             <i class="fas fa-expand-alt me-1"></i>Expand archive
           </a>
-          <a class="btn btn-outline-light btn-sm" href="{% url 'viewer:archive-extract' archive.pk %}?resized=1">
+          <a class="btn btn-outline-light btn-sm" href="{% url 'viewer:archive-extract' archive.pk %}?resized=1" id="btn-extract-resized-archive">
             <i class="fas fa-compress-arrows-alt me-1"></i>Expand (resized)
           </a>
         {% endif %}
@@ -146,17 +149,17 @@
           <i class="fas fa-image me-1"></i>Hover for cover
         </a>
         <button type="button" class="btn btn-outline-light btn-sm" id="btn-toggle-inline-cover" title="Toggle inline cover preview">
-          <i class="fas fa-thumbtack me-1"></i><span class="inline-cover-btn-text">Inline cover</span>
+          <i class="fas fa-thumbtack me-1"></i><span class="inline-cover-btn-text"><span class="btn-text-off">Inline cover</span><span class="btn-text-on">Hide inline cover</span></span>
         </button>
       {% endif %}
       {% if user.is_staff %}
         <button type="button" class="btn btn-outline-light btn-sm" id="btn-toggle-filepath" title="Toggle file path visibility">
-          <i class="fas fa-folder me-1"></i><span class="filepath-btn-text">Show File Path</span>
+          <i class="fas fa-folder me-1"></i><span class="filepath-btn-text"><span class="btn-text-off">Show File Path</span><span class="btn-text-on">Hide File Path</span></span>
         </button>
       {% endif %}
       {% if user.is_authenticated %}
         <button type="button" class="btn btn-outline-light btn-sm" id="btn-toggle-regular-viewer" title="Toggle regular viewer visibility">
-          <i class="fas fa-th-large me-1"></i><span class="regular-viewer-btn-text">Hide Regular Viewer</span>
+          <i class="fas fa-th-large me-1"></i><span class="regular-viewer-btn-text"><span class="btn-text-off">Hide Regular Viewer</span><span class="btn-text-on">Show Regular Viewer</span></span>
         </button>
         {% if user_archive_preferences.favorite_group == 0 %}
           <a class="btn btn-outline-warning btn-sm" href="{% url 'viewer:user-archive-preferences' archive.pk 'favorite' %}">

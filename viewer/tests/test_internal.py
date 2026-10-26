@@ -910,48 +910,45 @@ class GalleryAndArchiveViewsTest(TestCase):
         self.assertContains(resp, "EFGH5678")
 
     def test_refined_views_opt_in_routing(self):
-        from unittest.mock import patch
-        from django.conf import settings
+        # 1. By default, views route to the old/legacy templates:
+        resp = self.client.get(reverse("viewer:gallery", args=[self.gallery_public.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotContains(resp, "btn-toggle-inline-cover")
 
-        # 1. When refined_archive_gallery_views is False (default):
-        # Authenticated user gets old design
+        resp = self.client.get(reverse("viewer:archive", args=[self.archive_public.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotContains(resp, "btn-toggle-inline-cover")
+
+        # 2. When ?view_style=new is explicitly passed, views route to the new templates:
+        resp = self.client.get(reverse("viewer:gallery", args=[self.gallery_public.pk]) + "?view_style=new")
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "btn-toggle-inline-cover")
+        self.assertContains(resp, "inline-cover-container")
+
+        resp = self.client.get(reverse("viewer:archive", args=[self.archive_public.pk]) + "?view_style=new")
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "btn-toggle-inline-cover")
+        self.assertContains(resp, "inline-cover-container")
+
+        # 3. Refreshing or requesting without ?view_style=new reverts to old design (stateless GET param):
+        resp = self.client.get(reverse("viewer:gallery", args=[self.gallery_public.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotContains(resp, "btn-toggle-inline-cover")
+
+        resp = self.client.get(reverse("viewer:gallery", args=[self.gallery_public.pk]) + "?view_style=old")
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotContains(resp, "btn-toggle-inline-cover")
+
+        # 4. Authenticated users follow the exact same GET param behavior:
         self.client.login(username="test_user_views", password="password123")
-        with patch.object(settings.CRAWLER_SETTINGS, "refined_archive_gallery_views", False):
-            resp = self.client.get(reverse("viewer:gallery", args=[self.gallery_public.pk]))
-            self.assertEqual(resp.status_code, 200)
-            self.assertNotContains(resp, "btn-toggle-inline-cover")
+        resp = self.client.get(reverse("viewer:gallery", args=[self.gallery_public.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotContains(resp, "btn-toggle-inline-cover")
 
-            resp = self.client.get(reverse("viewer:archive", args=[self.archive_public.pk]))
-            self.assertEqual(resp.status_code, 200)
-            self.assertNotContains(resp, "btn-toggle-inline-cover")
-
-        # 2. When refined_archive_gallery_views is True:
-        # Authenticated user gets new design
-        with patch.object(settings.CRAWLER_SETTINGS, "refined_archive_gallery_views", True):
-            resp = self.client.get(reverse("viewer:gallery", args=[self.gallery_public.pk]))
-            self.assertEqual(resp.status_code, 200)
-            self.assertContains(resp, "btn-toggle-inline-cover")
-            self.assertContains(resp, "inline-cover-container")
-
-            resp = self.client.get(reverse("viewer:archive", args=[self.archive_public.pk]))
-            self.assertEqual(resp.status_code, 200)
-            self.assertContains(resp, "btn-toggle-inline-cover")
-            self.assertContains(resp, "inline-cover-container")
-
-            # 3. Authenticated user can explicitly choose old design via ?view_style=old
-            resp = self.client.get(reverse("viewer:gallery", args=[self.gallery_public.pk]) + "?view_style=old")
-            self.assertEqual(resp.status_code, 200)
-            self.assertNotContains(resp, "btn-toggle-inline-cover")
-
-            # 4. Anonymous user STILL gets old design even when setting is True
-            self.client.logout()
-            resp = self.client.get(reverse("viewer:gallery", args=[self.gallery_public.pk]))
-            self.assertEqual(resp.status_code, 200)
-            self.assertNotContains(resp, "btn-toggle-inline-cover")
-
-            resp = self.client.get(reverse("viewer:archive", args=[self.archive_public.pk]))
-            self.assertEqual(resp.status_code, 200)
-            self.assertNotContains(resp, "btn-toggle-inline-cover")
+        resp = self.client.get(reverse("viewer:gallery", args=[self.gallery_public.pk]) + "?view_style=new")
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "btn-toggle-inline-cover")
+        self.assertContains(resp, "inline-cover-container")
 
 
 class TemplateTagsTest(TestCase):

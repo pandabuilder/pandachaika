@@ -3,6 +3,7 @@ import os
 import shutil
 import typing
 from copy import deepcopy
+from dataclasses import asdict, dataclass, field
 
 import yaml
 
@@ -103,198 +104,182 @@ def _parse_bool(val: Any) -> bool:
     return bool(val)
 
 
-# Each sub setting that doesn't need attribute creating is created using __slots__:
-class MonitoredLinksSettings:
-    __slots__ = ["enable"]
+@dataclass
+class BaseConfigSection:
+    def update_from_dict(self, data: dict[str, Any]) -> None:
+        if not isinstance(data, dict):
+            return
+        for key, val in data.items():
+            if hasattr(self, key):
+                if val is None:
+                    continue
+                current = getattr(self, key)
+                if isinstance(current, bool):
+                    setattr(self, key, _parse_bool(val))
+                elif isinstance(current, int) and not isinstance(current, bool):
+                    try:
+                        setattr(self, key, int(val))
+                    except (ValueError, TypeError):
+                        pass
+                elif isinstance(current, float):
+                    try:
+                        setattr(self, key, float(val))
+                    except (ValueError, TypeError):
+                        pass
+                elif isinstance(current, list) and isinstance(val, (list, tuple)):
+                    setattr(self, key, list(val))
+                elif isinstance(current, str):
+                    setattr(self, key, str(val))
+                else:
+                    setattr(self, key, val)
 
-    def __init__(self) -> None:
-        self.enable: bool = False
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> typing.Self:
+        instance = cls()
+        instance.update_from_dict(data)
+        return instance
 
-
-class BacklogSearchSettings:
-    __slots__ = ["enable", "urls"]
-
-    def __init__(self) -> None:
-        self.enable: bool = False
-        self.urls: list[dict[str, str]] = []
-
-
-class AutoWantedSettings:
-    __slots__ = [
-        "enable", "startup", "cycle_timer", "providers",
-        "unwanted_title", "regexp_unwanted_title", "regexp_unwanted_title_icase"
-    ]
-
-    def __init__(self) -> None:
-        self.enable: bool = False
-        self.startup: bool = False
-        self.cycle_timer: float = 0
-        self.providers: list[str] = []
-        self.unwanted_title: str = ""
-        self.regexp_unwanted_title: bool = False
-        self.regexp_unwanted_title_icase: bool = False
-
-
-class AutoUpdaterSettings:
-    __slots__ = ["enable", "startup", "cycle_timer", "buffer_back", "buffer_after", "providers"]
-
-    def __init__(self) -> None:
-        self.enable: bool = False
-        self.startup: bool = False
-        self.cycle_timer: float = 0
-        self.buffer_back: int = 0
-        self.buffer_after: int = 0
-        self.providers: list[str] = []
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
 
 
-class PushoverSettings:
-    __slots__ = ["enable", "user_key", "token", "device", "sound"]
-
-    def __init__(self) -> None:
-        self.enable: bool = False
-        self.user_key: str = ""
-        self.token: str = ""
-        self.device: str = ""
-        self.sound: str = ""
+@dataclass
+class MonitoredLinksSettings(BaseConfigSection):
+    enable: bool = False
 
 
-class GalleryDLSettings:
-    __slots__ = ["executable_name", "executable_path", "config_file", "extra_arguments"]
-
-    def __init__(self) -> None:
-        self.executable_name: str = "gallery-dl"
-        self.executable_path: str = ""
-        self.config_file: str = ""
-        self.extra_arguments: str = ""
+@dataclass
+class BacklogSearchSettings(BaseConfigSection):
+    enable: bool = False
+    urls: list[dict[str, str]] = field(default_factory=list)
 
 
-class CloningImageToolSettings:
-    __slots__ = ["enable", "name", "executable_path", "description", "file_filters", "extra_arguments"]
-
-    def __init__(self) -> None:
-        self.enable: bool = False
-        self.name: str = ""
-        self.executable_path: str = ""
-        self.description: str = ""
-        self.file_filters: list[str] = []
-        self.extra_arguments: list[str] = []
-
-
-class MailSettings:
-    __slots__ = ["enable", "mailhost", "from_", "to", "credentials", "username", "password", "subject"]
-
-    def __init__(self) -> None:
-        self.enable: bool = False
-        self.mailhost: str = ""
-        self.from_: str = ""
-        self.to: str = ""
-        self.credentials: tuple[str, str] | None = None
-        self.username: str = ""
-        self.password: str = ""
-        self.subject: str = "CherryPy Error"
+@dataclass
+class AutoWantedSettings(BaseConfigSection):
+    enable: bool = False
+    startup: bool = False
+    cycle_timer: float = 0.0
+    providers: list[str] = field(default_factory=list)
+    unwanted_title: str = ""
+    regexp_unwanted_title: bool = False
+    regexp_unwanted_title_icase: bool = False
 
 
-class ElasticSearchSettings:
-    __slots__ = [
-        "enable",
-        "enable_match",
-        "url",
-        "max_result_window",
-        "auto_refresh",
-        "index_name",
-        "auto_refresh_gallery",
-        "gallery_index_name",
-        "match_index_name",
-        "only_index_public",
-        "timeout",
-    ]
-
-    def __init__(self) -> None:
-        self.enable: bool = False
-        self.enable_match: bool = False
-        self.url: str = "http://127.0.0.1:9200/"
-        self.max_result_window: int = 10000
-        self.auto_refresh: bool = False
-        self.auto_refresh_gallery: bool = False
-        self.index_name: str = "viewer"
-        self.gallery_index_name: str = "viewer_gallery"
-        self.match_index_name: str = "viewer_match"
-        self.only_index_public: bool = False
-        self.timeout: int = 20
+@dataclass
+class AutoUpdaterSettings(BaseConfigSection):
+    enable: bool = False
+    startup: bool = False
+    cycle_timer: float = 0.0
+    buffer_back: int = 0
+    buffer_after: int = 0
+    providers: list[str] = field(default_factory=list)
 
 
-class WebServerSettings:
-    __slots__ = [
-        "bind_address",
-        "bind_port",
-        "enable_ssl",
-        "ssl_certificate",
-        "ssl_private_key",
-        "write_access_log",
-        "log_to_screen",
-        "socket_file",
-        "socket_queue_size",
-        "thread_pool",
-        "backend",
-        "workers",
-        "threads",
-        "timeout",
-    ]
-
-    def __init__(self) -> None:
-        self.bind_address: str = "127.0.0.1"
-        self.bind_port: int = 8090
-        self.socket_file: str | None = None
-        self.enable_ssl: bool = False
-        self.ssl_certificate: str = ""
-        self.ssl_private_key: str = ""
-        self.write_access_log: bool = False
-        self.log_to_screen: bool = True
-        self.socket_queue_size: int = 5
-        self.thread_pool: int = 10
-        self.backend: str = "gunicorn"
-        self.workers: int = 4
-        self.threads: int = 1
-        self.timeout: int = 60
+@dataclass
+class PushoverSettings(BaseConfigSection):
+    enable: bool = False
+    user_key: str = ""
+    token: str = ""
+    device: str = ""
+    sound: str = ""
 
 
-class UrlSettings:
-    __slots__ = [
-        "behind_proxy",
-        "enable_public_submit",
-        "enable_public_stats",
-        "enable_public_marks",
-        "public_mark_reasons",
-        "viewer_main_url",
-        "media_url",
-        "static_url",
-        "external_media_server",
-        "main_webserver_url",
-        "external_as_main_download",
-        "elasticsearch_as_main_urls",
-        "elasticsearch_archive_url",
-        "elasticsearch_gallery_url",
-        "cors_allowed_origins",
-        "cors_allow_all_origins",
-    ]
+@dataclass
+class GalleryDLSettings(BaseConfigSection):
+    executable_name: str = "gallery-dl"
+    executable_path: str = ""
+    config_file: str = ""
+    extra_arguments: str = ""
 
-    def __init__(self) -> None:
-        self.behind_proxy: bool = False
-        self.enable_public_submit: bool = False
-        self.enable_public_stats: bool = False
-        self.enable_public_marks: bool = False
-        self.public_mark_reasons: list[str] = []
-        self.elasticsearch_as_main_urls: bool = False
-        self.elasticsearch_archive_url: str = "es-index"
-        self.elasticsearch_gallery_url: str = "es-gallery-index"
-        self.viewer_main_url: str = ""
-        self.media_url: str = "/media/"
-        self.static_url: str = "/static/"
-        self.external_media_server = ""
-        self.external_as_main_download = False
-        self.main_webserver_url = ""
-        self.cors_allowed_origins: list[str] = []
-        self.cors_allow_all_origins: bool = False
+
+@dataclass
+class CloningImageToolSettings(BaseConfigSection):
+    enable: bool = False
+    name: str = ""
+    executable_path: str = ""
+    description: str = ""
+    file_filters: list[str] = field(default_factory=list)
+    extra_arguments: list[str] = field(default_factory=list)
+
+
+@dataclass
+class MailSettings(BaseConfigSection):
+    enable: bool = False
+    mailhost: str = ""
+    from_: str = ""
+    to: str = ""
+    credentials: tuple[str, str] | None = None
+    username: str = ""
+    password: str = ""
+    subject: str = "CherryPy Error"
+
+    def update_from_dict(self, data: dict[str, Any]) -> None:
+        BaseConfigSection.update_from_dict(self, data)
+        if "from" in data:
+            self.from_ = str(data["from"])
+        if "username" in data and "password" in data:
+            self.credentials = (str(data["username"]), str(data["password"]))
+            self.username = str(data["username"])
+            self.password = str(data["password"])
+
+
+@dataclass
+class ElasticSearchSettings(BaseConfigSection):
+    enable: bool = False
+    enable_match: bool = False
+    url: str = "http://127.0.0.1:9200/"
+    max_result_window: int = 10000
+    auto_refresh: bool = False
+    auto_refresh_gallery: bool = False
+    index_name: str = "viewer"
+    gallery_index_name: str = "viewer_gallery"
+    match_index_name: str = "viewer_match"
+    only_index_public: bool = False
+    timeout: int = 20
+
+
+@dataclass
+class WebServerSettings(BaseConfigSection):
+    bind_address: str = "127.0.0.1"
+    bind_port: int = 8090
+    enable_ssl: bool = False
+    ssl_certificate: str = ""
+    ssl_private_key: str = ""
+    write_access_log: bool = False
+    log_to_screen: bool = True
+    socket_file: str | None = None
+    socket_queue_size: int = 5
+    thread_pool: int = 10
+    backend: str = "gunicorn"
+    workers: int = 4
+    threads: int = 1
+    timeout: int = 60
+
+    def update_from_dict(self, data: dict[str, Any]) -> None:
+        BaseConfigSection.update_from_dict(self, data)
+        backend = data.get("backend") or data.get("engine") or data.get("type")
+        if backend:
+            self.backend = str(backend).lower()
+
+
+@dataclass
+class UrlSettings(BaseConfigSection):
+    behind_proxy: bool = False
+    enable_public_submit: bool = False
+    enable_public_stats: bool = False
+    enable_public_marks: bool = False
+    public_mark_reasons: list[str] = field(default_factory=list)
+    viewer_main_url: str = ""
+    media_url: str = "/media/"
+    static_url: str = "/static/"
+    external_media_server: str = ""
+    main_webserver_url: str = ""
+    external_as_main_download: bool = False
+    elasticsearch_as_main_urls: bool = False
+    elasticsearch_archive_url: str = "es-index"
+    elasticsearch_gallery_url: str = "es-gallery-index"
+    cors_allowed_origins: list[str] = field(default_factory=list)
+    cors_allow_all_origins: bool = False
 
 
 class Settings:
@@ -353,8 +338,6 @@ class Settings:
         # Option to auto-purge a torrent after a certain time has passed
         self.max_torrent_lifespan = 0
         self.max_torrent_lifespan_type = "days"
-        # Option to enable refined archive and gallery views for authenticated users
-        self.refined_archive_gallery_views: bool = False
 
         self.MEDIA_ROOT: str = ""
         self.STATIC_ROOT: str = ""
@@ -446,7 +429,7 @@ class Settings:
 
         self.experimental: dict[str, Any] = {}
 
-        self.providers: ProvidersDict = {}  # type: ignore[assignment]
+        self.providers: ProvidersDict = ProvidersDict()
 
         self.remote_site: dict[str, Any] = {}
 
@@ -911,24 +894,9 @@ class Settings:
                 self.vertical_image_max_width = config["general"]["vertical_image_max_width"]
             if "horizontal_image_max_width" in config["general"]:
                 self.horizontal_image_max_width = config["general"]["horizontal_image_max_width"]
-            if "refined_archive_gallery_views" in config["general"]:
-                self.refined_archive_gallery_views = _parse_bool(config["general"]["refined_archive_gallery_views"])
-            elif "refined_views" in config["general"]:
-                self.refined_archive_gallery_views = _parse_bool(config["general"]["refined_views"])
 
-        if "cloning_image_tool" in config:
-            if "enable" in config["cloning_image_tool"]:
-                self.cloning_image_tool.enable = config["cloning_image_tool"]["enable"]
-            if "name" in config["cloning_image_tool"]:
-                self.cloning_image_tool.name = config["cloning_image_tool"]["name"]
-            if "executable_path" in config["cloning_image_tool"]:
-                self.cloning_image_tool.executable_path = config["cloning_image_tool"]["executable_path"]
-            if "description" in config["cloning_image_tool"]:
-                self.cloning_image_tool.description = config["cloning_image_tool"]["description"]
-            if "file_filters" in config["cloning_image_tool"]:
-                self.cloning_image_tool.file_filters = config["cloning_image_tool"]["file_filters"]
-            if "extra_arguments" in config["cloning_image_tool"]:
-                self.cloning_image_tool.extra_arguments = config["cloning_image_tool"]["extra_arguments"]
+        if "cloning_image_tool" in config and isinstance(config["cloning_image_tool"], dict):
+            self.cloning_image_tool.update_from_dict(config["cloning_image_tool"])
 
         if "experimental" in config and config["experimental"] is not None:
             self.experimental.update(config["experimental"])
@@ -961,97 +929,20 @@ class Settings:
             if "parallel_downloaders" in adq_cfg:
                 self.parallel_archive_downloaders = int(adq_cfg["parallel_downloaders"])
 
-        if "auto_wanted" in config:
-            if "enable" in config["auto_wanted"]:
-                self.auto_wanted.enable = config["auto_wanted"]["enable"]
-            if "startup" in config["auto_wanted"]:
-                self.auto_wanted.startup = config["auto_wanted"]["startup"]
-            if "cycle_timer" in config["auto_wanted"]:
-                self.auto_wanted.cycle_timer = config["auto_wanted"]["cycle_timer"]
-            if "providers" in config["auto_wanted"]:
-                self.auto_wanted.providers = config["auto_wanted"]["providers"]
-            if "unwanted_title" in config["auto_wanted"]:
-                self.auto_wanted.unwanted_title = config["auto_wanted"]["unwanted_title"]
-            if "regexp_unwanted_title" in config["auto_wanted"]:
-                self.auto_wanted.regexp_unwanted_title = config["auto_wanted"]["regexp_unwanted_title"]
-            if "regexp_unwanted_title_icase" in config["auto_wanted"]:
-                self.auto_wanted.regexp_unwanted_title_icase = config["auto_wanted"]["regexp_unwanted_title_icase"]
-        if "backlog_search" in config:
-            if "enable" in config["backlog_search"]:
-                self.backlog_search.enable = config["backlog_search"]["enable"]
-            if "urls" in config["backlog_search"]:
-                self.backlog_search.urls = config["backlog_search"]["urls"]
-        if "pushover" in config:
-            if "enable" in config["pushover"]:
-                self.pushover.enable = config["pushover"]["enable"]
-            if "user_key" in config["pushover"]:
-                self.pushover.user_key = config["pushover"]["user_key"]
-            if "token" in config["pushover"]:
-                self.pushover.token = config["pushover"]["token"]
-            if "device" in config["pushover"]:
-                self.pushover.device = config["pushover"]["device"]
-            if "sound" in config["pushover"]:
-                self.pushover.sound = config["pushover"]["sound"]
-        if "mail_logging" in config:
-            if "enable" in config["mail_logging"]:
-                self.mail_logging.enable = config["mail_logging"]["enable"]
-            if "mailhost" in config["mail_logging"]:
-                self.mail_logging.mailhost = config["mail_logging"]["mailhost"]
-            if "from" in config["mail_logging"]:
-                self.mail_logging.from_ = config["mail_logging"]["from"]
-            if "to" in config["mail_logging"]:
-                self.mail_logging.to = config["mail_logging"]["to"]
-            if "subject" in config["mail_logging"]:
-                self.mail_logging.subject = config["mail_logging"]["subject"]
-            if "username" in config["mail_logging"] and "password" in config["mail_logging"]:
-                self.mail_logging.credentials = (config["mail_logging"]["username"], config["mail_logging"]["password"])
-                self.mail_logging.username = config["mail_logging"]["username"]
-                self.mail_logging.password = config["mail_logging"]["password"]
-        if "elasticsearch" in config:
-            if "enable" in config["elasticsearch"]:
-                self.elasticsearch.enable = config["elasticsearch"]["enable"]
-            if "enable_match" in config["elasticsearch"]:
-                self.elasticsearch.enable_match = config["elasticsearch"]["enable_match"]
-            if "url" in config["elasticsearch"]:
-                self.elasticsearch.url = config["elasticsearch"]["url"]
-            if "max_result_window" in config["elasticsearch"]:
-                self.elasticsearch.max_result_window = config["elasticsearch"]["max_result_window"]
-            if "auto_refresh" in config["elasticsearch"]:
-                self.elasticsearch.auto_refresh = config["elasticsearch"]["auto_refresh"]
-            if "auto_refresh_gallery" in config["elasticsearch"]:
-                self.elasticsearch.auto_refresh_gallery = config["elasticsearch"]["auto_refresh_gallery"]
-            if "index_name" in config["elasticsearch"]:
-                self.elasticsearch.index_name = config["elasticsearch"]["index_name"]
-            if "gallery_index_name" in config["elasticsearch"]:
-                self.elasticsearch.gallery_index_name = config["elasticsearch"]["gallery_index_name"]
-            if "match_index_name" in config["elasticsearch"]:
-                self.elasticsearch.match_index_name = config["elasticsearch"]["match_index_name"]
-            if "only_index_public" in config["elasticsearch"]:
-                self.elasticsearch.only_index_public = config["elasticsearch"]["only_index_public"]
-            if "timeout" in config["elasticsearch"]:
-                self.elasticsearch.timeout = config["elasticsearch"]["timeout"]
-        if "gallery_dl" in config:
-            if "executable_name" in config["gallery_dl"]:
-                self.gallery_dl.executable_name = config["gallery_dl"]["executable_name"]
-            if "executable_path" in config["gallery_dl"]:
-                self.gallery_dl.executable_path = config["gallery_dl"]["executable_path"]
-            if "config_file" in config["gallery_dl"]:
-                self.gallery_dl.config_file = config["gallery_dl"]["config_file"]
-            if "extra_arguments" in config["gallery_dl"]:
-                self.gallery_dl.extra_arguments = config["gallery_dl"]["extra_arguments"]
-        if "autoupdater" in config:
-            if "enable" in config["autoupdater"]:
-                self.autoupdater.enable = config["autoupdater"]["enable"]
-            if "startup" in config["autoupdater"]:
-                self.autoupdater.startup = config["autoupdater"]["startup"]
-            if "cycle_timer" in config["autoupdater"]:
-                self.autoupdater.cycle_timer = config["autoupdater"]["cycle_timer"]
-            if "buffer_back" in config["autoupdater"]:
-                self.autoupdater.buffer_back = config["autoupdater"]["buffer_back"]
-            if "buffer_after" in config["autoupdater"]:
-                self.autoupdater.buffer_after = config["autoupdater"]["buffer_after"]
-            if "providers" in config["autoupdater"]:
-                self.autoupdater.providers = config["autoupdater"]["providers"]
+        if "auto_wanted" in config and isinstance(config["auto_wanted"], dict):
+            self.auto_wanted.update_from_dict(config["auto_wanted"])
+        if "backlog_search" in config and isinstance(config["backlog_search"], dict):
+            self.backlog_search.update_from_dict(config["backlog_search"])
+        if "pushover" in config and isinstance(config["pushover"], dict):
+            self.pushover.update_from_dict(config["pushover"])
+        if "mail_logging" in config and isinstance(config["mail_logging"], dict):
+            self.mail_logging.update_from_dict(config["mail_logging"])
+        if "elasticsearch" in config and isinstance(config["elasticsearch"], dict):
+            self.elasticsearch.update_from_dict(config["elasticsearch"])
+        if "gallery_dl" in config and isinstance(config["gallery_dl"], dict):
+            self.gallery_dl.update_from_dict(config["gallery_dl"])
+        if "autoupdater" in config and isinstance(config["autoupdater"], dict):
+            self.autoupdater.update_from_dict(config["autoupdater"])
         if "match_params" in config:
             if "rematch_file" in config["match_params"]:
                 self.rematch_file = config["match_params"]["rematch_file"]
@@ -1086,81 +977,14 @@ class Settings:
             self.ftp_configs[self.download_ftp_torrent] = self.ftps
         if self.download_ftp_hath not in self.ftp_configs:
             self.ftp_configs[self.download_ftp_hath] = self.ftps
-        if "webserver" in config:
-            if "backend" in config["webserver"] and config["webserver"]["backend"]:
-                self.webserver.backend = str(config["webserver"]["backend"]).lower()
-            elif "engine" in config["webserver"] and config["webserver"]["engine"]:
-                self.webserver.backend = str(config["webserver"]["engine"]).lower()
-            elif "type" in config["webserver"] and config["webserver"]["type"]:
-                self.webserver.backend = str(config["webserver"]["type"]).lower()
-            if "bind_address" in config["webserver"]:
-                self.webserver.bind_address = config["webserver"]["bind_address"]
-            if "bind_port" in config["webserver"]:
-                self.webserver.bind_port = config["webserver"]["bind_port"]
-            if "socket_file" in config["webserver"]:
-                self.webserver.socket_file = config["webserver"]["socket_file"]
-            if "enable_ssl" in config["webserver"]:
-                self.webserver.enable_ssl = config["webserver"]["enable_ssl"]
-            else:
-                self.webserver.enable_ssl = False
-            if "ssl_certificate" in config["webserver"]:
-                self.webserver.ssl_certificate = config["webserver"]["ssl_certificate"]
-            if "ssl_private_key" in config["webserver"]:
-                self.webserver.ssl_private_key = config["webserver"]["ssl_private_key"]
-            if "write_access_log" in config["webserver"]:
-                self.webserver.write_access_log = config["webserver"]["write_access_log"]
-            if "log_to_screen" in config["webserver"]:
-                self.webserver.log_to_screen = config["webserver"]["log_to_screen"]
-            if "socket_queue_size" in config["webserver"] and config["webserver"]["socket_queue_size"] is not None:
-                self.webserver.socket_queue_size = int(config["webserver"]["socket_queue_size"])
-            if "thread_pool" in config["webserver"] and config["webserver"]["thread_pool"] is not None:
-                self.webserver.thread_pool = int(config["webserver"]["thread_pool"])
-            if "workers" in config["webserver"] and config["webserver"]["workers"] is not None:
-                self.webserver.workers = int(config["webserver"]["workers"])
-            if "threads" in config["webserver"] and config["webserver"]["threads"] is not None:
-                self.webserver.threads = int(config["webserver"]["threads"])
-            if "timeout" in config["webserver"] and config["webserver"]["timeout"] is not None:
-                self.webserver.timeout = int(config["webserver"]["timeout"])
-        if "urls" in config:
-            if "media_url" in config["urls"]:
-                self.urls.media_url = config["urls"]["media_url"]
-            if "static_url" in config["urls"]:
-                self.urls.static_url = config["urls"]["static_url"]
-            if "viewer_main_url" in config["urls"]:
-                self.urls.viewer_main_url = config["urls"]["viewer_main_url"]
-            if "behind_proxy" in config["urls"]:
-                self.urls.behind_proxy = config["urls"]["behind_proxy"]
-            if "cors_allowed_origins" in config["urls"]:
-                self.urls.cors_allowed_origins = config["urls"]["cors_allowed_origins"]
-            if "cors_allow_all_origins" in config["urls"]:
-                self.urls.cors_allow_all_origins = config["urls"]["cors_allow_all_origins"]
-            if "behind_proxy" in config["urls"]:
-                self.urls.behind_proxy = config["urls"]["behind_proxy"]
-            if "enable_public_submit" in config["urls"]:
-                self.urls.enable_public_submit = config["urls"]["enable_public_submit"]
-            if "enable_public_stats" in config["urls"]:
-                self.urls.enable_public_stats = config["urls"]["enable_public_stats"]
-            if "enable_public_marks" in config["urls"]:
-                self.urls.enable_public_marks = config["urls"]["enable_public_marks"]
-            if "public_mark_reasons" in config["urls"]:
-                self.urls.public_mark_reasons = config["urls"]["public_mark_reasons"]
-            if "external_media_server" in config["urls"]:
-                self.urls.external_media_server = config["urls"]["external_media_server"]
-            if "external_as_main_download" in config["urls"]:
-                self.urls.external_as_main_download = config["urls"]["external_as_main_download"]
-            if "main_webserver_url" in config["urls"]:
-                self.urls.main_webserver_url = config["urls"]["main_webserver_url"]
-            if "elasticsearch_as_main_urls" in config["urls"]:
-                self.urls.elasticsearch_as_main_urls = config["urls"]["elasticsearch_as_main_urls"]
-            if "elasticsearch_archive_url" in config["urls"]:
-                self.urls.elasticsearch_archive_url = config["urls"]["elasticsearch_archive_url"]
-            if "elasticsearch_gallery_url" in config["urls"]:
-                self.urls.elasticsearch_gallery_url = config["urls"]["elasticsearch_gallery_url"]
+        if "webserver" in config and isinstance(config["webserver"], dict):
+            self.webserver.update_from_dict(config["webserver"])
+        if "urls" in config and isinstance(config["urls"], dict):
+            self.urls.update_from_dict(config["urls"])
         if "remote_site" in config:
             self.remote_site = config["remote_site"]
-        if "monitored_links" in config:
-            if "enable" in config["monitored_links"]:
-                self.monitored_links.enable = config["monitored_links"]["enable"]
+        if "monitored_links" in config and isinstance(config["monitored_links"], dict):
+            self.monitored_links.update_from_dict(config["monitored_links"])
 
         for provider_name, parse_config in self.provider_context.settings_parsers:
             if "providers" in config and provider_name in config["providers"] and config["providers"][provider_name] is not None:

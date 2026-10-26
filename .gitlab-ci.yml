@@ -48,7 +48,7 @@ test-all:
   - python --version
   - uv sync --active --group ci
   - uv run --no-sync ruff check --exclude=".venv" .
-  - uv run --no-sync mypy core pandabackup viewer
+  - uv run --no-sync mypy --show-traceback core pandabackup viewer
   - uv run --no-sync manage.py migrate
   - uv run --no-sync manage.py test --noinput viewer.tests.test_internal viewer.tests.test_core
   tags:

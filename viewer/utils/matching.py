@@ -145,10 +145,16 @@ def search_for_archives_matches_web(archives: ArchiveQuerySet, matcher_filter: s
                     logger.info("Archive {} is already matched, skipping.".format(archive_obj.title))
                     continue
                 if matcher.type == "title":
+                    if not archive_obj.title:
+                        continue
                     results = matcher.create_closer_matches_values(archive_obj.title, cutoff=0.4)
                 elif matcher.type == "image":
+                    if not archive_obj.zipped or not archive_obj.zipped.name:
+                        continue
                     results = matcher.create_closer_matches_values(archive_obj.zipped.name)
                 else:
+                    if not archive_obj.zipped or not archive_obj.zipped.name:
+                        continue
                     results = matcher.create_closer_matches_values(archive_obj.zipped.name)
                 for result in results:
                     gallery = Gallery.objects.update_or_create_from_values(result[1])

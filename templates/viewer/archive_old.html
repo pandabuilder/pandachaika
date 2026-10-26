@@ -293,9 +293,9 @@
       online</a>
 
 
-    <a class="btn btn-light" href="{% url 'viewer:archive-reduce' archive.pk %}">Reduce archive</a>
+    <a class="btn btn-light" href="{% url 'viewer:archive-reduce' archive.pk %}" id="btn-reduce-archive">Reduce archive</a>
     {% else %}
-    <a class="btn btn-light" href="{% url 'viewer:archive-extract' archive.pk %}">Expand archive</a>
+    <a class="btn btn-light" href="{% url 'viewer:archive-extract' archive.pk %}" id="btn-extract-archive">Expand archive</a>
     <a class="btn btn-light" href="{% url 'viewer:archive-extract' archive.pk %}?resized=1">Expand (resized)
       archive</a>
     {% endif %}
@@ -333,9 +333,9 @@
     {% if archive.extracted %}
     <a class="btn btn-info" href="{% url 'viewer:new-image-viewer' archive.pk '1' %}" id="view-online">View
       online</a>
-    <a class="btn btn-light" href="{% url 'viewer:archive-reduce' archive.pk %}">Reduce archive</a>
+    <a class="btn btn-light" href="{% url 'viewer:archive-reduce' archive.pk %}" id="btn-reduce-archive">Reduce archive</a>
     {% else %}
-    <a class="btn btn-light" href="{% url 'viewer:archive-extract' archive.pk %}">Expand archive</a>
+    <a class="btn btn-light" href="{% url 'viewer:archive-extract' archive.pk %}" id="btn-extract-archive">Expand archive</a>
     <a class="btn btn-light" href="{% url 'viewer:archive-extract' archive.pk %}?resized=1">Expand (resized)
       archive</a>
     {% endif %}

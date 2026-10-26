@@ -160,6 +160,75 @@ class CoreTest(TestCase):
             else:
                 os.environ.pop("WEBSERVER_TIMEOUT", None)
 
+    def test_type_safe_config_sections(self):
+        from core.base.setup import (
+            AutoWantedSettings,
+            ElasticSearchSettings,
+            MailSettings,
+            PushoverSettings,
+            UrlSettings,
+        )
+
+        # Test ElasticSearchSettings
+        es = ElasticSearchSettings.from_dict({
+            "enable": "true",
+            "url": "http://elastic.local:9200",
+            "timeout": "45",
+            "max_result_window": 50000,
+        })
+        self.assertTrue(es.enable)
+        self.assertEqual(es.url, "http://elastic.local:9200")
+        self.assertEqual(es.timeout, 45)
+        self.assertEqual(es.max_result_window, 50000)
+        es_dict = es.to_dict()
+        self.assertEqual(es_dict["url"], "http://elastic.local:9200")
+        self.assertEqual(es_dict["timeout"], 45)
+
+        # Test MailSettings with legacy "from" alias and credentials
+        mail = MailSettings.from_dict({
+            "enable": True,
+            "mailhost": "smtp.example.com",
+            "from": "bot@example.com",
+            "to": "admin@example.com",
+            "username": "user",
+            "password": "secret_password",
+        })
+        self.assertTrue(mail.enable)
+        self.assertEqual(mail.from_, "bot@example.com")
+        self.assertEqual(mail.credentials, ("user", "secret_password"))
+
+        # Test UrlSettings
+        urls = UrlSettings.from_dict({
+            "behind_proxy": "1",
+            "cors_allow_all_origins": "yes",
+            "cors_allowed_origins": ["https://example.com"],
+        })
+        self.assertTrue(urls.behind_proxy)
+        self.assertTrue(urls.cors_allow_all_origins)
+        self.assertEqual(urls.cors_allowed_origins, ["https://example.com"])
+
+        # Test AutoWantedSettings
+        auto_wanted = AutoWantedSettings.from_dict({
+            "enable": True,
+            "cycle_timer": "12.5",
+            "providers": ["panda", "ehentai"],
+            "regexp_unwanted_title": True,
+        })
+        self.assertTrue(auto_wanted.enable)
+        self.assertEqual(auto_wanted.cycle_timer, 12.5)
+        self.assertEqual(auto_wanted.providers, ["panda", "ehentai"])
+        self.assertTrue(auto_wanted.regexp_unwanted_title)
+
+        # Test PushoverSettings
+        pushover = PushoverSettings.from_dict({
+            "enable": True,
+            "user_key": "ukey123",
+            "token": "tok456",
+        })
+        self.assertTrue(pushover.enable)
+        self.assertEqual(pushover.user_key, "ukey123")
+        self.assertEqual(pushover.token, "tok456")
+
     def test_gunicorn_application_and_static_handler(self):
         from server import MediaAndStaticFilesHandler, GunicornApplication
         from django.http import HttpResponse

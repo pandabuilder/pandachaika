@@ -1025,9 +1025,16 @@ html.hide-regular-viewer #regular-viewer-container {
 }
 
 html.hide-regular-viewer #btn-toggle-regular-viewer {
-  background-color: #0dcaf0;
-  border-color: #0dcaf0;
-  color: #000;
+  background-color: #0dcaf0 !important;
+  border-color: #0dcaf0 !important;
+  color: #000 !important;
+}
+
+html.hide-regular-viewer #btn-toggle-regular-viewer:hover,
+html.hide-regular-viewer #btn-toggle-regular-viewer:focus {
+  background-color: #31d2f2 !important;
+  border-color: #25cff2 !important;
+  color: #000 !important;
 }
 
 /* Prevent FOUC when inline cover is toggled on */
@@ -1052,9 +1059,71 @@ html.show-inline-cover #inline-cover-container {
 }
 
 html.show-inline-cover #btn-toggle-inline-cover {
-  background-color: #0dcaf0;
-  border-color: #0dcaf0;
-  color: #000;
+  background-color: #0dcaf0 !important;
+  border-color: #0dcaf0 !important;
+  color: #000 !important;
+}
+
+html.show-inline-cover #btn-toggle-inline-cover:hover,
+html.show-inline-cover #btn-toggle-inline-cover:focus {
+  background-color: #31d2f2 !important;
+  border-color: #25cff2 !important;
+  color: #000 !important;
+}
+
+/* Prevent FOUC when archive filepath is shown */
+html.show-archive-filepath #archive-filepath-row {
+  display: table-row !important;
+}
+
+html.show-archive-filepath #btn-toggle-filepath {
+  background-color: #0dcaf0 !important;
+  border-color: #0dcaf0 !important;
+  color: #000 !important;
+}
+
+html.show-archive-filepath #btn-toggle-filepath:hover,
+html.show-archive-filepath #btn-toggle-filepath:focus {
+  background-color: #31d2f2 !important;
+  border-color: #25cff2 !important;
+  color: #000 !important;
+}
+
+/* Button text toggles based on active state to prevent FOUC */
+#btn-toggle-inline-cover .btn-text-on,
+#btn-toggle-filepath .btn-text-on,
+#btn-toggle-regular-viewer .btn-text-on {
+  display: none;
+}
+
+#btn-toggle-inline-cover .btn-text-off,
+#btn-toggle-filepath .btn-text-off,
+#btn-toggle-regular-viewer .btn-text-off {
+  display: inline;
+}
+
+html.show-inline-cover #btn-toggle-inline-cover .btn-text-on {
+  display: inline !important;
+}
+
+html.show-inline-cover #btn-toggle-inline-cover .btn-text-off {
+  display: none !important;
+}
+
+html.show-archive-filepath #btn-toggle-filepath .btn-text-on {
+  display: inline !important;
+}
+
+html.show-archive-filepath #btn-toggle-filepath .btn-text-off {
+  display: none !important;
+}
+
+html.hide-regular-viewer #btn-toggle-regular-viewer .btn-text-on {
+  display: inline !important;
+}
+
+html.hide-regular-viewer #btn-toggle-regular-viewer .btn-text-off {
+  display: none !important;
 }
 
 /* Unified content panel styling (border-separated, seamless flowing background) */

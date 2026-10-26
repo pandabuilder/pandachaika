@@ -123,7 +123,7 @@ class Command(BaseCommand):
         from elasticsearch.client import IndicesClient
 
         indices_client = IndicesClient(client=self.es_client)
-        index_name = model._meta.es_index_name  # type: ignore
+        index_name = getattr(model._meta, "es_index_name")
         if indices_client.exists(index=index_name):
             indices_client.delete(index=index_name)
         indices_client.create(index=index_name)
@@ -145,7 +145,7 @@ class Command(BaseCommand):
             },
         )
         indices_client.put_mapping(
-            body=model._meta.es_mapping,  # type: ignore
+            body=getattr(model._meta, "es_mapping"),
             index=index_name,
         )
         indices_client.open(index=index_name)

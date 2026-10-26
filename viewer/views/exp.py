@@ -235,7 +235,10 @@ def api(
                         },
                     }
                 )
-                return HttpResponse(response, content_type="application/json; charset=utf-8")
+                http_response = HttpResponse(response, content_type="application/json; charset=utf-8")
+                http_response["Warning"] = '299 - "extract_toggle is deprecated due to race conditions. Use extract_archive or reduce_archive instead."'
+                http_response["Deprecation"] = "true"
+                return http_response
 
             elif action == "extract_archive":
                 try:

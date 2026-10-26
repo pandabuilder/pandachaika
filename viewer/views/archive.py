@@ -5,6 +5,7 @@ import zipfile
 from os.path import basename
 from urllib.parse import quote, urlparse, unquote
 import typing
+import warnings
 import base64
 
 from django.contrib import messages
@@ -260,7 +261,7 @@ def archive_details(request: HttpRequest, pk: int, mode: str = "view") -> HttpRe
 
     template = (
         "viewer/archive_new.html"
-        if should_use_refined_views(request, crawler_settings)
+        if should_use_refined_views(request)
         else "viewer/archive_old.html"
     )
     return render(request, template, d)
@@ -661,13 +662,18 @@ def image_live_thumb(request: HttpRequest, archive_pk: int, position: int) -> Ht
 
 @login_required
 def extract_toggle(request: HttpRequest, pk: int) -> HttpResponse:
-    """Extract archive toggle."""
-
+    """Extract archive toggle (deprecated: use explicit extract or reduce to avoid race conditions)."""
+    warnings.warn(
+        "extract_toggle view is deprecated and subject to race conditions. Use extract or reduce instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     if not request.user.has_perm("viewer.expand_archive"):
         return render_error(request, "You don't have the permission to expand an Archive.")
     try:
         with transaction.atomic():
             archive = Archive.objects.select_for_update().get(pk=pk)
+            target_url = clean_up_referer(request.META.get("HTTP_REFERER", archive.get_absolute_url()))
             logger.info("Toggling images for archive: {}".format(archive.get_absolute_url()))
             archive.extract_toggle()
             if archive.extracted:
@@ -678,20 +684,22 @@ def extract_toggle(request: HttpRequest, pk: int) -> HttpResponse:
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
 
-    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+    return HttpResponseRedirect(target_url)
 
 
 @login_required
 def extract(request: HttpRequest, pk: int) -> HttpResponse:
-    """Extract archive toggle."""
+    """Extract archive (idempotent)."""
 
     if not request.user.has_perm("viewer.expand_archive"):
         return render_error(request, "You don't have the permission to expand an Archive.")
     try:
         with transaction.atomic():
             archive = Archive.objects.select_for_update().get(pk=pk)
+            target_url = clean_up_referer(request.META.get("HTTP_REFERER", archive.get_absolute_url()))
             if archive.extracted:
-                return render_error(request, "Archive is already extracted.")
+                logger.info("Archive %s is already extracted.", archive.pk)
+                return HttpResponseRedirect(target_url)
 
             resized = bool(request.GET.get("resized", ""))
 
@@ -706,20 +714,22 @@ def extract(request: HttpRequest, pk: int) -> HttpResponse:
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
 
-    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+    return HttpResponseRedirect(target_url)
 
 
 @login_required
 def reduce(request: HttpRequest, pk: int) -> HttpResponse:
-    """Reduce archive."""
+    """Reduce archive (idempotent)."""
 
     if not request.user.has_perm("viewer.expand_archive"):
         return render_error(request, "You don't have the permission to expand an Archive.")
     try:
         with transaction.atomic():
             archive = Archive.objects.select_for_update().get(pk=pk)
+            target_url = clean_up_referer(request.META.get("HTTP_REFERER", archive.get_absolute_url()))
             if not archive.extracted:
-                return render_error(request, "Archive is already reduced.")
+                logger.info("Archive %s is already reduced.", archive.pk)
+                return HttpResponseRedirect(target_url)
 
             logger.info("Reducing images for archive: {}".format(archive.get_absolute_url()))
 
@@ -729,7 +739,7 @@ def reduce(request: HttpRequest, pk: int) -> HttpResponse:
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
 
-    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+    return HttpResponseRedirect(target_url)
 
 
 @login_required

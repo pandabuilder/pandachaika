@@ -410,7 +410,7 @@ class Parser(BaseParser):
                     current_soup = BeautifulSoup(response.text, "html.parser")
                     if not current_soup:
                         continue
-                hash_elements = current_soup.find_all(attrs={"data-orghash": True}) # type: ignore
+                hash_elements = current_soup.find_all(None, attrs={"data-orghash": True})
                 page_hashes = [str(el["data-orghash"]) for el in hash_elements]
                 all_hashes.extend(page_hashes)
             return all_hashes

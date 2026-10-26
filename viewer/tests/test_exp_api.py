@@ -70,6 +70,8 @@ class ExpApiTests(TestCase):
         data = json.loads(response.content)
         self.assertEqual(data["result"], "ok")
         self.assertEqual(data["change"]["field"], "extracted")
+        self.assertEqual(response["Deprecation"], "true")
+        self.assertIn("deprecated", response["Warning"])
         mock_toggle.assert_called_once()
 
     @patch.object(Archive, "extract")
@@ -163,3 +165,31 @@ class ExpApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.content)
         self.assertEqual(data["id"], self.archive.pk)
+
+    @patch.object(Archive, "extract")
+    def test_view_extract_idempotent(self, mock_extract):
+        response = self.admin_client.get(f"/archive/{self.archive.pk}/extract/", HTTP_REFERER="/archive/")
+        self.assertEqual(response.status_code, 302)
+        mock_extract.assert_called_once()
+
+        self.archive.extracted = True
+        self.archive.save()
+        mock_extract.reset_mock()
+        response = self.admin_client.get(f"/archive/{self.archive.pk}/extract/", HTTP_REFERER="/archive/")
+        self.assertEqual(response.status_code, 302)
+        mock_extract.assert_not_called()
+
+    @patch.object(Archive, "reduce")
+    def test_view_reduce_idempotent(self, mock_reduce):
+        self.archive.extracted = True
+        self.archive.save()
+        response = self.admin_client.get(f"/archive/{self.archive.pk}/reduce/", HTTP_REFERER="/archive/")
+        self.assertEqual(response.status_code, 302)
+        mock_reduce.assert_called_once()
+
+        self.archive.extracted = False
+        self.archive.save()
+        mock_reduce.reset_mock()
+        response = self.admin_client.get(f"/archive/{self.archive.pk}/reduce/", HTTP_REFERER="/archive/")
+        self.assertEqual(response.status_code, 302)
+        mock_reduce.assert_not_called()

@@ -27,28 +27,23 @@ def get_closer_gallery_title_from_list(
     return None
 
 
-def get_list_closer_text_from_list(
-    original: str, texts: list[tuple[str, str]], cutoff: float, max_matches: int
-) -> list[tuple[str, str, float]] | None:
+def get_list_closer_text_from_list[T](
+    original: str, texts: list[tuple[str, T]], cutoff: float, max_matches: int
+) -> list[tuple[str, T, float]] | None:
 
-    compare_texts = []
-    compare_ids = []
-
-    for text in texts:
-        compare_texts.append(text[0])
-        compare_ids.append([text[0], text[1]])
+    compare_texts = [text[0] for text in texts]
 
     matches = get_scored_matches(original, compare_texts, max_matches, cutoff)
 
     if len(matches) == 0:
         return None
 
-    results = []
+    results: list[tuple[str, T, float]] = []
 
     for i, compare_text in enumerate(compare_texts):
         for match in matches:
             if compare_text == match[1]:
-                results.append((compare_ids[i][0], compare_ids[i][1], match[0]))
+                results.append((texts[i][0], texts[i][1], match[0]))
                 break
 
     return results

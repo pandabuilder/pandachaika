@@ -119,8 +119,8 @@ def remove_gallery_from_match_index(index_uuid: str) -> bool:
         return False
 
     try:
-        es_client.delete(
-            index=es_match_index_name, id=index_uuid, refresh=True, request_timeout=30  # type: ignore
+        es_client.options(request_timeout=30).delete(
+            index=es_match_index_name, id=index_uuid, refresh=True
         )
         return True
     except elasticsearch.exceptions.NotFoundError:

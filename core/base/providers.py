@@ -1,4 +1,5 @@
 import importlib
+import importlib.util
 import inspect
 import logging
 from collections.abc import Callable
@@ -27,7 +28,7 @@ def _get_provider_submodule_api(module_name: str, submodule_name: str) -> list[A
         importlib.import_module(module_name, package="__path__")
     except ImportError:
         return []
-    if importlib.util.find_spec(sub_module):  # type: ignore
+    if importlib.util.find_spec(sub_module):
         site = importlib.import_module(sub_module, package=module_name)
         if hasattr(site, "API"):
             return list(getattr(site, "API"))
@@ -41,7 +42,7 @@ def _get_provider_submodule_method(module_name: str, submodule_name: str, method
         importlib.import_module(module_name, package="__path__")
     except ImportError:
         return None
-    if importlib.util.find_spec(sub_module):  # type: ignore
+    if importlib.util.find_spec(sub_module):
         site = importlib.import_module(sub_module, package=module_name)
         if hasattr(site, method_name):
             obj = getattr(site, method_name)
@@ -56,7 +57,7 @@ def _get_provider_submodule(module_name: str, submodule_name: str) -> ModuleType
         importlib.import_module(module_name, package="__path__")
     except ImportError:
         return None
-    if importlib.util.find_spec(sub_module):  # type: ignore
+    if importlib.util.find_spec(sub_module):
         site = importlib.import_module(sub_module, package=module_name)
         return site
     return None

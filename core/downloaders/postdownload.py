@@ -1096,8 +1096,8 @@ class TimedPostDownloader(BaseScheduler):
 
                 logger.info(
                     "Looking for missing files downloaded by hath ({:d}) and torrent ({:d}).".format(
-                        len([x for x in found_archives if "hath" in x.match_type]),
-                        len([x for x in found_archives if "torrent" in x.match_type]),
+                        len([x for x in found_archives if x.match_type and "hath" in x.match_type]),
+                        len([x for x in found_archives if x.match_type and "torrent" in x.match_type]),
                     )
                 )
                 for archive in found_archives:

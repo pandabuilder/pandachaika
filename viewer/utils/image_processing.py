@@ -32,12 +32,12 @@ def compare_wanted_with_image(
     template_img = cv.imread(wanted_image.thumbnail.path)
     template_gray = cv.cvtColor(template_img, cv.COLOR_BGR2GRAY)
     sift = cv.SIFT.create()
-    kp1, des1 = sift.detectAndCompute(template_gray, None)  # type: ignore
-    kp2, des2 = sift.detectAndCompute(img_gray, None)  # type: ignore
+    kp1, des1 = sift.detectAndCompute(template_gray, None)
+    kp2, des2 = sift.detectAndCompute(img_gray, None)
     # FLANN parameters
     index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=FLANN_N_TREES)
     search_params = dict(checks=FLANN_N_CHECKS)  # or pass empty dictionary
-    flann = cv.FlannBasedMatcher(index_params, search_params)  # type: ignore
+    flann = cv.FlannBasedMatcher(index_params, search_params)
     matches = flann.knnMatch(des1, des2, k=2)
     good_matches = []
     found_match = False
@@ -66,7 +66,7 @@ def compare_wanted_with_image(
             found_match = True
         if found_match:
             draw_params = dict(matchColor=(0, 255, 0), singlePointColor=None, flags=2)
-            img_matches = cv.drawMatchesKnn(template_img, kp1, img_thumbnail, kp2, good_matches, None, **draw_params)  # type: ignore
+            img_matches = cv.drawMatchesKnn(template_img, kp1, img_thumbnail, kp2, good_matches, None, **draw_params)
             im = PImage.fromarray(cv.cvtColor(img_matches, cv.COLOR_BGR2RGB))
 
     return found_match, len(good_matches), im

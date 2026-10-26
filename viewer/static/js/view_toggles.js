@@ -14,6 +14,7 @@ function applyInlineCoverPreference(showInline) {
     const coverContainer = document.getElementById('inline-cover-container');
     const toggleBtn = document.getElementById('btn-toggle-inline-cover');
     const btnText = toggleBtn ? toggleBtn.querySelector('.inline-cover-btn-text') : null;
+    const btnTextOn = toggleBtn ? toggleBtn.querySelector('.btn-text-on') : null;
 
     const galleryMainCol = document.getElementById('gallery-main-col');
     const archiveMainCol = document.getElementById('archive-main-col');
@@ -27,7 +28,7 @@ function applyInlineCoverPreference(showInline) {
         if (toggleBtn) {
             toggleBtn.classList.remove('btn-outline-light');
             toggleBtn.classList.add('btn-info', 'text-dark', 'active');
-            if (btnText) btnText.textContent = 'Hide inline cover';
+            if (!btnTextOn && btnText) btnText.textContent = 'Hide inline cover';
         }
         if (galleryMainCol) {
             galleryMainCol.classList.remove('col-12');
@@ -46,7 +47,7 @@ function applyInlineCoverPreference(showInline) {
         if (toggleBtn) {
             toggleBtn.classList.remove('btn-info', 'text-dark', 'active');
             toggleBtn.classList.add('btn-outline-light');
-            if (btnText) btnText.textContent = 'Inline cover';
+            if (!btnTextOn && btnText) btnText.textContent = 'Inline cover';
         }
         if (galleryMainCol) {
             galleryMainCol.classList.remove('col-lg-8', 'col-xl-9');
@@ -79,24 +80,27 @@ function applyFilePathPreference(showPath) {
     const filePathRow = document.getElementById('archive-filepath-row');
     const toggleBtn = document.getElementById('btn-toggle-filepath');
     const btnText = toggleBtn ? toggleBtn.querySelector('.filepath-btn-text') : null;
+    const btnTextOn = toggleBtn ? toggleBtn.querySelector('.btn-text-on') : null;
 
     if (showPath) {
+        document.documentElement.classList.add('show-archive-filepath');
         if (filePathRow) {
             filePathRow.classList.remove('d-none');
         }
         if (toggleBtn) {
             toggleBtn.classList.remove('btn-outline-light');
             toggleBtn.classList.add('btn-info', 'text-dark', 'active');
-            if (btnText) btnText.textContent = 'Hide File Path';
+            if (!btnTextOn && btnText) btnText.textContent = 'Hide File Path';
         }
     } else {
+        document.documentElement.classList.remove('show-archive-filepath');
         if (filePathRow) {
             filePathRow.classList.add('d-none');
         }
         if (toggleBtn) {
             toggleBtn.classList.remove('btn-info', 'text-dark', 'active');
             toggleBtn.classList.add('btn-outline-light');
-            if (btnText) btnText.textContent = 'Show File Path';
+            if (!btnTextOn && btnText) btnText.textContent = 'Show File Path';
         }
     }
 }
@@ -122,6 +126,7 @@ function applyRegularViewerPreference(hideViewer) {
     const regularViewerContainer = document.getElementById('regular-viewer-container');
     const toggleBtn = document.getElementById('btn-toggle-regular-viewer');
     const btnText = toggleBtn ? toggleBtn.querySelector('.regular-viewer-btn-text') : null;
+    const btnTextOn = toggleBtn ? toggleBtn.querySelector('.btn-text-on') : null;
 
     if (hideViewer) {
         document.documentElement.classList.add('hide-regular-viewer');
@@ -134,7 +139,7 @@ function applyRegularViewerPreference(hideViewer) {
         if (toggleBtn) {
             toggleBtn.classList.remove('btn-outline-light');
             toggleBtn.classList.add('btn-info', 'text-dark', 'active');
-            if (btnText) btnText.textContent = 'Show Regular Viewer';
+            if (!btnTextOn && btnText) btnText.textContent = 'Show Regular Viewer';
         }
     } else {
         document.documentElement.classList.remove('hide-regular-viewer');
@@ -147,7 +152,7 @@ function applyRegularViewerPreference(hideViewer) {
         if (toggleBtn) {
             toggleBtn.classList.remove('btn-info', 'text-dark', 'active');
             toggleBtn.classList.add('btn-outline-light');
-            if (btnText) btnText.textContent = 'Hide Regular Viewer';
+            if (!btnTextOn && btnText) btnText.textContent = 'Hide Regular Viewer';
         }
     }
 }

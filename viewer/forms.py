@@ -1,5 +1,5 @@
 import os
-from typing import Any
+from typing import Any, cast
 
 from django import forms
 from django.contrib.auth.forms import PasswordChangeForm
@@ -10,6 +10,7 @@ from django.forms.models import (
     BaseModelFormSet,
     modelformset_factory,
     ModelChoiceField,
+    ModelMultipleChoiceField,
     ModelForm,
     inlineformset_factory,
     BaseInlineFormSet,
@@ -349,7 +350,7 @@ class ArchiveManageSearchSimpleForm(forms.Form):
     )
 
     gallery__status = forms.ChoiceField(
-        choices=[(0, "--------")] + Gallery.StatusChoices.choices, # type: ignore
+        choices=[(0, "--------"), *Gallery.StatusChoices.choices],
         required=False,
         label="Gallery Status",
         widget=forms.widgets.Select(attrs={"class": "form-control"}),
@@ -419,12 +420,15 @@ class ArchiveModForm(forms.ModelForm):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super(ArchiveModForm, self).__init__(*args, **kwargs)
-        self.fields["possible_matches"].queryset = self.instance.possible_matches.order_by(  # type: ignore
-            "-archivematches__match_accuracy"
+        cast(MatchesModelChoiceField, self.fields["possible_matches"]).queryset = (
+            self.instance.possible_matches.order_by("-archivematches__match_accuracy")
         )
-        self.fields["archive_groups"].queryset = self.instance.archive_groups.all()  # type: ignore
-        self.fields["tags"].label = "Custom Tags"
-        self.fields["tags"].queryset = self.instance.custom_tags()  # type: ignore
+        cast(ModelMultipleChoiceField, self.fields["archive_groups"]).queryset = (
+            self.instance.archive_groups.all()
+        )
+        tags_field = cast(ModelMultipleChoiceField, self.fields["tags"])
+        tags_field.label = "Custom Tags"
+        tags_field.queryset = self.instance.custom_tags()
 
     possible_matches = MatchesModelChoiceField(
         required=False,
@@ -671,7 +675,7 @@ class GallerySearchSimpleForm(forms.Form):
     )
 
     status = forms.ChoiceField(
-        choices=[(0, "--------")] + Gallery.StatusChoices.choices, # type: ignore
+        choices=[(0, "--------"), *Gallery.StatusChoices.choices],
         required=False,
         label="Status",
         widget=forms.widgets.Select(attrs={"class": "form-control"}),

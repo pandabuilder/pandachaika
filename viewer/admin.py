@@ -90,6 +90,7 @@ class ArchiveAdmin(SimpleHistoryAdmin):
     list_select_related = ("gallery",)
     inlines = (ArchiveImageInline,)
 
+    @admin.action(description="Mark selected archives as public")
     def make_public(self, request: HttpRequest, queryset: ArchiveQuerySet) -> None:
         rows_updated = queryset.count()
         for archive in queryset:
@@ -100,8 +101,7 @@ class ArchiveAdmin(SimpleHistoryAdmin):
             message_bit = "%s archives were" % rows_updated
         self.message_user(request, "%s successfully marked as public." % message_bit)
 
-    make_public.short_description = "Mark selected archives as public"  # type: ignore
-
+    @admin.action(description="Update source of selected archives")
     def mark_source_custom(self, request: HttpRequest, queryset: ArchiveQuerySet) -> None:
         source_type = request.POST["extra_field"]
         rows_updated = queryset.update(source_type=source_type)
@@ -111,8 +111,8 @@ class ArchiveAdmin(SimpleHistoryAdmin):
             message_bit = "%s archives were" % rows_updated
         self.message_user(request, "%s successfully set as %s source." % (message_bit, source_type))
 
-    mark_source_custom.short_description = "Update source of selected archives"  # type: ignore
 
+    @admin.action(description="Update origin of selected archives")
     def mark_origin(self, request: HttpRequest, queryset: ArchiveQuerySet) -> None:
         origin = request.POST["extra_field"]
         rows_updated = queryset.update(origin=origin)
@@ -122,8 +122,8 @@ class ArchiveAdmin(SimpleHistoryAdmin):
             message_bit = "%s archives were" % rows_updated
         self.message_user(request, "%s successfully set as %s origin." % (message_bit, origin))
 
-    mark_origin.short_description = "Update origin of selected archives"  # type: ignore
 
+    @admin.action(description="Set reason of selected archives")
     def set_reason(self, request: HttpRequest, queryset: ArchiveQuerySet) -> None:
         source_type = request.POST["extra_field"]
         rows_updated = queryset.update(reason=source_type)
@@ -133,7 +133,6 @@ class ArchiveAdmin(SimpleHistoryAdmin):
             message_bit = "%s archives were" % rows_updated
         self.message_user(request, "%s successfully set as reason: %s." % (message_bit, source_type))
 
-    set_reason.short_description = "Set reason of selected archives"  # type: ignore
 
     def gallery_id(self, obj: Archive) -> int | None:
         if obj.gallery:
@@ -181,7 +180,7 @@ class GalleryTagsInline(admin.TabularInline):
 
 
 class UsedByGalleryListFilter(admin.SimpleListFilter):
-    title = _("used by galleries")  # type: ignore
+    title = _("used by galleries")
     parameter_name = "used-galleries"
 
     def lookups(self, request, model_admin):
@@ -206,6 +205,7 @@ class TagAdmin(admin.ModelAdmin):
     ]
     actions = ["recall_api_gallery"]
 
+    @admin.action(description="Recall Gallery API to all related galleries")
     def recall_api_gallery(self, request: HttpRequest, queryset: TagQuerySet) -> None:
         galleries = Gallery.objects.filter(tags__in=queryset)
         for gallery in galleries:
@@ -226,7 +226,6 @@ class TagAdmin(admin.ModelAdmin):
 
         self.message_user(request, "%s galleries pulled new metadata." % galleries.count())
 
-    recall_api_gallery.short_description = "Recall Gallery API to all related galleries"  # type: ignore
 
 
 class GalleryProviderDataInline(admin.TabularInline):
@@ -269,6 +268,7 @@ class GalleryAdmin(SimpleHistoryAdmin):
     action_form = UpdateActionForm
     inlines = (GalleryProviderDataInline,)
 
+    @admin.action(description="Mark selected galleries as hidden")
     def make_hidden(self, request: HttpRequest, queryset: GalleryQuerySet) -> None:
         rows_updated = queryset.update(hidden=True)
         if rows_updated == 1:
@@ -277,8 +277,8 @@ class GalleryAdmin(SimpleHistoryAdmin):
             message_bit = "%s galleries were" % rows_updated
         self.message_user(request, "%s successfully marked as hidden." % message_bit)
 
-    make_hidden.short_description = "Mark selected galleries as hidden"  # type: ignore
 
+    @admin.action(description="Mark selected galleries as public")
     def make_public(self, request: HttpRequest, queryset: GalleryQuerySet) -> None:
         rows_updated = queryset.update(public=True)
         if rows_updated == 1:
@@ -287,8 +287,8 @@ class GalleryAdmin(SimpleHistoryAdmin):
             message_bit = "%s galleries were" % rows_updated
         self.message_user(request, "%s successfully marked as public." % message_bit)
 
-    make_public.short_description = "Mark selected galleries as public"  # type: ignore
 
+    @admin.action(description="Mark selected galleries as private")
     def make_private(self, request: HttpRequest, queryset: GalleryQuerySet) -> None:
         rows_updated = queryset.update(public=False)
         if rows_updated == 1:
@@ -297,8 +297,8 @@ class GalleryAdmin(SimpleHistoryAdmin):
             message_bit = "%s galleries were" % rows_updated
         self.message_user(request, "%s successfully marked as private." % message_bit)
 
-    make_private.short_description = "Mark selected galleries as private"  # type: ignore
 
+    @admin.action(description="Mark selected galleries status as normal")
     def make_normal(self, request: HttpRequest, queryset: GalleryQuerySet) -> None:
         rows_updated = queryset.update(status=Gallery.StatusChoices.NORMAL)
         if rows_updated == 1:
@@ -307,8 +307,8 @@ class GalleryAdmin(SimpleHistoryAdmin):
             message_bit = "%s galleries were" % rows_updated
         self.message_user(request, "%s successfully marked status as normal." % message_bit)
 
-    make_normal.short_description = "Mark selected galleries status as normal"  # type: ignore
 
+    @admin.action(description="Set provider of selected galleries")
     def set_provider(self, request: HttpRequest, queryset: GalleryQuerySet) -> None:
         provider = request.POST["extra_field"]
         rows_updated = queryset.update(provider=provider)
@@ -318,8 +318,8 @@ class GalleryAdmin(SimpleHistoryAdmin):
             message_bit = "%s galleries were" % rows_updated
         self.message_user(request, "%s successfully set with provider: %s." % (message_bit, provider))
 
-    set_provider.short_description = "Set provider of selected galleries"  # type: ignore
 
+    @admin.action(description="Set reason of selected galleries")
     def set_reason(self, request: HttpRequest, queryset: GalleryQuerySet) -> None:
         reason = request.POST["extra_field"]
         rows_updated = queryset.update(reason=reason)
@@ -329,7 +329,6 @@ class GalleryAdmin(SimpleHistoryAdmin):
             message_bit = "%s galleries were" % rows_updated
         self.message_user(request, "%s successfully set with reason: %s." % (message_bit, reason))
 
-    set_reason.short_description = "Set reason of selected galleries"  # type: ignore
 
 
 class ImageAdmin(admin.ModelAdmin):
@@ -439,6 +438,7 @@ class WantedGalleryAdmin(admin.ModelAdmin):
 
     # inlines = (FoundGalleryInline,)
 
+    @admin.action(description="Add wanted categories (comma separated)")
     def add_wanted_categories(self, request: HttpRequest, queryset: QuerySet) -> None:
         categories_str = request.POST.get("extra_field", "")
         if not categories_str:
@@ -455,8 +455,8 @@ class WantedGalleryAdmin(admin.ModelAdmin):
         
         self.message_user(request, f"Added categories to {count} wanted galleries.")
 
-    add_wanted_categories.short_description = "Add wanted categories (comma separated)"  # type: ignore
 
+    @admin.action(description="Set wanted categories (comma separated)")
     def set_wanted_categories(self, request: HttpRequest, queryset: QuerySet) -> None:
         categories_str = request.POST.get("extra_field", "")
         category_names = [c.strip() for c in categories_str.split(",") if c.strip()]
@@ -471,8 +471,8 @@ class WantedGalleryAdmin(admin.ModelAdmin):
 
         self.message_user(request, f"Set categories for {count} wanted galleries.")
 
-    set_wanted_categories.short_description = "Set wanted categories (comma separated)"  # type: ignore
 
+    @admin.action(description="Add unwanted tags (comma separated)")
     def add_unwanted_tags(self, request: HttpRequest, queryset: QuerySet) -> None:
         tags_str = request.POST.get("extra_field", "")
         if not tags_str:
@@ -494,8 +494,8 @@ class WantedGalleryAdmin(admin.ModelAdmin):
 
         self.message_user(request, f"Added unwanted tags to {count} wanted galleries.")
 
-    add_unwanted_tags.short_description = "Add unwanted tags (comma separated)"  # type: ignore
 
+    @admin.action(description="Set unwanted tags (comma separated)")
     def set_unwanted_tags(self, request: HttpRequest, queryset: QuerySet) -> None:
         tags_str = request.POST.get("extra_field", "")
         tag_strings = [t.strip() for t in tags_str.split(",") if t.strip()]
@@ -514,8 +514,8 @@ class WantedGalleryAdmin(admin.ModelAdmin):
             
         self.message_user(request, f"Set unwanted tags for {count} wanted galleries.")
 
-    set_unwanted_tags.short_description = "Set unwanted tags (comma separated)"  # type: ignore
 
+    @admin.action(description="Set exclusive scope name of selected wanted galleries")
     def set_exclusive_scope_name(self, request: HttpRequest, queryset: QuerySet) -> None:
         exclusive_scope_name = request.POST.get("extra_field", "").strip()
         rows_updated = queryset.update(exclusive_scope_name=exclusive_scope_name)
@@ -525,8 +525,8 @@ class WantedGalleryAdmin(admin.ModelAdmin):
             message_bit = "%s wanted galleries were" % rows_updated
         self.message_user(request, "%s successfully set exclusive_scope_name to: %s." % (message_bit, exclusive_scope_name))
 
-    set_exclusive_scope_name.short_description = "Set exclusive scope name of selected wanted galleries"  # type: ignore
 
+    @admin.action(description="Set search title of selected wanted galleries")
     def set_search_title(self, request: HttpRequest, queryset: QuerySet) -> None:
         search_title = request.POST.get("extra_field", "").strip()
         rows_updated = queryset.update(search_title=search_title)
@@ -536,8 +536,8 @@ class WantedGalleryAdmin(admin.ModelAdmin):
             message_bit = "%s wanted galleries were" % rows_updated
         self.message_user(request, "%s successfully set search_title to: %s." % (message_bit, search_title))
 
-    set_search_title.short_description = "Set search title of selected wanted galleries"  # type: ignore
 
+    @admin.action(description="Set unwanted title of selected wanted galleries")
     def set_unwanted_title(self, request: HttpRequest, queryset: QuerySet) -> None:
         unwanted_title = request.POST.get("extra_field", "").strip()
         rows_updated = queryset.update(unwanted_title=unwanted_title)
@@ -547,10 +547,10 @@ class WantedGalleryAdmin(admin.ModelAdmin):
             message_bit = "%s wanted galleries were" % rows_updated
         self.message_user(request, "%s successfully set unwanted_title to: %s." % (message_bit, unwanted_title))
 
-    set_unwanted_title.short_description = "Set unwanted title of selected wanted galleries"  # type: ignore
 
     # inlines = (FoundGalleryInline,)
 
+    @admin.action(description="Mark selected galleries as public")
     def make_public(self, request: HttpRequest, queryset: QuerySet) -> None:
         rows_updated = queryset.update(public=True)
         if rows_updated == 1:
@@ -559,8 +559,7 @@ class WantedGalleryAdmin(admin.ModelAdmin):
             message_bit = "%s galleries were" % rows_updated
         self.message_user(request, "%s successfully marked as public." % message_bit)
 
-    make_public.short_description = "Mark selected galleries as public"  # type: ignore
-
+    @admin.action(description="Enable selected galleries for notify when found")
     def enable_notify_when_found(self, request: HttpRequest, queryset: QuerySet) -> None:
         rows_updated = queryset.update(notify_when_found=True)
         if rows_updated == 1:
@@ -569,8 +568,8 @@ class WantedGalleryAdmin(admin.ModelAdmin):
             message_bit = "%s galleries were" % rows_updated
         self.message_user(request, "%s successfully enabled for notify when found." % message_bit)
 
-    enable_notify_when_found.short_description = "Enable selected galleries for notify when found"  # type: ignore
 
+    @admin.action(description="Disable selected galleries for notify when found")
     def disable_notify_when_found(self, request: HttpRequest, queryset: QuerySet) -> None:
         rows_updated = queryset.update(notify_when_found=False)
         if rows_updated == 1:
@@ -579,8 +578,8 @@ class WantedGalleryAdmin(admin.ModelAdmin):
             message_bit = "%s galleries were" % rows_updated
         self.message_user(request, "%s successfully disabled for notify when found." % message_bit)
 
-    disable_notify_when_found.short_description = "Disable selected galleries for notify when found"  # type: ignore
 
+    @admin.action(description="Mark selected galleries as should search")
     def mark_should_search(self, request: HttpRequest, queryset: QuerySet) -> None:
         rows_updated = queryset.update(should_search=True)
         if rows_updated == 1:
@@ -589,8 +588,8 @@ class WantedGalleryAdmin(admin.ModelAdmin):
             message_bit = "%s galleries were" % rows_updated
         self.message_user(request, "%s successfully marked as should search." % message_bit)
 
-    mark_should_search.short_description = "Mark selected galleries as should search"  # type: ignore
 
+    @admin.action(description="Mark selected galleries as not should search")
     def mark_not_should_search(self, request: HttpRequest, queryset: QuerySet) -> None:
         rows_updated = queryset.update(should_search=False)
         if rows_updated == 1:
@@ -599,8 +598,8 @@ class WantedGalleryAdmin(admin.ModelAdmin):
             message_bit = "%s galleries were" % rows_updated
         self.message_user(request, "%s successfully marked as not should search." % message_bit)
 
-    mark_not_should_search.short_description = "Mark selected galleries as not should search"  # type: ignore
 
+    @admin.action(description="Mark selected galleries as found")
     def mark_found(self, request: HttpRequest, queryset: QuerySet) -> None:
         rows_updated = queryset.update(found=True)
         if rows_updated == 1:
@@ -609,8 +608,8 @@ class WantedGalleryAdmin(admin.ModelAdmin):
             message_bit = "%s galleries were" % rows_updated
         self.message_user(request, "%s successfully marked as found." % message_bit)
 
-    mark_found.short_description = "Mark selected galleries as found"  # type: ignore
 
+    @admin.action(description="Mark selected galleries as not found")
     def mark_not_found(self, request: HttpRequest, queryset: QuerySet) -> None:
         rows_updated = queryset.update(found=False)
         if rows_updated == 1:
@@ -619,8 +618,8 @@ class WantedGalleryAdmin(admin.ModelAdmin):
             message_bit = "%s galleries were" % rows_updated
         self.message_user(request, "%s successfully marked as not found." % message_bit)
 
-    mark_not_found.short_description = "Mark selected galleries as not found"  # type: ignore
 
+    @admin.action(description="Mark selected galleries as keep searching")
     def mark_keep_search(self, request: HttpRequest, queryset: QuerySet) -> None:
         rows_updated = queryset.update(keep_searching=True)
         if rows_updated == 1:
@@ -629,8 +628,8 @@ class WantedGalleryAdmin(admin.ModelAdmin):
             message_bit = "%s galleries were" % rows_updated
         self.message_user(request, "%s successfully marked as keep searching." % message_bit)
 
-    mark_keep_search.short_description = "Mark selected galleries as keep searching"  # type: ignore
 
+    @admin.action(description="Mark selected galleries as not keep searching")
     def mark_not_keep_search(self, request: HttpRequest, queryset: QuerySet) -> None:
         rows_updated = queryset.update(keep_searching=False)
         if rows_updated == 1:
@@ -639,8 +638,8 @@ class WantedGalleryAdmin(admin.ModelAdmin):
             message_bit = "%s galleries were" % rows_updated
         self.message_user(request, "%s successfully marked as not keep searching." % message_bit)
 
-    mark_not_keep_search.short_description = "Mark selected galleries as not keep searching"  # type: ignore
 
+    @admin.action(description="Set selected galleries' search title from title")
     def search_title_from_title(self, request: HttpRequest, queryset: QuerySet) -> None:
         rows_updated = queryset.update(search_title=F("title"))
         if rows_updated == 1:
@@ -649,8 +648,8 @@ class WantedGalleryAdmin(admin.ModelAdmin):
             message_bit = "%s galleries were" % rows_updated
         self.message_user(request, "%s successfully set search title from title." % message_bit)
 
-    search_title_from_title.short_description = "Set selected galleries' search title from title"  # type: ignore
 
+    @admin.action(description="Set reason of selected wanted galleries")
     def set_reason(self, request: HttpRequest, queryset: QuerySet) -> None:
         source_type = request.POST["extra_field"]
         rows_updated = queryset.update(reason=source_type)
@@ -660,8 +659,8 @@ class WantedGalleryAdmin(admin.ModelAdmin):
             message_bit = "%s wanted galleries were" % rows_updated
         self.message_user(request, "%s successfully set as reason: %s." % (message_bit, source_type))
 
-    set_reason.short_description = "Set reason of selected wanted galleries"  # type: ignore
 
+    @admin.action(description="Add wanted provider by slug name")
     def add_wanted_provider(self, request: HttpRequest, queryset: QuerySet) -> None:
         wanted_provider_slug = request.POST["extra_field"]
         provider = Provider.objects.filter(slug=wanted_provider_slug).first()
@@ -678,8 +677,8 @@ class WantedGalleryAdmin(admin.ModelAdmin):
             message_bit = "%s wanted galleries were" % rows_updated
         self.message_user(request, "%s successfully added wanted provider: %s." % (message_bit, wanted_provider_slug))
 
-    add_wanted_provider.short_description = "Add wanted provider by slug name"  # type: ignore
 
+    @admin.action(description="Remove wanted provider by slug name")
     def remove_wanted_provider(self, request: HttpRequest, queryset: QuerySet) -> None:
         wanted_provider_slug = request.POST["extra_field"]
         provider = Provider.objects.filter(slug=wanted_provider_slug).first()
@@ -696,8 +695,8 @@ class WantedGalleryAdmin(admin.ModelAdmin):
             message_bit = "%s wanted galleries were" % rows_updated
         self.message_user(request, "%s successfully removed wanted provider: %s." % (message_bit, wanted_provider_slug))
 
-    remove_wanted_provider.short_description = "Remove wanted provider by slug name"  # type: ignore
 
+    @admin.action(description="Add unwanted provider by slug name")
     def add_unwanted_provider(self, request: HttpRequest, queryset: QuerySet) -> None:
         unwanted_provider_slug = request.POST["extra_field"]
         provider = Provider.objects.filter(slug=unwanted_provider_slug).first()
@@ -716,8 +715,8 @@ class WantedGalleryAdmin(admin.ModelAdmin):
             request, "%s successfully added unwanted provider: %s." % (message_bit, unwanted_provider_slug)
         )
 
-    add_unwanted_provider.short_description = "Add unwanted provider by slug name"  # type: ignore
 
+    @admin.action(description="Remove unwanted provider by slug name")
     def remove_unwanted_provider(self, request: HttpRequest, queryset: QuerySet) -> None:
         unwanted_provider_slug = request.POST["extra_field"]
         provider = Provider.objects.filter(slug=unwanted_provider_slug).first()
@@ -736,8 +735,8 @@ class WantedGalleryAdmin(admin.ModelAdmin):
             request, "%s successfully removed unwanted provider: %s." % (message_bit, unwanted_provider_slug)
         )
 
-    remove_unwanted_provider.short_description = "Remove unwanted provider by slug name"  # type: ignore
 
+    @admin.action(description="Set wait for time of selected wanted galleries")
     def set_wait_for_time(self, request: HttpRequest, queryset: QuerySet) -> None:
         wait_for_time = request.POST["extra_field"]
         rows_updated = queryset.update(wait_for_time=parse_duration(wait_for_time))
@@ -747,8 +746,8 @@ class WantedGalleryAdmin(admin.ModelAdmin):
             message_bit = "%s wanted galleries were" % rows_updated
         self.message_user(request, "%s successfully set wait for time to: %s." % (message_bit, wait_for_time))
 
-    set_wait_for_time.short_description = "Set wait for time of selected wanted galleries"  # type: ignore
 
+    @admin.action(description="Set category of selected wanted galleries")
     def set_category(self, request: HttpRequest, queryset: QuerySet) -> None:
         category = request.POST["extra_field"]
         rows_updated = queryset.update(category=category)
@@ -758,7 +757,6 @@ class WantedGalleryAdmin(admin.ModelAdmin):
             message_bit = "%s wanted galleries were" % rows_updated
         self.message_user(request, "%s successfully set category to: %s." % (message_bit, category))
 
-    set_category.short_description = "Set category of selected wanted galleries"  # type: ignore
 
 
 class GalleryMatchAdmin(admin.ModelAdmin):
@@ -896,6 +894,7 @@ class MonitoredLinkAdmin(admin.ModelAdmin):
     search_fields = ["name", "url"]
     actions = ["start_running", "stop_running", "force_run"]
 
+    @admin.action(description="Start selected MonitoredLinks")
     def start_running(self, request: HttpRequest, queryset: "QuerySet[MonitoredLink]") -> None:
         rows_updated = queryset.count()
         for monitored_link in queryset:
@@ -906,8 +905,8 @@ class MonitoredLinkAdmin(admin.ModelAdmin):
             message_bit = "%s monitored links were" % rows_updated
         self.message_user(request, "%s successfully started." % message_bit)
 
-    start_running.short_description = "Start selected MonitoredLinks"  # type: ignore
 
+    @admin.action(description="Stop selected MonitoredLinks")
     def stop_running(self, request: HttpRequest, queryset: "QuerySet[MonitoredLink]") -> None:
         rows_updated = queryset.count()
         for monitored_link in queryset:
@@ -918,8 +917,8 @@ class MonitoredLinkAdmin(admin.ModelAdmin):
             message_bit = "%s monitored links were" % rows_updated
         self.message_user(request, "%s successfully stopped." % message_bit)
 
-    stop_running.short_description = "Stop selected MonitoredLinks"  # type: ignore
 
+    @admin.action(description="Force run selected MonitoredLinks")
     def force_run(self, request: HttpRequest, queryset: "QuerySet[MonitoredLink]") -> None:
         rows_updated = queryset.count()
         for monitored_link in queryset:
@@ -930,7 +929,6 @@ class MonitoredLinkAdmin(admin.ModelAdmin):
             message_bit = "%s monitored links were" % rows_updated
         self.message_user(request, "%s successfully force run." % message_bit)
 
-    force_run.short_description = "Force run selected MonitoredLinks"  # type: ignore
 
 
 class DownloadEventAdmin(admin.ModelAdmin):
@@ -956,6 +954,7 @@ class DownloadEventAdmin(admin.ModelAdmin):
     ]
     actions = ["mark_as_failed_completed"]
 
+    @admin.action(description="Mark as failed, completed")
     def mark_as_failed_completed(self, request: HttpRequest, queryset: "QuerySet[DownloadEvent]") -> None:
         rows_updated = queryset.count()
         queryset.update(completed=True, failed=True, status=DownloadEvent.Status.FAILED)
@@ -965,7 +964,6 @@ class DownloadEventAdmin(admin.ModelAdmin):
             message_bit = "%s download events were" % rows_updated
         self.message_user(request, "%s successfully marked as failed, completed." % message_bit)
 
-    mark_as_failed_completed.short_description = "Mark as failed, completed"  # type: ignore
 
 
 class GalleryMatchGroupEntryInline(admin.TabularInline):
@@ -984,6 +982,7 @@ class GalleryMatchGroupAdmin(admin.ModelAdmin):
     inlines = (GalleryMatchGroupEntryInline,)
     actions = ["process_group"]
 
+    @admin.action(description="Process selected gallery match groups")
     def process_group(self, request: HttpRequest, queryset: "QuerySet[GalleryMatchGroup]") -> None:
         rows_updated = queryset.count()
         for group in queryset:
@@ -994,7 +993,6 @@ class GalleryMatchGroupAdmin(admin.ModelAdmin):
             message_bit = "%s gallery match groups were" % rows_updated
         self.message_user(request, "%s successfully processed." % message_bit)
 
-    process_group.short_description = "Process selected gallery match groups"  # type: ignore
 
 
 class GalleryMatchGroupEntryAdmin(admin.ModelAdmin):
@@ -1002,6 +1000,7 @@ class GalleryMatchGroupEntryAdmin(admin.ModelAdmin):
     raw_id_fields = ("gallery",)
     list_display = ["id", "gallery_match_group", "gallery_link", "gallery_url", "gallery_position", "create_date"]
 
+    @admin.display(description="Gallery URL")
     def gallery_url(self, obj):
         # link = reverse("admin:viewer", args=[obj.customer.id])
         return format_html(
@@ -1010,8 +1009,8 @@ class GalleryMatchGroupEntryAdmin(admin.ModelAdmin):
             obj.gallery.get_link(),
         )
 
-    gallery_url.short_description = "Gallery URL"  # type: ignore
 
+    @admin.display(description="Gallery")
     def gallery_link(self, obj):
         link = reverse("admin:viewer_gallery_change", args=[obj.gallery.id])
         return format_html(
@@ -1020,7 +1019,6 @@ class GalleryMatchGroupEntryAdmin(admin.ModelAdmin):
             obj.gallery.title,
         )
 
-    gallery_link.short_description = "Gallery"  # type: ignore
 
 class GalleryGroupPossibleMatchesAdmin(admin.ModelAdmin):
     search_fields = ["gallery__title"]
@@ -1028,6 +1026,7 @@ class GalleryGroupPossibleMatchesAdmin(admin.ModelAdmin):
     list_display = ["id", "gallery_match_group", "gallery_link", "gallery_url", "match_type", "match_accuracy"]
     list_filter = ["match_type"]
 
+    @admin.display(description="Gallery URL")
     def gallery_url(self, obj):
         # link = reverse("admin:viewer", args=[obj.customer.id])
         return format_html(
@@ -1036,8 +1035,7 @@ class GalleryGroupPossibleMatchesAdmin(admin.ModelAdmin):
             obj.gallery.get_link(),
         )
 
-    gallery_url.short_description = "Gallery URL"  # type: ignore
-
+    @admin.display(description="Gallery")
     def gallery_link(self, obj):
         link = reverse("admin:viewer_gallery_change", args=[obj.gallery.id])
         return format_html(
@@ -1045,8 +1043,6 @@ class GalleryGroupPossibleMatchesAdmin(admin.ModelAdmin):
             link,
             obj.gallery.title,
         )
-
-    gallery_link.short_description = "Gallery"  # type: ignore
 
 admin.site.register(Archive, ArchiveAdmin)
 admin.site.register(ArchiveGroup, ArchiveGroupAdmin)

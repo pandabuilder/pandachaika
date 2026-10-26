@@ -148,7 +148,7 @@ def gallery_search_results_to_json(request: HttpRequest, galleries: Iterable[Gal
                     "source": archive.source_type,
                     "reason": archive.reason,
                 }
-                for archive in gallery.available_archives  # type: ignore
+                for archive in getattr(gallery, "available_archives", [])
             ],
         }
         for gallery in galleries

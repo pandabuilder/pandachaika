@@ -125,8 +125,9 @@ def filter_galleries_no_request(filter_args: dict[str, Any] | QueryDict) -> "Que
         results = results.filter(create_date__gte=filter_args["create_from"])
     if filter_args["create_to"]:
         results = results.filter(create_date__lte=filter_args["create_to"])
-    if filter_args["category"]:
-        results = results.filter(category__icontains=filter_args["category"])
+    category = filter_args["category"]
+    if category and isinstance(category, str):
+        results = results.filter(category__icontains=category)
     if filter_args["expunged"]:
         results = results.filter(expunged=bool(filter_args["expunged"]))
     if filter_args["disowned"]:
@@ -141,8 +142,9 @@ def filter_galleries_no_request(filter_args: dict[str, Any] | QueryDict) -> "Que
         results = results.filter(provider=filter_args["provider"])
     if filter_args["dl_type"]:
         results = results.filter(dl_type=filter_args["dl_type"])
-    if filter_args["reason"]:
-        results = results.filter(reason__icontains=filter_args["reason"])
+    reason = filter_args["reason"]
+    if reason and isinstance(reason, str):
+        results = results.filter(reason__icontains=reason)
     if filter_args["crc32"]:
         results = results.filter(archive__crc32=filter_args["crc32"])
 

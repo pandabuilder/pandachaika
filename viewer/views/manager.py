@@ -102,7 +102,7 @@ def repeated_archives_for_galleries(request: HttpRequest) -> HttpResponse:
 
     results = filter_galleries_simple(params)
 
-    results = results.several_archives()  # type: ignore
+    results = results.several_archives()
 
     results = results.distinct()
 
@@ -212,7 +212,7 @@ def repeated_galleries_by_field(request: HttpRequest) -> HttpResponse:
 
     results = filter_galleries_simple(params)
 
-    results = results.eligible_for_use().exclude(title__exact="")  # type: ignore
+    results = results.eligible_for_use().exclude(title__exact="")
 
     if "has-archives" in get:
         results = results.annotate(archives=Count("archive")).filter(archives__gt=0)
@@ -307,7 +307,7 @@ def archive_filesize_different_from_gallery(request: HttpRequest) -> HttpRespons
 
     results = filter_galleries_simple(params)
 
-    results = results.different_filesize_archive()  # type: ignore
+    results = results.different_filesize_archive()
 
     paginator = Paginator(results, 50)
     try:
@@ -320,7 +320,7 @@ def archive_filesize_different_from_gallery(request: HttpRequest) -> HttpRespons
 
 
 def public_missing_archives_for_galleries(request: HttpRequest) -> HttpResponse:
-    results = Gallery.objects.report_as_missing_galleries(public=True, provider__in=["panda", "fakku"])  # type: ignore
+    results = Gallery.objects.report_as_missing_galleries(public=True, provider__in=["panda", "fakku"])
     d = {"results": results}
     return render(request, "viewer/archives_missing_for_galleries.html", d)
 
@@ -444,9 +444,9 @@ def archives_not_present_in_filesystem(request: HttpRequest) -> HttpResponse:
 
     results = filter_archives_simple(params, authenticated=True, show_binned=True)
 
-    results = results.filter_non_existent(crawler_settings.MEDIA_ROOT)  # type: ignore
+    results_list = results.filter_non_existent(crawler_settings.MEDIA_ROOT)
 
-    paginator = Paginator(results, 50)
+    paginator = Paginator(results_list, 50)
     try:
         results_page = paginator.page(page)
     except (InvalidPage, EmptyPage):

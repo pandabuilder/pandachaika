@@ -42,10 +42,6 @@ general:
   download_progress_checker_cycle_timer: 10.0
   # Reload the server when it detects file changes (CherryPy feature).
   cherrypy_auto_restart: false
-  # Enable refined archive and gallery views for authenticated users (opt-in).
-  # When false (default), all users see the legacy/old design.
-  # When true, authenticated users see the refined/new design, while public users continue to see the old design.
-  refined_archive_gallery_views: false
   # Auto discard galleries that contain these tags. For new downloads and matches.
   banned_tags:
     - language:thai
