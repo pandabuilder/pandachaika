@@ -956,8 +956,11 @@ class DownloadEventAdmin(admin.ModelAdmin):
 
     @admin.action(description="Mark as failed, completed")
     def mark_as_failed_completed(self, request: HttpRequest, queryset: "QuerySet[DownloadEvent]") -> None:
-        rows_updated = queryset.count()
-        queryset.update(completed=True, failed=True, status=DownloadEvent.Status.FAILED)
+        rows_updated = 0
+        for event in queryset.select_related("archive"):
+            event.set_as_failed("Marked as failed in admin")
+            event.save()
+            rows_updated += 1
         if rows_updated == 1:
             message_bit = "1 download event was"
         else:

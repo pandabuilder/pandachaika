@@ -231,6 +231,18 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
     if tool == "transfer_missing_downloads":
         client.enqueue(args=["-tmd"], task_type="web_crawler", override_options=crawler_settings, user=request.user)
         return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+    elif tool == "reconcile_downloads":
+        from viewer.utils.downloads import reconcile_downloads
+
+        stats = reconcile_downloads(settings=crawler_settings)
+        rescued = stats["rescued_from_disk"] + stats["rescued_from_staging"]
+        recycled = stats["recycled_failed"] + stats["recycled_false_completed"] + stats["recycled_orphaned"]
+        messages.success(
+            request,
+            f"Reconciliation completed: {stats['total_checked']} checked, {rescued} rescued, "
+            f"{recycled} recycled, {stats['requeued']} requeued, {stats['kept_in_progress']} in progress.",
+        )
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "retry_failed":
         client.enqueue(args=["--retry-failed"], task_type="web_crawler", override_options=crawler_settings, user=request.user)
         return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))

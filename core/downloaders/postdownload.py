@@ -203,6 +203,17 @@ class PostDownloader(object):
                 )
             if self.settings.recycle_failed_checks_downloads:
                 archive.move_to_recycle_bin(reason="Failed on ZIP file opening")
+                try:
+                    from viewer.models import DownloadEvent
+                    DownloadEvent.objects.filter(archive=archive, completed=False).update(
+                        completed=True,
+                        failed=True,
+                        status=DownloadEvent.Status.FAILED,
+                        completed_date=django_tz.now(),
+                        error_message="Failed on ZIP file opening",
+                    )
+                except Exception:
+                    pass
             return False
         # crc32 = calc_crc32(archive.zipped.path)
         # filesize, filecount = get_zip_fileinfo(archive.zipped.path)
@@ -263,6 +274,17 @@ class PostDownloader(object):
                 )
             if self.settings.recycle_failed_checks_downloads:
                 archive.move_to_recycle_bin(reason="Size does not match gallery")
+                try:
+                    from viewer.models import DownloadEvent
+                    DownloadEvent.objects.filter(archive=archive, completed=False).update(
+                        completed=True,
+                        failed=True,
+                        status=DownloadEvent.Status.FAILED,
+                        completed_date=django_tz.now(),
+                        error_message="Size does not match gallery",
+                    )
+                except Exception:
+                    pass
             return False
         elif (
             archive.gallery
@@ -322,11 +344,32 @@ class PostDownloader(object):
                             )
                         if self.settings.recycle_failed_checks_downloads:
                             archive.move_to_recycle_bin(reason="SHA1 mismatch on downloaded zipfile")
+                            try:
+                                from viewer.models import DownloadEvent
+                                DownloadEvent.objects.filter(archive=archive, completed=False).update(
+                                    completed=True,
+                                    failed=True,
+                                    status=DownloadEvent.Status.FAILED,
+                                    completed_date=django_tz.now(),
+                                    error_message="SHA1 mismatch on downloaded zipfile",
+                                )
+                            except Exception:
+                                pass
                         return False
                     else:
                         logger.info("For archive: {} local SHA1 matches with gallery page sha1, validation passes.".format(archive))
                 else:
                     logger.warning("For archive: {} could not obtain the needed parser.".format(archive))
+        try:
+            from viewer.models import DownloadEvent
+            DownloadEvent.objects.filter(archive=archive, completed=False).update(
+                progress=100.0,
+                completed=True,
+                status=DownloadEvent.Status.COMPLETED,
+                completed_date=django_tz.now(),
+            )
+        except Exception as e:
+            logger.warning("Failed to complete DownloadEvent for archive %s: %s", archive, e)
         return True
 
 

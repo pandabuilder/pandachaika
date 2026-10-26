@@ -142,9 +142,24 @@ class ArchiveManager(models.Manager["Archive"]):
         return self.get_queryset().filter_non_existent(root, **kwargs)
 
     def filter_by_dl_remote(self) -> ArchiveQuerySet:
-        return self.get_queryset().filter(
+        from .events import DownloadEvent
+
+        qs = self.get_queryset().filter(
             Q(crc32="") & (Q(match_type__startswith="torrent") | Q(match_type__startswith="hath")) & Q(binned=False)
         )
+        dead_archive_ids = (
+            DownloadEvent.objects.filter(
+                Q(status__in=[DownloadEvent.Status.FAILED, DownloadEvent.Status.CANCELLED]) | Q(failed=True),
+                archive__isnull=False,
+            )
+            .exclude(
+                archive__in=DownloadEvent.objects.filter(completed=False)
+                .exclude(status__in=[DownloadEvent.Status.FAILED, DownloadEvent.Status.CANCELLED])
+                .values("archive_id")
+            )
+            .values_list("archive_id", flat=True)
+        )
+        return qs.exclude(id__in=dead_archive_ids)
 
     def filter_by_missing_file_info(self) -> ArchiveQuerySet:
         return self.get_queryset().filter(crc32="")
@@ -1870,13 +1885,13 @@ class Archive(models.Model):
     def move_to_recycle_bin(self, reason=""):
         if not self.is_recycled():
             with transaction.atomic():
-                r = ArchiveRecycleEntry(
+                ArchiveRecycleEntry.objects.update_or_create(
                     archive=self,
-                    reason=reason,
-                    origin=ArchiveRecycleEntry.ORIGIN_SYSTEM,
+                    defaults={
+                        "reason": reason,
+                        "origin": ArchiveRecycleEntry.ORIGIN_SYSTEM,
+                    },
                 )
-
-                r.save()
                 self.binned = True
                 self.simple_save()
                 if self.public:

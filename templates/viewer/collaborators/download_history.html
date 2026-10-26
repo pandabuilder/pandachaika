@@ -74,10 +74,41 @@
   </div>
 </form>
 
-<div class="mt-2 table-responsive" id="contained-data">
+{% if request.user.is_staff %}
+<form id="batch-events-form" method="POST" action="{{ request.get_full_path }}">
+  {% csrf_token %}
+  <input type="hidden" name="action" id="batch-action-field" value="">
+  <div class="card bg-dark border-secondary mb-3">
+    <div class="card-body py-2 d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <div class="d-flex align-items-center gap-2">
+        <span class="badge bg-secondary" id="selected-count-badge">0 selected</span>
+        <button type="button" class="btn btn-sm btn-outline-light" id="select-all-page-btn">Select All on Page</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="deselect-all-btn">Deselect All</button>
+      </div>
+      <div class="btn-group btn-group-sm">
+        <button type="button" class="btn btn-outline-danger" id="btn-batch-fail" disabled title="Mark selected download events as failed">
+          <i class="fas fa-times me-1"></i> Mark as Failed
+        </button>
+        <button type="button" class="btn btn-outline-success" id="btn-batch-complete" disabled title="Mark selected download events as completed">
+          <i class="fas fa-check me-1"></i> Mark as Completed
+        </button>
+        <button type="button" class="btn btn-outline-warning" id="btn-batch-delete-queued" disabled title="Remove selected queued events from queue">
+          <i class="fas fa-trash me-1"></i> Remove from Queue
+        </button>
+      </div>
+    </div>
+  </div>
+{% endif %}
+
+<div class="mt-2 table-responsive" id="contained-data" data-is-staff="{% if request.user.is_staff %}1{% else %}0{% endif %}">
   <table class="table table-striped table-hover align-middle">
     <thead>
       <tr>
+        {% if request.user.is_staff %}
+        <th style="width: 40px;" class="text-center">
+          <input type="checkbox" class="form-check-input" id="th-select-all" title="Select all on page">
+        </th>
+        {% endif %}
         <th style="min-width: 250px;">URL</th>
         <th>Method</th>
         <th>Status</th>
@@ -93,6 +124,11 @@
     <tbody id="download-table">
       {% for download_event in results %}
       <tr id="event-{{ download_event.id }}">
+        {% if request.user.is_staff %}
+        <td class="text-center event-cb-cell">
+          <input type="checkbox" name="selected_events" value="{{ download_event.id }}" class="form-check-input event-checkbox" data-status="{{ download_event.effective_status }}">
+        </td>
+        {% endif %}
         <td class="event-name text-white" style="word-break: break-all; max-width: 320px;">
           {{ download_event.name|urlize_all_rel }}
         </td>
@@ -170,12 +206,15 @@
       </tr>
       {% empty %}
       <tr id="no-downloads-row">
-        <td colspan="10" class="text-center text-muted py-4">No download events found.</td>
+        <td colspan="{% if request.user.is_staff %}11{% else %}10{% endif %}" class="text-center text-muted py-4">No download events found.</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
+{% if request.user.is_staff %}
+</form>
+{% endif %}
 
 {% if results.has_other_pages %}
 <nav aria-label="Page navigation" class="mt-3">
@@ -290,7 +329,17 @@ document.addEventListener('DOMContentLoaded', function() {
       nameHtml = `<a href="${item.name}" target="_blank" rel="noopener noreferrer">${item.name}</a>`;
     }
 
+    const containedData = document.getElementById('contained-data');
+    const isStaff = containedData && containedData.dataset.isStaff === '1';
+
+    let cbHtml = '';
+    if (isStaff) {
+      const isChecked = selectedEventIds.has(item.id);
+      cbHtml = `<td class="text-center event-cb-cell"><input type="checkbox" name="selected_events" value="${item.id}" class="form-check-input event-checkbox" data-status="${effStatus}" ${isChecked ? 'checked' : ''}></td>`;
+    }
+
     return `
+      ${cbHtml}
       <td class="event-name text-white" style="word-break: break-all; max-width: 320px;">${nameHtml}</td>
       <td class="event-method"><span class="badge bg-dark">${item.method}</span></td>
       <td class="event-status">${statusBadge}</td>
@@ -331,8 +380,12 @@ document.addEventListener('DOMContentLoaded', function() {
       if (countInPage) countInPage.textContent = data.in_page_count;
       if (countTotal) countTotal.textContent = data.count;
 
+      const containedData = document.getElementById('contained-data');
+      const isStaff = containedData && containedData.dataset.isStaff === '1';
+
       if (!data.results || data.results.length === 0) {
-        tableBody.innerHTML = '<tr id="no-downloads-row"><td colspan="10" class="text-center text-muted py-4">No download events found.</td></tr>';
+        tableBody.innerHTML = `<tr id="no-downloads-row"><td colspan="${isStaff ? 11 : 10}" class="text-center text-muted py-4">No download events found.</td></tr>`;
+        updateActionButtons();
         return;
       }
 
@@ -368,6 +421,7 @@ document.addEventListener('DOMContentLoaded', function() {
         row.innerHTML = renderRowContent(item);
         initPopovers(row);
       });
+      updateActionButtons();
     } catch (error) {
       console.error('Error refreshing downloads:', error);
     } finally {
@@ -423,6 +477,140 @@ document.addEventListener('DOMContentLoaded', function() {
         refreshInterval = setInterval(refreshDownloads, getIntervalMs());
       }
     });
+  }
+
+  const selectedEventIds = new Set();
+  const containedDataEl = document.getElementById('contained-data');
+  const isStaffUser = containedDataEl && containedDataEl.dataset.isStaff === '1';
+
+  function updateActionButtons() {
+    if (!isStaffUser) return;
+    const count = selectedEventIds.size;
+    const badge = document.getElementById('selected-count-badge');
+    if (badge) badge.textContent = `${count} selected`;
+
+    const btnFail = document.getElementById('btn-batch-fail');
+    const btnComplete = document.getElementById('btn-batch-complete');
+    const btnDeleteQueued = document.getElementById('btn-batch-delete-queued');
+
+    if (btnFail) btnFail.disabled = count === 0;
+    if (btnComplete) btnComplete.disabled = count === 0;
+    if (btnDeleteQueued) btnDeleteQueued.disabled = count === 0;
+
+    const thSelectAll = document.getElementById('th-select-all');
+    if (thSelectAll) {
+      const allCheckboxes = document.querySelectorAll('.event-checkbox');
+      if (allCheckboxes.length > 0) {
+        const allChecked = Array.from(allCheckboxes).every(cb => cb.checked);
+        thSelectAll.checked = allChecked;
+        thSelectAll.indeterminate = count > 0 && !allChecked;
+      } else {
+        thSelectAll.checked = false;
+        thSelectAll.indeterminate = false;
+      }
+    }
+  }
+
+  if (isStaffUser) {
+    document.querySelectorAll('.event-checkbox:checked').forEach(function(cb) {
+      selectedEventIds.add(parseInt(cb.value, 10));
+    });
+    updateActionButtons();
+
+    const tableBodyEl = document.getElementById('download-table');
+    if (tableBodyEl) {
+      tableBodyEl.addEventListener('change', function(e) {
+        if (e.target && e.target.classList.contains('event-checkbox')) {
+          const id = parseInt(e.target.value, 10);
+          if (e.target.checked) {
+            selectedEventIds.add(id);
+          } else {
+            selectedEventIds.delete(id);
+          }
+          updateActionButtons();
+        }
+      });
+    }
+
+    const thSelectAll = document.getElementById('th-select-all');
+    if (thSelectAll) {
+      thSelectAll.addEventListener('change', function() {
+        const checked = this.checked;
+        document.querySelectorAll('.event-checkbox').forEach(function(cb) {
+          cb.checked = checked;
+          const id = parseInt(cb.value, 10);
+          if (checked) {
+            selectedEventIds.add(id);
+          } else {
+            selectedEventIds.delete(id);
+          }
+        });
+        updateActionButtons();
+      });
+    }
+
+    const selectAllPageBtn = document.getElementById('select-all-page-btn');
+    if (selectAllPageBtn) {
+      selectAllPageBtn.addEventListener('click', function() {
+        document.querySelectorAll('.event-checkbox').forEach(function(cb) {
+          cb.checked = true;
+          selectedEventIds.add(parseInt(cb.value, 10));
+        });
+        updateActionButtons();
+      });
+    }
+
+    const deselectAllBtn = document.getElementById('deselect-all-btn');
+    if (deselectAllBtn) {
+      deselectAllBtn.addEventListener('click', function() {
+        document.querySelectorAll('.event-checkbox').forEach(function(cb) {
+          cb.checked = false;
+        });
+        selectedEventIds.clear();
+        updateActionButtons();
+      });
+    }
+
+    function submitBatchAction(actionName, confirmMsg) {
+      if (selectedEventIds.size === 0) return;
+      if (confirm(confirmMsg)) {
+        const form = document.getElementById('batch-events-form');
+        const actionField = document.getElementById('batch-action-field');
+        if (form && actionField) {
+          actionField.value = actionName;
+          form.querySelectorAll('input[type="hidden"][name="selected_events"]').forEach(el => el.remove());
+          selectedEventIds.forEach(id => {
+            const hidden = document.createElement('input');
+            hidden.type = 'hidden';
+            hidden.name = 'selected_events';
+            hidden.value = id;
+            form.appendChild(hidden);
+          });
+          form.submit();
+        }
+      }
+    }
+
+    const btnFail = document.getElementById('btn-batch-fail');
+    if (btnFail) {
+      btnFail.addEventListener('click', function() {
+        submitBatchAction('mark_failed', `Are you sure you want to mark ${selectedEventIds.size} selected download event(s) as failed?`);
+      });
+    }
+
+    const btnComplete = document.getElementById('btn-batch-complete');
+    if (btnComplete) {
+      btnComplete.addEventListener('click', function() {
+        submitBatchAction('mark_completed', `Are you sure you want to mark ${selectedEventIds.size} selected download event(s) as completed?`);
+      });
+    }
+
+    const btnDeleteQueued = document.getElementById('btn-batch-delete-queued');
+    if (btnDeleteQueued) {
+      btnDeleteQueued.addEventListener('click', function() {
+        submitBatchAction('delete_queued', `Are you sure you want to remove selected queued event(s) from the download queue? (Only events with status 'Queued' will be deleted).`);
+      });
+    }
   }
 
   initPopovers(document);

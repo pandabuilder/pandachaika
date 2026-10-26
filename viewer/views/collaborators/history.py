@@ -12,7 +12,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.core import management
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
 from django.db.models import Prefetch, Count, Case, When, QuerySet, Q, F
-from django.http import HttpRequest, HttpResponse, HttpResponseRedirect, Http404, QueryDict
+from django.http import HttpRequest, HttpResponse, HttpResponseRedirect, Http404, QueryDict, JsonResponse
 from django.shortcuts import render
 from django.urls import reverse
 from django.utils.crypto import get_random_string
@@ -246,6 +246,91 @@ def activity_event_log(request: HttpRequest) -> HttpResponse:
 
 @permission_required("viewer.download_history")
 def download_history(request: AuthenticatedHttpRequest) -> HttpResponse:
+
+    if request.method == "POST":
+        if not request.user.is_staff:
+            if request.content_type == "application/json" or request.GET.get("json"):
+                return JsonResponse({"error": "Staff permission required."}, status=403)
+            return render_error(request, "Staff permission required to modify download events.")
+
+        is_json = request.content_type == "application/json" or bool(request.GET.get("json"))
+        if request.content_type == "application/json":
+            try:
+                body_data = json.loads(request.body)
+                action = body_data.get("action", "")
+                selected_ids = body_data.get("selected_events", [])
+            except Exception:
+                action = ""
+                selected_ids = []
+        else:
+            action = request.POST.get("action", "")
+            selected_ids = request.POST.getlist("selected_events")
+
+        try:
+            event_pks = [int(x) for x in selected_ids if str(x).isdigit()]
+        except (ValueError, TypeError):
+            event_pks = []
+
+        if not event_pks:
+            if is_json:
+                return JsonResponse({"error": "No download events selected."}, status=400)
+            messages.warning(request, "No download events were selected.")
+            return HttpResponseRedirect(clean_up_referer(request.META.get("HTTP_REFERER", reverse("viewer:downloads"))))
+
+        events_qs = DownloadEvent.objects.filter(pk__in=event_pks)
+        count = 0
+
+        if action == "mark_failed":
+            for ev in events_qs:
+                ev.set_as_failed("Marked as failed by staff in download monitor")
+                ev.save()
+                count += 1
+            msg = f"{count} download event{'s' if count != 1 else ''} marked as failed."
+            messages.success(request, msg)
+            event_log(request.user, "DOWNLOAD_EVENTS_MARK_FAILED", result=f"marked {count} failed")
+
+        elif action == "mark_completed":
+            for ev in events_qs:
+                ev.finish_download()
+                ev.save()
+                count += 1
+            msg = f"{count} download event{'s' if count != 1 else ''} marked as completed."
+            messages.success(request, msg)
+            event_log(request.user, "DOWNLOAD_EVENTS_MARK_COMPLETED", result=f"marked {count} completed")
+
+        elif action == "delete_queued":
+            queued_events = events_qs.filter(status=DownloadEvent.Status.QUEUED)
+            for ev in queued_events:
+                archive = ev.archive
+                if archive and not archive.crc32 and not archive.is_recycled():
+                    has_other_active = (
+                        DownloadEvent.objects.filter(archive_id=archive.pk, completed=False)
+                        .exclude(pk=ev.pk)
+                        .exclude(status__in=[DownloadEvent.Status.COMPLETED, DownloadEvent.Status.FAILED, DownloadEvent.Status.CANCELLED])
+                        .exists()
+                    )
+                    if not has_other_active:
+                        archive.move_to_recycle_bin(reason="Download removed from queue by staff")
+                ev.delete()
+                count += 1
+            if count > 0:
+                msg = f"{count} queued download event{'s' if count != 1 else ''} removed from queue."
+                messages.success(request, msg)
+                event_log(request.user, "DOWNLOAD_EVENTS_DELETE_QUEUED", result=f"deleted {count} queued")
+            else:
+                msg = "No queued download events were selected (only queued events can be removed from queue)."
+                messages.warning(request, msg)
+
+        else:
+            if is_json:
+                return JsonResponse({"error": f"Unknown action: '{action}'"}, status=400)
+            messages.error(request, f"Unknown action: '{action}'")
+            return HttpResponseRedirect(clean_up_referer(request.META.get("HTTP_REFERER", reverse("viewer:downloads"))))
+
+        if is_json:
+            return JsonResponse({"success": True, "action": action, "count": count, "message": msg})
+
+        return HttpResponseRedirect(clean_up_referer(request.META.get("HTTP_REFERER", reverse("viewer:downloads"))))
     
     if len(request.GET) == 0:
         form = DownloadHistoryForm(initial={"status": "in_progress", "sort_by": "create_date", "direction": "desc"})
@@ -335,7 +420,6 @@ def download_history(request: AuthenticatedHttpRequest) -> HttpResponse:
 
     if request.GET.get("json"):
         from django.template.defaultfilters import filesizeformat
-        from django.urls import reverse
 
         serialized_results = []
         for event in results_page:

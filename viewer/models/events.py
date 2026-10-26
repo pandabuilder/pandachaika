@@ -313,6 +313,21 @@ class DownloadEvent(models.Model):
             self.completed = True
             self.failed = True
 
+    def _recycle_empty_archive(self, reason: str = "") -> None:
+        if self.archive_id:
+            try:
+                archive = self.archive
+                if archive and not archive.crc32 and not archive.is_recycled():
+                    qs = DownloadEvent.objects.filter(archive_id=archive.pk, completed=False).exclude(
+                        status__in=[self.Status.COMPLETED, self.Status.FAILED, self.Status.CANCELLED]
+                    )
+                    if self.pk:
+                        qs = qs.exclude(pk=self.pk)
+                    if not qs.exists():
+                        archive.move_to_recycle_bin(reason=reason or f"Download {self.status}")
+            except Exception:
+                pass
+
     def save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
         orig_status = self.status
         orig_completed = self.completed
@@ -335,6 +350,11 @@ class DownloadEvent(models.Model):
 
         super().save(*args, **kwargs)
 
+        if self.status in (self.Status.FAILED, self.Status.CANCELLED) or self.failed:
+            self._recycle_empty_archive(
+                reason=f"Download {self.status}: {self.error_message or 'Download failed'}"
+            )
+
     def finish_download(self):
         self.progress = 100
         self.completed = True
@@ -348,12 +368,16 @@ class DownloadEvent(models.Model):
         if error_message:
             self.error_message = error_message
         self.completed_date = django_tz.now()
+        self._recycle_empty_archive(
+            reason=f"Download failed: {error_message}" if error_message else "Download failed"
+        )
 
     def set_as_cancelled(self):
         self.failed = True
         self.completed = True
         self.status = self.Status.CANCELLED
         self.completed_date = django_tz.now()
+        self._recycle_empty_archive(reason="Download cancelled")
 
     def eta(self) -> datetime | None:
         ref_date = self.started_date or self.create_date

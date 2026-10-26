@@ -2,6 +2,7 @@ import os.path
 import json
 import logging
 import signal
+from typing import Any
 import yaml
 from django.http import HttpResponse, HttpRequest
 from django.conf import settings
@@ -23,12 +24,18 @@ logger = logging.getLogger(__name__)
 # Admin related APIs
 def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpResponse:
     """Tools listing."""
-    response = {}
+    response: dict[str, Any] = {}
     if not request.user.is_staff:
         response["error"] = "Not allowed"
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status=401)
     if tool == "transfer_missing_downloads":
         client.enqueue(args=["-tmd"], task_type="web_crawler", override_options=crawler_settings, user=request.user)
+        return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
+    elif tool == "reconcile_downloads":
+        from viewer.utils.downloads import reconcile_downloads
+
+        stats = reconcile_downloads(settings=crawler_settings)
+        response["stats"] = stats
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
     elif tool == "retry_failed":
         client.enqueue(args=["--retry-failed"], task_type="web_crawler", override_options=crawler_settings, user=request.user)

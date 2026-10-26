@@ -55,6 +55,7 @@
         </form>
         <a class="list-group-item" href="{% url 'viewer:tools-id' 'transfer_missing_downloads' %}">Transfer missing downloads</a>
         <a class="list-group-item" href="{% url 'viewer:tools-id' 'retry_failed' %}">Retry failed downloads</a>
+        <a class="list-group-item" href="{% url 'viewer:tools-id' 'reconcile_downloads' %}">Reconcile downloads and archives (sync missing CRC32)</a>
         <form action="{% url 'viewer:tools-id' 'update_newer_than' %}" method="GET" role="form">
             <div class="list-group-item">
                 <div class="row g-1">

@@ -63,7 +63,10 @@ class DownloadProgressChecker(BaseScheduler):
                 pass
             archive_completed = bool(archive_entry.crc32)
 
-        is_completed = (download_event.progress >= 100 or archive_completed)
+        if archive_entry is None:
+            is_completed = (download_event.progress >= 100)
+        else:
+            is_completed = archive_completed
 
         if is_completed:
             download_event.finish_download()
