@@ -454,6 +454,7 @@ class DownloadHistoryForm(forms.Form):
         ("downloading", "Downloading"),
         ("finished", "Finished"),
         ("failed", "Failed"),
+        ("cancelled", "Cancelled"),
     ]
 
     SORT_CHOICES = [

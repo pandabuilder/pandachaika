@@ -100,13 +100,15 @@
           <span class="badge bg-dark">{{ download_event.method }}</span>
         </td>
         <td class="event-status">
-          {% if download_event.status == "queued" %}
+          {% if download_event.effective_status == "queued" %}
           <span class="badge bg-warning text-dark"><i class="fas fa-clock me-1"></i>Queued</span>
-          {% elif download_event.status == "in_progress" %}
+          {% elif download_event.effective_status == "in_progress" %}
           <span class="badge bg-primary"><i class="fas fa-spinner fa-spin me-1"></i>Downloading</span>
-          {% elif download_event.status == "completed" %}
+          {% elif download_event.effective_status == "completed" %}
           <span class="badge bg-success"><i class="fas fa-check me-1"></i>Completed</span>
-          {% elif download_event.status == "failed" %}
+          {% elif download_event.effective_status == "cancelled" %}
+          <span class="badge bg-secondary"><i class="fas fa-ban me-1"></i>Cancelled</span>
+          {% elif download_event.effective_status == "failed" %}
           <span class="badge bg-danger" {% if download_event.error_message %}title="{{ download_event.error_message }}"{% endif %}><i class="fas fa-times me-1"></i>Failed</span>
           {% else %}
           <span class="badge bg-secondary">{{ download_event.get_status_display|default:download_event.status }}</span>
@@ -249,14 +251,23 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     }
 
+    let effStatus = item.status;
+    if (item.completed && !item.failed && effStatus !== 'completed') {
+      effStatus = 'completed';
+    } else if (item.failed && effStatus !== 'failed' && effStatus !== 'cancelled') {
+      effStatus = 'failed';
+    }
+
     let statusBadge = '';
-    if (item.status === 'queued') {
+    if (effStatus === 'queued') {
       statusBadge = '<span class="badge bg-warning text-dark"><i class="fas fa-clock me-1"></i>Queued</span>';
-    } else if (item.status === 'in_progress') {
+    } else if (effStatus === 'in_progress') {
       statusBadge = '<span class="badge bg-primary"><i class="fas fa-spinner fa-spin me-1"></i>Downloading</span>';
-    } else if (item.status === 'completed') {
+    } else if (effStatus === 'completed') {
       statusBadge = '<span class="badge bg-success"><i class="fas fa-check me-1"></i>Completed</span>';
-    } else if (item.status === 'failed') {
+    } else if (effStatus === 'cancelled') {
+      statusBadge = '<span class="badge bg-secondary"><i class="fas fa-ban me-1"></i>Cancelled</span>';
+    } else if (effStatus === 'failed') {
       const errTitle = item.error_message ? ` title="${item.error_message.replace(/"/g, '&quot;')}"` : '';
       statusBadge = `<span class="badge bg-danger"${errTitle}><i class="fas fa-times me-1"></i>Failed</span>`;
     } else {

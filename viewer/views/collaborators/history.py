@@ -271,15 +271,29 @@ def download_history(request: AuthenticatedHttpRequest) -> HttpResponse:
             status = "in_progress"
 
         if status == "in_progress":
-            download_events = download_events.filter(completed=False)
+            download_events = download_events.filter(
+                completed=False
+            ).exclude(
+                status__in=[DownloadEvent.Status.COMPLETED, DownloadEvent.Status.FAILED, DownloadEvent.Status.CANCELLED]
+            )
         elif status == "queued":
-            download_events = download_events.filter(status=DownloadEvent.Status.QUEUED, completed=False)
+            download_events = download_events.filter(
+                status=DownloadEvent.Status.QUEUED, completed=False, failed=False
+            )
         elif status == "downloading":
-            download_events = download_events.filter(status=DownloadEvent.Status.IN_PROGRESS, completed=False)
+            download_events = download_events.filter(
+                status=DownloadEvent.Status.IN_PROGRESS, completed=False, failed=False
+            )
         elif status == "finished":
-            download_events = download_events.filter(completed=True, failed=False)
+            download_events = download_events.filter(
+                Q(completed=True, failed=False) | Q(status=DownloadEvent.Status.COMPLETED)
+            ).exclude(failed=True).exclude(status__in=[DownloadEvent.Status.FAILED, DownloadEvent.Status.CANCELLED])
         elif status == "failed":
-            download_events = download_events.filter(failed=True)
+            download_events = download_events.filter(
+                Q(failed=True) | Q(status=DownloadEvent.Status.FAILED)
+            ).exclude(status=DownloadEvent.Status.CANCELLED)
+        elif status == "cancelled":
+            download_events = download_events.filter(status=DownloadEvent.Status.CANCELLED)
         # "all" does no filtering
         
         if data.get("create_date_from"):
@@ -297,7 +311,11 @@ def download_history(request: AuthenticatedHttpRequest) -> HttpResponse:
         download_events = download_events.order_by(sort_by)
     else:
         # Fallback default behavior
-        download_events = download_events.filter(completed=False).order_by("-create_date")
+        download_events = (
+            download_events.filter(completed=False)
+            .exclude(status__in=[DownloadEvent.Status.COMPLETED, DownloadEvent.Status.FAILED, DownloadEvent.Status.CANCELLED])
+            .order_by("-create_date")
+        )
 
     try:
         page = int(request.GET.get("page", "1"))
@@ -359,23 +377,28 @@ def download_history(request: AuthenticatedHttpRequest) -> HttpResponse:
 
             create_date_str = event.create_date.strftime("%Y-%m-%d %H:%M:%S") if event.create_date else ""
 
+            effective_status = event.effective_status
+            status_display = (
+                DownloadEvent.Status(effective_status).label
+                if effective_status in DownloadEvent.Status.values
+                else (event.get_status_display() if hasattr(event, "get_status_display") else effective_status)
+            )
+
             serialized_results.append(
                 {
                     "id": event.id,
                     "name": event.name,
                     "method": event.method,
                     "provider": event.provider,
-                    "status": event.status,
-                    "status_display": event.get_status_display()
-                    if hasattr(event, "get_status_display")
-                    else event.status,
+                    "status": effective_status,
+                    "status_display": status_display,
                     "archive": archive_dict,
                     "gallery": gallery_dict,
                     "total_size": event.total_size,
                     "total_size_formatted": filesizeformat(event.total_size) if event.total_size else "0 Bytes",
                     "progress": round(float(event.progress), 1),
-                    "failed": bool(event.failed),
-                    "completed": bool(event.completed),
+                    "failed": bool(event.failed or effective_status in (DownloadEvent.Status.FAILED, DownloadEvent.Status.CANCELLED)),
+                    "completed": bool(event.completed or effective_status == DownloadEvent.Status.COMPLETED),
                     "error_message": event.error_message,
                     "create_date": create_date_str,
                     "end_date_or_eta": end_date_str,

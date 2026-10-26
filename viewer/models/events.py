@@ -211,6 +211,12 @@ class DownloadEventQuerySet(models.QuerySet):
     def downloading(self, **kwargs: typing.Any) -> QuerySet:
         return self.filter(completed=False, failed=False, status=DownloadEvent.Status.IN_PROGRESS, **kwargs)
 
+    def completed(self, **kwargs: typing.Any) -> QuerySet:
+        return self.filter(completed=True, failed=False, **kwargs)
+
+    def failed(self, **kwargs: typing.Any) -> QuerySet:
+        return self.filter(failed=True, **kwargs)
+
 
 class DownloadEventManager(models.Manager["DownloadEvent"]):
     def get_queryset(self) -> DownloadEventQuerySet:
@@ -224,6 +230,12 @@ class DownloadEventManager(models.Manager["DownloadEvent"]):
 
     def downloading(self, **kwargs: typing.Any) -> QuerySet:
         return self.get_queryset().downloading(**kwargs)
+
+    def completed(self, **kwargs: typing.Any) -> QuerySet:
+        return self.get_queryset().completed(**kwargs)
+
+    def failed(self, **kwargs: typing.Any) -> QuerySet:
+        return self.get_queryset().failed(**kwargs)
 
 
 
@@ -265,6 +277,64 @@ class DownloadEvent(models.Model):
 
     objects = DownloadEventManager()
 
+    @property
+    def effective_status(self) -> str:
+        """Return the effective status resolving any discrepancies with completed/failed booleans."""
+        if self.completed:
+            if self.failed:
+                if self.status in (self.Status.FAILED, self.Status.CANCELLED):
+                    return self.status
+                return self.Status.FAILED
+            if self.status != self.Status.COMPLETED:
+                return self.Status.COMPLETED
+            return self.status
+        if self.failed:
+            if self.status in (self.Status.FAILED, self.Status.CANCELLED):
+                return self.status
+            return self.Status.FAILED
+        return self.status
+
+    def sync_status_with_flags(self) -> None:
+        """Synchronize status and completed/failed booleans."""
+        if self.completed:
+            if self.failed:
+                if self.status not in (self.Status.FAILED, self.Status.CANCELLED):
+                    self.status = self.Status.FAILED
+            else:
+                if self.status != self.Status.COMPLETED:
+                    self.status = self.Status.COMPLETED
+        elif self.failed:
+            self.completed = True
+            if self.status not in (self.Status.FAILED, self.Status.CANCELLED):
+                self.status = self.Status.FAILED
+        elif self.status == self.Status.COMPLETED:
+            self.completed = True
+        elif self.status in (self.Status.FAILED, self.Status.CANCELLED):
+            self.completed = True
+            self.failed = True
+
+    def save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
+        orig_status = self.status
+        orig_completed = self.completed
+        orig_failed = self.failed
+
+        self.sync_status_with_flags()
+
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None:
+            update_fields_set = set(update_fields)
+            state_fields = {"status", "completed", "failed"}
+            if (
+                bool(update_fields_set & state_fields)
+                or self.status != orig_status
+                or self.completed != orig_completed
+                or self.failed != orig_failed
+            ):
+                update_fields_set.update(state_fields)
+            kwargs["update_fields"] = list(update_fields_set)
+
+        super().save(*args, **kwargs)
+
     def finish_download(self):
         self.progress = 100
         self.completed = True
@@ -287,6 +357,8 @@ class DownloadEvent(models.Model):
 
     def eta(self) -> datetime | None:
         ref_date = self.started_date or self.create_date
+        if not ref_date:
+            return None
         if ref_date.tzinfo is not None:
             now = datetime.now(ref_date.tzinfo)
         else:

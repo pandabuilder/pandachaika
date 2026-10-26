@@ -952,7 +952,7 @@ class DownloadEventAdmin(admin.ModelAdmin):
         "started_date",
         "completed_date",
     ]
-    actions = ["mark_as_failed_completed"]
+    actions = ["mark_as_failed_completed", "mark_as_completed", "sync_status_from_completed_flags"]
 
     @admin.action(description="Mark as failed, completed")
     def mark_as_failed_completed(self, request: HttpRequest, queryset: "QuerySet[DownloadEvent]") -> None:
@@ -963,6 +963,22 @@ class DownloadEventAdmin(admin.ModelAdmin):
         else:
             message_bit = "%s download events were" % rows_updated
         self.message_user(request, "%s successfully marked as failed, completed." % message_bit)
+
+    @admin.action(description="Mark as completed")
+    def mark_as_completed(self, request: HttpRequest, queryset: "QuerySet[DownloadEvent]") -> None:
+        rows_updated = queryset.count()
+        queryset.update(completed=True, failed=False, progress=100.0, status=DownloadEvent.Status.COMPLETED)
+        if rows_updated == 1:
+            message_bit = "1 download event was"
+        else:
+            message_bit = "%s download events were" % rows_updated
+        self.message_user(request, "%s successfully marked as completed." % message_bit)
+
+    @admin.action(description="Sync status from completed/failed booleans")
+    def sync_status_from_completed_flags(self, request: HttpRequest, queryset: "QuerySet[DownloadEvent]") -> None:
+        c1 = queryset.filter(completed=True, failed=False).exclude(status=DownloadEvent.Status.COMPLETED).update(status=DownloadEvent.Status.COMPLETED)
+        c2 = queryset.filter(failed=True).exclude(status__in=[DownloadEvent.Status.FAILED, DownloadEvent.Status.CANCELLED]).update(status=DownloadEvent.Status.FAILED)
+        self.message_user(request, "Successfully synchronized status for %s download events." % (c1 + c2))
 
 
 
