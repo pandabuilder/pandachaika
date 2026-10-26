@@ -93,7 +93,7 @@
     <tbody id="download-table">
       {% for download_event in results %}
       <tr id="event-{{ download_event.id }}">
-        <td class="event-name" style="word-break: break-all; max-width: 320px;">
+        <td class="event-name text-white" style="word-break: break-all; max-width: 320px;">
           {{ download_event.name|urlize_all_rel }}
         </td>
         <td class="event-method">
@@ -138,7 +138,7 @@
           <span class="text-white-50">Not set</span>
           {% endif %}
         </td>
-        <td class="event-size text-nowrap">
+        <td class="event-size text-nowrap text-white">
           {{ download_event.total_size|filesizeformat }}
         </td>
         <td class="event-progress" style="min-width: 140px;">
@@ -291,12 +291,12 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     return `
-      <td class="event-name" style="word-break: break-all; max-width: 320px;">${nameHtml}</td>
+      <td class="event-name text-white" style="word-break: break-all; max-width: 320px;">${nameHtml}</td>
       <td class="event-method"><span class="badge bg-dark">${item.method}</span></td>
       <td class="event-status">${statusBadge}</td>
       <td class="event-archive">${archiveHtml}</td>
       <td class="event-gallery">${galleryHtml}</td>
-      <td class="event-size text-nowrap">${item.total_size_formatted}</td>
+      <td class="event-size text-nowrap text-white">${item.total_size_formatted}</td>
       <td class="event-progress" style="min-width: 140px;">
         <div class="progress" style="height: 18px;">
           <div class="progress-bar ${barClass}" role="progressbar" style="width: ${item.progress}%;" aria-valuenow="${item.progress}" aria-valuemin="0" aria-valuemax="100">
