@@ -2607,12 +2607,9 @@ class Archive(models.Model):
         # --- Phase 2: Parallel p-hash Calculation ---
         phash_results = {}
         if phash_tasks:
-            with ProcessPoolExecutor(max_workers=multiprocessing.cpu_count() // 2) as executor:
-                # Map the worker function over the prepared tasks
-                results_iterator = executor.map(CompareObjectsService.calculate_phash_for_zip_member, phash_tasks)
-                for filename, hash_result in results_iterator:
-                    if hash_result:
-                        phash_results[filename] = hash_result
+            from core.base.process_pool import calculate_phash_for_zip_members_in_pool
+
+            phash_results = calculate_phash_for_zip_members_in_pool(phash_tasks)
 
         # --- Phase 3: Database Updates ---
         if images_to_update:
@@ -3011,7 +3008,7 @@ class Archive(models.Model):
 
         # crc32: Calculate CRC32 first, since it doesn't depend on the zipfile being correct or not.
         if self.crc32 is None or self.crc32 == "":
-            self.crc32 = calc_crc32(self.zipped.path)
+            self.crc32 = calc_crc32(self.zipped.path, use_pool=True)
 
         image_set_present = bool(self.image_set.all())
         # large thumbnail and image set
@@ -3164,18 +3161,32 @@ class Archive(models.Model):
                 else:
                     first_file = filtered_files[0]
 
-                if first_file[1] is None:
-                    with my_zip.open(first_file[0]) as current_img:
-                        self.create_thumbnail_from_io_image(current_img)
-                        if settings.CRAWLER_SETTINGS.auto_phash_images:
-                            self.create_or_update_thumbnail_hash("phash")
+                thumb_name = thumb_path_handler(self, "thumb2.jpg")
+                output_path = pjoin(settings.MEDIA_ROOT, thumb_name)
+                size = None
+                try:
+                    from core.base.process_pool import generate_thumbnail_in_pool
+
+                    size = generate_thumbnail_in_pool(
+                        self.zipped.path, first_file[0], first_file[1], output_path
+                    )
+                except Exception:
+                    size = None
+
+                if size:
+                    self.thumbnail = thumb_name
+                    self.thumbnail_width, self.thumbnail_height = size
                 else:
-                    with my_zip.open(first_file[1]) as current_zip:
-                        with zipfile.ZipFile(current_zip) as my_nested_zip:
-                            with my_nested_zip.open(first_file[0]) as current_img:
-                                self.create_thumbnail_from_io_image(current_img)
-                                if settings.CRAWLER_SETTINGS.auto_phash_images:
-                                    self.create_or_update_thumbnail_hash("phash")
+                    if first_file[1] is None:
+                        with my_zip.open(first_file[0]) as current_img:
+                            self.create_thumbnail_from_io_image(current_img)
+                    else:
+                        with my_zip.open(first_file[1]) as current_zip:
+                            with zipfile.ZipFile(current_zip) as my_nested_zip:
+                                with my_nested_zip.open(first_file[0]) as current_img:
+                                    self.create_thumbnail_from_io_image(current_img)
+                if settings.CRAWLER_SETTINGS.auto_phash_images:
+                    self.create_or_update_thumbnail_hash("phash")
 
             my_zip.close()
 
@@ -3793,8 +3804,24 @@ class Archive(models.Model):
             self.filesize = get_zip_filesize(self.zipped.path)
             super(Archive, self).save()
 
-    def recalc_fileinfo(self) -> None:
+    def recalc_fileinfo(self, use_pool: bool = True) -> None:
         if os.path.isfile(self.zipped.path):
+            if use_pool:
+                try:
+                    from core.base.process_pool import recalc_archive_fileinfo_in_pool
+
+                    self.filesize, self.filecount, self.crc32, other_file_datas = recalc_archive_fileinfo_in_pool(
+                        self.zipped.path
+                    )
+                    self.fill_other_file_data(other_file_datas)
+                    super(Archive, self).save()
+                    return
+                except Exception as e:
+                    logger.warning(
+                        "Process pool recalc_fileinfo failed for archive %s, falling back to in-process: %s",
+                        self.pk,
+                        e,
+                    )
             self.filesize, self.filecount, other_file_datas = get_zip_fileinfo(self.zipped.path, get_extra_data=True)
             self.fill_other_file_data(other_file_datas)
             self.crc32 = calc_crc32(self.zipped.path)
@@ -3834,7 +3861,7 @@ class Archive(models.Model):
             self.original_filename = os.path.basename(self.zipped.name)
             super(Archive, self).save()
 
-    def generate_thumbnails(self) -> bool:
+    def generate_thumbnails(self, use_pool: bool = True) -> bool:
 
         if not os.path.exists(self.zipped.path):
             return False
@@ -3894,14 +3921,35 @@ class Archive(models.Model):
         else:
             first_file = filtered_files[0]
 
-        if first_file[1] is None:
-            with my_zip.open(first_file[0]) as current_img:
-                self.create_thumbnail_from_io_image(current_img)
+        thumb_name = thumb_path_handler(self, "thumb2.jpg")
+        output_path = pjoin(settings.MEDIA_ROOT, thumb_name)
+        size = None
+        if use_pool:
+            try:
+                from core.base.process_pool import generate_thumbnail_in_pool
+
+                size = generate_thumbnail_in_pool(
+                    self.zipped.path, first_file[0], first_file[1], output_path
+                )
+            except Exception as e:
+                logger.warning(
+                    "generate_thumbnail_in_pool failed for archive %s, falling back to in-process: %s",
+                    self.pk,
+                    e,
+                )
+
+        if size:
+            self.thumbnail = thumb_name
+            self.thumbnail_width, self.thumbnail_height = size
         else:
-            with my_zip.open(first_file[1]) as current_zip:
-                with zipfile.ZipFile(current_zip) as my_nested_zip:
-                    with my_nested_zip.open(first_file[0]) as current_img:
-                        self.create_thumbnail_from_io_image(current_img)
+            if first_file[1] is None:
+                with my_zip.open(first_file[0]) as current_img:
+                    self.create_thumbnail_from_io_image(current_img)
+            else:
+                with my_zip.open(first_file[1]) as current_zip:
+                    with zipfile.ZipFile(current_zip) as my_nested_zip:
+                        with my_nested_zip.open(first_file[0]) as current_img:
+                            self.create_thumbnail_from_io_image(current_img)
 
         my_zip.close()
         super(Archive, self).save()

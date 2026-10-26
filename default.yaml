@@ -75,6 +75,10 @@ general:
   auto_hash_images: false
   # Auto phash images when adding new archives
   auto_phash_images: false
+  # Number of worker processes in the process pool for CPU-bound tasks
+  # (pHash calculation, image resizing, zip CRC recalculation).
+  # 0 or omitted means automatic (half of available CPU cores).
+  process_pool_workers: 0
   # Auto process wanted images  when adding new archives (requires numpy, opencv-python installed)
   auto_match_wanted_images: false
   # Create marks for archives that when their metadata change, the accepted WantedGallery is no longer valid

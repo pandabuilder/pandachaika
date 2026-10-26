@@ -434,6 +434,7 @@ class Settings:
         self.mark_similar_new_archives = False
         self.auto_hash_images = False
         self.auto_phash_images = False
+        self.process_pool_workers: int = 0
         self.auto_match_wanted_images = False
         self.auto_match_phash_tags_archives = False
         self.default_wanted_publisher = ''
@@ -890,6 +891,8 @@ class Settings:
                 self.auto_hash_images = config["general"]["auto_hash_images"]
             if "auto_phash_images" in config["general"]:
                 self.auto_phash_images = config["general"]["auto_phash_images"]
+            if "process_pool_workers" in config["general"]:
+                self.process_pool_workers = int(config["general"]["process_pool_workers"])
             if "auto_match_wanted_images" in config["general"]:
                 self.auto_match_wanted_images = config["general"]["auto_match_wanted_images"]
             if "default_wanted_publisher" in config["general"]:

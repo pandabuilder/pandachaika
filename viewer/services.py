@@ -134,23 +134,6 @@ class CompareObjectsService:
     def calculate_phash_for_zip_member(
             cls, arguments: tuple[str, str, str | None]
     ) -> tuple[str, str | None]:
-        zip_path, member_name, nested_zip_name = arguments
-        try:
-            with zipfile.ZipFile(zip_path, "r") as my_zip:
-                if nested_zip_name is None:
-                    # Case 1: Image is in the top-level archive
-                    with my_zip.open(member_name) as image_file:
-                        hash_result = cls.hash_thumbnail(image_file, "phash")
-                        return member_name, hash_result
-                else:
-                    # Case 2: Image is in a nested archive
-                    with my_zip.open(nested_zip_name) as nested_zip_file:
-                        # zipfile can read from a file-like object (BytesIO is a good choice)
-                        nested_zip_data = io.BytesIO(nested_zip_file.read())
-                        with zipfile.ZipFile(nested_zip_data) as my_nested_zip:
-                            with my_nested_zip.open(member_name) as image_file:
-                                hash_result = cls.hash_thumbnail(image_file, "phash")
-                                return member_name, hash_result
-        except Exception:
-            # Catching exceptions is crucial in worker processes
-            return member_name, None
+        from core.base.process_pool import worker_calc_phash_for_zip_member
+
+        return worker_calc_phash_for_zip_member(arguments)

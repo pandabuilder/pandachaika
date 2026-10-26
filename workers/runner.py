@@ -63,6 +63,12 @@ class WorkerRunner:
         logger.info("Received shutdown signal (%d). Shutting down worker...", signum)
         self.running = False
         self._job_finished_event.set()
+        try:
+            from core.base.process_pool import shutdown_process_pool
+
+            shutdown_process_pool(wait=False, cancel_futures=True)
+        except Exception:
+            pass
 
     def sync_schedulers_state(self) -> None:
         """Sync live running status and heartbeats of local schedulers to SchedulerState."""
@@ -290,6 +296,12 @@ class WorkerRunner:
         logger.info("Worker process registered with PID %d on %s", self.pid, self.hostname)
 
     def register_stop(self) -> None:
+        try:
+            from core.base.process_pool import shutdown_process_pool
+
+            shutdown_process_pool(wait=True)
+        except Exception:
+            pass
         try:
             SchedulerState.objects.filter(worker_pid=self.pid).update(is_running=False)
         except Exception:

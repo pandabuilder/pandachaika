@@ -269,7 +269,7 @@ class FolderCrawler(object):
                 logger.info("Calculating {} archives with missing CRC32".format(found_archives.count()))
                 for cnt, archive in enumerate(found_archives):
                     if os.path.isfile(archive.zipped.path):
-                        crc32 = calc_crc32(archive.zipped.path)
+                        crc32 = calc_crc32(archive.zipped.path, use_pool=True)
                         logger.info(
                             "Working on archive {} of {}, CRC32: {}".format((cnt + 1), found_archives.count(), crc32)
                         )

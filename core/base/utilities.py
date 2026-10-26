@@ -102,11 +102,18 @@ def to_full_width(title: str) -> str:
     return title
 
 
-def calc_crc32(filename: str) -> str:
+def calc_crc32(filename: str, use_pool: bool = False) -> str:
+    if use_pool:
+        try:
+            from core.base.process_pool import calc_crc32_in_pool
+
+            return calc_crc32_in_pool(filename)
+        except Exception:
+            pass
     prev = 0
     with open(filename, "rb") as file_to_check:
-        for eachLine in file_to_check:
-            prev = zlib.crc32(eachLine, prev)
+        while chunk := file_to_check.read(1048576):
+            prev = zlib.crc32(chunk, prev)
     return "%X" % (prev & 0xFFFFFFFF)
 
 

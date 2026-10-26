@@ -215,3 +215,25 @@ class ArchiveWorker(object):
     def enqueue_archive(self, archive: "Archive") -> None:
 
         self.web_queue.put(archive)
+
+    def recalc_fileinfo_batch(self, archives: typing.Sequence["Archive"]) -> None:
+        """Recalculate file info and CRC32 for a sequence of archives offloading to the process pool."""
+        import os
+
+        for archive in archives:
+            try:
+                if archive.zipped and os.path.isfile(archive.zipped.path):
+                    archive.recalc_fileinfo(use_pool=True)
+            except Exception as e:
+                logger.error("Error in recalc_fileinfo_batch for archive %s: %s", getattr(archive, "pk", "?"), e)
+
+    def regenerate_thumbs_batch(self, archives: typing.Sequence["Archive"]) -> None:
+        """Regenerate thumbnails for a sequence of archives offloading to the process pool."""
+        import os
+
+        for archive in archives:
+            try:
+                if archive.zipped and os.path.isfile(archive.zipped.path):
+                    archive.generate_thumbnails(use_pool=True)
+            except Exception as e:
+                logger.error("Error in regenerate_thumbs_batch for archive %s: %s", getattr(archive, "pk", "?"), e)
