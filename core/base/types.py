@@ -119,7 +119,7 @@ class ProviderSettings:
         self.proxies: DataDict = {}
         self.headers: DataDict = {}
         self.timeout_timer: int = global_settings.timeout_timer
-        self.wait_timer: int = global_settings.wait_timer
+        self.wait_timer: float = float(global_settings.wait_timer)
         self.stop_page_number: int | None = None
 
         # Auto updater
@@ -147,7 +147,7 @@ class ProviderSettings:
             if "timeout_timer" in config["general"]:
                 self.timeout_timer = int(config["general"]["timeout_timer"])
             if "wait_timer" in config["general"]:
-                self.wait_timer = int(config["general"]["wait_timer"])
+                self.wait_timer = float(config["general"]["wait_timer"])
             if "autoupdater_timer" in config["general"]:
                 self.autoupdater_timer = float(config["general"]["autoupdater_timer"])
             if "autoupdater_enable" in config["general"]:

@@ -485,7 +485,12 @@ img {
 }
 
 .generic-table {
+  --bs-table-color: lightgrey;
+  --bs-table-bg: #272727;
+  --bs-table-hover-bg: #354759;
+  --bs-table-hover-color: #ffffff;
   background-color: #272727;
+  color: lightgrey;
 }
 
 .generic-table > thead {
@@ -493,7 +498,28 @@ img {
 }
 
 .generic-table > tbody > tr:hover {
-  background-color: #595959;
+  background-color: #354759;
+  color: #ffffff;
+}
+
+.generic-table > tbody > tr:hover > * {
+  --bs-table-color-state: #ffffff;
+  --bs-table-bg-state: #354759;
+  color: #ffffff;
+}
+
+.generic-table > tbody > tr:hover a:not(.badge) {
+  color: #58a6ff;
+}
+
+.generic-table > tbody > tr:hover .small,
+.generic-table > tbody > tr:hover .text-muted,
+.generic-table > tbody > tr:hover .text-secondary {
+  color: #cbd5e1 !important;
+}
+
+.generic-table > tbody > tr:hover code {
+  color: #93c5fd;
 }
 
 .generic-table > tbody > tr > td.total {

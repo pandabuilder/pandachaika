@@ -11,6 +11,7 @@ from django.urls import reverse
 from django.core.files.uploadedfile import SimpleUploadedFile
 
 import json
+import os
 import shutil
 import tempfile
 
@@ -766,6 +767,86 @@ class OperationalFixesTest(TestCase):
         data = json.loads(response.content)
         self.assertEqual(data.get("error"), "Invalid limit.")
 
+        # 4. Staff user accessing config_schema and default_config
+        response = c_staff.get(reverse("viewer:tools-api", args=["config_schema"]))
+        self.assertEqual(response.status_code, 200)
+        schema_data = json.loads(response.content)
+        self.assertIn("properties", schema_data)
+        self.assertIn("general", schema_data["properties"])
+
+        response = c_staff.get(reverse("viewer:tools-api", args=["default_config"]))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Panda Backup", response.content)
+
+        # 5. Validate settings endpoint tests
+        # 5a. Valid YAML
+        valid_yaml = "general:\n  wait_timer: 2.5\nlocations:\n  media_root: '/tmp/media'\n"
+        response = c_staff.post(
+            reverse("viewer:tools-api", args=["validate_settings"]),
+            data=json.dumps({"data": valid_yaml}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        val_data = json.loads(response.content)
+        self.assertTrue(val_data["valid"])
+        self.assertEqual(len(val_data["annotations"]), 0)
+
+        # 5b. Syntax error
+        syntax_bad_yaml = "general:\n  wait_timer: ["
+        response = c_staff.post(
+            reverse("viewer:tools-api", args=["validate_settings"]),
+            data=json.dumps({"data": syntax_bad_yaml}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        val_data = json.loads(response.content)
+        self.assertFalse(val_data["valid"])
+        self.assertGreater(len(val_data["annotations"]), 0)
+        self.assertIn("syntax", val_data["errors"][0]["loc"].lower())
+
+        # 5c. Schema error (invalid type: wait_timer should be number)
+        schema_bad_yaml = "general:\n  wait_timer: 'not-a-number'\n"
+        response = c_staff.post(
+            reverse("viewer:tools-api", args=["validate_settings"]),
+            data=json.dumps({"data": schema_bad_yaml}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        val_data = json.loads(response.content)
+        self.assertFalse(val_data["valid"])
+        self.assertGreater(len(val_data["annotations"]), 0)
+        self.assertIn("wait_timer", val_data["annotations"][0]["text"])
+
+        # 5d. Settings POST with schema error without force fails with 400
+        response = c_staff.post(
+            reverse("viewer:tools-api", args=["settings"]),
+            data=json.dumps({"data": schema_bad_yaml}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        save_err = json.loads(response.content)
+        self.assertIn("error", save_err)
+
+        # 5e. Settings POST with schema error with force=True succeeds
+        from django.conf import settings as dj_settings
+        c_settings = dj_settings.CRAWLER_SETTINGS
+        settings_file = os.path.join(c_settings.default_dir, "settings.yaml")
+        original_settings = None
+        if os.path.isfile(settings_file):
+            with open(settings_file, "r", encoding="utf-8") as f:
+                original_settings = f.read()
+        try:
+            response = c_staff.post(
+                reverse("viewer:tools-api", args=["settings"]),
+                data=json.dumps({"data": schema_bad_yaml, "force": True}),
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, 200)
+        finally:
+            if original_settings is not None:
+                with open(settings_file, "w", encoding="utf-8") as f:
+                    f.write(original_settings)
+
     def test_thumbnail_missing_fallback(self):
         c = Client()
         # Archive with no thumbnail file
@@ -984,3 +1065,38 @@ class TemplateTagsTest(TestCase):
         self.assertIn("text-success", boolean_text(True))
         self.assertIn("text-secondary", boolean_text(False))
         self.assertIn("text-danger", boolean_text(True, "danger"))
+
+
+class ToolsSettingsTestCase(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.admin_user = User.objects.create_superuser(
+            username="admin_tools",
+            email="admin_tools@example.com",
+            password="testpassword",
+        )
+        self.normal_user = User.objects.create_user(
+            username="normal_tools",
+            email="normal_tools@example.com",
+            password="testpassword",
+        )
+
+    def test_tools_page_links_editor_only(self):
+        self.client.login(username="admin_tools", password="testpassword")
+        resp = self.client.get(reverse("viewer:tools"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, reverse("viewer:tools-id", args=["modify_settings_editor"]))
+        self.assertNotContains(resp, reverse("viewer:tools-id", args=["modify_settings"]))
+        self.assertNotContains(resp, "settings_file")
+
+    def test_modify_settings_redirects_to_editor(self):
+        self.client.login(username="admin_tools", password="testpassword")
+        resp = self.client.get(reverse("viewer:tools-id", args=["modify_settings"]))
+        self.assertEqual(resp.status_code, 302)
+        self.assertRedirects(resp, reverse("viewer:tools-id", args=["modify_settings_editor"]))
+
+    def test_modify_settings_editor_renders_settings_page(self):
+        self.client.login(username="admin_tools", password="testpassword")
+        resp = self.client.get(reverse("viewer:tools-id", args=["modify_settings_editor"]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertTemplateUsed(resp, "viewer/settings.html")

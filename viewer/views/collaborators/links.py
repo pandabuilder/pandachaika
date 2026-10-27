@@ -260,6 +260,13 @@ def monitored_links(request: HttpRequest) -> HttpResponse:
     elif auto_start_filter == "no":
         results = results.filter(auto_start=False)
 
+    priority_filter = get.get("priority", "").strip()
+    if priority_filter:
+        try:
+            results = results.filter(priority=int(priority_filter))
+        except ValueError:
+            pass
+
     # Activity status filter (running / stopped) based on SchedulerState in DB
     from datetime import timedelta
     from workers.models import SchedulerState, TaskQueue
@@ -325,7 +332,7 @@ def monitored_links(request: HttpRequest) -> HttpResponse:
 
     # Sorting
     sort_field = get.get("sort", "create_date")
-    if sort_field not in ("create_date", "name", "last_modified", "frequency"):
+    if sort_field not in ("create_date", "name", "last_modified", "frequency", "priority"):
         sort_field = "create_date"
     asc_desc = get.get("asc_desc", "desc")
     order_prefix = "" if asc_desc == "asc" else "-"

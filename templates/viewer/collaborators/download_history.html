@@ -47,6 +47,10 @@
       {{ form.method }}
     </div>
     <div class="col-md-2">
+      {{ form.provider.label_tag }}
+      {{ form.provider }}
+    </div>
+    <div class="col-md-2">
       {{ form.status.label_tag }}
       {{ form.status }}
     </div>
@@ -111,6 +115,7 @@
         {% endif %}
         <th style="min-width: 250px;">URL</th>
         <th>Method</th>
+        <th>Provider</th>
         <th>Status</th>
         <th>Archive</th>
         <th>Gallery</th>
@@ -134,6 +139,13 @@
         </td>
         <td class="event-method">
           <span class="badge bg-dark">{{ download_event.method }}</span>
+        </td>
+        <td class="event-provider">
+          {% if download_event.effective_provider %}
+          <span class="badge bg-secondary">{{ download_event.effective_provider }}</span>
+          {% else %}
+          <span class="text-white-50">-</span>
+          {% endif %}
         </td>
         <td class="event-status">
           {% if download_event.effective_status == "queued" %}
@@ -206,7 +218,7 @@
       </tr>
       {% empty %}
       <tr id="no-downloads-row">
-        <td colspan="{% if request.user.is_staff %}11{% else %}10{% endif %}" class="text-center text-muted py-4">No download events found.</td>
+        <td colspan="{% if request.user.is_staff %}12{% else %}11{% endif %}" class="text-center text-muted py-4">No download events found.</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -342,6 +354,7 @@ document.addEventListener('DOMContentLoaded', function() {
       ${cbHtml}
       <td class="event-name text-white" style="word-break: break-all; max-width: 320px;">${nameHtml}</td>
       <td class="event-method"><span class="badge bg-dark">${item.method}</span></td>
+      <td class="event-provider">${item.provider ? `<span class="badge bg-secondary">${item.provider}</span>` : '<span class="text-white-50">-</span>'}</td>
       <td class="event-status">${statusBadge}</td>
       <td class="event-archive">${archiveHtml}</td>
       <td class="event-gallery">${galleryHtml}</td>
@@ -384,7 +397,7 @@ document.addEventListener('DOMContentLoaded', function() {
       const isStaff = containedData && containedData.dataset.isStaff === '1';
 
       if (!data.results || data.results.length === 0) {
-        tableBody.innerHTML = `<tr id="no-downloads-row"><td colspan="${isStaff ? 11 : 10}" class="text-center text-muted py-4">No download events found.</td></tr>`;
+        tableBody.innerHTML = `<tr id="no-downloads-row"><td colspan="${isStaff ? 12 : 11}" class="text-center text-muted py-4">No download events found.</td></tr>`;
         updateActionButtons();
         return;
       }

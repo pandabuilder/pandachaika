@@ -889,8 +889,8 @@ class ArchiveOptionAdmin(admin.ModelAdmin):
 class MonitoredLinkAdmin(admin.ModelAdmin):
 
     raw_id_fields = ["limited_wanted_galleries"]
-    list_filter = ["enabled", "auto_start", "provider"]
-    list_display = ["name", "provider", "enabled", "auto_start", "create_date"]
+    list_filter = ["enabled", "auto_start", "priority", "provider"]
+    list_display = ["name", "provider", "priority", "enabled", "auto_start", "create_date"]
     search_fields = ["name", "url"]
     actions = ["start_running", "stop_running", "force_run"]
 

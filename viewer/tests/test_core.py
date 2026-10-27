@@ -229,6 +229,73 @@ class CoreTest(TestCase):
         self.assertEqual(pushover.user_key, "ukey123")
         self.assertEqual(pushover.token, "tok456")
 
+    def test_pydantic_configuration_models_and_schema_generation(self):
+        import io
+        import yaml
+        from django.core.management import call_command
+        from core.base.setup import Settings
+        from core.base.config_models import (
+            PandaGalleryConfig,
+            GeneralSettings,
+            AllowedSettings,
+            DatabaseSettings,
+            TorrentSettings,
+            get_config_schema,
+            generate_default_yaml_content,
+        )
+
+        # 1. Test model instantiation and defaults
+        config_model = PandaGalleryConfig()
+        self.assertEqual(config_model.general.db_engine, "postgresql")
+        self.assertTrue(config_model.allowed.convert_others_to_zip)
+        self.assertEqual(config_model.torrent.client, "transmission")
+        self.assertEqual(config_model.database.postgresql_port, "5432")
+        self.assertEqual(config_model.locations.media_root, "")
+        self.assertEqual(config_model.locations.static_root, "")
+
+        # 2. Test schema generation
+        schema = get_config_schema()
+        self.assertIn("properties", schema)
+        self.assertIn("general", schema["properties"])
+        self.assertIn("providers", schema["properties"])
+        self.assertIn("database", schema["properties"])
+        self.assertIn("torrent", schema["properties"])
+
+        # 3. Test generate_default_yaml_content parses back into PandaGalleryConfig
+        yaml_content = generate_default_yaml_content()
+        parsed_data = yaml.safe_load(yaml_content)
+        validated_config = PandaGalleryConfig.model_validate(parsed_data)
+        self.assertEqual(validated_config.general.db_engine, "postgresql")
+        self.assertEqual(validated_config.providers.panda.general.stop_page_number, 5)
+        self.assertEqual(validated_config.providers.chaika.general.url, "https://panda.chaika.moe")
+
+        # 4. Test Settings integration with Pydantic
+        runtime_settings = Settings(load_from_config=parsed_data)
+        self.assertEqual(runtime_settings.db_engine, "postgresql")
+        self.assertEqual(runtime_settings.general_model.db_engine, "postgresql")
+        self.assertIsInstance(runtime_settings.database, dict)
+        self.assertIsInstance(runtime_settings.torrent, dict)
+        pydantic_export = runtime_settings.to_pydantic()
+        self.assertIsInstance(pydantic_export, PandaGalleryConfig)
+        self.assertEqual(pydantic_export.general.db_engine, "postgresql")
+
+        # 5. Test config_schema management command
+        out = io.StringIO()
+        call_command("config_schema", "--json", stdout=out)
+        json_output = out.getvalue()
+        self.assertIn("PandaGalleryConfig", json_output)
+        self.assertIn('"db_engine"', json_output)
+
+        out_yaml = io.StringIO()
+        call_command("config_schema", "--yaml", stdout=out_yaml)
+        yaml_output = out_yaml.getvalue()
+        self.assertIn("Panda Backup", yaml_output)
+        self.assertIn("db_engine: postgresql", yaml_output)
+
+        out_val = io.StringIO()
+        call_command("config_schema", "--validate", "default.yaml", stdout=out_val)
+        self.assertIn("is valid", out_val.getvalue())
+
     def test_gunicorn_application_and_static_handler(self):
         from server import MediaAndStaticFilesHandler, GunicornApplication
         from django.http import HttpResponse
@@ -2577,6 +2644,79 @@ class DownloadMonitorAndEventTests(TestCase):
         self.assertEqual(legacy_data["status_display"], "Completed")
         self.assertTrue(legacy_data["completed"])
         self.assertFalse(legacy_data["failed"])
+
+    def test_download_history_provider_display_and_filter(self):
+        from django.urls import reverse
+        from viewer.models import Gallery, Archive
+        import json
+
+        # Event with direct provider
+        ev1 = DownloadEvent.objects.create(
+            name="https://example.com/dl1",
+            method="archive",
+            provider="chaika",
+            download_id="id1",
+            status=DownloadEvent.Status.IN_PROGRESS,
+        )
+        # Event with gallery provider fallback
+        gal = Gallery.objects.create(title="Gallery Panda", gid="99901", provider="panda")
+        ev2 = DownloadEvent.objects.create(
+            name="https://example.com/dl2",
+            method="torrent",
+            gallery=gal,
+            download_id="id2",
+            status=DownloadEvent.Status.IN_PROGRESS,
+        )
+        # Event with archive -> gallery provider fallback
+        gal_nexus = Gallery.objects.create(title="Gallery Nexus", gid="99902", provider="nexus")
+        arch = Archive.objects.create(title="Archive Nexus", gallery=gal_nexus, user=self.user)
+        ev3 = DownloadEvent.objects.create(
+            name="https://example.com/dl3",
+            method="hath",
+            archive=arch,
+            download_id="id3",
+            status=DownloadEvent.Status.IN_PROGRESS,
+        )
+
+        self.assertEqual(ev1.effective_provider, "chaika")
+        self.assertEqual(ev2.effective_provider, "panda")
+        self.assertEqual(ev3.effective_provider, "nexus")
+
+        url = reverse("viewer:downloads")
+
+        # Check HTML view contains Provider header and provider badges
+        resp = self.client.get(url, {"status": "in_progress"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "<th>Provider</th>")
+        self.assertContains(resp, "chaika")
+        self.assertContains(resp, "panda")
+        self.assertContains(resp, "nexus")
+
+        # Filter by provider: chaika
+        resp_chaika = self.client.get(url, {"status": "in_progress", "provider": "chaika"})
+        self.assertEqual(resp_chaika.status_code, 200)
+        chaika_ids = [r.pk for r in resp_chaika.context["results"]]
+        self.assertIn(ev1.pk, chaika_ids)
+        self.assertNotIn(ev2.pk, chaika_ids)
+        self.assertNotIn(ev3.pk, chaika_ids)
+
+        # Filter by provider: panda
+        resp_panda = self.client.get(url, {"status": "in_progress", "provider": "panda"})
+        self.assertEqual(resp_panda.status_code, 200)
+        panda_ids = [r.pk for r in resp_panda.context["results"]]
+        self.assertIn(ev2.pk, panda_ids)
+        self.assertNotIn(ev1.pk, panda_ids)
+
+        # JSON response contains provider
+        resp_json = self.client.get(url, {"status": "in_progress", "json": "1"})
+        self.assertEqual(resp_json.status_code, 200)
+        data = json.loads(resp_json.content.decode("utf-8"))
+        ev1_data = next((item for item in data["results"] if item["id"] == ev1.pk), None)
+        self.assertIsNotNone(ev1_data)
+        self.assertEqual(ev1_data["provider"], "chaika")
+        ev2_data = next((item for item in data["results"] if item["id"] == ev2.pk), None)
+        self.assertIsNotNone(ev2_data)
+        self.assertEqual(ev2_data["provider"], "panda")
 
     def test_admin_actions(self):
         from django.contrib.admin.sites import AdminSite

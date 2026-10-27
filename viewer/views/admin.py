@@ -241,7 +241,6 @@ def queue_operations(request: HttpRequest, operation: str, arguments: str = "") 
 @login_required
 def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpResponse:
     """Tools listing."""
-    settings_text = ""
     if not request.user.is_staff:
         return render_error(request, "You need to be an admin to use the tools.")
     if tool == "transfer_missing_downloads":
@@ -442,23 +441,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
             return render_error(request, "This OS does not support signal SIGUSR2.")
         return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "modify_settings":
-        p = request.POST
-        if p:
-            settings_text = p["settings_file"]
-            if os.path.isfile(os.path.join(crawler_settings.default_dir, "settings.yaml")):
-                with open(os.path.join(crawler_settings.default_dir, "settings.yaml"), "w", encoding="utf-8") as f:
-                    f.write(settings_text)
-                    logger.info("Modified settings file for Panda Backup")
-                    messages.success(request, "Modified settings file for Panda Backup")
-                    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
-        else:
-            if os.path.isfile(os.path.join(crawler_settings.default_dir, "settings.yaml")):
-                with open(os.path.join(crawler_settings.default_dir, "settings.yaml"), "r", encoding="utf-8") as f:
-                    first = f.read(1)
-                    if first != "\ufeff":
-                        # not a BOM, rewind
-                        f.seek(0)
-                    settings_text = f.read()
+        return HttpResponseRedirect(reverse("viewer:tools-id", args=["modify_settings_editor"]))
     elif tool == "modify_settings_editor":
         return render(request, "viewer/settings.html")
     elif tool == "reload_settings":
@@ -569,7 +552,6 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
 
     d = {
         "tool": tool,
-        "settings_text": settings_text,
         "threads_status": threads_status,
         "autoupdater_providers": autoupdater_providers,
     }

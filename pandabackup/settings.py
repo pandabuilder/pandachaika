@@ -245,21 +245,7 @@ if (CORS_ALLOW_ALL_ORIGINS or CORS_ALLOWED_ORIGINS) and module_exists("corsheade
     MIDDLEWARE = ["corsheaders.middleware.CorsMiddleware"] + MIDDLEWARE
 
 # Database
-if crawler_settings.db_engine == "mysql":
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.mysql",
-            "NAME": crawler_settings.database["mysql_name"],
-            "USER": crawler_settings.database["mysql_user"],
-            "PASSWORD": crawler_settings.database["mysql_password"],
-            "HOST": crawler_settings.database["mysql_host"],
-            "PORT": crawler_settings.database["mysql_port"],
-            "CONN_MAX_AGE": 600,
-            "CONN_HEALTH_CHECKS": True,
-            "OPTIONS": {"init_command": "SET sql_mode='STRICT_TRANS_TABLES'", "charset": "utf8mb4"},
-        }
-    }
-elif crawler_settings.db_engine == "postgresql":
+if crawler_settings.db_engine == "postgresql":
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.postgresql_psycopg2",
@@ -273,7 +259,9 @@ elif crawler_settings.db_engine == "postgresql":
         }
     }
 else:
-    raise ValueError("Invalid database type. Must choose either mysql or postgresql")
+    raise ValueError(
+        f"Unsupported database engine '{crawler_settings.db_engine}'. PostgreSQL is the only supported database backend."
+    )
 
 # Internationalization
 

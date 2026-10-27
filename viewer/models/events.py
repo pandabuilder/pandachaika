@@ -54,6 +54,12 @@ class MonitoredLink(models.Model):
     proxy = models.CharField(max_length=200, blank=True, null=True)
     stop_page = models.IntegerField(blank=True, null=True)
 
+    priority = models.IntegerField(
+        default=10,
+        blank=True,
+        db_index=True,
+        help_text="Priority for queue tasks. Lower value means higher priority.",
+    )
     enabled = models.BooleanField(default=False)
     auto_start = models.BooleanField(default=False)
     frequency = models.DurationField()
@@ -134,6 +140,8 @@ class MonitoredLink(models.Model):
         SchedulerState.request_command(self.scheduler_name, "stop")
 
     def save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
+        if self.priority is None:
+            self.priority = 10
         is_new = self.pk is None
         super().save(*args, **kwargs)
         from workers.models import SchedulerState
@@ -293,6 +301,19 @@ class DownloadEvent(models.Model):
                 return self.status
             return self.Status.FAILED
         return self.status
+
+    @property
+    def effective_provider(self) -> str:
+        """Return provider for this download event, falling back to linked gallery or archive provider."""
+        if self.provider:
+            return self.provider
+        if self.gallery and self.gallery.provider:
+            return str(self.gallery.provider)
+        if self.archive:
+            archive_gallery = getattr(self.archive, "gallery", None)
+            if archive_gallery and getattr(archive_gallery, "provider", None):
+                return str(archive_gallery.provider)
+        return ""
 
     def sync_status_with_flags(self) -> None:
         """Synchronize status and completed/failed booleans."""

@@ -253,23 +253,6 @@ class GalleryManager(models.Manager["Gallery"]):
     def eligible_for_use(self, **kwargs: typing.Any) -> GalleryQuerySet:
         return self.get_queryset().eligible_for_use(**kwargs)
 
-    # # This is commented because it didn't work in MySQL
-    # def need_new_archive(self, **kwargs):
-    #
-    #     return self.annotate(
-    #         num_archives=Count('archive')
-    #     ).filter(
-    #         (
-    #             (
-    #                 Q(num_archives=1) &
-    #                 ~Q(filesize=F('archive__filesize')) &
-    #                 ~Q(filesize=0)
-    #             ) |
-    #             Q(archive__isnull=True)
-    #         ),
-    #         **kwargs
-    #     ).prefetch_related('archive_set').order_by('-create_date')
-
     def filter_dl_type(self, dl_type_filter: str, **kwargs: typing.Any) -> QuerySet:
         return self.filter(dl_type__icontains=dl_type_filter, **kwargs)
 

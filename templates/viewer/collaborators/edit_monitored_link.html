@@ -42,17 +42,23 @@
                     </div>
 
                     <div class="row mb-3">
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <label class="form-label" for="id_provider"><strong>Provider</strong></label>
                             {{ edit_form.provider }}
                             {% if edit_form.provider.errors %}<div class="text-danger small">{{ edit_form.provider.errors }}</div>{% endif %}
                             <div class="form-text text-muted">{{ edit_form.provider.help_text }}</div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <label class="form-label" for="id_frequency"><strong>Frequency</strong> (Duration format)</label>
                             {{ edit_form.frequency }}
                             {% if edit_form.frequency.errors %}<div class="text-danger small">{{ edit_form.frequency.errors }}</div>{% endif %}
                             <div class="form-text text-muted">{{ edit_form.frequency.help_text }}</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="id_priority"><strong>Priority</strong></label>
+                            {{ edit_form.priority }}
+                            {% if edit_form.priority.errors %}<div class="text-danger small">{{ edit_form.priority.errors }}</div>{% endif %}
+                            <div class="form-text text-muted">{{ edit_form.priority.help_text }}</div>
                         </div>
                     </div>
 

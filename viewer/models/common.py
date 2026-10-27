@@ -43,12 +43,6 @@ class SpacedSearch(Lookup):
         params = tuple(lhs_params) + tuple(rhs_params)
         return "%s LIKE %s" % (lhs, rhs), params
 
-    def as_mysql(self, compiler: SQLCompiler, connection: BaseDatabaseWrapper) -> tuple[str, typing.Any]:
-        lhs, lhs_params = self.process_lhs(compiler, connection)
-        rhs, rhs_params = self.process_rhs(compiler, connection)
-        params = tuple(lhs_params) + tuple(rhs_params)
-        return "%s LIKE %s" % (lhs, rhs), params
-
     def as_postgresql(self, compiler: SQLCompiler, connection: BaseDatabaseWrapper) -> tuple[str, typing.Any]:
         lhs, lhs_params = self.process_lhs(compiler, connection)
         rhs, rhs_params = self.process_rhs(compiler, connection)

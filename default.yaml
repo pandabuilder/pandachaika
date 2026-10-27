@@ -1,48 +1,125 @@
-# requests_headers:
-  # Mask every request with this user-agent.
-  # user-agent: Mozilla/5.0 (Windows NT 6.3; WOW64; rv:38.0) Gecko/20100101 Firefox/38.0
+# ==============================================================================
+# Panda Backup (Panda Gallery) — Default Configuration File
+#
+# This file defines all system, database, worker, network, security, and
+# per-provider configuration settings.
+#
+# Schema validation: Managed by Pydantic configuration models in
+# `core/base/config_models.py`.
+# ==============================================================================
+
+# Global HTTP Request Headers
+# Mask every outgoing web request with custom headers (e.g. User-Agent).
+requests_headers:
+  user-agent: "Mozilla/5.0 (Windows NT 6.3; WOW64; rv:38.0) Gecko/20100101 Firefox/38.0"
+
+# ------------------------------------------------------------------------------
+# General Settings
+# Core system options, database engine, rate limits, and worker lifecycle.
+# ------------------------------------------------------------------------------
 general:
-  # db_engine to use. mysql or postgresql are possible.
+  # Database backend engine to use. Supported options: 'postgresql'.
+  # Note: SQLite and MySQL are unsupported.
+  # Default: postgresql
   db_engine: postgresql
-  # When walking folders, only add as new files the ones that fit this filter.
-  # Allows accepting alternative extensions for ZIP (CBZ).
+
+  # File glob filters used when scanning local directories for new archives.
+  # Allows accepting alternative ZIP extensions (e.g. CBZ).
+  # Default: ['*.zip']
   filename_filter:
-  - '*.zip'
-  # Django secret key, needed. CHANGE IT. Don't use % here.
-  django_secret_key: 89!yi9gvd2r*m5rq9y-elj86u*zg@-j3ce90@^7+0(-!fkgpzd
-  # Enable Django debug mode, that will be more verbose in case of something going wrong.
+    - '*.zip'
+
+  # Django secret key used for cryptographic signing, cookies, and tokens.
+  # IMPORTANT: Change this to a secure random string in production! Do not use '%' here.
+  django_secret_key: "89!yi9gvd2r*m5rq9y-elj86u*zg@-j3ce90@^7+0(-!fkgpzd"
+
+  # Enable Django debug mode for detailed error stack traces. Must be false in production.
+  # Default: false
   django_debug_mode: false
-  # How torrent downloads are handled. remote means file is downloaded on a remote server, so the file must be downloaded via FTP from that server.
-  # local_copy, local_move, local_hardlink means files will be copied or moved instead of FTP downloading.
-  # For hardlinks, make sure that it's being copied under the same filesystem.
-  download_handler: remote
+
+  # How finished downloads are handled:
+  #   - 'local': files reside on the same machine.
+  #   - 'remote': files are downloaded on a remote seedbox/server and retrieved via FTPS.
+  #   - 'local_copy': files are copied from the client download folder to media storage.
+  #   - 'local_move': files are moved directly to media storage.
+  #   - 'local_hardlink': files are hardlinked (requires same filesystem).
+  # Default: local
+  download_handler: local
+
+  # Handler override for torrent downloads (empty string uses download_handler).
+  # Default: ''
   download_handler_torrent: ''
+
+  # Handler override for H@H downloads (empty string uses download_handler).
+  # Default: ''
   download_handler_hath: ''
-  # Wait timer used for most request. A value that should not get you banned is 6 seconds. Lower than that is risky.
-  wait_timer: 6
-  # Start the timed downloader on startup.
+
+  # Named FTP config key from 'ftp_configs' used for torrent transfers when handler is 'remote'.
+  # Default: default
+  download_ftp_torrent: default
+
+  # Named FTP config key from 'ftp_configs' used for H@H transfers when handler is 'remote'.
+  # Default: default
+  download_ftp_hath: default
+
+  # Custom directory path for temporary extraction and download staging.
+  # If null or empty, the system temporary directory (/tmp) is used.
+  # Default: null
+  temp_directory_path: null
+
+  # Rate-limiting wait timer (in seconds) between web requests across scrapers.
+  # Values below 5.0 seconds risk IP bans from upstream providers.
+  # Default: 6.0
+  wait_timer: 6.0
+
+  # Timeout (in seconds) for outgoing HTTP requests before timing out.
+  # Default: 25
+  timeout_timer: 25
+
+  # Start the timed downloader background worker thread automatically on startup.
+  # Default: false
   timed_downloader_startup: false
-  # Timed downloader cycle timer.
+
+  # Cycle interval (in seconds) for the timed downloader background worker.
+  # Default: 5.0
   timed_downloader_cycle_timer: 5.0
-  # Number of parallel post downloaders (each one opens a FTP connection).
+
+  # Number of parallel post-downloader workers (each handling an independent FTP connection).
+  # Default: 4
   parallel_post_downloaders: 4
-  # Maximum number of concurrent archive downloads across providers.
+
+  # Maximum number of concurrent background HTTP archive downloads across providers.
   # Set to 0 to download archives synchronously inline (legacy behavior).
   # Set to 1 or more to enable the background archive download queue.
+  # Default: 1
   parallel_archive_downloaders: 1
-  # Optional explicit boolean toggle to queue archive HTTP downloads (can also be enabled per-provider).
+
+  # Explicit boolean toggle to queue archive HTTP downloads in the background queue.
+  # Default: true
   queue_archive_downloads: true
-  # Start the archive download queue scheduler on worker startup.
+
+  # Start the archive download queue scheduler on worker runner launch.
+  # Default: true
   archive_download_queue_startup: true
-  # Archive download queue cycle timer (in seconds).
+
+  # Cycle interval (in seconds) for the archive download queue scheduler loop.
+  # Default: 2.0
   archive_download_queue_cycle_timer: 2.0
-  # Start the download progress checker scheduler on startup.
+
+  # Start the download progress checker scheduler on worker startup.
+  # Default: true
   download_progress_checker_startup: true
-  # Download progress checker cycle timer (in seconds).
+
+  # Polling interval (in seconds) for checking torrent and H@H download status.
+  # Default: 10.0
   download_progress_checker_cycle_timer: 10.0
-  # Reload the server when it detects file changes (CherryPy feature).
+
+  # Reload the web server when Python file modifications are detected (CherryPy engine only).
+  # Default: false
   cherrypy_auto_restart: false
-  # Auto discard galleries that contain these tags. For new downloads and matches.
+
+  # Automatically discard/skip galleries containing these tags during crawling and matching.
+  # Default: filtered languages
   banned_tags:
     - language:thai
     - language:chinese
@@ -55,75 +132,176 @@ general:
     - language:polish
     - language:russian
     - language:vietnamese
-  # Auto discard galleries that contain these uploaders. For new downloads and matches.
+
+  # Automatically discard/skip galleries uploaded by these usernames during crawling.
+  # Default: []
   banned_uploaders:
     - random_guy
-  # Depends on elasticsearch backend (match_index). Uses Elasticsearch DSL (8.x)
+
+  # Elasticsearch DSL queries to discard matching galleries from ingestion.
+  # Default: []
   banned_search_queries:
     - 'tags.full:"language:chinese" AND (NOT tags.full:"language:japanese")'
-  # WARNING: will add all galleries as public, not only feed ones.
+
+  # Automatically mark all newly added galleries as public (visible to anonymous visitors).
+  # Default: false
   add_as_public: false
-  # Timeout for most web requests (seconds)
-  timeout_timer: 25
-  # Mark archives (Mark system) based on similarities
+
+  # Automatically generate review marks in the Mark system when adding an archive similar to an existing one.
+  # Default: false
   mark_similar_new_archives: false
-  # Auto hash images when adding new archives
+
+  # Compute image SHA1 and CRC32 checksums for every page when adding new archives.
+  # Default: false
   auto_hash_images: false
-  # Auto phash images when adding new archives
+
+  # Compute perceptual hashes (pHash) on pages when adding new archives to support visual matching.
+  # Default: false
   auto_phash_images: false
+
   # Number of worker processes in the process pool for CPU-bound tasks
   # (pHash calculation, image resizing, zip CRC recalculation).
-  # 0 or omitted means automatic (half of available CPU cores).
+  # 0 auto-selects half of available CPU cores.
+  # Default: 0
   process_pool_workers: 0
-  # Auto process wanted images  when adding new archives (requires numpy, opencv-python installed)
+
+  # Automatically match wanted images against newly added archives (requires OpenCV and NumPy).
+  # Default: false
   auto_match_wanted_images: false
-  # Create marks for archives that when their metadata change, the accepted WantedGallery is no longer valid
+
+  # Automatically correlate perceptual hash tags across similar archives.
+  # Default: false
+  auto_match_phash_tags_archives: false
+
+  # Default publisher name applied when creating new wanted gallery entries.
+  # Default: ''
+  default_wanted_publisher: ''
+
+  # Default categories selected when generating or parsing wanted galleries.
+  # Default: ['Doujinshi', 'Artist CG']
+  default_wanted_categories:
+    - Doujinshi
+    - Artist CG
+
+  # Upstream providers queried for wanted galleries.
+  # Default: ['panda']
+  default_wanted_providers:
+    - panda
+
+  # Create review marks for archives when metadata updates invalidate a previously accepted WantedGallery.
+  # Default: false
   recheck_wanted_on_update: false
-  # Sizes to apply when using the resized extract option.
+
+  # Maximum width (in pixels) for vertical portrait pages during reduced/resized extraction.
+  # Default: 900
   vertical_image_max_width: 900
+
+  # Maximum width (in pixels) for horizontal landscape pages during reduced/resized extraction.
+  # Default: 1500
   horizontal_image_max_width: 1500
-  # Force the minimum log level to send to logs (database, file). Defaults to INFO if not present, DEBUG in debug mode.
+
+  # Minimum logging level sent to log files and database ('DEBUG', 'INFO', 'WARNING', 'ERROR').
+  # Default: INFO
   force_log_level: INFO
-  # Disable SQL log
+
+  # Suppress verbose Django SQL query logs in debug mode.
+  # Default: false
   disable_sql_log: false
-  # Option to auto-purge a torrent after a certain time has passed (0 means disabled)
+
+  # Maximum age before auto-removing completed torrents from the torrent client (0 keeps indefinitely).
+  # Default: 0
   max_torrent_lifespan: 0
+
+  # Time unit for max_torrent_lifespan ('minutes', 'hours', 'days', 'weeks').
+  # Default: days
   max_torrent_lifespan_type: days
-  # If set to yes, failed downloaded archives (e.g. corrupt zip, size mismatch) will be requeued for download.
-  requeue_failed_downloads: true
-  # Downloader or custom downloader to use when requeueing a failed download.
-  failed_download_downloader: panda_archive
-  # Option to automatically move downloaded archives that fail checks to the recycle bin.
+
+  # When crawling revision chains, treat non-latest/superseded gallery links as deleted.
+  # Default: false
+  non_current_links_as_deleted: false
+
+  # Automatically move downloaded archives that fail integrity or size checks to the recycle bin.
+  # Default: false
   recycle_failed_checks_downloads: false
-# Extra tool to apply to images when using the cloning tool, use 'input' and 'output' kwargs on executable_path to replace on runtime
+
+  # Automatically re-enqueue failed downloads (e.g. corrupt zip, size mismatch) with an alternate downloader.
+  # Default: true
+  requeue_failed_downloads: true
+
+  # Downloader or custom downloader to use when requeueing a failed download.
+  # Default: panda_archive
+  failed_download_downloader: panda_archive
+
+# ------------------------------------------------------------------------------
+# Operational Permissions ('allowed')
+# Controls whether existing archives can be replaced, redownloaded, or converted.
+# ------------------------------------------------------------------------------
+allowed:
+  # Allow overwriting existing gallery metadata with upstream data when re-crawling an already added gallery.
+  # Default: false
+  replace_metadata: false
+
+  # Allow redownloading archives that have already been downloaded previously.
+  # WARNING: if link_monitor is enabled, this will repeatedly redownload existing files.
+  # Default: false
+  redownload: false
+
+  # For providers supporting gallery relationships, automatically fetch and download child/parent revisions.
+  # Default: false
+  auto_download_nested: false
+
+  # Allow retrying downloads for galleries previously marked with a failed download status.
+  # Default: false
+  retry_failed: false
+
+  # After finding an upstream non-match, attempt matching against local database archives immediately.
+  # Default: false
+  internal_matches_for_non_matches: false
+
+  # Automatically transform RAR (.rar) and 7-Zip (.7z) archives into standard ZIP files upon completion.
+  # Default: true
+  convert_others_to_zip: true
+
+  # Mark parent/historical links as deleted when newer revisions exist.
+  # Default: false
+  non_current_links_as_deleted: false
+
+# ------------------------------------------------------------------------------
+# External Image Cloning Tool
+# Optional command-line tool executed on pages when using the clone-plus feature.
+# ------------------------------------------------------------------------------
 cloning_image_tool:
+  # Enable external image tool execution.
+  # Default: false
   enable: false
+
+  # Display name of the tool (e.g. 'optipng', 'waifu2x').
+  # Default: ''
   name: ''
+
+  # Executable command path. Supports '{input}' and '{output}' runtime template placeholders.
+  # Default: ''
   executable_path: ''
+
+  # Description of the tool's purpose.
+  # Default: ''
   description: ''
+
+  # File glob patterns to pass to the tool.
+  # Default: ['*.png']
   file_filters:
     - '*.png'
-  extra_arguments: ''
-allowed:
-  # If set to yes, galleries that were already added will be processed if added again.
-  replace_metadata: false
-  # If set to yes, galleries that were already added and downloaded will be redownloaded.
-  # WARNING: if you use link_monitor, it will keep redownloading files. This is mostly used internally.
-  redownload: false
-  # For providers that provide gallery relationships, auto-fetch the next gallery if possible
-  auto_download_nested: false
-  # If set to yes, galleries marked as failed that are added again to download will be processed.
-  retry_failed: false
-  # After finding a non-match, try to match with internal galleries right away.
-  internal_matches_for_non_matches: false
-  # If set to yes, torrent downloads using the .rar, .7zip formats will be automatically transformed to .zip file. Requires the rarfile and py7zr modules.
-  convert_others_to_zip: true
-  # Add links not considered the last of their chain as deleted.
-  non_current_links_as_deleted: false
+
+  # Additional CLI arguments passed to the executable.
+  # Default: []
+  extra_arguments: []
+
+# ------------------------------------------------------------------------------
+# Matchers & Downloaders Priorities
+# Positive integers define execution order ascending (1 runs before 2).
+# Negative integers disable that specific matcher or downloader.
+# ------------------------------------------------------------------------------
 matchers:
-  # List of possible matchers to use. Negative values disable that particular matcher.
-  # Positive values are sorted ascending in their use, so if the first one fails, the next one will try to match.
-  # Warning: some of them might be outdated.
   panda_title: -2
   panda_cover: -1
   panda_image: -1
@@ -132,246 +310,771 @@ matchers:
   chaika_main_clean_title: 3
   chaika_meta_title: 4
   chaika_size: 5
+
 downloaders:
-  # List of possible downloaders to use. Negative values disable that particular downloader.
-  # Positive values are sorted ascending in their use, so if the first one fails, the next one will try to download.
-  # Warning: Some of them might be outdated.
   chaika_archive: 5
   panda_archive: 4
   panda_torrent: 3
   panda_hath: -1
   panda_info: -1
-# Custom "virtual" downloaders combining multiple downloaders with custom priorities for a provider.
+
+# Custom virtual downloaders combining multiple downloaders with fallback priorities.
 # custom_downloaders:
 #   panda_archive_then_hath:
 #     - panda_archive: 1
 #     - panda_hath: 2
+
+# ------------------------------------------------------------------------------
+# Auto Wanted Generator
+# Automatically queries providers to create WantedGallery entries for missing works.
+# ------------------------------------------------------------------------------
 auto_wanted:
-  # Auto add entries as wanted galleries from providers based on filters.
+  # Enable the auto-wanted generator background scheduler.
+  # Default: true
   enable: true
+
+  # Start the auto-wanted scheduler upon worker runner startup.
+  # Default: false
   startup: false
-  cycle_timer: 4
+
+  # Cycle interval (in seconds) between auto-wanted runs.
+  # Default: 4.0
+  cycle_timer: 4.0
+
+  # Providers queried by the auto-wanted generator.
+  # Default: ['twitter']
   providers:
-  - twitter
-  # Automatically add this text to "unwanted_title" field on generated wanted galleries
+    - twitter
+
+  # Text filter automatically added to the unwanted_title field on generated wanted galleries.
+  # Default: '[Chinese]'
   unwanted_title: '[Chinese]'
+
+  # Treat unwanted_title as a regular expression.
+  # Default: false
+  regexp_unwanted_title: false
+
+  # Case-insensitive matching for unwanted_title regex.
+  # Default: false
+  regexp_unwanted_title_icase: false
+
+# ------------------------------------------------------------------------------
+# Pushover Notifications
+# Mobile push alerts when wanted galleries are located or system events occur.
+# ------------------------------------------------------------------------------
 pushover:
-  # Pushover notifications on wanted galleries found.
+  # Enable Pushover notifications.
+  # Default: false
   enable: false
+
+  # Pushover user or group key.
   user_key: ''
+
+  # Pushover application API token.
   token: ''
+
+  # Specific device name to receive notifications (blank sends to all devices).
   device: ''
+
+  # Notification alert sound (e.g. 'pushover', 'bike', 'siren'). Blank uses account default.
   sound: ''
+
+# ------------------------------------------------------------------------------
+# Backlog Search Crawler
+# Periodic search feeds scanned to discover historical works.
+# ------------------------------------------------------------------------------
 backlog_search:
+  # Enable the backlog search crawler.
+  # Default: false
   enable: false
+
+  # Feed URLs and query endpoints to scan.
   urls:
     - name: panda_backlog
-      url: https://e-hentai.org/?f_doujinshi=1&f_manga=1&f_artistcg=1&f_gamecg=1&f_western=0&f_non-h=1&f_imageset=1&f_cosplay=0&f_asianporn=0&f_misc=0&f_apply=Apply+Filter&f_search=
+      url: "https://e-hentai.org/?f_doujinshi=1&f_manga=1&f_artistcg=1&f_gamecg=1&f_western=0&f_non-h=1&f_imageset=1&f_cosplay=0&f_asianporn=0&f_misc=0&f_apply=Apply+Filter&f_search="
     - name: chaika_backlog
-      url: https://panda.chaika.moe/meta/es-gallery-json/?sort=posted_date&order=desc&q=
+      url: "https://panda.chaika.moe/meta/es-gallery-json/?sort=posted_date&order=desc&q="
+
+# ------------------------------------------------------------------------------
+# Email Alerts (Mail Logging)
+# SMTP error alerts and submission notifications.
+# ------------------------------------------------------------------------------
 mail_logging:
-  # Some stuff will be reported to email. (Server Error, new gallery submissions.)
+  # Enable email error notifications.
+  # Default: false
   enable: false
+
+  # SMTP server host and optional port (e.g. 'smtp.example.com:587').
   mailhost: ''
+
+  # Sender email address.
   from: ''
+
+  # Recipient email address for system alerts.
   to: ''
-  subject: ''
+
+  # Subject line for error emails.
+  # Default: 'CherryPy Error'
+  subject: 'CherryPy Error'
+
+  # SMTP authentication username.
   username: ''
+
+  # SMTP authentication password.
   password: ''
-# ElasticSearch for advanced search
+
+# ------------------------------------------------------------------------------
+# Elasticsearch 8.x Integration
+# Full-text archive search, autocomplete, and title similarity matching.
+# ------------------------------------------------------------------------------
 elasticsearch:
+  # Enable Elasticsearch search integration.
+  # Default: false
   enable: false
+
+  # Enable dedicated similarity matching index.
+  # Default: false
   enable_match: false
-  url: http://localhost:9200/
+
+  # Elasticsearch cluster HTTP base URL.
+  # Default: 'http://localhost:9200/'
+  url: "http://localhost:9200/"
+
+  # Maximum result window limit for deep pagination (index.max_result_window).
+  # Default: 10000
   max_result_window: 10000
+
+  # Automatically force index refresh after indexing archives (leave false in production).
+  # Default: false
   auto_refresh: false
+
+  # Automatically force index refresh after indexing upstream galleries.
+  # Default: false
   auto_refresh_gallery: false
+
+  # Main Elasticsearch index name for local archives.
+  # Default: 'viewer'
   index_name: viewer
+
+  # Elasticsearch index name for upstream gallery metadata.
+  # Default: 'viewer_gallery'
   gallery_index_name: viewer_gallery
+
+  # Elasticsearch index name for fast title similarity matching.
+  # Default: 'viewer_match'
   match_index_name: viewer_match
+
+  # Only index public archives, hiding private archives from search.
+  # Default: false
   only_index_public: false
+
+  # Request timeout (in seconds) for Elasticsearch queries.
+  # Default: 20
   timeout: 20
-# External downloader
+
+# ------------------------------------------------------------------------------
+# External Downloader (gallery-dl)
+# External downloader integration for expanded site support.
+# ------------------------------------------------------------------------------
 gallery_dl:
+  # gallery-dl binary name.
+  # Default: 'gallery-dl'
   executable_name: gallery-dl
+
+  # Custom path to gallery-dl binary (leave blank to resolve from system PATH).
+  # Default: ''
   executable_path: ''
+
+  # Path to gallery-dl configuration file (JSON/YAML).
+  # Default: ''
   config_file: ''
+
+  # Additional CLI arguments passed to gallery-dl.
+  # Default: ''
   extra_arguments: ''
+
+# ------------------------------------------------------------------------------
+# Metadata Auto-Updater
+# Periodically queries upstream providers to update tags, ratings, and titles.
+# ------------------------------------------------------------------------------
 autoupdater:
-  # Auto update gallery metadata (only panda is supported).
+  # Enable automatic metadata updating.
+  # Default: false
   enable: false
+
+  # Start the autoupdater on worker runner launch.
+  # Default: false
   startup: false
-  # Which providers use the autoupdater.
+
+  # List of providers enabled for metadata updating.
+  # Default: ['panda']
   providers:
-  - panda
-  cycle_timer: 2
-  # How many days back for filtering galleries to update
+    - panda
+
+  # Cycle interval (in seconds) between update checks.
+  # Default: 2.0
+  cycle_timer: 2.0
+
+  # Number of days in the past from current date to filter galleries for updating.
+  # Default: 8
   buffer_back: 8
-  # How many days after for filtering galleries to update
+
+  # Number of days after/offset to filter galleries for updating.
+  # Default: 0
   buffer_after: 0
+
+# ------------------------------------------------------------------------------
+# Matching Parameters
+# Settings for matching local archives against upstream provider galleries.
+# ------------------------------------------------------------------------------
 match_params:
-  # If set to yes, archives already matched that fit into "rematch_file_list" will be matched again.
+  # Re-evaluate archives that already have a match entry if their current match type is in rematch_file_list.
+  # Default: false
   rematch_file: false
-  # List of match_types that will be considered in a rematch.
+
+  # List of match_types eligible for rematching.
+  # Default: ['non-match']
   rematch_file_list:
-  - non-match
-  # Rehash files for their CRC32.
+    - non-match
+
+  # Recompute CRC32 checksums for local archives during matching.
+  # Default: false
   rehash_files: false
-  # If an archive with the same CRC32 is found, copy its matching info.
+
+  # If an archive with the same CRC32 checksum is found, copy its matching metadata directly.
+  # Default: true
   copy_match_file: true
+
+# ------------------------------------------------------------------------------
+# Filesystem Storage Locations
+# Absolute directories for media/static files and relative subfolders for downloads.
+# ------------------------------------------------------------------------------
 locations:
-  # Absolute location in the filesystem where the media will be stored. Includes archives, thumbnails, and extracted archives.
-  media_root: /media/
-  # Absolute location in the filesystem where the static files will be stored.
-  static_root: /static/
-  # Relative location where archive (HTTP) downloads will be stored. Can be replaced by each provider.
+  # Absolute filesystem directory where media (archives, extracted pages, covers) is stored.
+  # If left empty, MEDIA_ROOT defaults to '' unless specified via environment variable.
+  # Default: ''
+  media_root: ''
+
+  # Absolute filesystem directory where Django collects static files.
+  # If left empty, Django automatically defaults to '<BASE_DIR>/static/'.
+  # Default: ''
+  static_root: ''
+
+  # Relative subdirectory under media_root where direct archive HTTP downloads are stored.
+  # Default: galleries/archive_dls
   archive_dl_folder: galleries/archive_dls
-  # Relative location where torrent downloads will be stored. Can be replaced by each provider.
+
+  # Relative subdirectory under media_root where completed torrent downloads are placed.
+  # Default: galleries/torrent_dls
   torrent_dl_folder: galleries/torrent_dls
-  # Custom absolute location for the logfile. Can be commented to use the default folder.
+
+  # Custom absolute path for the application log file. If blank or commented, defaults to '<config_dir>/viewer.log'.
   # log_location: /home/panda/crawler.log
+
+# ------------------------------------------------------------------------------
+# Database Settings
+# Connection parameters for PostgreSQL.
+# ------------------------------------------------------------------------------
 database:
-  # If mysql is the db_engine these parameters must be filled.
-  mysql_name: pandafrontend
-  mysql_user: pandaadmin
-  mysql_password: pandaadmin
-  mysql_host: localhost
-  mysql_port: '3306'
-  # If postgresql is the db_engine, these parameters must be filled.
+  # PostgreSQL backend credentials (used when db_engine is 'postgresql')
   postgresql_name: pandaweb
   postgresql_user: pandaadmin
   postgresql_password: pandaadmin
   postgresql_host: localhost
   postgresql_port: '5432'
+
+# ------------------------------------------------------------------------------
+# Torrent Client Integration
+# Connection settings for Transmission or qBittorrent WebUI.
+# ------------------------------------------------------------------------------
 torrent:
-  # Parameters needed if using a torrent downloader to configure the connection to the torrent client. Possible clients: Transmission, qBittorrent.
+  # Torrent client engine: 'transmission' or 'qbittorrent'.
+  # Default: transmission
   client: transmission
+
+  # WebUI / RPC authentication username.
+  # Default: panda
   user: panda
+
+  # WebUI / RPC authentication password.
+  # Default: panda
   pass: panda
-  address: http://localhost/transmission/rpc
+
+  # RPC endpoint URL (Transmission: 'http://localhost/transmission/rpc', qBittorrent: 'http://localhost:8080/').
+  # Default: 'http://localhost/transmission/rpc'
+  address: "http://localhost/transmission/rpc"
+
+  # WebUI / RPC port.
+  # Default: 9091
   port: 9091
-  # download_dir implemented for Transmission and qBittorrent
+
+  # Directory path where the torrent client saves completed downloads.
+  # Default: /home/panda/downloads/torrents
   download_dir: /home/panda/downloads/torrents
-  # By default, the validity of the server certificate is checked. If it's a self-signed cert for example, set it to "yes".
+
+  # Skip SSL/TLS certificate validation (useful for self-signed certificates).
+  # Default: false
   no_certificate_check: false
+
+# ------------------------------------------------------------------------------
+# Remote FTPS Configuration
+# Used when download_handler is 'remote' to transfer files from a seedbox.
+# ------------------------------------------------------------------------------
 ftps:
-  # Download files from the remote server, when using remote handler. Only option available is FTPS connection.
+  # FTPS authentication username.
   user: panda
+
+  # FTPS authentication password.
   passwd: panda
+
+  # FTPS server address (hostname or IP).
   address: remote.server.com
-  # Where the torrent downloads are located on the remote server.
+
+  # Directory on the remote server where completed torrent downloads are located.
   remote_torrent_dir: /home/pandaremote/downloads/torrent
-  # If specified, address to bind to when opening FTP connections to the remote server. (ip, port)
+
+  # Optional local network interface IP to bind to when opening FTPS connections.
   # bind_host: 192.168.1.200
+
+  # Optional local port to bind to when opening FTPS connections (0 for ephemeral).
   # bind_port: 0
-  # By default, the validity of the server certificate is checked. If it's a self-signed cert for example, set it to "yes".
+
+  # Skip SSL/TLS certificate verification on remote FTPS server.
+  # Default: false
   no_certificate_check: false
+
+# ------------------------------------------------------------------------------
+# Web Server Configuration
+# WSGI web server hosting options for Gunicorn (production) or CherryPy.
+# ------------------------------------------------------------------------------
 webserver:
-  # Webserver backend to use: 'gunicorn' or 'cherrypy'.
+  # WSGI server engine: 'gunicorn' (recommended for production) or 'cherrypy'.
+  # Default: gunicorn
   backend: gunicorn
-  # Webserver information, if used.
+
+  # IP address for the web server to listen on ('127.0.0.1' for proxy, '0.0.0.0' for all interfaces).
+  # Default: 0.0.0.0
   bind_address: 0.0.0.0
+
+  # TCP listening port.
+  # Default: 8090
   bind_port: 8090
-  # Bind using socket
+
+  # UNIX domain socket file path to bind to instead of a TCP port (e.g. '/tmp/panda.sock').
+  # Default: null
   socket_file: null
+
+  # Enable direct HTTPS/SSL termination in the web server.
+  # Default: false
   enable_ssl: false
-  # Only needed if enable_ssl is yes.
+
+  # Path to SSL certificate (.crt or .pem file), required if enable_ssl is true.
   ssl_certificate: /home/panda/certs/panda.crt
-  # Only needed if enable_ssl is yes.
+
+  # Path to SSL private key (.key file), required if enable_ssl is true.
   ssl_private_key: /home/panda/certs/panda.key
-  # Write access log to file.
+
+  # Write HTTP access logs to file.
+  # Default: false
   write_access_log: false
-  # Log to screen.
+
+  # Output web server logs to console stdout.
+  # Default: false
   log_to_screen: false
-  # Socket queue size (backlog) for incoming connections (default 5, prod e.g. 128).
+
+  # Socket listen backlog queue size for incoming TCP connections.
+  # Default: 5
   socket_queue_size: 5
-  # Number of worker threads for handling requests (default 10, prod e.g. 30).
+
+  # Thread pool size for handling concurrent requests (CherryPy only).
+  # Default: 10
   thread_pool: 10
+
   # Number of worker processes (Gunicorn only).
+  # Default: 4
   workers: 4
+
   # Number of worker threads per process (Gunicorn only).
+  # Default: 1
   threads: 1
-  # Worker timeout in seconds (Gunicorn only).
+
+  # Worker request timeout in seconds before restarting unresponsive workers (Gunicorn only).
+  # Default: 60
   timeout: 60
+
+# ------------------------------------------------------------------------------
+# URL Routing, Reverse Proxy & Security Headers
+# ------------------------------------------------------------------------------
 urls:
-  # URLs for webserver
+  # Base URL prefix for serving user media and archives.
+  # Default: /media/
   media_url: /media/
+
+  # Base URL prefix for serving static CSS and JavaScript assets.
+  # Default: /static/
   static_url: /static/
+
+  # Custom root URL prefix for the viewer web application.
+  # Default: ''
   viewer_main_url: ''
-  # If it's being served behind a reverse proxy, activate this option to fix absolute URL generation.
+
+  # Set to true if running behind a reverse proxy (Nginx, Traefik, Caddy) to fix absolute URL generation.
+  # Default: false
   behind_proxy: false
-  # Enable the /submit URL for any user (even non-registered) to submit possible panda links to add.
+
+  # Enable the /submit URL for unauthenticated public visitors to submit gallery URLs.
+  # Default: false
   enable_public_submit: false
-  # Enable public facing stats
+
+  # Enable public access to the global repository statistics page.
+  # Default: false
   enable_public_stats: false
-  # Enable public facing marks in Archive page. These are filtered by reason, not individually
+
+  # Enable public display of similarity marks on archive detail pages.
+  # Default: false
   enable_public_marks: false
+
+  # Mark reason identifiers visible to public viewers when enable_public_marks is true.
+  # Default: ['images_sha1_similarity', 'images_phash_similarity']
   public_mark_reasons:
     - images_sha1_similarity
     - images_phash_similarity
+
+  # Base URL of an external CDN or media server used to offload heavy archive downloads.
+  # Default: ''
   external_media_server: ''
+
+  # Direct primary download links to the external media server URL instead of the local server.
+  # Default: false
   external_as_main_download: false
-  # User facing URL, (scheme+authority), used to resolve absolute URLs where the request is not accessible.
+
+  # Canonical public-facing URL (scheme + domain) used to construct absolute URLs in background tasks.
+  # Default: ''
   main_webserver_url: ''
+
+  # Route standard search queries directly to Elasticsearch endpoints.
+  # Default: false
   elasticsearch_as_main_urls: false
-# Used if two instances of this application are running, to communicate between them (user_token must be set on an account on the remote server)
+
+  # Elasticsearch archive query endpoint name.
+  # Default: es-index
+  elasticsearch_archive_url: es-index
+
+  # Elasticsearch upstream gallery query endpoint name.
+  # Default: es-gallery-index
+  elasticsearch_gallery_url: es-gallery-index
+
+  # List of allowed origin domains for Cross-Origin Resource Sharing (CORS).
+  # Default: []
+  cors_allowed_origins: []
+
+  # Allow all origins to access API endpoints (Access-Control-Allow-Origin: *).
+  # Default: false
+  cors_allow_all_origins: false
+
+# ------------------------------------------------------------------------------
+# Remote Site Synchronization
+# Credentials for synchronizing with another Panda Backup instance.
+# ------------------------------------------------------------------------------
 remote_site:
-  api_url: https://panda.chaika.moe/jsonapi
+  # Remote Panda Backup instance JSON API endpoint URL.
+  # Default: 'https://panda.chaika.moe/jsonapi'
+  api_url: "https://panda.chaika.moe/jsonapi"
+
+  # Long-lived user authentication token generated on the remote server.
   user_token: asdf1234
+
+  # Directory on remote server where synchronized archives are located.
+  # Default: /media/galleries/archives
   remote_folder: /media/galleries/archives
-# Control the startup of the monitored_links subsystem (threads)
+
+# ------------------------------------------------------------------------------
+# Monitored Links Subsystem
+# Controls background polling workers tracking new additions on subscribed URLs.
+# ------------------------------------------------------------------------------
 monitored_links:
+  # Enable the monitored links polling worker.
+  # Default: false
   enable: false
-# each provider specific settings must be nested inside the "providers" key.
+
+# ------------------------------------------------------------------------------
+# Per-Provider Settings
+# Individual configurations, credentials, API limits, and directories per provider.
+# All provider settings must be nested under the 'providers' key.
+# ------------------------------------------------------------------------------
 providers:
-  fakku:
-    # Session cookie for FAKKU. Enables fetching "controversial" galleries metadata.
-#    cookies:
-  mugimugi:
-    general:
-      # mugimugi api key
-      api_key: ''
-  nhentai:
-    # Session cookie for nhentai. Enables torrent downloads.
-    cookies:
-      sessionid: ''
+
+  # E-Hentai & ExHentai ('panda')
   panda:
     general:
-      # If true, it will check the cost of both hath and archive downloads, and only proceed if the current method has the lowest or equal cost.
+      # Compare GP cost between H@H and direct archive downloads, proceeding only if the current method has the lowest or equal cost.
+      # Default: false
       proceed_with_download_if_lowest_cost: false
-      # When crawling the home pages, stop at limit page number. This parameter is optional
+
+      # Maximum page number to crawl when browsing gallery listings.
+      # Default: 5
       stop_page_number: 5
-      # panda RSS reports categories, you can use this to pre-filter what galleries can be processed, check panda.settings for possible options.
+
+      # Accepted categories reported by upstream RSS. Unmatched categories are ignored.
+      # Possible categories: Doujinshi, Manga, Artist CG Sets, Game CG Sets, Western, Image Sets, Non-H, Cosplay, Asian Porn, Misc, Private
       accepted_rss_categories:
-      - [Doujinshi]
-      - [Manga]
-      - [Artist CG Sets]
-      - [Game CG Sets]
-      - [Image Sets]
-      - [Non-H]
-      - [Cosplay]
-      - [Asian Porn]
-      - [Misc]
-      - [Private]
+        - [Doujinshi]
+        - [Manga]
+        - [Artist CG Sets]
+        - [Game CG Sets]
+        - [Image Sets]
+        - [Non-H]
+        - [Cosplay]
+        - [Asian Porn]
+        - [Misc]
+        - [Private]
+
+      # Use ExHentai instead of E-Hentai for region-blocked/fjord galleries.
+      # Default: false
+      use_ex_for_fjord: false
+
+      # Automatically crawl and download newer versions when crawling gallery chains.
+      # Default: false
+      auto_process_newer: false
+
+      # Automatically download the first original version in a gallery revision chain.
+      # Default: false
+      auto_process_first: false
+
+      # Automatically download the direct parent gallery.
+      # Default: false
+      auto_process_parent: false
+
+      # Create review marks linking discovered parent and child gallery relationships.
+      # Default: false
+      mark_relationships: false
+
+      # Verify downloaded files against provider file lists upon completion.
+      # Default: false
+      confirm_files_after_download: false
+
+      # Maximum Gallery Points (GP) allowable for an archive download (0 = free only; null = disabled).
+      # Default: null
+      maximum_gp_cost_for_dls: null
+
+      # Maximum GP per Megabyte ratio allowable for downloads (null = disabled).
+      # Default: null
+      maximum_gp_mb_ratio_for_dls: null
+
     locations:
-      # Relative location where hath downloads will be stored.
+      # Relative location under media_root where H@H downloads will be stored.
+      # Default: galleries/hath_dls
       hath_dl_folder: galleries/hath_dls
-      # Local path were the hath downloads are stored (in case a local folder is being used).
+
+      # Local directory where the local H@H client stores completed files (if using local handler).
+      # Default: /home/panda/hh/download
       local_hath_folder: /home/panda/hh/download
-      # Where the hath downloads are located on the remote server.
+
+      # Directory on remote FTPS server where H@H downloads are located (if using remote handler).
+      # Default: /hh/download
       remote_hath_dir: /hh/download
-    # Log into exhentai on your browser, check all the cookies for it, and paste their keys, values here.
-    # uconfig one is necessary if you want filters on every request.
-    # Also archive download must be set to auto-download, auto-accept.
+
+      # Provider-specific override for direct archive download storage folder.
+      # Default: '' (uses general locations.archive_dl_folder)
+      archive_dl_folder: ''
+
+      # Provider-specific override for torrent download storage folder.
+      # Default: '' (uses general locations.torrent_dl_folder)
+      torrent_dl_folder: ''
+
+    # Upstream API rate limits
+    api:
+      # Maximum concurrent API calls (upstream recommendation: 4-5).
+      # Default: 4
+      concurrent_limit: 4
+
+      # Wait time (in seconds) between API calls to prevent IP bans (upstream recommendation: 5.0+).
+      # Default: 5.5
+      wait_limit: 5.5
+
+    # ExHentai authentication cookies.
+    # Log in to ExHentai in your browser, copy cookies from developer tools, and paste values here.
+    # 'uconfig' is necessary if you use custom display filters on every request.
+    # Archive download on your account must be configured for auto-download / auto-accept.
     cookies:
       ipb_member_id: ''
       ipb_pass_hash: ''
       yay: ''
       uconfig: ''
-# Twitter integration (limited, for some accounts)
-#  twitter:
-#    general:
-#      token: ''
-#      token_secret: ''
-#      consumer_key: ''
-#      consumer_secret: ''
+
+  # FAKKU ('fakku')
+  fakku:
+    general:
+      # Extract gallery posted date from RSS feed entries.
+      # Default: false
+      get_posted_date_from_feed: false
+
+      # Query Wayback Machine (Internet Archive) for historical release dates.
+      # Default: false
+      get_posted_date_from_wayback: false
+
+    # Session cookie for FAKKU. Required for accessing subscription and controversial galleries.
+    cookies:
+      fakku_sid: ''
+
+  # Mugimugi ('mugimugi')
+  mugimugi:
+    general:
+      # Mugimugi API key for metadata lookups.
+      # Default: ''
+      api_key: ''
+
+    wanted:
+      # Text filter automatically assigned to unwanted_title on generated wanted galleries.
+      # Default: ''
+      unwanted_title: ''
+
+      # Regular expression pattern to identify unwanted titles.
+      # Default: ''
+      regexp_unwanted_title: ''
+
+      # Case-insensitive regular expression pattern to identify unwanted titles.
+      # Default: ''
+      regexp_unwanted_title_icase: ''
+
+  # NHentai ('nhentai')
+  nhentai:
+    # Session cookie for NHentai ('sessionid'). Required for authenticated torrent downloads.
+    cookies:
+      sessionid: ''
+
+    locations:
+      # Provider-specific torrent download folder override.
+      # Default: '' (uses general locations.torrent_dl_folder)
+      torrent_dl_folder: ''
+
+  # Chaika.moe ('chaika')
+  chaika:
+    general:
+      # Base URL for the Chaika metadata provider.
+      # Default: 'https://panda.chaika.moe'
+      url: "https://panda.chaika.moe"
+
+      # Metadata lookup endpoint URL.
+      # Default: 'https://panda.chaika.moe'
+      metadata_url: "https://panda.chaika.moe"
+
+      # RSS/Atom feed URL for latest gallery additions.
+      # Default: 'https://panda.chaika.moe/feed/'
+      feed_url: "https://panda.chaika.moe/feed/"
+
+    locations:
+      # Provider-specific archive download folder override.
+      # Default: '' (uses general locations.archive_dl_folder)
+      archive_dl_folder: ''
+
+  # Mega.nz ('mega')
+  mega:
+    general:
+      # Custom path to megatools/megadl binary.
+      # Default: ''
+      megadl_executable_path: ''
+
+      # Executable name for megatools.
+      # Default: megatools
+      megadl_executable_name: megatools
+
+      # Pipe-separated ('|') additional CLI arguments passed to megatools.
+      # Default: ''
+      extra_megadl_arguments: ''
+
+    locations:
+      # Provider-specific archive download folder override.
+      # Default: '' (uses general locations.archive_dl_folder)
+      archive_dl_folder: ''
+
+  # Twitter / X ('twitter')
+  twitter:
+    general:
+      # Twitter OAuth access token.
+      # Default: ''
+      token: ''
+
+      # Twitter OAuth token secret.
+      # Default: ''
+      token_secret: ''
+
+      # Twitter consumer API application key.
+      # Default: ''
+      consumer_key: ''
+
+      # Twitter consumer API application secret.
+      # Default: ''
+      consumer_secret: ''
+
+    wanted:
+      # Mark Twitter-discovered galleries as public.
+      # Default: false
+      add_as_public: false
+
+      # Title filter for unwanted items.
+      # Default: ''
+      unwanted_title: ''
+
+      # Treat unwanted_title as a regular expression.
+      # Default: false
+      regexp_unwanted_title: false
+
+      # Case-insensitive regular expression for unwanted_title.
+      # Default: false
+      regexp_unwanted_title_icase: false
+
+    # List of Twitter screen names (@handles) to crawl and archive.
+    # Default: []
+    enabled_handles: []
+
+  # Nyaa ('nyaa')
+  nyaa:
+    locations:
+      # Provider-specific torrent download folder override.
+      # Default: '' (uses general locations.torrent_dl_folder)
+      torrent_dl_folder: ''
+
+  # Nexus ('nexus')
+  nexus:
+    locations:
+      # Provider-specific archive download folder override.
+      # Default: '' (uses general locations.archive_dl_folder)
+      archive_dl_folder: ''
+
+  # Generic Provider ('generic')
+  generic:
+    locations:
+      # Provider-specific archive download folder override.
+      # Default: ''
+      archive_dl_folder: ''
+
+      # Provider-specific torrent download folder override.
+      # Default: ''
+      torrent_dl_folder: ''
+
+  # Irodori ('irodori')
+  irodori:
+    general:
+      # Politeness wait timer (in seconds) between requests.
+      wait_timer: 6
+      # Outbound HTTP timeout (in seconds).
+      timeout_timer: 25
+
+  # J18 ('j18')
+  j18:
+    general:
+      wait_timer: 6
+      timeout_timer: 25
+
+  # 2D Market ('twodmarket')
+  twodmarket:
+    general:
+      wait_timer: 6
+      timeout_timer: 25
+
+  # Wani Magazine ('wanimagazine')
+  wanimagazine:
+    general:
+      wait_timer: 6
+      timeout_timer: 25

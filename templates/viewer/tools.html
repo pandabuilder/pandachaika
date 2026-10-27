@@ -112,8 +112,7 @@
       </div>
       <div class="list-group col-lg-3 col-md-4 col-sm-6 col-xs-12">
         <div class="list-group-item active">Settings file</div>
-        <a class="list-group-item" href="{% url 'viewer:tools-id' 'modify_settings' %}">Modify settings file for crawler</a>
-        <a class="list-group-item" href="{% url 'viewer:tools-id' 'modify_settings_editor' %}">Modify settings file for crawler (editor)</a>
+        <a class="list-group-item" href="{% url 'viewer:tools-id' 'modify_settings_editor' %}">Modify settings file for crawler</a>
         <a class="list-group-item" href="{% url 'viewer:tools-id' 'reload_settings' %}">Reload settings file for crawler</a>
       </div>
       <div class="list-group col-lg-3 col-md-4 col-sm-6 col-xs-12">
@@ -141,22 +140,5 @@
       </div>
 
     </div>
-  {% endif %}
-  {% if tool == "modify_settings" %}
-    <form action="{% url 'viewer:tools-id' 'modify_settings' %}" method="POST">{% csrf_token %}
-      <div class="col-md-1">
-        <div class="page-line" id="update">
-          <button type="submit" class="btn btn-light">Commit settings</button>
-        </div>
-      </div>
-      <div class="col-md-8">
-
-        <div class="page-line">
-          <label for="settings_file"></label>
-          <textarea name="settings_file" id="settings_file" rows="50" cols="200">{{ settings_text }}</textarea>
-        </div>
-
-      </div>
-    </form>
   {% endif %}
 {% endblock %}

@@ -17,7 +17,7 @@ It also includes a JSON API and a UserScript for panda, that allows you to queue
 
 Note: For now it's designed to generate and match .zip files, doesn't work with unpacked galleries.
 
-Note 2: SQLite as a backend is no longer supported, either mysql or postgresql must be used.
+Note 2: SQLite and MySQL are unsupported; PostgreSQL (e.g. 16/17) must be used.
 
 Requirements
 ---------------------
@@ -27,10 +27,6 @@ Know how to run a Python program and how to install packages.
 Python [3.12, 3.13, 3.14] are the tested versions, it won't work on Python 2.
 
 See requirements.txt.
-
-You can configure the requirements, and remove the modules you aren't going to use (MySQL, rarfile, etc.)
-
-The [mysqlclient](https://github.com/PyMySQL/mysqlclient-python) python package requires some headers and libraries, check their documentation.
 
 How to run
 ---------------------

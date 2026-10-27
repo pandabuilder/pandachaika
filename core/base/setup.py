@@ -98,188 +98,35 @@ class ConfigFileError(Exception):
     pass
 
 
-def _parse_bool(val: Any) -> bool:
-    if isinstance(val, str):
-        return val.lower() in ("true", "1", "t", "yes", "y")
-    return bool(val)
-
-
-@dataclass
-class BaseConfigSection:
-    def update_from_dict(self, data: dict[str, Any]) -> None:
-        if not isinstance(data, dict):
-            return
-        for key, val in data.items():
-            if hasattr(self, key):
-                if val is None:
-                    continue
-                current = getattr(self, key)
-                if isinstance(current, bool):
-                    setattr(self, key, _parse_bool(val))
-                elif isinstance(current, int) and not isinstance(current, bool):
-                    try:
-                        setattr(self, key, int(val))
-                    except (ValueError, TypeError):
-                        pass
-                elif isinstance(current, float):
-                    try:
-                        setattr(self, key, float(val))
-                    except (ValueError, TypeError):
-                        pass
-                elif isinstance(current, list) and isinstance(val, (list, tuple)):
-                    setattr(self, key, list(val))
-                elif isinstance(current, str):
-                    setattr(self, key, str(val))
-                else:
-                    setattr(self, key, val)
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> typing.Self:
-        instance = cls()
-        instance.update_from_dict(data)
-        return instance
-
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
-
-
-@dataclass
-class MonitoredLinksSettings(BaseConfigSection):
-    enable: bool = False
-
-
-@dataclass
-class BacklogSearchSettings(BaseConfigSection):
-    enable: bool = False
-    urls: list[dict[str, str]] = field(default_factory=list)
-
-
-@dataclass
-class AutoWantedSettings(BaseConfigSection):
-    enable: bool = False
-    startup: bool = False
-    cycle_timer: float = 0.0
-    providers: list[str] = field(default_factory=list)
-    unwanted_title: str = ""
-    regexp_unwanted_title: bool = False
-    regexp_unwanted_title_icase: bool = False
-
-
-@dataclass
-class AutoUpdaterSettings(BaseConfigSection):
-    enable: bool = False
-    startup: bool = False
-    cycle_timer: float = 0.0
-    buffer_back: int = 0
-    buffer_after: int = 0
-    providers: list[str] = field(default_factory=list)
-
-
-@dataclass
-class PushoverSettings(BaseConfigSection):
-    enable: bool = False
-    user_key: str = ""
-    token: str = ""
-    device: str = ""
-    sound: str = ""
-
-
-@dataclass
-class GalleryDLSettings(BaseConfigSection):
-    executable_name: str = "gallery-dl"
-    executable_path: str = ""
-    config_file: str = ""
-    extra_arguments: str = ""
-
-
-@dataclass
-class CloningImageToolSettings(BaseConfigSection):
-    enable: bool = False
-    name: str = ""
-    executable_path: str = ""
-    description: str = ""
-    file_filters: list[str] = field(default_factory=list)
-    extra_arguments: list[str] = field(default_factory=list)
-
-
-@dataclass
-class MailSettings(BaseConfigSection):
-    enable: bool = False
-    mailhost: str = ""
-    from_: str = ""
-    to: str = ""
-    credentials: tuple[str, str] | None = None
-    username: str = ""
-    password: str = ""
-    subject: str = "CherryPy Error"
-
-    def update_from_dict(self, data: dict[str, Any]) -> None:
-        BaseConfigSection.update_from_dict(self, data)
-        if "from" in data:
-            self.from_ = str(data["from"])
-        if "username" in data and "password" in data:
-            self.credentials = (str(data["username"]), str(data["password"]))
-            self.username = str(data["username"])
-            self.password = str(data["password"])
-
-
-@dataclass
-class ElasticSearchSettings(BaseConfigSection):
-    enable: bool = False
-    enable_match: bool = False
-    url: str = "http://127.0.0.1:9200/"
-    max_result_window: int = 10000
-    auto_refresh: bool = False
-    auto_refresh_gallery: bool = False
-    index_name: str = "viewer"
-    gallery_index_name: str = "viewer_gallery"
-    match_index_name: str = "viewer_match"
-    only_index_public: bool = False
-    timeout: int = 20
-
-
-@dataclass
-class WebServerSettings(BaseConfigSection):
-    bind_address: str = "127.0.0.1"
-    bind_port: int = 8090
-    enable_ssl: bool = False
-    ssl_certificate: str = ""
-    ssl_private_key: str = ""
-    write_access_log: bool = False
-    log_to_screen: bool = True
-    socket_file: str | None = None
-    socket_queue_size: int = 5
-    thread_pool: int = 10
-    backend: str = "gunicorn"
-    workers: int = 4
-    threads: int = 1
-    timeout: int = 60
-
-    def update_from_dict(self, data: dict[str, Any]) -> None:
-        BaseConfigSection.update_from_dict(self, data)
-        backend = data.get("backend") or data.get("engine") or data.get("type")
-        if backend:
-            self.backend = str(backend).lower()
-
-
-@dataclass
-class UrlSettings(BaseConfigSection):
-    behind_proxy: bool = False
-    enable_public_submit: bool = False
-    enable_public_stats: bool = False
-    enable_public_marks: bool = False
-    public_mark_reasons: list[str] = field(default_factory=list)
-    viewer_main_url: str = ""
-    media_url: str = "/media/"
-    static_url: str = "/static/"
-    external_media_server: str = ""
-    main_webserver_url: str = ""
-    external_as_main_download: bool = False
-    elasticsearch_as_main_urls: bool = False
-    elasticsearch_archive_url: str = "es-index"
-    elasticsearch_gallery_url: str = "es-gallery-index"
-    cors_allowed_origins: list[str] = field(default_factory=list)
-    cors_allow_all_origins: bool = False
+from core.base.config_models import (
+    AllowedSettings,
+    ArchiveDownloadQueueSettings,
+    AutoUpdaterSettings,
+    AutoWantedSettings,
+    BacklogSearchSettings,
+    BaseConfigModel,
+    BaseConfigSection,
+    CloningImageToolSettings,
+    DatabaseSettings,
+    ElasticSearchSettings,
+    FtpsSettings,
+    GalleryDLSettings,
+    GeneralSettings,
+    LocationsSettings,
+    MailSettings,
+    MatchParamsSettings,
+    MonitoredLinksSettings,
+    PandaGalleryConfig,
+    PushoverSettings,
+    RemoteSiteSettings,
+    TorrentSettings,
+    UrlSettings,
+    WebServerSettings,
+    _parse_bool,
+    generate_default_yaml_content,
+    get_config_schema,
+    save_default_yaml_file,
+)
 
 
 class Settings:
@@ -382,9 +229,18 @@ class Settings:
         self.archive_download_queue_cycle_timer: float = 2.0
         self.parallel_archive_downloaders: int = 1
 
+        self.general_model = GeneralSettings()
+        self.allowed_model = AllowedSettings()
+        self.locations_model = LocationsSettings()
+        self.database_model = DatabaseSettings()
+        self.torrent_model = TorrentSettings()
+        self.ftps_model = FtpsSettings()
+        self.match_params_model = MatchParamsSettings()
+        self.remote_site_model = RemoteSiteSettings()
+
         self.db_engine = "postgresql"
-        self.database: dict[str, Any] = {}
-        self.torrent: dict[str, Any] = {}
+        self.database: dict[str, Any] = self.database_model.to_dict()
+        self.torrent: dict[str, Any] = self.torrent_model.to_dict()
         self.config: dict[str, Any] = {}
         self.webserver = WebServerSettings()
         self.urls = UrlSettings()
@@ -433,7 +289,7 @@ class Settings:
 
         self.remote_site: dict[str, Any] = {}
 
-        self.wait_timer = 6
+        self.wait_timer: float = 6.0
         self.timeout_timer = 25
 
         self.fatal = 0
@@ -471,40 +327,22 @@ class Settings:
     def load_from_environment(self):
 
         if 'DATABASE_ENGINE' in os.environ:
-            database_engine = os.environ['DATABASE_ENGINE']
-            self.db_engine = database_engine
-        else:
-            database_engine = self.db_engine
+            self.db_engine = os.environ['DATABASE_ENGINE']
 
         if 'DATABASE_NAME' in os.environ:
-            if database_engine == 'postgresql':
-                self.database['postgresql_name'] = os.environ['DATABASE_NAME']
-            else:
-                self.database['mysql_name'] = os.environ['DATABASE_NAME']
+            self.database['postgresql_name'] = os.environ['DATABASE_NAME']
 
         if 'DATABASE_USERNAME' in os.environ:
-            if database_engine == 'postgresql':
-                self.database['postgresql_user'] = os.environ['DATABASE_USERNAME']
-            else:
-                self.database['mysql_user'] = os.environ['DATABASE_USERNAME']
+            self.database['postgresql_user'] = os.environ['DATABASE_USERNAME']
 
         if 'DATABASE_PASSWORD' in os.environ:
-            if database_engine == 'postgresql':
-                self.database['postgresql_password'] = os.environ['DATABASE_PASSWORD']
-            else:
-                self.database['mysql_password'] = os.environ['DATABASE_PASSWORD']
+            self.database['postgresql_password'] = os.environ['DATABASE_PASSWORD']
 
         if 'DATABASE_HOST' in os.environ:
-            if database_engine == 'postgresql':
-                self.database['postgresql_host'] = os.environ['DATABASE_HOST']
-            else:
-                self.database['mysql_host'] = os.environ['DATABASE_HOST']
+            self.database['postgresql_host'] = os.environ['DATABASE_HOST']
 
         if 'DATABASE_PORT' in os.environ:
-            if database_engine == 'postgresql':
-                self.database['postgresql_port'] = os.environ['DATABASE_PORT']
-            else:
-                self.database['mysql_port'] = os.environ['DATABASE_PORT']
+            self.database['postgresql_port'] = os.environ['DATABASE_PORT']
 
         if 'DEBUG' in os.environ:
             self.django_debug_mode = os.getenv("DEBUG", "False").lower() in ('true', '1', 't')
@@ -763,147 +601,94 @@ class Settings:
         cls.archive_manage_entry_model = archive_manage_entry_model
         cls.download_event_model = download_event_model
 
+    def to_pydantic(self) -> PandaGalleryConfig:
+        """Convert current runtime Settings into a fully validated PandaGalleryConfig model,
+
+        incorporating any environment variable overrides.
+        """
+        base_config: dict[str, Any] = dict(self.config) if self.config else {}
+        if hasattr(self, "database") and isinstance(self.database, dict):
+            db_copy = dict(base_config.get("database", {}))
+            db_copy.update(self.database)
+            base_config["database"] = db_copy
+        if hasattr(self, "db_engine") and self.db_engine:
+            gen_copy = dict(base_config.get("general", {}))
+            gen_copy["db_engine"] = self.db_engine
+            base_config["general"] = gen_copy
+        return PandaGalleryConfig.model_validate(base_config)
+
+    @classmethod
+    def get_config_schema(cls) -> dict[str, Any]:
+        """Return the JSON Schema dictionary defining configuration structure and metadata."""
+        return get_config_schema()
+
     def dict_to_settings(self, config: DataDict) -> None:
         if "requests_headers" in config and config["requests_headers"] is not None:
             self.requests_headers.update(config["requests_headers"])
-        if "allowed" in config:
-            if "replace_metadata" in config["allowed"]:
-                self.replace_metadata = config["allowed"]["replace_metadata"]
-            if "redownload" in config["allowed"]:
-                self.redownload = config["allowed"]["redownload"]
-            if "auto_download_nested" in config["allowed"]:
-                self.auto_download_nested = config["allowed"]["auto_download_nested"]
-            if "retry_failed" in config["allowed"]:
-                self.retry_failed = config["allowed"]["retry_failed"]
-            if "internal_matches_for_non_matches" in config["allowed"]:
-                self.internal_matches_for_non_matches = config["allowed"]["internal_matches_for_non_matches"]
-            if "convert_others_to_zip" in config["allowed"]:
-                self.convert_others_to_zip = config["allowed"]["convert_others_to_zip"]
-            if "non_current_links_as_deleted" in config["allowed"]:
-                self.non_current_links_as_deleted = config["allowed"]["non_current_links_as_deleted"]
-            if "requeue_failed_downloads" in config["allowed"]:
-                self.requeue_failed_downloads = _parse_bool(config["allowed"]["requeue_failed_downloads"])
-            if "requeue_failed" in config["allowed"]:
-                self.requeue_failed_downloads = _parse_bool(config["allowed"]["requeue_failed"])
-            if "failed_download_downloader" in config["allowed"]:
-                self.failed_download_downloader = config["allowed"]["failed_download_downloader"]
-                self.requeue_downloader = self.failed_download_downloader
-            if "requeue_downloader" in config["allowed"]:
-                self.requeue_downloader = config["allowed"]["requeue_downloader"]
-                self.failed_download_downloader = self.requeue_downloader
-        if "general" in config:
-            if "non_current_links_as_deleted" in config["general"]:
-                self.non_current_links_as_deleted = config["general"]["non_current_links_as_deleted"]
-            if "recycle_failed_checks_downloads" in config["general"]:
-                self.recycle_failed_checks_downloads = config["general"]["recycle_failed_checks_downloads"]
-            if "requeue_failed_downloads" in config["general"]:
-                self.requeue_failed_downloads = _parse_bool(config["general"]["requeue_failed_downloads"])
-            if "requeue_failed" in config["general"]:
-                self.requeue_failed_downloads = _parse_bool(config["general"]["requeue_failed"])
-            if "failed_download_downloader" in config["general"]:
-                self.failed_download_downloader = config["general"]["failed_download_downloader"]
-                self.requeue_downloader = self.failed_download_downloader
-            if "requeue_downloader" in config["general"]:
-                self.requeue_downloader = config["general"]["requeue_downloader"]
-                self.failed_download_downloader = self.requeue_downloader
-            if "max_torrent_lifespan" in config["general"]:
-                self.max_torrent_lifespan = config["general"]["max_torrent_lifespan"]
-            if "max_torrent_lifespan_type" in config["general"]:
-                self.max_torrent_lifespan_type = config["general"]["max_torrent_lifespan_type"]
-            if "filename_filter" in config["general"]:
-                self.filename_filter = config["general"]["filename_filter"]
-            if "db_engine" in config["general"]:
-                self.db_engine = config["general"]["db_engine"]
-            if "django_secret_key" in config["general"]:
-                self.django_secret_key = config["general"]["django_secret_key"]
-            if "django_debug_mode" in config["general"]:
-                self.django_debug_mode = config["general"]["django_debug_mode"]
-            if "download_handler" in config["general"]:
-                self.download_handler = config["general"]["download_handler"]
-            if "download_handler_torrent" in config["general"]:
-                self.download_handler_torrent = config["general"]["download_handler_torrent"]
-            if "download_handler_hath" in config["general"]:
-                self.download_handler_hath = config["general"]["download_handler_hath"]
-            if "download_ftp_torrent" in config["general"]:
-                self.download_ftp_torrent = config["general"]["download_ftp_torrent"]
-            if "download_ftp_hath" in config["general"]:
-                self.download_ftp_hath = config["general"]["download_ftp_hath"]
-            if "temp_directory_path" in config["general"]:
-                self.temp_directory_path = config["general"]["temp_directory_path"]
-            if "wait_timer" in config["general"]:
-                self.wait_timer = config["general"]["wait_timer"]
-            if "timed_downloader_startup" in config["general"]:
-                self.timed_downloader_startup = config["general"]["timed_downloader_startup"]
-            if "download_progress_checker_startup" in config["general"]:
-                self.download_progress_checker_startup = _parse_bool(config["general"]["download_progress_checker_startup"])
-            if "download_progress_checker_cycle_timer" in config["general"]:
-                self.download_progress_checker_cycle_timer = config["general"]["download_progress_checker_cycle_timer"]
-            if "timed_downloader_cycle_timer" in config["general"]:
-                self.timed_downloader_cycle_timer = config["general"]["timed_downloader_cycle_timer"]
-            if "parallel_post_downloaders" in config["general"]:
-                self.parallel_post_downloaders = config["general"]["parallel_post_downloaders"]
-            if "queue_archive_downloads" in config["general"]:
-                self.queue_archive_downloads = bool(config["general"]["queue_archive_downloads"])
-            if "archive_download_queue_startup" in config["general"]:
-                self.archive_download_queue_startup = bool(config["general"]["archive_download_queue_startup"])
-            if "archive_download_queue_cycle_timer" in config["general"]:
-                self.archive_download_queue_cycle_timer = float(
-                    config["general"]["archive_download_queue_cycle_timer"]
-                )
-            if "parallel_archive_downloaders" in config["general"]:
-                self.parallel_archive_downloaders = int(config["general"]["parallel_archive_downloaders"])
-            if "cherrypy_auto_restart" in config["general"]:
-                self.cherrypy_auto_restart = config["general"]["cherrypy_auto_restart"]
-            if "discard_tags" in config["general"]:
-                self.banned_tags = config["general"]["discard_tags"]
-            if "banned_tags" in config["general"]:
-                self.banned_tags = config["general"]["banned_tags"]
-            if "banned_uploaders" in config["general"]:
-                self.banned_uploaders = config["general"]["banned_uploaders"]
-            if "banned_search_queries" in config["general"]:
-                self.banned_search_queries = config["general"]["banned_search_queries"]
-            if "add_as_public" in config["general"]:
-                self.add_as_public = config["general"]["add_as_public"]
-            if "timeout_timer" in config["general"]:
-                self.timeout_timer = config["general"]["timeout_timer"]
-            if "mark_similar_new_archives" in config["general"]:
-                self.mark_similar_new_archives = config["general"]["mark_similar_new_archives"]
-            if "auto_match_phash_tags_archives" in config["general"]:
-                self.auto_match_phash_tags_archives = config["general"]["auto_match_phash_tags_archives"]
-            if "auto_hash_images" in config["general"]:
-                self.auto_hash_images = config["general"]["auto_hash_images"]
-            if "auto_phash_images" in config["general"]:
-                self.auto_phash_images = config["general"]["auto_phash_images"]
-            if "process_pool_workers" in config["general"]:
-                self.process_pool_workers = int(config["general"]["process_pool_workers"])
-            if "auto_match_wanted_images" in config["general"]:
-                self.auto_match_wanted_images = config["general"]["auto_match_wanted_images"]
-            if "default_wanted_publisher" in config["general"]:
-                self.default_wanted_publisher = config["general"]["default_wanted_publisher"]
-            if "default_wanted_categories" in config["general"]:
-                self.default_wanted_categories = config["general"]["default_wanted_categories"]
-            if "default_wanted_providers" in config["general"]:
-                self.default_wanted_providers = config["general"]["default_wanted_providers"]
-            if "recheck_wanted_on_update" in config["general"]:
-                self.recheck_wanted_on_update = config["general"]["recheck_wanted_on_update"]
-            if "force_log_level" in config["general"]:
-                self.log_level = config["general"]["force_log_level"]
-            if "disable_sql_log" in config["general"]:
-                self.disable_sql_log = config["general"]["disable_sql_log"]
-            if "vertical_image_max_width" in config["general"]:
-                self.vertical_image_max_width = config["general"]["vertical_image_max_width"]
-            if "horizontal_image_max_width" in config["general"]:
-                self.horizontal_image_max_width = config["general"]["horizontal_image_max_width"]
+        if "allowed" in config and isinstance(config["allowed"], dict):
+            self.allowed_model.update_from_dict(config["allowed"])
+            self.replace_metadata = self.allowed_model.replace_metadata
+            self.redownload = self.allowed_model.redownload
+            self.auto_download_nested = self.allowed_model.auto_download_nested
+            self.retry_failed = self.allowed_model.retry_failed
+            self.internal_matches_for_non_matches = self.allowed_model.internal_matches_for_non_matches
+            self.convert_others_to_zip = self.allowed_model.convert_others_to_zip
+            self.non_current_links_as_deleted = self.allowed_model.non_current_links_as_deleted
+            self.requeue_failed_downloads = self.allowed_model.requeue_failed_downloads
+            self.failed_download_downloader = self.allowed_model.failed_download_downloader
+            self.requeue_downloader = self.failed_download_downloader
 
-        if "cloning_image_tool" in config and isinstance(config["cloning_image_tool"], dict):
-            self.cloning_image_tool.update_from_dict(config["cloning_image_tool"])
+        if "general" in config and isinstance(config["general"], dict):
+            self.general_model.update_from_dict(config["general"])
+            self.db_engine = self.general_model.db_engine
+            self.filename_filter = self.general_model.filename_filter
+            self.django_secret_key = self.general_model.django_secret_key
+            self.django_debug_mode = self.general_model.django_debug_mode
+            self.download_handler = self.general_model.download_handler
+            self.download_handler_torrent = self.general_model.download_handler_torrent
+            self.download_handler_hath = self.general_model.download_handler_hath
+            self.download_ftp_torrent = self.general_model.download_ftp_torrent
+            self.download_ftp_hath = self.general_model.download_ftp_hath
+            self.temp_directory_path = self.general_model.temp_directory_path
+            self.wait_timer = self.general_model.wait_timer
+            self.timeout_timer = self.general_model.timeout_timer
+            self.timed_downloader_startup = self.general_model.timed_downloader_startup
+            self.timed_downloader_cycle_timer = self.general_model.timed_downloader_cycle_timer
+            self.parallel_post_downloaders = self.general_model.parallel_post_downloaders
+            self.parallel_archive_downloaders = self.general_model.parallel_archive_downloaders
+            self.queue_archive_downloads = self.general_model.queue_archive_downloads
+            self.archive_download_queue_startup = self.general_model.archive_download_queue_startup
+            self.archive_download_queue_cycle_timer = self.general_model.archive_download_queue_cycle_timer
+            self.download_progress_checker_startup = self.general_model.download_progress_checker_startup
+            self.download_progress_checker_cycle_timer = self.general_model.download_progress_checker_cycle_timer
+            self.cherrypy_auto_restart = self.general_model.cherrypy_auto_restart
+            self.banned_tags = list(self.general_model.banned_tags)
+            self.banned_uploaders = list(self.general_model.banned_uploaders)
+            self.banned_search_queries = list(self.general_model.banned_search_queries)
+            self.add_as_public = self.general_model.add_as_public
+            self.mark_similar_new_archives = self.general_model.mark_similar_new_archives
+            self.auto_hash_images = self.general_model.auto_hash_images
+            self.auto_phash_images = self.general_model.auto_phash_images
+            self.process_pool_workers = self.general_model.process_pool_workers
+            self.auto_match_wanted_images = self.general_model.auto_match_wanted_images
+            self.auto_match_phash_tags_archives = self.general_model.auto_match_phash_tags_archives
+            self.default_wanted_publisher = self.general_model.default_wanted_publisher
+            self.default_wanted_categories = list(self.general_model.default_wanted_categories)
+            self.default_wanted_providers = list(self.general_model.default_wanted_providers)
+            self.recheck_wanted_on_update = self.general_model.recheck_wanted_on_update
+            self.vertical_image_max_width = self.general_model.vertical_image_max_width
+            self.horizontal_image_max_width = self.general_model.horizontal_image_max_width
+            self.log_level = self.general_model.force_log_level
+            self.disable_sql_log = self.general_model.disable_sql_log
+            self.max_torrent_lifespan = self.general_model.max_torrent_lifespan
+            self.max_torrent_lifespan_type = self.general_model.max_torrent_lifespan_type
+            self.non_current_links_as_deleted = self.general_model.non_current_links_as_deleted
+            self.recycle_failed_checks_downloads = self.general_model.recycle_failed_checks_downloads
+            self.requeue_failed_downloads = self.general_model.requeue_failed_downloads
+            self.failed_download_downloader = self.general_model.failed_download_downloader
+            self.requeue_downloader = self.failed_download_downloader
 
-        if "experimental" in config and config["experimental"] is not None:
-            self.experimental.update(config["experimental"])
-        if "matchers" in config:
-            self.matchers = config["matchers"]
-        if "downloaders" in config:
-            self.downloaders = config["downloaders"]
+        # Global-level overrides for requeue
         if "requeue_failed_downloads" in config:
             self.requeue_failed_downloads = _parse_bool(config["requeue_failed_downloads"])
         if "requeue_failed" in config:
@@ -914,6 +699,16 @@ class Settings:
         if "requeue_downloader" in config:
             self.requeue_downloader = config["requeue_downloader"]
             self.failed_download_downloader = self.requeue_downloader
+
+        if "cloning_image_tool" in config and isinstance(config["cloning_image_tool"], dict):
+            self.cloning_image_tool.update_from_dict(config["cloning_image_tool"])
+
+        if "experimental" in config and config["experimental"] is not None:
+            self.experimental.update(config["experimental"])
+        if "matchers" in config:
+            self.matchers = config["matchers"]
+        if "downloaders" in config:
+            self.downloaders = config["downloaders"]
         if "custom_downloaders" in config:
             self.parse_custom_downloaders(config["custom_downloaders"])
         if "archive_download_queue" in config and isinstance(config["archive_download_queue"], dict):
@@ -943,34 +738,38 @@ class Settings:
             self.gallery_dl.update_from_dict(config["gallery_dl"])
         if "autoupdater" in config and isinstance(config["autoupdater"], dict):
             self.autoupdater.update_from_dict(config["autoupdater"])
-        if "match_params" in config:
-            if "rematch_file" in config["match_params"]:
-                self.rematch_file = config["match_params"]["rematch_file"]
-            if "rematch_file_list" in config["match_params"]:
-                self.rematch_file_list = config["match_params"]["rematch_file_list"]
-            if "rehash_files" in config["match_params"]:
-                self.rehash_files = config["match_params"]["rehash_files"]
-            if "copy_match_file" in config["match_params"]:
-                self.copy_match_file = config["match_params"]["copy_match_file"]
-        if "locations" in config:
-            if "media_root" in config["locations"]:
-                self.MEDIA_ROOT = config["locations"]["media_root"]
-            if "static_root" in config["locations"]:
-                self.STATIC_ROOT = config["locations"]["static_root"]
-            if "archive_dl_folder" in config["locations"]:
-                self.archive_dl_folder = config["locations"]["archive_dl_folder"]
-            if "torrent_dl_folder" in config["locations"]:
-                self.torrent_dl_folder = config["locations"]["torrent_dl_folder"]
-            if "log_location" in config["locations"]:
-                self.log_location = config["locations"]["log_location"]
+        if "match_params" in config and isinstance(config["match_params"], dict):
+            self.match_params_model.update_from_dict(config["match_params"])
+            self.rematch_file = self.match_params_model.rematch_file
+            self.rematch_file_list = self.match_params_model.rematch_file_list
+            self.rehash_files = self.match_params_model.rehash_files
+            self.copy_match_file = self.match_params_model.copy_match_file
+
+        if "locations" in config and isinstance(config["locations"], dict):
+            self.locations_model.update_from_dict(config["locations"])
+            self.MEDIA_ROOT = self.locations_model.media_root
+            self.STATIC_ROOT = self.locations_model.static_root
+            self.archive_dl_folder = self.locations_model.archive_dl_folder
+            self.torrent_dl_folder = self.locations_model.torrent_dl_folder
+            if self.locations_model.log_location:
+                self.log_location = self.locations_model.log_location
             else:
                 self.log_location = os.path.join(self.default_dir, "viewer.log")
-        if "database" in config:
-            self.database = config["database"]
-        if "torrent" in config:
-            self.torrent = config["torrent"]
-        if "ftps" in config:
-            self.ftps = config["ftps"]
+
+        if "database" in config and isinstance(config["database"], dict):
+            self.database_model.update_from_dict(config["database"])
+            self.database = self.database_model.to_dict()
+
+        if "torrent" in config and isinstance(config["torrent"], dict):
+            self.torrent_model.update_from_dict(config["torrent"])
+            self.torrent = self.torrent_model.to_dict()
+            if self.torrent_model.pass_:
+                self.torrent["pass"] = self.torrent_model.pass_
+
+        if "ftps" in config and isinstance(config["ftps"], dict):
+            self.ftps_model.update_from_dict(config["ftps"])
+            self.ftps = self.ftps_model.to_dict()
+
         if "ftp_configs" in config:
             self.ftp_configs = config["ftp_configs"]
         if self.download_ftp_torrent not in self.ftp_configs:
@@ -981,8 +780,9 @@ class Settings:
             self.webserver.update_from_dict(config["webserver"])
         if "urls" in config and isinstance(config["urls"], dict):
             self.urls.update_from_dict(config["urls"])
-        if "remote_site" in config:
-            self.remote_site = config["remote_site"]
+        if "remote_site" in config and isinstance(config["remote_site"], dict):
+            self.remote_site_model.update_from_dict(config["remote_site"])
+            self.remote_site = self.remote_site_model.to_dict()
         if "monitored_links" in config and isinstance(config["monitored_links"], dict):
             self.monitored_links.update_from_dict(config["monitored_links"])
 

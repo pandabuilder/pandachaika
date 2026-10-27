@@ -21,6 +21,140 @@ crawler_settings = settings.CRAWLER_SETTINGS
 logger = logging.getLogger(__name__)
 
 
+def _find_yaml_node_mark(root_node: Any, loc: tuple[str | int, ...]) -> tuple[int, int]:
+    """Locate the starting line and column (0-indexed) of a field path in a PyYAML AST node."""
+    if not root_node:
+        return (0, 0)
+    curr = root_node
+    target_node = root_node
+    for part in loc:
+        if isinstance(curr, yaml.MappingNode):
+            found = False
+            for k_node, v_node in curr.value:
+                if k_node.value == str(part):
+                    target_node = k_node
+                    curr = v_node
+                    found = True
+                    break
+            if not found:
+                break
+        elif isinstance(curr, yaml.SequenceNode):
+            try:
+                idx = int(part)
+                if 0 <= idx < len(curr.value):
+                    curr = curr.value[idx]
+                    target_node = curr
+                else:
+                    break
+            except (ValueError, IndexError):
+                break
+        else:
+            break
+    if target_node and hasattr(target_node, "start_mark"):
+        return (target_node.start_mark.line, target_node.start_mark.column)
+    return (0, 0)
+
+
+def validate_yaml_settings(settings_text: str) -> dict[str, Any]:
+    """Validate settings YAML text against PandaGalleryConfig.
+
+    Returns a dictionary formatted for Ace.js annotations and detailed error reporting:
+    {
+        'valid': bool,
+        'annotations': [{'row': int, 'column': int, 'text': str, 'type': 'error'}],
+        'errors': [{'loc': str, 'msg': str, 'row': int, 'col': int}],
+        'message': str,
+    }
+    """
+    from pydantic import ValidationError
+    from core.base.config_models import PandaGalleryConfig
+
+    if not settings_text.strip():
+        return {
+            "valid": True,
+            "annotations": [],
+            "errors": [],
+            "message": "Configuration is empty (defaults will be used)",
+        }
+
+    # 1. Parse YAML syntax
+    try:
+        parsed_data = yaml.safe_load(settings_text)
+        node_tree = yaml.compose(settings_text)
+    except yaml.MarkedYAMLError as exc:
+        line = exc.problem_mark.line if exc.problem_mark else 0
+        col = exc.problem_mark.column if exc.problem_mark else 0
+        msg = f"YAML Syntax Error: {exc.problem or exc}"
+        return {
+            "valid": False,
+            "annotations": [{"row": line, "column": col, "text": msg, "type": "error"}],
+            "errors": [{"loc": "syntax", "msg": msg, "row": line, "col": col}],
+            "message": msg,
+        }
+    except yaml.YAMLError as exc:
+        msg = f"YAML Error: {exc}"
+        return {
+            "valid": False,
+            "annotations": [{"row": 0, "column": 0, "text": msg, "type": "error"}],
+            "errors": [{"loc": "syntax", "msg": msg, "row": 0, "col": 0}],
+            "message": msg,
+        }
+
+    if parsed_data is None:
+        return {
+            "valid": True,
+            "annotations": [],
+            "errors": [],
+            "message": "Configuration is empty (defaults will be used)",
+        }
+
+    if not isinstance(parsed_data, dict):
+        msg = "Configuration root must be a YAML mapping/dictionary"
+        return {
+            "valid": False,
+            "annotations": [{"row": 0, "column": 0, "text": msg, "type": "error"}],
+            "errors": [{"loc": "root", "msg": msg, "row": 0, "col": 0}],
+            "message": msg,
+        }
+
+    # 2. Validate against Pydantic schema
+    try:
+        PandaGalleryConfig.model_validate(parsed_data)
+    except ValidationError as val_err:
+        annotations = []
+        errors = []
+        for err in val_err.errors():
+            loc_tuple = err["loc"]
+            line, col = _find_yaml_node_mark(node_tree, loc_tuple)
+            loc_str = " -> ".join(str(p) for p in loc_tuple)
+            err_msg = f"{loc_str}: {err['msg']}"
+            annotations.append({
+                "row": line,
+                "column": col,
+                "text": err_msg,
+                "type": "error",
+            })
+            errors.append({
+                "loc": loc_str,
+                "msg": err["msg"],
+                "row": line,
+                "col": col,
+            })
+        return {
+            "valid": False,
+            "annotations": annotations,
+            "errors": errors,
+            "message": f"Validation failed with {len(errors)} error(s)",
+        }
+
+    return {
+        "valid": True,
+        "annotations": [],
+        "errors": [],
+        "message": "Configuration schema is valid",
+    }
+
+
 # Admin related APIs
 def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpResponse:
     """Tools listing."""
@@ -221,41 +355,80 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
             response["error"] = "This OS does not support signal SIGUSR2"
             return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status=401)
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
+    elif tool == "validate_settings":
+        if request.method != "POST":
+            response["error"] = "POST required"
+            return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status=405)
+        try:
+            data = json.loads(request.body.decode("utf-8")) if request.body else {}
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            response["error"] = "Invalid JSON body"
+            return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status=400)
+        settings_text = data.get("data", "")
+        val_result = validate_yaml_settings(settings_text)
+        return HttpResponse(json.dumps(val_result), content_type="application/json; charset=utf-8")
     elif tool == "settings":
         if request.method == "POST":
             if not request.body:
                 response["error"] = "Empty body"
                 return HttpResponse(
-                    json.dumps(response), content_type="application/json; charset=utf-8", status=401
+                    json.dumps(response), content_type="application/json; charset=utf-8", status=400
                 )
-            data = json.loads(request.body.decode("utf-8"))
+            try:
+                data = json.loads(request.body.decode("utf-8"))
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                response["error"] = "Invalid JSON body"
+                return HttpResponse(
+                    json.dumps(response), content_type="application/json; charset=utf-8", status=400
+                )
             if "data" not in data:
                 response["error"] = "Missing data"
                 return HttpResponse(
-                    json.dumps(response), content_type="application/json; charset=utf-8", status=401
+                    json.dumps(response), content_type="application/json; charset=utf-8", status=400
                 )
             settings_text = data["data"]
-            if os.path.isfile(os.path.join(crawler_settings.default_dir, "settings.yaml")):
-                with open(os.path.join(crawler_settings.default_dir, "settings.yaml"), "w", encoding="utf-8") as f:
-                    f.write(settings_text)
-                    logger.info("Modified settings file for Panda Backup")
-                    response["message"] = "Modified settings file for Panda Backup"
-                    return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
+            force_save = bool(data.get("force", False))
+            val_result = validate_yaml_settings(settings_text)
+            if not val_result["valid"] and not force_save:
+                response["error"] = val_result["message"]
+                response["validation"] = val_result
+                return HttpResponse(
+                    json.dumps(response), content_type="application/json; charset=utf-8", status=400
+                )
+            settings_path = os.path.join(crawler_settings.default_dir, "settings.yaml")
+            with open(settings_path, "w", encoding="utf-8") as f:
+                f.write(settings_text)
+            logger.info("Modified settings file for Panda Backup")
+            response["message"] = "Modified settings file for Panda Backup"
+            response["validation"] = val_result
+            return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
         else:
-            if os.path.isfile(os.path.join(crawler_settings.default_dir, "settings.yaml")):
-                with open(os.path.join(crawler_settings.default_dir, "settings.yaml"), "r", encoding="utf-8") as f:
+            settings_path = os.path.join(crawler_settings.default_dir, "settings.yaml")
+            if os.path.isfile(settings_path):
+                with open(settings_path, "r", encoding="utf-8") as f:
                     first = f.read(1)
                     if first != "\ufeff":
                         # not a BOM, rewind
                         f.seek(0)
                     settings_text = f.read()
                     response["data"] = settings_text
-                    return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
+            else:
+                response["data"] = ""
+            return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
     elif tool == "reload_settings":
         crawler_settings.load_config_from_file()
         logger.info("Reloaded settings file for Panda Backup")
         response["message"] = "Reloaded settings file for Panda Backup"
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
+    elif tool in ("config_schema", "settings_schema"):
+        from core.base.config_models import get_config_schema
+
+        schema = get_config_schema()
+        return HttpResponse(json.dumps(schema, indent=2), content_type="application/json; charset=utf-8")
+    elif tool == "default_config":
+        from core.base.config_models import generate_default_yaml_content
+
+        return HttpResponse(generate_default_yaml_content(), content_type="text/yaml; charset=utf-8")
     elif tool == "start_timed_dl":
         if crawler_settings.workers.timed_downloader:
             crawler_settings.workers.timed_downloader.start_running(timer=crawler_settings.timed_downloader_cycle_timer)

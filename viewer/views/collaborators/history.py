@@ -337,7 +337,7 @@ def download_history(request: AuthenticatedHttpRequest) -> HttpResponse:
     else:
         form = DownloadHistoryForm(request.GET)
 
-    download_events = DownloadEvent.objects.select_related("archive", "gallery")
+    download_events = DownloadEvent.objects.select_related("archive", "archive__gallery", "gallery")
 
     if form.is_valid():
         data = form.cleaned_data
@@ -350,6 +350,14 @@ def download_history(request: AuthenticatedHttpRequest) -> HttpResponse:
         
         if data.get("method"):
             download_events = download_events.filter(method__icontains=data["method"])
+
+        if data.get("provider"):
+            provider_q = data["provider"].strip()
+            download_events = download_events.filter(
+                Q(provider__icontains=provider_q)
+                | Q(gallery__provider__icontains=provider_q)
+                | Q(archive__gallery__provider__icontains=provider_q)
+            )
         
         status = data.get("status")
         if not status and "status" not in request.GET:
@@ -473,7 +481,7 @@ def download_history(request: AuthenticatedHttpRequest) -> HttpResponse:
                     "id": event.id,
                     "name": event.name,
                     "method": event.method,
-                    "provider": event.provider,
+                    "provider": event.effective_provider,
                     "status": effective_status,
                     "status_display": status_display,
                     "archive": archive_dict,

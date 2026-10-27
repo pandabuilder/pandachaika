@@ -5,6 +5,36 @@
 {% load dict_key %}
 {% load viewer_extras %}
 
+{% block extra_head %}
+<style>
+    .generic-table {
+        --bs-table-color: lightgrey;
+        --bs-table-hover-bg: #354759;
+        --bs-table-hover-color: #ffffff;
+    }
+    .generic-table > tbody > tr:hover > * {
+        --bs-table-color-state: #ffffff !important;
+        --bs-table-bg-state: #354759 !important;
+        color: #ffffff !important;
+    }
+    .generic-table > tbody > tr:hover {
+        background-color: #354759 !important;
+        color: #ffffff !important;
+    }
+    .generic-table > tbody > tr:hover a:not(.badge) {
+        color: #58a6ff !important;
+    }
+    .generic-table > tbody > tr:hover .small,
+    .generic-table > tbody > tr:hover .text-muted,
+    .generic-table > tbody > tr:hover .text-secondary {
+        color: #cbd5e1 !important;
+    }
+    .generic-table > tbody > tr:hover code {
+        color: #93c5fd !important;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
     {% if messages %}
         {% for message in messages %}
@@ -53,17 +83,22 @@
                         {{ edit_form.url }}
                         {% if edit_form.url.errors %}<div class="text-danger small">{{ edit_form.url.errors }}</div>{% endif %}
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <label class="form-label text-dark" for="id_provider"><strong>Provider</strong></label>
                         {{ edit_form.provider }}
                         {% if edit_form.provider.errors %}<div class="text-danger small">{{ edit_form.provider.errors }}</div>{% endif %}
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <label class="form-label text-dark" for="id_frequency"><strong>Frequency</strong> (e.g. 01:00:00)</label>
                         {{ edit_form.frequency }}
                         {% if edit_form.frequency.errors %}<div class="text-danger small">{{ edit_form.frequency.errors }}</div>{% endif %}
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-3">
+                        <label class="form-label text-dark" for="id_priority"><strong>Priority</strong> (default 10)</label>
+                        {{ edit_form.priority }}
+                        {% if edit_form.priority.errors %}<div class="text-danger small">{{ edit_form.priority.errors }}</div>{% endif %}
+                    </div>
+                    <div class="col-md-3">
                         <label class="form-label text-dark" for="id_stop_page"><strong>Stop page</strong> (optional)</label>
                         {{ edit_form.stop_page }}
                         {% if edit_form.stop_page.errors %}<div class="text-danger small">{{ edit_form.stop_page.errors }}</div>{% endif %}
@@ -120,7 +155,10 @@
                     <div class="col-md-2">
                         {{ filter_form.provider }}
                     </div>
-                    <div class="col-md-2">
+                    <div class="col-md-1">
+                        {{ filter_form.priority }}
+                    </div>
+                    <div class="col-md-1">
                         {{ filter_form.enabled }}
                     </div>
                     <div class="col-md-2">
@@ -184,6 +222,7 @@
           <th>URL</th>
           <th>Provider</th>
           <th>Frequency</th>
+          <th>Priority</th>
           <th>Config</th>
           <th>Restriction</th>
           <th title="Stop crawling at page number">Stop page</th>
@@ -220,6 +259,9 @@
             </td>
             <td>
               <code>{{ monitored_link.frequency }}</code>
+            </td>
+            <td>
+              <span class="badge bg-secondary">{{ monitored_link.priority }}</span>
             </td>
             <td>
               {% if monitored_link.enabled %}

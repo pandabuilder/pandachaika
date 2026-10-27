@@ -487,6 +487,12 @@ class DownloadHistoryForm(forms.Form):
         widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "Search by method"}),
     )
 
+    provider = forms.CharField(
+        required=False,
+        label="Provider",
+        widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "Search by provider"}),
+    )
+
     status = forms.ChoiceField(
         choices=STATUS_CHOICES,
         required=False,
@@ -1587,6 +1593,18 @@ GalleryMatchGroupEntryFormSet = inlineformset_factory(
 
 
 class MonitoredLinkCreateOrEditForm(ModelForm):
+    priority = forms.IntegerField(
+        required=False,
+        initial=10,
+        widget=forms.widgets.NumberInput(attrs={"class": "form-control", "placeholder": "10"}),
+        help_text="Queue priority for crawler task (default 10; lower number means higher priority)",
+    )
+
+    def clean_priority(self) -> int:
+        priority = self.cleaned_data.get("priority")
+        if priority is None:
+            return 10
+        return priority
 
     class Meta:
         model = MonitoredLink
@@ -1597,6 +1615,7 @@ class MonitoredLinkCreateOrEditForm(ModelForm):
             "provider",
             "proxy",
             "stop_page",
+            "priority",
             "enabled",
             "auto_start",
             "frequency",
@@ -1610,6 +1629,7 @@ class MonitoredLinkCreateOrEditForm(ModelForm):
             "provider": "Provider associated with this link",
             "proxy": "Proxy to use when querying this URL (e.g. socks5://localhost:9050)",
             "stop_page": "Stop page limit for paginated feeds",
+            "priority": "Queue priority for crawler task (default 10; lower number means higher priority)",
             "enabled": "Whether periodic monitoring is currently enabled",
             "auto_start": "Automatically start this monitor when workers start",
             "frequency": "Crawl interval in Duration format (e.g. 01:00:00 for 1h, 00:30:00 for 30m, 1 00:00:00 for 1d)",
@@ -1623,6 +1643,7 @@ class MonitoredLinkCreateOrEditForm(ModelForm):
             "provider": forms.widgets.Select(attrs={"class": "form-select form-control"}),
             "proxy": forms.widgets.TextInput(attrs={"class": "form-control", "placeholder": "socks5://127.0.0.1:9050"}),
             "stop_page": forms.widgets.NumberInput(attrs={"class": "form-control", "placeholder": "Optional stop page"}),
+            "priority": forms.widgets.NumberInput(attrs={"class": "form-control", "placeholder": "10"}),
             "enabled": forms.widgets.CheckboxInput(attrs={"class": "form-check-input"}),
             "auto_start": forms.widgets.CheckboxInput(attrs={"class": "form-check-input"}),
             "frequency": forms.widgets.TextInput(attrs={"class": "form-control", "placeholder": "01:00:00"}),
@@ -1656,6 +1677,10 @@ class MonitoredLinkSearchForm(forms.Form):
         required=False,
         widget=forms.Select(attrs={"class": "form-select form-control"}),
     )
+    priority = forms.IntegerField(
+        required=False,
+        widget=forms.NumberInput(attrs={"class": "form-control", "placeholder": "Priority"}),
+    )
     status = forms.ChoiceField(
         choices=[("", "All activity"), ("running", "Running"), ("stopped", "Stopped")],
         required=False,
@@ -1667,6 +1692,7 @@ class MonitoredLinkSearchForm(forms.Form):
             ("name", "Name"),
             ("last_modified", "Last modified"),
             ("frequency", "Frequency"),
+            ("priority", "Priority"),
         ],
         required=False,
         initial="create_date",

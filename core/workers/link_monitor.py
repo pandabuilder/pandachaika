@@ -69,7 +69,11 @@ class LinkMonitor(BaseScheduler):
                 logger.info("Using stop page: {}".format(monitored_link.stop_page))
                 for provider_settings in current_settings.providers.values():
                     provider_settings.stop_page_number = monitored_link.stop_page
-            self.web_queue.enqueue_args_list(arguments_to_crawler, override_options=current_settings)
+            self.web_queue.enqueue_args_list(
+                arguments_to_crawler,
+                override_options=current_settings,
+                priority=monitored_link.priority,
+            )
 
             self.timer = monitored_link.frequency.total_seconds()
 

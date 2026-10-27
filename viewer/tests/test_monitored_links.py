@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from datetime import timedelta
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
@@ -38,6 +38,22 @@ class MonitoredLinkModelTests(TestCase):
         self.assertEqual(state.cycle_timer, 1800.0)
         self.assertEqual(state.display_name, f"MonitoredLink: {link.name}")
         self.assertEqual(state.command_requested, "reload")
+
+    def test_priority_default_and_custom(self):
+        link_default = MonitoredLink.objects.create(
+            name="Default Priority",
+            url="https://example.com/def.xml",
+            frequency=timedelta(minutes=10),
+        )
+        self.assertEqual(link_default.priority, 10)
+
+        link_custom = MonitoredLink.objects.create(
+            name="Custom Priority",
+            url="https://example.com/custom.xml",
+            frequency=timedelta(minutes=10),
+            priority=5,
+        )
+        self.assertEqual(link_custom.priority, 5)
 
     def test_save_auto_start_requests_start_command(self):
         link = MonitoredLink.objects.create(
@@ -267,6 +283,63 @@ class MonitoredLinkWorkerRunnerTests(TestCase):
 
         self.assertEqual(len(self.settings.workers.timed_link_monitors), 0)
 
+    @patch("core.workers.link_monitor.close_old_connections")
+    def test_link_monitor_enqueues_with_configured_priority(self, _mock_close):
+        from core.workers.link_monitor import LinkMonitor
+
+        link = MonitoredLink.objects.create(
+            name="Priority Queue Test",
+            url="https://example.com/priority.xml",
+            frequency=timedelta(minutes=10),
+            enabled=True,
+            priority=3,
+        )
+        web_queue = MagicMock()
+        monitor = LinkMonitor(
+            settings=self.settings,
+            link_monitor_id=link.pk,
+            name=link.name,
+            timer=link.frequency,
+            monitored_link=link,
+            web_queue=web_queue,
+        )
+        with patch.object(monitor, "wait_until_next_run", return_value=0), \
+             patch.object(monitor.stop, "wait", side_effect=[False, True]), \
+             patch.object(monitor, "update_last_run"):
+            monitor.job()
+
+        web_queue.enqueue_args_list.assert_called_once()
+        _, kwargs = web_queue.enqueue_args_list.call_args
+        self.assertEqual(kwargs.get("priority"), 3)
+
+    @patch("core.workers.link_monitor.close_old_connections")
+    def test_link_monitor_enqueues_with_default_priority(self, _mock_close):
+        from core.workers.link_monitor import LinkMonitor
+
+        link = MonitoredLink.objects.create(
+            name="Default Priority Queue Test",
+            url="https://example.com/default-priority.xml",
+            frequency=timedelta(minutes=10),
+            enabled=True,
+        )
+        web_queue = MagicMock()
+        monitor = LinkMonitor(
+            settings=self.settings,
+            link_monitor_id=link.pk,
+            name=link.name,
+            timer=link.frequency,
+            monitored_link=link,
+            web_queue=web_queue,
+        )
+        with patch.object(monitor, "wait_until_next_run", return_value=0), \
+             patch.object(monitor.stop, "wait", side_effect=[False, True]), \
+             patch.object(monitor, "update_last_run"):
+            monitor.job()
+
+        web_queue.enqueue_args_list.assert_called_once()
+        _, kwargs = web_queue.enqueue_args_list.call_args
+        self.assertEqual(kwargs.get("priority"), 10)
+
 
 class MonitoredLinkViewsTests(TestCase):
 
@@ -326,12 +399,61 @@ class MonitoredLinkViewsTests(TestCase):
         self.assertContains(res_disabled, "Beta RSS")
         self.assertNotContains(res_disabled, "Alpha RSS")
 
+    def test_monitored_links_view_filtering_by_priority(self):
+        MonitoredLink.objects.create(
+            name="Priority 5 Feed",
+            url="https://p5.com/feed",
+            frequency=timedelta(minutes=10),
+            priority=5,
+        )
+        MonitoredLink.objects.create(
+            name="Priority 20 Feed",
+            url="https://p20.com/feed",
+            frequency=timedelta(minutes=10),
+            priority=20,
+        )
+
+        res_p5 = self.client.get(reverse("viewer:monitored-links"), {"priority": "5"})
+        self.assertContains(res_p5, "Priority 5 Feed")
+        self.assertNotContains(res_p5, "Priority 20 Feed")
+
+        res_p20 = self.client.get(reverse("viewer:monitored-links"), {"priority": "20"})
+        self.assertContains(res_p20, "Priority 20 Feed")
+        self.assertNotContains(res_p20, "Priority 5 Feed")
+
+    def test_monitored_links_view_sorting_by_priority(self):
+        MonitoredLink.objects.create(
+            name="Low Priority Feed",
+            url="https://low.com/feed",
+            frequency=timedelta(minutes=10),
+            priority=30,
+        )
+        MonitoredLink.objects.create(
+            name="High Priority Feed",
+            url="https://high.com/feed",
+            frequency=timedelta(minutes=10),
+            priority=1,
+        )
+
+        res_asc = self.client.get(reverse("viewer:monitored-links"), {"sort": "priority", "asc_desc": "asc"})
+        self.assertEqual(res_asc.status_code, 200)
+        results = list(res_asc.context["results"])
+        self.assertEqual(results[0].name, "High Priority Feed")
+        self.assertEqual(results[1].name, "Low Priority Feed")
+
+        res_desc = self.client.get(reverse("viewer:monitored-links"), {"sort": "priority", "asc_desc": "desc"})
+        self.assertEqual(res_desc.status_code, 200)
+        results_desc = list(res_desc.context["results"])
+        self.assertEqual(results_desc[0].name, "Low Priority Feed")
+        self.assertEqual(results_desc[1].name, "High Priority Feed")
+
     def test_monitored_links_inline_create(self):
         post_data = {
             "name": "New Inline Link",
             "url": "https://example.com/inline",
             "provider": self.provider.pk,
             "frequency": "00:45:00",
+            "priority": 7,
             "enabled": True,
             "auto_start": True,
             "submit-monitored-link": "1",
@@ -342,6 +464,7 @@ class MonitoredLinkViewsTests(TestCase):
         link = MonitoredLink.objects.filter(name="New Inline Link").first()
         self.assertIsNotNone(link)
         self.assertEqual(link.frequency, timedelta(minutes=45))
+        self.assertEqual(link.priority, 7)
         self.assertTrue(link.enabled)
         self.assertEqual(link.user, self.user)
 
@@ -365,6 +488,7 @@ class MonitoredLinkViewsTests(TestCase):
             url="https://example.com/before",
             frequency=timedelta(minutes=20),
             enabled=False,
+            priority=10,
         )
         res = self.client.get(reverse("viewer:col-edit-monitored-link", args=[link.pk]))
         self.assertEqual(res.status_code, 200)
@@ -374,6 +498,7 @@ class MonitoredLinkViewsTests(TestCase):
             "name": "After Edit",
             "url": "https://example.com/after",
             "frequency": "02:00:00",
+            "priority": 2,
             "enabled": True,
             "auto_start": True,
         }
@@ -383,7 +508,17 @@ class MonitoredLinkViewsTests(TestCase):
         link.refresh_from_db()
         self.assertEqual(link.name, "After Edit")
         self.assertEqual(link.frequency, timedelta(hours=2))
+        self.assertEqual(link.priority, 2)
         self.assertTrue(link.enabled)
+
+    def test_monitored_link_admin_configuration(self):
+        from django.contrib.admin.sites import AdminSite
+        from viewer.admin import MonitoredLinkAdmin
+
+        site = AdminSite()
+        admin = MonitoredLinkAdmin(MonitoredLink, site)
+        self.assertIn("priority", admin.list_filter)
+        self.assertIn("priority", admin.list_display)
 
     def test_delete_monitored_link_view(self):
         link = MonitoredLink.objects.create(

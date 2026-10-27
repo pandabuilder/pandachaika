@@ -1,142 +1,990 @@
 {% extends "viewer/base.html" %}
-{% block title %}Tools | {{ block.super }}{% endblock %}
+{% block title %}Settings | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
 {% load static %}
 {% block extra_head %}
   <style media="screen">
+    .settings-wrapper {
+      margin-bottom: 2rem;
+    }
     #js-editor-container {
-      max-height: 100%;
-      height: 600px;
+      position: relative;
+      height: 650px;
+      border: 1px solid #29527a;
+      border-radius: 4px;
+      overflow: hidden;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
     }
     #js-editor-area {
-      margin-top: 0;
-      margin-bottom: 0;
-      border-radius: 3px;
-      height: calc(100% - 56px);
+      width: 100%;
+      height: 100%;
     }
-  .bg-spaced {
-    margin-bottom: .25rem;
-    margin-top: .25rem;
-  }
+
+    /* --- Toolbar Action Buttons (Solid, Non-Transparent) --- */
+    .btn-pg {
+      background-color: #29527a !important;
+      border: 1px solid #5a8ab8 !important;
+      color: #e2e8f0 !important;
+      font-weight: 500;
+      transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    }
+    .btn-pg:hover, .btn-pg:focus {
+      background-color: #3b6b9b !important;
+      border-color: #8cb6df !important;
+      color: #ffffff !important;
+    }
+    .btn-pg.active {
+      background-color: #1565c0 !important;
+      border-color: #42a5f5 !important;
+      color: #ffffff !important;
+      box-shadow: 0 0 0 0.2rem rgba(66, 165, 245, 0.3);
+    }
+    .btn-pg-primary {
+      background-color: #0d6efd !important;
+      border: 1px solid #388bfd !important;
+      color: #ffffff !important;
+      font-weight: 600;
+    }
+    .btn-pg-primary:hover, .btn-pg-primary:focus {
+      background-color: #0b5ed7 !important;
+      border-color: #58a6ff !important;
+      color: #ffffff !important;
+    }
+    .btn-toolbar-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      align-items: center;
+    }
+
+    /* --- Status Badges --- */
+    .status-badge-container {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .badge-status-clean {
+      background-color: #0a2d54;
+      color: #90caf9;
+      border: 1px solid #29527a;
+    }
+    .badge-status-dirty {
+      background-color: #f59e0b;
+      color: #000000;
+      font-weight: 600;
+    }
+    .badge-status-checking {
+      background-color: #0288d1;
+      color: #ffffff;
+    }
+    .badge-status-valid {
+      background-color: #2e7d32;
+      color: #ffffff;
+    }
+    .badge-status-invalid {
+      background-color: #c62828;
+      color: #ffffff;
+    }
+
+    /* --- Schema Reference Sidebar (Light Blue on Dark Navy Theme) --- */
+    .schema-sidebar-card {
+      height: 650px;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid #29527a;
+      border-radius: 4px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+      background-color: #002244;
+      color: #e2e8f0;
+    }
+    .schema-sidebar-header {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid #29527a;
+      background-color: #0a2d54;
+    }
+    .schema-title-text {
+      color: #90caf9;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+    .schema-search-input {
+      background-color: #001830 !important;
+      border: 1px solid #29527a !important;
+      color: #e2e8f0 !important;
+    }
+    .schema-search-input:focus {
+      background-color: #002040 !important;
+      border-color: #42a5f5 !important;
+      color: #ffffff !important;
+      box-shadow: 0 0 0 0.2rem rgba(66, 165, 245, 0.25) !important;
+    }
+    .schema-search-input::placeholder {
+      color: #7b9ab8 !important;
+    }
+    .schema-search-addon {
+      background-color: #0a2d54;
+      border: 1px solid #29527a;
+      color: #90caf9;
+    }
+    .schema-sidebar-body {
+      padding: 0.75rem;
+      overflow-y: auto;
+      flex: 1 1 auto;
+      background-color: #001e3d;
+    }
+
+    /* --- Property Cards Inside Schema Sidebar --- */
+    .schema-prop-card {
+      padding: 0.65rem 0.8rem;
+      margin-bottom: 0.55rem;
+      border-radius: 4px;
+      background-color: #09284d;
+      border: 1px solid #1c4879;
+      transition: background-color 0.15s ease, border-color 0.15s ease;
+    }
+    .schema-prop-card:hover {
+      background-color: #123866;
+      border-color: #3b76b2;
+    }
+    .schema-prop-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.3rem;
+    }
+    .schema-prop-path {
+      font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-weight: 600;
+      font-size: 0.85rem;
+      color: #38bdf8;
+    }
+    .btn-insert-prop {
+      background-color: #1b4b7c !important;
+      border: 1px solid #3d79b5 !important;
+      color: #ffffff !important;
+      font-size: 0.75rem;
+      padding: 0.1rem 0.45rem;
+      border-radius: 3px;
+    }
+    .btn-insert-prop:hover {
+      background-color: #2566a8 !important;
+      border-color: #64b5f6 !important;
+      color: #ffffff !important;
+    }
+    .schema-prop-desc {
+      color: #b0c6de;
+      font-size: 0.79rem;
+      margin-bottom: 0.4rem;
+      line-height: 1.4;
+    }
+    .schema-prop-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      align-items: center;
+      font-size: 0.72rem;
+    }
+    .badge-type {
+      background-color: #143760;
+      color: #7dd3fc;
+      border: 1px solid #255084;
+      font-family: monospace;
+    }
+    .badge-default {
+      background-color: #0e2b4f;
+      color: #bae6fd;
+      border: 1px solid #204675;
+      font-family: monospace;
+    }
+    .badge-options {
+      background-color: #194473;
+      color: #e0f2fe;
+      border: 1px solid #2f629c;
+      font-family: monospace;
+    }
+
+    /* --- Error Panel --- */
+    #js-error-panel {
+      margin-top: 0.75rem;
+      max-height: 220px;
+      overflow-y: auto;
+      border: 1px solid #c62828;
+      border-radius: 4px;
+      background-color: #1a0006;
+    }
+    .error-item {
+      cursor: pointer;
+      font-size: 0.85rem;
+      padding: 0.5rem 0.75rem;
+      border-bottom: 1px solid #4a1015;
+      background-color: #29080b;
+      color: #ff8a80;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
+      transition: background-color 0.15s ease;
+      text-decoration: none;
+    }
+    .error-item:last-child {
+      border-bottom: none;
+    }
+    .error-item:hover {
+      background-color: #420f14 !important;
+      color: #ffcdd2 !important;
+    }
+    .error-item code {
+      color: #ffccbc;
+      background-color: #441116;
+      padding: 0.1rem 0.3rem;
+      border-radius: 3px;
+    }
+
+    /* --- Modals (Dark Navy Theme) --- */
+    .modal-content {
+      background-color: #001a33;
+      color: #e2e8f0;
+      border: 1px solid #29527a;
+    }
+    .modal-header {
+      background-color: #001122;
+      border-bottom: 1px solid #29527a;
+    }
+    .modal-footer {
+      background-color: #001122;
+      border-top: 1px solid #29527a;
+    }
+    .btn-close-white-filter {
+      filter: invert(1) grayscale(100%) brightness(200%);
+    }
+    #defaultConfigAce {
+      height: 520px;
+      width: 100%;
+      border-radius: 3px;
+    }
   </style>
 {% endblock %}
 {% block content %}
   {% if messages %}
     {% for message in messages %}
-      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
     {% endfor %}
   {% endif %}
-  <!-- Tools  -->
-  <div class="page-line">
-  <h2>Settings</h2>
-  <div id="js-editor-container">
-    <div id="js-editor-area" class="editor"></div>
-      <button type="button" class="btn btn-light bg-spaced" data-action="save">Save</button>
-      <button type="button" class="btn btn-light bg-spaced" data-action="reload">Apply changes</button>
-      <button type="button" class="btn btn-light bg-spaced" data-action="reread">Read file from disk</button>
+
+  <div class="settings-wrapper">
+    <!-- Header with title & live status indicators -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-2 pb-2 border-bottom" style="border-color: #29527a !important;">
+      <div>
+        <h2 class="mb-0 d-inline-block align-middle me-2" style="color: #ffffff;">Settings</h2>
+        <span class="small align-middle" style="color: #90caf9;"><code>settings.yaml</code></span>
+      </div>
+      <div class="status-badge-container my-1">
+        <span id="status-dirty" class="badge badge-status-dirty" style="display: none;">
+          <i class="fas fa-circle me-1 small"></i>Unsaved changes
+        </span>
+        <span id="status-clean" class="badge badge-status-clean">
+          <i class="fas fa-check me-1"></i>Saved
+        </span>
+        <span id="status-checking" class="badge badge-status-checking" style="display: none;">
+          <i class="fas fa-spinner fa-spin me-1"></i>Validating schema...
+        </span>
+        <span id="status-valid" class="badge badge-status-valid">
+          <i class="fas fa-check-circle me-1"></i>Schema Valid
+        </span>
+        <span id="status-invalid" class="badge badge-status-invalid" style="display: none;">
+          <i class="fas fa-exclamation-triangle me-1"></i><span id="error-badge-count">0</span> Errors
+        </span>
+      </div>
+    </div>
+
+    <!-- Action Toolbar (Solid, Highly Readable Buttons) -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+      <div class="btn-toolbar-group">
+        <button type="button" class="btn btn-sm btn-pg-primary" data-action="save" id="btn-save" title="Save changes (Ctrl+S / Cmd+S)">
+          <i class="fas fa-save me-1"></i>Save
+        </button>
+        <button type="button" class="btn btn-sm btn-pg" data-action="reload" id="btn-reload" title="Reload configuration in memory">
+          <i class="fas fa-sync-alt me-1"></i>Apply changes
+        </button>
+        <button type="button" class="btn btn-sm btn-pg" data-action="reread" id="btn-reread" title="Discard unsaved changes and reread from disk">
+          <i class="fas fa-redo me-1"></i>Read from disk
+        </button>
+        <button type="button" class="btn btn-sm btn-pg" data-action="validate" id="btn-validate" title="Validate current content against Pydantic schema">
+          <i class="fas fa-stethoscope me-1"></i>Validate now
+        </button>
+      </div>
+
+      <div class="btn-toolbar-group">
+        <button type="button" class="btn btn-sm btn-pg" id="btn-view-defaults" data-bs-toggle="modal" data-bs-target="#defaultConfigModal" title="View fully commented default.yaml template">
+          <i class="fas fa-file-code me-1"></i>View Defaults
+        </button>
+        <button type="button" class="btn btn-sm btn-pg active" id="btn-toggle-schema" title="Toggle Schema Reference Explorer">
+          <i class="fas fa-book me-1"></i>Schema Reference
+        </button>
+      </div>
+    </div>
+
+    <!-- Feedback notification container -->
+    <div id="settings-alert-container"></div>
+
+    <!-- Editor & Schema Split Row -->
+    <div class="row g-3">
+      <!-- Main Editor Column -->
+      <div class="col-lg-8" id="editor-column">
+        <div id="js-editor-container">
+          <div id="js-editor-area" class="editor"></div>
+        </div>
+
+        <!-- Collapsible Error Panel (shown when errors exist) -->
+        <div id="js-error-panel" style="display: none;">
+          <div class="bg-danger text-white px-3 py-1 small fw-bold d-flex justify-content-between align-items-center">
+            <span><i class="fas fa-exclamation-triangle me-1"></i>Validation Errors (<span id="error-panel-count">0</span>) &mdash; Click an error to jump to line</span>
+            <button type="button" class="btn-close btn-close-white btn-sm" id="btn-dismiss-errors" aria-label="Close"></button>
+          </div>
+          <div id="error-items-list" class="list-group list-group-flush"></div>
+        </div>
+      </div>
+
+      <!-- Schema Reference Drawer Column (Lighter Blue Block on Dark Navy Theme) -->
+      <div class="col-lg-4" id="schema-column">
+        <div class="schema-sidebar-card">
+          <div class="schema-sidebar-header">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <span class="small text-uppercase schema-title-text">
+                <i class="fas fa-book me-1"></i>Schema Reference
+              </span>
+              <span class="badge rounded-pill" id="schema-count-badge" style="background-color: #1a497b; color: #e2e8f0;">0 items</span>
+            </div>
+            <div class="input-group input-group-sm">
+              <span class="input-group-text schema-search-addon"><i class="fas fa-search"></i></span>
+              <input type="text" class="form-control schema-search-input" id="schema-search" placeholder="Search parameters (e.g. wait_timer, proxy)...">
+              <button class="btn btn-pg" type="button" id="schema-search-clear" title="Clear search">&times;</button>
+            </div>
+          </div>
+          <div class="schema-sidebar-body" id="schema-items-container">
+            <div class="text-center text-muted py-4" style="color: #90caf9 !important;">
+              <div class="spinner-border spinner-border-sm me-1" role="status"></div>
+              Loading schema definitions...
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
+
+  <!-- Modal: View Default Config Template -->
+  <div class="modal fade" id="defaultConfigModal" tabindex="-1" aria-labelledby="defaultConfigModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="defaultConfigModalLabel" style="color: #ffffff;">
+            <i class="fas fa-file-code me-2" style="color: #38bdf8;"></i>Default Configuration Template (<code>default.yaml</code>)
+          </h5>
+          <button type="button" class="btn-close btn-close-white-filter" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body p-0">
+          <div id="defaultConfigAce"></div>
+        </div>
+        <div class="modal-footer d-flex justify-content-between">
+          <button type="button" class="btn btn-sm btn-pg" id="btn-copy-default">
+            <i class="fas fa-copy me-1"></i><span id="copy-default-text">Copy to Clipboard</span>
+          </button>
+          <div>
+            <button type="button" class="btn btn-sm btn-pg me-1" id="btn-load-default-to-editor">
+              <i class="fas fa-file-import me-1"></i>Load into Editor
+            </button>
+            <button type="button" class="btn btn-sm btn-pg" data-bs-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Force Save Confirmation -->
+  <div class="modal fade" id="forceSaveModal" tabindex="-1" aria-labelledby="forceSaveModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content" style="border-color: #c62828;">
+        <div class="modal-header bg-danger text-white">
+          <h5 class="modal-title" id="forceSaveModalLabel">
+            <i class="fas fa-exclamation-triangle me-2"></i>Configuration Validation Errors
+          </h5>
+          <button type="button" class="btn-close btn-close-white-filter" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body" style="background-color: #001a33;">
+          <p class="mb-2">The configuration contains <strong><span id="force-modal-count">0</span> validation error(s)</strong>:</p>
+          <ul id="force-modal-error-list" class="small text-danger mb-3 ps-3"></ul>
+          <div class="alert alert-warning small mb-0" style="background-color: #2b2005; border-color: #664d03; color: #ffecb5;">
+            <i class="fas fa-exclamation-circle me-1"></i>
+            Saving an invalid configuration may cause background workers, crawlers, or the web application to fail on startup.
+            Are you sure you want to save anyway?
+          </div>
+        </div>
+        <div class="modal-footer" style="background-color: #001122;">
+          <button type="button" class="btn btn-sm btn-pg" data-bs-dismiss="modal">Cancel and Fix</button>
+          <button type="button" class="btn btn-danger btn-sm" id="btn-confirm-force-save">
+            <i class="fas fa-exclamation-circle me-1"></i>Save Anyway (Force)
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 {% endblock %}
 
 {% block afterJQ %}
   <script src="{% static 'js/vendor/ace/ace.js' %}" type="text/javascript" charset="utf-8"></script>
+  <script src="{% static 'js/vendor/ace/ext-searchbox.js' %}" type="text/javascript" charset="utf-8"></script>
+
 <script>
+(() => {
+  // --- UI Elements ---
   const editorElement = document.querySelector("#js-editor-container #js-editor-area");
+  const saveButton = document.getElementById("btn-save");
+  const rereadButton = document.getElementById("btn-reread");
+  const reloadButton = document.getElementById("btn-reload");
+  const validateButton = document.getElementById("btn-validate");
+  const toggleSchemaButton = document.getElementById("btn-toggle-schema");
+  const schemaColumn = document.getElementById("schema-column");
+  const editorColumn = document.getElementById("editor-column");
+  const errorPanel = document.getElementById("js-error-panel");
+  const errorItemsList = document.getElementById("error-items-list");
+  const errorPanelCount = document.getElementById("error-panel-count");
+  const btnDismissErrors = document.getElementById("btn-dismiss-errors");
+  const alertContainer = document.getElementById("settings-alert-container");
+
+  // Badges
+  const badgeValid = document.getElementById("status-valid");
+  const badgeInvalid = document.getElementById("status-invalid");
+  const badgeChecking = document.getElementById("status-checking");
+  const badgeDirty = document.getElementById("status-dirty");
+  const badgeClean = document.getElementById("status-clean");
+  const errorBadgeCount = document.getElementById("error-badge-count");
+
+  // Schema Drawer Elements
+  const schemaItemsContainer = document.getElementById("schema-items-container");
+  const schemaSearchInput = document.getElementById("schema-search");
+  const schemaSearchClear = document.getElementById("schema-search-clear");
+  const schemaCountBadge = document.getElementById("schema-count-badge");
+
+  // Modal Elements
+  const forceSaveModalEl = document.getElementById("forceSaveModal");
+  const forceSaveModal = forceSaveModalEl ? new bootstrap.Modal(forceSaveModalEl) : null;
+  const btnConfirmForceSave = document.getElementById("btn-confirm-force-save");
+  const forceModalCount = document.getElementById("force-modal-count");
+  const forceModalErrorList = document.getElementById("force-modal-error-list");
+
+  const defaultConfigModalEl = document.getElementById("defaultConfigModal");
+  const btnCopyDefault = document.getElementById("btn-copy-default");
+  const copyDefaultText = document.getElementById("copy-default-text");
+  const btnLoadDefaultToEditor = document.getElementById("btn-load-default-to-editor");
+
+  // --- State ---
+  let isDirty = false;
+  let validationDebounceTimer = null;
+  let currentErrors = [];
+  let schemaData = null;
+  let flattenedSchemaProperties = [];
+  let defaultYamlText = "";
+  let defaultAceEditor = null;
+
+  // --- Initialize Ace Editor ---
   const editor = ace.edit(editorElement);
   editor.setOptions({
     highlightActiveLine: true,
-    showPrintMargin: true,
+    showPrintMargin: false,
     useSoftTabs: true,
     tabSize: 2,
     useWorker: false,
-    printMargin: false,
     theme: 'ace/theme/dracula',
-    mode: 'ace/mode/yaml'
+    mode: 'ace/mode/yaml',
+    fontSize: '13px',
+    showFoldWidgets: true
   });
 
+  // Shortcut: Ctrl+S / Cmd+S
   editor.commands.addCommand({
-  name: 'saveCommand',
-  bindKey: { win: 'Ctrl-S', mac: 'Command-S' },
-  exec: function () {
-    saveSettings();
-  },
-  readOnly: false
-});
+    name: 'saveCommand',
+    bindKey: { win: 'Ctrl-S', mac: 'Command-S' },
+    exec: () => saveSettings(false),
+    readOnly: false
+  });
 
+  // --- CSRF Helper ---
   function getCookie(name) {
     let cookieValue = null;
     if (document.cookie && document.cookie !== '') {
-        const cookies = document.cookie.split(';');
-        for (let i = 0; i < cookies.length; i++) {
-            const cookie = cookies[i].trim();
-            // Does this cookie string begin with the name we want?
-            if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                break;
-            }
+      const cookies = document.cookie.split(';');
+      for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i].trim();
+        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+          cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+          break;
         }
+      }
     }
     return cookieValue;
   }
   const csrftoken = getCookie('csrftoken');
 
-const saveSettings = () => {
-  fetch('../../tools-api/settings/', {
-    credentials: "same-origin",
-    method: "POST",
-    headers: {
-      'X-CSRFToken': csrftoken,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({data: editor.getValue()})
-  })
-    .then((response) => {
-      response.json();
-    })
-    .then(() => {
-        saveButton.classList.remove("disabled");
-    })
-    .catch((error) => {
-        saveButton.classList.remove("disabled");
-    })
-}
+  // --- Alert Notifications ---
+  function showAlert(message, type = 'info', timeout = 5000) {
+    const alertId = 'alert-' + Date.now();
+    const alertHtml = `
+      <div id="${alertId}" class="alert alert-${type} alert-dismissible fade show small py-2 mb-2" role="alert" style="border-radius: 4px;">
+        ${message}
+        <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+    `;
+    alertContainer.insertAdjacentHTML('beforeend', alertHtml);
+    if (timeout > 0) {
+      setTimeout(() => {
+        const el = document.getElementById(alertId);
+        if (el) {
+          const bsAlert = bootstrap.Alert.getInstance(el) || new bootstrap.Alert(el);
+          bsAlert.close();
+        }
+      }, timeout);
+    }
+  }
 
-const rereadSettings = () => {
-  editor.setOption('readOnly', true);
-  fetch('../../tools-api/settings/', { credentials: "same-origin" })
-    .then(res => res.json()).then(response => {
-      editor.setValue(response.data, -1);
-      editor.setOption('readOnly', false);
+  // --- Dirty State ---
+  function markDirty(dirty) {
+    isDirty = dirty;
+    if (dirty) {
+      badgeDirty.style.display = 'inline-block';
+      badgeClean.style.display = 'none';
+    } else {
+      badgeDirty.style.display = 'none';
+      badgeClean.style.display = 'inline-block';
+    }
+  }
+
+  // --- Validation ---
+  function setValidationStatus(status, count = 0) {
+    badgeValid.style.display = 'none';
+    badgeInvalid.style.display = 'none';
+    badgeChecking.style.display = 'none';
+
+    if (status === 'checking') {
+      badgeChecking.style.display = 'inline-block';
+    } else if (status === 'valid') {
+      badgeValid.style.display = 'inline-block';
+      errorPanel.style.display = 'none';
+    } else if (status === 'invalid') {
+      badgeInvalid.style.display = 'inline-block';
+      errorBadgeCount.textContent = count;
+      errorPanelCount.textContent = count;
+      errorPanel.style.display = 'block';
+    }
+  }
+
+  function renderErrorsList(errors) {
+    errorItemsList.innerHTML = '';
+    if (!errors || errors.length === 0) {
+      errorPanel.style.display = 'none';
+      return;
+    }
+
+    errors.forEach((err, idx) => {
+      const lineNum = (typeof err.row === 'number') ? err.row + 1 : 1;
+      const colNum = (typeof err.col === 'number') ? err.col + 1 : 1;
+      const item = document.createElement('a');
+      item.href = '#';
+      item.className = 'error-item';
+      item.innerHTML = `
+        <i class="fas fa-times-circle mt-1 flex-shrink-0 text-danger"></i>
+        <div class="flex-grow-1">
+          <div><strong style="color: #ff8a80;">Line ${lineNum}:</strong> <code>${escapeHtml(err.loc)}</code></div>
+          <div class="small" style="color: #ffcdd2;">${escapeHtml(err.msg)}</div>
+        </div>
+        <span class="badge bg-danger rounded-pill flex-shrink-0">Line ${lineNum}</span>
+      `;
+      item.addEventListener('click', (e) => {
+        e.preventDefault();
+        editor.gotoLine(lineNum, colNum - 1, true);
+        editor.focus();
+      });
+      errorItemsList.appendChild(item);
     });
-  editor.focus();
-}
+    errorPanel.style.display = 'block';
+  }
 
-const reloadSettings = () => {
-  editor.setOption('readOnly', true);
-  fetch('../../tools-api/reload_settings/', { credentials: "same-origin" })
-    .then(res => res.json()).then(response => {
+  function validateSettings() {
+    setValidationStatus('checking');
+    const content = editor.getValue();
+
+    return fetch('../../tools-api/validate_settings/', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'X-CSRFToken': csrftoken,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ data: content })
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.valid) {
+          editor.getSession().clearAnnotations();
+          currentErrors = [];
+          setValidationStatus('valid');
+          return { valid: true, errors: [] };
+        } else {
+          editor.getSession().setAnnotations(data.annotations || []);
+          currentErrors = data.errors || [];
+          setValidationStatus('invalid', currentErrors.length);
+          renderErrorsList(currentErrors);
+          return { valid: false, errors: currentErrors };
+        }
+      })
+      .catch(err => {
+        setValidationStatus('valid');
+        return { valid: true, errors: [] };
+      });
+  }
+
+  function scheduleValidation() {
+    if (validationDebounceTimer) {
+      clearTimeout(validationDebounceTimer);
+    }
+    validationDebounceTimer = setTimeout(() => {
+      validateSettings();
+    }, 450);
+  }
+
+  // --- Save Settings ---
+  function saveSettings(force = false) {
+    saveButton.classList.add('disabled');
+
+    const content = editor.getValue();
+    const payload = { data: content, force: force };
+
+    fetch('../../tools-api/settings/', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'X-CSRFToken': csrftoken,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    })
+      .then(res => res.json().then(data => ({ status: res.status, ok: res.ok, body: data })))
+      .then(({ status, ok, body }) => {
+        saveButton.classList.remove('disabled');
+
+        if (ok) {
+          markDirty(false);
+          showAlert('<i class="fas fa-check-circle me-1"></i> Settings saved successfully to disk.', 'success');
+          if (forceSaveModal) {
+            forceSaveModal.hide();
+          }
+          validateSettings();
+        } else {
+          // Validation failed
+          if (body.validation && !body.validation.valid) {
+            currentErrors = body.validation.errors || [];
+            editor.getSession().setAnnotations(body.validation.annotations || []);
+            setValidationStatus('invalid', currentErrors.length);
+            renderErrorsList(currentErrors);
+
+            // Open confirmation modal
+            if (forceModalCount && forceModalErrorList && forceSaveModal) {
+              forceModalCount.textContent = currentErrors.length;
+              forceModalErrorList.innerHTML = currentErrors.map(e => `<li><strong>Line ${(e.row || 0) + 1} (${escapeHtml(e.loc)}):</strong> ${escapeHtml(e.msg)}</li>`).join('');
+              forceSaveModal.show();
+            } else {
+              showAlert('<i class="fas fa-exclamation-triangle me-1"></i> ' + (body.error || 'Validation error'), 'danger');
+            }
+          } else {
+            showAlert('<i class="fas fa-exclamation-triangle me-1"></i> ' + (body.error || 'Failed to save settings'), 'danger');
+          }
+        }
+      })
+      .catch(err => {
+        saveButton.classList.remove('disabled');
+        showAlert('<i class="fas fa-exclamation-triangle me-1"></i> Network error saving settings.', 'danger');
+      });
+  }
+
+  // --- Reread Settings from disk ---
+  function rereadSettings() {
+    editor.setOption('readOnly', true);
+    fetch('../../tools-api/settings/', { credentials: 'same-origin' })
+      .then(res => res.json())
+      .then(response => {
+        editor.setValue(response.data || '', -1);
+        editor.setOption('readOnly', false);
+        editor.session.getUndoManager().markClean();
+        markDirty(false);
+        validateSettings();
+      })
+      .catch(err => {
+        editor.setOption('readOnly', false);
+        showAlert('Failed to read settings from server.', 'danger');
+      });
+    editor.focus();
+  }
+
+  // --- Reload Settings in memory ---
+  function reloadSettings() {
+    reloadButton.classList.add('disabled');
+    fetch('../../tools-api/reload_settings/', { credentials: 'same-origin' })
+      .then(res => res.json())
+      .then(response => {
+        reloadButton.classList.remove('disabled');
+        showAlert('<i class="fas fa-sync-alt me-1"></i> Configuration reloaded into running server memory.', 'success');
+      })
+      .catch(() => {
+        reloadButton.classList.remove('disabled');
+        showAlert('Failed to reload configuration into memory.', 'danger');
+      });
+  }
+
+  // --- Event Listeners ---
+  editor.on('change', () => {
+    markDirty(true);
+    scheduleValidation();
+  });
+
+  saveButton.addEventListener('click', () => saveSettings(false));
+  rereadButton.addEventListener('click', () => rereadSettings());
+  reloadButton.addEventListener('click', () => reloadSettings());
+  validateButton.addEventListener('click', () => validateSettings());
+
+  if (btnConfirmForceSave) {
+    btnConfirmForceSave.addEventListener('click', () => saveSettings(true));
+  }
+
+  if (btnDismissErrors) {
+    btnDismissErrors.addEventListener('click', () => {
+      errorPanel.style.display = 'none';
     });
-}
+  }
 
-const saveButton = document.querySelector("#js-editor-container [data-action='save']");
-const rereadButton = document.querySelector("#js-editor-container [data-action='reread']");
-const reloadButton = document.querySelector("#js-editor-container [data-action='reload']");
+  // --- Toggle Schema Reference Sidebar ---
+  toggleSchemaButton.addEventListener('click', () => {
+    const isVisible = schemaColumn.style.display !== 'none';
+    if (isVisible) {
+      schemaColumn.style.display = 'none';
+      editorColumn.className = 'col-12';
+      toggleSchemaButton.classList.remove('active');
+    } else {
+      schemaColumn.style.display = 'block';
+      editorColumn.className = 'col-lg-8';
+      toggleSchemaButton.classList.add('active');
+    }
+    editor.resize();
+  });
 
-saveButton.addEventListener("click", (e) => {
-  saveButton.classList.add("disabled");
-  saveSettings();
+  // --- Schema Reference Inspector Loader ---
+  function resolveRef(schema, ref) {
+    if (!ref || !ref.startsWith('#/$defs/')) return null;
+    const name = ref.replace('#/$defs/', '');
+    return (schema.$defs && schema.$defs[name]) || null;
+  }
 
-});
+  function flattenSchema(schema) {
+    const items = [];
+    if (!schema || !schema.properties) return items;
 
-rereadButton.addEventListener("click", (e) => {
+    function walkProperties(prefix, properties, parentModelName = '') {
+      for (const [key, prop] of Object.entries(properties)) {
+        const fullPath = prefix ? `${prefix}.${key}` : key;
+        const ref = prop.$ref;
+
+        if (ref) {
+          const subDef = resolveRef(schema, ref);
+          if (subDef && subDef.properties) {
+            walkProperties(fullPath, subDef.properties, ref.replace('#/$defs/', ''));
+            continue;
+          }
+        }
+
+        // Handle array of objects / basic items
+        let typeStr = prop.type || 'any';
+        if (prop.anyOf) {
+          typeStr = prop.anyOf.map(t => t.type || (t.$ref ? t.$ref.replace('#/$defs/', '') : 'any')).join(' | ');
+        } else if (prop.type === 'array' && prop.items) {
+          typeStr = `list[${prop.items.type || 'str'}]`;
+        }
+
+        let defaultVal = prop.default;
+        if (defaultVal === undefined) {
+          defaultVal = null;
+        }
+
+        items.push({
+          path: fullPath,
+          key: key,
+          section: prefix,
+          title: prop.title || key,
+          type: typeStr,
+          default: defaultVal,
+          description: prop.description || '',
+          enum: prop.enum || null
+        });
+      }
+    }
+
+    walkProperties('', schema.properties);
+    return items;
+  }
+
+  function renderSchemaList(items) {
+    schemaCountBadge.textContent = `${items.length} items`;
+    if (items.length === 0) {
+      schemaItemsContainer.innerHTML = '<div class="text-center py-4 small" style="color: #7b9ab8;">No matching parameters found.</div>';
+      return;
+    }
+
+    const html = items.map(item => {
+      let defaultStr = '';
+      if (item.default !== null && item.default !== undefined) {
+        defaultStr = typeof item.default === 'object' ? JSON.stringify(item.default) : String(item.default);
+      }
+      return `
+        <div class="schema-prop-card" data-path="${escapeHtml(item.path)}">
+          <div class="schema-prop-header">
+            <span class="schema-prop-path" title="${escapeHtml(item.path)}">${escapeHtml(item.path)}</span>
+            <button type="button" class="btn btn-insert-prop" data-key="${escapeHtml(item.key)}" data-default="${escapeHtml(defaultStr)}" title="Insert snippet into editor">
+              <i class="fas fa-plus small me-1"></i>Insert
+            </button>
+          </div>
+          ${item.description ? `<div class="schema-prop-desc">${escapeHtml(item.description)}</div>` : ''}
+          <div class="schema-prop-meta">
+            <span class="badge badge-type">${escapeHtml(item.type)}</span>
+            ${defaultStr !== '' ? `<span class="badge badge-default">default: ${escapeHtml(defaultStr)}</span>` : ''}
+            ${item.enum ? `<span class="badge badge-options">options: ${escapeHtml(item.enum.join(', '))}</span>` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    schemaItemsContainer.innerHTML = html;
+
+    // Attach click listeners to insert buttons
+    schemaItemsContainer.querySelectorAll('.btn-insert-prop').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const key = btn.getAttribute('data-key');
+        let defVal = btn.getAttribute('data-default');
+        if (defVal === '') defVal = '""';
+        const snippet = `${key}: ${defVal}\n`;
+        editor.insert(snippet);
+        editor.focus();
+      });
+    });
+  }
+
+  function filterSchema() {
+    const query = (schemaSearchInput.value || '').trim().toLowerCase();
+    if (!query) {
+      renderSchemaList(flattenedSchemaProperties);
+      return;
+    }
+    const filtered = flattenedSchemaProperties.filter(item => {
+      return item.path.toLowerCase().includes(query) ||
+             item.key.toLowerCase().includes(query) ||
+             item.description.toLowerCase().includes(query) ||
+             (item.section && item.section.toLowerCase().includes(query));
+    });
+    renderSchemaList(filtered);
+  }
+
+  schemaSearchInput.addEventListener('input', filterSchema);
+  schemaSearchClear.addEventListener('click', () => {
+    schemaSearchInput.value = '';
+    filterSchema();
+  });
+
+  // Fetch Schema from tools-api
+  fetch('../../tools-api/config_schema/', { credentials: 'same-origin' })
+    .then(res => res.json())
+    .then(data => {
+      schemaData = data;
+      flattenedSchemaProperties = flattenSchema(data);
+      renderSchemaList(flattenedSchemaProperties);
+    })
+    .catch(() => {
+      schemaItemsContainer.innerHTML = '<div class="text-danger small py-3 text-center">Failed to load configuration schema.</div>';
+    });
+
+  // --- Default Config Modal Handler ---
+  if (defaultConfigModalEl) {
+    defaultConfigModalEl.addEventListener('show.bs.modal', () => {
+      if (!defaultYamlText) {
+        fetch('../../tools-api/default_config/', { credentials: 'same-origin' })
+          .then(res => res.text())
+          .then(text => {
+            defaultYamlText = text;
+            initDefaultAce(text);
+          })
+          .catch(() => {
+            showAlert('Failed to fetch default template.', 'danger');
+          });
+      } else if (defaultAceEditor) {
+        setTimeout(() => defaultAceEditor.resize(), 150);
+      }
+    });
+  }
+
+  function initDefaultAce(text) {
+    const el = document.getElementById('defaultConfigAce');
+    if (!el) return;
+    defaultAceEditor = ace.edit(el);
+    defaultAceEditor.setOptions({
+      highlightActiveLine: true,
+      readOnly: true,
+      theme: 'ace/theme/dracula',
+      mode: 'ace/mode/yaml',
+      fontSize: '12px',
+      showFoldWidgets: true
+    });
+    defaultAceEditor.setValue(text, -1);
+  }
+
+  if (btnCopyDefault) {
+    btnCopyDefault.addEventListener('click', () => {
+      const textToCopy = defaultYamlText || (defaultAceEditor ? defaultAceEditor.getValue() : '');
+      if (!textToCopy) return;
+      navigator.clipboard.writeText(textToCopy).then(() => {
+        copyDefaultText.textContent = 'Copied!';
+        btnCopyDefault.style.backgroundColor = '#198754';
+        setTimeout(() => {
+          copyDefaultText.textContent = 'Copy to Clipboard';
+          btnCopyDefault.style.backgroundColor = '';
+        }, 2000);
+      });
+    });
+  }
+
+  if (btnLoadDefaultToEditor) {
+    btnLoadDefaultToEditor.addEventListener('click', () => {
+      if (confirm('Are you sure you want to replace current editor contents with the default.yaml template?')) {
+        const textToLoad = defaultYamlText || (defaultAceEditor ? defaultAceEditor.getValue() : '');
+        editor.setValue(textToLoad, -1);
+        markDirty(true);
+        validateSettings();
+        const bsModal = bootstrap.Modal.getInstance(defaultConfigModalEl);
+        if (bsModal) bsModal.hide();
+      }
+    });
+  }
+
+  // --- Utility ---
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  // Initial load from disk
   rereadSettings();
-});
-
-reloadButton.addEventListener("click", (e) => {
-  reloadSettings();
-});
-
-rereadSettings();
-
+})();
 </script>
 {% endblock afterJQ %}

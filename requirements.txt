@@ -1,5 +1,4 @@
-# Chose one depending on database backend
-# mysqlclient
+# Database backend (PostgreSQL)
 psycopg[c]==3.3.6
 # Main
 python-dateutil==3.0.0
@@ -22,6 +21,7 @@ django-vite==3.2.0
 elasticsearch==8.18.1
 django-simple-history==3.13.0
 PyYAML==6.0.3
+pydantic==2.14.1
 deckar01-ratelimit==3.0.2
 pytz==2026.5
 # For image operations in edge cases
