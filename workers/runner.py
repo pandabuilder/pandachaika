@@ -79,7 +79,7 @@ class WorkerRunner:
             for s in self.settings.workers.get_active_initialized_workers():
                 is_running = s.is_running_locally()
                 last_run = getattr(s, "current_last_run", s.last_run)
-                next_run = (last_run + timedelta(seconds=s.timer)) if last_run else None
+                next_run = (last_run + timedelta(seconds=s.timer)) if (last_run and is_running) else None
                 extra_data = {}
                 if (
                     s.thread_name in ("timed_downloader", "post_downloader", "archive_download_queue")

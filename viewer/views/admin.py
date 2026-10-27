@@ -58,6 +58,15 @@ def stats_workers(request: HttpRequest) -> HttpResponse:
     if not request.user.is_staff:
         return render_error(request, "You need to be an admin to view workers' status.")
 
+    if (
+        request.GET.get("json")
+        or request.headers.get("x-requested-with") == "XMLHttpRequest"
+        or request.headers.get("accept", "").startswith("application/json")
+    ):
+        from viewer.views.workers_dashboard import workers_status_api
+
+        return workers_status_api(request)
+
     if crawler_settings.workers.web_queue is None:
         from core.workers.webqueue import WebQueue
         crawler_settings.workers.web_queue = WebQueue(crawler_settings)
@@ -65,6 +74,10 @@ def stats_workers(request: HttpRequest) -> HttpResponse:
     if crawler_settings.workers.archive_download_queue is None:
         from core.workers.archive_download_queue import ArchiveDownloadQueue
         crawler_settings.workers.archive_download_queue = ArchiveDownloadQueue(crawler_settings)
+
+    from viewer.views.workers_dashboard import get_workers_dashboard_snapshot
+
+    dashboard_snapshot = get_workers_dashboard_snapshot()
 
     stats_dict = {
         "current_settings": crawler_settings,
@@ -76,7 +89,10 @@ def stats_workers(request: HttpRequest) -> HttpResponse:
         "schedulers": get_schedulers_status(crawler_settings.workers.get_active_initialized_workers_from_db()),
     }
 
-    d = {"stats": stats_dict}
+    d = {
+        "stats": stats_dict,
+        "dashboard": dashboard_snapshot,
+    }
 
     return render(request, "viewer/stats_workers.html", d)
 

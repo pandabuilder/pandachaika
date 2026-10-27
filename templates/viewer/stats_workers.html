@@ -1,285 +1,2195 @@
 {% extends "viewer/base.html" %}
-{% block title %}Stats | {{ block.super }}{% endblock %}
+{% block title %}Workers & Background Processes | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
 
+{% block extra_head %}
+<style>
+  /* --- Dark Theme Palette (matching PandaGallery's Deep Navy #001122 / #001a4c) --- */
+  :root {
+    --pg-bg-darkest: #001122;
+    --pg-bg-card: #001a4c;
+    --pg-bg-card-header: #002855;
+    --pg-bg-row-odd: #002450;
+    --pg-bg-row-even: #001a4c;
+    --pg-bg-hover: #003366;
+    --pg-border: #17428b;
+    --pg-border-subtle: #123066;
+    --pg-text-primary: #e6edf3;
+    --pg-text-secondary: #8ba4be;
+    --pg-accent-blue: #36b0f9;
+    --pg-accent-green: #28a745;
+  }
+
+  /* Metric KPI Cards */
+  .metric-card {
+    border-radius: 10px;
+    border: 1px solid var(--pg-border);
+    background: var(--pg-bg-card);
+    color: var(--pg-text-primary);
+    box-shadow: 0 4px 12px rgba(0, 17, 34, 0.4);
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  }
+  .metric-card:hover {
+    box-shadow: 0 6px 18px rgba(0, 17, 34, 0.6);
+    border-color: var(--pg-accent-blue);
+  }
+  .metric-val {
+    font-size: 1.85rem;
+    font-weight: 700;
+    line-height: 1.1;
+  }
+  .metric-lbl {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--pg-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+  }
+
+  /* Topology Diagram */
+  .topology-container {
+    background: linear-gradient(180deg, #00142c 0%, #001d40 100%);
+    border: 1px solid var(--pg-border);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+  }
+  .topology-col-title {
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--pg-text-secondary);
+    margin-bottom: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+  }
+  .node-box {
+    background: #00234a;
+    border: 1px solid var(--pg-border);
+    color: var(--pg-text-primary);
+    border-radius: 8px;
+    padding: 0.65rem 0.85rem;
+    margin-bottom: 0.65rem;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    font-size: 0.88rem;
+    transition: all 0.2s ease;
+  }
+  .node-box.active {
+    background: #002d60;
+    border-color: var(--pg-accent-blue);
+    box-shadow: 0 0 10px rgba(54, 176, 249, 0.35);
+  }
+  .node-box.healthy {
+    border-left: 4px solid var(--pg-accent-green);
+  }
+  .node-box.stale {
+    border-left: 4px solid #ffc107;
+  }
+  .node-box.stopped {
+    border-left: 4px solid #6c757d;
+    opacity: 0.65;
+  }
+  .node-box.border-dashed {
+    background: #001b3a;
+    border: 1px dashed var(--pg-border);
+  }
+
+  .pulse-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+  }
+  .pulse-dot.green {
+    background-color: var(--pg-accent-green);
+    box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.7);
+    animation: pulse-green 1.8s infinite;
+  }
+  .pulse-dot.yellow {
+    background-color: #ffc107;
+  }
+  .pulse-dot.gray {
+    background-color: #6c757d;
+  }
+  @keyframes pulse-green {
+    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.7); }
+    70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(40, 167, 69, 0); }
+    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(40, 167, 69, 0); }
+  }
+
+  /* General Dark Card & Panel styling */
+  .card-dark {
+    background: var(--pg-bg-card);
+    border: 1px solid var(--pg-border);
+    color: var(--pg-text-primary);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .card-dark .card-header {
+    background-color: var(--pg-bg-card-header);
+    border-bottom: 1px solid var(--pg-border);
+    color: #ffffff;
+  }
+
+  /* Tables styling in dark theme */
+  .table-dashboard {
+    color: var(--pg-text-primary) !important;
+    border-color: var(--pg-border) !important;
+    margin-bottom: 0;
+  }
+  #table-schedulers,
+  #table-workers {
+    table-layout: fixed;
+    width: 100%;
+  }
+  #table-schedulers .sched-col-next,
+  #table-schedulers .sched-col-cycle,
+  #table-schedulers .sched-col-last,
+  #table-schedulers .sched-col-status,
+  #table-schedulers .sched-col-pid {
+    white-space: nowrap;
+  }
+  .sched-next-run {
+    display: inline-block;
+    min-width: 85px;
+    white-space: nowrap;
+  }
+  .table-dashboard th {
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background-color: var(--pg-bg-card-header) !important;
+    color: #ffffff !important;
+    border-bottom: 2px solid var(--pg-border) !important;
+    border-color: var(--pg-border) !important;
+  }
+  .table-dashboard td {
+    border-color: var(--pg-border) !important;
+    color: var(--pg-text-primary) !important;
+  }
+  .table-dashboard tbody tr:nth-of-type(odd) td {
+    background-color: var(--pg-bg-row-odd) !important;
+  }
+  .table-dashboard tbody tr:nth-of-type(even) td {
+    background-color: var(--pg-bg-row-even) !important;
+  }
+  .table-dashboard tbody tr:hover td {
+    background-color: var(--pg-bg-hover) !important;
+    color: #ffffff !important;
+  }
+
+  /* Nav Tabs */
+  .nav-tabs {
+    border-bottom: 2px solid var(--pg-border);
+  }
+  .nav-tabs .nav-link {
+    color: var(--pg-text-secondary);
+    background: transparent;
+    border: 1px solid transparent;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    margin-right: 4px;
+    transition: all 0.15s ease;
+  }
+  .nav-tabs .nav-link:hover {
+    color: #ffffff;
+    background-color: rgba(23, 66, 139, 0.35);
+    border-color: var(--pg-border);
+  }
+  .nav-tabs .nav-link.active {
+    color: #ffffff !important;
+    background-color: var(--pg-bg-card-header) !important;
+    border-color: var(--pg-border) var(--pg-border) var(--pg-bg-card-header) !important;
+    font-weight: 600;
+  }
+
+  /* Inputs, Selects & Controls */
+  .form-select-dark,
+  .form-control-dark {
+    background-color: #002244 !important;
+    color: var(--pg-text-primary) !important;
+    border: 1px solid var(--pg-border) !important;
+  }
+  .form-select-dark:focus,
+  .form-control-dark:focus {
+    background-color: #002b55 !important;
+    color: #ffffff !important;
+    border-color: var(--pg-accent-blue) !important;
+    box-shadow: 0 0 0 0.25rem rgba(54, 176, 249, 0.25) !important;
+  }
+  .input-group-text-dark {
+    background-color: var(--pg-bg-card-header) !important;
+    color: var(--pg-text-secondary) !important;
+    border: 1px solid var(--pg-border) !important;
+  }
+
+  /* Badges & Pills */
+  .badge-task {
+    font-family: monospace;
+    font-size: 0.85rem;
+    padding: 0.3em 0.6em;
+    background-color: #002654 !important;
+    color: var(--pg-accent-blue) !important;
+    border: 1px solid var(--pg-border) !important;
+  }
+  .badge-dark-subtle {
+    background-color: #002855 !important;
+    color: var(--pg-text-primary) !important;
+    border: 1px solid var(--pg-border) !important;
+  }
+
+  /* Traceback & Modal styling */
+  .modal-dark .modal-content {
+    background-color: var(--pg-bg-card);
+    color: var(--pg-text-primary);
+    border: 1px solid var(--pg-border);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  }
+  .modal-dark .modal-header {
+    background-color: var(--pg-bg-card-header);
+    border-bottom: 1px solid var(--pg-border);
+    color: #ffffff;
+  }
+  .modal-dark .modal-footer {
+    background-color: #002044;
+    border-top: 1px solid var(--pg-border);
+  }
+  .traceback-pre {
+    background: #000c1a;
+    color: #e6edf3;
+    padding: 1rem;
+    border-radius: 6px;
+    border: 1px solid var(--pg-border);
+    font-size: 0.85rem;
+    max-height: 450px;
+    overflow-y: auto;
+  }
+  .toast-container {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 1080;
+  }
+
+  /* --- Legacy Tab Overrides (ensuring full visibility on dark backgrounds) --- */
+  #tab-legacy {
+    color: var(--pg-text-primary) !important;
+  }
+  #tab-legacy h3 {
+    color: #ffffff !important;
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin-top: 1.75rem;
+    margin-bottom: 0.85rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--pg-border);
+  }
+  #tab-legacy .alert-info {
+    background-color: #002855;
+    border-color: var(--pg-border);
+    color: #b1d4e0;
+  }
+  #tab-legacy .table {
+    --bs-table-bg: var(--pg-bg-card);
+    --bs-table-striped-bg: #002244;
+    --bs-table-color: var(--pg-text-primary);
+    --bs-table-border-color: var(--pg-border);
+    border: 1px solid var(--pg-border);
+    color: var(--pg-text-primary) !important;
+  }
+  #tab-legacy .table th {
+    background-color: var(--pg-bg-card-header) !important;
+    color: #ffffff !important;
+    border-bottom: 2px solid var(--pg-border) !important;
+    border-color: var(--pg-border) !important;
+  }
+  #tab-legacy .table td {
+    border-color: var(--pg-border) !important;
+    color: var(--pg-text-primary) !important;
+  }
+  #tab-legacy .table-striped > tbody > tr:nth-of-type(odd) > * {
+    background-color: var(--pg-bg-row-odd) !important;
+    color: var(--pg-text-primary) !important;
+  }
+  #tab-legacy .table-striped > tbody > tr:nth-of-type(even) > * {
+    background-color: var(--pg-bg-row-even) !important;
+    color: var(--pg-text-primary) !important;
+  }
+  #tab-legacy .table-striped > tbody > tr:hover > * {
+    background-color: var(--pg-bg-hover) !important;
+    color: #ffffff !important;
+  }
+  #tab-legacy td.active {
+    background-color: #126638 !important;
+    color: #ffffff !important;
+    font-weight: 600;
+  }
+  #tab-legacy td.danger {
+    background-color: #842029 !important;
+    color: #ffffff !important;
+    font-weight: 600;
+  }
+  #tab-legacy .list-group-item {
+    background-color: #002654 !important;
+    color: var(--pg-text-primary) !important;
+    border-color: var(--pg-border) !important;
+  }
+  #tab-legacy a {
+    color: var(--pg-accent-blue) !important;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
-  {% load viewer_extras %}
+{% load viewer_extras %}
+{% csrf_token %}
+
+<div class="container-fluid py-3">
+  <!-- Top Control Bar -->
+  <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 pb-2 border-bottom" style="border-color: var(--pg-border) !important;">
+    <div>
+      <div class="d-flex align-items-center gap-2">
+        <h2 class="mb-0 fw-bold text-light">Workers & Background Processes</h2>
+        <span id="live-badge" class="badge bg-success ms-2 d-inline-flex align-items-center">
+          <span class="pulse-dot green" style="background:#fff;"></span> LIVE
+        </span>
+      </div>
+      <p class="text-secondary mb-0 small mt-1">
+        Real-time operational dashboard for background worker runners, task queues, schedulers, and downloads.
+      </p>
+    </div>
+
+    <div class="d-flex align-items-center gap-2 mt-2 mt-md-0">
+      <div class="input-group input-group-sm" style="width: auto;">
+        <span class="input-group-text input-group-text-dark"><i class="fas fa-clock"></i></span>
+        <select id="poll-interval-select" class="form-select form-select-sm form-select-dark" style="max-width: 130px;">
+          <option value="1000">Poll: 1s</option>
+          <option value="2500" selected>Poll: 2.5s</option>
+          <option value="5000">Poll: 5s</option>
+          <option value="10000">Poll: 10s</option>
+          <option value="0">Poll: Paused</option>
+        </select>
+      </div>
+
+      <button id="btn-refresh" class="btn btn-sm btn-outline-primary" title="Refresh Now">
+        <i class="fas fa-sync-alt" id="refresh-icon"></i> Refresh
+      </button>
+
+      <button id="btn-purge-workers-top" class="btn btn-sm btn-outline-warning" title="Purge stopped and dead worker records from the database">
+        <i class="fas fa-broom"></i> Purge Inactive Workers
+      </button>
+
+      <a class="btn btn-sm btn-outline-secondary" href="{% url 'viewer:tools-id' 'restart_viewer' %}" title="Restart web server for code changes">
+        <i class="fas fa-redo"></i> Restart Viewer
+      </a>
+    </div>
+  </div>
+
   {% if messages %}
     {% for message in messages %}
-      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
     {% endfor %}
   {% endif %}
 
-  <!-- Stats  -->
-  <div class="page-header">
-    <h2>Stats</h2>
-    <p class="lead">Several statistics of the workers. Current server time: {% now "y-m-d, H:i:s" %}</p>
-    <a class="btn btn-light" href="{% url 'viewer:tools-id' 'restart_viewer' %}">Restart Viewer (for code changes)</a>
-  </div>
-  <h3>Queues</h3>
-  <table class="table table-striped">
-    <thead>
-    <tr>
-      <th>Name</th><th>Running</th><th>Groups in queue</th><th>Current group length</th>
-    </tr>
-    </thead>
-    <tbody>
-    <tr>
-      <td>
-        Web Queue
-      </td>
-      <td class="{% if stats.web_queue.is_running %}active{% else %}danger{% endif %}">
-        {{ stats.web_queue.is_running|yesno }}
-      </td>
-      <td>
-        {{ stats.web_queue.queue_size }}
-      </td>
-      <td>
-        {{ stats.web_queue.current_processing_items.args|length }}
-      </td>
-    </tr>
-    </tbody>
-  </table>
-  <h3>Web Queue groups</h3>
-  <table class="table table-striped">
-    <thead>
-    <tr>
-      <th>Arguments</th><th>Wanted filters</th><th>Override options</th><th>Remove</th>
-    </tr>
-    </thead>
-    <tbody>
-    {% if stats.web_queue.current_processing_items %}
-      {% with item=stats.web_queue.current_processing_items %}
-        <tr>
-          <td>
-            <ul class="list-group">
-              {% for arg in item.args %}
-                <li class="list-group-item">{{ arg }}</li>
-              {% endfor %}
-            </ul>
-          </td>
-          <td>
-            <ul class="list-group">
-              {% for wanted in item.wanted %}
-                <li class="list-group-item">{{ wanted }}</li>
-              {% empty %}
-                <li class="list-group-item">None</li>
-              {% endfor %}
-            </ul>
-          </td>
-          <td>
-          {% if item.override_options.items %}
-            {% for setting, value in item.override_options.items %}
-              <div>{{ setting }}: {{ value }}</div>
-            {% empty %}
-              None
-            {% endfor %}
-          {% elif item.override_options %}
-            {% for setting, value in item.override_options|format_setting_value %}
-              <div>{{ setting }}: {{ value|format_setting_value }}</div>
-            {% empty %}
-              None
-            {% endfor %}
+  <!-- KPI Metric Cards -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3">
+      <div class="card metric-card p-3 h-100">
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="metric-lbl">Worker Runners</div>
+          <i class="fas fa-server text-primary opacity-75 fs-4"></i>
+        </div>
+        <div class="d-flex align-items-baseline gap-2 mt-2">
+          <div class="metric-val text-primary" id="kpi-workers-active">{{ dashboard.summary.active_workers_count|default:"0" }}</div>
+          <div class="small text-secondary">active / <span id="kpi-workers-total">{{ dashboard.summary.total_workers_count|default:"0" }}</span> total</div>
+        </div>
+        <div class="small mt-1" id="kpi-workers-stale">
+          {% if dashboard.summary.stale_workers_count %}
+            <span class="text-warning fw-bold"><i class="fas fa-exclamation-triangle"></i> {{ dashboard.summary.stale_workers_count }} stale</span>
           {% else %}
-            None
+            <span class="text-secondary">All running workers healthy</span>
           {% endif %}
-          </td>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-6 col-lg-3">
+      <div class="card metric-card p-3 h-100">
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="metric-lbl">Task Queues</div>
+          <i class="fas fa-tasks text-info opacity-75 fs-4"></i>
+        </div>
+        <div class="d-flex align-items-baseline gap-2 mt-2">
+          <div class="metric-val text-info" id="kpi-tasks-processing">{{ dashboard.summary.processing_tasks_count|default:"0" }}</div>
+          <div class="small text-secondary">running &bull; <span id="kpi-tasks-pending">{{ dashboard.summary.pending_tasks_count|default:"0" }}</span> queued</div>
+        </div>
+        <div class="small text-secondary mt-1">
+          <span id="kpi-tasks-failed" class="text-danger fw-semibold">{{ dashboard.summary.failed_tasks_24h_count|default:"0" }} failed</span> / <span id="kpi-tasks-completed" class="text-success fw-semibold">{{ dashboard.summary.completed_tasks_24h_count|default:"0" }} finished</span> (24h)
+        </div>
+      </div>
+    </div>
+
+    <div class="col-6 col-lg-3">
+      <div class="card metric-card p-3 h-100">
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="metric-lbl">Schedulers</div>
+          <i class="fas fa-clock text-success opacity-75 fs-4"></i>
+        </div>
+        <div class="d-flex align-items-baseline gap-2 mt-2">
+          <div class="metric-val text-success" id="kpi-schedulers-active">{{ dashboard.summary.active_schedulers_count|default:"0" }}</div>
+          <div class="small text-secondary">active / <span id="kpi-schedulers-total">{{ dashboard.summary.total_schedulers_count|default:"0" }}</span> total</div>
+        </div>
+        <div class="small text-secondary mt-1">Periodic background interval jobs</div>
+      </div>
+    </div>
+
+    <div class="col-6 col-lg-3">
+      <div class="card metric-card p-3 h-100">
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="metric-lbl">Active Downloads</div>
+          <i class="fas fa-cloud-download-alt text-warning opacity-75 fs-4"></i>
+        </div>
+        <div class="d-flex align-items-baseline gap-2 mt-2">
+          <div class="metric-val text-warning" id="kpi-downloads-count">{{ dashboard.summary.active_downloads_count|default:"0" }}</div>
+          <div class="small text-secondary">active</div>
+        </div>
+        <div class="small text-secondary mt-1">
+          Total speed: <span id="kpi-downloads-speed" class="fw-bold text-light">{{ dashboard.summary.total_download_speed_formatted|default:"0 B/s" }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Interactive System Architecture & Topology Diagram -->
+  <div class="card card-dark shadow-sm mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center py-2">
+      <span class="fw-semibold text-light small text-uppercase">
+        <i class="fas fa-project-diagram me-1 text-primary"></i> Background Topology & Flow Diagram
+      </span>
+      <button class="btn btn-sm btn-link text-decoration-none text-light p-0" id="btn-toggle-diagram">
+        <i class="fas fa-chevron-up" id="diagram-toggle-icon"></i>
+      </button>
+    </div>
+    <div class="card-body p-3" id="diagram-section" style="background-color: var(--pg-bg-card);">
+      <div class="topology-container mb-0">
+        <div class="row g-3">
+          <!-- Col 1: Queues & Event Triggers -->
+          <div class="col-md-4">
+            <div class="topology-col-title">
+              <i class="fas fa-list-ol text-info"></i> Task Queues (PostgreSQL)
+            </div>
+            <div id="diagram-queues-list">
+              {% for q in dashboard.queues %}
+                {% if q.total_active > 0 or q.task_type in "web_crawler fileinfo_worker thumbnails_worker match_unmatched_worker" %}
+                <div class="node-box {% if q.total_active > 0 %}active{% endif %}" id="d-queue-{{ q.task_type }}">
+                  <div class="d-flex justify-content-between align-items-center">
+                    <span class="fw-bold text-light">{{ q.label }}</span>
+                    <div>
+                      {% if q.processing_count > 0 %}
+                        <span class="badge bg-primary me-1">{{ q.processing_count }} running</span>
+                      {% endif %}
+                      <span class="badge {% if q.pending_count > 0 %}bg-warning text-dark{% else %}badge-dark-subtle{% endif %}">
+                        {{ q.pending_count }} queued
+                      </span>
+                    </div>
+                  </div>
+                  <div class="small text-secondary mt-1" style="font-size:0.75rem;">{{ q.description }}</div>
+                </div>
+                {% endif %}
+              {% empty %}
+                <div class="text-secondary small">No task queues defined.</div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <!-- Col 2: Worker Process Runners -->
+          <div class="col-md-4">
+            <div class="topology-col-title">
+              <i class="fas fa-microchip text-primary"></i> Worker Processes (run_workers)
+            </div>
+            <div id="diagram-workers-list">
+              {% for w in dashboard.workers %}
+                {% if w.status in "healthy stale" %}
+                <div class="node-box {{ w.status }} {% if w.current_tasks %}active{% endif %}" id="d-worker-{{ w.pid }}">
+                  <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                      <span class="pulse-dot {% if w.status == 'healthy' %}green{% else %}yellow{% endif %}"></span>
+                      <strong class="text-light">PID {{ w.pid }}</strong>
+                      <span class="text-secondary small">({{ w.hostname }})</span>
+                    </div>
+                    <span class="badge {% if w.status == 'healthy' %}bg-success{% else %}bg-warning text-dark{% endif %}">
+                      {{ w.status|upper }}
+                    </span>
+                  </div>
+                  <div class="small mt-1">
+                    {% if w.current_tasks %}
+                      <span class="text-info fw-bold"><i class="fas fa-spinner fa-spin"></i> Running {{ w.current_tasks|length }} task(s):</span>
+                      {% for ct in w.current_tasks %}
+                        <div class="badge badge-dark-subtle ms-1 mt-1">#{{ ct.id }} {{ ct.task_type }} ({{ ct.elapsed_formatted }})</div>
+                      {% endfor %}
+                    {% else %}
+                      <span class="text-secondary"><i class="fas fa-check-circle text-success"></i> Idle, polling task queue</span>
+                    {% endif %}
+                  </div>
+                  {% if w.hosted_schedulers %}
+                    <div class="small text-secondary mt-1" style="font-size:0.75rem;">
+                      Hosts: {{ w.hosted_schedulers|join:", " }}
+                    </div>
+                  {% endif %}
+                </div>
+                {% endif %}
+              {% empty %}
+                <div class="alert alert-warning py-2 small mb-2 bg-dark border-warning text-warning">
+                  <i class="fas fa-exclamation-triangle"></i> No active worker process running! Start one via:
+                  <div class="mt-1 font-monospace text-light p-1 rounded" style="background:#001122;">./.venv/bin/python manage.py run_workers --all-schedulers</div>
+                </div>
+              {% endfor %}
+              <!-- Process pool info -->
+              <div class="node-box border-dashed">
+                <div class="d-flex justify-content-between align-items-center">
+                  <span class="text-secondary fw-semibold"><i class="fas fa-cogs"></i> CPU ProcessPoolExecutor</span>
+                  <span class="badge badge-dark-subtle">{{ dashboard.summary.process_pool_workers|default:4 }} workers</span>
+                </div>
+                <div class="small text-secondary" style="font-size:0.75rem;">CRC32 verification, zip extraction, image resizing</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Col 3: Schedulers -->
+          <div class="col-md-4">
+            <div class="topology-col-title">
+              <i class="fas fa-history text-success"></i> Schedulers &amp; Periodic Jobs
+            </div>
+            <div id="diagram-schedulers-list">
+              {% for s in dashboard.schedulers %}
+                <div class="node-box {% if s.is_active %}healthy active{% else %}stopped{% endif %}" id="d-sched-{{ s.name }}">
+                  <div class="d-flex justify-content-between align-items-center">
+                    <span class="fw-bold {% if s.is_active %}text-success{% else %}text-secondary{% endif %}">
+                      {{ s.display_name }}
+                    </span>
+                    <span class="badge {% if s.is_active %}bg-success{% else %}bg-secondary{% endif %}">
+                      {% if s.is_active %}ACTIVE{% else %}IDLE / STOPPED{% endif %}
+                    </span>
+                  </div>
+                  <div class="d-flex justify-content-between small text-secondary mt-1" style="font-size:0.75rem;">
+                    <span>Cycle: {{ s.cycle_timer_formatted }}</span>
+                    <span>Next: {% if s.is_active %}{{ s.next_run_in_formatted }}{% else %}-{% endif %}</span>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Tabs Section -->
+  <ul class="nav nav-tabs mb-3" id="dashboardTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active fw-semibold" id="tab-workers-schedulers-btn" data-bs-toggle="tab" data-bs-target="#tab-workers-schedulers" type="button" role="tab">
+        <i class="fas fa-server me-1"></i> Workers &amp; Schedulers
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link fw-semibold" id="tab-queues-btn" data-bs-toggle="tab" data-bs-target="#tab-queues" type="button" role="tab">
+        <i class="fas fa-tasks me-1"></i> Task Queues <span class="badge badge-dark-subtle ms-1" id="badge-total-queue-count">{{ dashboard.summary.pending_tasks_count|add:dashboard.summary.processing_tasks_count }}</span>
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link fw-semibold" id="tab-downloads-btn" data-bs-toggle="tab" data-bs-target="#tab-downloads" type="button" role="tab">
+        <i class="fas fa-cloud-download-alt me-1"></i> Downloads <span class="badge badge-dark-subtle ms-1" id="badge-downloads-count">{{ dashboard.summary.active_downloads_count }}</span>
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link fw-semibold" id="tab-history-btn" data-bs-toggle="tab" data-bs-target="#tab-history" type="button" role="tab">
+        <i class="fas fa-history me-1"></i> Task History &amp; Errors
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link fw-semibold text-secondary" id="tab-legacy-btn" data-bs-toggle="tab" data-bs-target="#tab-legacy" type="button" role="tab">
+        <i class="fas fa-table me-1"></i> Legacy Worker Details
+      </button>
+    </li>
+  </ul>
+
+  <div class="tab-content" id="dashboardTabsContent">
+    <!-- TAB 1: WORKERS & SCHEDULERS -->
+    <div class="tab-pane fade show active" id="tab-workers-schedulers" role="tabpanel">
+      <!-- Worker Processes Table -->
+      <div class="card card-dark shadow-sm mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center py-2">
+          <h5 class="mb-0 fw-bold fs-6 text-light"><i class="fas fa-microchip text-primary me-2"></i>Worker Runner Processes (manage.py run_workers)</h5>
+          <div class="d-flex align-items-center gap-2">
+            <span class="text-secondary small" id="worker-table-count">{{ dashboard.workers|length }} registered</span>
+            <button class="btn btn-sm btn-outline-danger" id="btn-purge-stopped-workers" title="Purge all stopped and inactive worker process records">
+              <i class="fas fa-trash-alt"></i> Purge Stopped Workers
+            </button>
+            <button class="btn btn-sm btn-outline-warning" id="btn-purge-workers-7d" title="Purge inactive worker records older than 7 days">
+              <i class="fas fa-history"></i> Purge &gt;7d
+            </button>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-dashboard align-middle mb-0" id="table-workers" style="min-width: 980px;">
+            <thead>
+              <tr>
+                <th style="width: 95px;">PID</th>
+                <th style="width: 140px;">Hostname</th>
+                <th style="width: 120px;">Status</th>
+                <th style="width: 140px;">Started / Uptime</th>
+                <th style="width: 130px;">Last Heartbeat</th>
+                <th style="min-width: 190px;">Current Execution</th>
+                <th style="width: 22%; min-width: 160px;">Hosted Schedulers</th>
+                <th style="width: 100px;" class="text-end">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="workers-tbody">
+              {% for w in dashboard.workers %}
+              <tr id="row-worker-{{ w.pid }}">
+                <td class="worker-col-pid"><strong class="font-monospace text-light">{{ w.pid }}</strong></td>
+                <td class="worker-col-host">{{ w.hostname }}</td>
+                <td class="worker-col-status">
+                  {% if w.status == 'healthy' %}
+                    <span class="badge bg-success"><span class="pulse-dot green" style="background:#fff;"></span> HEALTHY</span>
+                  {% elif w.status == 'stale' %}
+                    <span class="badge bg-warning text-dark"><i class="fas fa-exclamation-triangle"></i> STALE (&gt;30s)</span>
+                  {% else %}
+                    <span class="badge bg-secondary">STOPPED</span>
+                  {% endif %}
+                </td>
+                <td class="worker-col-uptime">{{ w.uptime_formatted }}</td>
+                <td class="worker-col-heartbeat"><span class="text-secondary">{{ w.heartbeat_age_formatted }}</span></td>
+                <td class="worker-col-exec">
+                  {% if w.current_tasks %}
+                    {% for ct in w.current_tasks %}
+                      <div>
+                        <span class="badge bg-primary">#{{ ct.id }}</span>
+                        <strong class="text-light">{{ ct.task_type }}</strong>
+                        <span class="text-secondary small">({{ ct.elapsed_formatted }})</span>
+                      </div>
+                    {% endfor %}
+                  {% else %}
+                    <span class="text-secondary small"><i class="fas fa-circle text-success" style="font-size:8px;"></i> Idle</span>
+                  {% endif %}
+                </td>
+                <td class="worker-col-sched">
+                  {% if w.hosted_schedulers %}
+                    <div class="d-flex flex-wrap gap-1">
+                      {% for s in w.hosted_schedulers %}
+                        <span class="badge badge-dark-subtle">{{ s }}</span>
+                      {% endfor %}
+                    </div>
+                  {% else %}
+                    <span class="text-secondary small">None</span>
+                  {% endif %}
+                </td>
+                <td class="text-end worker-col-action">
+                  {% if w.status == 'stale' or w.status == 'stopped' %}
+                    <button class="btn btn-sm btn-outline-danger btn-delete-worker" data-pid="{{ w.pid }}" title="Delete this worker record">
+                      <i class="fas fa-trash-alt"></i> Remove
+                    </button>
+                  {% endif %}
+                </td>
+              </tr>
+              {% empty %}
+              <tr>
+                <td colspan="8" class="text-center py-4 text-secondary">
+                  No worker processes currently registered. Launch <code>manage.py run_workers</code> to consume tasks.
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Schedulers Table -->
+      <div class="card card-dark shadow-sm mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center py-2">
+          <h5 class="mb-0 fw-bold fs-6 text-light"><i class="fas fa-clock text-success me-2"></i>Periodic Schedulers &amp; Auto-Updaters</h5>
+          <span class="text-secondary small">{{ dashboard.schedulers|length }} schedulers</span>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-dashboard align-middle mb-0" id="table-schedulers" style="min-width: 980px;">
+            <thead>
+              <tr>
+                <th style="width: 20%; min-width: 170px;">Scheduler Name</th>
+                <th style="width: 95px;">Worker PID</th>
+                <th style="width: 120px;">Status</th>
+                <th style="width: 110px;">Cycle Interval</th>
+                <th style="width: 160px;">Last Run</th>
+                <th style="width: 130px;">Next Run</th>
+                <th style="min-width: 170px;">Active Activity</th>
+                <th style="width: 165px;" class="text-end">Controls</th>
+              </tr>
+            </thead>
+            <tbody id="schedulers-tbody">
+              {% for s in dashboard.schedulers %}
+              <tr id="row-sched-{{ s.name }}">
+                <td>
+                  <strong class="text-light">{{ s.display_name }}</strong>
+                  <div class="text-secondary font-monospace small" style="font-size:0.75rem;">{{ s.name }}</div>
+                </td>
+                <td class="sched-col-pid">
+                  {% if s.worker_pid %}
+                    <span class="badge badge-dark-subtle font-monospace">{{ s.worker_pid }}</span>
+                  {% else %}
+                    <span class="text-secondary">-</span>
+                  {% endif %}
+                </td>
+                <td class="sched-col-status">
+                  {% if s.is_active %}
+                    <span class="badge bg-success"><span class="pulse-dot green" style="background:#fff;"></span> RUNNING</span>
+                  {% elif s.is_running %}
+                    <span class="badge bg-warning text-dark">STARTING / STALE</span>
+                  {% else %}
+                    <span class="badge bg-secondary">STOPPED</span>
+                  {% endif %}
+                </td>
+                <td class="sched-col-cycle">{{ s.cycle_timer_formatted }}</td>
+                <td class="sched-col-last">{{ s.last_run_formatted }}</td>
+                <td class="sched-col-next">
+                  <span class="sched-next-run fw-semibold text-info" data-next-sec="{% if s.is_active and s.next_run_in_seconds is not None %}{{ s.next_run_in_seconds }}{% endif %}">
+                    {% if not s.is_active or s.next_run_in_seconds is None %}
+                      <span class="text-secondary">-</span>
+                    {% elif s.next_run_in_seconds <= 0 %}
+                      <span class="text-info"><i class="fas fa-spinner fa-spin me-1"></i>Running...</span>
+                    {% else %}
+                      {{ s.next_run_in_formatted }}
+                    {% endif %}
+                  </span>
+                </td>
+                <td class="sched-col-dl">
+                  {% if s.current_downloads %}
+                    {% for cd in s.current_downloads %}
+                      <div class="small">
+                        <i class="fas fa-download text-primary"></i> <strong class="text-light">{{ cd.filename }}</strong>
+                        <span class="text-secondary">({{ cd.downloaded_formatted }} / {{ cd.filesize_formatted }} &bull; {{ cd.speed_formatted }})</span>
+                      </div>
+                    {% endfor %}
+                  {% else %}
+                    <span class="text-secondary small">-</span>
+                  {% endif %}
+                </td>
+                <td class="text-end">
+                  <div class="btn-group btn-group-sm">
+                    {% if s.is_active %}
+                      <button class="btn btn-outline-danger btn-sched-action" data-action="scheduler_stop" data-target="{{ s.name }}" title="Stop Scheduler">
+                        <i class="fas fa-stop"></i> Stop
+                      </button>
+                    {% else %}
+                      <button class="btn btn-outline-success btn-sched-action" data-action="scheduler_start" data-target="{{ s.name }}" title="Start Scheduler">
+                        <i class="fas fa-play"></i> Start
+                      </button>
+                    {% endif %}
+                    <button class="btn btn-outline-primary btn-sched-action" data-action="scheduler_force_run" data-target="{{ s.name }}" title="Force Run Immediately">
+                      <i class="fas fa-bolt"></i> Force Run
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              {% empty %}
+              <tr>
+                <td colspan="8" class="text-center py-4 text-secondary">No schedulers registered.</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2: TASK QUEUES -->
+    <div class="tab-pane fade" id="tab-queues" role="tabpanel">
+      <!-- Queue Breakdown Cards -->
+      <div class="row g-2 mb-4" id="queues-breakdown-row">
+        {% for q in dashboard.queues %}
+        <div class="col-6 col-md-4 col-lg-3">
+          <div class="card p-2 border-0 shadow-sm" style="background-color: var(--pg-bg-card); border: 1px solid var(--pg-border) !important;">
+            <div class="d-flex justify-content-between align-items-center">
+              <strong class="text-light small">{{ q.label }}</strong>
+              {% if q.processing_count > 0 %}
+                <span class="badge bg-primary">{{ q.processing_count }} running</span>
+              {% endif %}
+            </div>
+            <div class="d-flex justify-content-between align-items-center mt-1">
+              <span class="text-secondary small">Queued:</span>
+              <span class="badge {% if q.pending_count > 0 %}bg-warning text-dark{% else %}badge-dark-subtle{% endif %}">
+                {{ q.pending_count }}
+              </span>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- Active Tasks (Processing) Table -->
+      <div class="card card-dark shadow-sm mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center py-2">
+          <h5 class="mb-0 fw-bold fs-6 text-light"><i class="fas fa-spinner fa-spin text-primary me-2"></i>Active Running Tasks</h5>
+          <span class="badge bg-primary" id="active-tasks-badge">{{ dashboard.active_tasks|length }} running</span>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-dashboard align-middle mb-0" id="table-active-tasks">
+            <thead>
+              <tr>
+                <th style="width: 80px;">ID</th>
+                <th>Type</th>
+                <th>Target / Arguments</th>
+                <th>Initiated By</th>
+                <th>Priority</th>
+                <th>Elapsed</th>
+                <th>Worker PID</th>
+                <th class="text-end">Action</th>
+              </tr>
+            </thead>
+            <tbody id="active-tasks-tbody">
+              {% for t in dashboard.active_tasks %}
+              <tr id="row-task-{{ t.id }}">
+                <td><strong class="font-monospace text-light">#{{ t.id }}</strong></td>
+                <td><span class="badge badge-task">{{ t.task_type }}</span></td>
+                <td>
+                  <div class="small font-monospace text-light">{{ t.args|join:", "|truncatechars:80 }}</div>
+                  {% if t.reason %}<div class="text-secondary small">Reason: {{ t.reason }}</div>{% endif %}
+                </td>
+                <td>{{ t.user }}</td>
+                <td><span class="badge badge-dark-subtle">{{ t.priority }}</span></td>
+                <td><strong class="text-info">{{ t.elapsed_formatted }}</strong></td>
+                <td><span class="badge badge-dark-subtle font-monospace">{{ t.worker_pid }}</span></td>
+                <td class="text-end">
+                  <button class="btn btn-sm btn-outline-danger btn-cancel-task" data-task-id="{{ t.id }}" title="Cancel Task">
+                    <i class="fas fa-times"></i> Cancel
+                  </button>
+                </td>
+              </tr>
+              {% empty %}
+              <tr>
+                <td colspan="8" class="text-center py-4 text-secondary">No tasks currently processing.</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Pending Tasks Table -->
+      <div class="card card-dark shadow-sm mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center py-2">
+          <h5 class="mb-0 fw-bold fs-6 text-light"><i class="fas fa-hourglass-half text-warning me-2"></i>Pending Queue (Next in line)</h5>
+          <span class="badge bg-warning text-dark" id="pending-tasks-badge">{{ dashboard.pending_tasks|length }} queued</span>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-dashboard align-middle mb-0" id="table-pending-tasks">
+            <thead>
+              <tr>
+                <th style="width: 80px;">ID</th>
+                <th>Type</th>
+                <th>Target / Arguments</th>
+                <th>Initiated By</th>
+                <th>Priority</th>
+                <th>Wait Time</th>
+                <th class="text-end">Action</th>
+              </tr>
+            </thead>
+            <tbody id="pending-tasks-tbody">
+              {% for t in dashboard.pending_tasks %}
+              <tr id="row-task-{{ t.id }}">
+                <td><strong class="font-monospace text-light">#{{ t.id }}</strong></td>
+                <td><span class="badge badge-dark-subtle badge-task">{{ t.task_type }}</span></td>
+                <td>
+                  <div class="small font-monospace text-light">{{ t.args|join:", "|truncatechars:80 }}</div>
+                  {% if t.reason %}<div class="text-secondary small">Reason: {{ t.reason }}</div>{% endif %}
+                </td>
+                <td>{{ t.user }}</td>
+                <td><span class="badge badge-dark-subtle">{{ t.priority }}</span></td>
+                <td><span class="text-secondary">{{ t.wait_formatted }}</span></td>
+                <td class="text-end">
+                  <button class="btn btn-sm btn-outline-danger btn-cancel-task" data-task-id="{{ t.id }}" title="Cancel Task">
+                    <i class="fas fa-times"></i> Cancel
+                  </button>
+                </td>
+              </tr>
+              {% empty %}
+              <tr>
+                <td colspan="7" class="text-center py-4 text-secondary">Queue is empty! All caught up.</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: DOWNLOADS -->
+    <div class="tab-pane fade" id="tab-downloads" role="tabpanel">
+      <div class="card card-dark shadow-sm mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center py-2">
+          <h5 class="mb-0 fw-bold fs-6 text-light"><i class="fas fa-cloud-download-alt text-warning me-2"></i>Active Downloads &amp; Progress</h5>
+          <span class="badge bg-warning text-dark" id="downloads-badge">{{ dashboard.downloads|length }} active</span>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-dashboard align-middle mb-0" id="table-downloads">
+            <thead>
+              <tr>
+                <th>Target</th>
+                <th>Archive</th>
+                <th>Gallery</th>
+                <th>Total Size</th>
+                <th style="width: 30%;">Progress</th>
+                <th>Transfer Speed</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="downloads-tbody">
+              {% for dl in dashboard.downloads %}
+              <tr>
+                <td>
+                  <div class="fw-bold text-light">{{ dl.name|truncatechars:50 }}</div>
+                </td>
+                <td>
+                  {% if dl.archive_url %}
+                    <a href="{{ dl.archive_url }}" class="badge badge-dark-subtle">Archive #{{ dl.archive_id }}</a>
+                  {% else %}-{% endif %}
+                </td>
+                <td>
+                  {% if dl.gallery_url %}
+                    <a href="{{ dl.gallery_url }}" class="badge badge-dark-subtle">Gallery #{{ dl.gallery_id }}</a>
+                  {% else %}-{% endif %}
+                </td>
+                <td>{{ dl.total_size_formatted }}</td>
+                <td>
+                  <div class="d-flex align-items-center gap-2">
+                    <div class="progress flex-grow-1" style="height: 18px; background-color: #00142c; border: 1px solid var(--pg-border);">
+                      <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" role="progressbar" style="width: {{ dl.progress }}%;">
+                        {{ dl.progress }}%
+                      </div>
+                    </div>
+                  </div>
+                </td>
+                <td><strong class="text-info">{{ dl.speed_formatted }}</strong></td>
+                <td><span class="badge bg-info text-dark">{{ dl.status }}</span></td>
+              </tr>
+              {% empty %}
+              <tr>
+                <td colspan="7" class="text-center py-4 text-secondary">No active downloads in progress.</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 4: TASK HISTORY & ERRORS -->
+    <div class="tab-pane fade" id="tab-history" role="tabpanel">
+      <div class="card card-dark shadow-sm mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center py-2">
+          <h5 class="mb-0 fw-bold fs-6 text-light"><i class="fas fa-history text-secondary me-2"></i>Recent Task Executions &amp; Failures</h5>
+          <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-outline-danger" id="btn-purge-tasks">
+              <i class="fas fa-trash-alt"></i> Purge Tasks &gt;7d
+            </button>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-dashboard align-middle mb-0" id="table-recent-tasks">
+            <thead>
+              <tr>
+                <th style="width: 80px;">ID</th>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Target / Arguments</th>
+                <th>User</th>
+                <th>Duration</th>
+                <th>Finished At</th>
+                <th>Details / Error</th>
+                <th class="text-end">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="recent-tasks-tbody">
+              {% for t in dashboard.recent_tasks %}
+              <tr id="row-recent-{{ t.id }}">
+                <td><strong class="font-monospace text-light">#{{ t.id }}</strong></td>
+                <td><span class="badge badge-dark-subtle badge-task">{{ t.task_type }}</span></td>
+                <td>
+                  {% if t.status == 'completed' %}
+                    <span class="badge bg-success"><i class="fas fa-check"></i> SUCCESS</span>
+                  {% elif t.status == 'failed' %}
+                    <span class="badge bg-danger"><i class="fas fa-times-circle"></i> FAILED</span>
+                  {% elif t.status == 'cancelled' %}
+                    <span class="badge bg-secondary">CANCELLED</span>
+                  {% else %}
+                    <span class="badge bg-info">{{ t.status }}</span>
+                  {% endif %}
+                </td>
+                <td>
+                  <div class="small font-monospace text-light">{{ t.args|join:", "|truncatechars:60 }}</div>
+                  {% if t.reason %}<div class="text-secondary small">Reason: {{ t.reason }}</div>{% endif %}
+                </td>
+                <td>{{ t.user }}</td>
+                <td>{{ t.duration_formatted }}</td>
+                <td><span class="text-secondary small">{{ t.finished_at|default:"-" }}</span></td>
+                <td>
+                  {% if t.error_message %}
+                    <div class="text-danger small fw-semibold text-truncate" style="max-width: 250px;" title="{{ t.error_message }}">
+                      {{ t.error_message }}
+                    </div>
+                  {% else %}
+                    <span class="text-secondary small">OK</span>
+                  {% endif %}
+                </td>
+                <td class="text-end">
+                  <div class="btn-group btn-group-sm">
+                    {% if t.has_traceback %}
+                      <button class="btn btn-outline-danger btn-view-traceback" data-task-id="{{ t.id }}" title="View Traceback">
+                        <i class="fas fa-bug"></i> Trace
+                      </button>
+                    {% endif %}
+                    {% if t.status == 'failed' %}
+                      <button class="btn btn-outline-primary btn-retry-task" data-task-id="{{ t.id }}" title="Retry Task">
+                        <i class="fas fa-redo"></i> Retry
+                      </button>
+                    {% endif %}
+                  </div>
+                </td>
+              </tr>
+              {% empty %}
+              <tr>
+                <td colspan="9" class="text-center py-4 text-secondary">No recent task history found.</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 5: LEGACY VIEWS -->
+    <div class="tab-pane fade" id="tab-legacy" role="tabpanel">
+      <div class="alert alert-info py-2 small mb-3">
+        <i class="fas fa-info-circle"></i> These are the original table formats preserved for compatibility.
+      </div>
+
+      <h3>Queues</h3>
+      <table class="table table-striped">
+        <thead>
+          <tr><th>Name</th><th>Running</th><th>Groups in queue</th><th>Current group length</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Web Queue</td>
+            <td class="{% if stats.web_queue.is_running %}active{% else %}danger{% endif %}">{{ stats.web_queue.is_running|yesno }}</td>
+            <td>{{ stats.web_queue.queue_size }}</td>
+            <td>{{ stats.web_queue.current_processing_items.args|length }}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Web Queue groups</h3>
+      <table class="table table-striped">
+        <thead>
+          <tr><th>Arguments</th><th>Wanted filters</th><th>Override options</th><th>Remove</th></tr>
+        </thead>
+        <tbody>
+        {% if stats.web_queue.current_processing_items %}
+          {% with item=stats.web_queue.current_processing_items %}
+          <tr>
+            <td>
+              <ul class="list-group">
+                {% for arg in item.args %}<li class="list-group-item">{{ arg }}</li>{% endfor %}
+              </ul>
+            </td>
+            <td>
+              <ul class="list-group">
+                {% for wanted in item.wanted %}<li class="list-group-item">{{ wanted }}</li>{% empty %}<li class="list-group-item">None</li>{% endfor %}
+              </ul>
+            </td>
+            <td>
+              {% if item.override_options.items %}
+                {% for setting, value in item.override_options.items %}<div>{{ setting }}: {{ value }}</div>{% empty %}None{% endfor %}
+              {% elif item.override_options %}
+                {% for setting, value in item.override_options|format_setting_value %}<div>{{ setting }}: {{ value|format_setting_value }}</div>{% empty %}None{% endfor %}
+              {% else %}
+                None
+              {% endif %}
+            </td>
+            <td>Not allowed</td>
+          </tr>
+          {% endwith %}
+        {% endif %}
+        {% for item in stats.web_queue.queue %}
+          <tr>
+            <td>
+              <ul class="list-group">
+                {% for arg in item.args %}<li class="list-group-item">{{ arg }}</li>{% endfor %}
+              </ul>
+            </td>
+            <td>
+              <ul class="list-group">
+                {% for wanted in item.wanted %}<li class="list-group-item">{{ wanted }}</li>{% empty %}<li class="list-group-item">None</li>{% endfor %}
+              </ul>
+            </td>
+            <td>
+              {% if item.override_options.items %}
+                {% for setting, value in item.override_options.items %}<div>{{ setting }}: {{ value }}</div>{% empty %}None{% endfor %}
+              {% elif item.override_options %}
+                {% for setting, value in item.override_options|format_setting_value %}<div>{{ setting }}: {{ value|format_setting_value }}</div>{% empty %}None{% endfor %}
+              {% else %}
+                None
+              {% endif %}
+            </td>
+            <td>
+              <a href="{% url 'viewer:queue-operations' 'remove_by_index' forloop.counter0 %}">Remove</a>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+
+      <h3>Download progress</h3>
+      <table class="table table-striped">
+        <thead>
+          <tr><th>URL</th><th>Archive</th><th>Gallery</th><th>Size</th><th>Progress</th></tr>
+        </thead>
+        <tbody>
+        {% for item in stats.download_progress_checker %}
+          <tr>
+            <td>{{ item.name }}</td>
+            <td><a href="{{ item.archive.get_absolute_url }}">{{ item.archive.pk }}</a></td>
+            <td><a href="{{ item.gallery.get_absolute_url }}">{{ item.gallery.pk }}</a></td>
+            <td>{{ item.total_size|filesizeformat }}</td>
+            <td>{{ item.progress }}%</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+
+      <h3>Post downloader</h3>
+      <table class="table table-striped">
+        <thead>
+          <tr><th>File</th><th>Size</th><th>Downloaded</th><th>Speed</th><th>Files to download</th></tr>
+        </thead>
+        <tbody>
+        {% for item in stats.post_downloader.current_download %}
+          <tr>
+            <td>{{ item.filename }}</td>
+            <td>{{ item.filesize|filesizeformat }}</td>
+            <td>{% widthratio item.downloaded item.filesize 100 %}%</td>
+            <td>{{ item.speed|filesizeformat }}/s</td>
+            <td>{{ item.index }}/{{ item.total }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+
+      <h3>Archive download queue</h3>
+      <table class="table table-striped">
+        <thead>
+          <tr><th>File</th><th>Size</th><th>Downloaded</th><th>Speed</th><th>Progress</th></tr>
+        </thead>
+        <tbody>
+        {% for item in stats.archive_download_queue.current_download %}
+          <tr>
+            <td>{{ item.filename }}</td>
+            <td>{{ item.filesize|filesizeformat }}</td>
+            <td>{{ item.downloaded|filesizeformat }}</td>
+            <td>{{ item.speed|filesizeformat }}/s</td>
+            <td>{% if item.filesize %}{% widthratio item.downloaded item.filesize 100 %}%{% else %}0%{% endif %}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="5">No active archive downloads.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+
+      <h3>Schedulers</h3>
+      <table class="table table-striped">
+        <thead>
+          <tr><th>Name</th><th>Running</th><th>Worker PID</th><th>Last run</th><th>Cycle (seconds, minutes)</th><th>Next run</th><th>Next run in</th></tr>
+        </thead>
+        <tbody>
+        {% for scheduler in stats.schedulers %}
+          <tr>
+            <td>{{ scheduler.0 }}</td>
+            <td class="{% if scheduler.1 %}active{% else %}danger{% endif %}">{{ scheduler.1|yesno }}</td>
+            <td>{% if scheduler.worker_pid %}{{ scheduler.worker_pid }}{% elif scheduler.5 %}{{ scheduler.5 }}{% else %}-{% endif %}</td>
+            <td>{{ scheduler.2 }}</td>
+            <td>{{ scheduler.3 }}</td>
+            <td>{{ scheduler.4 }}</td>
+            <td>{{ scheduler.4|timeuntil }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+
+      <h3>All threads</h3>
+      <table class="table table-striped">
+        <thead>
+          <tr><th>Name</th><th>Running</th><th>Info</th><th>Type</th></tr>
+        </thead>
+        <tbody>
+        {% for thread_info in stats.thread_status %}
+          <tr>
+            <td>{{ thread_info.0.0 }}</td>
+            <td class="{% if thread_info.1 %}active{% else %}danger{% endif %}">{{ thread_info.1|yesno }}</td>
+            <td>{{ thread_info.0.1 }}</td>
+            <td>{{ thread_info.0.2 }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Traceback Modal -->
+<div class="modal fade modal-dark" id="tracebackModal" tabindex="-1" aria-labelledby="tracebackModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title text-danger" id="tracebackModalLabel">
+          <i class="fas fa-exclamation-circle me-1"></i> Task Error Traceback
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-2">
+          <strong class="text-light">Error Message:</strong>
+          <div id="modal-error-message" class="text-danger small font-monospace mt-1"></div>
+        </div>
+        <strong class="text-light">Stack Trace:</strong>
+        <pre id="modal-traceback-content" class="traceback-pre mt-1"></pre>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-sm btn-outline-info" id="btn-copy-traceback">
+          <i class="fas fa-copy"></i> Copy Traceback
+        </button>
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast notifications container -->
+<div class="toast-container" id="toast-container"></div>
+{% endblock %}
+
+{% block afterJQ %}
+<script>
+(function() {
+  const CSRF_TOKEN = document.querySelector('[name=csrfmiddlewaretoken]') ? document.querySelector('[name=csrfmiddlewaretoken]').value : '';
+  const STATUS_API_URL = "{% url 'viewer:api-workers-status' %}";
+  const ACTION_API_URL = "{% url 'viewer:api-workers-action' %}";
+
+  let pollIntervalMs = 2500;
+  let pollTimer = null;
+  let isFetching = false;
+  let localData = null;
+
+  function showToast(message, type = 'info') {
+    const container = document.getElementById('toast-container');
+    const toastEl = document.createElement('div');
+    toastEl.className = `toast align-items-center text-white bg-${type === 'error' ? 'danger' : type === 'success' ? 'success' : 'primary'} border-0`;
+    toastEl.setAttribute('role', 'alert');
+    toastEl.setAttribute('aria-live', 'assertive');
+    toastEl.setAttribute('aria-atomic', 'true');
+    toastEl.innerHTML = `
+      <div class="d-flex">
+        <div class="toast-body small">${message}</div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+      </div>
+    `;
+    container.appendChild(toastEl);
+    if (window.bootstrap && window.bootstrap.Toast) {
+      const bsToast = new bootstrap.Toast(toastEl, { delay: 4000 });
+      bsToast.show();
+      toastEl.addEventListener('hidden.bs.toast', () => toastEl.remove());
+    } else {
+      setTimeout(() => toastEl.remove(), 4000);
+    }
+  }
+
+  async function postAction(action, payload = {}) {
+    try {
+      const res = await fetch(ACTION_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': CSRF_TOKEN,
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify({ action, ...payload })
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        showToast(data.error || 'Action failed.', 'error');
+      } else {
+        showToast(data.message || 'Action executed successfully.', 'success');
+        fetchStatus();
+      }
+    } catch (e) {
+      showToast('Network error while executing action: ' + e.message, 'error');
+    }
+  }
+
+  async function fetchStatus() {
+    if (isFetching) return;
+    isFetching = true;
+    const icon = document.getElementById('refresh-icon');
+    if (icon) icon.classList.add('fa-spin');
+
+    try {
+      const res = await fetch(STATUS_API_URL, {
+        headers: {
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
+        }
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      localData = data;
+      renderDashboard(data);
+    } catch (e) {
+      console.warn('Dashboard fetch failed:', e);
+      const badge = document.getElementById('live-badge');
+      if (badge) {
+        badge.className = 'badge bg-danger ms-2';
+        badge.textContent = 'DISCONNECTED';
+      }
+    } finally {
+      isFetching = false;
+      if (icon) icon.classList.remove('fa-spin');
+    }
+  }
+
+  function renderDashboard(data) {
+    if (!data || !data.summary) return;
+    const s = data.summary;
+
+    // 1. KPI Cards
+    const kwA = document.getElementById('kpi-workers-active');
+    const kwT = document.getElementById('kpi-workers-total');
+    const kwS = document.getElementById('kpi-workers-stale');
+    if (kwA) kwA.textContent = s.active_workers_count;
+    if (kwT) kwT.textContent = s.total_workers_count;
+    if (kwS) {
+      if (s.stale_workers_count > 0) {
+        kwS.innerHTML = `<span class="text-warning fw-bold"><i class="fas fa-exclamation-triangle"></i> ${s.stale_workers_count} stale</span>`;
+      } else {
+        kwS.textContent = 'All running workers healthy';
+      }
+    }
+
+    const tp = document.getElementById('kpi-tasks-processing');
+    const tq = document.getElementById('kpi-tasks-pending');
+    const tf = document.getElementById('kpi-tasks-failed');
+    const tc = document.getElementById('kpi-tasks-completed');
+    if (tp) tp.textContent = s.processing_tasks_count;
+    if (tq) tq.textContent = s.pending_tasks_count;
+    if (tf) tf.textContent = `${s.failed_tasks_24h_count} failed`;
+    if (tc) tc.textContent = `${s.completed_tasks_24h_count} finished`;
+
+    const sa = document.getElementById('kpi-schedulers-active');
+    const st = document.getElementById('kpi-schedulers-total');
+    if (sa) sa.textContent = s.active_schedulers_count;
+    if (st) st.textContent = s.total_schedulers_count;
+
+    const dc = document.getElementById('kpi-downloads-count');
+    const ds = document.getElementById('kpi-downloads-speed');
+    if (dc) dc.textContent = s.active_downloads_count;
+    if (ds) ds.textContent = s.total_download_speed_formatted;
+
+    // Badges in tabs
+    const bQueue = document.getElementById('badge-total-queue-count');
+    if (bQueue) bQueue.textContent = s.pending_tasks_count + s.processing_tasks_count;
+    const bDl = document.getElementById('badge-downloads-count');
+    if (bDl) bDl.textContent = s.active_downloads_count;
+
+    // Live indicator
+    const liveBadge = document.getElementById('live-badge');
+    if (liveBadge) {
+      if (pollIntervalMs > 0) {
+        liveBadge.className = 'badge bg-success ms-2 d-inline-flex align-items-center';
+        liveBadge.innerHTML = `<span class="pulse-dot green" style="background:#fff;"></span> LIVE`;
+      } else {
+        liveBadge.className = 'badge bg-secondary ms-2';
+        liveBadge.textContent = 'PAUSED';
+      }
+    }
+
+    // 2. Render Topology Workers Column
+    renderTopology(data);
+
+    // 3. Render Workers Table
+    renderWorkersTable(data.workers || []);
+
+    // 4. Render Schedulers Table
+    renderSchedulersTable(data.schedulers || []);
+
+    // 5. Render Tasks & Queues
+    renderActiveTasksTable(data.active_tasks || []);
+    renderPendingTasksTable(data.pending_tasks || []);
+    renderRecentTasksTable(data.recent_tasks || []);
+    renderDownloadsTable(data.downloads || []);
+  }
+
+  function renderTopology(data) {
+    const qList = document.getElementById('diagram-queues-list');
+    if (qList && data.queues) {
+      const activeOrCoreQueues = data.queues.filter(q =>
+        parseInt(q.total_active, 10) > 0 ||
+        ['web_crawler', 'fileinfo_worker', 'thumbnails_worker', 'match_unmatched_worker'].includes(q.task_type)
+      );
+      if (activeOrCoreQueues.length > 0) {
+        qList.innerHTML = activeOrCoreQueues.map(q => {
+          const isActive = parseInt(q.total_active, 10) > 0;
+          const procBadge = q.processing_count > 0 ? `<span class="badge bg-primary me-1">${q.processing_count} running</span>` : '';
+          const pendBadge = `<span class="badge ${q.pending_count > 0 ? 'bg-warning text-dark' : 'badge-dark-subtle'}">${q.pending_count} queued</span>`;
+          return `
+            <div class="node-box ${isActive ? 'active' : ''}" id="d-queue-${q.task_type}">
+              <div class="d-flex justify-content-between align-items-center">
+                <span class="fw-bold text-light">${q.label}</span>
+                <div>${procBadge}${pendBadge}</div>
+              </div>
+              <div class="small text-secondary mt-1" style="font-size:0.75rem;">${q.description}</div>
+            </div>
+          `;
+        }).join('');
+      }
+    }
+
+    const sList = document.getElementById('diagram-schedulers-list');
+    if (sList && data.schedulers) {
+      sList.innerHTML = data.schedulers.map(s => {
+        const isHealthy = s.is_active;
+        const boxClass = isHealthy ? 'healthy active' : 'stopped';
+        const titleClass = isHealthy ? 'text-success' : 'text-secondary';
+        const badgeClass = isHealthy ? 'bg-success' : 'bg-secondary';
+        const badgeLabel = isHealthy ? 'ACTIVE' : 'IDLE / STOPPED';
+        let nextText = '-';
+        if (s.is_active) {
+          if (s.next_run_in_seconds !== null && s.next_run_in_seconds <= 0) {
+            nextText = 'Running...';
+          } else {
+            nextText = s.next_run_in_formatted;
+          }
+        }
+        return `
+          <div class="node-box ${boxClass}" id="d-sched-${s.name}">
+            <div class="d-flex justify-content-between align-items-center">
+              <span class="fw-bold ${titleClass}">${s.display_name}</span>
+              <span class="badge ${badgeClass}">${badgeLabel}</span>
+            </div>
+            <div class="d-flex justify-content-between small text-secondary mt-1" style="font-size:0.75rem;">
+              <span>Cycle: ${s.cycle_timer_formatted}</span>
+              <span>Next: ${nextText}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    const wList = document.getElementById('diagram-workers-list');
+    if (wList && data.workers) {
+      const activeWorkers = data.workers.filter(w => w.status === 'healthy' || w.status === 'stale');
+      if (activeWorkers.length === 0) {
+        wList.innerHTML = `
+          <div class="alert alert-warning py-2 small mb-2 bg-dark border-warning text-warning">
+            <i class="fas fa-exclamation-triangle"></i> No active worker process running! Start via:
+            <div class="mt-1 font-monospace text-light p-1 rounded" style="background:#001122;">./.venv/bin/python manage.py run_workers --all-schedulers</div>
+          </div>
+          <div class="node-box border-dashed">
+            <div class="d-flex justify-content-between align-items-center">
+              <span class="text-secondary fw-semibold"><i class="fas fa-cogs"></i> CPU ProcessPoolExecutor</span>
+              <span class="badge badge-dark-subtle">${data.summary ? data.summary.process_pool_workers : 4} workers</span>
+            </div>
+            <div class="small text-secondary" style="font-size:0.75rem;">CRC32 verification, zip extraction, image resizing</div>
+          </div>
+        `;
+      } else {
+        let html = '';
+        activeWorkers.forEach(w => {
+          const isHealthy = w.status === 'healthy';
+          const dotClass = isHealthy ? 'green' : 'yellow';
+          const badgeClass = isHealthy ? 'bg-success' : 'bg-warning text-dark';
+          let tasksHtml = '<span class="text-secondary"><i class="fas fa-check-circle text-success"></i> Idle, polling task queue</span>';
+          if (w.current_tasks && w.current_tasks.length > 0) {
+            tasksHtml = `<span class="text-info fw-bold"><i class="fas fa-spinner fa-spin"></i> Running ${w.current_tasks.length} task(s):</span>`;
+            w.current_tasks.forEach(ct => {
+              tasksHtml += `<div class="badge badge-dark-subtle ms-1 mt-1">#${ct.id} ${ct.task_type} (${ct.elapsed_formatted})</div>`;
+            });
+          }
+          const schedText = w.hosted_schedulers && w.hosted_schedulers.length > 0
+            ? `<div class="small text-secondary mt-1" style="font-size:0.75rem;">Hosts: ${w.hosted_schedulers.join(', ')}</div>`
+            : '';
+
+          html += `
+            <div class="node-box ${w.status} ${w.current_tasks && w.current_tasks.length ? 'active' : ''}" id="d-worker-${w.pid}">
+              <div class="d-flex justify-content-between align-items-center">
+                <div>
+                  <span class="pulse-dot ${dotClass}"></span>
+                  <strong class="text-light">PID ${w.pid}</strong>
+                  <span class="text-secondary small">(${w.hostname})</span>
+                </div>
+                <span class="badge ${badgeClass}">${w.status.toUpperCase()}</span>
+              </div>
+              <div class="small mt-1">${tasksHtml}</div>
+              ${schedText}
+            </div>
+          `;
+        });
+        html += `
+          <div class="node-box border-dashed">
+            <div class="d-flex justify-content-between align-items-center">
+              <span class="text-secondary fw-semibold"><i class="fas fa-cogs"></i> CPU ProcessPoolExecutor</span>
+              <span class="badge badge-dark-subtle">${data.summary ? data.summary.process_pool_workers : 4} workers</span>
+            </div>
+            <div class="small text-secondary" style="font-size:0.75rem;">CRC32 verification, zip extraction, image resizing</div>
+          </div>
+        `;
+        wList.innerHTML = html;
+      }
+    }
+  }
+
+  function renderWorkersTable(workers) {
+    const tbody = document.getElementById('workers-tbody');
+    const countEl = document.getElementById('worker-table-count');
+    if (countEl) countEl.textContent = `${workers.length} registered`;
+    if (!tbody) return;
+    if (workers.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-secondary">No worker processes currently registered.</td></tr>';
+      return;
+    }
+
+    const existingRows = tbody.querySelectorAll('tr[id^="row-worker-"]');
+    const existingIds = new Set(Array.from(existingRows).map(r => r.id));
+    const newIds = new Set(workers.map(w => 'row-worker-' + w.pid));
+
+    const canUpdateInPlace = existingRows.length === workers.length &&
+      [...newIds].every(id => existingIds.has(id));
+
+    if (!canUpdateInPlace) {
+      let html = '';
+      workers.forEach(w => {
+        let statusBadge = '';
+        if (w.status === 'healthy') {
+          statusBadge = '<span class="badge bg-success"><span class="pulse-dot green" style="background:#fff;"></span> HEALTHY</span>';
+        } else if (w.status === 'stale') {
+          statusBadge = '<span class="badge bg-warning text-dark"><i class="fas fa-exclamation-triangle"></i> STALE (&gt;30s)</span>';
+        } else {
+          statusBadge = '<span class="badge bg-secondary">STOPPED</span>';
+        }
+
+        let currentExecution = '<span class="text-secondary small"><i class="fas fa-circle text-success" style="font-size:8px;"></i> Idle</span>';
+        if (w.current_tasks && w.current_tasks.length > 0) {
+          currentExecution = w.current_tasks.map(ct => `
+            <div>
+              <span class="badge bg-primary">#${ct.id}</span>
+              <strong class="text-light">${ct.task_type}</strong>
+              <span class="text-secondary small">(${ct.elapsed_formatted})</span>
+            </div>
+          `).join('');
+        }
+
+        let schedulersList = '<span class="text-secondary small">None</span>';
+        if (w.hosted_schedulers && w.hosted_schedulers.length > 0) {
+          schedulersList = `<div class="d-flex flex-wrap gap-1">${w.hosted_schedulers.map(s => `<span class="badge badge-dark-subtle">${s}</span>`).join('')}</div>`;
+        }
+
+        let actionBtn = '';
+        if (w.status === 'stale' || w.status === 'stopped') {
+          actionBtn = `<button class="btn btn-sm btn-outline-danger btn-delete-worker" data-pid="${w.pid}" title="Delete this worker record"><i class="fas fa-trash-alt"></i> Remove</button>`;
+        }
+
+        html += `
+          <tr id="row-worker-${w.pid}">
+            <td class="worker-col-pid"><strong class="font-monospace text-light">${w.pid}</strong></td>
+            <td class="worker-col-host">${w.hostname}</td>
+            <td class="worker-col-status">${statusBadge}</td>
+            <td class="worker-col-uptime">${w.uptime_formatted}</td>
+            <td class="worker-col-heartbeat"><span class="text-secondary">${w.heartbeat_age_formatted}</span></td>
+            <td class="worker-col-exec">${currentExecution}</td>
+            <td class="worker-col-sched">${schedulersList}</td>
+            <td class="text-end worker-col-action">${actionBtn}</td>
+          </tr>
+        `;
+      });
+      tbody.innerHTML = html;
+      return;
+    }
+
+    // In-place update to prevent layout shift and re-rendering flicker
+    workers.forEach(w => {
+      const row = document.getElementById('row-worker-' + w.pid);
+      if (!row) return;
+
+      let statusBadge = '';
+      if (w.status === 'healthy') {
+        statusBadge = '<span class="badge bg-success"><span class="pulse-dot green" style="background:#fff;"></span> HEALTHY</span>';
+      } else if (w.status === 'stale') {
+        statusBadge = '<span class="badge bg-warning text-dark"><i class="fas fa-exclamation-triangle"></i> STALE (&gt;30s)</span>';
+      } else {
+        statusBadge = '<span class="badge bg-secondary">STOPPED</span>';
+      }
+
+      const statusCell = row.querySelector('.worker-col-status');
+      if (statusCell && statusCell.innerHTML !== statusBadge) statusCell.innerHTML = statusBadge;
+
+      const uptimeCell = row.querySelector('.worker-col-uptime');
+      if (uptimeCell && uptimeCell.textContent !== w.uptime_formatted) uptimeCell.textContent = w.uptime_formatted;
+
+      const heartbeatCell = row.querySelector('.worker-col-heartbeat');
+      if (heartbeatCell && heartbeatCell.textContent !== w.heartbeat_age_formatted) {
+        heartbeatCell.innerHTML = `<span class="text-secondary">${w.heartbeat_age_formatted}</span>`;
+      }
+
+      let currentExecution = '<span class="text-secondary small"><i class="fas fa-circle text-success" style="font-size:8px;"></i> Idle</span>';
+      if (w.current_tasks && w.current_tasks.length > 0) {
+        currentExecution = w.current_tasks.map(ct => `
+          <div>
+            <span class="badge bg-primary">#${ct.id}</span>
+            <strong class="text-light">${ct.task_type}</strong>
+            <span class="text-secondary small">(${ct.elapsed_formatted})</span>
+          </div>
+        `).join('');
+      }
+      const execCell = row.querySelector('.worker-col-exec');
+      if (execCell && execCell.innerHTML !== currentExecution) execCell.innerHTML = currentExecution;
+
+      let schedulersList = '<span class="text-secondary small">None</span>';
+      if (w.hosted_schedulers && w.hosted_schedulers.length > 0) {
+        schedulersList = `<div class="d-flex flex-wrap gap-1">${w.hosted_schedulers.map(s => `<span class="badge badge-dark-subtle">${s}</span>`).join('')}</div>`;
+      }
+      const schedCell = row.querySelector('.worker-col-sched');
+      if (schedCell && schedCell.innerHTML !== schedulersList) schedCell.innerHTML = schedulersList;
+
+      let actionBtn = '';
+      if (w.status === 'stale' || w.status === 'stopped') {
+        actionBtn = `<button class="btn btn-sm btn-outline-danger btn-delete-worker" data-pid="${w.pid}" title="Delete this worker record"><i class="fas fa-trash-alt"></i> Remove</button>`;
+      }
+      const actionCell = row.querySelector('.worker-col-action');
+      if (actionCell && actionCell.innerHTML !== actionBtn) actionCell.innerHTML = actionBtn;
+    });
+  }
+
+  function renderSchedulersTable(schedulers) {
+    const tbody = document.getElementById('schedulers-tbody');
+    if (!tbody) return;
+    if (schedulers.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-secondary">No schedulers registered.</td></tr>';
+      return;
+    }
+
+    const existingRows = tbody.querySelectorAll('tr[id^="row-sched-"]');
+    const existingIds = new Set(Array.from(existingRows).map(r => r.id));
+    const newIds = new Set(schedulers.map(s => 'row-sched-' + s.name));
+
+    const canUpdateInPlace = existingRows.length === schedulers.length &&
+      [...newIds].every(id => existingIds.has(id));
+
+    if (!canUpdateInPlace) {
+      let html = '';
+      schedulers.forEach(s => {
+        let statusBadge = s.is_active
+          ? '<span class="badge bg-success"><span class="pulse-dot green" style="background:#fff;"></span> RUNNING</span>'
+          : (s.is_running ? '<span class="badge bg-warning text-dark">STARTING / STALE</span>' : '<span class="badge bg-secondary">STOPPED</span>');
+
+        let currentDl = '<span class="text-secondary small">-</span>';
+        if (s.current_downloads && s.current_downloads.length > 0) {
+          currentDl = s.current_downloads.map(cd => `
+            <div class="small">
+              <i class="fas fa-download text-primary"></i> <strong class="text-light">${cd.filename}</strong>
+              <span class="text-secondary">(${cd.downloaded_formatted} / ${cd.filesize_formatted} &bull; ${cd.speed_formatted})</span>
+            </div>
+          `).join('');
+        }
+
+        const toggleAction = s.is_active ? 'scheduler_stop' : 'scheduler_start';
+        const toggleLabel = s.is_active ? '<i class="fas fa-stop"></i> Stop' : '<i class="fas fa-play"></i> Start';
+        const toggleBtnClass = s.is_active ? 'btn-outline-danger' : 'btn-outline-success';
+
+        let nextRunHtml = '<span class="text-secondary">-</span>';
+        let nextSecAttr = '';
+        if (s.is_active && s.next_run_in_seconds !== null) {
+          if (s.next_run_in_seconds <= 0) {
+            nextSecAttr = '0';
+            nextRunHtml = '<span class="text-info"><i class="fas fa-spinner fa-spin me-1"></i>Running...</span>';
+          } else {
+            nextSecAttr = String(s.next_run_in_seconds);
+            nextRunHtml = s.next_run_in_formatted;
+          }
+        }
+
+        html += `
+          <tr id="row-sched-${s.name}">
+            <td>
+              <strong class="text-light">${s.display_name}</strong>
+              <div class="text-secondary font-monospace small" style="font-size:0.75rem;">${s.name}</div>
+            </td>
+            <td class="sched-col-pid">${s.worker_pid ? `<span class="badge badge-dark-subtle font-monospace">${s.worker_pid}</span>` : '<span class="text-secondary">-</span>'}</td>
+            <td class="sched-col-status">${statusBadge}</td>
+            <td class="sched-col-cycle">${s.cycle_timer_formatted}</td>
+            <td class="sched-col-last">${s.last_run_formatted}</td>
+            <td class="sched-col-next">
+              <span class="sched-next-run fw-semibold text-info" data-next-sec="${nextSecAttr}">
+                ${nextRunHtml}
+              </span>
+            </td>
+            <td class="sched-col-dl">${currentDl}</td>
+            <td class="text-end">
+              <div class="btn-group btn-group-sm">
+                <button class="btn ${toggleBtnClass} btn-sched-action" data-action="${toggleAction}" data-target="${s.name}">
+                  ${toggleLabel}
+                </button>
+                <button class="btn btn-outline-primary btn-sched-action" data-action="scheduler_force_run" data-target="${s.name}" title="Force Run Immediately">
+                  <i class="fas fa-bolt"></i> Force Run
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      });
+      tbody.innerHTML = html;
+      return;
+    }
+
+    // In-place updates without DOM reconstruction
+    schedulers.forEach(s => {
+      const row = document.getElementById('row-sched-' + s.name);
+      if (!row) return;
+
+      const pidCell = row.querySelector('.sched-col-pid');
+      const pidHtml = s.worker_pid ? `<span class="badge badge-dark-subtle font-monospace">${s.worker_pid}</span>` : '<span class="text-secondary">-</span>';
+      if (pidCell && pidCell.innerHTML !== pidHtml) pidCell.innerHTML = pidHtml;
+
+      const statusBadge = s.is_active
+        ? '<span class="badge bg-success"><span class="pulse-dot green" style="background:#fff;"></span> RUNNING</span>'
+        : (s.is_running ? '<span class="badge bg-warning text-dark">STARTING / STALE</span>' : '<span class="badge bg-secondary">STOPPED</span>');
+      const statusCell = row.querySelector('.sched-col-status');
+      if (statusCell && statusCell.innerHTML !== statusBadge) statusCell.innerHTML = statusBadge;
+
+      const cycleCell = row.querySelector('.sched-col-cycle');
+      if (cycleCell && cycleCell.textContent !== s.cycle_timer_formatted) cycleCell.textContent = s.cycle_timer_formatted;
+
+      const lastCell = row.querySelector('.sched-col-last');
+      if (lastCell && lastCell.textContent !== s.last_run_formatted) lastCell.textContent = s.last_run_formatted;
+
+      const nextEl = row.querySelector('.sched-next-run');
+      if (nextEl) {
+        if (!s.is_active || s.next_run_in_seconds === null) {
+          if (nextEl.getAttribute('data-next-sec') !== '') {
+            nextEl.setAttribute('data-next-sec', '');
+            nextEl.innerHTML = '<span class="text-secondary">-</span>';
+          }
+        } else if (s.next_run_in_seconds <= 0) {
+          if (nextEl.getAttribute('data-next-sec') !== '0') {
+            nextEl.setAttribute('data-next-sec', '0');
+            nextEl.innerHTML = '<span class="text-info"><i class="fas fa-spinner fa-spin me-1"></i>Running...</span>';
+          }
+        } else {
+          const curSec = parseFloat(nextEl.getAttribute('data-next-sec'));
+          if (isNaN(curSec) || curSec <= 0 || Math.abs(curSec - s.next_run_in_seconds) > 3) {
+            nextEl.setAttribute('data-next-sec', String(s.next_run_in_seconds));
+            nextEl.textContent = s.next_run_in_formatted;
+          }
+        }
+      }
+
+      let currentDl = '<span class="text-secondary small">-</span>';
+      if (s.current_downloads && s.current_downloads.length > 0) {
+        currentDl = s.current_downloads.map(cd => `
+          <div class="small">
+            <i class="fas fa-download text-primary"></i> <strong class="text-light">${cd.filename}</strong>
+            <span class="text-secondary">(${cd.downloaded_formatted} / ${cd.filesize_formatted} &bull; ${cd.speed_formatted})</span>
+          </div>
+        `).join('');
+      }
+      const dlCell = row.querySelector('.sched-col-dl');
+      if (dlCell && dlCell.innerHTML !== currentDl) dlCell.innerHTML = currentDl;
+
+      const toggleAction = s.is_active ? 'scheduler_stop' : 'scheduler_start';
+      const toggleLabel = s.is_active ? '<i class="fas fa-stop"></i> Stop' : '<i class="fas fa-play"></i> Start';
+      const toggleBtnClass = s.is_active ? 'btn-outline-danger' : 'btn-outline-success';
+      const toggleBtn = row.querySelector('.btn-sched-action[data-action="scheduler_start"], .btn-sched-action[data-action="scheduler_stop"]');
+      if (toggleBtn) {
+        if (toggleBtn.getAttribute('data-action') !== toggleAction) {
+          toggleBtn.setAttribute('data-action', toggleAction);
+          toggleBtn.className = `btn ${toggleBtnClass} btn-sched-action`;
+          toggleBtn.innerHTML = toggleLabel;
+        }
+      }
+    });
+  }
+
+  function renderActiveTasksTable(tasks) {
+    const tbody = document.getElementById('active-tasks-tbody');
+    const badge = document.getElementById('active-tasks-badge');
+    if (badge) badge.textContent = `${tasks.length} running`;
+    if (!tbody) return;
+    if (tasks.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-secondary">No tasks currently processing.</td></tr>';
+      return;
+    }
+    let html = '';
+    tasks.forEach(t => {
+      const argsPreview = (t.args || []).join(', ').substring(0, 80);
+      html += `
+        <tr id="row-task-${t.id}">
+          <td><strong class="font-monospace text-light">#${t.id}</strong></td>
+          <td><span class="badge badge-task">${t.task_type}</span></td>
           <td>
-            Not allowed
+            <div class="small font-monospace text-light">${argsPreview}</div>
+            ${t.reason ? `<div class="text-secondary small">Reason: ${t.reason}</div>` : ''}
+          </td>
+          <td>${t.user}</td>
+          <td><span class="badge badge-dark-subtle">${t.priority}</span></td>
+          <td><strong class="text-info">${t.elapsed_formatted}</strong></td>
+          <td><span class="badge badge-dark-subtle font-monospace">${t.worker_pid || '-'}</span></td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-danger btn-cancel-task" data-task-id="${t.id}" title="Cancel Task">
+              <i class="fas fa-times"></i> Cancel
+            </button>
           </td>
         </tr>
-      {% endwith %}
-    {% endif %}
-    {% for item in stats.web_queue.queue %}
-      <tr>
-        <td>
-          <ul class="list-group">
-            {% for arg in item.args %}
-              <li class="list-group-item">{{ arg }}</li>
-            {% endfor %}
-          </ul>
-        </td>
-        <td>
-          <ul class="list-group">
-            {% for wanted in item.wanted %}
-              <li class="list-group-item">{{ wanted }}</li>
-            {% empty %}
-              <li class="list-group-item">None</li>
-            {% endfor %}
-          </ul>
-        </td>
-        <td>
-          {% if item.override_options.items %}
-            {% for setting, value in item.override_options.items %}
-              <div>{{ setting }}: {{ value }}</div>
-            {% empty %}
-              None
-            {% endfor %}
-          {% elif item.override_options %}
-            {% for setting, value in item.override_options|format_setting_value %}
-              <div>{{ setting }}: {{ value|format_setting_value }}</div>
-            {% empty %}
-              None
-            {% endfor %}
-          {% else %}
-            None
-          {% endif %}
-        </td>
-        <td>
-          <a href="{% url 'viewer:queue-operations' 'remove_by_index' forloop.counter0 %}">Remove</a>
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-<h3>Download progress</h3>
-  <table class="table table-striped">
-    <thead>
-    <tr>
-      <th>URL</th><th>Archive</th><th>Gallery</th><th>Size</th><th>Progress</th>
-    </tr>
-    </thead>
-    <tbody>
-    {% for item in stats.download_progress_checker %}
-      <tr>
-        <td>
-          {{ item.name }}
-        </td>
-        <td>
-            <a href="{{ item.archive.get_absolute_url }}">{{ item.archive.pk }}</a>
-        </td>
-        <td>
-            <a href="{{ item.gallery.get_absolute_url }}">{{ item.gallery.pk }}</a>
-        </td>
-        <td>
-          {{ item.total_size|filesizeformat }}
-        </td>
-        <td>
-          {{ item.progress }}%
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  <h3>Post downloader</h3>
-  <table class="table table-striped">
-    <thead>
-    <tr>
-      <th>File</th><th>Size</th><th>Downloaded</th><th>Speed</th><th>Files to download</th>
-    </tr>
-    </thead>
-    <tbody>
-    {% for item in stats.post_downloader.current_download %}
-      <tr>
-        <td>
-          {{ item.filename }}
-        </td>
-        <td>
-          {{ item.filesize|filesizeformat }}
-        </td>
-        <td>
-          {% widthratio item.downloaded item.filesize 100 %}%
-        </td>
-        <td>
-          {{ item.speed|filesizeformat }}/s
-        </td>
-        <td>
-          {{ item.index }}/{{ item.total }}
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  <h3>Archive download queue</h3>
-  <table class="table table-striped">
-    <thead>
-    <tr>
-      <th>File</th><th>Size</th><th>Downloaded</th><th>Speed</th><th>Progress</th>
-    </tr>
-    </thead>
-    <tbody>
-    {% for item in stats.archive_download_queue.current_download %}
-      <tr>
-        <td>
-          {{ item.filename }}
-        </td>
-        <td>
-          {{ item.filesize|filesizeformat }}
-        </td>
-        <td>
-          {{ item.downloaded|filesizeformat }}
-        </td>
-        <td>
-          {{ item.speed|filesizeformat }}/s
-        </td>
-        <td>
-          {% if item.filesize %}{% widthratio item.downloaded item.filesize 100 %}%{% else %}0%{% endif %}
-        </td>
-      </tr>
-    {% empty %}
-      <tr><td colspan="5">No active archive downloads.</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  <h3>Schedulers</h3>
-  <table class="table table-striped">
-    <thead>
-    <tr>
-      <th>Name</th><th>Running</th><th>Worker PID</th><th>Last run</th><th>Cycle (seconds, minutes)</th><th>Next run</th><th>Next run in</th>
-    </tr>
-    </thead>
-    <tbody>
-    {% for scheduler in stats.schedulers %}
-      <tr>
-        <td>
-          {{ scheduler.0 }}
-        </td>
-        <td class="{% if scheduler.1 %}active{% else %}danger{% endif %}">
-          {{ scheduler.1|yesno }}
-        </td>
-        <td>
-          {% if scheduler.worker_pid %}{{ scheduler.worker_pid }}{% elif scheduler.5 %}{{ scheduler.5 }}{% else %}-{% endif %}
-        </td>
-        <td>
-          {{ scheduler.2 }}
-        </td>
-        <td>
-          {{ scheduler.3 }}
-        </td>
-        <td>
-          {{ scheduler.4 }}
-        </td>
-        <td>
-          {{ scheduler.4|timeuntil }}
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  <h3>All threads</h3>
-  <table class="table table-striped">
-    <thead>
-    <tr>
-      <th>Name</th><th>Running</th><th>Info</th><th>Type</th>
-    </tr>
-    </thead>
-    <tbody>
-    {% for thread_info in stats.thread_status %}
-      <tr>
-        <td>
-          {{ thread_info.0.0 }}
-        </td>
-        <td class="{% if thread_info.1 %}active{% else %}danger{% endif %}">
-          {{ thread_info.1|yesno }}
-        </td>
-        <td>
-          {{ thread_info.0.1 }}
-        </td>
-        <td>
-          {{ thread_info.0.2 }}
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
+      `;
+    });
+    tbody.innerHTML = html;
+  }
+
+  function renderPendingTasksTable(tasks) {
+    const tbody = document.getElementById('pending-tasks-tbody');
+    const badge = document.getElementById('pending-tasks-badge');
+    if (badge) badge.textContent = `${tasks.length} queued`;
+    if (!tbody) return;
+    if (tasks.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-secondary">Queue is empty! All caught up.</td></tr>';
+      return;
+    }
+    let html = '';
+    tasks.forEach(t => {
+      const argsPreview = (t.args || []).join(', ').substring(0, 80);
+      html += `
+        <tr id="row-task-${t.id}">
+          <td><strong class="font-monospace text-light">#${t.id}</strong></td>
+          <td><span class="badge badge-dark-subtle badge-task">${t.task_type}</span></td>
+          <td>
+            <div class="small font-monospace text-light">${argsPreview}</div>
+            ${t.reason ? `<div class="text-secondary small">Reason: ${t.reason}</div>` : ''}
+          </td>
+          <td>${t.user}</td>
+          <td><span class="badge badge-dark-subtle">${t.priority}</span></td>
+          <td><span class="text-secondary">${t.wait_formatted}</span></td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-danger btn-cancel-task" data-task-id="${t.id}" title="Cancel Task">
+              <i class="fas fa-times"></i> Cancel
+            </button>
+          </td>
+        </tr>
+      `;
+    });
+    tbody.innerHTML = html;
+  }
+
+  function renderRecentTasksTable(tasks) {
+    const tbody = document.getElementById('recent-tasks-tbody');
+    if (!tbody) return;
+    if (tasks.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="9" class="text-center py-4 text-secondary">No recent task history found.</td></tr>';
+      return;
+    }
+    let html = '';
+    tasks.forEach(t => {
+      let statusBadge = '';
+      if (t.status === 'completed') {
+        statusBadge = '<span class="badge bg-success"><i class="fas fa-check"></i> SUCCESS</span>';
+      } else if (t.status === 'failed') {
+        statusBadge = '<span class="badge bg-danger"><i class="fas fa-times-circle"></i> FAILED</span>';
+      } else if (t.status === 'cancelled') {
+        statusBadge = '<span class="badge bg-secondary">CANCELLED</span>';
+      } else {
+        statusBadge = `<span class="badge bg-info">${t.status}</span>`;
+      }
+
+      const argsPreview = (t.args || []).join(', ').substring(0, 60);
+      const errorSnippet = t.error_message
+        ? `<div class="text-danger small fw-semibold text-truncate" style="max-width: 250px;" title="${t.error_message}">${t.error_message}</div>`
+        : '<span class="text-secondary small">OK</span>';
+
+      let traceBtn = '';
+      if (t.has_traceback) {
+        traceBtn = `<button class="btn btn-outline-danger btn-view-traceback" data-task-id="${t.id}"><i class="fas fa-bug"></i> Trace</button>`;
+      }
+      let retryBtn = '';
+      if (t.status === 'failed') {
+        retryBtn = `<button class="btn btn-outline-primary btn-retry-task" data-task-id="${t.id}"><i class="fas fa-redo"></i> Retry</button>`;
+      }
+
+      html += `
+        <tr id="row-recent-${t.id}">
+          <td><strong class="font-monospace text-light">#${t.id}</strong></td>
+          <td><span class="badge badge-dark-subtle badge-task">${t.task_type}</span></td>
+          <td>${statusBadge}</td>
+          <td>
+            <div class="small font-monospace text-light">${argsPreview}</div>
+            ${t.reason ? `<div class="text-secondary small">Reason: ${t.reason}</div>` : ''}
+          </td>
+          <td>${t.user}</td>
+          <td>${t.duration_formatted}</td>
+          <td><span class="text-secondary small">${t.finished_at ? t.finished_at.substring(0, 19).replace('T', ' ') : '-'}</span></td>
+          <td>${errorSnippet}</td>
+          <td class="text-end">
+            <div class="btn-group btn-group-sm">
+              ${traceBtn}
+              ${retryBtn}
+            </div>
+          </td>
+        </tr>
+      `;
+    });
+    tbody.innerHTML = html;
+  }
+
+  function renderDownloadsTable(downloads) {
+    const tbody = document.getElementById('downloads-tbody');
+    const badge = document.getElementById('downloads-badge');
+    if (badge) badge.textContent = `${downloads.length} active`;
+    if (!tbody) return;
+    if (downloads.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-secondary">No active downloads in progress.</td></tr>';
+      return;
+    }
+    let html = '';
+    downloads.forEach(dl => {
+      const archLink = dl.archive_url ? `<a href="${dl.archive_url}" class="badge badge-dark-subtle">Archive #${dl.archive_id}</a>` : '-';
+      const galLink = dl.gallery_url ? `<a href="${dl.gallery_url}" class="badge badge-dark-subtle">Gallery #${dl.gallery_id}</a>` : '-';
+      html += `
+        <tr>
+          <td><div class="fw-bold text-light">${dl.name}</div></td>
+          <td>${archLink}</td>
+          <td>${galLink}</td>
+          <td>${dl.total_size_formatted}</td>
+          <td>
+            <div class="progress" style="height: 18px; background-color: #00142c; border: 1px solid var(--pg-border);">
+              <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" role="progressbar" style="width: ${dl.progress}%;">
+                ${dl.progress}%
+              </div>
+            </div>
+          </td>
+          <td><strong class="text-info">${dl.speed_formatted}</strong></td>
+          <td><span class="badge bg-info text-dark">${dl.status}</span></td>
+        </tr>
+      `;
+    });
+    tbody.innerHTML = html;
+  }
+
+  // Live countdown timer for schedulers next run
+  setInterval(() => {
+    document.querySelectorAll('.sched-next-run').forEach(el => {
+      const secStr = el.getAttribute('data-next-sec');
+      if (secStr !== null && secStr !== '') {
+        let sec = parseFloat(secStr);
+        if (!isNaN(sec) && sec > 0) {
+          sec = Math.max(0, sec - 1);
+          el.setAttribute('data-next-sec', String(sec));
+          if (sec <= 0) {
+            el.innerHTML = '<span class="text-info"><i class="fas fa-spinner fa-spin me-1"></i>Running...</span>';
+          } else {
+            const m = Math.floor(sec / 60);
+            const s = Math.floor(sec % 60);
+            const h = Math.floor(m / 60);
+            if (h > 0) {
+              el.textContent = `${h}h ${m % 60}m`;
+            } else if (m > 0) {
+              el.textContent = `${m}m ${s}s`;
+            } else {
+              el.textContent = `${s}s`;
+            }
+          }
+        }
+      }
+    });
+  }, 1000);
+
+  // Setup event listeners
+  function initEvents() {
+    // Refresh button
+    const btnRefresh = document.getElementById('btn-refresh');
+    if (btnRefresh) {
+      btnRefresh.addEventListener('click', () => fetchStatus());
+    }
+
+    // Interval selector
+    const pollSelect = document.getElementById('poll-interval-select');
+    if (pollSelect) {
+      pollSelect.addEventListener('change', (e) => {
+        pollIntervalMs = parseInt(e.target.value, 10);
+        resetPolling();
+      });
+    }
+
+    // Top purge inactive workers button
+    const btnPurgeTop = document.getElementById('btn-purge-workers-top');
+    if (btnPurgeTop) {
+      btnPurgeTop.addEventListener('click', () => {
+        if (confirm('Purge all stopped and inactive worker process records from database?')) {
+          postAction('purge_workers');
+        }
+      });
+    }
+
+    // Card header purge stopped workers button
+    const btnPurgeStopped = document.getElementById('btn-purge-stopped-workers');
+    if (btnPurgeStopped) {
+      btnPurgeStopped.addEventListener('click', () => {
+        if (confirm('Purge all stopped worker process records from database?')) {
+          postAction('purge_workers');
+        }
+      });
+    }
+
+    // Card header purge workers >7d button
+    const btnPurge7d = document.getElementById('btn-purge-workers-7d');
+    if (btnPurge7d) {
+      btnPurge7d.addEventListener('click', () => {
+        if (confirm('Purge inactive worker process records older than 7 days?')) {
+          postAction('purge_workers', { days: 7 });
+        }
+      });
+    }
+
+    // Toggle Diagram
+    const btnToggleDiagram = document.getElementById('btn-toggle-diagram');
+    const diagramSection = document.getElementById('diagram-section');
+    const diagramIcon = document.getElementById('diagram-toggle-icon');
+    if (btnToggleDiagram && diagramSection && diagramIcon) {
+      btnToggleDiagram.addEventListener('click', () => {
+        if (diagramSection.style.display === 'none') {
+          diagramSection.style.display = 'block';
+          diagramIcon.className = 'fas fa-chevron-up';
+        } else {
+          diagramSection.style.display = 'none';
+          diagramIcon.className = 'fas fa-chevron-down';
+        }
+      });
+    }
+
+    // Purge tasks button
+    const btnPurge = document.getElementById('btn-purge-tasks');
+    if (btnPurge) {
+      btnPurge.addEventListener('click', () => {
+        if (confirm('Purge completed and cancelled tasks older than 7 days?')) {
+          postAction('purge_completed_tasks', { days: 7 });
+        }
+      });
+    }
+
+    // Event delegation for dynamically updated tables
+    document.addEventListener('click', (e) => {
+      // Scheduler actions (start, stop, force_run)
+      const schedBtn = e.target.closest('.btn-sched-action');
+      if (schedBtn) {
+        const action = schedBtn.getAttribute('data-action');
+        const target = schedBtn.getAttribute('data-target');
+        postAction(action, { target });
+        return;
+      }
+
+      // Delete/Remove single worker button
+      const deleteWorkerBtn = e.target.closest('.btn-delete-worker');
+      if (deleteWorkerBtn) {
+        const pid = deleteWorkerBtn.getAttribute('data-pid');
+        if (confirm(`Remove worker process PID ${pid} from database?`)) {
+          postAction('worker_delete', { target: pid });
+        }
+        return;
+      }
+
+      // Cancel task button
+      const cancelBtn = e.target.closest('.btn-cancel-task');
+      if (cancelBtn) {
+        const taskId = cancelBtn.getAttribute('data-task-id');
+        if (confirm(`Are you sure you want to cancel Task #${taskId}?`)) {
+          postAction('task_cancel', { target: taskId });
+        }
+        return;
+      }
+
+      // Retry task button
+      const retryBtn = e.target.closest('.btn-retry-task');
+      if (retryBtn) {
+        const taskId = retryBtn.getAttribute('data-task-id');
+        postAction('task_retry', { target: taskId });
+        return;
+      }
+
+      // View traceback button
+      const traceBtn = e.target.closest('.btn-view-traceback');
+      if (traceBtn) {
+        const taskId = parseInt(traceBtn.getAttribute('data-task-id'), 10);
+        if (localData && localData.recent_tasks) {
+          const task = localData.recent_tasks.find(t => t.id === taskId);
+          if (task) {
+            document.getElementById('modal-error-message').textContent = task.error_message || 'None';
+            document.getElementById('modal-traceback-content').textContent = task.traceback || 'No traceback recorded.';
+            if (window.bootstrap && window.bootstrap.Modal) {
+              const modal = new bootstrap.Modal(document.getElementById('tracebackModal'));
+              modal.show();
+            }
+          }
+        }
+        return;
+      }
+
+      // Copy traceback button
+      if (e.target.closest('#btn-copy-traceback')) {
+        const traceText = document.getElementById('modal-traceback-content').textContent;
+        navigator.clipboard.writeText(traceText).then(() => {
+          showToast('Traceback copied to clipboard!', 'success');
+        });
+        return;
+      }
+    });
+
+    // Pause polling when browser tab is inactive to save resources
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        if (pollTimer) clearInterval(pollTimer);
+      } else {
+        resetPolling();
+        fetchStatus();
+      }
+    });
+  }
+
+  function resetPolling() {
+    if (pollTimer) clearInterval(pollTimer);
+    if (pollIntervalMs > 0) {
+      pollTimer = setInterval(fetchStatus, pollIntervalMs);
+    }
+    const liveBadge = document.getElementById('live-badge');
+    if (liveBadge) {
+      if (pollIntervalMs > 0) {
+        liveBadge.className = 'badge bg-success ms-2 d-inline-flex align-items-center';
+        liveBadge.innerHTML = `<span class="pulse-dot green" style="background:#fff;"></span> LIVE`;
+      } else {
+        liveBadge.className = 'badge bg-secondary ms-2';
+        liveBadge.textContent = 'PAUSED';
+      }
+    }
+  }
+
+  // Initialize
+  initEvents();
+  resetPolling();
+})();
+</script>
 {% endblock %}

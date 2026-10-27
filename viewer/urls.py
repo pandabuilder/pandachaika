@@ -19,6 +19,7 @@ from viewer.views import (
     gallery_match_groups,
     stats,
     image_search,
+    workers_dashboard,
 )
 
 from viewer.feeds import LatestArchivesFeed
@@ -196,6 +197,7 @@ urlpatterns += [
     path("stats/collection/", admin.stats_collection, name="stats-collection"),
     path("public-stats/", head.public_stats, name="public-stats"),
     path("stats/workers/", admin.stats_workers, name="stats-workers"),
+    re_path(r"^stats/workers$", admin.stats_workers),
     path("stats/settings/", admin.stats_settings, name="stats-settings"),
     path("web-queue/<str:operation>/<str:arguments>/", admin.queue_operations, name="queue-operations"),
     re_path(r"^web-queue/(?P<operation>[\w-]+)/(?P<arguments>[\w-]+)$", admin.queue_operations),
@@ -205,6 +207,8 @@ urlpatterns += [
     path("tools-api/<str:tool>/", admin_api.tools, name="tools-api"),
     path("stats/", stats.stats_view, name="stats-visualizations"),
     path("api/stats/", stats.stats_api, name="api-stats"),
+    path("api/workers/status/", workers_dashboard.workers_status_api, name="api-workers-status"),
+    path("api/workers/action/", workers_dashboard.workers_action_api, name="api-workers-action"),
 ]
 
 # Collaborators.
