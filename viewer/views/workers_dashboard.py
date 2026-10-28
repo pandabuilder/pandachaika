@@ -649,6 +649,18 @@ def workers_action_api(request: HttpRequest) -> HttpResponse:
             TaskQueue.objects.filter(worker_pid=pid, status=TaskQueue.Status.PROCESSING).update(
                 status=TaskQueue.Status.PENDING, worker_pid=None
             )
+            from django.db.models import F
+            from django.db.models.functions import Greatest
+            DownloadEvent.objects.filter(
+                worker_pid=pid,
+                completed=False,
+                status=DownloadEvent.Status.IN_PROGRESS,
+            ).exclude(download_url="").update(
+                status=DownloadEvent.Status.QUEUED,
+                worker_pid=None,
+                progress=0.0,
+                attempts=Greatest(F("attempts") - 1, 0),
+            )
             worker.delete()
             logger.info("Admin %s deleted WorkerProcess PID %d", request.user, pid)
             return JsonResponse({"success": True, "message": f"Worker process PID {pid} removed."})
@@ -670,6 +682,18 @@ def workers_action_api(request: HttpRequest) -> HttpResponse:
                 SchedulerState.objects.filter(worker_pid__in=dead_pids).update(is_running=False, worker_pid=None)
                 TaskQueue.objects.filter(worker_pid__in=dead_pids, status=TaskQueue.Status.PROCESSING).update(
                     status=TaskQueue.Status.PENDING, worker_pid=None
+                )
+                from django.db.models import F
+                from django.db.models.functions import Greatest
+                DownloadEvent.objects.filter(
+                    worker_pid__in=dead_pids,
+                    completed=False,
+                    status=DownloadEvent.Status.IN_PROGRESS,
+                ).exclude(download_url="").update(
+                    status=DownloadEvent.Status.QUEUED,
+                    worker_pid=None,
+                    progress=0.0,
+                    attempts=Greatest(F("attempts") - 1, 0),
                 )
             deleted, _ = qs.delete()
             logger.info("Admin %s purged %d inactive worker process records", request.user, deleted)

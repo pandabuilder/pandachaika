@@ -159,6 +159,8 @@ class WorkerContext:
         self.timed_auto_wanted = TimedAutoWanted(crawler_settings, timer=crawler_settings.auto_wanted.cycle_timer)
 
         for provider_name in crawler_settings.autoupdater.providers:
+            if provider_name not in crawler_settings.providers:
+                continue
             setup.GlobalInfo.worker_threads.append(
                 (
                     "auto_updater_" + provider_name,

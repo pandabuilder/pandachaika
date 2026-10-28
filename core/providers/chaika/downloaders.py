@@ -92,15 +92,15 @@ class PandaBackupHttpFileDownloader(BaseDownloader):
                     self.fileDownloaded = 1
                     self.return_code = 1
                     break
+                if self.download_event:
+                    self.download_event.set_as_failed("Downloaded archive file is empty or invalid")
+                    self.download_event.save()
+                    self.download_event = None
 
-            except (
-                requests.exceptions.ConnectionError,
-                requests.exceptions.ReadTimeout,
-                requests.exceptions.ChunkedEncodingError
-            ) as e:
+            except Exception as e:
                 logger.warning("Download failed on attempt {}/3 with error: {}".format(attempt + 1, str(e)))
                 if self.download_event:
-                    self.download_event.set_as_failed()
+                    self.download_event.set_as_failed(str(e))
                     self.download_event.save()
                     self.download_event = None
 

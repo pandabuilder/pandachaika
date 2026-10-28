@@ -188,6 +188,14 @@ class GeneralSettings(BaseConfigModel):
         default=2.0,
         description="Loop interval (in seconds) for the background archive download queue scheduler.",
     )
+    archive_download_stall_timeout: float = Field(
+        default=180.0,
+        description="Stall/inactivity timeout (in seconds) for queued HTTP archive downloads. Downloads making steady progress continue indefinitely, whereas stalled downloads with no progress for this duration are aborted and retried/failed (0 disables).",
+    )
+    worker_task_stall_timeout: float = Field(
+        default=1800.0,
+        description="Stall/inactivity timeout (in seconds) for background TaskQueue jobs in WorkerRunner. Tasks making no progress for this duration are terminated and marked as FAILED (0 disables).",
+    )
     download_progress_checker_startup: bool = Field(
         default=True,
         description="Start the download progress checker scheduler on worker startup.",
@@ -1448,6 +1456,18 @@ general:
   # Cycle interval (in seconds) for the archive download queue scheduler loop.
   # Default: 2.0
   archive_download_queue_cycle_timer: 2.0
+
+  # Stall/inactivity timeout (in seconds) for queued HTTP archive downloads.
+  # Slow downloads making steady progress continue without interruption; stalled
+  # downloads with no progress for this duration are aborted and retried/failed.
+  # Set to 0 to disable.
+  # Default: 180.0
+  archive_download_stall_timeout: 180.0
+
+  # Stall/inactivity timeout (in seconds) for background TaskQueue jobs in WorkerRunner.
+  # Set to 0 to disable.
+  # Default: 1800.0
+  worker_task_stall_timeout: 1800.0
 
   # Start the download progress checker scheduler on worker startup.
   # Default: true

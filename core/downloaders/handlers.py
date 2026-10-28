@@ -288,7 +288,18 @@ class BaseDownloader[T_ProviderSettings: ProviderSettings](metaclass=Meta):
         self.gallery = gallery
 
         self.original_gallery.dl_type = self.type
+        activity_cb = getattr(self.settings, "activity_callback", None)
+        if callable(activity_cb):
+            try:
+                activity_cb()
+            except Exception:
+                pass
         self.start_download()
+        if callable(activity_cb):
+            try:
+                activity_cb()
+            except Exception:
+                pass
 
         if self.return_code == 0:
             return

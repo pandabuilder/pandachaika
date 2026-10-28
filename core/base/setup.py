@@ -167,6 +167,7 @@ class Settings:
         self.silent_processing = False
         self.update_metadata_mode = False
         self.is_worker_process: bool = False
+        self.activity_callback: typing.Callable[[], None] | None = None
 
         # USER SETTINGS
         self.replace_metadata = False
@@ -227,6 +228,8 @@ class Settings:
         self.queue_archive_downloads: bool = True
         self.archive_download_queue_startup: bool = True
         self.archive_download_queue_cycle_timer: float = 2.0
+        self.archive_download_stall_timeout: float = 180.0
+        self.worker_task_stall_timeout: float = 1800.0
         self.parallel_archive_downloaders: int = 1
 
         self.general_model = GeneralSettings()
@@ -659,6 +662,8 @@ class Settings:
             self.queue_archive_downloads = self.general_model.queue_archive_downloads
             self.archive_download_queue_startup = self.general_model.archive_download_queue_startup
             self.archive_download_queue_cycle_timer = self.general_model.archive_download_queue_cycle_timer
+            self.archive_download_stall_timeout = self.general_model.archive_download_stall_timeout
+            self.worker_task_stall_timeout = self.general_model.worker_task_stall_timeout
             self.download_progress_checker_startup = self.general_model.download_progress_checker_startup
             self.download_progress_checker_cycle_timer = self.general_model.download_progress_checker_cycle_timer
             self.cherrypy_auto_restart = self.general_model.cherrypy_auto_restart
@@ -721,6 +726,8 @@ class Settings:
                 self.archive_download_queue_startup = bool(adq_cfg["startup"])
             if "cycle_timer" in adq_cfg:
                 self.archive_download_queue_cycle_timer = float(adq_cfg["cycle_timer"])
+            if "stall_timeout" in adq_cfg:
+                self.archive_download_stall_timeout = float(adq_cfg["stall_timeout"])
             if "parallel_downloaders" in adq_cfg:
                 self.parallel_archive_downloaders = int(adq_cfg["parallel_downloaders"])
 

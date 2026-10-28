@@ -950,7 +950,7 @@ def acquire_provider_rate_limit_slot(
                 rl_obj = ProviderRateLimit.objects.select_for_update().get(name=provider_name)
                 now = time.time()
                 raw_ts = rl_obj.call_timestamps if isinstance(rl_obj.call_timestamps, list) else []
-                valid_ts = [float(ts) for ts in raw_ts if (now - float(ts)) < period]
+                valid_ts = [float(ts) for ts in raw_ts if 0.0 <= (now - float(ts)) < period]
                 if len(valid_ts) < clamped_calls:
                     valid_ts.append(now)
                     rl_obj.call_timestamps = valid_ts
@@ -960,7 +960,7 @@ def acquire_provider_rate_limit_slot(
                     return True
                 else:
                     oldest = min(valid_ts)
-                    wait_time = max(0.01, period - (now - oldest))
+                    wait_time = min(period, max(0.01, period - (now - oldest)))
                     if len(valid_ts) != len(raw_ts):
                         rl_obj.call_timestamps = valid_ts
                         rl_obj.save(update_fields=["call_timestamps", "updated_at"])

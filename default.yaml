@@ -106,6 +106,18 @@ general:
   # Default: 2.0
   archive_download_queue_cycle_timer: 2.0
 
+  # Stall/inactivity timeout (in seconds) for queued HTTP archive downloads.
+  # Slow downloads making steady progress continue without interruption; stalled
+  # downloads with no progress for this duration are aborted and retried/failed.
+  # Set to 0 to disable.
+  # Default: 180.0
+  archive_download_stall_timeout: 180.0
+
+  # Stall/inactivity timeout (in seconds) for background TaskQueue jobs in WorkerRunner.
+  # Set to 0 to disable.
+  # Default: 1800.0
+  worker_task_stall_timeout: 1800.0
+
   # Start the download progress checker scheduler on worker startup.
   # Default: true
   download_progress_checker_startup: true
