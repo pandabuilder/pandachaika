@@ -1,6 +1,7 @@
 import itertools
 import logging
 import os
+import shlex
 import shutil
 import subprocess
 import typing
@@ -119,6 +120,42 @@ class ArchiveCloningService:
 
         return new_archive, ""
 
+    @staticmethod
+    def build_image_tool_command(command_template: str, input_path: str, output_path: str) -> list[str]:
+        """Build an argv list for an external image tool without invoking a shell.
+
+        The template is tokenized with shlex *before* substituting the placeholders, so
+        file paths (which may originate from untrusted archive member names) always end up
+        as single, literal arguments and can never inject shell syntax or extra arguments.
+        """
+        tokens = shlex.split(command_template)
+        if not tokens:
+            raise ValueError("Image tool command is empty")
+        return [token.replace("{input}", input_path).replace("{output}", output_path) for token in tokens]
+
+    @classmethod
+    def run_image_tool(cls, image_tool: "CloningImageToolSettings", input_path: str, output_path: str) -> str | None:
+        """Run the configured image tool on a single file. Returns an error message or None on success."""
+        try:
+            command = cls.build_image_tool_command(image_tool.executable_path, input_path, output_path)
+        except ValueError as e:
+            return f"Invalid command configured for {image_tool.name}: {e}"
+
+        try:
+            process_result = subprocess.run(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True,
+                shell=False,
+            )
+        except (FileNotFoundError, PermissionError):
+            return f"The following command could not run: {image_tool.name}"
+
+        if process_result.returncode != 0:
+            return f"An error was captured when running {image_tool.name}: {process_result.stderr}"
+        return None
+
     @classmethod
     def clone_archive_plus(
         cls,
@@ -177,87 +214,44 @@ class ArchiveCloningService:
         new_zipfile = zipfile.ZipFile(new_file_path, "w")
         dir_path = mkdtemp(dir=settings.CRAWLER_SETTINGS.temp_directory_path)
 
+        def abort(message: str) -> "tuple[Archive | None, str]":
+            new_zipfile.close()
+            my_zip.close()
+            shutil.rmtree(dir_path, ignore_errors=True)
+            if os.path.isfile(new_file_path):
+                os.remove(new_file_path)
+            return None, message
+
         for count, sha1 in enumerate(local_sha1s, start=1):
             try:
                 current_image = images.get(sha1=sha1)
             except Exception:
-                new_zipfile.close()
-                my_zip.close()
-                shutil.rmtree(dir_path, ignore_errors=True)
-                return None, f"Image from SHA1 value: {sha1} does not exist"
+                return abort(f"Image from SHA1 value: {sha1} does not exist")
 
             archive_position = current_image.archive_position
             current_file_tuple = filtered_files[archive_position - 1]
+
             if current_file_tuple[1] is None:
-                my_zip.extract(current_file_tuple[0], path=dir_path)
-                extracted_file = os.path.join(dir_path, current_file_tuple[0].replace("\\", "/"))
-
-                if image_tool and file_matches_any_filter(current_file_tuple[0], image_tool.file_filters):
-                    mod_file = os.path.join(dir_path, f"mod_file_{count}.tmp")
-                    final_command = image_tool.executable_path.format(input=extracted_file, output=mod_file)
-
-                    try:
-                        process_result = subprocess.run(
-                            final_command,
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE,
-                            universal_newlines=True,
-                            shell=True,
-                        )
-                    except FileNotFoundError:
-                        new_zipfile.close()
-                        my_zip.close()
-                        shutil.rmtree(dir_path, ignore_errors=True)
-                        return None, f"The following command could not run: {image_tool.name}"
-
-                    if process_result.returncode != 0:
-                        new_zipfile.close()
-                        my_zip.close()
-                        shutil.rmtree(dir_path, ignore_errors=True)
-                        return None, f"An error was captured when running {image_tool.name}: {process_result.stderr}"
-                    out_file = mod_file
-                else:
-                    out_file = extracted_file
-
-                current_basename = os.path.basename(current_file_tuple[0])
-                out_name = f"{str(count).zfill(4)}_{current_basename}" if sha1s else current_basename
-                new_zipfile.write(out_file, arcname=out_name)
+                # ZipFile.extract() sanitizes member names (strips '..' and absolute paths),
+                # so always use the returned path instead of re-joining the raw member name.
+                extracted_file = my_zip.extract(current_file_tuple[0], path=dir_path)
             else:
                 with my_zip.open(current_file_tuple[1]) as current_zip:
                     with zipfile.ZipFile(current_zip) as my_nested_zip:
-                        my_nested_zip.extract(current_file_tuple[0], path=dir_path)
-                        extracted_file = os.path.join(dir_path, current_file_tuple[0].replace("\\", "/"))
+                        extracted_file = my_nested_zip.extract(current_file_tuple[0], path=dir_path)
 
-                        if image_tool and file_matches_any_filter(current_file_tuple[0], image_tool.file_filters):
-                            mod_file = os.path.join(dir_path, f"mod_file_{count}.tmp")
-                            final_command = image_tool.executable_path.format(input=extracted_file, output=mod_file)
+            if image_tool and file_matches_any_filter(current_file_tuple[0], image_tool.file_filters):
+                mod_file = os.path.join(dir_path, f"mod_file_{count}.tmp")
+                error_message = cls.run_image_tool(image_tool, extracted_file, mod_file)
+                if error_message:
+                    return abort(error_message)
+                out_file = mod_file
+            else:
+                out_file = extracted_file
 
-                            try:
-                                process_result = subprocess.run(
-                                    final_command,
-                                    stdout=subprocess.PIPE,
-                                    stderr=subprocess.PIPE,
-                                    universal_newlines=True,
-                                    shell=True,
-                                )
-                            except FileNotFoundError:
-                                new_zipfile.close()
-                                my_zip.close()
-                                shutil.rmtree(dir_path, ignore_errors=True)
-                                return None, f"The following command could not run: {image_tool.name}"
-
-                            if process_result.returncode != 0:
-                                new_zipfile.close()
-                                my_zip.close()
-                                shutil.rmtree(dir_path, ignore_errors=True)
-                                return None, f"An error was captured when running {image_tool.name}: {process_result.stderr}"
-                            out_file = mod_file
-                        else:
-                            out_file = extracted_file
-
-                        current_basename = os.path.basename(current_file_tuple[0])
-                        out_name = f"{str(count).zfill(4)}_{current_basename}" if sha1s else current_basename
-                        new_zipfile.write(out_file, arcname=out_name)
+            current_basename = os.path.basename(current_file_tuple[0])
+            out_name = f"{str(count).zfill(4)}_{current_basename}" if sha1s else current_basename
+            new_zipfile.write(out_file, arcname=out_name)
 
         new_zipfile.close()
         my_zip.close()
@@ -373,15 +367,13 @@ class ArchiveCloningService:
                 archive_position = current_image.archive_position
                 current_file_tuple = filtered_files[archive_position - 1]
                 if current_file_tuple[1] is None:
-                    my_zip.extract(current_file_tuple[0], path=dir_path)
-                    extracted_file = os.path.join(dir_path, current_file_tuple[0].replace("\\", "/"))
+                    extracted_file = my_zip.extract(current_file_tuple[0], path=dir_path)
                     current_basename = os.path.basename(current_file_tuple[0])
                     new_zipfile.write(extracted_file, arcname=current_basename)
                 else:
                     with my_zip.open(current_file_tuple[1]) as current_zip:
                         with zipfile.ZipFile(current_zip) as my_nested_zip:
-                            my_nested_zip.extract(current_file_tuple[0], path=dir_path)
-                            extracted_file = os.path.join(dir_path, current_file_tuple[0].replace("\\", "/"))
+                            extracted_file = my_nested_zip.extract(current_file_tuple[0], path=dir_path)
                             current_basename = os.path.basename(current_file_tuple[0])
                             new_zipfile.write(extracted_file, arcname=current_basename)
 

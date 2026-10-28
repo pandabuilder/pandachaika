@@ -25,7 +25,7 @@
       </tr>
       <tr>
         <th>Comment</th>
-        <td>{{ gallery.comment|safe|default:"None provided" }}</td>
+        <td>{{ gallery.comment|default:"None provided"|linebreaksbr }}</td>
       </tr>
       <tr>
         <th>Category</th>

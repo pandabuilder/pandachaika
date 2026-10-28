@@ -177,7 +177,9 @@
               <ul class="dropdown-menu">
                 <a class="dropdown-item" href="{% url 'viewer:stats-collection' %}">Collection</a>
                 <a class="dropdown-item" href="{% url 'viewer:stats-workers' %}">Workers</a>
+                {% if user.is_superuser %}
                 <a class="dropdown-item" href="{% url 'viewer:stats-settings' %}">Settings</a>
+                {% endif %}
                 <a class="dropdown-item" href="{% url 'viewer:stats-visualizations' %}">Visualizations</a>
               </ul>
             </li>

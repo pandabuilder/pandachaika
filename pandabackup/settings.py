@@ -8,6 +8,7 @@ import sys
 from typing import Any
 import typing
 
+from core.base.secret_key import resolve_secret_key
 from core.base.setup import Settings
 from core.base.utilities import module_exists
 
@@ -31,7 +32,9 @@ if MAIN_LOGGER and not os.path.exists(os.path.dirname(MAIN_LOGGER)):
     os.makedirs(os.path.dirname(MAIN_LOGGER))
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = crawler_settings.django_secret_key
+# Publicly known/empty keys are rejected and replaced with a generated key persisted in the config dir.
+SECRET_KEY = resolve_secret_key(crawler_settings.django_secret_key, crawler_settings.default_dir)
+crawler_settings.django_secret_key = SECRET_KEY
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = crawler_settings.django_debug_mode

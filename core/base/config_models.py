@@ -121,8 +121,11 @@ class GeneralSettings(BaseConfigModel):
         description="File glob patterns used when scanning directories for new archives. Allows accepting alternate extensions such as '*.cbz'.",
     )
     django_secret_key: str = Field(
-        default="89!yi9gvd2r*m5rq9y-elj86u*zg@-j3ce90@^7+0(-!fkgpzd",
-        description="Django secret key used for session signing and cryptographic tokens. Must be changed in production.",
+        default="",
+        description=(
+            "Django secret key used for session signing and cryptographic tokens. If empty (or set to a publicly "
+            "known old default), a random key is generated and persisted to '.django_secret_key' in the config dir."
+        ),
     )
     django_debug_mode: bool = Field(
         default=False,
@@ -1380,9 +1383,10 @@ general:
   filename_filter:
     - '*.zip'
 
-  # Django secret key used for cryptographic signing, cookies, and tokens.
-  # IMPORTANT: Change this to a secure random string in production! Do not use '%' here.
-  django_secret_key: "89!yi9gvd2r*m5rq9y-elj86u*zg@-j3ce90@^7+0(-!fkgpzd"
+  # Django secret key used for cryptographic signing, cookies, and tokens. Do not use '%' here.
+  # If left empty, a random key is generated on first start and persisted to '.django_secret_key'
+  # in the config directory. Can also be set with the DJANGO_SECRET_KEY environment variable.
+  django_secret_key: ""
 
   # Enable Django debug mode for detailed error stack traces. Must be false in production.
   # Default: false

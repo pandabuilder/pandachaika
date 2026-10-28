@@ -101,7 +101,7 @@
                   <td class="td-extended">
                     <h5>{{ gallery.best_title }}</h5>
                     <h6>{{ gallery.title_jpn|default_if_none:"" }}</h6>
-                    <h6>{{ gallery.comment|safe|default:"" }}</h6>
+                    <h6>{{ gallery.comment|default:""|linebreaksbr }}</h6>
                     {% if user.is_staff %}
                       <div>
                         <a class="btn btn-sm btn-light" href="{% url 'viewer:api' %}?gallery={{ gallery.pk }}">JSON info</a>

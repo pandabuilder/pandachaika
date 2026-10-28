@@ -155,6 +155,12 @@ def validate_yaml_settings(settings_text: str) -> dict[str, Any]:
     }
 
 
+# Tools that read or write the raw settings file. The settings file contains every credential
+# (database, providers, torrent clients) and command templates that get executed on the host
+# (e.g. cloning_image_tool.executable_path), so access is equivalent to OS-level access: superusers only.
+SUPERUSER_ONLY_TOOLS = frozenset({"settings", "validate_settings", "reload_settings"})
+
+
 # Admin related APIs
 def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpResponse:
     """Tools listing."""
@@ -162,6 +168,9 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
     if not request.user.is_staff:
         response["error"] = "Not allowed"
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status=401)
+    if tool in SUPERUSER_ONLY_TOOLS and not request.user.is_superuser:
+        response["error"] = "Superuser required"
+        return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status=403)
     if tool == "transfer_missing_downloads":
         client.enqueue(args=["-tmd"], task_type="web_crawler", override_options=crawler_settings, user=request.user)
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")

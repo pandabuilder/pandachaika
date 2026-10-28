@@ -3,6 +3,7 @@
 *.pid
 settings.ini
 settings.yaml
+.django_secret_key
 
 __pycache__/
 *.py[cod]

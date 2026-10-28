@@ -174,14 +174,43 @@ def boolean_text(value: Any, arg: str | None = None) -> SafeText:
     return mark_safe(f'<span class="{text_class}">{escape(label)}</span>')
 
 
+_SENSITIVE_SETTING_SUBSTRINGS = (
+    "password",
+    "passwd",
+    "secret",
+    "pass_hash",
+    "api_key",
+    "passkey",
+    "token",
+    "cookie",
+)
+
+
+def _is_sensitive_setting_key(key: Any) -> bool:
+    if not isinstance(key, str):
+        return False
+    lowered = key.lower()
+    if lowered == "config":
+        return True
+    return any(part in lowered for part in _SENSITIVE_SETTING_SUBSTRINGS)
+
+
+def _redact_setting_value(key: Any, val: Any) -> Any:
+    if _is_sensitive_setting_key(key):
+        return "***REDACTED***" if val else val
+    if isinstance(val, dict):
+        return {k: _redact_setting_value(k, v) for k, v in val.items()}
+    return val
+
+
 @register.filter
 def format_setting_value(value: Any) -> Any:
     if isinstance(value, dict):
-        return value.items()
+        return [(k, _redact_setting_value(k, v)) for k, v in value.items()]
     elif hasattr(value, "__dict__"):
-        return vars(value).items()
+        return [(k, _redact_setting_value(k, v)) for k, v in vars(value).items()]
     elif hasattr(value, "__slots__"):
-        return {k: getattr(value, k) for k in value.__slots__}.items()
+        return [(k, _redact_setting_value(k, getattr(value, k))) for k in value.__slots__]
     else:
         return value
 

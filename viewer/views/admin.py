@@ -39,8 +39,10 @@ logger = logging.getLogger(__name__)
 def stats_settings(request: HttpRequest) -> HttpResponse:
     """Display settings objects."""
 
-    if not request.user.is_staff:
-        return render_error(request, "You need to be an admin to view setting objects.")
+    # Settings objects include credentials (database, providers, torrent clients, secret key),
+    # so they are restricted to superusers rather than all staff.
+    if not request.user.is_superuser:
+        return render_error(request, "You need to be a superuser to view setting objects.")
 
     stats_dict = {
         "current_settings": crawler_settings,
@@ -443,10 +445,12 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
     elif tool == "modify_settings":
         return HttpResponseRedirect(reverse("viewer:tools-id", args=["modify_settings_editor"]))
     elif tool == "modify_settings_editor":
+        if not request.user.is_superuser:
+            return render_error(request, "You need to be a superuser to modify the settings file.")
         return render(request, "viewer/settings.html")
     elif tool == "reload_settings":
-        if not request.user.is_staff:
-            return render_error(request, "You need to be an admin to reload the config.")
+        if not request.user.is_superuser:
+            return render_error(request, "You need to be a superuser to reload the config.")
         crawler_settings.load_config_from_file()
         logger.info("Reloaded settings file for Panda Backup")
         messages.success(request, "Reloaded settings file for Panda Backup")

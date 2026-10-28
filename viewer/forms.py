@@ -16,7 +16,7 @@ from django.forms.models import (
     BaseInlineFormSet,
 )
 from django.forms.utils import ErrorList
-from django.utils.safestring import mark_safe
+from django.utils.html import format_html
 from django.utils.encoding import force_str
 from django.forms.utils import flatatt
 from django.conf import settings
@@ -65,16 +65,16 @@ class JalTextWidget(WidgetMixin, forms.TextInput):
 
     def render(self, name, value, attrs=None, renderer=None, **kwargs):
         """Proxy Django's TextInput.render()"""
-        html = """
-            <input id="{id}" {attrs} type="search" name="{name}" value="{value}" />
-        """.format(
-            id=attrs["id"],
-            name=name,
-            value=force_str("" if value is None else value),
-            attrs=flatatt(self.build_attrs(attrs)),
+        attrs = attrs or {}
+        # format_html escapes every interpolated value (the current value usually comes straight from
+        # the query string), flatatt already returns safely escaped attributes.
+        return format_html(
+            '<input id="{}" {} type="search" name="{}" value="{}" />',
+            attrs.get("id", ""),
+            flatatt(self.build_attrs(attrs)),
+            name,
+            force_str("" if value is None else value),
         )
-
-        return mark_safe(html)
 
     def build_attrs(self, *args: Any, **kwargs: Any):
 

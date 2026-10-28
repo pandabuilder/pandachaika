@@ -725,6 +725,10 @@ class OperationalFixesTest(TestCase):
         cls.admin_user.is_staff = True
         cls.admin_user.save()
 
+        cls.super_user = User.objects.create_superuser(
+            username="super_op", email="super@example.com", password="password"
+        )
+
         cls.normal_user = User.objects.create_user(username="user_op", password="password")
 
         cls.archive_without_thumb = Archive.objects.create(
@@ -778,10 +782,22 @@ class OperationalFixesTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Panda Backup", response.content)
 
-        # 5. Validate settings endpoint tests
-        # 5a. Valid YAML
+        # 5. Validate settings endpoint tests (restricted to superusers; non-superuser staff get 403)
         valid_yaml = "general:\n  wait_timer: 2.5\nlocations:\n  media_root: '/tmp/media'\n"
-        response = c_staff.post(
+        for tool_name in ("settings", "validate_settings", "reload_settings"):
+            resp_staff = c_staff.post(
+                reverse("viewer:tools-api", args=[tool_name]),
+                data=json.dumps({"data": valid_yaml}),
+                content_type="application/json",
+            )
+            self.assertEqual(resp_staff.status_code, 403)
+            self.assertEqual(json.loads(resp_staff.content).get("error"), "Superuser required")
+
+        c_super = Client()
+        c_super.login(username="super_op", password="password")
+
+        # 5a. Valid YAML
+        response = c_super.post(
             reverse("viewer:tools-api", args=["validate_settings"]),
             data=json.dumps({"data": valid_yaml}),
             content_type="application/json",
@@ -793,7 +809,7 @@ class OperationalFixesTest(TestCase):
 
         # 5b. Syntax error
         syntax_bad_yaml = "general:\n  wait_timer: ["
-        response = c_staff.post(
+        response = c_super.post(
             reverse("viewer:tools-api", args=["validate_settings"]),
             data=json.dumps({"data": syntax_bad_yaml}),
             content_type="application/json",
@@ -806,7 +822,7 @@ class OperationalFixesTest(TestCase):
 
         # 5c. Schema error (invalid type: wait_timer should be number)
         schema_bad_yaml = "general:\n  wait_timer: 'not-a-number'\n"
-        response = c_staff.post(
+        response = c_super.post(
             reverse("viewer:tools-api", args=["validate_settings"]),
             data=json.dumps({"data": schema_bad_yaml}),
             content_type="application/json",
@@ -818,7 +834,7 @@ class OperationalFixesTest(TestCase):
         self.assertIn("wait_timer", val_data["annotations"][0]["text"])
 
         # 5d. Settings POST with schema error without force fails with 400
-        response = c_staff.post(
+        response = c_super.post(
             reverse("viewer:tools-api", args=["settings"]),
             data=json.dumps({"data": schema_bad_yaml}),
             content_type="application/json",
@@ -836,7 +852,7 @@ class OperationalFixesTest(TestCase):
             with open(settings_file, "r", encoding="utf-8") as f:
                 original_settings = f.read()
         try:
-            response = c_staff.post(
+            response = c_super.post(
                 reverse("viewer:tools-api", args=["settings"]),
                 data=json.dumps({"data": schema_bad_yaml, "force": True}),
                 content_type="application/json",
@@ -886,6 +902,115 @@ class OperationalFixesTest(TestCase):
             self.assertEqual(resp.status_code, 200)
             self.assertTrue(resp.headers.get("Content-Type", "").startswith("application/json"))
             self.assertEqual(json.loads(resp.content), {})
+
+    def test_cloning_image_tool_no_shell_injection(self):
+        from unittest.mock import MagicMock, patch
+        from viewer.services.archive_cloning import ArchiveCloningService
+
+        malicious_input = "/tmp/dir/$(touch /tmp/pwned); rm -rf / --input.jpg"
+        output_path = "/tmp/dir/mod_file_1.tmp"
+        cmd = ArchiveCloningService.build_image_tool_command(
+            "convert -quality 90 {input} {output}",
+            malicious_input,
+            output_path,
+        )
+        self.assertEqual(cmd, ["convert", "-quality", "90", malicious_input, output_path])
+
+        with self.assertRaises(ValueError):
+            ArchiveCloningService.build_image_tool_command("   ", malicious_input, output_path)
+
+        tool = MagicMock()
+        tool.name = "test-tool"
+        tool.executable_path = "convert {input} {output}"
+        with patch("viewer.services.archive_cloning.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stderr="")
+            err = ArchiveCloningService.run_image_tool(tool, malicious_input, output_path)
+            self.assertIsNone(err)
+            mock_run.assert_called_once()
+            called_args, called_kwargs = mock_run.call_args
+            self.assertEqual(called_args[0], ["convert", malicious_input, output_path])
+            self.assertFalse(called_kwargs.get("shell", True))
+
+    def test_secret_key_resolution(self):
+        from core.base.secret_key import INSECURE_SECRET_KEYS, resolve_secret_key
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            known_default = next(iter(INSECURE_SECRET_KEYS))
+            generated = resolve_secret_key(known_default, tmpdir)
+            self.assertNotIn(generated, INSECURE_SECRET_KEYS)
+            self.assertGreaterEqual(len(generated), 50)
+            # Subsequent calls reuse the persisted key file
+            self.assertEqual(resolve_secret_key("", tmpdir), generated)
+            # Custom keys are preserved as-is
+            self.assertEqual(resolve_secret_key("my-custom-operator-secret-key", tmpdir), "my-custom-operator-secret-key")
+
+    def test_gallery_comment_xss_escaped(self):
+        xss_gallery = Gallery.objects.create(
+            title="XSS Gallery",
+            gid="99902",
+            provider="test",
+            comment="<script>alert('xss')</script>\nSecond line",
+            public=True,
+        )
+        c = Client()
+        for url in (
+            reverse("viewer:gallery", args=[xss_gallery.pk]),
+            reverse("viewer:gallery", args=[xss_gallery.pk]) + "?view_style=new",
+        ):
+            resp = c.get(url)
+            self.assertEqual(resp.status_code, 200)
+            self.assertNotIn(b"<script>alert('xss')</script>", resp.content)
+            self.assertIn(b"&lt;script&gt;alert(&#x27;xss&#x27;)&lt;/script&gt;<br>Second line", resp.content)
+
+    def test_jal_text_widget_xss_escaped(self):
+        from viewer.forms import JalTextWidget
+
+        widget = JalTextWidget(url="tag-pk-autocomplete")
+        rendered = str(
+            widget.render(
+                "tags",
+                '"><script>alert(1)</script>',
+                attrs={"id": 'id_tags" onclick="alert(2)'},
+            )
+        )
+        self.assertNotIn("<script>", rendered)
+        self.assertIn("&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;", rendered)
+        self.assertNotIn('onclick="alert(2)"', rendered)
+
+    def test_settings_views_superuser_and_redaction(self):
+        from viewer.templatetags.viewer_extras import format_setting_value
+
+        c_staff = Client()
+        c_staff.login(username="admin_op", password="password")
+
+        for url in (
+            reverse("viewer:stats-settings"),
+            reverse("viewer:tools-id", args=["modify_settings_editor"]),
+            reverse("viewer:tools-id", args=["reload_settings"]),
+        ):
+            resp = c_staff.get(url, follow=True)
+            self.assertIn(b"superuser", resp.content)
+
+        c_super = Client()
+        c_super.login(username="super_op", password="password")
+        resp = c_super.get(reverse("viewer:tools-id", args=["modify_settings_editor"]))
+        self.assertEqual(resp.status_code, 200)
+
+        formatted = dict(
+            format_setting_value(
+                {
+                    "django_secret_key": "top-secret-value",
+                    "database": {"postgresql_password": "db-pass", "postgresql_user": "panda"},
+                    "config": {"general": {"django_secret_key": "raw"}},
+                    "wait_timer": 2.5,
+                }
+            )
+        )
+        self.assertEqual(formatted["django_secret_key"], "***REDACTED***")
+        self.assertEqual(formatted["database"]["postgresql_password"], "***REDACTED***")
+        self.assertEqual(formatted["database"]["postgresql_user"], "panda")
+        self.assertEqual(formatted["config"], "***REDACTED***")
+        self.assertEqual(formatted["wait_timer"], 2.5)
 
 
 _TEMP_MEDIA_DIR = tempfile.mkdtemp(prefix="panda_test_media_")
