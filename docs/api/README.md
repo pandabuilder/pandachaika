@@ -3,8 +3,11 @@
 This documentation describes the public-facing, third-party JSON API for Panda Backup.
 
 The API is served by the view `json_api` in [`viewer/views/api/routes.py`](file:///c:/Users/Netto/projects/pandagallery/viewer/views/api/routes.py) and routed at:
-- `/api`
-- `/jsearch` (alias)
+- `/api/` (canonical) or `/api` (backwards-compatible alias)
+- `/jsearch/` (alias) or `/jsearch`
+
+> [!NOTE]
+> **Trailing Slashes**: Since updating `viewer/urls.py` to Django `path()`, canonical routes use trailing slashes (`/api/` and `/jsearch/`). While `/api` and `/jsearch` without the trailing slash are supported for backwards compatibility, callers are encouraged to use `/api/`. Note that certain other API and helper routes (such as `/api-login/`, `/api-logout/`, `/admin-api/`, `/archive/<id>/download/`, and `/gallery/<id>/thumb/`) require trailing slashes.
 
 This interface is stable, public-facing, and designed for consumption by third-party tools, scripts, browser extensions, and remote Panda instances.
 
@@ -14,13 +17,13 @@ This interface is stable, public-facing, and designed for consumption by third-p
 
 Rather than relying on separate URL paths for every resource, the API uses a **query-parameter dispatch architecture** over standard HTTP methods (`GET`, `POST`, `PUT`, `DELETE`).
 
-Each request is directed to `/api`, and the **first matching command parameter** in the query string dictates which handler processes the request (defined in [`viewer/views/api/registry.py`](file:///c:/Users/Netto/projects/pandagallery/viewer/views/api/registry.py) and [`viewer/views/api/dispatch.py`](file:///c:/Users/Netto/projects/pandagallery/viewer/views/api/dispatch.py)).
+Each request is directed to `/api/` (or `/api`), and the **first matching command parameter** in the query string dictates which handler processes the request (defined in [`viewer/views/api/registry.py`](file:///c:/Users/Netto/projects/pandagallery/viewer/views/api/registry.py) and [`viewer/views/api/dispatch.py`](file:///c:/Users/Netto/projects/pandagallery/viewer/views/api/dispatch.py)).
 
 For example:
-- `GET /api?gid=12345` &rarr; dispatches to the single gallery GID handler.
-- `GET /api?archive=42` &rarr; dispatches to the single archive handler.
-- `POST /api?wanted-gallery=` &rarr; dispatches to the create wanted gallery handler.
-- `DELETE /api?archive-group=5` &rarr; dispatches to the delete archive group handler.
+- `GET /api/?gid=12345` &rarr; dispatches to the single gallery GID handler.
+- `GET /api/?archive=42` &rarr; dispatches to the single archive handler.
+- `POST /api/?wanted-gallery=` &rarr; dispatches to the create wanted gallery handler.
+- `DELETE /api/?archive-group=5` &rarr; dispatches to the delete archive group handler.
 
 If no recognized command parameter is present in the query string:
 - `GET`, `POST`, `PUT` return `200 OK` with `{"result": "Unknown command"}`.
@@ -120,7 +123,7 @@ Detailed endpoint references and request/response examples are organized into th
 
 ## Endpoint Quick Reference
 
-Below is the complete list of available commands on `/api`:
+Below is the complete list of available commands on `/api/` (and `/api`):
 
 ### GET Commands
 | Key | Target | Parameters | Description |

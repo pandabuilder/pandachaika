@@ -386,6 +386,13 @@ class CoreTest(TestCase):
             mock_close_all.assert_called_once()
             mock_create_dirs.assert_called_once()
 
+    def test_api_url_resolution(self):
+        from django.urls import resolve
+        self.assertEqual(resolve("/api/").view_name, "viewer:api")
+        self.assertEqual(resolve("/api").view_name, "viewer:api-slashless")
+        self.assertEqual(resolve("/jsearch/").view_name, "viewer:json-search")
+        self.assertEqual(resolve("/jsearch").view_name, "viewer:json-search-slashless")
+
 
 class WantedGalleryTest(TestCase):
     english_tag: Tag
@@ -1619,9 +1626,9 @@ class PostDownloaderFTPTest(TestCase):
                 crc32="12345678",
                 user=None,
             )
-            # save() should catch NotImplementedError without crashing
+            # ingest() should catch NotImplementedError without crashing, while save() does not open zip files
             with self.assertLogs("viewer.models", level="ERROR") as cm:
-                archive.save()
+                archive.ingest()
             self.assertTrue(any("That compression method is not supported" in msg for msg in cm.output))
 
     @patch("core.downloaders.postdownload.ZipFile")

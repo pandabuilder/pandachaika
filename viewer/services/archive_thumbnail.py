@@ -56,7 +56,7 @@ class ArchiveThumbnailService:
             archive.thumbnail_width, archive.thumbnail_height = im_size
 
     @classmethod
-    def generate_thumbnails(cls, archive: "Archive", use_pool: bool = True) -> bool:
+    def generate_thumbnails(cls, archive: "Archive", use_pool: bool = True, skip_zip_check: bool = False) -> bool:
         """Generate cover thumbnails for an archive using a process pool or in-process fallback."""
         if not archive.zipped.name or not os.path.exists(archive.zipped.path):
             return False
@@ -64,16 +64,17 @@ class ArchiveThumbnailService:
         my_zip = None
         try:
             my_zip = zipfile.ZipFile(archive.zipped.path, "r")
-            bad_file = my_zip.testzip()
-            if bad_file:
-                logger.error(
-                    "Zip file CRC check failed on file %s for archive: %s on file: %s",
-                    bad_file,
-                    archive,
-                    archive.zipped.path,
-                )
-                my_zip.close()
-                return False
+            if not skip_zip_check:
+                bad_file = my_zip.testzip()
+                if bad_file:
+                    logger.error(
+                        "Zip file CRC check failed on file %s for archive: %s on file: %s",
+                        bad_file,
+                        archive,
+                        archive.zipped.path,
+                    )
+                    my_zip.close()
+                    return False
         except (zipfile.BadZipFile, NotImplementedError, zlib.error) as e:
             logger.error(
                 "Error opening or testing zipfile for archive: %s on file: %s: %s",
@@ -147,8 +148,11 @@ class ArchiveThumbnailService:
                         with my_nested_zip.open(first_file[0]) as current_img:
                             cls.create_thumbnail_from_io_image(archive, current_img)
 
+        if settings.CRAWLER_SETTINGS.auto_phash_images:
+            archive.create_or_update_thumbnail_hash("phash")
+
         my_zip.close()
-        archive.save()
+        archive.simple_save()
         return True
 
     @classmethod

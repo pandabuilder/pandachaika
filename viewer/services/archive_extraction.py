@@ -133,7 +133,11 @@ class ArchiveExtractionService:
 
         from viewer.models import Image, upload_imgpath, upload_thumbpath_handler
 
+        activity_cb = getattr(archive, "_activity_callback", None)
+
         for count, filename_tuple in enumerate(filtered_files, start=1):
+            if callable(activity_cb):
+                activity_cb()
             if count not in non_extracted_positions:
                 continue
             try:

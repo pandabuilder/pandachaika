@@ -87,7 +87,7 @@ def reconcile_downloads(
                     if archive_rescued:
                         if not dry_run:
                             archive.recalc_fileinfo()
-                            archive.save()
+                            archive.ingest()
                             DownloadEvent.objects.filter(archive=archive, completed=False).update(
                                 progress=100.0,
                                 completed=True,

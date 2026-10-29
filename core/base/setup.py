@@ -84,6 +84,8 @@ class GlobalInfo:
         ("wanted_local_search_worker", "Matches unmatched wanted galleries with the internal database", "processor"),
         ("thumbnails_worker", "Generates thumbnails for every gallery", "processor"),
         ("fileinfo_worker", "Generates file information for every gallery", "processor"),
+        ("extract_worker", "Extracts images from archives in the background", "processor"),
+        ("publish_worker", "Publishes archives in the background", "processor"),
         ("web_queue", "Queue that processes gallery links, one at a time", "queue"),
         ("webcrawler", "Processes gallery links, can coexist with web_queue", "processor"),
         ("foldercrawler", "Processes galleries on the filesystem", "processor"),

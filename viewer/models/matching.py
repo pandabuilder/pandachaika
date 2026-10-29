@@ -169,6 +169,7 @@ class GalleryMatchGroup(models.Model):
                 for archive in other_gallery.archive_set.all():
                     if archive.gallery != first_post_gallery:
                         archive.gallery = first_post_gallery
+                        archive.sync_gallery_metadata()
                         archive.save()
 
     def add_gallery(self, gallery: "Gallery") -> None:
@@ -199,6 +200,7 @@ class GalleryMatchGroupEntry(models.Model):
             for archive in self.gallery.archive_set.all():
                 if archive.gallery != first_post_gallery.gallery:
                     archive.gallery = first_post_gallery.gallery
+                    archive.sync_gallery_metadata()
                     archive.save()
 
 

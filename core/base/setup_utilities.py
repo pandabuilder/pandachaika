@@ -105,6 +105,8 @@ def get_thread_status() -> list[tuple[tuple[str, str, str], bool]]:
         "web_crawler": "webcrawler",
         "fileinfo_worker": "recalc_all_file_info",
         "thumbnails_worker": "regenerate_all_thumbs",
+        "extract_worker": "extract_archives",
+        "publish_worker": "publish_archives",
     }
 
     for thread_info in setup.GlobalInfo.worker_threads:
@@ -155,6 +157,8 @@ def get_thread_status_bool() -> dict[str, bool]:
         "web_crawler": "webcrawler",
         "fileinfo_worker": "recalc_all_file_info",
         "thumbnails_worker": "regenerate_all_thumbs",
+        "extract_worker": "extract_archives",
+        "publish_worker": "publish_archives",
     }
 
     for thread_info in setup.GlobalInfo.worker_threads:

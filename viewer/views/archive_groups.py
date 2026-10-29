@@ -11,6 +11,7 @@ from django.shortcuts import render
 from django.urls import reverse
 
 from viewer.utils.actions import event_log
+from workers import client
 from viewer.forms import (
     ArchiveGroupSearchForm,
     ArchiveGroupCreateOrEditForm,
@@ -117,13 +118,26 @@ def archive_group_details(request: HttpRequest, pk: int | None = None, slug: str
     get = request.GET
 
     if "extract_all" in get and request.user.has_perm("viewer.expand_archive"):
-        archives_to_extract = archive_group_instance.archivegroupentry_set.select_for_update().filter(
-            archive__extracted=False
+        archive_pks = list(
+            archive_group_instance.archivegroupentry_set.filter(archive__extracted=False).values_list(
+                "archive_id", flat=True
+            )
         )
-        with transaction.atomic():
-            for archive_group_entry in archives_to_extract:
-                archive_group_entry.archive.extract(resized=True)
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+        archive_pks = [archive_pk for archive_pk in archive_pks if not client.is_archive_extracting(archive_pk)]
+        if archive_pks:
+            client.enqueue(
+                args=archive_pks,
+                task_type="extract_worker",
+                override_options={"resized": True},
+                user=request.user,
+                event_action="EXPAND_ARCHIVE",
+            )
+            messages.success(request, f"Queued extraction (resized) for {len(archive_pks)} archive(s).")
+        else:
+            messages.info(request, "All archives in this group are already extracted or queued for extraction.")
+        return HttpResponseRedirect(
+            clean_up_referer(request.META.get("HTTP_REFERER", archive_group_instance.get_absolute_url()))
+        )
 
     try:
         page = int(get.get("page", "1"))
@@ -173,13 +187,26 @@ def archive_group_edit(request: HttpRequest, pk: int | None = None, slug: str | 
     results = ArchiveGroupEntry.objects.filter(archive_group=archive_group_instance).select_related("archive")
 
     if "extract_all" in get and request.user.has_perm("viewer.expand_archive"):
-        archives_to_extract = archive_group_instance.archivegroupentry_set.select_for_update().filter(
-            archive__extracted=False
+        archive_pks = list(
+            archive_group_instance.archivegroupentry_set.filter(archive__extracted=False).values_list(
+                "archive_id", flat=True
+            )
         )
-        with transaction.atomic():
-            for archive_group_entry in archives_to_extract:
-                archive_group_entry.archive.extract(resized=True)
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+        archive_pks = [archive_pk for archive_pk in archive_pks if not client.is_archive_extracting(archive_pk)]
+        if archive_pks:
+            client.enqueue(
+                args=archive_pks,
+                task_type="extract_worker",
+                override_options={"resized": True},
+                user=request.user,
+                event_action="EXPAND_ARCHIVE",
+            )
+            messages.success(request, f"Queued extraction (resized) for {len(archive_pks)} archive(s).")
+        else:
+            messages.info(request, "All archives in this group are already extracted or queued for extraction.")
+        return HttpResponseRedirect(
+            clean_up_referer(request.META.get("HTTP_REFERER", archive_group_instance.get_absolute_url()))
+        )
 
     if request.POST.get("submit-archive-group"):
         # create a form instance and populate it with data from the request:

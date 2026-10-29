@@ -225,7 +225,7 @@ class PostDownloader(object):
         # updated_archive = Archive.objects.add_or_update_from_values(values, pk=archive.pk)
 
         archive.recalc_fileinfo()
-        archive.save()
+        archive.ingest()
 
         if self.settings.mark_similar_new_archives:
             archive.create_marks_for_similar_archives()

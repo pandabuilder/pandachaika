@@ -113,7 +113,7 @@ class ArchiveCloningService:
         new_archive.crc32 = ""
         new_archive.thumbnail = ""
         new_archive.zipped = new_file_name
-        new_archive.save()
+        new_archive.ingest()
         new_archive.possible_matches.set(possible_matches)
         new_archive.tags.set(tags)
         new_archive.alternative_sources.set(alternative_sources)
@@ -272,7 +272,7 @@ class ArchiveCloningService:
             new_archive.filesize = None
         new_archive.extracted = False
         new_archive.zipped = new_file_name
-        new_archive.save()
+        new_archive.ingest()
         new_archive.possible_matches.set(possible_matches)
         new_archive.tags.set(tags)
         new_archive.alternative_sources.set(alternative_sources)
@@ -394,7 +394,7 @@ class ArchiveCloningService:
             new_archive.filesize = None
             new_archive.extracted = False
             new_archive.zipped = new_file_name
-            new_archive.save()
+            new_archive.ingest()
             new_archive.tags.set(tags)
             new_archive.alternative_sources.set(alternative_sources)
 

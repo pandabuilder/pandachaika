@@ -138,6 +138,165 @@ class ArchiveWorker(object):
             )
             logger.info("Enqueued thumbnails_worker task to worker process (archive count: %d)", len(archive_pks) if archive_pks else -1)
 
+    def extract_archives(
+        self,
+        archives: typing.Any = None,
+        resized: bool = False,
+        user: typing.Any = None,
+        force_local: bool = False,
+    ) -> None:
+        """Enqueue or run image extraction for one or more archives."""
+        if force_local:
+            from viewer.models import Archive
+            from viewer.utils.actions import event_log
+
+            if archives is None:
+                return
+            archive_qs: typing.Iterable[Archive]
+            if isinstance(archives, (list, tuple, set)) and all(isinstance(x, (int, str)) for x in archives):
+                archive_qs = Archive.objects.filter(pk__in=[int(x) for x in archives])
+            elif hasattr(archives, "filter"):
+                archive_qs = archives
+            else:
+                archive_qs = list(archives)
+
+            activity_cb = getattr(self.settings, "activity_callback", None) if self.settings else None
+            effective_user = user or (getattr(self.settings, "archive_user", None) if self.settings else None)
+            action = (getattr(self.settings, "event_action", None) if self.settings else None) or "EXPAND_ARCHIVE"
+            reason = (getattr(self.settings, "archive_reason", None) if self.settings else None) or None
+
+            for archive in archive_qs:
+                if activity_cb:
+                    activity_cb()
+                try:
+                    archive.refresh_from_db()
+                    if archive.extracted:
+                        continue
+                    if activity_cb:
+                        setattr(archive, "_activity_callback", activity_cb)
+                    res = archive.extract(resized=resized)
+                    if (res or archive.extracted) and effective_user:
+                        event_log(
+                            effective_user,
+                            action,
+                            reason=reason,
+                            content_object=archive,
+                            result="success",
+                        )
+                except Exception:
+                    logger.critical(
+                        "Error extracting archive #%s:\n%s",
+                        getattr(archive, "pk", "?"),
+                        traceback.format_exc(),
+                    )
+        else:
+            from workers.client import enqueue
+
+            archive_pks = [a.pk if hasattr(a, "pk") else int(a) for a in archives] if archives is not None else []
+            if not archive_pks:
+                return
+            enqueue(
+                args=archive_pks,
+                task_type="extract_worker",
+                override_options={"resized": bool(resized)},
+                user=user or (getattr(self.settings, "archive_user", None) if self.settings else None),
+                reason=getattr(self.settings, "archive_reason", "") if self.settings else "",
+                event_action="EXPAND_ARCHIVE",
+            )
+            logger.info(
+                "Enqueued extract_worker task to worker process (archive count: %d, resized: %s)",
+                len(archive_pks),
+                resized,
+            )
+
+    def publish_archives(
+        self,
+        archives: typing.Any = None,
+        reason: str | None = None,
+        user: typing.Any = None,
+        force_local: bool = False,
+    ) -> None:
+        """Enqueue or run archive publishing (zip test, image set, thumbnails, SHA1, public state) for one or more archives."""
+        if force_local:
+            import zipfile
+            from viewer.models import Archive
+            from viewer.utils.actions import event_log
+
+            if archives is None:
+                return
+            archive_qs: typing.Iterable[Archive]
+            if isinstance(archives, (list, tuple, set)) and all(isinstance(x, (int, str)) for x in archives):
+                archive_qs = Archive.objects.filter(pk__in=[int(x) for x in archives])
+            elif hasattr(archives, "filter"):
+                archive_qs = archives
+            else:
+                archive_qs = list(archives)
+
+            activity_cb = getattr(self.settings, "activity_callback", None) if self.settings else None
+            effective_user = user or (getattr(self.settings, "archive_user", None) if self.settings else None)
+            action = (getattr(self.settings, "event_action", None) if self.settings else None) or "PUBLISH_ARCHIVE"
+            effective_reason = (
+                reason
+                if reason is not None
+                else (getattr(self.settings, "archive_reason", None) if self.settings else None)
+            ) or ""
+
+            for archive in archive_qs:
+                if activity_cb:
+                    activity_cb()
+                try:
+                    archive.refresh_from_db()
+                    if archive.public:
+                        continue
+                    if activity_cb:
+                        setattr(archive, "_activity_callback", activity_cb)
+                    try:
+                        archive.test_zip_file()
+                    except (FileNotFoundError, zipfile.BadZipFile) as e:
+                        logger.error("For Archive: %s, %s", archive.get_absolute_url(), str(e))
+                        continue
+                    if activity_cb:
+                        activity_cb()
+                    res = archive.set_public(reason=effective_reason, skip_zip_check=True)
+                    logger.info("Setting public status to public for Archive: %s", archive.get_absolute_url())
+                    if (res or archive.public) and effective_user:
+                        event_log(
+                            effective_user,
+                            action,
+                            reason=effective_reason or None,
+                            content_object=archive,
+                            result="published",
+                        )
+                except Exception:
+                    logger.critical(
+                        "Error publishing archive #%s:\n%s",
+                        getattr(archive, "pk", "?"),
+                        traceback.format_exc(),
+                    )
+        else:
+            from workers.client import enqueue
+
+            archive_pks = [a.pk if hasattr(a, "pk") else int(a) for a in archives] if archives is not None else []
+            if not archive_pks:
+                return
+            effective_reason = (
+                reason
+                if reason is not None
+                else (getattr(self.settings, "archive_reason", "") if self.settings else "")
+            ) or ""
+            enqueue(
+                args=archive_pks,
+                task_type="publish_worker",
+                override_options=self.settings,
+                user=user or (getattr(self.settings, "archive_user", None) if self.settings else None),
+                reason=effective_reason,
+                event_action="PUBLISH_ARCHIVE",
+            )
+            logger.info(
+                "Enqueued publish_worker task to worker process (archive count: %d)",
+                len(archive_pks),
+            )
+
     def start_info_thread(self, force_local: bool = False) -> None:
         if force_local:
             thread_array = []

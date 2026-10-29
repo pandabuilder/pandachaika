@@ -86,7 +86,7 @@ class BaseDownloader[T_ProviderSettings: ProviderSettings](metaclass=Meta):
             self.original_gallery.reason = self.settings.gallery_reason
         self.gallery_db_entry = gallery_model.objects.update_or_create_from_values(self.original_gallery)
         if self.gallery_db_entry:
-            self.gallery_db_entry.update_index()
+            self.gallery_db_entry.schedule_index_update()
 
             if self.settings.link_child is not None:
                 child_gallery = gallery_model.objects.filter(

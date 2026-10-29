@@ -1095,6 +1095,12 @@ class ArchiveCreateForm(ModelForm):
             raise ValidationError("There is already a file with that name on the file system")
         return zipped
 
+    def save(self, commit: bool = True) -> Archive:
+        archive = super().save(commit=commit)
+        if commit:
+            archive.ingest()
+        return archive
+
 
 class ArchiveEditForm(ModelForm):
     old_gallery_to_alt = forms.BooleanField(

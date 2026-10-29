@@ -867,6 +867,92 @@ class OnDemandWorkerTests(TestCase):
         claimed.refresh_from_db()
         self.assertEqual(claimed.status, TaskQueue.Status.COMPLETED)
 
+    def test_archive_worker_extract_enqueue_and_execution(self):
+        from unittest.mock import patch
+        from core.workers.archive_work import ArchiveWorker
+        from viewer.models import EventLog
+
+        a1 = Archive.objects.create(title="Archive Extract 1", crc32="55555555", extracted=False, user=self.user)
+        aw = ArchiveWorker(self.settings)
+
+        aw.extract_archives(archives=[a1], resized=True, user=self.user)
+        task = TaskQueue.objects.latest("pk")
+        self.assertEqual(task.status, TaskQueue.Status.PENDING)
+        self.assertEqual(task.task_type, "extract_worker")
+        self.assertEqual(task.args, [a1.pk])
+        self.assertEqual(task.options.get("resized"), True)
+        self.assertEqual(task.user, self.user)
+        self.assertTrue(client.is_archive_extracting(a1.pk))
+
+        claimed = self.runner.claim_next_job()
+        self.assertIsNotNone(claimed)
+        self.assertEqual(claimed.pk, task.pk)
+        self.assertTrue(client.is_archive_extracting(a1.pk))
+
+        def fake_extract(resized=False):
+            a1.extracted = True
+            a1.save()
+            return True
+
+        with patch.object(Archive, "extract", side_effect=fake_extract) as mock_extract:
+            self.runner.execute_job(claimed)
+            mock_extract.assert_called_once_with(resized=True)
+
+        claimed.refresh_from_db()
+        self.assertEqual(claimed.status, TaskQueue.Status.COMPLETED)
+        self.assertFalse(client.is_archive_extracting(a1.pk))
+        self.assertTrue(
+            EventLog.objects.filter(user=self.user, action="EXPAND_ARCHIVE", object_id=a1.pk, result="success").exists()
+        )
+
+    def test_archive_worker_publish_enqueue_and_execution(self):
+        from unittest.mock import patch
+        from core.workers.archive_work import ArchiveWorker
+        from viewer.models import EventLog
+
+        a1 = Archive.objects.create(title="Archive Publish 1", crc32="66666666", public=False, user=self.user)
+        aw = ArchiveWorker(self.settings)
+
+        aw.publish_archives(archives=[a1], reason="publish test", user=self.user)
+        task = TaskQueue.objects.latest("pk")
+        self.assertEqual(task.status, TaskQueue.Status.PENDING)
+        self.assertEqual(task.task_type, "publish_worker")
+        self.assertEqual(task.args, [a1.pk])
+        self.assertEqual(task.reason, "publish test")
+        self.assertEqual(task.user, self.user)
+        self.assertTrue(client.is_archive_publishing(a1.pk))
+
+        claimed = self.runner.claim_next_job()
+        self.assertIsNotNone(claimed)
+        self.assertEqual(claimed.pk, task.pk)
+        self.assertTrue(client.is_archive_publishing(a1.pk))
+
+        def fake_set_public(reason="", skip_zip_check=False):
+            a1.public = True
+            a1.reason = reason
+            a1.save()
+            return True
+
+        with (
+            patch.object(Archive, "test_zip_file") as mock_test_zip,
+            patch.object(Archive, "set_public", side_effect=fake_set_public) as mock_set_public,
+        ):
+            self.runner.execute_job(claimed)
+            mock_test_zip.assert_called_once()
+            mock_set_public.assert_called_once_with(reason="publish test", skip_zip_check=True)
+
+        claimed.refresh_from_db()
+        self.assertEqual(claimed.status, TaskQueue.Status.COMPLETED)
+        self.assertFalse(client.is_archive_publishing(a1.pk))
+        self.assertTrue(
+            EventLog.objects.filter(
+                user=self.user,
+                action="PUBLISH_ARCHIVE",
+                object_id=a1.pk,
+                result="published",
+            ).exists()
+        )
+
     def test_matching_thread_targets_enqueue_and_execution(self):
         from unittest.mock import patch
         from viewer.utils.matching import (

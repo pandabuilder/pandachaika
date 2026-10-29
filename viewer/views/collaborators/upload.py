@@ -570,7 +570,8 @@ def upload_archive(request: HttpRequest) -> HttpResponse:
         # check whether it's valid:
         if edit_form.is_valid():
             new_archive = edit_form.save(commit=False)
-            new_archive.user = request.user
+            if request.user.is_authenticated:
+                new_archive.user = request.user
             new_archive.origin = Archive.ORIGIN_UPLOAD_ARCHIVE
             new_archive = edit_form.save()
             if crawler_settings.mark_similar_new_archives:
@@ -671,6 +672,7 @@ def upload_gallery(request: HttpRequest) -> HttpResponse:
                         new_gallery.uploader = ""
                     new_gallery.save()
                     new_gallery.tags.set(tag_objects)
+                    new_gallery.schedule_thumbnail_fetch()
                     # edit_form.save_m2m()
                     message = "Gallery successfully created: {}".format(new_gallery.get_absolute_url())
                     messages.success(request, message)

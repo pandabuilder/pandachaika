@@ -109,6 +109,31 @@ def json_api(request: HttpRequest) -> HttpResponse:
 
 
 
+def _find_archive_for_link(parsers: list[Any], link: str) -> Archive | None:
+    for parser in parsers:
+        if parser.id_from_url_implemented():
+            urls_filtered = parser.filter_accepted_urls((link,))
+            for url_filtered in urls_filtered:
+                gallery_gid = parser.id_from_url(url_filtered)
+                if gallery_gid:
+                    archive = Archive.objects.filter(
+                        gallery__gid=gallery_gid, gallery__provider=parser.name
+                    ).first()
+                    if archive:
+                        return archive
+            if urls_filtered:
+                break
+    return None
+
+
+def _find_existing_archives_count(parsers: list[Any], links: list[str]) -> int:
+    count = 0
+    for link in links:
+        if _find_archive_for_link(parsers, link):
+            count += 1
+    return count
+
+
 # Private API, checks for the API key.
 @csrf_exempt
 def json_parser(request: HttpRequest) -> HttpResponse:
@@ -132,59 +157,92 @@ def json_parser(request: HttpRequest) -> HttpResponse:
             args = data["args"]
             response = {}
             # Used by internal pages and userscript
-            if data["operation"] == "webcrawler" and "link" in args:
+            if data["operation"] == "webcrawler":
+                if not isinstance(args, (dict, list, tuple)):
+                    response["error"] = "Wrong format"
+                    return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
+
+                if isinstance(args, (list, tuple)):
+                    args = {"links": list(args)}
+
+                links: list[str] = []
+
+                def _add_link(lnk: Any) -> None:
+                    if isinstance(lnk, str):
+                        val = lnk.strip()
+                        if val and val not in links:
+                            links.append(val)
+
+                if "links" in args:
+                    raw_links = args["links"]
+                    if isinstance(raw_links, (list, tuple, set)):
+                        for item in raw_links:
+                            _add_link(item)
+                    elif isinstance(raw_links, str):
+                        for line in raw_links.replace(",", "\n").splitlines():
+                            _add_link(line)
+
+                if "link" in args:
+                    raw_link = args["link"]
+                    if isinstance(raw_link, (list, tuple, set)):
+                        for item in raw_link:
+                            _add_link(item)
+                    elif isinstance(raw_link, str):
+                        _add_link(raw_link)
+
+                if not links:
+                    response["error"] = "No links provided"
+                    return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
+
                 if "downloader" in args:
                     current_settings = Settings(load_from_config=crawler_settings.config)
                     current_settings.allow_downloaders_only([args["downloader"]], True, True, True)
-                    archive = None
                     parsers = current_settings.provider_context.get_parsers(current_settings)
                     current_settings.archive_user = actual_user
                     current_settings.archive_origin = Archive.ORIGIN_ADD_URL
-                    for parser in parsers:
-                        if parser.id_from_url_implemented():
-                            urls_filtered = parser.filter_accepted_urls((args["link"],))
-                            for url_filtered in urls_filtered:
-                                gallery_gid = parser.id_from_url(url_filtered)
-                                if gallery_gid:
-                                    archive = Archive.objects.filter(
-                                        gallery__gid=gallery_gid, gallery__provider=parser.name
-                                    ).first()
-                            if urls_filtered:
-                                break
+
+                    existing_archives = _find_existing_archives_count(parsers, links)
                     client.enqueue(
-                        args=[args["link"]],
+                        args=links,
                         task_type="web_crawler",
                         override_options=current_settings,
                         user=actual_user,
                     )
-                    if archive:
-                        response["message"] = "Archive exists, crawling to check for redownload: " + args["link"]
+                    if len(links) == 1:
+                        if existing_archives > 0:
+                            response["message"] = "Archive exists, crawling to check for redownload: " + links[0]
+                        else:
+                            response["message"] = "Crawling: " + links[0]
                     else:
-                        response["message"] = "Crawling: " + args["link"]
+                        if existing_archives == len(links):
+                            response["message"] = (
+                                f"Archive exists, crawling to check for redownload: {len(links)} links"
+                            )
+                        elif existing_archives > 0:
+                            response["message"] = (
+                                f"Crawling {len(links)} links ({existing_archives} archives exist, checking for redownload)"
+                            )
+                        else:
+                            response["message"] = f"Crawling: {len(links)} links"
+                    response["result"] = str(len(links))
                 else:
                     current_settings = Settings(load_from_config=crawler_settings.config)
                     current_settings.archive_user = actual_user
                     current_settings.archive_origin = Archive.ORIGIN_ADD_URL
                     extra_args = []
-                    if "reason" in args and args["reason"]:
-                        extra_args.extend(["-reason", args["reason"]])
+                    reason = args.get("reason")
+                    if reason:
+                        extra_args.extend(["-reason", reason])
+                        current_settings.archive_reason = reason
 
-                    if "parentLink" in args:
-                        parent_archive = None
+                    handled_parent = False
+                    if "parentLink" in args and args["parentLink"]:
                         parsers = current_settings.provider_context.get_parsers(current_settings)
-                        for parser in parsers:
-                            if parser.id_from_url_implemented():
-                                urls_filtered = parser.filter_accepted_urls((args["parentLink"],))
-                                for url_filtered in urls_filtered:
-                                    gallery_gid = parser.id_from_url(url_filtered)
-                                    if gallery_gid:
-                                        parent_archive = Archive.objects.filter(
-                                            gallery__gid=gallery_gid, gallery__provider=parser.name
-                                        ).first()
-                                if urls_filtered:
-                                    break
+                        parent_archive = _find_archive_for_link(parsers, args["parentLink"])
                         if parent_archive and parent_archive.gallery:
-                            link = parent_archive.gallery.get_link()
+                            handled_parent = True
+                            parent_link = parent_archive.gallery.get_link()
+                            link_label = links[0] if len(links) == 1 else f"{len(links)} links"
                             if "action" in args and args["action"] == "replaceFound":
                                 # Preserve old archive extra data
                                 old_user_favorites = list(
@@ -199,78 +257,62 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                                 parent_archive.delete_all_files()
                                 parent_archive.delete_files_but_archive()
                                 parent_archive.delete()
-                                response["message"] = "Crawling: " + args["link"] + ", deleting parent: " + link
+                                response["message"] = f"Crawling: {link_label}, deleting parent: {parent_link}"
+                                response["result"] = str(len(links))
 
                                 current_settings.preserve_user_favorites = old_user_favorites
                                 current_settings.preserve_extracted = bool(old_extracted)
 
                                 client.enqueue(
-                                    args=[args["link"]] + extra_args,
+                                    args=links + extra_args,
                                     task_type="web_crawler",
                                     override_options=current_settings,
                                     user=actual_user,
+                                    reason=reason,
                                 )
                             elif "action" in args and args["action"] == "queueFound":
-                                response["message"] = "Crawling: " + args["link"] + ", keeping parent: " + link
+                                response["message"] = f"Crawling: {link_label}, keeping parent: {parent_link}"
+                                response["result"] = str(len(links))
                                 client.enqueue(
-                                    args=[args["link"]] + extra_args,
+                                    args=links + extra_args,
                                     task_type="web_crawler",
                                     override_options=current_settings,
                                     user=actual_user,
+                                    reason=reason,
                                 )
                             else:
-                                response["message"] = "Please confirm deletion of parent: " + link
+                                response["message"] = "Please confirm deletion of parent: " + parent_link
                                 response["action"] = "confirmDeletion"
-                        else:
-                            archive = None
-                            parsers = current_settings.provider_context.get_parsers(current_settings)
-                            for parser in parsers:
-                                if parser.id_from_url_implemented():
-                                    urls_filtered = parser.filter_accepted_urls((args["link"],))
-                                    for url_filtered in urls_filtered:
-                                        gallery_gid = parser.id_from_url(url_filtered)
-                                        if gallery_gid:
-                                            archive = Archive.objects.filter(
-                                                gallery__gid=gallery_gid, gallery__provider=parser.name
-                                            ).first()
-                                    if urls_filtered:
-                                        break
-                            if archive:
+
+                    if not handled_parent:
+                        parsers = current_settings.provider_context.get_parsers(current_settings)
+                        existing_archives = _find_existing_archives_count(parsers, links)
+                        if len(links) == 1:
+                            if existing_archives > 0:
                                 response["message"] = (
-                                    "Archive exists, crawling to check for redownload: " + args["link"]
+                                    "Archive exists, crawling to check for redownload: " + links[0]
                                 )
                             else:
-                                response["message"] = "Crawling: " + args["link"]
-
-                            client.enqueue(
-                                args=[args["link"]] + extra_args,
-                                task_type="web_crawler",
-                                override_options=current_settings,
-                                user=actual_user,
-                            )
-                    else:
-                        archive = None
-                        parsers = current_settings.provider_context.get_parsers(current_settings)
-                        for parser in parsers:
-                            if parser.id_from_url_implemented():
-                                urls_filtered = parser.filter_accepted_urls((args["link"],))
-                                for url_filtered in urls_filtered:
-                                    gallery_gid = parser.id_from_url(url_filtered)
-                                    if gallery_gid:
-                                        archive = Archive.objects.filter(
-                                            gallery__gid=gallery_gid, gallery__provider=parser.name
-                                        ).first()
-                                if urls_filtered:
-                                    break
-                        if archive:
-                            response["message"] = "Archive exists, crawling to check for redownload: " + args["link"]
+                                response["message"] = "Crawling: " + links[0]
                         else:
-                            response["message"] = "Crawling: " + args["link"]
+                            if existing_archives == len(links):
+                                response["message"] = (
+                                    f"Archive exists, crawling to check for redownload: {len(links)} links"
+                                )
+                            elif existing_archives > 0:
+                                response["message"] = (
+                                    f"Crawling {len(links)} links ({existing_archives} archives exist, checking for redownload)"
+                                )
+                            else:
+                                response["message"] = f"Crawling: {len(links)} links"
+                        response["result"] = str(len(links))
+
                         client.enqueue(
-                            args=[args["link"]] + extra_args,
+                            args=links + extra_args,
                             task_type="web_crawler",
                             override_options=current_settings,
                             user=actual_user,
+                            reason=reason,
                         )
                 if not response:
                     response["error"] = "Could not parse request"

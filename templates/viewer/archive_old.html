@@ -294,6 +294,8 @@
 
 
     <a class="btn btn-light" href="{% url 'viewer:archive-reduce' archive.pk %}" id="btn-reduce-archive">Reduce archive</a>
+    {% elif is_extracting %}
+    <button class="btn btn-warning" type="button" disabled id="btn-extracting-archive"><i class="fas fa-spinner fa-spin me-1"></i>Extracting...</button>
     {% else %}
     <a class="btn btn-light" href="{% url 'viewer:archive-extract' archive.pk %}" id="btn-extract-archive">Expand archive</a>
     <a class="btn btn-light" href="{% url 'viewer:archive-extract' archive.pk %}?resized=1">Expand (resized)
@@ -334,6 +336,8 @@
     <a class="btn btn-info" href="{% url 'viewer:new-image-viewer' archive.pk '1' %}" id="view-online">View
       online</a>
     <a class="btn btn-light" href="{% url 'viewer:archive-reduce' archive.pk %}" id="btn-reduce-archive">Reduce archive</a>
+    {% elif is_extracting %}
+    <button class="btn btn-warning" type="button" disabled id="btn-extracting-archive"><i class="fas fa-spinner fa-spin me-1"></i>Extracting...</button>
     {% else %}
     <a class="btn btn-light" href="{% url 'viewer:archive-extract' archive.pk %}" id="btn-extract-archive">Expand archive</a>
     <a class="btn btn-light" href="{% url 'viewer:archive-extract' archive.pk %}?resized=1">Expand (resized)
@@ -433,6 +437,8 @@
     {% if perms.viewer.publish_archive %}
     {% if archive.public %}
     <a class="btn shrink-btn" href="{% url 'viewer:archive-private' archive.pk %}">private</a>
+    {% elif is_publishing %}
+    <button class="btn shrink-btn btn-warning" type="button" disabled id="btn-publishing-archive"><i class="fas fa-spinner fa-spin me-1"></i>publishing...</button>
     {% else %}
     <a class="btn shrink-btn" href="{% url 'viewer:archive-public' archive.pk %}">public</a>
     {% endif %}

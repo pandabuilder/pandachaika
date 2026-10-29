@@ -144,6 +144,7 @@ class ArchiveAdmin(SimpleHistoryAdmin):
         if not obj.user and isinstance(request, AuthenticatedHttpRequest):
             obj.user = request.user
         obj.save()
+        obj.ingest()
 
     def save_related(self, request: HttpRequest, form: ModelForm, formsets: BaseFormSet, change):
         super(ArchiveAdmin, self).save_related(request, form, formsets, change)
@@ -267,6 +268,10 @@ class GalleryAdmin(SimpleHistoryAdmin):
     actions = ["make_hidden", "make_public", "make_private", "set_provider", "set_reason", "make_normal"]
     action_form = UpdateActionForm
     inlines = (GalleryProviderDataInline,)
+
+    def save_model(self, request: HttpRequest, obj: Gallery, form: ModelForm, change: bool) -> None:
+        super().save_model(request, obj, form, change)
+        obj.schedule_thumbnail_fetch()
 
     @admin.action(description="Mark selected galleries as hidden")
     def make_hidden(self, request: HttpRequest, queryset: GalleryQuerySet) -> None:

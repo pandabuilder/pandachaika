@@ -518,6 +518,24 @@ class WorkerRunner:
                 archives = Archive.objects.filter(pk__in=job.args) if job.args else Archive.objects.all()
                 archive_worker = ArchiveWorker(current_settings, 4)
                 archive_worker.regenerate_all_thumbs(archives, force_local=True)
+            elif job.task_type in ("extract_worker", "extract_archives"):
+                from core.workers.archive_work import ArchiveWorker
+                from viewer.models import Archive
+                extract_archives_qs = Archive.objects.filter(pk__in=job.args) if job.args else Archive.objects.none()
+                resized = bool(job.options.get("resized", False)) if isinstance(job.options, dict) else False
+                archive_worker = ArchiveWorker(current_settings, 4)
+                archive_worker.extract_archives(extract_archives_qs, resized=resized, user=job.user, force_local=True)
+            elif job.task_type in ("publish_worker", "publish_archives"):
+                from core.workers.archive_work import ArchiveWorker
+                from viewer.models import Archive
+                publish_archives_qs = Archive.objects.filter(pk__in=job.args) if job.args else Archive.objects.none()
+                archive_worker = ArchiveWorker(current_settings, 4)
+                archive_worker.publish_archives(
+                    publish_archives_qs,
+                    reason=job.reason or "",
+                    user=job.user,
+                    force_local=True,
+                )
             elif job.task_type in ("match_unmatched_worker", "web_match_worker", "generate_possible_matches_internally"):
                 from viewer.utils.matching import generate_possible_matches_for_archives
                 from viewer.models import Archive

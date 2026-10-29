@@ -2,7 +2,7 @@
 
 This document describes all API endpoints for managing `ArchiveGroup` and `ArchiveGroupEntry` records (series, anthologies, multi-volume collections) in Panda Backup.
 
-All endpoints use the public JSON API at `/api` (or `/jsearch`).
+All endpoints use the public JSON API at `/api/` (or `/jsearch/`, or slashless `/api`).
 
 ---
 
@@ -39,13 +39,13 @@ Requests lacking authentication or required permissions return `403 Forbidden` (
 
 Fetches an ArchiveGroup and all entries belonging to it, ordered by position.
 
-- **Endpoint**: `/api`
+- **Endpoint**: `/api/`
 - **Method**: `GET`
 - **Query Parameters**: `?archive-group=<id>`
 
 ### Example Request
 ```bash
-curl "https://example.chaika.moe/api?archive-group=1"
+curl "https://example.chaika.moe/api/?archive-group=1"
 ```
 
 ### Response
@@ -103,13 +103,13 @@ curl "https://example.chaika.moe/api?archive-group=1"
 
 Fetches a single ArchiveGroupEntry by its ID.
 
-- **Endpoint**: `/api`
+- **Endpoint**: `/api/`
 - **Method**: `GET`
 - **Query Parameters**: `?archive-group-entry=<id>`
 
 ### Example Request
 ```bash
-curl "https://example.chaika.moe/api?archive-group-entry=10"
+curl "https://example.chaika.moe/api/?archive-group-entry=10"
 ```
 
 ### Response
@@ -121,13 +121,13 @@ Returns the single entry object with its embedded `archive` (same schema as abov
 
 Fetches archive details formatted specifically for archive group entry representations.
 
-- **Endpoint**: `/api`
+- **Endpoint**: `/api/`
 - **Method**: `GET`
 - **Query Parameters**: `?archive-group-entry-archive=<archive_id>`
 
 ### Example Request
 ```bash
-curl "https://example.chaika.moe/api?archive-group-entry-archive=42"
+curl "https://example.chaika.moe/api/?archive-group-entry-archive=42"
 ```
 
 ### Response
@@ -139,7 +139,7 @@ Returns the archive object matching the embedded entry `archive` schema.
 
 Creates a new ArchiveGroup with optional initial entries.
 
-- **Endpoint**: `/api`
+- **Endpoint**: `/api/`
 - **Method**: `POST`
 - **Query Parameter**: `?archive-group=`
 - **Permissions**: `viewer.change_archivegroup`
@@ -182,7 +182,7 @@ Returns the complete created ArchiveGroup object (`200 OK`) with its generated `
 
 Appends a new entry into an existing ArchiveGroup.
 
-- **Endpoint**: `/api`
+- **Endpoint**: `/api/`
 - **Method**: `POST`
 - **Query Parameter**: `?archive-group-entry=<group_id>`
 - **Permissions**: `viewer.change_archivegroupentry`
@@ -220,7 +220,7 @@ Returns the created entry object with full archive details:
 
 Updates the metadata of an ArchiveGroup and modifies/reorders its entries atomically.
 
-- **Endpoint**: `/api`
+- **Endpoint**: `/api/`
 - **Method**: `PUT`
 - **Query Parameter**: `?archive-group=<group_id>`
 - **Permissions**: `viewer.change_archivegroup`
@@ -261,7 +261,7 @@ Returns the updated ArchiveGroup object (`200 OK`).
 
 Updates an individual entry's title, position, or linked archive.
 
-- **Endpoint**: `/api`
+- **Endpoint**: `/api/`
 - **Method**: `PUT`
 - **Query Parameter**: `?archive-group-entry=<entry_id>`
 - **Permissions**: `viewer.change_archivegroupentry`
@@ -286,14 +286,14 @@ Returns the updated entry object (`200 OK`).
 
 Deletes an entire ArchiveGroup and its entries. Associated `Archive` files are preserved and not deleted.
 
-- **Endpoint**: `/api`
+- **Endpoint**: `/api/`
 - **Method**: `DELETE`
 - **Query Parameter**: `?archive-group=<group_id>`
 - **Permissions**: `viewer.delete_archivegroup`
 
 ### Example Request
 ```bash
-curl -X DELETE "https://example.chaika.moe/api?archive-group=1" \
+curl -X DELETE "https://example.chaika.moe/api/?archive-group=1" \
   -H "Authorization: Bearer YOUR_API_TOKEN"
 ```
 
@@ -310,14 +310,14 @@ curl -X DELETE "https://example.chaika.moe/api?archive-group=1" \
 
 Removes a single entry from an ArchiveGroup.
 
-- **Endpoint**: `/api`
+- **Endpoint**: `/api/`
 - **Method**: `DELETE`
 - **Query Parameter**: `?archive-group-entry=<entry_id>`
 - **Permissions**: `viewer.delete_archivegroupentry`
 
 ### Example Request
 ```bash
-curl -X DELETE "https://example.chaika.moe/api?archive-group-entry=10" \
+curl -X DELETE "https://example.chaika.moe/api/?archive-group-entry=10" \
   -H "Authorization: Bearer YOUR_API_TOKEN"
 ```
 

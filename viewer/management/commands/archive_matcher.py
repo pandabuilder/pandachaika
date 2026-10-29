@@ -55,6 +55,7 @@ class Command(BaseCommand):
                 gallery = Gallery.objects.filter(gid__contains=gallery_gid).first()
                 if archive and gallery:
                     archive.gallery = gallery
+                    archive.sync_gallery_metadata()
                     archive.save()
                     print("Case 1: Archive: {} matched with Gallery: {}".format(row[1], row[0]))
                     case_1_count += 1

@@ -168,16 +168,63 @@ class ExpApiTests(TestCase):
 
     @patch.object(Archive, "extract")
     def test_view_extract_idempotent(self, mock_extract):
-        response = self.admin_client.get(f"/archive/{self.archive.pk}/extract/", HTTP_REFERER="/archive/")
-        self.assertEqual(response.status_code, 302)
-        mock_extract.assert_called_once()
+        from workers.models import TaskQueue
+        from workers import client
 
-        self.archive.extracted = True
-        self.archive.save()
-        mock_extract.reset_mock()
         response = self.admin_client.get(f"/archive/{self.archive.pk}/extract/", HTTP_REFERER="/archive/")
         self.assertEqual(response.status_code, 302)
         mock_extract.assert_not_called()
+
+        tasks = TaskQueue.objects.filter(task_type="extract_worker")
+        self.assertEqual(tasks.count(), 1)
+        task = tasks.first()
+        self.assertEqual(task.args, [self.archive.pk])
+        self.assertEqual(task.options.get("resized"), False)
+        self.assertTrue(client.is_archive_extracting(self.archive.pk))
+
+        # Calling again while task is pending does not enqueue a duplicate task
+        response = self.admin_client.get(f"/archive/{self.archive.pk}/extract/?resized=1", HTTP_REFERER="/archive/")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(TaskQueue.objects.filter(task_type="extract_worker").count(), 1)
+
+        # Archive details page shows Extracting... state while queued
+        self.archive.crc32 = "AABBCCDD"
+        self.archive.save()
+        detail_resp = self.admin_client.get(f"/archive/{self.archive.pk}/")
+        self.assertEqual(detail_resp.status_code, 200)
+        self.assertContains(detail_resp, "btn-extracting-archive")
+
+        # Once already extracted, calling /extract/ does not enqueue new tasks
+        TaskQueue.objects.all().delete()
+        self.archive.extracted = True
+        self.archive.save()
+        response = self.admin_client.get(f"/archive/{self.archive.pk}/extract/", HTTP_REFERER="/archive/")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(TaskQueue.objects.filter(task_type="extract_worker").count(), 0)
+        mock_extract.assert_not_called()
+
+    def test_archive_group_extract_all_enqueues_background_task(self):
+        from viewer.models import ArchiveGroup, ArchiveGroupEntry
+        from workers.models import TaskQueue
+
+        perm_change = Permission.objects.get(codename="change_archivegroup")
+        self.admin_user.user_permissions.add(perm_change)
+
+        a2 = Archive.objects.create(title="Test Archive 2", extracted=True, user=self.admin_user)
+        group = ArchiveGroup.objects.create(title="Test Group", title_slug="test-group", public=True)
+        ArchiveGroupEntry.objects.create(archive_group=group, archive=self.archive, position=1)
+        ArchiveGroupEntry.objects.create(archive_group=group, archive=a2, position=2)
+
+        response = self.admin_client.get(
+            f"/archive-group/{group.title_slug}/?extract_all=",
+            HTTP_REFERER=f"/archive-group/{group.title_slug}/",
+        )
+        self.assertEqual(response.status_code, 302)
+        tasks = TaskQueue.objects.filter(task_type="extract_worker")
+        self.assertEqual(tasks.count(), 1)
+        task = tasks.first()
+        self.assertEqual(task.args, [self.archive.pk])
+        self.assertEqual(task.options.get("resized"), True)
 
     @patch.object(Archive, "reduce")
     def test_view_reduce_idempotent(self, mock_reduce):
@@ -193,3 +240,42 @@ class ExpApiTests(TestCase):
         response = self.admin_client.get(f"/archive/{self.archive.pk}/reduce/", HTTP_REFERER="/archive/")
         self.assertEqual(response.status_code, 302)
         mock_reduce.assert_not_called()
+
+    @patch.object(Archive, "set_public")
+    def test_view_public_idempotent(self, mock_set_public):
+        from workers.models import TaskQueue
+        from workers import client
+
+        perm_publish = Permission.objects.get(codename="publish_archive")
+        self.admin_user.user_permissions.add(perm_publish)
+
+        response = self.admin_client.get(f"/archive/{self.archive.pk}/public/", HTTP_REFERER="/archive/")
+        self.assertEqual(response.status_code, 302)
+        mock_set_public.assert_not_called()
+
+        tasks = TaskQueue.objects.filter(task_type="publish_worker")
+        self.assertEqual(tasks.count(), 1)
+        task = tasks.first()
+        self.assertEqual(task.args, [self.archive.pk])
+        self.assertTrue(client.is_archive_publishing(self.archive.pk))
+
+        # Calling again while task is pending does not enqueue a duplicate task
+        response = self.admin_client.get(f"/archive/{self.archive.pk}/public/", HTTP_REFERER="/archive/")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(TaskQueue.objects.filter(task_type="publish_worker").count(), 1)
+
+        # Archive details page shows Publishing... state while queued
+        self.archive.crc32 = "AABBCCDD"
+        self.archive.save()
+        detail_resp = self.admin_client.get(f"/archive/{self.archive.pk}/")
+        self.assertEqual(detail_resp.status_code, 200)
+        self.assertContains(detail_resp, "btn-publishing-archive")
+
+        # Once already public, calling /public/ does not enqueue new tasks
+        TaskQueue.objects.all().delete()
+        self.archive.public = True
+        self.archive.save()
+        response = self.admin_client.get(f"/archive/{self.archive.pk}/public/", HTTP_REFERER="/archive/")
+        self.assertEqual(TaskQueue.objects.filter(task_type="publish_worker").count(), 0)
+        mock_set_public.assert_not_called()
+

@@ -932,7 +932,7 @@ def handle_get_archive_group_entry_archive(request: HttpRequest, data: QueryDict
         )
     try:
         archive = Archive.objects.get(pk=archive_id)
-    except ArchiveGroupEntry.DoesNotExist:
+    except (Archive.DoesNotExist, ArchiveGroupEntry.DoesNotExist):
         return HttpResponseNotFound(
             json.dumps({"result": "Archive does not exist."}), content_type="application/json; charset=utf-8"
         )
@@ -959,7 +959,7 @@ def handle_get_archive_wanted_image(request: HttpRequest, data: QueryDict, user_
         )
     try:
         archive = Archive.objects.get(pk=archive_id)
-    except ArchiveGroupEntry.DoesNotExist:
+    except (Archive.DoesNotExist, ArchiveGroupEntry.DoesNotExist):
         return HttpResponseNotFound(
             json.dumps({"result": "Archive does not exist."}), content_type="application/json; charset=utf-8"
         )

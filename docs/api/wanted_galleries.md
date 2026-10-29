@@ -2,7 +2,7 @@
 
 This document describes all API endpoints for reading, searching, creating, modifying, and deleting `WantedGallery` records in Panda Backup.
 
-All endpoints use the public JSON API at `/api` (or `/jsearch`).
+All endpoints use the public JSON API at `/api/` (or `/jsearch/`, or slashless `/api`).
 
 ---
 
@@ -33,7 +33,7 @@ All endpoints use the public JSON API at `/api` (or `/jsearch`).
 
 Fetches a single WantedGallery entry by its primary key.
 
-- **Endpoint**: `/api`
+- **Endpoint**: `/api/`
 - **Method**: `GET`
 - **Query Parameters**:
 
@@ -44,12 +44,12 @@ Fetches a single WantedGallery entry by its primary key.
 
 ### Example Request
 ```bash
-curl "https://example.chaika.moe/api?wanted-gallery=123"
+curl "https://example.chaika.moe/api/?wanted-gallery=123"
 ```
 
 With authentication and linked found galleries:
 ```bash
-curl "https://example.chaika.moe/api?wanted-gallery=123&include_found_galleries" \
+curl "https://example.chaika.moe/api/?wanted-gallery=123&include_found_galleries" \
   -H "Authorization: Bearer YOUR_API_TOKEN"
 ```
 
@@ -113,7 +113,7 @@ Returned if the ID does not exist, or the entry is not public and the caller is 
 
 Fetches multiple WantedGallery entries in a single request.
 
-- **Endpoint**: `/api`
+- **Endpoint**: `/api/`
 - **Method**: `GET`
 - **Query Parameters**:
 
@@ -124,7 +124,7 @@ Fetches multiple WantedGallery entries in a single request.
 
 ### Example Request
 ```bash
-curl "https://example.chaika.moe/api?wanted-galleries=123&wanted-galleries=456&include_found_galleries"
+curl "https://example.chaika.moe/api/?wanted-galleries=123&wanted-galleries=456&include_found_galleries"
 ```
 
 ### Response
@@ -151,7 +151,7 @@ If non-integer IDs are provided:
 
 Filters and searches WantedGallery records.
 
-- **Endpoint**: `/api`
+- **Endpoint**: `/api/`
 - **Method**: `GET`
 - **Query Parameters**: `?wanted-galleries-search=` plus filter parameters below.
 
@@ -182,7 +182,7 @@ Filters and searches WantedGallery records.
 
 ### Example Request
 ```bash
-curl "https://example.chaika.moe/api?wanted-galleries-search=&title=Example&wanted-not-found=1&sort=release_date&asc_desc=desc&include_found_galleries"
+curl "https://example.chaika.moe/api/?wanted-galleries-search=&title=Example&wanted-not-found=1&sort=release_date&asc_desc=desc&include_found_galleries"
 ```
 
 ---
@@ -191,7 +191,7 @@ curl "https://example.chaika.moe/api?wanted-galleries-search=&title=Example&want
 
 Creates a new WantedGallery record.
 
-- **Endpoint**: `/api`
+- **Endpoint**: `/api/`
 - **Method**: `POST`
 - **Query Parameter**: `?wanted-gallery=`
 - **Permissions**: Requires an authenticated user with `viewer.add_wantedgallery` permission.
@@ -238,7 +238,7 @@ Creates a new WantedGallery record.
 
 ### Example Request
 ```bash
-curl -X POST "https://example.chaika.moe/api?wanted-gallery=" \
+curl -X POST "https://example.chaika.moe/api/?wanted-gallery=" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_API_TOKEN" \
   -d '{
@@ -279,7 +279,7 @@ Missing authentication or `viewer.add_wantedgallery` permission:
 
 Modifies an existing WantedGallery record.
 
-- **Endpoint**: `/api`
+- **Endpoint**: `/api/`
 - **Method**: `PUT`
 - **Query Parameter**: `?wanted-gallery=<id>` (alternatively, `id` can be specified in the JSON request body)
 - **Permissions**: Requires an authenticated user with `viewer.change_wantedgallery` permission.
@@ -330,7 +330,7 @@ Supports **partial updates**: only the fields included in the request body are m
 
 ### Example Request
 ```bash
-curl -X PUT "https://example.chaika.moe/api?wanted-gallery=123" \
+curl -X PUT "https://example.chaika.moe/api/?wanted-gallery=123" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_API_TOKEN" \
   -d '{
@@ -410,7 +410,7 @@ Missing authentication or `viewer.change_wantedgallery` permission:
 
 Deletes an existing WantedGallery record.
 
-- **Endpoint**: `/api`
+- **Endpoint**: `/api/`
 - **Method**: `DELETE`
 - **Query Parameter**: `?wanted-gallery=<id>` (alternatively, `id` can be specified in the request body)
 - **Permissions**: Requires an authenticated user with `viewer.delete_wantedgallery` permission.
@@ -419,7 +419,7 @@ Deletes an existing WantedGallery record.
 
 ### Example Request
 ```bash
-curl -X DELETE "https://example.chaika.moe/api?wanted-gallery=123" \
+curl -X DELETE "https://example.chaika.moe/api/?wanted-gallery=123" \
   -H "Authorization: Bearer YOUR_API_TOKEN"
 ```
 

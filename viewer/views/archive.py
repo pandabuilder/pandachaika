@@ -140,7 +140,13 @@ def archive_details(request: HttpRequest, pk: int, mode: str = "view") -> HttpRe
             archive=archive,
             defaults={"user_id": request.user.pk, "archive": archive, "favorite_group": 0},
         )
-        d.update({"user_archive_preferences": current_user_archive_preferences})
+        d.update(
+            {
+                "user_archive_preferences": current_user_archive_preferences,
+                "is_extracting": (not archive.extracted) and client.is_archive_extracting(archive.pk),
+                "is_publishing": (not archive.public) and client.is_archive_publishing(archive.pk),
+            }
+        )
 
     # In-place collaborator edit form
     if request.user.has_perm("viewer.change_archive"):
@@ -689,7 +695,7 @@ def extract_toggle(request: HttpRequest, pk: int) -> HttpResponse:
 
 @login_required
 def extract(request: HttpRequest, pk: int) -> HttpResponse:
-    """Extract archive (idempotent)."""
+    """Extract archive (idempotent, queued to background worker)."""
 
     if not request.user.has_perm("viewer.expand_archive"):
         return render_error(request, "You don't have the permission to expand an Archive.")
@@ -701,16 +707,29 @@ def extract(request: HttpRequest, pk: int) -> HttpResponse:
                 logger.info("Archive %s is already extracted.", archive.pk)
                 return HttpResponseRedirect(target_url)
 
+            if client.is_archive_extracting(archive.pk):
+                logger.info("Archive %s extraction is already queued or in progress.", archive.pk)
+                messages.info(request, "Archive extraction is already queued or in progress.")
+                return HttpResponseRedirect(target_url)
+
             resized = bool(request.GET.get("resized", ""))
 
             if resized:
-                logger.info("Expanding images (resized) for archive: {}".format(archive.get_absolute_url()))
+                logger.info("Queueing image expansion (resized) for archive: {}".format(archive.get_absolute_url()))
             else:
-                logger.info("Expanding images for archive: {}".format(archive.get_absolute_url()))
+                logger.info("Queueing image expansion for archive: {}".format(archive.get_absolute_url()))
 
-            archive.extract(resized=resized)
-            action = "EXPAND_ARCHIVE"
-            event_log(request.user, action, content_object=archive, result="success")
+            client.enqueue(
+                args=[archive.pk],
+                task_type="extract_worker",
+                override_options={"resized": resized},
+                user=request.user,
+                event_action="EXPAND_ARCHIVE",
+            )
+            messages.success(
+                request,
+                "Queued archive extraction (resized)." if resized else "Queued archive extraction.",
+            )
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
 
@@ -1129,7 +1148,7 @@ def split(request: HttpRequest, pk: int) -> HttpResponse:
 
 @login_required
 def public(request: HttpRequest, pk: int) -> HttpResponse:
-    """Public archive."""
+    """Public archive (idempotent, queued to background worker)."""
 
     if not request.user.has_perm("viewer.publish_archive"):
         return render_error(request, "You don't have the permission to public an Archive.")
@@ -1137,22 +1156,27 @@ def public(request: HttpRequest, pk: int) -> HttpResponse:
     try:
         with transaction.atomic():
             archive = Archive.objects.select_for_update().get(pk=pk)
+            target_url = clean_up_referer(request.META.get("HTTP_REFERER", archive.get_absolute_url()))
             if archive.public:
                 return render_error(request, "Archive is already public.")
-            try:
-                archive.test_zip_file()
-            except (FileNotFoundError, zipfile.BadZipFile) as e:
-                message = "For Archive: {}, {}".format(archive.get_absolute_url(), str(e))
-                logger.error(message)
-                messages.error(request, message)
-                return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
-            archive.set_public()
-            logger.info("Setting public status to public for Archive: {}".format(archive.get_absolute_url()))
-            event_log(request.user, "PUBLISH_ARCHIVE", content_object=archive, result="published")
+
+            if client.is_archive_publishing(archive.pk):
+                logger.info("Archive %s publishing is already queued or in progress.", archive.pk)
+                messages.info(request, "Archive publishing is already queued or in progress.")
+                return HttpResponseRedirect(target_url)
+
+            logger.info("Queueing public status for Archive: {}".format(archive.get_absolute_url()))
+            client.enqueue(
+                args=[archive.pk],
+                task_type="publish_worker",
+                user=request.user,
+                event_action="PUBLISH_ARCHIVE",
+            )
+            messages.success(request, "Queued archive publishing.")
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
 
-    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+    return HttpResponseRedirect(target_url)
 
 
 @login_required

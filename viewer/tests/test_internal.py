@@ -718,6 +718,258 @@ class JsonApiEndpointsTest(GeneralPagesTest):
         self.assertEqual(found_entry["found_galleries"][0]["gid"], self.test_gallery3.gid)
 
 
+class JsonParserWebcrawlerTest(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth.models import Permission, User
+        cls.api_user = User.objects.create_user(username="api_user_json", password="password")
+        perm = Permission.objects.get(codename="use_remote_api", content_type__app_label="viewer")
+        cls.api_user.user_permissions.add(perm)
+
+        cls.unauthorized_user = User.objects.create_user(username="unauth_user_json", password="password")
+
+    def setUp(self):
+        from django.test import Client
+        self.client = Client()
+        self.client.login(username="api_user_json", password="password")
+
+    def _post_json_parser(self, body, client=None):
+        c = client or self.client
+        return c.post(
+            reverse("viewer:jsonapi"),
+            data=json.dumps(body),
+            content_type="application/json",
+        )
+
+    def test_unauthorized_user_rejected(self):
+        from django.test import Client
+        unauth_client = Client()
+        unauth_client.login(username="unauth_user_json", password="password")
+        response = self._post_json_parser(
+            {"operation": "webcrawler", "args": {"link": "https://example.com/1"}},
+            client=unauth_client,
+        )
+        self.assertEqual(response.status_code, 401)
+        data = json.loads(response.content)
+        self.assertEqual(data["error"], "Not authorized")
+
+    def test_single_link_argument(self):
+        from unittest.mock import patch
+        with patch("workers.client.enqueue") as mock_enqueue:
+            response = self._post_json_parser(
+                {"operation": "webcrawler", "args": {"link": "https://example.com/test1"}}
+            )
+            self.assertEqual(response.status_code, 200)
+            data = json.loads(response.content)
+            self.assertIn("Crawling: https://example.com/test1", data["message"])
+            self.assertEqual(data["result"], "1")
+            mock_enqueue.assert_called_once()
+            call_kwargs = mock_enqueue.call_args.kwargs
+            self.assertEqual(call_kwargs["args"], ["https://example.com/test1"])
+            self.assertEqual(call_kwargs["task_type"], "web_crawler")
+
+    def test_multiple_links_argument(self):
+        from unittest.mock import patch
+        links = ["https://example.com/test1", "https://example.com/test2", "https://example.com/test3"]
+        with patch("workers.client.enqueue") as mock_enqueue:
+            response = self._post_json_parser(
+                {"operation": "webcrawler", "args": {"links": links}}
+            )
+            self.assertEqual(response.status_code, 200)
+            data = json.loads(response.content)
+            self.assertIn("Crawling: 3 links", data["message"])
+            self.assertEqual(data["result"], "3")
+            mock_enqueue.assert_called_once()
+            call_kwargs = mock_enqueue.call_args.kwargs
+            self.assertEqual(call_kwargs["args"], links)
+            self.assertEqual(call_kwargs["task_type"], "web_crawler")
+
+    def test_single_link_in_links_argument(self):
+        from unittest.mock import patch
+        with patch("workers.client.enqueue") as mock_enqueue:
+            response = self._post_json_parser(
+                {"operation": "webcrawler", "args": {"links": ["https://example.com/single"]}}
+            )
+            self.assertEqual(response.status_code, 200)
+            data = json.loads(response.content)
+            self.assertIn("Crawling: https://example.com/single", data["message"])
+            self.assertEqual(data["result"], "1")
+            mock_enqueue.assert_called_once()
+            self.assertEqual(mock_enqueue.call_args.kwargs["args"], ["https://example.com/single"])
+
+    def test_multiple_links_string_argument(self):
+        from unittest.mock import patch
+        links_str = "https://example.com/str1\nhttps://example.com/str2"
+        with patch("workers.client.enqueue") as mock_enqueue:
+            response = self._post_json_parser(
+                {"operation": "webcrawler", "args": {"links": links_str}}
+            )
+            self.assertEqual(response.status_code, 200)
+            data = json.loads(response.content)
+            self.assertIn("Crawling: 2 links", data["message"])
+            self.assertEqual(data["result"], "2")
+            mock_enqueue.assert_called_once()
+            self.assertEqual(
+                mock_enqueue.call_args.kwargs["args"],
+                ["https://example.com/str1", "https://example.com/str2"],
+            )
+
+    def test_combined_link_and_links_arguments(self):
+        from unittest.mock import patch
+        with patch("workers.client.enqueue") as mock_enqueue:
+            response = self._post_json_parser(
+                {
+                    "operation": "webcrawler",
+                    "args": {
+                        "link": "https://example.com/link_arg",
+                        "links": ["https://example.com/links_arg"],
+                    },
+                }
+            )
+            self.assertEqual(response.status_code, 200)
+            data = json.loads(response.content)
+            self.assertEqual(data["result"], "2")
+            mock_enqueue.assert_called_once()
+            self.assertEqual(
+                mock_enqueue.call_args.kwargs["args"],
+                ["https://example.com/links_arg", "https://example.com/link_arg"],
+            )
+
+    def test_multiple_links_with_reason(self):
+        from unittest.mock import patch
+        links = ["https://example.com/1", "https://example.com/2"]
+        with patch("workers.client.enqueue") as mock_enqueue:
+            response = self._post_json_parser(
+                {"operation": "webcrawler", "args": {"links": links, "reason": "test_reason"}}
+            )
+            self.assertEqual(response.status_code, 200)
+            data = json.loads(response.content)
+            self.assertEqual(data["result"], "2")
+            mock_enqueue.assert_called_once()
+            self.assertEqual(
+                mock_enqueue.call_args.kwargs["args"],
+                ["https://example.com/1", "https://example.com/2", "-reason", "test_reason"],
+            )
+            self.assertEqual(mock_enqueue.call_args.kwargs["reason"], "test_reason")
+
+    def test_multiple_links_with_downloader(self):
+        from unittest.mock import patch
+        links = ["https://example.com/1", "https://example.com/2"]
+        with patch("workers.client.enqueue") as mock_enqueue:
+            response = self._post_json_parser(
+                {"operation": "webcrawler", "args": {"links": links, "downloader": "default"}}
+            )
+            self.assertEqual(response.status_code, 200)
+            data = json.loads(response.content)
+            self.assertEqual(data["result"], "2")
+            mock_enqueue.assert_called_once()
+            self.assertEqual(mock_enqueue.call_args.kwargs["args"], links)
+
+    def test_empty_links_returns_error(self):
+        response = self._post_json_parser(
+            {"operation": "webcrawler", "args": {"links": []}}
+        )
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertEqual(data["error"], "No links provided")
+
+    def test_missing_link_and_links_returns_error(self):
+        response = self._post_json_parser(
+            {"operation": "webcrawler", "args": {}}
+        )
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertEqual(data["error"], "No links provided")
+
+    def test_multiple_links_some_exist_in_database(self):
+        gallery = Gallery.objects.create(title="Existing gallery", gid="999991", provider="panda")
+        Archive.objects.create(title="Existing Archive", user=self.api_user, gallery=gallery)
+
+        from unittest.mock import patch
+        links = [
+            "https://e-hentai.org/g/999991/token1/",
+            "https://e-hentai.org/g/999992/token2/",
+        ]
+        with patch("workers.client.enqueue") as mock_enqueue:
+            response = self._post_json_parser(
+                {"operation": "webcrawler", "args": {"links": links}}
+            )
+            self.assertEqual(response.status_code, 200)
+            data = json.loads(response.content)
+            self.assertIn("Crawling 2 links (1 archives exist, checking for redownload)", data["message"])
+            self.assertEqual(data["result"], "2")
+            mock_enqueue.assert_called_once()
+            self.assertEqual(mock_enqueue.call_args.kwargs["args"], links)
+
+    def test_multiple_links_all_exist_in_database(self):
+        gallery1 = Gallery.objects.create(title="Existing 1", gid="999993", provider="panda")
+        Archive.objects.create(title="Archive 1", user=self.api_user, gallery=gallery1)
+        gallery2 = Gallery.objects.create(title="Existing 2", gid="999994", provider="panda")
+        Archive.objects.create(title="Archive 2", user=self.api_user, gallery=gallery2)
+
+        from unittest.mock import patch
+        links = [
+            "https://e-hentai.org/g/999993/token1/",
+            "https://e-hentai.org/g/999994/token2/",
+        ]
+        with patch("workers.client.enqueue") as mock_enqueue:
+            response = self._post_json_parser(
+                {"operation": "webcrawler", "args": {"links": links}}
+            )
+            self.assertEqual(response.status_code, 200)
+            data = json.loads(response.content)
+            self.assertIn("Archive exists, crawling to check for redownload: 2 links", data["message"])
+            self.assertEqual(data["result"], "2")
+            mock_enqueue.assert_called_once()
+
+    def test_multiple_links_parent_link_confirm_deletion(self):
+        parent_gallery = Gallery.objects.create(
+            title="Parent Gallery", gid="888881", token="ptok", provider="panda"
+        )
+        Archive.objects.create(title="Parent Archive", user=self.api_user, gallery=parent_gallery)
+
+        links = ["https://e-hentai.org/g/777771/tok1/", "https://e-hentai.org/g/777772/tok2/"]
+        response = self._post_json_parser(
+            {
+                "operation": "webcrawler",
+                "args": {
+                    "links": links,
+                    "parentLink": "https://e-hentai.org/g/888881/ptok/",
+                },
+            }
+        )
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertEqual(data.get("action"), "confirmDeletion")
+        self.assertIn("Please confirm deletion of parent", data["message"])
+
+    def test_multiple_links_parent_link_queue_found(self):
+        parent_gallery = Gallery.objects.create(
+            title="Parent Gallery", gid="888882", token="ptok2", provider="panda"
+        )
+        Archive.objects.create(title="Parent Archive", user=self.api_user, gallery=parent_gallery)
+
+        from unittest.mock import patch
+        links = ["https://e-hentai.org/g/777773/tok3/", "https://e-hentai.org/g/777774/tok4/"]
+        with patch("workers.client.enqueue") as mock_enqueue:
+            response = self._post_json_parser(
+                {
+                    "operation": "webcrawler",
+                    "args": {
+                        "links": links,
+                        "parentLink": "https://e-hentai.org/g/888882/ptok2/",
+                        "action": "queueFound",
+                    },
+                }
+            )
+            self.assertEqual(response.status_code, 200)
+            data = json.loads(response.content)
+            self.assertIn("Crawling: 2 links, keeping parent", data["message"])
+            self.assertEqual(data["result"], "2")
+            mock_enqueue.assert_called_once()
+            self.assertEqual(mock_enqueue.call_args.kwargs["args"], links)
+
+
 class OperationalFixesTest(TestCase):
     @classmethod
     def setUpTestData(cls):

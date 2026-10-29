@@ -2,7 +2,7 @@
 
 This document describes all API endpoints for querying, inspecting, and searching `Archive` records (zip files) in Panda Backup.
 
-All endpoints use the public JSON API at `/api` (or `/jsearch`).
+All endpoints use the public JSON API at `/api/` (or `/jsearch/`, or slashless `/api`).
 
 ---
 
@@ -36,18 +36,18 @@ All endpoints use the public JSON API at `/api` (or `/jsearch`).
 
 Fetches metadata for a single archive by its primary key.
 
-- **Endpoint**: `/api`
+- **Endpoint**: `/api/`
 - **Method**: `GET`
 - **Query Parameters**: `?archive=<id>`
 
 ### Example Request
 ```bash
-curl "https://example.chaika.moe/api?archive=42"
+curl "https://example.chaika.moe/api/?archive=42"
 ```
 
 With authentication:
 ```bash
-curl "https://example.chaika.moe/api?archive=42" \
+curl "https://example.chaika.moe/api/?archive=42" \
   -H "Authorization: Bearer YOUR_API_TOKEN"
 ```
 
@@ -90,13 +90,13 @@ curl "https://example.chaika.moe/api?archive=42" \
 
 Fetches full details for multiple archives in a single call.
 
-- **Endpoint**: `/api`
+- **Endpoint**: `/api/`
 - **Method**: `GET`
 - **Query Parameters**: `?archives=<id>&archives=<id>...` (repeatable)
 
 ### Example Request
 ```bash
-curl "https://example.chaika.moe/api?archives=42&archives=43"
+curl "https://example.chaika.moe/api/?archives=42&archives=43"
 ```
 
 ### Response
@@ -135,13 +135,13 @@ Returns a JSON array of archive objects:
 
 Retrieves the alphabetically sorted list of tags for a specific archive.
 
-- **Endpoint**: `/api`
+- **Endpoint**: `/api/`
 - **Method**: `GET`
 - **Query Parameters**: `?at=<id>`
 
 ### Example Request
 ```bash
-curl "https://example.chaika.moe/api?at=42"
+curl "https://example.chaika.moe/api/?at=42"
 ```
 
 ### Response
@@ -161,13 +161,13 @@ curl "https://example.chaika.moe/api?at=42"
 
 Retrieves the SHA-1 checksums for all images contained within the archive in page order.
 
-- **Endpoint**: `/api`
+- **Endpoint**: `/api/`
 - **Method**: `GET`
 - **Query Parameters**: `?ah=<id>`
 
 ### Example Request
 ```bash
-curl "https://example.chaika.moe/api?ah=42"
+curl "https://example.chaika.moe/api/?ah=42"
 ```
 
 ### Response
@@ -187,13 +187,13 @@ curl "https://example.chaika.moe/api?ah=42"
 
 Inspects any non-image files stored in the archive (e.g. text files, NFO files, metadata exports).
 
-- **Endpoint**: `/api`
+- **Endpoint**: `/api/`
 - **Method**: `GET`
 - **Query Parameters**: `?aof=<id>`
 
 ### Example Request
 ```bash
-curl "https://example.chaika.moe/api?aof=42"
+curl "https://example.chaika.moe/api/?aof=42"
 ```
 
 ### Response
@@ -215,13 +215,13 @@ curl "https://example.chaika.moe/api?aof=42"
 
 Fetches complete page-by-page image technical metadata (dimensions, file formats, colorspace, size, and hash) for one or more archives.
 
-- **Endpoint**: `/api`
+- **Endpoint**: `/api/`
 - **Method**: `GET`
 - **Query Parameters**: `?aid=<id>&aid=<id>...` (repeatable)
 
 ### Example Request
 ```bash
-curl "https://example.chaika.moe/api?aid=42"
+curl "https://example.chaika.moe/api/?aid=42"
 ```
 
 ### Response
@@ -263,13 +263,13 @@ Returns an object keyed by archive ID, containing objects keyed by page position
 
 Reverse image search: finds all archives in the database that contain an image matching a specific SHA-1 hash.
 
-- **Endpoint**: `/api`
+- **Endpoint**: `/api/`
 - **Method**: `GET`
 - **Query Parameters**: `?sha1=<sha1_hex>`
 
 ### Example Request
 ```bash
-curl "https://example.chaika.moe/api?sha1=356a192b7913b04c54574d18c28d46e6395428ab"
+curl "https://example.chaika.moe/api/?sha1=356a192b7913b04c54574d18c28d46e6395428ab"
 ```
 
 ### Response
@@ -302,13 +302,13 @@ Returns an array of archive objects containing the matched image:
 
 Performs a filtered archive search and returns compact archive identifiers and download URLs.
 
-- **Endpoint**: `/api`
+- **Endpoint**: `/api/`
 - **Method**: `GET`
 - **Query Parameters**: `?qa=` plus filters from [Archive Filter Parameters](#archive-filter-parameters).
 
 ### Example Request
 ```bash
-curl "https://example.chaika.moe/api?qa=&tags=artist:sample&sort=public_date&asc_desc=desc"
+curl "https://example.chaika.moe/api/?qa=&tags=artist:sample&sort=public_date&asc_desc=desc"
 ```
 
 ### Response
@@ -329,7 +329,7 @@ curl "https://example.chaika.moe/api?qa=&tags=artist:sample&sort=public_date&asc
 
 Simple keyword and tag search over archive titles and tags.
 
-- **Endpoint**: `/api`
+- **Endpoint**: `/api/`
 - **Method**: `GET`
 - **Query Parameters**: `?q=<search_text>`
 
@@ -337,7 +337,7 @@ Supports space-separated title keywords and comma-separated tags (with `-` and `
 
 ### Example Request
 ```bash
-curl "https://example.chaika.moe/api?q=Sample+Vol+1"
+curl "https://example.chaika.moe/api/?q=Sample+Vol+1"
 ```
 
 ### Response
@@ -359,13 +359,13 @@ Returns the same compact format as `qa`:
 
 Searches archives using archive filters, but aggregates the results under their parent `Gallery` records. Designed for transferring and syncing archives between Panda Backup instances.
 
-- **Endpoint**: `/api`
+- **Endpoint**: `/api/`
 - **Method**: `GET`
 - **Query Parameters**: `?as=` plus filters from [Archive Filter Parameters](#archive-filter-parameters).
 
 ### Example Request
 ```bash
-curl "https://example.chaika.moe/api?as=&tags=artist:sample"
+curl "https://example.chaika.moe/api/?as=&tags=artist:sample"
 ```
 
 ### Response
@@ -410,14 +410,14 @@ Returns an array of Gallery objects with all matching archives attached:
 
 Runs feature matching and image similarity algorithms between images in this archive and all active `WantedImage` records.
 
-- **Endpoint**: `/api`
+- **Endpoint**: `/api/`
 - **Method**: `GET`
 - **Query Parameters**: `?archive-wanted-image=<id>`
 - **Permissions**: Requires an **authenticated user**.
 
 ### Example Request
 ```bash
-curl "https://example.chaika.moe/api?archive-wanted-image=42" \
+curl "https://example.chaika.moe/api/?archive-wanted-image=42" \
   -H "Authorization: Bearer YOUR_API_TOKEN"
 ```
 

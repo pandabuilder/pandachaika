@@ -34,6 +34,7 @@ class ArchiveHashingService:
         process_image_data: bool = True,
         process_other_data: bool = True,
         process_archive_statistics: bool = True,
+        skip_zip_check: bool = False,
     ) -> bool:
         """Compute SHA1, dimensions, pHash, and metadata for images within the archive."""
         if not archive.zipped.name or not os.path.isfile(archive.zipped.path):
@@ -41,16 +42,17 @@ class ArchiveHashingService:
         my_zip = None
         try:
             my_zip = zipfile.ZipFile(archive.zipped.path, "r")
-            bad_file = my_zip.testzip()
-            if bad_file:
-                logger.error(
-                    "Zip file CRC check failed on file %s for archive: %s on file: %s",
-                    bad_file,
-                    archive,
-                    archive.zipped.path,
-                )
-                my_zip.close()
-                return False
+            if not skip_zip_check:
+                bad_file = my_zip.testzip()
+                if bad_file:
+                    logger.error(
+                        "Zip file CRC check failed on file %s for archive: %s on file: %s",
+                        bad_file,
+                        archive,
+                        archive.zipped.path,
+                    )
+                    my_zip.close()
+                    return False
         except (zipfile.BadZipFile, NotImplementedError, zlib.error) as e:
             logger.error(
                 "Error opening or testing zipfile for archive: %s on file: %s: %s",
@@ -64,6 +66,8 @@ class ArchiveHashingService:
 
         from viewer.models import ArchiveStatistics, Image, ItemProperties
 
+        activity_cb = getattr(archive, "_activity_callback", None)
+
         image_set = archive.image_set.all().order_by("archive_position")
         filtered_files = get_images_from_zip(my_zip)
         image_type = ContentType.objects.get_for_model(Image)
@@ -76,8 +80,11 @@ class ArchiveHashingService:
 
         images_to_update = []
         phash_tasks = []
+        member_to_image_map: dict[str, Image] = {}
 
         for filename_tuple, image in zip(filtered_files, image_set):
+            if callable(activity_cb):
+                activity_cb()
             image_filename, nested_zip_filename, _ = filename_tuple
 
             if not image:
@@ -108,6 +115,10 @@ class ArchiveHashingService:
                                     os.path.basename(image_filename),
                                 )
 
+            member_to_image_map[image_filename] = image
+            if image.image_name:
+                member_to_image_map[image.image_name] = image
+
             if process_image_data:
                 images_to_update.append(image)
 
@@ -132,24 +143,24 @@ class ArchiveHashingService:
         if images_to_update:
             Image.objects.bulk_update(
                 images_to_update,
-                ["sha1", "image_size", "original_height", "original_width", "image_mode", "image_name"],
+                ["sha1", "image_size", "original_height", "original_width", "image_format", "image_mode", "image_name"],
             )
 
         if phash_results:
-            filename_to_image_map = {image.image_name: image for image in image_set}
-
             props_to_create = []
             props_to_update = []
             existing_props_qs = ItemProperties.objects.filter(
                 content_type=image_type,
-                object_id__in=[img.pk for img in filename_to_image_map.values()],
+                object_id__in=[img.pk for img in member_to_image_map.values() if img.pk],
                 tag="hash-compare",
                 name="phash",
             )
             existing_props_map = {prop.object_id: prop for prop in existing_props_qs}
 
             for filename, hash_val in phash_results.items():
-                image_from_name = filename_to_image_map.get(filename)
+                image_from_name = member_to_image_map.get(filename) or member_to_image_map.get(
+                    os.path.basename(filename)
+                )
                 if not image_from_name:
                     continue
 

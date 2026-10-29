@@ -70,11 +70,17 @@
 
         {% if archive.extracted %}
           <span class="badge bg-primary py-1 px-2"><i class="fas fa-folder-open me-1"></i>Extracted</span>
+        {% elif is_extracting %}
+          <span class="badge bg-warning text-dark py-1 px-2"><i class="fas fa-spinner fa-spin me-1"></i>Extracting...</span>
         {% else %}
           <span class="badge bg-secondary py-1 px-2"><i class="fas fa-file-archive me-1"></i>Archived</span>
         {% endif %}
 
-        {{ archive.public|boolean_badge:"Published,Private" }}
+        {% if is_publishing %}
+          <span class="badge bg-warning text-dark py-1 px-2"><i class="fas fa-spinner fa-spin me-1"></i>Publishing...</span>
+        {% else %}
+          {{ archive.public|boolean_badge:"Published,Private" }}
+        {% endif %}
 
         {% if archive.is_file_deleted %}
           {{ archive.is_file_deleted|boolean_badge:"File Deleted,Exists,danger" }}
@@ -97,6 +103,10 @@
           <a class="btn btn-outline-light btn-sm" href="{% url 'viewer:archive-reduce' archive.pk %}" id="btn-reduce-archive">
             <i class="fas fa-compress-alt me-1"></i>Reduce archive
           </a>
+        {% elif is_extracting %}
+          <button class="btn btn-outline-warning btn-sm" type="button" disabled id="btn-extracting-archive">
+            <i class="fas fa-spinner fa-spin me-1"></i>Extracting...
+          </button>
         {% else %}
           <a class="btn btn-outline-light btn-sm" href="{% url 'viewer:archive-extract' archive.pk %}" id="btn-extract-archive">
             <i class="fas fa-expand-alt me-1"></i>Expand archive
@@ -245,6 +255,10 @@
         <a class="btn btn-sm btn-outline-warning" href="{% url 'viewer:archive-private' archive.pk %}">
           <i class="fas fa-lock me-1"></i>Set Private
         </a>
+      {% elif is_publishing %}
+        <button class="btn btn-sm btn-outline-warning" type="button" disabled id="btn-publishing-archive">
+          <i class="fas fa-spinner fa-spin me-1"></i>Publishing...
+        </button>
       {% else %}
         <a class="btn btn-sm btn-outline-success" href="{% url 'viewer:archive-public' archive.pk %}">
           <i class="fas fa-lock-open me-1"></i>Set Public

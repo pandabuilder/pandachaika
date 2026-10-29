@@ -108,6 +108,9 @@ class ArchiveQuerySet(models.QuerySet["Archive"]):
     def distinct(self, *field_names: typing.Any) -> typing.Self:
         return super().distinct(*field_names)
 
+    def none(self) -> typing.Self:
+        return super().none()
+
     def filter_non_existent(self, root: str, **kwargs: typing.Any) -> list["Archive"]:
         archives = self.filter(**kwargs, file_deleted=False, binned=False).order_by("-id")
 
@@ -125,6 +128,9 @@ class ArchiveManager(models.Manager["Archive"]):
 
     def all(self) -> ArchiveQuerySet:
         return self.get_queryset()
+
+    def none(self) -> ArchiveQuerySet:
+        return self.get_queryset().none()
 
     def filter(self, *args: typing.Any, **kwargs: typing.Any) -> ArchiveQuerySet:
         return self.get_queryset().filter(*args, **kwargs)
@@ -182,8 +188,9 @@ class ArchiveManager(models.Manager["Archive"]):
         if gid_provider:
             gallery, _ = Gallery.objects.get_or_create(gid=gid_provider[0], provider=gid_provider[1])
             archive.gallery = gallery
-            archive.save()
-            archive.set_tags_from_gallery(gallery)
+        archive.ingest()
+        if archive.gallery:
+            archive.set_tags_from_gallery(archive.gallery)
 
         return archive
 
@@ -206,13 +213,14 @@ class ArchiveManager(models.Manager["Archive"]):
             "galleries/archives/{id}/{file}".format(id=archive.id, file=base_file_name + ".zip"),
         )
         os.makedirs(os.path.join(settings.MEDIA_ROOT, "galleries/archives/{id}".format(id=archive.id)), exist_ok=True)
-        archive.save()
+        archive.ingest()
 
         return archive
 
     def add_or_update_from_values(self, values: DataDict, **kwargs: typing.Any) -> "Archive":
 
         archive, _ = self.update_or_create(defaults=values, **kwargs)
+        archive.ingest()
         return archive
 
     def delete_by_filter(self, **kwargs: typing.Any) -> bool:
@@ -585,20 +593,28 @@ class Archive(models.Model):
         else:
             return "unknown", 0
 
-    def set_public(self, reason: str = "") -> None:
+    def set_public(self, reason: str = "", skip_zip_check: bool = False) -> bool:
 
         if not os.path.isfile(self.zipped.path) or not self.crc32:
-            return
+            return False
+        activity_cb = getattr(self, "_activity_callback", None)
+        if callable(activity_cb):
+            activity_cb()
         self.public = True
         self.public_date = django_tz.now()
-        self.generate_image_set()
-        self.generate_thumbnails()
+        self.generate_image_set(skip_zip_check=skip_zip_check)
+        if callable(activity_cb):
+            activity_cb()
+        self.generate_thumbnails(skip_zip_check=True)
+        if callable(activity_cb):
+            activity_cb()
         # Only calculate if all images are sha1 null, (no calc in process)
         if self.image_set.filter(sha1__isnull=False).count() == 0:
-            self.calculate_sha1_and_data_for_images()
+            self.calculate_sha1_and_data_for_images(skip_zip_check=True)
+        if callable(activity_cb):
+            activity_cb()
         if reason:
             self.reason = reason
-        self.simple_save()
         self.simple_save()
         if self.gallery:
             if reason:
@@ -609,6 +625,7 @@ class Archive(models.Model):
         for alt_gallery in self.alternative_sources.all():
             alt_gallery.public = True
             alt_gallery.save()
+        return True
 
     def set_private(self, reason: str = "") -> None:
 
@@ -704,6 +721,7 @@ class Archive(models.Model):
         process_image_data: bool = True,
         process_other_data: bool = True,
         process_archive_statistics: bool = True,
+        skip_zip_check: bool = False,
     ) -> bool:
         from viewer.services.archive_hashing import ArchiveHashingService
 
@@ -712,6 +730,7 @@ class Archive(models.Model):
             process_image_data=process_image_data,
             process_other_data=process_other_data,
             process_archive_statistics=process_archive_statistics,
+            skip_zip_check=skip_zip_check,
         )
 
     def hash_images_with_function(self, hashing_function: typing.Callable[[typing.IO], str]) -> dict[int, str]:
@@ -746,7 +765,7 @@ class Archive(models.Model):
 
         return ArchiveExtractionService.extract(self, resized=resized)
 
-    def generate_image_set(self, force: bool = False, ignore_files: bool = False) -> bool:
+    def generate_image_set(self, force: bool = False, ignore_files: bool = False, skip_zip_check: bool = False) -> bool:
 
         if not os.path.isfile(self.zipped.path):
             return False
@@ -755,16 +774,17 @@ class Archive(models.Model):
             my_zip = None
             try:
                 my_zip = zipfile.ZipFile(self.zipped.path, "r")
-                bad_file = my_zip.testzip()
-                if bad_file:
-                    logger.error(
-                        "Zip file CRC check failed on file %s for archive: %s on file: %s",
-                        bad_file,
-                        self,
-                        self.zipped.path,
-                    )
-                    my_zip.close()
-                    return False
+                if not skip_zip_check:
+                    bad_file = my_zip.testzip()
+                    if bad_file:
+                        logger.error(
+                            "Zip file CRC check failed on file %s for archive: %s on file: %s",
+                            bad_file,
+                            self,
+                            self.zipped.path,
+                        )
+                        my_zip.close()
+                        return False
             except (zipfile.BadZipFile, NotImplementedError, zlib.error) as e:
                 logger.error(
                     "Error opening or testing zipfile for archive: %s on file: %s: %s",
@@ -786,10 +806,13 @@ class Archive(models.Model):
                         img.image.delete(save=False)
                         img.thumbnail.delete(save=False)
                     img.delete()
-            for count, filename in enumerate(filtered_files, start=1):
-                image = Image(archive=self, archive_position=count, position=count)
-                image.image = None
-                image.save()
+            if filtered_files:
+                Image.objects.bulk_create(
+                    [
+                        Image(archive=self, archive_position=count, position=count, image=None)
+                        for count, _ in enumerate(filtered_files, start=1)
+                    ]
+                )
 
             my_zip.close()
 
@@ -807,274 +830,80 @@ class Archive(models.Model):
     def delete(self, *args: typing.Any, **kwargs: typing.Any) -> tuple[int, dict[str, int]]:
         prev_pk = self.pk
         deleted = super(Archive, self).delete(*args, **kwargs)
-        if settings.ES_CLIENT and settings.ES_AUTOREFRESH:
-            try:
-                settings.ES_CLIENT.options(request_timeout=30).delete(
-                    index=getattr(self._meta, "es_index_name"), id=str(prev_pk), refresh=True
-                )
-            except elasticsearch.exceptions.NotFoundError:
-                pass
+        if settings.ES_CLIENT and settings.ES_AUTOREFRESH and prev_pk is not None:
+            es_index = getattr(self._meta, "es_index_name")
+
+            def _delete_from_es() -> None:
+                if not settings.ES_CLIENT:
+                    return
+                try:
+                    settings.ES_CLIENT.options(request_timeout=30).delete(
+                        index=es_index, id=str(prev_pk), refresh=True
+                    )
+                except elasticsearch.exceptions.NotFoundError:
+                    pass
+
+            transaction.on_commit(_delete_from_es)
         return deleted
 
-    def simple_save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
-        is_new = self.pk
-        super(Archive, self).save(*args, **kwargs)
-        if settings.ES_CLIENT and settings.ES_AUTOREFRESH:
+    def update_index(self) -> None:
+        if settings.ES_CLIENT and settings.ES_AUTOREFRESH and self.pk is not None:
             if (settings.ES_ONLY_INDEX_PUBLIC and self.public) or not settings.ES_ONLY_INDEX_PUBLIC:
                 payload = self.es_repr()
                 del payload["_id"]
                 es_index = getattr(self._meta, "es_index_name")
-                if is_new is not None:
-                    try:
-                        settings.ES_CLIENT.update(
-                            index=es_index,
-                            id=str(self.pk),
-                            refresh=True,
-                            doc=payload
-                        )
-                    except elasticsearch.exceptions.NotFoundError:
-                        settings.ES_CLIENT.create(
-                            index=es_index,
-                            id=str(self.pk),
-                            refresh=True,
-                            document=payload
-                        )
-
-                else:
+                try:
+                    settings.ES_CLIENT.update(
+                        index=es_index,
+                        id=str(self.pk),
+                        refresh=True,
+                        doc=payload,
+                    )
+                except elasticsearch.exceptions.NotFoundError:
                     settings.ES_CLIENT.create(
                         index=es_index,
                         id=str(self.pk),
                         refresh=True,
-                        document=payload
+                        document=payload,
                     )
 
-    def save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
-
-        self.simple_save(*args, **kwargs)
-
-        if not self.zipped or not os.path.isfile(self.zipped.path):
+    def schedule_index_update(self) -> None:
+        if not (settings.ES_CLIENT and settings.ES_AUTOREFRESH):
+            return
+        if settings.ES_ONLY_INDEX_PUBLIC and not self.public:
+            return
+        if self.pk is None:
+            return
+        conn = transaction.get_connection()
+        key = (self._meta.label, self.pk)
+        if conn.in_atomic_block and any(
+            getattr(func, "_es_index_key", None) == key for _, func, _ in conn.run_on_commit
+        ):
             return
 
-        # crc32: Calculate CRC32 first, since it doesn't depend on the zipfile being correct or not.
-        if self.crc32 is None or self.crc32 == "":
-            self.crc32 = calc_crc32(self.zipped.path, use_pool=True)
+        def _on_commit() -> None:
+            self.update_index()
 
-        image_set_present = bool(self.image_set.all())
-        # large thumbnail and image set
-        if not self.thumbnail or not image_set_present:
-            my_zip = None
-            try:
-                my_zip = zipfile.ZipFile(self.zipped.path, "r")
-                bad_file = my_zip.testzip()
-                if bad_file:
-                    logger.error(
-                        "Zip file CRC check failed on file %s for archive: %s on file: %s",
-                        bad_file,
-                        self,
-                        self.zipped.path,
-                    )
-                    my_zip.close()
-                    self.simple_save(force_update=True)
-                    return
-            except (zipfile.BadZipFile, NotImplementedError, zlib.error) as e:
-                logger.error(
-                    "Error opening or testing zipfile for archive: %s on file: %s: %s",
-                    self,
-                    self.zipped.path,
-                    e,
-                )
-                if my_zip:
-                    my_zip.close()
-                self.simple_save(force_update=True)
-                return
-            filtered_files = get_images_from_zip(my_zip)
+        setattr(_on_commit, "_es_index_key", key)
+        transaction.on_commit(_on_commit)
 
-            nested_images = [x for x in filtered_files if x[1] is not None]
+    def simple_save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
+        super(Archive, self).save(*args, **kwargs)
+        self.schedule_index_update()
 
-            if len(nested_images) > 0:
-                c = Counter(nested_image[1] for nested_image in nested_images)
-                mark_comment_list = ["File: {} has: {} images".format(x, c[x]) for x in c.keys()]
-                mark_comment = "\n".join(mark_comment_list)
-                manager_entry, _ = ArchiveManageEntry.objects.update_or_create(
-                    archive=self,
-                    mark_reason="found_nested_files",
-                    defaults={
-                        "mark_comment": mark_comment,
-                        "mark_priority": 1.0,
-                        "mark_check": True,
-                        "origin": ArchiveManageEntry.ORIGIN_SYSTEM,
-                    },
-                )
+    def save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
+        super(Archive, self).save(*args, **kwargs)
+        self.schedule_index_update()
 
-            if not image_set_present:
-                for count, filename_tuple in enumerate(filtered_files, start=1):
-                    # image_name = os.path.split(filename.replace('\\', os.sep))[1]
-                    image = Image(archive=self, archive_position=count, position=count)
-                    # image.image.name = upload_imgpath(self, image_name)
-                    image.image = None
-                    image.save()
+    def ingest(self, save: bool = True) -> bool:
+        from viewer.services.archive_ingestion import ArchiveIngestionService
 
-            if settings.CRAWLER_SETTINGS.auto_hash_images and not self.thumbnail:
-                image_type = ContentType.objects.get_for_model(Image)
+        return ArchiveIngestionService.ingest(self, save=save)
 
-                archive_statistics, _ = ArchiveStatistics.objects.get_or_create(archive=self)
+    def sync_gallery_metadata(self) -> None:
+        from viewer.services.archive_ingestion import ArchiveIngestionService
 
-                archive_stats_calc = ArchiveStatisticsCalculator()
-
-                for count, filename_tuple in enumerate(filtered_files, start=1):
-                    # image_name = os.path.split(filename.replace('\\', os.sep))[1]
-                    image = Image.objects.get(archive=self, archive_position=count)
-                    # image.image.name = upload_imgpath(self, image_name)
-                    if filename_tuple[1] is None:
-                        with my_zip.open(filename_tuple[0]) as current_zip_img:
-                            image.sha1 = sha1_from_file_object(current_zip_img)
-                            image.set_attributes_from_image(
-                                current_zip_img,
-                                my_zip.getinfo(filename_tuple[0]).file_size,
-                                os.path.basename(filename_tuple[0]),
-                            )
-
-                            archive_stats_calc.set_values(
-                                filesize=image.image_size,
-                                height=image.original_height,
-                                width=image.original_width,
-                                image_mode=image.image_mode,
-                                is_horizontal=image.image_width / image.image_height > 1
-                                if image.image_width and image.image_height else False,
-                                file_type=os.path.splitext(filename_tuple[0])[1]
-                            )
-
-                            if settings.CRAWLER_SETTINGS.auto_phash_images:
-                                hash_result = CompareObjectsService.hash_thumbnail(current_zip_img, "phash")
-                                if hash_result:
-                                    hash_object, _ = ItemProperties.objects.update_or_create(
-                                        content_type=image_type,
-                                        object_id=image.pk,
-                                        tag="hash-compare",
-                                        name="phash",
-                                        defaults={"value": hash_result},
-                                    )
-                    else:
-                        with my_zip.open(filename_tuple[1]) as current_zip:
-                            with zipfile.ZipFile(current_zip) as my_nested_zip:
-                                with my_nested_zip.open(filename_tuple[0]) as current_zip_img:
-                                    image.sha1 = sha1_from_file_object(current_zip_img)
-                                    image.set_attributes_from_image(
-                                        current_zip_img,
-                                        my_nested_zip.getinfo(filename_tuple[0]).file_size,
-                                        os.path.basename(filename_tuple[0]),
-                                    )
-
-                                    archive_stats_calc.set_values(
-                                        filesize=image.image_size,
-                                        height=image.original_height,
-                                        width=image.original_width,
-                                        image_mode=image.image_mode,
-                                        is_horizontal=image.image_width / image.image_height > 1
-                                        if image.image_width and image.image_height else False,
-                                        file_type=os.path.splitext(filename_tuple[0])[1]
-                                    )
-
-                                    if settings.CRAWLER_SETTINGS.auto_phash_images:
-                                        hash_result = CompareObjectsService.hash_thumbnail(current_zip_img, "phash")
-                                        if hash_result:
-                                            hash_object, _ = ItemProperties.objects.update_or_create(
-                                                content_type=image_type,
-                                                object_id=image.pk,
-                                                tag="hash-compare",
-                                                name="phash",
-                                                defaults={"value": hash_result},
-                                            )
-
-                    image.save()
-
-                archive_statistics.filesize_average = archive_stats_calc.mean('filesize')
-                archive_statistics.height_average = archive_stats_calc.mean('height')
-                archive_statistics.width_average = archive_stats_calc.mean('width')
-                archive_statistics.height_mode = archive_stats_calc.mode('height')
-                archive_statistics.width_mode = archive_stats_calc.mode('width')
-                archive_statistics.height_stddev = archive_stats_calc.stddev('height')
-                archive_statistics.width_stddev = archive_stats_calc.stddev('width')
-                archive_statistics.is_horizontal_mode = archive_stats_calc.mode('is_horizontal') or False
-                archive_statistics.image_mode_mode = archive_stats_calc.mode('image_mode')
-                archive_statistics.file_type_mode = archive_stats_calc.mode('file_type')
-                archive_statistics.file_type_match = archive_stats_calc.eq_to_value(
-                    "file_type", archive_statistics.file_type_mode
-                )
-
-                archive_statistics.save()
-
-            if not self.thumbnail and filtered_files:
-                if image_set_present:
-                    first_file = filtered_files[self.image_set.all()[0].archive_position - 1]
-                else:
-                    first_file = filtered_files[0]
-
-                thumb_name = thumb_path_handler(self, "thumb2.jpg")
-                output_path = pjoin(settings.MEDIA_ROOT, thumb_name)
-                size = None
-                try:
-                    from core.base.process_pool import generate_thumbnail_in_pool
-
-                    size = generate_thumbnail_in_pool(
-                        self.zipped.path, first_file[0], first_file[1], output_path
-                    )
-                except Exception:
-                    size = None
-
-                if size:
-                    self.thumbnail = thumb_name
-                    self.thumbnail_width, self.thumbnail_height = size
-                else:
-                    if first_file[1] is None:
-                        with my_zip.open(first_file[0]) as current_img:
-                            self.create_thumbnail_from_io_image(current_img)
-                    else:
-                        with my_zip.open(first_file[1]) as current_zip:
-                            with zipfile.ZipFile(current_zip) as my_nested_zip:
-                                with my_nested_zip.open(first_file[0]) as current_img:
-                                    self.create_thumbnail_from_io_image(current_img)
-                if settings.CRAWLER_SETTINGS.auto_phash_images:
-                    self.create_or_update_thumbnail_hash("phash")
-
-            my_zip.close()
-
-        archive_option = ArchiveOption.objects.filter(archive=self).first()
-
-        # title
-        if self.gallery and self.gallery.title and (not archive_option or not archive_option.freeze_titles):
-            self.title = self.gallery.title
-            self.possible_matches.clear()
-        elif self.title is None and self.zipped.name:
-            self.title = re.sub("[_]", " ", os.path.splitext(os.path.basename(self.zipped.name))[0])
-
-        # tags
-        if self.gallery and self.gallery.tags.all():
-            self.set_tags_from_gallery(self.gallery)
-
-        # title_jpn
-        if self.gallery and self.gallery.title_jpn and (not archive_option or not archive_option.freeze_titles):
-            self.title_jpn = self.gallery.title_jpn
-
-        # size
-        if self.filesize is None or self.filecount is None:
-            self.filesize, self.filecount, other_file_datas = get_zip_fileinfo(self.zipped.path, get_extra_data=True)
-            self.fill_other_file_data(other_file_datas)
-
-        # original_filename
-        if (self.original_filename is None or self.original_filename == "") and self.zipped.name:
-            self.original_filename = os.path.basename(self.zipped.name)
-
-        self.create_mark_if_parent_gallery()
-
-        if self.thumbnail and (not self.thumbnail_width or not self.thumbnail_height):
-            try:
-                if os.path.isfile(self.thumbnail.path):
-                    self.thumbnail = self.thumbnail.name
-            except Exception:
-                pass
-
-        self.simple_save(force_update=True)
+        ArchiveIngestionService.sync_gallery_metadata(self)
 
     def create_mark_if_parent_gallery(self):
         if (
@@ -1126,16 +955,19 @@ class Archive(models.Model):
     def fill_other_file_data(self, other_file_datas: list[ArchiveGenericFile] | None):
         self.archivefileentry_set.all().delete()
         if other_file_datas:
-            for other_file_data in other_file_datas:
-                file_entry = ArchiveFileEntry(
-                    archive=self,
-                    archive_position=other_file_data.position,
-                    position=other_file_data.position,
-                    file_name=other_file_data.file_name,
-                    file_size=other_file_data.file_size,
-                    file_type=os.path.splitext(other_file_data.file_name)[1],
-                )
-                file_entry.save()
+            ArchiveFileEntry.objects.bulk_create(
+                [
+                    ArchiveFileEntry(
+                        archive=self,
+                        archive_position=other_file_data.position,
+                        position=other_file_data.position,
+                        file_name=other_file_data.file_name,
+                        file_size=other_file_data.file_size,
+                        file_type=os.path.splitext(other_file_data.file_name)[1],
+                    )
+                    for other_file_data in other_file_datas
+                ]
+            )
 
     def create_thumbnail_from_io_image(self, current_img):
         from viewer.services.archive_thumbnail import ArchiveThumbnailService
@@ -1706,10 +1538,10 @@ class Archive(models.Model):
             self.original_filename = os.path.basename(self.zipped.name)
             super(Archive, self).save()
 
-    def generate_thumbnails(self, use_pool: bool = True) -> bool:
+    def generate_thumbnails(self, use_pool: bool = True, skip_zip_check: bool = False) -> bool:
         from viewer.services.archive_thumbnail import ArchiveThumbnailService
 
-        return ArchiveThumbnailService.generate_thumbnails(self, use_pool=use_pool)
+        return ArchiveThumbnailService.generate_thumbnails(self, use_pool=use_pool, skip_zip_check=skip_zip_check)
 
     def get_image_data_from_position(self, position: int) -> bytes | None:
         from viewer.services.archive_thumbnail import ArchiveThumbnailService
@@ -1833,6 +1665,7 @@ class Archive(models.Model):
                 self.alternative_sources.add(self.gallery)
             # Release the current gallery association
             self.gallery = None
+            self.sync_gallery_metadata()
             self.save()
 
     def create_phash_gallery_similarity_mark(self):

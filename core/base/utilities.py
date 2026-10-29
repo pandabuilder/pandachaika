@@ -785,6 +785,8 @@ def thread_exists_in_db(thread_name: str) -> bool:
         alias_groups = [
             {"fileinfo_worker", "recalc_all_file_info"},
             {"thumbnails_worker", "regenerate_all_thumbs"},
+            {"extract_worker", "extract_archives"},
+            {"publish_worker", "publish_archives"},
             {"foldercrawler", "folder_crawler"},
             {"webcrawler", "web_crawler"},
             {"match_unmatched_worker", "generate_possible_matches_internally"},

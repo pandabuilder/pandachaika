@@ -491,7 +491,7 @@ class ArchiveDownloadQueue(BaseScheduler):
                 archive.refresh_from_db()
                 self.touch_activity(event_id)
                 archive.recalc_fileinfo()
-                archive.save()
+                archive.ingest()
                 if not archive.thumbnail:
                     try:
                         self.touch_activity(event_id)

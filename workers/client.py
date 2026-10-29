@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 def enqueue(
-    args: Iterable[str],
+    args: Iterable[Any],
     task_type: str = "web_crawler",
     override_options: Any = None,
     user: Any = None,
@@ -95,6 +95,8 @@ TASK_TYPE_ALIAS_GROUPS: list[set[str]] = [
     {"folder_crawler", "foldercrawler"},
     {"fileinfo_worker", "recalc_all_file_info"},
     {"thumbnails_worker", "regenerate_all_thumbs"},
+    {"extract_worker", "extract_archives"},
+    {"publish_worker", "publish_archives"},
     {"match_unmatched_worker", "generate_possible_matches_internally"},
     {"web_search_worker", "search_wanted_galleries_provider_titles"},
     {"wanted_local_search_worker", "wanted_galleries_possible_matches"},
@@ -164,3 +166,35 @@ def cancel_by_id(task_id: int) -> bool:
 def is_worker_running(threshold_seconds: int = 30) -> bool:
     """Check if any worker process is currently reporting a heartbeat."""
     return WorkerProcess.is_any_worker_running(threshold_seconds=threshold_seconds)
+
+
+def is_archive_extracting(archive_pk: int) -> bool:
+    """Check if an extraction task for the given archive PK is currently pending or processing."""
+    active_tasks = TaskQueue.objects.filter(
+        status__in=[TaskQueue.Status.PENDING, TaskQueue.Status.PROCESSING],
+        task_type__in=get_task_type_aliases("extract_worker"),
+    ).values_list("args", flat=True)
+    target_str = str(archive_pk)
+    for task_args in active_tasks:
+        if isinstance(task_args, list):
+            for arg in task_args:
+                if arg == archive_pk or str(arg) == target_str:
+                    return True
+    return False
+
+
+def is_archive_publishing(archive_pk: int) -> bool:
+    """Check if a publish task for the given archive PK is currently pending or processing."""
+    active_tasks = TaskQueue.objects.filter(
+        status__in=[TaskQueue.Status.PENDING, TaskQueue.Status.PROCESSING],
+        task_type__in=get_task_type_aliases("publish_worker"),
+    ).values_list("args", flat=True)
+    target_str = str(archive_pk)
+    for task_args in active_tasks:
+        if isinstance(task_args, list):
+            for arg in task_args:
+                if arg == archive_pk or str(arg) == target_str:
+                    return True
+    return False
+
+

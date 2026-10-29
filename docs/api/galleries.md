@@ -2,7 +2,7 @@
 
 This document describes all API endpoints for querying and searching `Gallery` records in Panda Backup.
 
-All endpoints use the public JSON API at `/api` (or `/jsearch`).
+All endpoints use the public JSON API at `/api/` (or `/jsearch/`, or slashless `/api`).
 
 ---
 
@@ -35,7 +35,7 @@ All endpoints use the public JSON API at `/api` (or `/jsearch`).
 
 Fetches a single gallery by the ID assigned to it on the upstream provider site (e.g. Panda/ExHentai numeric ID).
 
-- **Endpoint**: `/api`
+- **Endpoint**: `/api/`
 - **Method**: `GET`
 - **Query Parameters**:
 
@@ -46,12 +46,12 @@ Fetches a single gallery by the ID assigned to it on the upstream provider site 
 
 ### Example Request
 ```bash
-curl "https://example.chaika.moe/api?gid=1234567&provider=panda"
+curl "https://example.chaika.moe/api/?gid=1234567&provider=panda"
 ```
 
 With authentication:
 ```bash
-curl "https://example.chaika.moe/api?gid=1234567&provider=panda" \
+curl "https://example.chaika.moe/api/?gid=1234567&provider=panda" \
   -H "Authorization: Bearer YOUR_API_TOKEN"
 ```
 
@@ -100,7 +100,7 @@ Returned if the gallery does not exist or is not public for an unauthenticated r
 
 Fetches multiple galleries by their provider IDs in a single request.
 
-- **Endpoint**: `/api`
+- **Endpoint**: `/api/`
 - **Method**: `GET`
 - **Query Parameters**:
 
@@ -111,7 +111,7 @@ Fetches multiple galleries by their provider IDs in a single request.
 
 ### Example Request
 ```bash
-curl "https://example.chaika.moe/api?gids=1234567&gids=7654321&provider=panda"
+curl "https://example.chaika.moe/api/?gids=1234567&gids=7654321&provider=panda"
 ```
 
 ### Response
@@ -142,13 +142,13 @@ Returns a JSON array of gallery objects (same schema as `gid`). GIDs that do not
 
 Fetches a single gallery using its internal database primary key.
 
-- **Endpoint**: `/api`
+- **Endpoint**: `/api/`
 - **Method**: `GET`
 - **Query Parameters**: `?gallery=<id>`
 
 ### Example Request
 ```bash
-curl "https://example.chaika.moe/api?gallery=105"
+curl "https://example.chaika.moe/api/?gallery=105"
 ```
 
 ### Response
@@ -160,13 +160,13 @@ Returns the standard gallery object (same schema as `gid`). Returns `404 Not Fou
 
 Fetches detailed gallery information including full archive records with download URLs, source types, and crawler reasons.
 
-- **Endpoint**: `/api`
+- **Endpoint**: `/api/`
 - **Method**: `GET`
 - **Query Parameters**: `?gd=<id>`
 
 ### Example Request
 ```bash
-curl "https://example.chaika.moe/api?gd=105"
+curl "https://example.chaika.moe/api/?gd=105"
 ```
 
 ### Response
@@ -209,13 +209,13 @@ curl "https://example.chaika.moe/api?gd=105"
 
 Fetches the complete sorted list of tags associated with a gallery.
 
-- **Endpoint**: `/api`
+- **Endpoint**: `/api/`
 - **Method**: `GET`
 - **Query Parameters**: `?gt=<id>`
 
 ### Example Request
 ```bash
-curl "https://example.chaika.moe/api?gt=105"
+curl "https://example.chaika.moe/api/?gt=105"
 ```
 
 ### Response
@@ -238,22 +238,22 @@ Panda Backup offers several endpoints for searching galleries based on metadata 
 
 ### 6.1 Minimal Gallery Search (`g`)
 Returns a lightweight array of gallery records with essential metadata:
-- **Request**: `GET /api?g=&title=Example&rating_from=4.0`
+- **Request**: `GET /api/?g=&title=Example&rating_from=4.0`
 - **Response Fields**: `title`, `title_jpn`, `category`, `uploader`, `posted`, `filecount`, `filesize`, `expunged`, `disowned`, `source`, `rating`, `fjord`, `tags`.
 
 ### 6.2 Crawler Search (`gc`)
 Used by crawler scripts and sync tools to export galleries:
-- **Request**: `GET /api?gc=&provider=panda&sort=posted&asc_desc=desc`
+- **Request**: `GET /api/?gc=&provider=panda&sort=posted&asc_desc=desc`
 - **Response Fields**: Includes `gid`, `token`, `provider`, and `link` in addition to metadata.
 
 ### 6.3 Full Gallery Search with Archives (`gs`)
 Returns full gallery details and all available archives (unpaginated):
-- **Request**: `GET /api?gs=&tags=female:nekomimi&used=1`
+- **Request**: `GET /api/?gs=&tags=female:nekomimi&used=1`
 - **Response Fields**: Each gallery includes an `archives` array with `link`, `source`, and `reason`.
 
 ### 6.4 Paginated Gallery Search (`gsp`)
 Recommended for web interfaces and large queries. Supports standard pagination:
-- **Endpoint**: `/api`
+- **Endpoint**: `/api/`
 - **Method**: `GET`
 - **Query Parameters**:
   - `gsp`: (flag) Triggers paginated search.
@@ -263,7 +263,7 @@ Recommended for web interfaces and large queries. Supports standard pagination:
 
 #### Example Request
 ```bash
-curl "https://example.chaika.moe/api?gsp=&page=2&count=48&tags=artist:example&sort=posted&asc_desc=desc"
+curl "https://example.chaika.moe/api/?gsp=&page=2&count=48&tags=artist:example&sort=posted&asc_desc=desc"
 ```
 
 #### Response
@@ -311,7 +311,7 @@ curl "https://example.chaika.moe/api?gsp=&page=2&count=48&tags=artist:example&so
 
 ### 6.5 Matcher Search (`match`)
 Used by internal and external matchers. Returns relational identifiers:
-- **Request**: `GET /api?match=&crc32=A1B2C3D4`
+- **Request**: `GET /api/?match=&crc32=A1B2C3D4`
 - **Additional Response Fields**: `gallery_container`, `parent_gid`, `first_gid`, `magazine`, `thumbnail`, `thumbnail_url`.
 
 ---

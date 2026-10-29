@@ -337,6 +337,7 @@ class GalleryManager(models.Manager["Gallery"]):
                     )
                     contained.update(gallery_container=gallery.pk)
 
+                gallery.schedule_thumbnail_fetch()
                 return True
         else:
             return False
@@ -413,6 +414,8 @@ class GalleryManager(models.Manager["Gallery"]):
 
                 gallery.tags.set(new_tags)
 
+            gallery.schedule_thumbnail_fetch()
+
         return gallery
 
     def update_or_create_from_values(self, gallery_data: GalleryData) -> "Gallery":
@@ -487,6 +490,8 @@ class GalleryManager(models.Manager["Gallery"]):
                     new_tags.append(tag_object)
 
                 gallery.tags.set(new_tags)
+
+            gallery.schedule_thumbnail_fetch()
 
         return gallery
 
@@ -927,85 +932,43 @@ class Gallery(models.Model):
     def simple_save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
         super(Gallery, self).save(*args, **kwargs)
 
-    def save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
-        is_new = self.pk
-        super(Gallery, self).save(*args, **kwargs)
-        if settings.ES_CLIENT and settings.ES_AUTOREFRESH_GALLERY:
-            if (settings.ES_ONLY_INDEX_PUBLIC and self.public) or not settings.ES_ONLY_INDEX_PUBLIC:
-                payload = self.es_repr()
-                del payload["_id"]
-                es_index = getattr(self._meta, "es_index_name")
-                if is_new is not None:
-                    try:
-                        settings.ES_CLIENT.update(
-                            index=es_index,
-                            id=str(self.pk),
-                            refresh=True,
-                            doc=payload
-                        )
-                    except elasticsearch.exceptions.NotFoundError:
-                        settings.ES_CLIENT.create(
-                            index=es_index,
-                            id=str(self.pk),
-                            refresh=True,
-                            document=payload
-                        )
+    def schedule_index_update(self) -> None:
+        if not (settings.ES_CLIENT and settings.ES_AUTOREFRESH_GALLERY):
+            return
+        if settings.ES_ONLY_INDEX_PUBLIC and not self.public:
+            return
+        if self.pk is None:
+            return
+        conn = transaction.get_connection()
+        key = (self._meta.label, self.pk)
+        if conn.in_atomic_block and any(
+            getattr(func, "_es_index_key", None) == key for _, func, _ in conn.run_on_commit
+        ):
+            return
 
-                else:
-                    settings.ES_CLIENT.create(
-                        index=es_index,
-                        id=self.pk,
-                        refresh=True,
-                        document=payload
-                    )
-        self.fetch_thumbnail()
+        def _on_commit() -> None:
+            self.update_index()
+
+        setattr(_on_commit, "_es_index_key", key)
+        transaction.on_commit(_on_commit)
+
+    def save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
+        super(Gallery, self).save(*args, **kwargs)
+        self.schedule_index_update()
+
+    def schedule_thumbnail_fetch(self, force_redownload: bool = False, force_provider: str | None = None) -> None:
+        from viewer.services.gallery_ingestion import GalleryIngestionService
+
+        GalleryIngestionService.schedule_thumbnail_fetch(
+            self, force_redownload=force_redownload, force_provider=force_provider
+        )
 
     def fetch_thumbnail(self, force_redownload: bool = False, force_provider: str | None = None) -> bool:
-        if self.thumbnail_url and (not self.thumbnail or force_redownload):
-            request_dict = {
-                "stream": True,
-                "headers": settings.CRAWLER_SETTINGS.requests_headers,
-                "timeout": settings.CRAWLER_SETTINGS.timeout_timer,
-            }
+        from viewer.services.gallery_ingestion import GalleryIngestionService
 
-            if force_provider:
-                provider_to_use = force_provider
-            else:
-                provider_to_use = self.provider
-
-            if self.provider in settings.CRAWLER_SETTINGS.providers:
-                if settings.CRAWLER_SETTINGS.providers[provider_to_use].cookies:
-                    request_dict["cookies"] = settings.CRAWLER_SETTINGS.providers[provider_to_use].cookies
-                if settings.CRAWLER_SETTINGS.providers[provider_to_use].proxies:
-                    request_dict["proxies"] = settings.CRAWLER_SETTINGS.providers[provider_to_use].proxies
-                if settings.CRAWLER_SETTINGS.providers[provider_to_use].timeout_timer:
-                    request_dict["timeout"] = settings.CRAWLER_SETTINGS.providers[provider_to_use].timeout_timer
-            response = request_with_retries(
-                self.thumbnail_url,
-                request_dict,
-                post=False,
-            )
-            if response:
-                disassembled = urlparse(self.thumbnail_url)
-                file_name = basename(disassembled.path)
-                if not file_name:
-                    file_name = "g_thumbnail"
-                lf = NamedTemporaryFile()
-                if response.status_code == requests.codes.ok:
-                    for chunk in response.iter_content(chunk_size=1024):
-                        if chunk:  # filter out keep-alive new chunks
-                            lf.write(chunk)
-                    self.thumbnail.save(file_name, File(lf), save=False)
-                lf.close()
-
-                super(Gallery, self).save(force_update=True)
-
-                if settings.CRAWLER_SETTINGS.auto_phash_images:
-                    self.create_or_update_thumbnail_hash("phash")
-
-                return True
-
-        return False
+        return GalleryIngestionService.fetch_thumbnail(
+            self, force_redownload=force_redownload, force_provider=force_provider
+        )
 
     def create_or_update_thumbnail_hash(self, algorithm: str):
 
@@ -1023,7 +986,7 @@ class Gallery(models.Model):
                 )
 
     def update_index(self) -> None:
-        if settings.ES_CLIENT and settings.ES_AUTOREFRESH_GALLERY:
+        if settings.ES_CLIENT and settings.ES_AUTOREFRESH_GALLERY and self.pk is not None:
             if (settings.ES_ONLY_INDEX_PUBLIC and self.public) or not settings.ES_ONLY_INDEX_PUBLIC:
                 payload = self.es_repr()
                 del payload["_id"]
@@ -1048,13 +1011,20 @@ class Gallery(models.Model):
         self.remove_wanted_relations()
         prev_pk = self.pk
         deleted = super(Gallery, self).delete(*args, **kwargs)
-        if settings.ES_CLIENT and settings.ES_AUTOREFRESH_GALLERY:
-            try:
-                settings.ES_CLIENT.options(request_timeout=30).delete(
-                    index=getattr(self._meta, "es_index_name"), id=str(prev_pk), refresh=True
-                )
-            except elasticsearch.exceptions.NotFoundError:
-                pass
+        if settings.ES_CLIENT and settings.ES_AUTOREFRESH_GALLERY and prev_pk is not None:
+            es_index = getattr(self._meta, "es_index_name")
+
+            def _delete_from_es() -> None:
+                if not settings.ES_CLIENT:
+                    return
+                try:
+                    settings.ES_CLIENT.options(request_timeout=30).delete(
+                        index=es_index, id=str(prev_pk), refresh=True
+                    )
+                except elasticsearch.exceptions.NotFoundError:
+                    pass
+
+            transaction.on_commit(_delete_from_es)
         return deleted
 
     def remove_wanted_relations(self) -> None:

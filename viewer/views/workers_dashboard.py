@@ -25,6 +25,8 @@ KNOWN_TASK_TYPES: list[tuple[str, str, str]] = [
     ("folder_crawler", "Folder Crawler", "Scans local filesystem folders for new archives"),
     ("fileinfo_worker", "File Info", "Recalculates archive CRC32, file list, and sizes"),
     ("thumbnails_worker", "Thumbnails", "Regenerates cover and page thumbnails"),
+    ("extract_worker", "Archive Extraction", "Extracts archive images and generates page thumbnails"),
+    ("publish_worker", "Archive Publishing", "Verifies zip integrity, generates thumbnails/SHA1s, and publishes archives"),
     ("match_unmatched_worker", "Local Matcher", "Matches unmatched archives to galleries locally"),
     ("web_search_worker", "Wanted Provider Search", "Searches wanted galleries against external providers"),
     ("wanted_local_search_worker", "Wanted Local Search", "Searches wanted galleries against local database"),
