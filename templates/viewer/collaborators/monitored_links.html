@@ -104,6 +104,16 @@
                         {% if edit_form.stop_on_seen_link.errors %}<div class="text-danger small">{{ edit_form.stop_on_seen_link.errors }}</div>{% endif %}
                     </div>
                     <div class="col-md-3">
+                        <label class="form-label" for="id_already_seen_links_mode"><strong>Seen Links Mode</strong></label>
+                        {{ edit_form.already_seen_links_mode }}
+                        {% if edit_form.already_seen_links_mode.errors %}<div class="text-danger small">{{ edit_form.already_seen_links_mode.errors }}</div>{% endif %}
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label" for="id_how_long_after_already_seen"><strong>Seen Window</strong> (e.g. 1 00:00:00)</label>
+                        {{ edit_form.how_long_after_already_seen }}
+                        {% if edit_form.how_long_after_already_seen.errors %}<div class="text-danger small">{{ edit_form.how_long_after_already_seen.errors }}</div>{% endif %}
+                    </div>
+                    <div class="col-md-3">
                         <label class="form-label" for="id_proxy"><strong>Proxy</strong> (optional)</label>
                         {{ edit_form.proxy }}
                         {% if edit_form.proxy.errors %}<div class="text-danger small">{{ edit_form.proxy.errors }}</div>{% endif %}

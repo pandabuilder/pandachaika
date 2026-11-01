@@ -22,6 +22,11 @@ from workers.serialization import deserialize_settings_options
 logger = logging.getLogger(__name__)
 
 
+class TaskCancelledError(Exception):
+    """Raised when an active task is cancelled while running."""
+    pass
+
+
 def _safe_close_old_connections() -> None:
     if not db.connection.in_atomic_block:
         db.close_old_connections()
@@ -52,6 +57,7 @@ class WorkerRunner:
         self.active_jobs: dict[int, TaskQueue] = {}
         self.active_threads: dict[int, threading.Thread] = {}
         self.active_job_activity: dict[int, float] = {}
+        self.active_cancel_events: dict[int, threading.Event] = {}
         self._jobs_lock = threading.Lock()
         self._job_finished_event = threading.Event()
         self.settings.is_worker_process = True
@@ -70,19 +76,53 @@ class WorkerRunner:
         except (TypeError, ValueError):
             return 1800.0
 
+    def prune_inactive_jobs(self) -> list[int]:
+        """Prune jobs from active_jobs that are no longer PROCESSING in the database."""
+        with self._jobs_lock:
+            active_pks = list(self.active_jobs.keys())
+        if not active_pks:
+            return []
+
+        try:
+            still_processing_pks = set(
+                TaskQueue.objects.filter(
+                    pk__in=active_pks, status=TaskQueue.Status.PROCESSING
+                ).values_list("pk", flat=True)
+            )
+        except Exception:
+            return []
+
+        cancelled_pks = [pk for pk in active_pks if pk not in still_processing_pks]
+        if cancelled_pks:
+            with self._jobs_lock:
+                for pk in cancelled_pks:
+                    logger.info("Active task #%d is no longer PROCESSING in DB; releasing from active_jobs", pk)
+                    self.active_jobs.pop(pk, None)
+                    self.active_threads.pop(pk, None)
+                    self.active_job_activity.pop(pk, None)
+                    cancel_ev = self.active_cancel_events.get(pk)
+                    if cancel_ev:
+                        cancel_ev.set()
+                self.current_job = next(iter(self.active_jobs.values()), None)
+            self._job_finished_event.set()
+        return cancelled_pks
+
     def touch_job_activity(self, job_pk: int | None = None) -> None:
         """Update activity timestamp for a running TaskQueue job (or all active jobs if job_pk is None)."""
         now_mono = time.monotonic()
         with self._jobs_lock:
             if job_pk is not None:
-                if job_pk in self.active_jobs:
-                    self.active_job_activity[job_pk] = now_mono
+                cancel_ev = self.active_cancel_events.get(job_pk)
+                if (cancel_ev and cancel_ev.is_set()) or (job_pk not in self.active_jobs):
+                    raise TaskCancelledError(f"Task #{job_pk} was cancelled or is no longer active")
+                self.active_job_activity[job_pk] = now_mono
             else:
                 for pk in self.active_jobs:
                     self.active_job_activity[pk] = now_mono
 
     def check_stuck_jobs(self) -> list[int]:
         """Check active TaskQueue jobs for inactivity timeouts while respecting active slow downloads."""
+        self.prune_inactive_jobs()
         stall_timeout = self.get_task_stall_timeout()
         if stall_timeout <= 0:
             return []
@@ -468,6 +508,7 @@ class WorkerRunner:
 
     def claim_next_job(self) -> TaskQueue | None:
         try:
+            self.prune_inactive_jobs()
             with transaction.atomic():
                 processing_types = set(
                     TaskQueue.objects.filter(status=TaskQueue.Status.PROCESSING).values_list("task_type", flat=True)
@@ -492,9 +533,11 @@ class WorkerRunner:
         return None
 
     def start_job_thread(self, job: TaskQueue) -> threading.Thread:
+        cancel_event = threading.Event()
         with self._jobs_lock:
             self.active_jobs[job.pk] = job
             self.active_job_activity[job.pk] = time.monotonic()
+            self.active_cancel_events[job.pk] = cancel_event
             self.current_job = job
         thread = threading.Thread(
             name=f"worker_task_{job.task_type}_{job.pk}",
@@ -515,20 +558,38 @@ class WorkerRunner:
             with self._jobs_lock:
                 self.active_threads.pop(job.pk, None)
                 self.active_job_activity.pop(job.pk, None)
+                self.active_cancel_events.pop(job.pk, None)
             self._job_finished_event.set()
             db.connections.close_all()
 
     def execute_job(self, job: TaskQueue) -> None:
         logger.info("Starting execution of Task #%d (%s), args: %s", job.pk, job.task_type, job.args)
+        job.refresh_from_db()
+        if job.status == TaskQueue.Status.CANCELLED:
+            logger.info("Task #%d was cancelled before execution started; skipping.", job.pk)
+            with self._jobs_lock:
+                self.active_jobs.pop(job.pk, None)
+                self.active_job_activity.pop(job.pk, None)
+                self.active_threads.pop(job.pk, None)
+                self.active_cancel_events.pop(job.pk, None)
+                self.current_job = next(iter(self.active_jobs.values()), None)
+            return
+
+        cancel_ev = None
         with self._jobs_lock:
             self.active_jobs[job.pk] = job
             self.active_job_activity[job.pk] = time.monotonic()
+            if job.pk not in self.active_cancel_events:
+                self.active_cancel_events[job.pk] = threading.Event()
+            cancel_ev = self.active_cancel_events[job.pk]
             self.current_job = job
         start_time = time.time()
 
         try:
             current_settings = deserialize_settings_options(self.settings, job.options)
             current_settings.activity_callback = lambda: self.touch_job_activity(job.pk)
+            current_settings.cancel_event = cancel_ev
+            current_settings.is_cancelled = lambda: (cancel_ev is not None and cancel_ev.is_set())
             if job.user:
                 current_settings.archive_user = job.user
             if job.reason:
@@ -626,6 +687,9 @@ class WorkerRunner:
                 duration = time.time() - start_time
                 logger.info("Finished Task #%d successfully in %.2fs", job.pk, duration)
 
+        except TaskCancelledError as e:
+            duration = time.time() - start_time
+            logger.info("Task #%d stopped promptly due to cancellation (%.2fs): %s", job.pk, duration, e)
         except Exception as e:
             duration = time.time() - start_time
             logger.critical("Error executing Task #%d:\n%s", job.pk, traceback.format_exc())
@@ -643,6 +707,7 @@ class WorkerRunner:
             with self._jobs_lock:
                 self.active_jobs.pop(job.pk, None)
                 self.active_job_activity.pop(job.pk, None)
+                self.active_cancel_events.pop(job.pk, None)
                 self.current_job = next(iter(self.active_jobs.values()), None)
 
     def start_schedulers_if_enabled(self) -> None:

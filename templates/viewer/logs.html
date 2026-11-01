@@ -190,7 +190,7 @@
               <input type="text" class="form-control" id="logger-name" name="logger-name" value="{{ request.GET|dict_key:'logger-name' }}">
             </div>
           </div>
-          <div class="col-md-1 gy-1">
+          <div class="col-md-2 gy-1">
             <div class="form-group">
               <label class="form-label filter-options">Log level:</label>
               <select class="form-select" id="log-level" name="log-level" aria-label="Select log level">
@@ -205,6 +205,22 @@
               </select>
             </div>
           </div>
+          <div class="col-md-2 gy-1">
+            <div class="form-group">
+              <label class="form-label filter-options">Context lines:</label>
+              <select class="form-select" id="context" name="context" aria-label="Select context lines" title="Show surrounding log entries before and after matches">
+              {% with ctx=request.GET.context|default:"0" %}
+                <option{% if ctx == "0" or ctx == "" %} selected{% endif %} value="0">0 (Matches only)</option>
+                <option{% if ctx == "1" %} selected{% endif %} value="1">± 1 log line</option>
+                <option{% if ctx == "2" %} selected{% endif %} value="2">± 2 log lines</option>
+                <option{% if ctx == "3" %} selected{% endif %} value="3">± 3 log lines</option>
+                <option{% if ctx == "5" %} selected{% endif %} value="5">± 5 log lines</option>
+                <option{% if ctx == "10" %} selected{% endif %} value="10">± 10 log lines</option>
+                <option{% if ctx == "20" %} selected{% endif %} value="20">± 20 log lines</option>
+              {% endwith %}
+              </select>
+            </div>
+          </div>
         </div>
         <div class="row mt-3">
           <div class="col-12">
@@ -214,6 +230,11 @@
             <a class="btn btn-secondary" href="{% url 'viewer:logs' %}" role="button">
               <i class="fas fa-times"></i> Clear
             </a>
+            {% if is_context_view %}
+              <span class="badge bg-info text-dark ms-2 align-middle py-2 px-2">
+                <i class="fas fa-layer-group me-1"></i> Context mode: ±{{ log_context }} line{{ log_context|pluralize }} around matches
+              </span>
+            {% endif %}
           </div>
         </div>
       </form>
@@ -267,8 +288,8 @@
             </tr>
           </thead>
           <tbody id="log-table">
-            {% for log_line in log_lines %}
-              <tr class="result-list log-line" id="log-{{ log_line.id }}"><td class="log-timestamp">{{ log_line.create_datetime|date:"Y-m-d H:i:s.u" }}</td>	<td class="log-content log-{{ log_line.get_level_display.lower }}">{{ log_line.get_level_display }}</td>	<td class="log-content">{{ log_line.logger_name }}</td>	<td class="log-content">{{ log_line.msg }}{% if log_line.trace %} {{ log_line.trace }}{% endif %}</td></tr>
+            {% for log_line in display_logs|default:log_lines %}
+              <tr class="result-list log-line{% if is_context_view %}{% if log_line.is_match %} log-matched-row{% else %} log-context-row{% endif %}{% endif %}" id="log-{{ log_line.id }}"><td class="log-timestamp">{{ log_line.create_datetime|date:"Y-m-d H:i:s.u" }}</td>	<td class="log-content log-{{ log_line.get_level_display.lower }}">{% if is_context_view and log_line.is_match %}<span class="badge bg-primary text-white me-1" title="Direct search match">MATCH</span>{% endif %}{{ log_line.get_level_display }}</td>	<td class="log-content">{{ log_line.logger_name }}</td>	<td class="log-content">{{ log_line.msg }}{% if log_line.trace %} {{ log_line.trace }}{% endif %}</td></tr>
             {% endfor %}
           </tbody>
         </table>
@@ -375,6 +396,20 @@ input[type="date"] {
   border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
+.log-matched-row {
+  background-color: rgba(13, 110, 253, 0.2) !important;
+  border-left: 3px solid #0d6efd;
+}
+
+.log-context-row {
+  background-color: rgba(255, 255, 255, 0.02) !important;
+  opacity: 0.85;
+}
+
+.log-context-row:hover {
+  opacity: 1;
+}
+
 
 </style>
 {% endblock %}
@@ -474,8 +509,19 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!existingIds.has(`log-${log.id}`)) {
           const newRow = document.createElement('tr');
           newRow.id = `log-${log.id}`;
-          newRow.className = 'result-list log-line';
-          newRow.innerHTML = `<td class="log-timestamp">${log.create_datetime}</td>	<td class="log-content log-${log.level.toLowerCase()}">${log.level}</td>	<td class="log-content">${log.logger_name}</td>	<td class="log-content">${log.msg}${log.trace ? ' ' + log.trace : ''}</td>`;
+          const isContextView = currentURL.searchParams.get("context") && currentURL.searchParams.get("context") !== "0";
+          let rowClass = 'result-list log-line';
+          let matchBadge = '';
+          if (isContextView) {
+            if (log.is_match) {
+              rowClass += ' log-matched-row';
+              matchBadge = '<span class="badge bg-primary text-white me-1" title="Direct search match">MATCH</span>';
+            } else {
+              rowClass += ' log-context-row';
+            }
+          }
+          newRow.className = rowClass;
+          newRow.innerHTML = `<td class="log-timestamp">${log.create_datetime}</td>	<td class="log-content log-${log.level.toLowerCase()}">${matchBadge}${log.level}</td>	<td class="log-content">${log.logger_name}</td>	<td class="log-content">${log.msg}${log.trace ? ' ' + log.trace : ''}</td>`;
           logTable.insertBefore(newRow, logTable.firstChild);
         }
       });

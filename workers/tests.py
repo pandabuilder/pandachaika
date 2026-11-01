@@ -408,6 +408,116 @@ class WorkerRunnerClaimTests(TestCase):
         self.assertIsNotNone(claimed_folder_2)
         self.assertEqual(claimed_folder_2.pk, folder_task_low.pk)
 
+    def test_cancel_active_task_with_queued_tasks_claims_next_task(self):
+        """When an active (PROCESSING) task is cancelled via cancel_by_id,
+
+        the worker must prune the cancelled task from active_jobs and allow
+        the next queued task of the same type to be claimed without getting stuck.
+        """
+        task1 = client.enqueue(args=["https://example.com/task1"], task_type="web_crawler", priority=1)
+        task2 = client.enqueue(args=["https://example.com/task2"], task_type="web_crawler", priority=2)
+
+        # 1. First task is claimed and marked PROCESSING
+        claimed1 = self.runner.claim_next_job()
+        self.assertIsNotNone(claimed1)
+        self.assertEqual(claimed1.pk, task1.pk)
+        self.assertEqual(claimed1.status, TaskQueue.Status.PROCESSING)
+
+        # In real worker, the runner tracks the claimed job in active_jobs
+        with self.runner._jobs_lock:
+            self.runner.active_jobs[claimed1.pk] = claimed1
+            self.runner.current_job = claimed1
+
+        # 2. While task1 is active in the runner, task2 (same type) cannot be claimed
+        self.assertIsNone(self.runner.claim_next_job())
+
+        # 3. User cancels the active task using client.cancel_by_id
+        cancelled = client.cancel_by_id(claimed1.pk)
+        self.assertTrue(cancelled)
+
+        task1.refresh_from_db()
+        self.assertEqual(task1.status, TaskQueue.Status.CANCELLED)
+        self.assertIsNotNone(task1.finished_at)
+
+        # 4. Claim again: the runner must prune the cancelled task from active_jobs
+        # and claim the next pending task (task2) rather than remaining stuck
+        claimed2 = self.runner.claim_next_job()
+        self.assertIsNotNone(claimed2)
+        self.assertEqual(claimed2.pk, task2.pk)
+        self.assertEqual(claimed2.status, TaskQueue.Status.PROCESSING)
+        self.assertNotIn(claimed1.pk, self.runner.active_jobs)
+
+        # 5. When no more tasks are pending, claim_next_job returns None
+        self.assertIsNone(self.runner.claim_next_job())
+
+    def test_cancel_active_task_stuck_check_wakes_runner(self):
+        """When an active task is cancelled in the DB, check_stuck_jobs() / prune_inactive_jobs()
+
+        prunes it from active_jobs, fires its cancel_event, and sets _job_finished_event.
+        """
+        task = client.enqueue(args=["https://example.com/active"], task_type="web_crawler", priority=1)
+        claimed = self.runner.claim_next_job()
+
+        with self.runner._jobs_lock:
+            self.runner.active_jobs[claimed.pk] = claimed
+            self.runner.current_job = claimed
+        self.runner._job_finished_event.clear()
+
+        # Task is cancelled in DB (e.g. via workers_action_api or external cancel_by_id)
+        client.cancel_by_id(claimed.pk)
+
+        # check_stuck_jobs detects the cancelled task
+        self.runner.check_stuck_jobs()
+        self.assertNotIn(claimed.pk, self.runner.active_jobs)
+        self.assertTrue(self.runner._job_finished_event.is_set())
+
+    def test_active_job_thread_cancelled_aborts_and_next_task_claimed(self):
+        """When an actively executing job thread is cancelled via cancel_by_id,
+
+        the running task aborts promptly via TaskCancelledError and the runner
+        claims the next queued task.
+        """
+        import threading
+        import time
+        from unittest.mock import patch
+        from workers.runner import TaskCancelledError
+
+        task1 = client.enqueue(args=["https://example.com/running"], task_type="web_crawler", priority=1)
+        task2 = client.enqueue(args=["https://example.com/next_in_queue"], task_type="web_crawler", priority=2)
+
+        claimed1 = self.runner.claim_next_job()
+        self.assertEqual(claimed1.pk, task1.pk)
+
+        started = threading.Event()
+        aborted = threading.Event()
+
+        def mock_execute(job):
+            started.set()
+            try:
+                while True:
+                    time.sleep(0.01)
+                    self.runner.touch_job_activity(job.pk)
+            except TaskCancelledError:
+                aborted.set()
+
+        with patch.object(self.runner, "execute_job", side_effect=mock_execute):
+            thread = self.runner.start_job_thread(claimed1)
+            self.assertTrue(started.wait(timeout=2.0))
+
+            # Active task is cancelled using cancel_by_id
+            self.assertTrue(client.cancel_by_id(claimed1.pk))
+
+            # Claim next job: task2 is claimed immediately
+            claimed2 = self.runner.claim_next_job()
+            self.assertIsNotNone(claimed2)
+            self.assertEqual(claimed2.pk, task2.pk)
+            self.assertEqual(claimed2.status, TaskQueue.Status.PROCESSING)
+
+            # Active thread aborts promptly
+            self.assertTrue(aborted.wait(timeout=2.0))
+            thread.join(timeout=2.0)
+            self.assertFalse(thread.is_alive())
+
     def test_parallel_execution_and_folder_crawler_enqueues_web_crawler(self):
         import threading
         from unittest.mock import patch
@@ -1974,6 +2084,30 @@ class WorkersDashboardAPITests(TestCase):
         self.assertEqual(res_cancel.status_code, 200)
         pending_task.refresh_from_db()
         self.assertEqual(pending_task.status, TaskQueue.Status.CANCELLED)
+        self.assertIsNotNone(pending_task.finished_at)
+
+        # Cancel active (PROCESSING) task while another task is queued
+        active_task = TaskQueue.objects.create(
+            task_type="web_crawler",
+            args=["https://example.com/active/"],
+            status=TaskQueue.Status.PROCESSING,
+        )
+        queued_task = TaskQueue.objects.create(
+            task_type="web_crawler",
+            args=["https://example.com/queued/"],
+            status=TaskQueue.Status.PENDING,
+        )
+        res_cancel_active = self.staff_client.post(
+            "/api/workers/action/",
+            data=json.dumps({"action": "task_cancel", "target": active_task.pk}),
+            content_type="application/json",
+        )
+        self.assertEqual(res_cancel_active.status_code, 200)
+        active_task.refresh_from_db()
+        self.assertEqual(active_task.status, TaskQueue.Status.CANCELLED)
+        self.assertIsNotNone(active_task.finished_at)
+        queued_task.refresh_from_db()
+        self.assertEqual(queued_task.status, TaskQueue.Status.PENDING)
 
         # Retry failed task
         failed_task = TaskQueue.objects.create(

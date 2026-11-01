@@ -123,6 +123,8 @@ class ProviderSettings:
         self.stop_page_number: int | None = None
         self.stop_on_seen_links: bool = getattr(global_settings, "stop_on_seen_links", False)
         self.monitored_link: Any | None = None
+        self.already_seen_links_mode: str = getattr(global_settings, "already_seen_links_mode", "dont_use")
+        self.how_long_after_already_seen: Any | None = getattr(global_settings, "how_long_after_already_seen", None)
 
         # Auto updater
         self.autoupdater_enable: bool = global_settings.autoupdater.enable

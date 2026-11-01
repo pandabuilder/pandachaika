@@ -67,6 +67,24 @@ class MonitoredLink(models.Model):
         help_text=_("Stop processing when encountering a link seen before (follow global setting, on, or off)."),
     )
 
+    class AlreadySeenLinksMode(models.TextChoices):
+        DONT_USE = "dont_use", _("Don't use already seen links")
+        USE_BEFORE_NOW = "use_before_now", _("Use already links X time before from now")
+
+    already_seen_links_mode = models.CharField(
+        max_length=30,
+        choices=AlreadySeenLinksMode.choices,
+        default=AlreadySeenLinksMode.DONT_USE,
+        help_text=_("When encountering an already seen link, whether to add previously processed links from the seen table."),
+    )
+
+    how_long_after_already_seen = models.DurationField(
+        blank=True,
+        null=True,
+        default=None,
+        help_text=_("Time duration before now to include already seen links (e.g. '1 00:00:00' for 1 day, '02:00:00' for 2 hours)."),
+    )
+
     priority = models.IntegerField(
         default=10,
         blank=True,
@@ -107,6 +125,38 @@ class MonitoredLink(models.Model):
     @stop_on_seen_links.setter
     def stop_on_seen_links(self, value: str) -> None:
         self.stop_on_seen_link = value
+
+    @property
+    def already_seen_mode(self) -> str:
+        return self.already_seen_links_mode
+
+    @already_seen_mode.setter
+    def already_seen_mode(self, value: str) -> None:
+        self.already_seen_links_mode = value
+
+    @property
+    def how_long_after_already_seen_mode(self) -> str:
+        return self.already_seen_links_mode
+
+    @how_long_after_already_seen_mode.setter
+    def how_long_after_already_seen_mode(self, value: str) -> None:
+        self.already_seen_links_mode = value
+
+    @property
+    def already_seen_duration(self) -> timedelta | None:
+        return self.how_long_after_already_seen
+
+    @already_seen_duration.setter
+    def already_seen_duration(self, value: timedelta | None) -> None:
+        self.how_long_after_already_seen = value
+
+    @property
+    def seen_links_window(self) -> timedelta | None:
+        return self.how_long_after_already_seen
+
+    @seen_links_window.setter
+    def seen_links_window(self, value: timedelta | None) -> None:
+        self.how_long_after_already_seen = value
 
     @property
     def scheduler_name(self) -> str:

@@ -7,6 +7,7 @@ import typing
 import urllib.parse
 from collections import defaultdict
 from collections.abc import Iterable
+from datetime import timedelta
 
 import feedparser
 import bs4
@@ -111,21 +112,40 @@ class Parser(BaseParser):
     ) -> bool:
         """Process gallery URLs from a search/lofi page.
 
-        Adds unseen gallery links to unique_urls and records them in ProcessedLinks.
-        If stop_on_seen_links is enabled and an already seen link is encountered,
-        stops processing and returns True (indicating crawling should stop).
-        Otherwise returns False (indicating crawling should continue).
+        Only records ProcessedLinks and checks stop_on_seen_links for MonitoredLinks.
+        On-demand page requests do not record ProcessedLinks or stop on seen links.
+
+        When a seen link is encountered for a MonitoredLink and stop_on_seen_links is enabled,
+        crawling stops, and if configured, previously processed links within the specified
+        time window ("how long after already seen") are added to unique_urls.
         """
-        stop_on_seen = bool(
-            getattr(self.own_settings, "stop_on_seen_links", False)
-            or getattr(self.own_settings, "stop_on_seen_link", False)
-            or getattr(self.settings, "stop_on_seen_links", False)
-            or getattr(self.settings, "stop_on_seen_link", False)
-        )
         monitored_link = getattr(self.own_settings, "monitored_link", None) or getattr(self.settings, "monitored_link", None)
+
+        # On-demand pages (monitored_link is None):
+        # Disable stop_on_seen_links interaction and link capture.
+        if monitored_link is None:
+            for gallery_url in gallery_urls:
+                unique_urls.add(gallery_url)
+            return False
+
+        # Determine stop_on_seen_links setting for MonitoredLink
+        stop_on_seen_val = getattr(monitored_link, "stop_on_seen_link", None)
+        if stop_on_seen_val in ("on", "ON", True):
+            stop_on_seen = True
+        elif stop_on_seen_val in ("off", "OFF", False):
+            stop_on_seen = False
+        else:
+            stop_on_seen = bool(
+                getattr(self.own_settings, "stop_on_seen_links", False)
+                or getattr(self.own_settings, "stop_on_seen_link", False)
+                or getattr(self.settings, "stop_on_seen_links", False)
+                or getattr(self.settings, "stop_on_seen_link", False)
+            )
 
         try:
             from viewer.models import ProcessedLinks, Provider
+            from viewer.models.events import MonitoredLink as MLModel
+            from django.utils import timezone
 
             provider = Provider.objects.filter(slug=self.name).first()
             if not provider:
@@ -145,12 +165,11 @@ class Parser(BaseParser):
             source_id_map.append((g_url, s_id))
             source_ids.append(s_id)
 
-        query = ProcessedLinks.objects.filter(provider=provider, source_id__in=source_ids)
-        if monitored_link is not None:
-            query = query.filter(monitored_link=monitored_link)
-        else:
-            query = query.filter(monitored_link__isnull=True)
-
+        query = ProcessedLinks.objects.filter(
+            provider=provider,
+            source_id__in=source_ids,
+            monitored_link=monitored_link,
+        )
         seen_source_ids = set(query.values_list("source_id", flat=True))
 
         to_create: list[ProcessedLinks] = []
@@ -160,9 +179,10 @@ class Parser(BaseParser):
             if s_id in seen_source_ids:
                 if stop_on_seen:
                     logger.info(
-                        "Encountered previously processed link %s (source_id: %s), stopping (setting: stop_on_seen_links).",
+                        "Encountered previously processed link %s (source_id: %s) for monitored link %s, stopping (setting: stop_on_seen_links).",
                         g_url,
                         s_id,
+                        getattr(monitored_link, "name", monitored_link),
                     )
                     should_stop = True
                     break
@@ -185,6 +205,39 @@ class Parser(BaseParser):
                 ProcessedLinks.objects.bulk_create(to_create, ignore_conflicts=True)
             except Exception as e:
                 logger.warning("Could not bulk create ProcessedLinks: %s", e)
+
+        if should_stop:
+            already_seen_mode = (
+                getattr(monitored_link, "already_seen_links_mode", None)
+                or getattr(self.own_settings, "already_seen_links_mode", None)
+                or getattr(self.settings, "already_seen_links_mode", None)
+                or "dont_use"
+            )
+            if already_seen_mode in (MLModel.AlreadySeenLinksMode.USE_BEFORE_NOW, "use_before_now", "use_x_time_before"):
+                window_duration = (
+                    getattr(monitored_link, "how_long_after_already_seen", None)
+                    or getattr(self.own_settings, "how_long_after_already_seen", None)
+                    or getattr(self.settings, "how_long_after_already_seen", None)
+                )
+                if isinstance(window_duration, (int, float)):
+                    window_duration = timedelta(seconds=window_duration)
+                if window_duration and window_duration.total_seconds() > 0:
+                    cutoff = timezone.now() - window_duration
+                    recent_seen_qs = ProcessedLinks.objects.filter(
+                        provider=provider,
+                        monitored_link=monitored_link,
+                        create_date__gte=cutoff,
+                    )
+                    recent_urls = list(recent_seen_qs.values_list("url", flat=True))
+                    logger.info(
+                        "Encountered seen link; adding %d links seen within the last %s for monitored link %s.",
+                        len(recent_urls),
+                        window_duration,
+                        getattr(monitored_link, "name", monitored_link),
+                    )
+                    for r_url in recent_urls:
+                        if r_url:
+                            unique_urls.add(r_url)
 
         return should_stop
 

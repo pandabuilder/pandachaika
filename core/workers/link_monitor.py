@@ -81,8 +81,12 @@ class LinkMonitor(BaseScheduler):
                 for provider_settings in current_settings.providers.values():
                     provider_settings.stop_on_seen_links = False
             current_settings.monitored_link = monitored_link
+            current_settings.already_seen_links_mode = monitored_link.already_seen_links_mode
+            current_settings.how_long_after_already_seen = monitored_link.how_long_after_already_seen
             for provider_settings in current_settings.providers.values():
                 provider_settings.monitored_link = monitored_link
+                provider_settings.already_seen_links_mode = monitored_link.already_seen_links_mode
+                provider_settings.how_long_after_already_seen = monitored_link.how_long_after_already_seen
             self.web_queue.enqueue_args_list(
                 arguments_to_crawler,
                 override_options=current_settings,

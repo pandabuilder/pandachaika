@@ -136,3 +136,61 @@ class LogsViewTestCase(TestCase):
         data = response.json()
         self.assertTrue(data["success"])
         self.assertEqual(data["deleted"], 3)
+
+    def test_logs_view_context_filter(self):
+        # Create a sequence of 7 logs with identifiable content
+        # Clear existing logs for clarity
+        StatusLog.objects.all().delete()
+        now = timezone.now()
+        logs_created = []
+        for i in range(1, 8):
+            l = StatusLog.objects.create(
+                logger_name="test_logger",
+                msg=f"Log sequence step {i}" if i != 4 else "CRITICAL error occurred at step 4",
+                level=50 if i == 4 else 20,
+            )
+            StatusLog.objects.filter(id=l.id).update(
+                create_datetime=now + datetime.timedelta(seconds=i)
+            )
+            logs_created.append(l)
+
+        self.client.login(username="admin_user", password="testpassword")
+
+        # 1. Filter without context: only matching log (step 4) should be returned
+        response = self.client.get(reverse("viewer:logs"), {"filter": "CRITICAL", "context": "0"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context["display_logs"]), 1)
+        self.assertEqual(response.context["display_logs"][0].id, logs_created[3].id)
+        self.assertTrue(response.context["display_logs"][0].is_match)
+
+        # 2. Filter with context=1: step 4 plus 1 before (step 3) and 1 after (step 5)
+        response = self.client.get(reverse("viewer:logs"), {"filter": "CRITICAL", "context": "1"})
+        self.assertEqual(response.status_code, 200)
+        display_logs = response.context["display_logs"]
+        self.assertEqual(len(display_logs), 3)
+        display_ids = [l.id for l in display_logs]
+        self.assertIn(logs_created[2].id, display_ids)  # step 3
+        self.assertIn(logs_created[3].id, display_ids)  # step 4 (match)
+        self.assertIn(logs_created[4].id, display_ids)  # step 5
+
+        # Check is_match property
+        for log_entry in display_logs:
+            if log_entry.id == logs_created[3].id:
+                self.assertTrue(log_entry.is_match)
+            else:
+                self.assertFalse(log_entry.is_match)
+
+        # 3. Filter with JSON output and context=2
+        response = self.client.get(
+            reverse("viewer:logs"),
+            {"filter": "CRITICAL", "context": "2", "json": "1"},
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        results = data["results"]
+        # With context=2 around step 4: steps 2, 3, 4, 5, 6 should be returned (5 total)
+        self.assertEqual(len(results), 5)
+        matched_results = [r for r in results if r["is_match"]]
+        self.assertEqual(len(matched_results), 1)
+        self.assertEqual(matched_results[0]["id"], logs_created[3].id)
+

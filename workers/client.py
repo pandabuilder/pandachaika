@@ -5,6 +5,7 @@ from collections.abc import Iterable
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
+import django.utils.timezone as django_tz
 
 from workers.models import TaskQueue, WorkerProcess
 from workers.serialization import serialize_settings_options
@@ -159,7 +160,7 @@ def cancel_by_id(task_id: int) -> bool:
     with transaction.atomic():
         updated = TaskQueue.objects.filter(
             pk=task_id, status__in=[TaskQueue.Status.PENDING, TaskQueue.Status.PROCESSING]
-        ).update(status=TaskQueue.Status.CANCELLED)
+        ).update(status=TaskQueue.Status.CANCELLED, finished_at=django_tz.now())
         return updated > 0
 
 

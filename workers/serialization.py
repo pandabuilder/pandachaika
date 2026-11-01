@@ -1,4 +1,5 @@
 import copy
+from datetime import timedelta
 import logging
 from typing import Any, cast
 
@@ -44,6 +45,8 @@ EXCLUDED_SETTINGS_ATTRIBUTES = {
     "archive_manage_entry_model",
     "download_event_model",
     "activity_callback",
+    "cancel_event",
+    "is_cancelled",
 }
 
 
@@ -51,6 +54,8 @@ def _to_serializable_value(val: Any) -> Any:
     """Recursively convert values, including objects with __slots__ or __dict__, into JSON-serializable types."""
     if val is None or isinstance(val, (int, float, str, bool)):
         return val
+    if isinstance(val, timedelta):
+        return val.total_seconds()
     if isinstance(val, (list, tuple, set)):
         return [_to_serializable_value(x) for x in val]
     if isinstance(val, dict):
@@ -237,9 +242,14 @@ def deserialize_settings_options(base_settings: Settings | None, options: dict[s
                             except Exception:
                                 pass
                             continue
+                        if p_attr == "how_long_after_already_seen" and isinstance(p_val, (int, float)):
+                            p_val = timedelta(seconds=p_val)
                         if hasattr(prov_obj, p_attr):
                             setattr(prov_obj, p_attr, p_val)
             continue
+
+        if k == "how_long_after_already_seen" and isinstance(v, (int, float)):
+            v = timedelta(seconds=v)
 
         target_obj = getattr(new_settings, k, None)
         if target_obj is not None and (hasattr(target_obj, "__slots__") or hasattr(target_obj, "__dict__")) and isinstance(v, dict):

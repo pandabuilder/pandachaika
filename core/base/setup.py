@@ -1,6 +1,7 @@
 import logging
 import os
 import shutil
+import threading
 import typing
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
@@ -167,12 +168,16 @@ class Settings:
         self.update_metadata_mode = False
         self.is_worker_process: bool = False
         self.activity_callback: typing.Callable[[], None] | None = None
+        self.cancel_event: threading.Event | None = None
+        self.is_cancelled: typing.Callable[[], bool] | None = None
 
         # USER SETTINGS
         self.replace_metadata = False
         self.redownload = False
         self.stop_on_seen_links = False
         self.monitored_link: typing.Any | None = None
+        self.already_seen_links_mode: str = "dont_use"
+        self.how_long_after_already_seen: typing.Any | None = None
         self.auto_download_nested = False
         self.recheck_wanted_on_update = False
         self.vertical_image_max_width = 900

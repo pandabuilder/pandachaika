@@ -729,16 +729,71 @@ def logs(request: HttpRequest, tool: str = "all") -> HttpResponse:
         if isinstance(int_level, int):
             status_logs = status_logs.filter(level__gte=int_level)
 
-    paginator = Paginator(status_logs, 100)
+    log_filter_context_str = request.GET.get("context", "0")
     try:
-        page = int(request.GET.get("page", "1"))
+        log_filter_context = max(0, min(100, int(log_filter_context_str)))
     except ValueError:
-        page = 1
+        log_filter_context = 0
 
-    try:
-        log_lines_paginated = paginator.page(page)
-    except (InvalidPage, EmptyPage):
-        log_lines_paginated = paginator.page(paginator.num_pages)
+    has_filters = bool(log_filter_text or log_filter_logger or log_filter_level)
+
+    matched_ids: set[int] = set()
+    is_context_view = has_filters and log_filter_context > 0
+
+    if is_context_view:
+        # Paginate the matching entries (fewer per page because each match expands by up to 2*context)
+        paginator = Paginator(status_logs, 25)
+        try:
+            page = int(request.GET.get("page", "1"))
+        except ValueError:
+            page = 1
+
+        try:
+            matching_page = paginator.page(page)
+        except (InvalidPage, EmptyPage):
+            matching_page = paginator.page(paginator.num_pages)
+
+        matched_list_ids = [m.id for m in matching_page]
+        matched_ids = set(matched_list_ids)
+
+        all_ids: set[int] = set(matched_ids)
+        for match_id in matched_list_ids:
+            before_ids = list(
+                StatusLog.objects.filter(id__lt=match_id)
+                .order_by("-id")
+                .values_list("id", flat=True)[:log_filter_context]
+            )
+            after_ids = list(
+                StatusLog.objects.filter(id__gt=match_id)
+                .order_by("id")
+                .values_list("id", flat=True)[:log_filter_context]
+            )
+            all_ids.update(before_ids)
+            all_ids.update(after_ids)
+
+        if all_ids:
+            display_logs = list(StatusLog.objects.filter(id__in=all_ids).order_by("-id"))
+        else:
+            display_logs = []
+
+        log_lines_paginated = matching_page
+    else:
+        paginator = Paginator(status_logs, 100)
+        try:
+            page = int(request.GET.get("page", "1"))
+        except ValueError:
+            page = 1
+
+        try:
+            log_lines_paginated = paginator.page(page)
+        except (InvalidPage, EmptyPage):
+            log_lines_paginated = paginator.page(paginator.num_pages)
+
+        display_logs = list(log_lines_paginated)
+
+    # Attach is_match flag to each log item
+    for log_item in display_logs:
+        setattr(log_item, "is_match", (not is_context_view) or (log_item.id in matched_ids))
 
     if json_request:
         response = json.dumps(
@@ -751,8 +806,9 @@ def logs(request: HttpRequest, tool: str = "all") -> HttpResponse:
                         "msg": x.msg,
                         "trace": x.trace,
                         "create_datetime_timestamp": int(timestamp_or_zero(x.create_datetime)),
-                        "create_datetime": x.create_datetime.strftime("%Y-%m-%d %H:%M:%S.%f")
-                    } for x in log_lines_paginated
+                        "create_datetime": x.create_datetime.strftime("%Y-%m-%d %H:%M:%S.%f"),
+                        "is_match": getattr(x, "is_match", True),
+                    } for x in display_logs
                 ],
                 "has_previous": log_lines_paginated.has_previous(),
                 "has_next": log_lines_paginated.has_next(),
@@ -766,7 +822,12 @@ def logs(request: HttpRequest, tool: str = "all") -> HttpResponse:
         )
         return HttpResponse(response, content_type="application/json; charset=utf-8")
 
-    d = {"log_lines": log_lines_paginated}
+    d = {
+        "log_lines": log_lines_paginated,
+        "display_logs": display_logs,
+        "is_context_view": is_context_view,
+        "log_context": log_filter_context,
+    }
     return render(request, "viewer/logs.html", d)
 
 
