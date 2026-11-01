@@ -20,6 +20,7 @@ from PIL import ImageFile
 import requests
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
+from django.contrib.postgres.indexes import GinIndex
 from django.core.exceptions import ValidationError
 from django.core.files import File
 from django.db import models, transaction
@@ -671,6 +672,16 @@ class Gallery(models.Model):
                 F("public").asc(nulls_last=True),
                 "status",
                 name="gallery_pub_norm_pub_date",
+            ),
+            GinIndex(
+                fields=["title"],
+                name="gallery_title_trgm_gin",
+                opclasses=["gin_trgm_ops"],
+            ),
+            GinIndex(
+                fields=["title_jpn"],
+                name="gallery_title_jpn_trgm_gin",
+                opclasses=["gin_trgm_ops"],
             ),
         ]
 
@@ -1493,7 +1504,8 @@ class Artist(models.Model):
 
 class ProcessedLinks(models.Model):
     provider = models.ForeignKey("viewer.Provider", on_delete=models.SET_NULL, null=True, blank=True)
-    source_id = models.CharField("Source Id", max_length=200, unique=True)
+    monitored_link = models.ForeignKey("viewer.MonitoredLink", on_delete=models.CASCADE, null=True, blank=True, related_name="processed_links")
+    source_id = models.CharField("Source Id", max_length=200, db_index=True)
     url = models.URLField(max_length=2000)
     title = models.CharField(max_length=500, blank=True, null=True, default="")
     link_date = models.DateTimeField("Link date", blank=True, null=True)
@@ -1502,6 +1514,17 @@ class ProcessedLinks(models.Model):
 
     class Meta:
         verbose_name_plural = "Processed Links"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["provider", "source_id", "monitored_link"],
+                name="unique_provider_source_monitored_link",
+            ),
+            models.UniqueConstraint(
+                fields=["provider", "source_id"],
+                condition=models.Q(monitored_link__isnull=True),
+                name="unique_provider_source_global",
+            ),
+        ]
 
 
 

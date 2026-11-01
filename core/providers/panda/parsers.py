@@ -104,9 +104,93 @@ class Parser(BaseParser):
                     }
                 )
 
+    def _record_and_check_processed_links(
+        self,
+        gallery_urls: Iterable[str],
+        unique_urls: set[str],
+    ) -> bool:
+        """Process gallery URLs from a search/lofi page.
+
+        Adds unseen gallery links to unique_urls and records them in ProcessedLinks.
+        If stop_on_seen_links is enabled and an already seen link is encountered,
+        stops processing and returns True (indicating crawling should stop).
+        Otherwise returns False (indicating crawling should continue).
+        """
+        stop_on_seen = bool(
+            getattr(self.own_settings, "stop_on_seen_links", False)
+            or getattr(self.own_settings, "stop_on_seen_link", False)
+            or getattr(self.settings, "stop_on_seen_links", False)
+            or getattr(self.settings, "stop_on_seen_link", False)
+        )
+        monitored_link = getattr(self.own_settings, "monitored_link", None) or getattr(self.settings, "monitored_link", None)
+
+        try:
+            from viewer.models import ProcessedLinks, Provider
+
+            provider = Provider.objects.filter(slug=self.name).first()
+            if not provider:
+                provider, _ = Provider.objects.get_or_create(slug=self.name, defaults={"name": self.name.capitalize()})
+        except Exception as e:
+            logger.warning("Could not access Provider or ProcessedLinks: %s", e)
+            for gallery_url in gallery_urls:
+                unique_urls.add(gallery_url)
+            return False
+
+        gallery_list = list(gallery_urls)
+        source_id_map: list[tuple[str, str]] = []
+        source_ids: list[str] = []
+        for g_url in gallery_list:
+            gid, _ = get_gid_token_from_link(g_url)
+            s_id = gid if gid else g_url
+            source_id_map.append((g_url, s_id))
+            source_ids.append(s_id)
+
+        query = ProcessedLinks.objects.filter(provider=provider, source_id__in=source_ids)
+        if monitored_link is not None:
+            query = query.filter(monitored_link=monitored_link)
+        else:
+            query = query.filter(monitored_link__isnull=True)
+
+        seen_source_ids = set(query.values_list("source_id", flat=True))
+
+        to_create: list[ProcessedLinks] = []
+        should_stop = False
+
+        for g_url, s_id in source_id_map:
+            if s_id in seen_source_ids:
+                if stop_on_seen:
+                    logger.info(
+                        "Encountered previously processed link %s (source_id: %s), stopping (setting: stop_on_seen_links).",
+                        g_url,
+                        s_id,
+                    )
+                    should_stop = True
+                    break
+                else:
+                    unique_urls.add(g_url)
+            else:
+                unique_urls.add(g_url)
+                to_create.append(
+                    ProcessedLinks(
+                        provider=provider,
+                        monitored_link=monitored_link,
+                        source_id=s_id,
+                        url=g_url,
+                    )
+                )
+                seen_source_ids.add(s_id)
+
+        if to_create:
+            try:
+                ProcessedLinks.objects.bulk_create(to_create, ignore_conflicts=True)
+            except Exception as e:
+                logger.warning("Could not bulk create ProcessedLinks: %s", e)
+
+        return should_stop
+
     def get_galleries_from_main_page_link(self, url: str) -> set[str]:
 
-        unique_urls = set()
+        unique_urls: set[str] = set()
         current_page = 0
 
         while True:
@@ -137,8 +221,9 @@ class Parser(BaseParser):
                 main_page_parser.feed(response.text)
                 logger.info("Number of galleries found: {}".format(len(main_page_parser.galleries)))
                 if len(main_page_parser.galleries) >= 1:
-                    for gallery_url in main_page_parser.galleries:
-                        unique_urls.add(gallery_url)
+                    should_stop = self._record_and_check_processed_links(main_page_parser.galleries, unique_urls)
+                    if should_stop:
+                        break
                 else:
                     logger.info("Empty page found, ending")
                     break
@@ -173,7 +258,7 @@ class Parser(BaseParser):
 
     def get_galleries_from_lofi_page_link(self, url: str) -> set[str]:
 
-        unique_urls = set()
+        unique_urls: set[str] = set()
         current_page = 0
 
         while True:
@@ -212,8 +297,9 @@ class Parser(BaseParser):
                                 current_found_links.append(found_link)
                 logger.info("Number of galleries found: {}".format(len(current_found_links)))
                 if len(current_found_links) >= 1:
-                    for gallery_url in current_found_links:
-                        unique_urls.add(gallery_url)
+                    should_stop = self._record_and_check_processed_links(current_found_links, unique_urls)
+                    if should_stop:
+                        break
                 else:
                     logger.info("Empty page found, ending")
                     break

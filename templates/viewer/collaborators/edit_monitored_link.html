@@ -12,7 +12,7 @@
 
     <div class="container py-3" style="max-width: 800px;">
         <div class="card shadow-sm">
-            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+            <div class="card-header d-flex justify-content-between align-items-center">
                 <h4 class="mb-0">{{ title }}</h4>
                 <a href="{% url 'viewer:monitored-links' %}" class="btn btn-outline-light btn-sm">
                     <i class="fas fa-arrow-left"></i> Back to Monitored Links
@@ -63,17 +63,23 @@
                     </div>
 
                     <div class="row mb-3">
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <label class="form-label" for="id_proxy"><strong>Proxy</strong></label>
                             {{ edit_form.proxy }}
                             {% if edit_form.proxy.errors %}<div class="text-danger small">{{ edit_form.proxy.errors }}</div>{% endif %}
                             <div class="form-text text-muted">{{ edit_form.proxy.help_text }}</div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <label class="form-label" for="id_stop_page"><strong>Stop page</strong></label>
                             {{ edit_form.stop_page }}
                             {% if edit_form.stop_page.errors %}<div class="text-danger small">{{ edit_form.stop_page.errors }}</div>{% endif %}
                             <div class="form-text text-muted">{{ edit_form.stop_page.help_text }}</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="id_stop_on_seen_link"><strong>Stop on Seen Link</strong></label>
+                            {{ edit_form.stop_on_seen_link }}
+                            {% if edit_form.stop_on_seen_link.errors %}<div class="text-danger small">{{ edit_form.stop_on_seen_link.errors }}</div>{% endif %}
+                            <div class="form-text text-muted">{{ edit_form.stop_on_seen_link.help_text }}</div>
                         </div>
                     </div>
 
@@ -84,7 +90,7 @@
                         <div class="form-text text-muted">{{ edit_form.description.help_text }}</div>
                     </div>
 
-                    <div class="mb-3 p-3 bg-light rounded border">
+                    <div class="mb-3 p-3 rounded card-subsection">
                         <div class="form-check mb-2">
                             {{ edit_form.enabled }}
                             <label class="form-check-label" for="id_enabled"><strong>Enabled</strong></label>

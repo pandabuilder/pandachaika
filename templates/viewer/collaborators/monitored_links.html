@@ -59,76 +59,76 @@
 
     <!-- Collapsible Add Form -->
     <div class="collapse mb-4" id="add-monitored-link-form">
-        <style>
-            #add-monitored-link-form label,
-            #add-monitored-link-form .form-label,
-            #add-monitored-link-form .form-check-label,
-            #add-monitored-link-form .card-title {
-                color: #212529 !important;
-            }
-        </style>
-        <div class="card card-body bg-light text-dark" style="color: #212529;">
-            <h4 class="card-title text-dark">Add New Monitored Link</h4>
-            <p class="card-subtitle text-secondary mb-3">Create a new monitored URL that worker schedulers will crawl periodically.</p>
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <h5 class="mb-0">Add New Monitored Link</h5>
+                <small class="text-muted">Create a new monitored URL that worker schedulers will crawl periodically.</small>
+            </div>
+            <div class="card-body">
             <form action="{% url 'viewer:monitored-links' %}" method="POST">
                 {% csrf_token %}
                 <div class="row g-3">
                     <div class="col-md-6">
-                        <label class="form-label text-dark" for="id_name"><strong>Name</strong></label>
+                        <label class="form-label" for="id_name"><strong>Name</strong></label>
                         {{ edit_form.name }}
                         {% if edit_form.name.errors %}<div class="text-danger small">{{ edit_form.name.errors }}</div>{% endif %}
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label text-dark" for="id_url"><strong>URL</strong></label>
+                        <label class="form-label" for="id_url"><strong>URL</strong></label>
                         {{ edit_form.url }}
                         {% if edit_form.url.errors %}<div class="text-danger small">{{ edit_form.url.errors }}</div>{% endif %}
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label text-dark" for="id_provider"><strong>Provider</strong></label>
+                        <label class="form-label" for="id_provider"><strong>Provider</strong></label>
                         {{ edit_form.provider }}
                         {% if edit_form.provider.errors %}<div class="text-danger small">{{ edit_form.provider.errors }}</div>{% endif %}
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label text-dark" for="id_frequency"><strong>Frequency</strong> (e.g. 01:00:00)</label>
+                        <label class="form-label" for="id_frequency"><strong>Frequency</strong> (e.g. 01:00:00)</label>
                         {{ edit_form.frequency }}
                         {% if edit_form.frequency.errors %}<div class="text-danger small">{{ edit_form.frequency.errors }}</div>{% endif %}
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label text-dark" for="id_priority"><strong>Priority</strong> (default 10)</label>
+                        <label class="form-label" for="id_priority"><strong>Priority</strong> (default 10)</label>
                         {{ edit_form.priority }}
                         {% if edit_form.priority.errors %}<div class="text-danger small">{{ edit_form.priority.errors }}</div>{% endif %}
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label text-dark" for="id_stop_page"><strong>Stop page</strong> (optional)</label>
+                        <label class="form-label" for="id_stop_page"><strong>Stop page</strong> (optional)</label>
                         {{ edit_form.stop_page }}
                         {% if edit_form.stop_page.errors %}<div class="text-danger small">{{ edit_form.stop_page.errors }}</div>{% endif %}
                     </div>
-                    <div class="col-md-6">
-                        <label class="form-label text-dark" for="id_proxy"><strong>Proxy</strong> (optional)</label>
+                    <div class="col-md-3">
+                        <label class="form-label" for="id_stop_on_seen_link"><strong>Stop on Seen</strong></label>
+                        {{ edit_form.stop_on_seen_link }}
+                        {% if edit_form.stop_on_seen_link.errors %}<div class="text-danger small">{{ edit_form.stop_on_seen_link.errors }}</div>{% endif %}
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label" for="id_proxy"><strong>Proxy</strong> (optional)</label>
                         {{ edit_form.proxy }}
                         {% if edit_form.proxy.errors %}<div class="text-danger small">{{ edit_form.proxy.errors }}</div>{% endif %}
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label text-dark" for="id_description"><strong>Description</strong></label>
+                        <label class="form-label" for="id_description"><strong>Description</strong></label>
                         {{ edit_form.description }}
                         {% if edit_form.description.errors %}<div class="text-danger small">{{ edit_form.description.errors }}</div>{% endif %}
                     </div>
                     <div class="col-md-12">
                         <div class="form-check form-check-inline">
                             {{ edit_form.enabled }}
-                            <label class="form-check-label text-dark" for="id_enabled">Enabled</label>
+                            <label class="form-check-label" for="id_enabled">Enabled</label>
                         </div>
                         <div class="form-check form-check-inline">
                             {{ edit_form.auto_start }}
-                            <label class="form-check-label text-dark" for="id_auto_start">Auto-start on worker boot</label>
+                            <label class="form-check-label" for="id_auto_start">Auto-start on worker boot</label>
                         </div>
                         <div class="form-check form-check-inline">
                             {{ edit_form.use_limited_wanted_galleries }}
-                            <label class="form-check-label text-dark" for="id_use_limited_wanted_galleries">Restrict to specific Wanted Galleries</label>
+                            <label class="form-check-label" for="id_use_limited_wanted_galleries">Restrict to specific Wanted Galleries</label>
                         </div>
                     </div>
                     <div class="col-md-12">
-                        <label class="form-label text-dark" for="id_limited_wanted_galleries"><strong>Limited Wanted Galleries</strong></label>
+                        <label class="form-label" for="id_limited_wanted_galleries"><strong>Limited Wanted Galleries</strong></label>
                         {{ edit_form.limited_wanted_galleries }}
                         {% if edit_form.limited_wanted_galleries.errors %}<div class="text-danger small">{{ edit_form.limited_wanted_galleries.errors }}</div>{% endif %}
                     </div>
@@ -138,6 +138,7 @@
                     </div>
                 </div>
             </form>
+            </div>
         </div>
     </div>
 

@@ -16,6 +16,7 @@ from PIL import Image as PImage
 from PIL import ImageFile, ImageOps
 import requests
 from django.conf import settings
+from django.contrib.postgres.indexes import GinIndex
 from django.core.files import File
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
@@ -138,6 +139,13 @@ class WantedGallery(models.Model):
             ("edit_search_dates_wanted_gallery", "Can edit wanted galleries search date parameters"),
             ("edit_search_notify_wanted_gallery", "Can edit wanted galleries search notify parameter"),
         )
+        indexes = [
+            GinIndex(
+                fields=["search_title"],
+                name="wanted_search_title_trgm_gin",
+                opclasses=["gin_trgm_ops"],
+            ),
+        ]
 
     def __str__(self) -> str:
         return self.title or self.title_jpn or ""

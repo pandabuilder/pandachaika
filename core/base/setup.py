@@ -35,7 +35,6 @@ if typing.TYPE_CHECKING:
     from core.providers.nhentai.settings import OwnSettings as NhentaiSettings
     from core.providers.nyaa.settings import OwnSettings as NyaaSettings
     from core.providers.panda.settings import OwnSettings as PandaSettings
-    from core.providers.twitter.settings import OwnSettings as TwitterSettings
     from core.providers.twodmarket.settings import OwnSettings as TwodmarketSettings
     from core.providers.wanimagazine.settings import OwnSettings as WanimagazineSettings
 
@@ -62,8 +61,6 @@ if typing.TYPE_CHECKING:
         def __getitem__(self, key: typing.Literal["nyaa"]) -> NyaaSettings: ...
         @typing.overload
         def __getitem__(self, key: typing.Literal["panda"]) -> PandaSettings: ...
-        @typing.overload
-        def __getitem__(self, key: typing.Literal["twitter"]) -> TwitterSettings: ...
         @typing.overload
         def __getitem__(self, key: typing.Literal["twodmarket"]) -> TwodmarketSettings: ...
         @typing.overload
@@ -174,6 +171,8 @@ class Settings:
         # USER SETTINGS
         self.replace_metadata = False
         self.redownload = False
+        self.stop_on_seen_links = False
+        self.monitored_link: typing.Any | None = None
         self.auto_download_nested = False
         self.recheck_wanted_on_update = False
         self.vertical_image_max_width = 900
@@ -694,6 +693,7 @@ class Settings:
             self.requeue_failed_downloads = self.general_model.requeue_failed_downloads
             self.failed_download_downloader = self.general_model.failed_download_downloader
             self.requeue_downloader = self.failed_download_downloader
+            self.stop_on_seen_links = self.general_model.stop_on_seen_links
 
         # Global-level overrides for requeue
         if "requeue_failed_downloads" in config:
@@ -712,10 +712,10 @@ class Settings:
 
         if "experimental" in config and config["experimental"] is not None:
             self.experimental.update(config["experimental"])
-        if "matchers" in config:
-            self.matchers = config["matchers"]
-        if "downloaders" in config:
-            self.downloaders = config["downloaders"]
+        if "matchers" in config and isinstance(config["matchers"], dict):
+            self.matchers = dict(config["matchers"])
+        if "downloaders" in config and isinstance(config["downloaders"], dict):
+            self.downloaders = dict(config["downloaders"])
         if "custom_downloaders" in config:
             self.parse_custom_downloaders(config["custom_downloaders"])
         if "archive_download_queue" in config and isinstance(config["archive_download_queue"], dict):
@@ -809,3 +809,11 @@ class Settings:
         for matcher, priority in self.provider_context.get_matchers_name_priority(self):
             if matcher not in self.matchers:
                 self.matchers[matcher] = -1
+
+    @property
+    def stop_on_seen_link(self) -> bool:
+        return self.stop_on_seen_links
+
+    @stop_on_seen_link.setter
+    def stop_on_seen_link(self, value: bool) -> None:
+        self.stop_on_seen_links = value

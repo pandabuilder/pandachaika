@@ -245,6 +245,10 @@ general:
   # Default: panda_archive
   failed_download_downloader: panda_archive
 
+  # Stop crawling when encountering a link seen before.
+  # Default: false
+  stop_on_seen_links: false
+
 # ------------------------------------------------------------------------------
 # Operational Permissions ('allowed')
 # Controls whether existing archives can be replaced, redownloaded, or converted.
@@ -355,9 +359,8 @@ auto_wanted:
   cycle_timer: 4.0
 
   # Providers queried by the auto-wanted generator.
-  # Default: ['twitter']
-  providers:
-    - twitter
+  # Default: []
+  providers: []
 
   # Text filter automatically added to the unwanted_title field on generated wanted galleries.
   # Default: '[Chinese]'
@@ -828,6 +831,10 @@ providers:
       # Default: 5
       stop_page_number: 5
 
+      # Stop processing when encountering a link seen before.
+      # Default: false
+      stop_on_seen_links: false
+
       # Accepted categories reported by upstream RSS. Unmatched categories are ignored.
       # Possible categories: Doujinshi, Manga, Artist CG Sets, Game CG Sets, Western, Image Sets, Non-H, Cosplay, Asian Porn, Misc, Private
       accepted_rss_categories:
@@ -1000,46 +1007,6 @@ providers:
       # Provider-specific archive download folder override.
       # Default: '' (uses general locations.archive_dl_folder)
       archive_dl_folder: ''
-
-  # Twitter / X ('twitter')
-  twitter:
-    general:
-      # Twitter OAuth access token.
-      # Default: ''
-      token: ''
-
-      # Twitter OAuth token secret.
-      # Default: ''
-      token_secret: ''
-
-      # Twitter consumer API application key.
-      # Default: ''
-      consumer_key: ''
-
-      # Twitter consumer API application secret.
-      # Default: ''
-      consumer_secret: ''
-
-    wanted:
-      # Mark Twitter-discovered galleries as public.
-      # Default: false
-      add_as_public: false
-
-      # Title filter for unwanted items.
-      # Default: ''
-      unwanted_title: ''
-
-      # Treat unwanted_title as a regular expression.
-      # Default: false
-      regexp_unwanted_title: false
-
-      # Case-insensitive regular expression for unwanted_title.
-      # Default: false
-      regexp_unwanted_title_icase: false
-
-    # List of Twitter screen names (@handles) to crawl and archive.
-    # Default: []
-    enabled_handles: []
 
   # Nyaa ('nyaa')
   nyaa:

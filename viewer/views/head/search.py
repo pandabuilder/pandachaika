@@ -525,7 +525,8 @@ def public_stats(request: HttpRequest) -> HttpResponse:
     languages_dict["untranslated"] = {
         "n_galleries": Gallery.objects.filter(public=True).exclude(tags__scope="language").distinct().count(),
         "gallery": Gallery.objects.filter(public=True)
-        .filter(filesize__gt=0, tags__scope="language")
+        .filter(filesize__gt=0)
+        .exclude(tags__scope="language")
         .distinct()
         .aggregate(
             Avg("filesize"), Max("filesize"), Min("filesize"), Sum("filesize"), Avg("filecount"), Sum("filecount")

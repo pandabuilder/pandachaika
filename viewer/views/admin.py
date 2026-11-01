@@ -77,9 +77,9 @@ def stats_workers(request: HttpRequest) -> HttpResponse:
         from core.workers.archive_download_queue import ArchiveDownloadQueue
         crawler_settings.workers.archive_download_queue = ArchiveDownloadQueue(crawler_settings)
 
-    from viewer.views.workers_dashboard import get_workers_dashboard_snapshot
+    from viewer.views.workers_dashboard import get_workers_dashboard_snapshot, get_list_limits_from_request
 
-    dashboard_snapshot = get_workers_dashboard_snapshot()
+    dashboard_snapshot = get_workers_dashboard_snapshot(**get_list_limits_from_request(request))
 
     stats_dict = {
         "current_settings": crawler_settings,
@@ -193,7 +193,8 @@ def stats_collection(request: HttpRequest) -> HttpResponse:
 
     languages_dict["untranslated"] = {
         "n_galleries": Gallery.objects.exclude(tags__scope="language").distinct().count(),
-        "gallery": Gallery.objects.filter(filesize__gt=0, tags__scope="language")
+        "gallery": Gallery.objects.filter(filesize__gt=0)
+        .exclude(tags__scope="language")
         .distinct()
         .aggregate(
             Avg("filesize"), Max("filesize"), Min("filesize"), Sum("filesize"), Avg("filecount"), Sum("filecount")
@@ -296,16 +297,40 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
                 messages.error(request, "Invalid limit.", extra_tags="danger")
             return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "generate_missing_thumbs":
+        if thread_exists_in_db("thumbnails_worker"):
+            return render_error(request, "Thumbnails worker is already running.")
+
         archives_no_thumbnail = Archive.objects.filter(thumbnail="")
-        for archive in archives_no_thumbnail:
-            logger.info("Generating thumbs for file: {}".format(archive.zipped.name))
-            archive.generate_thumbnails()
+        archive_pks = list(archives_no_thumbnail.values_list("pk", flat=True))
+        if not archive_pks:
+            messages.info(request, "No archives missing thumbnails found.")
+            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+
+        logger.info("Generating thumbs for %d archives missing thumbnails", len(archive_pks))
+        if crawler_settings.workers.archive_worker:
+            crawler_settings.workers.archive_worker.regenerate_all_thumbs(archives=archive_pks, user=request.user)
+        else:
+            archive_worker_thread = ArchiveWorker(crawler_settings, 4)
+            archive_worker_thread.regenerate_all_thumbs(archives=archive_pks, user=request.user)
+        messages.success(request, f"Thumbnails worker started in background for {len(archive_pks)} archives.")
         return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "calculate_missing_info":
+        if thread_exists_in_db("fileinfo_worker"):
+            return render_error(request, "File info worker is already running.")
+
         archives_missing_info = Archive.objects.filter_by_missing_file_info()
-        for archive in archives_missing_info:
-            logger.info("Calculating file info for file: {}".format(archive.zipped.name))
-            archive.recalc_fileinfo()
+        archive_pks = list(archives_missing_info.values_list("pk", flat=True))
+        if not archive_pks:
+            messages.info(request, "No archives with missing file info found.")
+            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+
+        logger.info("Calculating file info for %d archives missing info", len(archive_pks))
+        if crawler_settings.workers.archive_worker:
+            crawler_settings.workers.archive_worker.recalc_all_file_info(archives=archive_pks, user=request.user)
+        else:
+            archive_worker_thread = ArchiveWorker(crawler_settings, 4)
+            archive_worker_thread.recalc_all_file_info(archives=archive_pks, user=request.user)
+        messages.success(request, f"File info worker started in background for {len(archive_pks)} archives.")
         return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "recalc_all_file_info":
         if thread_exists_in_db("fileinfo_worker"):
@@ -320,17 +345,22 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         messages.success(request, "File info worker started in background.")
         return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "set_all_hidden_as_public":
+        if thread_exists_in_db("publish_worker"):
+            return render_error(request, "Publish worker is already running.")
 
         archives = Archive.objects.filter(gallery__hidden=True)
+        archive_pks = list(archives.values_list("pk", flat=True))
+        if not archive_pks:
+            messages.info(request, "No archives with hidden galleries found.")
+            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
-        for archive in archives:
-            if os.path.isfile(archive.zipped.path):
-                archive.public = True
-                archive.save()
-                if archive.gallery:
-                    archive.gallery.public = True
-                    archive.gallery.save()
-
+        logger.info("Publishing %d archives with hidden galleries", len(archive_pks))
+        if crawler_settings.workers.archive_worker:
+            crawler_settings.workers.archive_worker.publish_archives(archives=archive_pks, user=request.user)
+        else:
+            archive_worker_thread = ArchiveWorker(crawler_settings, 4)
+            archive_worker_thread.publish_archives(archives=archive_pks, user=request.user)
+        messages.success(request, f"Publish worker started in background for {len(archive_pks)} archives.")
         return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "regenerate_all_thumbs":
         if thread_exists_in_db("thumbnails_worker"):
@@ -441,6 +471,28 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
             os.kill(os.getpid(), signal.SIGUSR2)
         else:
             return render_error(request, "This OS does not support signal SIGUSR2.")
+        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+    elif tool == "restart_workers":
+        import socket
+        from datetime import timedelta
+        import django.utils.timezone as django_tz
+        from workers.models import WorkerProcess, SchedulerState
+
+        heartbeat_cutoff = django_tz.now() - timedelta(seconds=60)
+        active_workers = list(WorkerProcess.objects.filter(status="running", last_heartbeat__gte=heartbeat_cutoff))
+        current_host = socket.gethostname()
+        for wp in active_workers:
+            if hasattr(signal, "SIGHUP") and (not wp.hostname or wp.hostname == current_host):
+                try:
+                    os.kill(wp.pid, signal.SIGHUP)
+                except (OSError, ProcessLookupError, PermissionError) as e:
+                    logger.warning("Could not send SIGHUP to worker PID %d: %s", wp.pid, e)
+
+        SchedulerState.request_command("worker_runner", "restart")
+        if active_workers:
+            messages.success(request, f"Restart requested for {len(active_workers)} running worker process(es).")
+        else:
+            messages.warning(request, "Restart command queued, but no running worker processes were found.")
         return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "modify_settings":
         return HttpResponseRedirect(reverse("viewer:tools-id", args=["modify_settings_editor"]))
@@ -735,48 +787,76 @@ def crawler(request: HttpRequest) -> HttpResponse:
         else:
             current_settings = Settings(load_from_config=crawler_settings.config)
         url_set = set()
-        # create dictionary of properties for each archive
-        current_settings.replace_metadata = False
-        current_settings.config["allowed"]["replace_metadata"] = "no"
+
+        # Update transferable options (allowed section)
+        if "allowed" not in current_settings.config or not isinstance(current_settings.config["allowed"], dict):
+            current_settings.config["allowed"] = {}
+        if "downloaders" not in current_settings.config or not isinstance(current_settings.config["downloaders"], dict):
+            current_settings.config["downloaders"] = {}
+
+        current_settings.replace_metadata = ("replace_metadata" in p)
+        current_settings.config["allowed"]["replace_metadata"] = current_settings.replace_metadata
+
+        current_settings.non_current_links_as_deleted = ("skip-non-current" in p)
+        current_settings.config["allowed"]["non_current_links_as_deleted"] = current_settings.non_current_links_as_deleted
+
         for k, v in p.items():
             if isinstance(v, str):
-                if k.startswith("downloaders"):
-                    k, dl = k.split("-")
-                    current_settings.config["downloaders"][dl] = v
-                    current_settings.downloaders[dl] = int(v)
-                elif k == "replace_metadata":
-                    current_settings.config["allowed"][k] = "yes"
-                    current_settings.replace_metadata = True
+                if k.startswith("downloaders-"):
+                    dl = k.split("-", 1)[1]
+                    try:
+                        dl_priority = int(v)
+                        current_settings.config["downloaders"][dl] = dl_priority
+                        current_settings.downloaders[dl] = dl_priority
+                    except (ValueError, TypeError):
+                        pass
                 elif k == "urls":
                     url_list = v.split("\n")
                     for item in url_list:
-                        url_set.add(item.rstrip("\r"))
+                        cleaned = item.rstrip("\r").strip()
+                        if cleaned:
+                            url_set.add(cleaned)
         urls = list(url_set)
-
-        if "reason" in p and p["reason"] != "":
-            reason = p["reason"]
-            # Force limit string length (reason field max_length)
-            current_settings.archive_reason = reason[:200]
-            current_settings.gallery_reason = reason[:200]
 
         if "keep_this_settings" in p:
             current_settings.write()
             current_settings.load_config_from_file()
+            messages.info(
+                request,
+                "Settings saved to settings.yaml (note: these settings will only be applied to background workers when restarted).",
+            )
+            job_settings = Settings(load_from_config=crawler_settings.config)
+        else:
+            job_settings = current_settings
+
+        if "reason" in p and p["reason"] != "":
+            reason = p["reason"]
+            # Force limit string length (reason field max_length)
+            job_settings.archive_reason = reason[:200]
+            job_settings.gallery_reason = reason[:200]
 
         if "gallery_only" in p:
-            current_settings.allow_type_downloaders_only("info")
+            job_settings.allow_type_downloaders_only("info")
 
         if "wanted_only" in p:
             urls.insert(0, "--wanted-only")
 
-        if "skip-non-current" in p:
-            current_settings.non_current_links_as_deleted = True
+        # Parse task queue priority (1 to 10, default: 10) with backward compatibility for run_separate
+        priority = 10
+        if "priority" in p:
+            try:
+                priority = int(p["priority"])
+                if not 1 <= priority <= 10:
+                    priority = 10
+            except (ValueError, TypeError):
+                priority = 10
+        elif "run_separate" in p:
+            priority = 5
 
-        priority = 5 if "run_separate" in p else 10
         client.enqueue(
             args=urls,
             task_type="web_crawler",
-            override_options=current_settings,
+            override_options=job_settings,
             user=request.user,
             priority=priority,
         )

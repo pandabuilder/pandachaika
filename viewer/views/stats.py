@@ -1,6 +1,5 @@
 import datetime
 
-import pytz
 from django.shortcuts import render
 from django.http import JsonResponse
 from django.db.models import Count, Q
@@ -22,7 +21,7 @@ def stats_view(request):
 from viewer.views.head import filter_galleries_simple
 
 DEFAULT_TIMELINE_ORDER = 'posted'
-CUTOFF_DATE = datetime.datetime(1970, 1, 1, tzinfo=pytz.UTC)
+CUTOFF_DATE = datetime.datetime(1970, 1, 1, tzinfo=datetime.UTC)
 
 @login_required
 def stats_api(request):
@@ -113,7 +112,7 @@ def stats_api(request):
         tag_names_map = {t.id: t.name for t in top_tags}
         # tag_order_map = {val: i for i, val in enumerate(top_tag_ids)}
 
-        gallery_ids = [g.id for g in filtered_galleries]
+        gallery_ids = filtered_galleries.values_list("id", flat=True)
 
         ThroughModel = Gallery.tags.through
 

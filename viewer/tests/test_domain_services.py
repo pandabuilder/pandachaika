@@ -12,7 +12,7 @@ from django.contrib.auth.models import User
 from PIL import Image as PImage
 
 from core.base.types import GalleryData
-from viewer.models import Archive, ArchiveStatistics, Gallery, Image, ItemProperties
+from viewer.models import Archive, ArchiveMatches, ArchiveStatistics, Gallery, Image, ItemProperties
 from viewer.services import (
     ArchiveExtractionService,
     ArchiveHashingService,
@@ -194,3 +194,100 @@ class DomainServicesTestCase(TestCase):
         finally:
             if gallery and gallery.thumbnail and gallery.thumbnail.name and os.path.exists(gallery.thumbnail.path):
                 os.unlink(gallery.thumbnail.path)
+
+    def test_archive_generate_possible_matches_streams_titles(self):
+        archive = Archive.objects.create(
+            title="Non-Match Archive",
+            match_type="non-match",
+            user=self.user,
+        )
+        archive.zipped.name = "Awesome Adventure Manga.zip"
+        archive.save()
+
+        gal1 = Gallery.objects.create(
+            gid="stream_gal_1",
+            provider="panda",
+            title="Awesome Adventure Manga",
+            status=Gallery.StatusChoices.NORMAL,
+        )
+        Gallery.objects.create(
+            gid="stream_gal_2",
+            provider="panda",
+            title="Unrelated Story",
+            title_jpn="Awesome Adventure Manga JPN",
+            status=Gallery.StatusChoices.NORMAL,
+        )
+        gal_deleted = Gallery.objects.create(
+            gid="stream_gal_3",
+            provider="panda",
+            title="Awesome Adventure Manga Deleted",
+            status=Gallery.StatusChoices.DELETED,
+        )
+
+        with patch.object(
+            Gallery.objects, "eligible_for_use", wraps=Gallery.objects.eligible_for_use
+        ) as mock_eligible:
+            archive.generate_possible_matches(cutoff=0.4)
+            mock_eligible.assert_called_once()
+
+        matches = ArchiveMatches.objects.filter(archive=archive)
+        matched_gallery_ids = set(matches.values_list("gallery_id", flat=True))
+        self.assertIn(gal1.pk, matched_gallery_ids)
+        self.assertNotIn(gal_deleted.pk, matched_gallery_ids)
+
+    def test_archive_generate_possible_matches_values_list_iterator_called(self):
+        archive = Archive.objects.create(
+            title="Stream Test Archive",
+            match_type="non-match",
+            user=self.user,
+        )
+        archive.zipped.name = "Streaming Title Test.zip"
+        archive.save()
+
+        gal = Gallery.objects.create(
+            gid="stream_gal_val_1",
+            provider="panda",
+            title="Streaming Title Test",
+            status=Gallery.StatusChoices.NORMAL,
+        )
+
+        with patch("django.db.models.query.QuerySet.iterator", autospec=True) as mock_iterator:
+            mock_iterator.return_value = iter([("Streaming Title Test", None, gal.pk)])
+            archive.generate_possible_matches(cutoff=0.4)
+
+            mock_iterator.assert_called_once()
+            _, kwargs = mock_iterator.call_args
+            self.assertEqual(kwargs.get("chunk_size"), 5000)
+
+    def test_archive_generate_possible_matches_with_provider_filter(self):
+        archive = Archive.objects.create(
+            title="Provider Filter Archive",
+            match_type="non-match",
+            user=self.user,
+        )
+        archive.zipped.name = "Filtered Provider Title.zip"
+        archive.save()
+
+        gal_panda = Gallery.objects.create(
+            gid="stream_gal_prov_1",
+            provider="panda",
+            title="Filtered Provider Title",
+            status=Gallery.StatusChoices.NORMAL,
+        )
+        gal_fakku = Gallery.objects.create(
+            gid="stream_gal_prov_2",
+            provider="fakku",
+            title="Filtered Provider Title",
+            status=Gallery.StatusChoices.NORMAL,
+        )
+
+        with patch.object(
+            Gallery.objects, "eligible_for_use", wraps=Gallery.objects.eligible_for_use
+        ) as mock_eligible:
+            archive.generate_possible_matches(cutoff=0.4, provider_filter="panda")
+            mock_eligible.assert_called_once_with(provider__contains="panda")
+
+        matches = ArchiveMatches.objects.filter(archive=archive)
+        matched_gallery_ids = set(matches.values_list("gallery_id", flat=True))
+        self.assertIn(gal_panda.pk, matched_gallery_ids)
+        self.assertNotIn(gal_fakku.pk, matched_gallery_ids)

@@ -274,6 +274,41 @@
     z-index: 1080;
   }
 
+  /* Download type breakdown */
+  .dl-type-card {
+    background-color: var(--pg-bg-card);
+    border: 1px solid var(--pg-border);
+    border-radius: 8px;
+    color: var(--pg-text-primary);
+    cursor: pointer;
+    padding: 0.55rem 0.75rem;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    height: 100%;
+  }
+  .dl-type-card:hover {
+    border-color: var(--pg-accent-blue);
+  }
+  .dl-type-card.selected {
+    border-color: var(--pg-accent-blue);
+    box-shadow: 0 0 10px rgba(54, 176, 249, 0.35);
+    background-color: #002d60;
+  }
+  .dl-type-card .dl-type-count {
+    font-size: 1.35rem;
+    font-weight: 700;
+    line-height: 1.1;
+  }
+  .table-dashboard tbody tr.dl-group-row td {
+    background-color: var(--pg-bg-card-header) !important;
+    border-top: 2px solid var(--pg-border) !important;
+    font-size: 0.85rem;
+  }
+  .kpi-dl-type {
+    display: inline-block;
+    margin-right: 0.5rem;
+    white-space: nowrap;
+  }
+
   /* --- Legacy Tab Overrides (ensuring full visibility on dark backgrounds) --- */
   #tab-legacy {
     color: var(--pg-text-primary) !important;
@@ -374,6 +409,23 @@
         </select>
       </div>
 
+      <div class="input-group input-group-sm" style="width: auto;" title="Maximum rows for pending/recent tasks, and per download type">
+        <span class="input-group-text input-group-text-dark"><i class="fas fa-list-ol"></i></span>
+        <select id="list-limit-select" class="form-select form-select-sm form-select-dark" style="max-width: 130px;">
+          {% with current_limit=dashboard.limits.limit %}
+          {% if current_limit != 10 and current_limit != 25 and current_limit != 50 and current_limit != 100 and current_limit != 250 and current_limit != 500 %}
+          <option value="{{ current_limit }}" selected>Rows: {{ current_limit }}</option>
+          {% endif %}
+          <option value="10"{% if current_limit == 10 %} selected{% endif %}>Rows: 10</option>
+          <option value="25"{% if current_limit == 25 %} selected{% endif %}>Rows: 25</option>
+          <option value="50"{% if current_limit == 50 %} selected{% endif %}>Rows: 50</option>
+          <option value="100"{% if current_limit == 100 %} selected{% endif %}>Rows: 100</option>
+          <option value="250"{% if current_limit == 250 %} selected{% endif %}>Rows: 250</option>
+          <option value="500"{% if current_limit == 500 %} selected{% endif %}>Rows: 500</option>
+          {% endwith %}
+        </select>
+      </div>
+
       <button id="btn-refresh" class="btn btn-sm btn-outline-primary" title="Refresh Now">
         <i class="fas fa-sync-alt" id="refresh-icon"></i> Refresh
       </button>
@@ -461,6 +513,11 @@
         </div>
         <div class="small text-secondary mt-1">
           Total speed: <span id="kpi-downloads-speed" class="fw-bold text-light">{{ dashboard.summary.total_download_speed_formatted|default:"0 B/s" }}</span>
+        </div>
+        <div class="small text-secondary mt-1" id="kpi-downloads-breakdown">
+          {% for t in dashboard.download_types %}
+            <span class="kpi-dl-type">{{ t.label }} <strong class="text-light">{{ t.total_count }}</strong></span>
+          {% endfor %}
         </div>
       </div>
     </div>
@@ -883,7 +940,7 @@
       <div class="card card-dark shadow-sm mb-4">
         <div class="card-header d-flex justify-content-between align-items-center py-2">
           <h5 class="mb-0 fw-bold fs-6 text-light"><i class="fas fa-hourglass-half text-warning me-2"></i>Pending Queue (Next in line)</h5>
-          <span class="badge bg-warning text-dark" id="pending-tasks-badge">{{ dashboard.pending_tasks|length }} queued</span>
+          <span class="badge bg-warning text-dark" id="pending-tasks-badge">{{ dashboard.pending_tasks|length }} of {{ dashboard.summary.pending_tasks_count }} queued</span>
         </div>
         <div class="table-responsive">
           <table class="table table-dashboard align-middle mb-0" id="table-pending-tasks">
@@ -929,58 +986,35 @@
 
     <!-- TAB 3: DOWNLOADS -->
     <div class="tab-pane fade" id="tab-downloads" role="tabpanel">
+      <!-- Per-type breakdown cards (click to filter the table) -->
+      <div class="row g-2 mb-3" id="download-types-row"></div>
+
       <div class="card card-dark shadow-sm mb-4">
-        <div class="card-header d-flex justify-content-between align-items-center py-2">
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2 py-2">
           <h5 class="mb-0 fw-bold fs-6 text-light"><i class="fas fa-cloud-download-alt text-warning me-2"></i>Active Downloads &amp; Progress</h5>
-          <span class="badge bg-warning text-dark" id="downloads-badge">{{ dashboard.downloads|length }} active</span>
+          <div class="d-flex align-items-center gap-2">
+            <span class="small text-secondary" id="downloads-filter-label"></span>
+            <span class="badge bg-warning text-dark" id="downloads-badge">{{ dashboard.summary.active_downloads_count }} active</span>
+          </div>
         </div>
         <div class="table-responsive">
           <table class="table table-dashboard align-middle mb-0" id="table-downloads">
             <thead>
               <tr>
                 <th>Target</th>
+                <th>Type</th>
                 <th>Archive</th>
                 <th>Gallery</th>
                 <th>Total Size</th>
-                <th style="width: 30%;">Progress</th>
+                <th style="width: 26%;">Progress</th>
                 <th>Transfer Speed</th>
                 <th>Status</th>
               </tr>
             </thead>
             <tbody id="downloads-tbody">
-              {% for dl in dashboard.downloads %}
               <tr>
-                <td>
-                  <div class="fw-bold text-light">{{ dl.name|truncatechars:50 }}</div>
-                </td>
-                <td>
-                  {% if dl.archive_url %}
-                    <a href="{{ dl.archive_url }}" class="badge badge-dark-subtle">Archive #{{ dl.archive_id }}</a>
-                  {% else %}-{% endif %}
-                </td>
-                <td>
-                  {% if dl.gallery_url %}
-                    <a href="{{ dl.gallery_url }}" class="badge badge-dark-subtle">Gallery #{{ dl.gallery_id }}</a>
-                  {% else %}-{% endif %}
-                </td>
-                <td>{{ dl.total_size_formatted }}</td>
-                <td>
-                  <div class="d-flex align-items-center gap-2">
-                    <div class="progress flex-grow-1" style="height: 18px; background-color: #00142c; border: 1px solid var(--pg-border);">
-                      <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" role="progressbar" style="width: {{ dl.progress }}%;">
-                        {{ dl.progress }}%
-                      </div>
-                    </div>
-                  </div>
-                </td>
-                <td><strong class="text-info">{{ dl.speed_formatted }}</strong></td>
-                <td><span class="badge bg-info text-dark">{{ dl.status }}</span></td>
+                <td colspan="8" class="text-center py-4 text-secondary">Loading downloads...</td>
               </tr>
-              {% empty %}
-              <tr>
-                <td colspan="7" class="text-center py-4 text-secondary">No active downloads in progress.</td>
-              </tr>
-              {% endfor %}
             </tbody>
           </table>
         </div>
@@ -993,6 +1027,7 @@
         <div class="card-header d-flex justify-content-between align-items-center py-2">
           <h5 class="mb-0 fw-bold fs-6 text-light"><i class="fas fa-history text-secondary me-2"></i>Recent Task Executions &amp; Failures</h5>
           <div class="d-flex gap-2">
+            <span class="badge badge-dark-subtle align-self-center" id="recent-tasks-badge">last {{ dashboard.recent_tasks|length }}</span>
             <button class="btn btn-sm btn-outline-danger" id="btn-purge-tasks">
               <i class="fas fa-trash-alt"></i> Purge Tasks &gt;7d
             </button>
@@ -1279,6 +1314,7 @@
 
 <!-- Toast notifications container -->
 <div class="toast-container" id="toast-container"></div>
+{{ dashboard|json_script:"initial-dashboard-data" }}
 {% endblock %}
 
 {% block afterJQ %}
@@ -1291,7 +1327,51 @@
   let pollIntervalMs = 2500;
   let pollTimer = null;
   let isFetching = false;
+  let refetchQueued = false;
   let localData = null;
+
+  const LIMIT_STORAGE_KEY = 'pg.workersDashboard.listLimit';
+  const DL_FILTER_STORAGE_KEY = 'pg.workersDashboard.downloadTypeFilter';
+  const MAX_LIST_LIMIT = parseInt('{{ dashboard.limits.max_limit|default:500 }}', 10) || 500;
+  let listLimit = parseInt('{{ dashboard.limits.limit|default:25 }}', 10) || 25;
+  let downloadTypeFilter = localStorage.getItem(DL_FILTER_STORAGE_KEY) || 'all';
+
+  function esc(value) {
+    return String(value === null || value === undefined ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function buildStatusUrl() {
+    const url = new URL(STATUS_API_URL, window.location.origin);
+    url.searchParams.set('limit', String(listLimit));
+    return url.toString();
+  }
+
+  function setListLimit(value, { persist = true, refresh = true } = {}) {
+    const parsed = parseInt(value, 10);
+    if (isNaN(parsed)) return;
+    listLimit = Math.max(1, Math.min(parsed, MAX_LIST_LIMIT));
+    const select = document.getElementById('list-limit-select');
+    if (select) {
+      if (![...select.options].some(o => parseInt(o.value, 10) === listLimit)) {
+        const opt = document.createElement('option');
+        opt.value = String(listLimit);
+        opt.textContent = `Rows: ${listLimit}`;
+        select.prepend(opt);
+      }
+      select.value = String(listLimit);
+    }
+    if (persist) localStorage.setItem(LIMIT_STORAGE_KEY, String(listLimit));
+    // Keep the page URL in sync so reloads/bookmarks render with the same limit server-side.
+    const pageUrl = new URL(window.location.href);
+    pageUrl.searchParams.set('limit', String(listLimit));
+    window.history.replaceState(null, '', pageUrl.toString());
+    if (refresh) fetchStatus();
+  }
 
   function showToast(message, type = 'info') {
     const container = document.getElementById('toast-container');
@@ -1340,13 +1420,16 @@
   }
 
   async function fetchStatus() {
-    if (isFetching) return;
+    if (isFetching) {
+      refetchQueued = true;
+      return;
+    }
     isFetching = true;
     const icon = document.getElementById('refresh-icon');
     if (icon) icon.classList.add('fa-spin');
 
     try {
-      const res = await fetch(STATUS_API_URL, {
+      const res = await fetch(buildStatusUrl(), {
         headers: {
           'Accept': 'application/json',
           'X-Requested-With': 'XMLHttpRequest'
@@ -1366,6 +1449,10 @@
     } finally {
       isFetching = false;
       if (icon) icon.classList.remove('fa-spin');
+      if (refetchQueued) {
+        refetchQueued = false;
+        fetchStatus();
+      }
     }
   }
 
@@ -1405,6 +1492,12 @@
     const ds = document.getElementById('kpi-downloads-speed');
     if (dc) dc.textContent = s.active_downloads_count;
     if (ds) ds.textContent = s.total_download_speed_formatted;
+    const db = document.getElementById('kpi-downloads-breakdown');
+    if (db) {
+      db.innerHTML = (data.download_types || []).map(t =>
+        `<span class="kpi-dl-type">${esc(t.label)} <strong class="text-light">${t.total_count}</strong></span>`
+      ).join('');
+    }
 
     // Badges in tabs
     const bQueue = document.getElementById('badge-total-queue-count');
@@ -1435,9 +1528,9 @@
 
     // 5. Render Tasks & Queues
     renderActiveTasksTable(data.active_tasks || []);
-    renderPendingTasksTable(data.pending_tasks || []);
+    renderPendingTasksTable(data.pending_tasks || [], s.pending_tasks_count);
     renderRecentTasksTable(data.recent_tasks || []);
-    renderDownloadsTable(data.downloads || []);
+    renderDownloadsSection(data.downloads || [], data.download_types || [], s);
   }
 
   function renderTopology(data) {
@@ -1864,10 +1957,11 @@
     tbody.innerHTML = html;
   }
 
-  function renderPendingTasksTable(tasks) {
+  function renderPendingTasksTable(tasks, totalCount) {
     const tbody = document.getElementById('pending-tasks-tbody');
     const badge = document.getElementById('pending-tasks-badge');
-    if (badge) badge.textContent = `${tasks.length} queued`;
+    const total = (totalCount === undefined || totalCount === null) ? tasks.length : totalCount;
+    if (badge) badge.textContent = `${tasks.length} of ${total} queued`;
     if (!tbody) return;
     if (tasks.length === 0) {
       tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-secondary">Queue is empty! All caught up.</td></tr>';
@@ -1900,6 +1994,8 @@
 
   function renderRecentTasksTable(tasks) {
     const tbody = document.getElementById('recent-tasks-tbody');
+    const badge = document.getElementById('recent-tasks-badge');
+    if (badge) badge.textContent = `last ${tasks.length}`;
     if (!tbody) return;
     if (tasks.length === 0) {
       tbody.innerHTML = '<tr><td colspan="9" class="text-center py-4 text-secondary">No recent task history found.</td></tr>';
@@ -1957,38 +2053,159 @@
     tbody.innerHTML = html;
   }
 
-  function renderDownloadsTable(downloads) {
+  function dlStatusBadge(dl) {
+    const status = String(dl.status || '');
+    if (status.startsWith('in_progress')) {
+      return `<span class="badge bg-info text-dark">${esc(status)}</span>`;
+    }
+    if (status === 'queued') {
+      return `<span class="badge bg-secondary">${esc(status)}</span>`;
+    }
+    return `<span class="badge badge-dark-subtle">${esc(status)}</span>`;
+  }
+
+  function dlTypeSummaryText(t) {
+    const parts = [
+      `<strong class="text-warning">${t.in_progress_count}</strong> in progress`,
+      `<strong class="text-light">${t.queued_count}</strong> queued`,
+    ];
+    if (t.transferring_count > 0) {
+      parts.push(`<strong class="text-success">${t.transferring_count}</strong> transferring`);
+    }
+    parts.push(`<strong class="text-info">${esc(t.speed_formatted)}</strong>`);
+    return parts.join(' &bull; ');
+  }
+
+  function renderDownloadTypeCards(downloadTypes, summary) {
+    const row = document.getElementById('download-types-row');
+    if (!row) return;
+
+    const totalInProgress = downloadTypes.reduce((acc, t) => acc + t.in_progress_count, 0);
+    const totalQueued = downloadTypes.reduce((acc, t) => acc + t.queued_count, 0);
+    const cards = [{
+      type: 'all',
+      label: 'All Types',
+      total_count: summary.active_downloads_count || 0,
+      in_progress_count: totalInProgress,
+      queued_count: totalQueued,
+      transferring_count: summary.transferring_downloads_count || 0,
+      speed_formatted: summary.total_download_speed_formatted || '0 B/s',
+      shown_count: summary.shown_downloads_count || 0,
+      is_truncated: (summary.shown_downloads_count || 0) < (summary.active_downloads_count || 0),
+    }, ...downloadTypes];
+
+    row.innerHTML = cards.map(t => `
+      <div class="col-6 col-md-4 col-xl-2">
+        <div class="dl-type-card ${downloadTypeFilter === t.type ? 'selected' : ''}" data-dl-type="${esc(t.type)}" role="button" title="Show ${esc(t.label)} downloads">
+          <div class="d-flex justify-content-between align-items-center">
+            <strong class="small text-uppercase">${esc(t.label)}</strong>
+            ${t.transferring_count > 0 ? '<span class="pulse-dot green" title="Transferring"></span>' : ''}
+          </div>
+          <div class="dl-type-count text-warning mt-1">${t.total_count}</div>
+          <div class="small text-secondary">${dlTypeSummaryText(t)}</div>
+          <div class="small mt-1 ${t.is_truncated ? 'text-warning' : 'text-secondary'}">
+            showing ${t.shown_count} of ${t.total_count}${t.is_truncated && t.type !== 'all' ? ` (limit ${listLimit})` : ''}
+          </div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function renderDownloadRow(dl) {
+    const archLink = dl.archive_url ? `<a href="${esc(dl.archive_url)}" class="badge badge-dark-subtle">Archive #${esc(dl.archive_id)}</a>` : '-';
+    const galLink = dl.gallery_url ? `<a href="${esc(dl.gallery_url)}" class="badge badge-dark-subtle">Gallery #${esc(dl.gallery_id)}</a>` : '-';
+    const isQueued = dl.status === 'queued';
+    const barClass = dl.is_transferring
+      ? 'progress-bar progress-bar-striped progress-bar-animated bg-success'
+      : (isQueued ? 'progress-bar bg-secondary' : 'progress-bar progress-bar-striped bg-primary');
+    const speedCell = dl.is_transferring
+      ? `<strong class="text-info"><i class="fas fa-bolt text-success me-1"></i>${esc(dl.speed_formatted)}</strong>`
+      : `<span class="text-secondary">${esc(dl.speed_formatted)}</span>`;
+    return `
+      <tr>
+        <td><div class="fw-bold text-light text-truncate" style="max-width: 420px;" title="${esc(dl.name)}">${esc(dl.name)}</div></td>
+        <td><span class="badge badge-task">${esc(dl.type_label || dl.type)}</span></td>
+        <td>${archLink}</td>
+        <td>${galLink}</td>
+        <td>${esc(dl.total_size_formatted)}</td>
+        <td>
+          <div class="progress" style="height: 18px; background-color: #00142c; border: 1px solid var(--pg-border);">
+            <div class="${barClass}" role="progressbar" style="width: ${Number(dl.progress) || 0}%;">
+              ${Number(dl.progress) || 0}%
+            </div>
+          </div>
+        </td>
+        <td>${speedCell}</td>
+        <td>${dlStatusBadge(dl)}</td>
+      </tr>
+    `;
+  }
+
+  function renderDownloadsSection(downloads, downloadTypes, summary) {
+    summary = summary || {};
+    // Drop a filter that refers to a type with no active downloads anymore.
+    if (downloadTypeFilter !== 'all' && !downloadTypes.some(t => t.type === downloadTypeFilter)) {
+      downloadTypeFilter = 'all';
+    }
+    renderDownloadTypeCards(downloadTypes, summary);
+
     const tbody = document.getElementById('downloads-tbody');
     const badge = document.getElementById('downloads-badge');
-    if (badge) badge.textContent = `${downloads.length} active`;
+    const filterLabel = document.getElementById('downloads-filter-label');
+    const visibleTypes = downloadTypeFilter === 'all'
+      ? downloadTypes
+      : downloadTypes.filter(t => t.type === downloadTypeFilter);
+
+    const shown = visibleTypes.reduce((acc, t) => acc + t.shown_count, 0);
+    const total = visibleTypes.reduce((acc, t) => acc + t.total_count, 0);
+    if (badge) badge.textContent = shown < total ? `showing ${shown} of ${total} active` : `${total} active`;
+    if (filterLabel) {
+      if (downloadTypeFilter === 'all') {
+        filterLabel.innerHTML = '';
+      } else {
+        const label = visibleTypes.length ? visibleTypes[0].label : downloadTypeFilter;
+        filterLabel.innerHTML = `Filter: <strong class="text-light">${esc(label)}</strong>
+          <button type="button" class="btn btn-sm btn-link p-0 ms-1 text-decoration-none btn-clear-dl-filter" title="Show all types"><i class="fas fa-times"></i></button>`;
+      }
+    }
     if (!tbody) return;
-    if (downloads.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-secondary">No active downloads in progress.</td></tr>';
+
+    if (downloads.length === 0 || visibleTypes.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-secondary">No active downloads in progress.</td></tr>';
       return;
     }
-    let html = '';
+
+    const byType = {};
     downloads.forEach(dl => {
-      const archLink = dl.archive_url ? `<a href="${dl.archive_url}" class="badge badge-dark-subtle">Archive #${dl.archive_id}</a>` : '-';
-      const galLink = dl.gallery_url ? `<a href="${dl.gallery_url}" class="badge badge-dark-subtle">Gallery #${dl.gallery_id}</a>` : '-';
+      (byType[dl.type] = byType[dl.type] || []).push(dl);
+    });
+
+    let html = '';
+    visibleTypes.forEach(t => {
+      const rows = byType[t.type] || [];
       html += `
-        <tr>
-          <td><div class="fw-bold text-light">${dl.name}</div></td>
-          <td>${archLink}</td>
-          <td>${galLink}</td>
-          <td>${dl.total_size_formatted}</td>
-          <td>
-            <div class="progress" style="height: 18px; background-color: #00142c; border: 1px solid var(--pg-border);">
-              <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" role="progressbar" style="width: ${dl.progress}%;">
-                ${dl.progress}%
-              </div>
+        <tr class="dl-group-row">
+          <td colspan="8">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+              <span><strong class="text-light text-uppercase">${esc(t.label)}</strong>
+                <span class="badge badge-dark-subtle ms-1">${t.total_count}</span>
+                <span class="text-secondary ms-2">${dlTypeSummaryText(t)}</span></span>
+              <span class="${t.is_truncated ? 'text-warning' : 'text-secondary'}">showing ${t.shown_count} of ${t.total_count}</span>
             </div>
           </td>
-          <td><strong class="text-info">${dl.speed_formatted}</strong></td>
-          <td><span class="badge bg-info text-dark">${dl.status}</span></td>
         </tr>
       `;
+      html += rows.map(renderDownloadRow).join('');
     });
     tbody.innerHTML = html;
+  }
+
+  function setDownloadTypeFilter(type) {
+    downloadTypeFilter = type || 'all';
+    localStorage.setItem(DL_FILTER_STORAGE_KEY, downloadTypeFilter);
+    if (localData) {
+      renderDownloadsSection(localData.downloads || [], localData.download_types || [], localData.summary || {});
+    }
   }
 
   // Live countdown timer for schedulers next run
@@ -2025,6 +2242,12 @@
     const btnRefresh = document.getElementById('btn-refresh');
     if (btnRefresh) {
       btnRefresh.addEventListener('click', () => fetchStatus());
+    }
+
+    // Rows / list limit selector
+    const limitSelect = document.getElementById('list-limit-select');
+    if (limitSelect) {
+      limitSelect.addEventListener('change', (e) => setListLimit(e.target.value));
     }
 
     // Interval selector
@@ -2094,6 +2317,18 @@
 
     // Event delegation for dynamically updated tables
     document.addEventListener('click', (e) => {
+      // Download type cards act as table filters
+      const dlTypeCard = e.target.closest('.dl-type-card');
+      if (dlTypeCard) {
+        const type = dlTypeCard.getAttribute('data-dl-type') || 'all';
+        setDownloadTypeFilter(type === downloadTypeFilter ? 'all' : type);
+        return;
+      }
+      if (e.target.closest('.btn-clear-dl-filter')) {
+        setDownloadTypeFilter('all');
+        return;
+      }
+
       // Scheduler actions (start, stop, force_run)
       const schedBtn = e.target.closest('.btn-sched-action');
       if (schedBtn) {
@@ -2189,6 +2424,25 @@
 
   // Initialize
   initEvents();
+
+  // Render sections that are JS-only from the server-side snapshot right away.
+  const initialEl = document.getElementById('initial-dashboard-data');
+  if (initialEl) {
+    try {
+      localData = JSON.parse(initialEl.textContent);
+      renderDownloadsSection(localData.downloads || [], localData.download_types || [], localData.summary || {});
+    } catch (e) {
+      console.warn('Could not parse initial dashboard data:', e);
+    }
+  }
+
+  // Restore the preferred list limit when the URL doesn't specify one.
+  const urlLimit = new URL(window.location.href).searchParams.get('limit');
+  const storedLimit = parseInt(localStorage.getItem(LIMIT_STORAGE_KEY) || '', 10);
+  if (!urlLimit && !isNaN(storedLimit) && storedLimit !== listLimit) {
+    setListLimit(storedLimit, { persist: false, refresh: true });
+  }
+
   resetPolling();
 })();
 </script>

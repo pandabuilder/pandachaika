@@ -67,6 +67,10 @@ def parse_config(global_settings: "Settings", config: dict[str, typing.Any]) -> 
             settings.proceed_with_download_if_lowest_cost = config["general"]["proceed_with_download_if_lowest_cost"]
         if "confirm_files_after_download" in config["general"]:
             settings.confirm_files_after_download = config["general"]["confirm_files_after_download"]
+        if "stop_on_seen_links" in config["general"]:
+            settings.stop_on_seen_links = bool(config["general"]["stop_on_seen_links"])
+        elif "stop_on_seen_link" in config["general"]:
+            settings.stop_on_seen_links = bool(config["general"]["stop_on_seen_link"])
     if "api" in config:
         if "concurrent_limit" in config["api"]:
             settings.api_concurrent_limit = config["api"]["concurrent_limit"]

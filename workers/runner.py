@@ -60,6 +60,7 @@ class WorkerRunner:
             self.settings.workers.web_queue = WebQueue(self.settings)
         self.heartbeat_thread: threading.Thread | None = None
         self.heartbeat_stop_event = threading.Event()
+        self.should_restart = False
 
     def get_task_stall_timeout(self) -> float:
         """Return stall/inactivity timeout in seconds for TaskQueue jobs (0 disables)."""
@@ -151,9 +152,23 @@ class WorkerRunner:
     def setup_signals(self) -> None:
         signal.signal(signal.SIGINT, self._handle_shutdown)
         signal.signal(signal.SIGTERM, self._handle_shutdown)
+        if hasattr(signal, "SIGHUP"):
+            signal.signal(signal.SIGHUP, self._handle_restart)
 
     def _handle_shutdown(self, signum: int, frame: object) -> None:
         logger.info("Received shutdown signal (%d). Shutting down worker...", signum)
+        self.running = False
+        self._job_finished_event.set()
+        try:
+            from core.base.process_pool import shutdown_process_pool
+
+            shutdown_process_pool(wait=False, cancel_futures=True)
+        except Exception:
+            pass
+
+    def _handle_restart(self, signum: int, frame: object) -> None:
+        logger.info("Received restart signal (%d). Shutting down worker for restart...", signum)
+        self.should_restart = True
         self.running = False
         self._job_finished_event.set()
         try:
@@ -227,12 +242,34 @@ class WorkerRunner:
             logger.warning("Error syncing monitored links: %s", e)
 
     def check_scheduler_commands(self) -> None:
-        """Check and process pending start/stop/force_run commands from SchedulerState."""
-        if not self.enable_schedulers:
-            return
+        """Check and process pending start/stop/force_run/restart commands from SchedulerState."""
         try:
             pending_commands = list(SchedulerState.objects.exclude(command_requested=""))
             if not pending_commands:
+                return
+
+            # Check for worker-runner level commands (e.g. restart) regardless of enable_schedulers
+            for state in pending_commands:
+                cmd = state.command_requested
+                name = state.name
+                if name in ("worker_runner", "worker_process") and cmd == "restart":
+                    logger.info("Executing requested 'restart' for %s via IPC", name)
+                    state.command_requested = ""
+                    state.command_arg = ""
+                    state.last_heartbeat = django_tz.now()
+                    state.save(update_fields=["command_requested", "command_arg", "last_heartbeat"])
+                    self.should_restart = True
+                    self.running = False
+                    self._job_finished_event.set()
+                    try:
+                        from core.base.process_pool import shutdown_process_pool
+
+                        shutdown_process_pool(wait=False, cancel_futures=True)
+                    except Exception:
+                        pass
+                    return
+
+            if not self.enable_schedulers:
                 return
 
             schedulers_by_name = {
@@ -506,16 +543,26 @@ class WorkerRunner:
                 from core.local.foldercrawler import FolderCrawler
                 folder_crawler = FolderCrawler(current_settings)
                 folder_crawler.start_crawling(job.args)
-            elif job.task_type in ("fileinfo_worker", "recalc_all_file_info"):
+            elif job.task_type in ("fileinfo_worker", "recalc_all_file_info", "calculate_missing_info"):
                 from core.workers.archive_work import ArchiveWorker
                 from viewer.models import Archive
-                archives = Archive.objects.filter(pk__in=job.args) if job.args else Archive.objects.all()
+                if job.args:
+                    archives = Archive.objects.filter(pk__in=job.args)
+                elif job.task_type == "calculate_missing_info":
+                    archives = Archive.objects.filter_by_missing_file_info()
+                else:
+                    archives = Archive.objects.all()
                 archive_worker = ArchiveWorker(current_settings, 4)
                 archive_worker.recalc_all_file_info(archives, force_local=True)
-            elif job.task_type in ("thumbnails_worker", "regenerate_all_thumbs"):
+            elif job.task_type in ("thumbnails_worker", "regenerate_all_thumbs", "generate_missing_thumbs"):
                 from core.workers.archive_work import ArchiveWorker
                 from viewer.models import Archive
-                archives = Archive.objects.filter(pk__in=job.args) if job.args else Archive.objects.all()
+                if job.args:
+                    archives = Archive.objects.filter(pk__in=job.args)
+                elif job.task_type == "generate_missing_thumbs":
+                    archives = Archive.objects.filter(thumbnail="")
+                else:
+                    archives = Archive.objects.all()
                 archive_worker = ArchiveWorker(current_settings, 4)
                 archive_worker.regenerate_all_thumbs(archives, force_local=True)
             elif job.task_type in ("extract_worker", "extract_archives"):
@@ -525,10 +572,15 @@ class WorkerRunner:
                 resized = bool(job.options.get("resized", False)) if isinstance(job.options, dict) else False
                 archive_worker = ArchiveWorker(current_settings, 4)
                 archive_worker.extract_archives(extract_archives_qs, resized=resized, user=job.user, force_local=True)
-            elif job.task_type in ("publish_worker", "publish_archives"):
+            elif job.task_type in ("publish_worker", "publish_archives", "set_all_hidden_as_public"):
                 from core.workers.archive_work import ArchiveWorker
                 from viewer.models import Archive
-                publish_archives_qs = Archive.objects.filter(pk__in=job.args) if job.args else Archive.objects.none()
+                if job.args:
+                    publish_archives_qs = Archive.objects.filter(pk__in=job.args)
+                elif job.task_type == "set_all_hidden_as_public":
+                    publish_archives_qs = Archive.objects.filter(gallery__hidden=True)
+                else:
+                    publish_archives_qs = Archive.objects.none()
                 archive_worker = ArchiveWorker(current_settings, 4)
                 archive_worker.publish_archives(
                     publish_archives_qs,
@@ -678,3 +730,18 @@ class WorkerRunner:
 
             self.register_stop()
             logger.info("Worker loop ended.")
+
+        if getattr(self, "should_restart", False):
+            self._restart_process()
+
+    def _restart_process(self) -> None:
+        logger.info("Restarting worker runner process (PID %d) via execv...", os.getpid())
+        try:
+            db.connections.close_all()
+        except Exception:
+            pass
+        try:
+            os.execv(sys.executable, [sys.executable] + sys.argv)
+        except Exception as e:
+            logger.error("Failed to execv on restart: %s. Exiting cleanly.", e)
+            sys.exit(0)

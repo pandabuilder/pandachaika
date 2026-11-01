@@ -214,21 +214,47 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
                 response["error"] = "Invalid limit."
             return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status=401)
     elif tool == "generate_missing_thumbs":
-        archives = Archive.objects.filter(thumbnail="")
-        for archive in archives:
-            logger.info("Generating thumbs for file: {}".format(archive.zipped.name))
-            archive.generate_thumbnails()
+        if thread_exists_in_db("thumbnails_worker"):
+            response["error"] = "Thumbnails worker is already running."
+            return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
+
+        archives_no_thumbnail = Archive.objects.filter(thumbnail="")
+        archive_pks = list(archives_no_thumbnail.values_list("pk", flat=True))
+        if not archive_pks:
+            response["message"] = "No archives missing thumbnails found."
+            return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
+
+        logger.info("Generating thumbs for %d archives missing thumbnails", len(archive_pks))
+        if crawler_settings.workers.archive_worker:
+            crawler_settings.workers.archive_worker.regenerate_all_thumbs(archives=archive_pks, user=request.user)
+        else:
+            archive_worker_thread = ArchiveWorker(crawler_settings, 4)
+            archive_worker_thread.regenerate_all_thumbs(archives=archive_pks, user=request.user)
+        response["message"] = f"Thumbnails worker started in background for {len(archive_pks)} archives."
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
     elif tool == "calculate_missing_info":
+        if thread_exists_in_db("fileinfo_worker"):
+            response["error"] = "File info worker is already running."
+            return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
+
         archives_missing_file_info = Archive.objects.filter_by_missing_file_info()
-        for archive in archives_missing_file_info:
-            logger.info("Calculating file info for file: {}".format(archive.zipped.name))
-            archive.recalc_fileinfo()
+        archive_pks = list(archives_missing_file_info.values_list("pk", flat=True))
+        if not archive_pks:
+            response["message"] = "No archives missing file info found."
+            return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
+
+        logger.info("Calculating file info for %d archives missing info", len(archive_pks))
+        if crawler_settings.workers.archive_worker:
+            crawler_settings.workers.archive_worker.recalc_all_file_info(archives=archive_pks, user=request.user)
+        else:
+            archive_worker_thread = ArchiveWorker(crawler_settings, 4)
+            archive_worker_thread.recalc_all_file_info(archives=archive_pks, user=request.user)
+        response["message"] = f"File info worker started in background for {len(archive_pks)} archives."
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
     elif tool == "recalc_all_file_info":
         if thread_exists_in_db("fileinfo_worker"):
             response["error"] = "File info worker is already running."
-            return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status=401)
+            return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
 
         logger.info("Recalculating file info for all archives")
         if crawler_settings.workers.archive_worker:
@@ -239,17 +265,23 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         response["message"] = "File info worker started in background."
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
     elif tool == "set_all_hidden_as_public":
+        if thread_exists_in_db("publish_worker"):
+            response["error"] = "Publish worker is already running."
+            return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
 
         archives = Archive.objects.filter(gallery__hidden=True)
+        archive_pks = list(archives.values_list("pk", flat=True))
+        if not archive_pks:
+            response["message"] = "No archives of hidden galleries found."
+            return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
 
-        for archive in archives:
-            if os.path.isfile(archive.zipped.path):
-                archive.public = True
-                archive.save()
-                if archive.gallery:
-                    archive.gallery.public = True
-                    archive.gallery.save()
-
+        logger.info("Publishing %d archives with hidden galleries", len(archive_pks))
+        if crawler_settings.workers.archive_worker:
+            crawler_settings.workers.archive_worker.publish_archives(archives=archive_pks, user=request.user)
+        else:
+            archive_worker_thread = ArchiveWorker(crawler_settings, 4)
+            archive_worker_thread.publish_archives(archives=archive_pks, user=request.user)
+        response["message"] = f"Publish worker started in background for {len(archive_pks)} archives."
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
     elif tool == "regenerate_all_thumbs":
         if thread_exists_in_db("thumbnails_worker"):
@@ -363,6 +395,34 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         else:
             response["error"] = "This OS does not support signal SIGUSR2"
             return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status=401)
+        return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
+    elif tool == "restart_workers":
+        import socket
+        from datetime import timedelta
+        import django.utils.timezone as django_tz
+        from workers.models import WorkerProcess, SchedulerState
+
+        heartbeat_cutoff = django_tz.now() - timedelta(seconds=60)
+        active_workers = list(WorkerProcess.objects.filter(status="running", last_heartbeat__gte=heartbeat_cutoff))
+        current_host = socket.gethostname()
+        signaled_pids = []
+        for wp in active_workers:
+            if hasattr(signal, "SIGHUP") and (not wp.hostname or wp.hostname == current_host):
+                try:
+                    os.kill(wp.pid, signal.SIGHUP)
+                    signaled_pids.append(wp.pid)
+                except (OSError, ProcessLookupError, PermissionError) as e:
+                    logger.warning("Could not send SIGHUP to worker PID %d: %s", wp.pid, e)
+
+        SchedulerState.request_command("worker_runner", "restart")
+        logger.info("Requested worker restart (active: %d, signaled: %s)", len(active_workers), signaled_pids)
+
+        if active_workers:
+            response["message"] = f"Restart requested for {len(active_workers)} running worker process(es)."
+            response["worker_pids"] = [wp.pid for wp in active_workers]
+        else:
+            response["message"] = "Restart command queued. No actively running workers detected."
+            response["worker_pids"] = []
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
     elif tool == "validate_settings":
         if request.method != "POST":

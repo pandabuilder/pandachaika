@@ -211,6 +211,10 @@ class GeneralSettings(BaseConfigModel):
         default=False,
         description="Automatically reload the web server when source file modifications are detected (CherryPy engine only).",
     )
+    stop_on_seen_links: bool = Field(
+        default=False,
+        description="Global default to stop processing when encountering a link seen before.",
+    )
     banned_tags: list[str] = Field(
         default_factory=lambda: [
             "language:thai",
@@ -422,7 +426,7 @@ class AutoWantedSettings(BaseConfigModel):
         description="Cycle interval (in seconds) between wanted gallery generator runs.",
     )
     providers: list[str] = Field(
-        default_factory=lambda: ["twitter"],
+        default_factory=list,
         description="Providers queried by the auto-wanted generator.",
     )
     unwanted_title: str = Field(
@@ -951,6 +955,7 @@ class BaseProviderGeneralSettings(BaseConfigModel):
     timeout_timer: int = Field(default=25, description="HTTP request timeout (in seconds).")
     wait_timer: int = Field(default=6, description="Rate-limit wait timer (in seconds) between requests.")
     stop_page_number: int | None = Field(default=None, description="Maximum page number to scrape when crawling.")
+    stop_on_seen_links: bool = Field(default=False, description="Stop processing when encountering a link seen before.")
     autoupdater_enable: bool = Field(default=False, description="Enable metadata autoupdater for this provider.")
     autoupdater_timer: float = Field(default=0.0, description="Cycle timer for autoupdater.")
     autoupdater_buffer_back: int = Field(default=0, description="Days back for autoupdater filtering.")
@@ -976,6 +981,10 @@ class PandaProviderGeneralSettings(BaseProviderGeneralSettings):
     stop_page_number: int | None = Field(
         default=5,
         description="Maximum page number to stop crawling at when scanning gallery feeds.",
+    )
+    stop_on_seen_links: bool = Field(
+        default=False,
+        description="Stop processing when encountering a link seen before.",
     )
     accepted_rss_categories: list[Any] = Field(
         default_factory=lambda: [
@@ -1143,30 +1152,6 @@ class MegaProviderConfig(BaseConfigModel):
     locations: GenericLocationsSettings = Field(default_factory=GenericLocationsSettings)
 
 
-class TwitterProviderGeneralSettings(BaseProviderGeneralSettings):
-    token: str = Field(default="", description="Twitter/X OAuth access token.")
-    token_secret: str = Field(default="", description="Twitter/X OAuth token secret.")
-    consumer_key: str = Field(default="", description="Twitter/X consumer API key.")
-    consumer_secret: str = Field(default="", description="Twitter/X consumer API secret.")
-
-
-class TwitterProviderWantedSettings(BaseConfigModel):
-    add_as_public: bool = Field(default=False, description="Add Twitter-discovered galleries as public entries.")
-    unwanted_title: str = Field(default="", description="Text filter for unwanted titles in Twitter scrapes.")
-    regexp_unwanted_title: bool = Field(default=False, description="Treat unwanted_title as a regex.")
-    regexp_unwanted_title_icase: bool = Field(default=False, description="Case-insensitive regex for unwanted_title.")
-
-
-class TwitterProviderConfig(BaseConfigModel):
-    """Provider configuration for Twitter/X integration."""
-
-    general: TwitterProviderGeneralSettings = Field(default_factory=TwitterProviderGeneralSettings)
-    wanted: TwitterProviderWantedSettings = Field(default_factory=TwitterProviderWantedSettings)
-    enabled_handles: list[str] = Field(
-        default_factory=list, description="Twitter usernames (@handles) to crawl and archive."
-    )
-
-
 class GenericProviderConfig(BaseConfigModel):
     """Provider configuration for generic/fallback downloads."""
 
@@ -1191,7 +1176,6 @@ class ProvidersConfig(BaseConfigModel):
     panda: PandaProviderConfig = Field(default_factory=PandaProviderConfig)
     chaika: ChaikaProviderConfig = Field(default_factory=ChaikaProviderConfig)
     mega: MegaProviderConfig = Field(default_factory=MegaProviderConfig)
-    twitter: TwitterProviderConfig = Field(default_factory=TwitterProviderConfig)
     nyaa: GenericProviderConfig = Field(default_factory=GenericProviderConfig)
     nexus: GenericProviderConfig = Field(default_factory=GenericProviderConfig)
     generic: GenericProviderConfig = Field(default_factory=GenericProviderConfig)
@@ -1709,9 +1693,8 @@ auto_wanted:
   cycle_timer: 4.0
 
   # Providers queried by the auto-wanted generator.
-  # Default: ['twitter']
-  providers:
-    - twitter
+  # Default: []
+  providers: []
 
   # Text filter automatically added to the unwanted_title field on generated wanted galleries.
   # Default: '[Chinese]'
@@ -2354,46 +2337,6 @@ providers:
       # Provider-specific archive download folder override.
       # Default: '' (uses general locations.archive_dl_folder)
       archive_dl_folder: ''
-
-  # Twitter / X ('twitter')
-  twitter:
-    general:
-      # Twitter OAuth access token.
-      # Default: ''
-      token: ''
-
-      # Twitter OAuth token secret.
-      # Default: ''
-      token_secret: ''
-
-      # Twitter consumer API application key.
-      # Default: ''
-      consumer_key: ''
-
-      # Twitter consumer API application secret.
-      # Default: ''
-      consumer_secret: ''
-
-    wanted:
-      # Mark Twitter-discovered galleries as public.
-      # Default: false
-      add_as_public: false
-
-      # Title filter for unwanted items.
-      # Default: ''
-      unwanted_title: ''
-
-      # Treat unwanted_title as a regular expression.
-      # Default: false
-      regexp_unwanted_title: false
-
-      # Case-insensitive regular expression for unwanted_title.
-      # Default: false
-      regexp_unwanted_title_icase: false
-
-    # List of Twitter screen names (@handles) to crawl and archive.
-    # Default: []
-    enabled_handles: []
 
   # Nyaa ('nyaa')
   nyaa:

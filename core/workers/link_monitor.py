@@ -69,6 +69,20 @@ class LinkMonitor(BaseScheduler):
                 logger.info("Using stop page: {}".format(monitored_link.stop_page))
                 for provider_settings in current_settings.providers.values():
                     provider_settings.stop_page_number = monitored_link.stop_page
+            stop_on_seen_val = getattr(monitored_link, "stop_on_seen_link", None)
+            if stop_on_seen_val == MonitoredLink.StopOnSeenChoices.ON or stop_on_seen_val in ("on", "ON", True):
+                logger.info("Using stop on seen links: on for monitored link: {}".format(monitored_link.name))
+                current_settings.stop_on_seen_links = True
+                for provider_settings in current_settings.providers.values():
+                    provider_settings.stop_on_seen_links = True
+            elif stop_on_seen_val == MonitoredLink.StopOnSeenChoices.OFF or stop_on_seen_val in ("off", "OFF", False):
+                logger.info("Using stop on seen links: off for monitored link: {}".format(monitored_link.name))
+                current_settings.stop_on_seen_links = False
+                for provider_settings in current_settings.providers.values():
+                    provider_settings.stop_on_seen_links = False
+            current_settings.monitored_link = monitored_link
+            for provider_settings in current_settings.providers.values():
+                provider_settings.monitored_link = monitored_link
             self.web_queue.enqueue_args_list(
                 arguments_to_crawler,
                 override_options=current_settings,

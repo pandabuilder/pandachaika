@@ -1,8 +1,8 @@
 import logging
 import re
 from datetime import datetime
+import zoneinfo
 
-import pytz
 from dateutil import parser as date_parser
 import bs4
 from bs4 import BeautifulSoup
@@ -141,7 +141,7 @@ def get_on_sale_date_from_soup(soup):
             sale_text_day = int(on_sale_match.group(3))
             try:
                 on_sale_date = datetime(
-                    sale_text_year, sale_text_month, sale_text_day, 0, 0, 0, 0, pytz.timezone("Asia/Tokyo")
+                    sale_text_year, sale_text_month, sale_text_day, 0, 0, 0, 0, zoneinfo.ZoneInfo("Asia/Tokyo")
                 )
             except ValueError:
                 logger.error(

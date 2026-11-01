@@ -305,7 +305,7 @@
         <button type="button" class="btn btn-sm btn-pg-primary" data-action="save" id="btn-save" title="Save changes (Ctrl+S / Cmd+S)">
           <i class="fas fa-save me-1"></i>Save
         </button>
-        <button type="button" class="btn btn-sm btn-pg" data-action="reload" id="btn-reload" title="Reload configuration in memory">
+        <button type="button" class="btn btn-sm btn-pg" data-action="reload" id="btn-reload" title="Reload configuration into web server memory (Note: to apply changes to background workers, you need to restart them)">
           <i class="fas fa-sync-alt me-1"></i>Apply changes
         </button>
         <button type="button" class="btn btn-sm btn-pg" data-action="reread" id="btn-reread" title="Discard unsaved changes and reread from disk">
@@ -324,6 +324,17 @@
           <i class="fas fa-book me-1"></i>Schema Reference
         </button>
       </div>
+    </div>
+
+    <!-- Background Worker Restart Notice -->
+    <div class="alert alert-info py-2 px-3 mb-3 d-flex align-items-center justify-content-between" style="font-size: 0.875rem;">
+      <div>
+        <i class="fas fa-info-circle me-1"></i>
+        <strong>Note:</strong> "Apply changes" reloads configuration in web server memory. To apply changes to background workers, you need to restart them.
+      </div>
+      <button type="button" class="btn btn-sm btn-outline-dark ms-2 text-nowrap" id="btn-restart-workers-settings" title="Restart background workers to load updated settings">
+        <i class="fas fa-redo-alt me-1"></i>Restart Workers
+      </button>
     </div>
 
     <!-- Feedback notification container -->
@@ -733,12 +744,30 @@
       .then(res => res.json())
       .then(response => {
         reloadButton.classList.remove('disabled');
-        showAlert('<i class="fas fa-sync-alt me-1"></i> Configuration reloaded into running server memory.', 'success');
+        showAlert('<i class="fas fa-sync-alt me-1"></i> Configuration reloaded into running server memory. <strong>Note:</strong> To apply changes to background workers, you need to restart them.', 'info');
       })
       .catch(() => {
         reloadButton.classList.remove('disabled');
         showAlert('Failed to reload configuration into memory.', 'danger');
       });
+  }
+
+  // --- Restart Background Workers ---
+  const restartWorkersButton = document.getElementById("btn-restart-workers-settings");
+  if (restartWorkersButton) {
+    restartWorkersButton.addEventListener('click', () => {
+      restartWorkersButton.classList.add('disabled');
+      fetch('../../tools-api/restart_workers/', { credentials: 'same-origin' })
+        .then(res => res.json())
+        .then(response => {
+          restartWorkersButton.classList.remove('disabled');
+          showAlert('<i class="fas fa-redo-alt me-1"></i> ' + (response.message || 'Worker restart requested.'), 'success');
+        })
+        .catch(() => {
+          restartWorkersButton.classList.remove('disabled');
+          showAlert('Failed to request worker restart.', 'danger');
+        });
+    });
   }
 
   // --- Event Listeners ---

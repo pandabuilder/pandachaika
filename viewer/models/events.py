@@ -8,6 +8,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.db.models import QuerySet
 import django.utils.timezone as django_tz
+from django.utils.translation import gettext_lazy as _
 
 from core.base.types import DataDict
 
@@ -54,6 +55,18 @@ class MonitoredLink(models.Model):
     proxy = models.CharField(max_length=200, blank=True, null=True)
     stop_page = models.IntegerField(blank=True, null=True)
 
+    class StopOnSeenChoices(models.TextChoices):
+        FOLLOW_GLOBAL = "follow_global", _("Follow global")
+        ON = "on", _("On")
+        OFF = "off", _("Off")
+
+    stop_on_seen_link = models.CharField(
+        max_length=20,
+        choices=StopOnSeenChoices.choices,
+        default=StopOnSeenChoices.FOLLOW_GLOBAL,
+        help_text=_("Stop processing when encountering a link seen before (follow global setting, on, or off)."),
+    )
+
     priority = models.IntegerField(
         default=10,
         blank=True,
@@ -78,6 +91,22 @@ class MonitoredLink(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+    @property
+    def stop_on_seen(self) -> str:
+        return self.stop_on_seen_link
+
+    @stop_on_seen.setter
+    def stop_on_seen(self, value: str) -> None:
+        self.stop_on_seen_link = value
+
+    @property
+    def stop_on_seen_links(self) -> str:
+        return self.stop_on_seen_link
+
+    @stop_on_seen_links.setter
+    def stop_on_seen_links(self, value: str) -> None:
+        self.stop_on_seen_link = value
 
     @property
     def scheduler_name(self) -> str:

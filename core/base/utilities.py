@@ -783,10 +783,10 @@ def thread_exists_in_db(thread_name: str) -> bool:
     try:
         from workers.models import TaskQueue
         alias_groups = [
-            {"fileinfo_worker", "recalc_all_file_info"},
-            {"thumbnails_worker", "regenerate_all_thumbs"},
+            {"fileinfo_worker", "recalc_all_file_info", "calculate_missing_info"},
+            {"thumbnails_worker", "regenerate_all_thumbs", "generate_missing_thumbs"},
             {"extract_worker", "extract_archives"},
-            {"publish_worker", "publish_archives"},
+            {"publish_worker", "publish_archives", "set_all_hidden_as_public"},
             {"foldercrawler", "folder_crawler"},
             {"webcrawler", "web_crawler"},
             {"match_unmatched_worker", "generate_possible_matches_internally"},

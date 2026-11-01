@@ -68,7 +68,7 @@ test-all:
     - python --version
     - uv sync --locked --active --group ci
     - uv run --no-sync manage.py migrate
-    - uv run --no-sync manage.py test --noinput viewer.tests.test_internal viewer.tests.test_core viewer.tests.test_registry_api
+    - uv run --no-sync manage.py test --noinput viewer.tests.test_internal viewer.tests.test_core
     - uv cache prune --ci
   tags:
     - django

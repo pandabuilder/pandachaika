@@ -831,9 +831,10 @@ class UserLongLivedTokenAdmin(admin.ModelAdmin):
 
 class ProcessedLinksAdmin(admin.ModelAdmin):
 
-    list_filter = ["link_date", "create_date", "provider"]
-    list_display = ["source_id", "url", "title", "link_date", "create_date"]
-    search_fields = ["url"]
+    raw_id_fields = ["monitored_link"]
+    list_filter = ["link_date", "create_date", "provider", "monitored_link"]
+    list_display = ["source_id", "url", "title", "provider", "monitored_link", "link_date", "create_date"]
+    search_fields = ["url", "source_id"]
 
 
 class ItemPropertiesAdmin(admin.ModelAdmin):
@@ -894,8 +895,8 @@ class ArchiveOptionAdmin(admin.ModelAdmin):
 class MonitoredLinkAdmin(admin.ModelAdmin):
 
     raw_id_fields = ["limited_wanted_galleries"]
-    list_filter = ["enabled", "auto_start", "priority", "provider"]
-    list_display = ["name", "provider", "priority", "enabled", "auto_start", "create_date"]
+    list_filter = ["enabled", "auto_start", "priority", "provider", "stop_on_seen_link"]
+    list_display = ["name", "provider", "priority", "stop_on_seen_link", "enabled", "auto_start", "create_date"]
     search_fields = ["name", "url"]
     actions = ["start_running", "stop_running", "force_run"]
 

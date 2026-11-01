@@ -30,6 +30,7 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
+from django.contrib.postgres.indexes import GinIndex
 from django.core.exceptions import ValidationError
 from django.core.files import File
 from django.core.validators import MaxValueValidator, MinValueValidator
@@ -386,6 +387,16 @@ class Archive(models.Model):
                 F("public").asc(nulls_last=True),
                 "binned",
                 name="archive_pub2_binned",
+            ),
+            GinIndex(
+                fields=["title"],
+                name="archive_title_trgm_gin",
+                opclasses=["gin_trgm_ops"],
+            ),
+            GinIndex(
+                fields=["title_jpn"],
+                name="archive_title_jpn_trgm_gin",
+                opclasses=["gin_trgm_ops"],
             ),
         ]
 
@@ -1013,11 +1024,11 @@ class Archive(models.Model):
             galleries = Gallery.objects.eligible_for_use(provider__contains=provider_filter)
         else:
             galleries = Gallery.objects.eligible_for_use()
-        for gallery in galleries:
-            if gallery.title:
-                galleries_title_id.append((replace_illegal_name(gallery.title), gallery.pk))
-            if gallery.title_jpn:
-                galleries_title_id.append((replace_illegal_name(gallery.title_jpn), gallery.pk))
+        for title, title_jpn, pk in galleries.values_list("title", "title_jpn", "pk").iterator(chunk_size=5000):
+            if title:
+                galleries_title_id.append((replace_illegal_name(title), pk))
+            if title_jpn:
+                galleries_title_id.append((replace_illegal_name(title_jpn), pk))
 
         if provider_filter:
             matchers = settings.PROVIDER_CONTEXT.get_matchers(

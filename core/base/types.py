@@ -121,6 +121,8 @@ class ProviderSettings:
         self.timeout_timer: int = global_settings.timeout_timer
         self.wait_timer: float = float(global_settings.wait_timer)
         self.stop_page_number: int | None = None
+        self.stop_on_seen_links: bool = getattr(global_settings, "stop_on_seen_links", False)
+        self.monitored_link: Any | None = None
 
         # Auto updater
         self.autoupdater_enable: bool = global_settings.autoupdater.enable
@@ -158,6 +160,10 @@ class ProviderSettings:
                 self.autoupdater_buffer_after = int(config["general"]["autoupdater_buffer_after"])
             if "stop_page_number" in config["general"]:
                 self.stop_page_number = int(config["general"]["stop_page_number"])
+            if "stop_on_seen_links" in config["general"]:
+                self.stop_on_seen_links = bool(config["general"]["stop_on_seen_links"])
+            elif "stop_on_seen_link" in config["general"]:
+                self.stop_on_seen_links = bool(config["general"]["stop_on_seen_link"])
             if "queue_archive_downloads" in config["general"] and config["general"]["queue_archive_downloads"] is not None:
                 self.queue_archive_downloads = bool(config["general"]["queue_archive_downloads"])
             if (
@@ -167,6 +173,14 @@ class ProviderSettings:
                 self.max_parallel_archive_downloads = int(config["general"]["max_parallel_archive_downloads"])
         if "proxies" in config:
             self.proxies.update(config["proxies"])
+
+    @property
+    def stop_on_seen_link(self) -> bool:
+        return self.stop_on_seen_links
+
+    @stop_on_seen_link.setter
+    def stop_on_seen_link(self, value: bool) -> None:
+        self.stop_on_seen_links = value
 
 
 class TorrentClient:

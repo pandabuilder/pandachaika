@@ -88,13 +88,11 @@ dependencies = [
     "py7zr==1.1.4",
     "pysocks==1.7.1",
     "python-dateutil==3.0.0",
-    "pytz==2026.5",
     "pyyaml==6.0.3",
     "rarfile==4.5",
     "requests==2.34.2",
     "transmission-rpc==7.0.12",
-    "twitter==1.19.6",
-    "pydantic==2.14.1",
+    "pydantic==2.14.2",
 ]
 
 [dependency-groups]
@@ -102,19 +100,17 @@ dev = [
     "django-debug-toolbar==8.0.0",
     "django-stubs==6.1.2",
     "django-unused-media==0.2.2",
-    "mypy==2.4.0",
-    "ruff==0.17.2",
+    "mypy==2.4.1",
+    "ruff==0.17.3",
     "types-python-dateutil==2.9.0.20261021",
-    "types-pytz==2026.5.0.20261006",
     "types-requests==2.33.0.20261006",
 ]
 
 ci = [
-    "mypy==2.4.0",
-    "ruff==0.17.2",
+    "mypy==2.4.1",
+    "ruff==0.17.3",
     "django-stubs==6.1.2",
     "types-requests==2.33.0.20261006",
-    "types-pytz==2026.5.0.20261006",
     "types-python-dateutil==2.9.0.20261021",
     "unittest-xml-reporting==4.0.0",
 ]

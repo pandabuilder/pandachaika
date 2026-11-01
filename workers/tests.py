@@ -2227,6 +2227,105 @@ class WorkersDashboardAPITests(TestCase):
         self.assertEqual(dl["speed"], 5242880.0)
         self.assertEqual(dl["speed_formatted"], "5.0 MB/s")
 
+    def test_workers_status_list_limit_param(self):
+        from workers.models import TaskQueue
+
+        for i in range(30):
+            TaskQueue.objects.create(task_type="fileinfo_worker", args=[i], status=TaskQueue.Status.PENDING)
+            TaskQueue.objects.create(
+                task_type="fileinfo_worker",
+                args=[i],
+                status=TaskQueue.Status.COMPLETED,
+                finished_at=django_tz.now(),
+            )
+
+        # Default limit is 25
+        data = self.staff_client.get("/api/workers/status/").json()
+        self.assertEqual(len(data["pending_tasks"]), 25)
+        self.assertEqual(len(data["recent_tasks"]), 25)
+        self.assertEqual(data["limits"]["limit"], 25)
+        self.assertEqual(data["summary"]["pending_tasks_count"], 30)
+
+        # Explicit limit
+        data = self.staff_client.get("/api/workers/status/?limit=5").json()
+        self.assertEqual(len(data["pending_tasks"]), 5)
+        self.assertEqual(len(data["recent_tasks"]), 5)
+        self.assertEqual(data["limits"]["limit"], 5)
+
+        # Per-section override
+        data = self.staff_client.get("/api/workers/status/?limit=5&recent_limit=10").json()
+        self.assertEqual(len(data["pending_tasks"]), 5)
+        self.assertEqual(len(data["recent_tasks"]), 10)
+
+        # Invalid / out of range values are sanitized
+        data = self.staff_client.get("/api/workers/status/?limit=abc").json()
+        self.assertEqual(data["limits"]["limit"], 25)
+        data = self.staff_client.get("/api/workers/status/?limit=0").json()
+        self.assertEqual(data["limits"]["limit"], 1)
+        data = self.staff_client.get("/api/workers/status/?limit=100000").json()
+        self.assertEqual(data["limits"]["limit"], data["limits"]["max_limit"])
+
+        # The HTML page honors the limit too
+        res_page = self.staff_client.get("/stats/workers/?limit=5")
+        self.assertEqual(res_page.status_code, 200)
+        self.assertEqual(len(res_page.context["dashboard"]["pending_tasks"]), 5)
+
+    def test_workers_status_downloads_broken_down_by_type(self):
+        from viewer.models import DownloadEvent
+
+        # Many stuck hath downloads, newer than the single archive download.
+        archive_dl = DownloadEvent.objects.create(
+            name="active_archive",
+            method="archive",
+            download_id="/tmp/active_archive.zip",
+            status=DownloadEvent.Status.IN_PROGRESS,
+            total_size=1000,
+            progress=40.0,
+        )
+        for i in range(8):
+            DownloadEvent.objects.create(
+                name=f"stuck_hath_{i}",
+                method="hath",
+                download_id=f"hath_{i}",
+                status=DownloadEvent.Status.IN_PROGRESS,
+            )
+        for i in range(2):
+            DownloadEvent.objects.create(
+                name=f"queued_torrent_{i}",
+                method="torrent",
+                download_id=f"torrent_{i}",
+                status=DownloadEvent.Status.QUEUED,
+            )
+        # Finished downloads are not counted
+        DownloadEvent.objects.create(
+            name="done", method="archive", download_id="done", status=DownloadEvent.Status.COMPLETED
+        )
+
+        data = self.staff_client.get("/api/workers/status/?downloads_limit=3").json()
+
+        self.assertEqual(data["summary"]["active_downloads_count"], 11)
+        types = {t["type"]: t for t in data["download_types"]}
+        self.assertEqual([t["type"] for t in data["download_types"]], ["archive", "hath", "torrent"])
+
+        self.assertEqual(types["archive"]["total_count"], 1)
+        self.assertEqual(types["archive"]["in_progress_count"], 1)
+        self.assertEqual(types["archive"]["shown_count"], 1)
+        self.assertFalse(types["archive"]["is_truncated"])
+
+        self.assertEqual(types["hath"]["total_count"], 8)
+        self.assertEqual(types["hath"]["shown_count"], 3)
+        self.assertTrue(types["hath"]["is_truncated"])
+
+        self.assertEqual(types["torrent"]["queued_count"], 2)
+        self.assertEqual(types["torrent"]["shown_count"], 2)
+
+        # The archive download is still listed despite the hath ones being newer.
+        self.assertEqual(len(data["downloads"]), 6)
+        self.assertEqual(data["downloads"][0]["id"], archive_dl.pk)
+        self.assertEqual(data["downloads"][0]["type"], "archive")
+        self.assertEqual(data["downloads"][0]["type_label"], "Archive")
+        self.assertEqual(data["summary"]["shown_downloads_count"], 6)
+
 
 class QueueStallAndTimeoutFixesTests(TestCase):
 

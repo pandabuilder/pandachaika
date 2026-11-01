@@ -93,10 +93,10 @@ def enqueue_matching_task(
 TASK_TYPE_ALIAS_GROUPS: list[set[str]] = [
     {"web_crawler", "webcrawler"},
     {"folder_crawler", "foldercrawler"},
-    {"fileinfo_worker", "recalc_all_file_info"},
-    {"thumbnails_worker", "regenerate_all_thumbs"},
+    {"fileinfo_worker", "recalc_all_file_info", "calculate_missing_info"},
+    {"thumbnails_worker", "regenerate_all_thumbs", "generate_missing_thumbs"},
     {"extract_worker", "extract_archives"},
-    {"publish_worker", "publish_archives"},
+    {"publish_worker", "publish_archives", "set_all_hidden_as_public"},
     {"match_unmatched_worker", "generate_possible_matches_internally"},
     {"web_search_worker", "search_wanted_galleries_provider_titles"},
     {"wanted_local_search_worker", "wanted_galleries_possible_matches"},

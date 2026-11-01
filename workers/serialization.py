@@ -76,10 +76,19 @@ def _serialize_provider_settings(prov_settings: Any) -> dict[str, Any]:
     if hasattr(prov_settings, "__slots__"):
         for k in prov_settings.__slots__:
             if hasattr(prov_settings, k):
-                prov_dict[k] = _to_serializable_value(getattr(prov_settings, k))
+                if k == "monitored_link":
+                    ml_val = getattr(prov_settings, k)
+                    if ml_val and hasattr(ml_val, "pk"):
+                        prov_dict["monitored_link_id"] = ml_val.pk
+                else:
+                    prov_dict[k] = _to_serializable_value(getattr(prov_settings, k))
     elif hasattr(prov_settings, "__dict__"):
         for k, v in vars(prov_settings).items():
-            prov_dict[k] = _to_serializable_value(v)
+            if k == "monitored_link":
+                if v and hasattr(v, "pk"):
+                    prov_dict["monitored_link_id"] = v.pk
+            else:
+                prov_dict[k] = _to_serializable_value(v)
     return prov_dict
 
 
@@ -93,6 +102,8 @@ def serialize_settings_options(options: Any) -> dict[str, Any]:
         for k, v in options.items():
             if k == "archive_user" and v and getattr(v, "is_authenticated", False) and getattr(v, "pk", None):
                 clean_dict["user_id"] = v.pk
+            elif k == "monitored_link" and v and getattr(v, "pk", None):
+                clean_dict["monitored_link_id"] = v.pk
             else:
                 clean_dict[str(k)] = _to_serializable_value(v)
         return clean_dict
@@ -114,6 +125,11 @@ def serialize_settings_options(options: Any) -> dict[str, Any]:
             if key == "archive_user":
                 if val and getattr(val, "is_authenticated", False) and getattr(val, "pk", None):
                     clean_dict["user_id"] = val.pk
+                continue
+
+            if key == "monitored_link":
+                if val and getattr(val, "pk", None):
+                    clean_dict["monitored_link_id"] = val.pk
                 continue
 
             if key == "providers" and isinstance(val, dict):
@@ -170,8 +186,19 @@ def deserialize_settings_options(base_settings: Settings | None, options: dict[s
         except Exception:
             pass
 
+    if "monitored_link_id" in options and options["monitored_link_id"] is not None:
+        try:
+            from viewer.models import MonitoredLink
+            ml = MonitoredLink.objects.filter(pk=options["monitored_link_id"]).first()
+            if ml:
+                new_settings.monitored_link = ml
+                for prov_obj in new_settings.providers.values():
+                    prov_obj.monitored_link = ml
+        except Exception:
+            pass
+
     for k, v in options.items():
-        if k in ("user_id", "archive_user"):
+        if k in ("user_id", "archive_user", "monitored_link_id", "monitored_link"):
             continue
 
         if k == "replace_metadata":
@@ -201,6 +228,15 @@ def deserialize_settings_options(base_settings: Settings | None, options: dict[s
                 if prov_name in new_settings.providers and isinstance(prov_data, dict):
                     prov_obj = new_settings.providers[prov_name]
                     for p_attr, p_val in prov_data.items():
+                        if p_attr == "monitored_link_id" and p_val is not None:
+                            try:
+                                from viewer.models import MonitoredLink
+                                ml = MonitoredLink.objects.filter(pk=p_val).first()
+                                if ml:
+                                    prov_obj.monitored_link = ml
+                            except Exception:
+                                pass
+                            continue
                         if hasattr(prov_obj, p_attr):
                             setattr(prov_obj, p_attr, p_val)
             continue

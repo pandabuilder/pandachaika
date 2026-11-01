@@ -10,7 +10,7 @@ from typing import Any
 import django.utils.timezone as django_tz
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
-from django.db.models import Count
+from django.db.models import Case, Count, IntegerField, Value, When
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.views.decorators.http import require_http_methods
 
@@ -33,6 +33,69 @@ KNOWN_TASK_TYPES: list[tuple[str, str, str]] = [
     ("match_unmatched_gallery_groups_worker", "Match Groups", "Matches archives within gallery match groups"),
     ("web_match_worker", "Web Matcher", "Web matching for archive groups"),
 ]
+
+# Default/maximum number of rows returned for list sections (pending tasks, recent tasks,
+# downloads per type). The page sends the desired value via the ``limit`` query parameter.
+DEFAULT_LIST_LIMIT = 25
+MAX_LIST_LIMIT = 500
+
+# Download types correspond to DownloadEvent.method (the downloader ``type``).
+DOWNLOAD_TYPE_LABELS: dict[str, str] = {
+    "archive": "Archive",
+    "hath": "H@H",
+    "torrent": "Torrent",
+    "torrent_api": "Torrent (API)",
+    "gallerydl": "gallery-dl",
+    "chaika": "Chaika",
+    "submit": "Submit",
+    "info": "Info",
+    "fake": "Fake",
+    "scheduler": "Scheduler Transfer",
+    "other": "Other",
+}
+# Preferred display order, unknown types are appended alphabetically.
+DOWNLOAD_TYPE_ORDER: list[str] = ["archive", "hath", "torrent", "torrent_api", "gallerydl"]
+# Live scheduler downloads not matched to a DownloadEvent are attributed to these types.
+SCHEDULER_DOWNLOAD_TYPES: dict[str, str] = {
+    "archive_download_queue": "archive",
+}
+
+
+def parse_list_limit(value: Any, default: int = DEFAULT_LIST_LIMIT) -> int:
+    """Parse a list limit from user input, clamped to [1, MAX_LIST_LIMIT]."""
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(1, min(parsed, MAX_LIST_LIMIT))
+
+
+def get_list_limits_from_request(request: HttpRequest) -> dict[str, int]:
+    """Read list limits from the query string. ``limit`` sets all sections, while
+    ``pending_limit``, ``recent_limit`` and ``downloads_limit`` override individual ones."""
+    base = parse_list_limit(request.GET.get("limit"))
+    return {
+        "limit": base,
+        "pending_limit": parse_list_limit(request.GET.get("pending_limit"), base),
+        "recent_limit": parse_list_limit(request.GET.get("recent_limit"), base),
+        "downloads_limit": parse_list_limit(request.GET.get("downloads_limit"), base),
+    }
+
+
+def normalize_download_type(method: str | None) -> str:
+    return (method or "").strip().lower() or "other"
+
+
+def download_type_label(dl_type: str) -> str:
+    return DOWNLOAD_TYPE_LABELS.get(dl_type) or dl_type.replace("_", " ").title()
+
+
+def download_type_sort_key(dl_type: str) -> tuple[int, str]:
+    if dl_type in DOWNLOAD_TYPE_ORDER:
+        return DOWNLOAD_TYPE_ORDER.index(dl_type), ""
+    if dl_type in ("scheduler", "other"):
+        return len(DOWNLOAD_TYPE_ORDER) + 2, dl_type
+    return len(DOWNLOAD_TYPE_ORDER) + 1, download_type_label(dl_type).lower()
 
 
 def format_timespan(seconds: float | int | None) -> str:
@@ -67,10 +130,24 @@ def format_bytes(num_bytes: int | float | None) -> str:
     return f"{num:.1f} PB"
 
 
-def get_workers_dashboard_snapshot() -> dict[str, Any]:
+def get_workers_dashboard_snapshot(
+    limit: int = DEFAULT_LIST_LIMIT,
+    pending_limit: int | None = None,
+    recent_limit: int | None = None,
+    downloads_limit: int | None = None,
+) -> dict[str, Any]:
     """Compile a comprehensive operational snapshot of all background processes,
     worker runners, queues, schedulers, and active downloads.
+
+    ``limit`` caps the number of rows of list sections, the specific ``*_limit``
+    arguments override it per section. ``downloads_limit`` is applied per download type
+    so a type with many idle downloads can't hide another type's active ones.
     """
+    limit = parse_list_limit(limit)
+    pending_limit = parse_list_limit(pending_limit, limit)
+    recent_limit = parse_list_limit(recent_limit, limit)
+    downloads_limit = parse_list_limit(downloads_limit, limit)
+
     now = django_tz.now()
     heartbeat_threshold_seconds = 30
     cutoff = now - timedelta(seconds=heartbeat_threshold_seconds)
@@ -227,11 +304,11 @@ def get_workers_dashboard_snapshot() -> dict[str, Any]:
         .annotate(count=Count("id"))
     )
     counts_map: dict[str, dict[str, int]] = defaultdict(lambda: {"pending": 0, "processing": 0})
-    for entry in queue_counts_raw:
-        t_type = entry["task_type"]
-        status = entry["status"]
+    for queue_entry in queue_counts_raw:
+        t_type = queue_entry["task_type"]
+        status = queue_entry["status"]
         if status in ("pending", "processing"):
-            counts_map[t_type][status] += entry["count"]
+            counts_map[t_type][status] += queue_entry["count"]
 
     known_types_set = {t[0] for t in KNOWN_TASK_TYPES}
     all_task_types = list(KNOWN_TASK_TYPES)
@@ -260,11 +337,11 @@ def get_workers_dashboard_snapshot() -> dict[str, Any]:
             }
         )
 
-    # 5. Pending tasks preview (first 25)
+    # 5. Pending tasks preview (first N)
     pending_tasks_qs = (
         TaskQueue.objects.filter(status=TaskQueue.Status.PENDING)
         .select_related("user")
-        .order_by("priority", "created_at", "id")[:25]
+        .order_by("priority", "created_at", "id")[:pending_limit]
     )
     pending_tasks = []
     for task in pending_tasks_qs:
@@ -290,7 +367,7 @@ def get_workers_dashboard_snapshot() -> dict[str, Any]:
             status__in=[TaskQueue.Status.COMPLETED, TaskQueue.Status.FAILED, TaskQueue.Status.CANCELLED]
         )
         .select_related("user")
-        .order_by("-finished_at", "-id")[:25]
+        .order_by("-finished_at", "-id")[:recent_limit]
     )
     recent_tasks = []
     for task in recent_tasks_qs:
@@ -319,18 +396,58 @@ def get_workers_dashboard_snapshot() -> dict[str, Any]:
         )
 
     # 7. Download Events & Live Scheduler Downloads
-    downloads_qs = (
-        DownloadEvent.objects.filter(completed=False)
-        .exclude(
-            status__in=[
-                DownloadEvent.Status.COMPLETED,
-                DownloadEvent.Status.FAILED,
-                DownloadEvent.Status.CANCELLED,
-            ]
-        )
-        .select_related("archive", "gallery")
-        .order_by("-create_date")[:25]
+    active_downloads_qs = DownloadEvent.objects.filter(completed=False).exclude(
+        status__in=[
+            DownloadEvent.Status.COMPLETED,
+            DownloadEvent.Status.FAILED,
+            DownloadEvent.Status.CANCELLED,
+        ]
     )
+
+    # Per-type totals over *all* active downloads (not limited), so the summary stays accurate.
+    download_type_stats: dict[str, dict[str, Any]] = {}
+    raw_methods_by_type: dict[str, set[str]] = defaultdict(set)
+
+    def _type_entry(dl_type: str) -> dict[str, Any]:
+        if dl_type not in download_type_stats:
+            download_type_stats[dl_type] = {
+                "type": dl_type,
+                "label": download_type_label(dl_type),
+                "total_count": 0,
+                "in_progress_count": 0,
+                "queued_count": 0,
+                "transferring_count": 0,
+                "shown_count": 0,
+                "speed": 0.0,
+            }
+        return download_type_stats[dl_type]
+
+    for row in active_downloads_qs.values("method", "status").annotate(count=Count("id")):
+        dl_type = normalize_download_type(row["method"])
+        raw_methods_by_type[dl_type].add(row["method"] or "")
+        stats_item = _type_entry(dl_type)
+        stats_item["total_count"] += row["count"]
+        if row["status"] == DownloadEvent.Status.IN_PROGRESS:
+            stats_item["in_progress_count"] += row["count"]
+        elif row["status"] == DownloadEvent.Status.QUEUED:
+            stats_item["queued_count"] += row["count"]
+
+    # Fetch up to ``downloads_limit`` rows per type, in-progress before queued.
+    status_rank = Case(
+        When(status=DownloadEvent.Status.IN_PROGRESS, then=Value(0)),
+        When(status=DownloadEvent.Status.QUEUED, then=Value(1)),
+        default=Value(2),
+        output_field=IntegerField(),
+    )
+    downloads_events: list[tuple[str, DownloadEvent]] = []
+    for dl_type, raw_methods in raw_methods_by_type.items():
+        type_qs = (
+            active_downloads_qs.filter(method__in=raw_methods)
+            .select_related("archive", "gallery")
+            .annotate(status_rank=status_rank)
+            .order_by("status_rank", "-create_date", "-id")[:downloads_limit]
+        )
+        downloads_events.extend((dl_type, dl) for dl in type_qs)
 
     # Gather active downloads from schedulers (e.g. archive_download_queue, post_downloader)
     scheduler_downloads_map: dict[str, dict[str, Any]] = {}
@@ -340,6 +457,7 @@ def get_workers_dashboard_snapshot() -> dict[str, Any]:
             if fn:
                 scheduler_downloads_map[fn] = {
                     "scheduler_name": s.get("display_name") or s.get("name"),
+                    "scheduler_key": s.get("name"),
                     "worker_pid": s.get("worker_pid"),
                     **cd,
                 }
@@ -347,7 +465,7 @@ def get_workers_dashboard_snapshot() -> dict[str, Any]:
     downloads_list: list[dict[str, Any]] = []
     matched_filenames: set[str] = set()
 
-    for dl in downloads_qs:
+    for dl_type, dl in downloads_events:
         spd = getattr(dl, "speed", 0.0) or 0.0
         dl_filesize = dl.total_size
         dl_progress = round(dl.progress, 1)
@@ -383,6 +501,10 @@ def get_workers_dashboard_snapshot() -> dict[str, Any]:
             {
                 "id": dl.pk,
                 "name": dl.name or (dl.archive.title if dl.archive else "Download"),
+                "type": dl_type,
+                "type_label": download_type_label(dl_type),
+                "method": dl.method,
+                "provider": dl.provider,
                 "archive_id": dl.archive_id,
                 "archive_url": dl.archive.get_absolute_url() if dl.archive else None,
                 "gallery_id": dl.gallery_id,
@@ -392,8 +514,10 @@ def get_workers_dashboard_snapshot() -> dict[str, Any]:
                 "progress": dl_progress,
                 "speed": spd,
                 "speed_formatted": f"{format_bytes(spd)}/s",
+                "is_transferring": spd > 0,
                 "status": dl.status,
                 "worker_pid": dl.worker_pid or (matched_cd.get("worker_pid") if matched_cd else None),
+                "created_at": dl.create_date.isoformat() if dl.create_date else None,
             }
         )
 
@@ -404,11 +528,18 @@ def get_workers_dashboard_snapshot() -> dict[str, Any]:
             dled = int(cd_info.get("downloaded", 0) or 0)
             prog = round((dled / fs) * 100.0, 1) if fs > 0 else 0.0
             spd = float(cd_info.get("speed", 0.0) or 0.0)
-            downloads_list.insert(
-                0,
+            dl_type = SCHEDULER_DOWNLOAD_TYPES.get(str(cd_info.get("scheduler_key") or ""), "scheduler")
+            stats_item = _type_entry(dl_type)
+            stats_item["total_count"] += 1
+            stats_item["in_progress_count"] += 1
+            downloads_list.append(
                 {
                     "id": f"sched_{cd_info.get('scheduler_name')}_{s_fn[:10]}",
                     "name": s_fn,
+                    "type": dl_type,
+                    "type_label": download_type_label(dl_type),
+                    "method": "",
+                    "provider": "",
                     "archive_id": None,
                     "archive_url": None,
                     "gallery_id": None,
@@ -418,12 +549,47 @@ def get_workers_dashboard_snapshot() -> dict[str, Any]:
                     "progress": prog,
                     "speed": spd,
                     "speed_formatted": f"{format_bytes(spd)}/s",
+                    "is_transferring": spd > 0,
                     "status": f"in_progress ({cd_info.get('scheduler_name')})",
                     "worker_pid": cd_info.get("worker_pid"),
+                    "created_at": None,
                 },
             )
 
+    # Group by type; within a type, show downloads actually transferring data first,
+    # then in-progress, then queued (stable sort keeps newest-first order otherwise).
+    def _status_rank(status: str) -> int:
+        if status.startswith(DownloadEvent.Status.IN_PROGRESS):
+            return 0
+        if status == DownloadEvent.Status.QUEUED:
+            return 1
+        return 2
+
+    downloads_list.sort(
+        key=lambda d: (
+            download_type_sort_key(d["type"]),
+            0 if d["is_transferring"] else 1,
+            _status_rank(str(d["status"])),
+        )
+    )
+
+    for d in downloads_list:
+        stats_item = _type_entry(d["type"])
+        stats_item["shown_count"] += 1
+        stats_item["speed"] += float(d["speed"] or 0.0)
+        if d["is_transferring"]:
+            stats_item["transferring_count"] += 1
+
+    download_types: list[dict[str, Any]] = []
+    for dl_type in sorted(download_type_stats, key=download_type_sort_key):
+        type_info = download_type_stats[dl_type]
+        type_info["speed_formatted"] = f"{format_bytes(type_info['speed'])}/s"
+        type_info["is_truncated"] = type_info["shown_count"] < type_info["total_count"]
+        download_types.append(type_info)
+
     total_download_speed = sum(float(d.get("speed", 0.0) or 0.0) for d in downloads_list)
+    total_active_downloads = sum(t["total_count"] for t in download_types)
+    transferring_downloads = sum(t["transferring_count"] for t in download_types)
 
     # 8. 24h task stats
     failed_24h = TaskQueue.objects.filter(status=TaskQueue.Status.FAILED, finished_at__gte=last_24h).count()
@@ -507,12 +673,21 @@ def get_workers_dashboard_snapshot() -> dict[str, Any]:
             "completed_tasks_24h_count": completed_24h,
             "active_schedulers_count": active_schedulers_count,
             "total_schedulers_count": len(schedulers_list),
-            "active_downloads_count": len(downloads_list),
+            "active_downloads_count": total_active_downloads,
+            "shown_downloads_count": len(downloads_list),
+            "transferring_downloads_count": transferring_downloads,
             "total_download_speed": total_download_speed,
             "total_download_speed_formatted": f"{format_bytes(total_download_speed)}/s",
             "process_pool_workers": process_pool_workers,
             "server_time": now.isoformat(),
             "server_time_formatted": now.strftime("%Y-%m-%d %H:%M:%S UTC"),
+        },
+        "limits": {
+            "limit": limit,
+            "pending_limit": pending_limit,
+            "recent_limit": recent_limit,
+            "downloads_limit": downloads_limit,
+            "max_limit": MAX_LIST_LIMIT,
         },
         "workers": workers_list,
         "queues": queues_summary,
@@ -521,6 +696,7 @@ def get_workers_dashboard_snapshot() -> dict[str, Any]:
         "recent_tasks": recent_tasks,
         "schedulers": schedulers_list,
         "downloads": downloads_list,
+        "download_types": download_types,
         "diagram": {
             "nodes": diagram_nodes,
             "edges": diagram_edges,
@@ -532,11 +708,15 @@ def get_workers_dashboard_snapshot() -> dict[str, Any]:
 def workers_status_api(request: HttpRequest) -> HttpResponse:
     """REST API returning live JSON status of all background worker processes,
     queues, schedulers, and downloads.
+
+    Query parameters: ``limit`` (rows per list section, default 25, max 500) and the
+    optional per-section overrides ``pending_limit``, ``recent_limit``, ``downloads_limit``
+    (the latter is applied per download type).
     """
     if not request.user.is_staff:
         return JsonResponse({"error": "Admin permission required."}, status=403)
 
-    data = get_workers_dashboard_snapshot()
+    data = get_workers_dashboard_snapshot(**get_list_limits_from_request(request))
     return JsonResponse(data, safe=False)
 
 

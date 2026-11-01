@@ -128,6 +128,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "django.contrib.postgres",
     "django_vite",
     "django_db_logger"
 ]
@@ -390,7 +391,6 @@ PROVIDERS = [
     "core.providers.mugimugi",
     "core.providers.nhentai",
     "core.providers.panda",
-    "core.providers.twitter",
     "core.providers.chaika",
     "core.providers.mega",
     "core.providers.nexus",

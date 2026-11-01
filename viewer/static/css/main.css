@@ -931,6 +931,29 @@ caption {
   --bs-card-color: #f8f9fa;
 }
 
+/* Plain cards follow the site's dark blue theme instead of Bootstrap's white
+   default (.panel cards keep their own #29527a styling; bg-* utilities still
+   win since they are !important). */
+.card:not(.panel) {
+  --bs-card-bg: #001a4c;
+  --bs-card-cap-bg: #002855;
+  --bs-card-cap-color: #ffffff;
+  --bs-card-border-color: #17428b;
+  --bs-border-color: #17428b;
+  color: #f8f9fa;
+}
+
+.card .form-text,
+.card .text-muted {
+  color: #adb5bd !important;
+}
+
+/* Inset block for grouping controls inside a card (e.g. checkbox groups) */
+.card-subsection {
+  background-color: #002855;
+  border: 1px solid #17428b;
+}
+
 .card-body {
   color: #f8f9fa;
 }

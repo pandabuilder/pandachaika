@@ -1,6 +1,68 @@
 {% extends "viewer/base.html" %}
 {% block title %}URL Crawler | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
+
+{% block extra_head %}
+<style>
+  /* Dark Blue Palette (matching PandaGallery Deep Navy theme) */
+  .crawler-options-card {
+    background-color: #001a4c;
+    border: 1px solid #17428b;
+    border-radius: 6px;
+    padding: 1.25rem;
+    color: #e6edf3;
+    box-shadow: 0 4px 12px rgba(0, 17, 34, 0.4);
+  }
+  .crawler-options-header {
+    color: #90caf9;
+    font-size: 1.15rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #17428b;
+  }
+  .crawler-help-text {
+    color: #8ba4be !important;
+    font-size: 0.85rem;
+    margin-top: 0.25rem;
+  }
+  .crawler-help-text code {
+    background-color: #001122;
+    color: #90caf9;
+    border: 1px solid #17428b;
+    padding: 2px 6px;
+    border-radius: 3px;
+  }
+  .crawler-storage-box {
+    background-color: #002244;
+    border: 1px solid #1c4879;
+    border-radius: 6px;
+    padding: 1rem;
+    margin-top: 1.25rem;
+  }
+  .btn-pg {
+    background-color: #29527a !important;
+    border: 1px solid #5a8ab8 !important;
+    color: #e2e8f0 !important;
+  }
+  .btn-pg:hover, .btn-pg:focus {
+    background-color: #3b6b9b !important;
+    border-color: #8cb6df !important;
+    color: #ffffff !important;
+  }
+  .btn-pg-outline {
+    background-color: transparent !important;
+    border: 1px solid #5a8ab8 !important;
+    color: #90caf9 !important;
+  }
+  .btn-pg-outline:hover, .btn-pg-outline:focus {
+    background-color: #29527a !important;
+    border-color: #8cb6df !important;
+    color: #ffffff !important;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
   {% if messages %}
     {% for message in messages %}
@@ -32,53 +94,174 @@
       </div>
     {% endfor %}
   </div>
-    <div class="mb-2">
-      <label class="col-form-label">
-        Options
-      </label>
-      <div class="form-check">
-        <input id="checkbox1" type="checkbox" class="form-check-input" name="replace_metadata" value="1" {% if settings.replace_metadata == 1 %}checked{% endif %}>
-        <label class="form-check-label" for="checkbox1">
-          Replace
-        </label>
+
+    <div class="mb-4 crawler-options-card">
+      <div class="crawler-options-header">
+        <i class="fas fa-sliders-h me-2"></i>Options
       </div>
-      <div class="form-check">
+
+      <div class="mb-3 row align-items-center">
+        <label class="col-sm-3 col-md-2 col-form-label" for="crawler_priority">Priority (1-10)</label>
+        <div class="col-sm-3 col-md-2">
+          <input type="number" id="crawler_priority" class="form-control" name="priority" min="1" max="10" value="10">
+        </div>
+        <div class="col-sm-6 col-md-8 crawler-help-text">
+          Priority in worker queue: 1 (highest) to 10 (lowest). Default is 10.
+        </div>
+      </div>
+
+      <div class="form-check mb-2">
+        <input id="checkbox1" type="checkbox" class="form-check-input" name="replace_metadata" value="1" {% if settings.replace_metadata %}checked{% endif %}>
+        <label class="form-check-label fw-semibold" for="checkbox1">
+          Replace metadata
+        </label>
+        <div class="crawler-help-text">
+          Re-fetches and overwrites existing gallery metadata (tags, title, details) from the provider if the gallery was already crawled or exists in the database.
+        </div>
+      </div>
+
+      <div class="form-check mb-2">
         <input id="checkbox2" type="checkbox" class="form-check-input" name="keep_this_settings" value="1">
-        <label class="form-check-label" for="checkbox2">
+        <label class="form-check-label fw-semibold" for="checkbox2">
           Keep this settings
         </label>
+        <div class="crawler-help-text">
+          Saves transferable settings (downloader priorities, replace metadata, and add non-current as deleted) to <code>settings.yaml</code>.
+          <strong>Note:</strong> Settings saved to <code>settings.yaml</code> will only be applied to background workers when restarted.
+        </div>
       </div>
-      <div class="form-check">
-        <input id="checkbox3" type="checkbox" class="form-check-input" name="run_separate" value="1">
-        <label class="form-check-label" for="checkbox3">
-          Run separate process
-        </label>
-      </div>
-      <div class="form-check">
+
+      <div class="form-check mb-2">
         <input id="checkbox6" type="checkbox" class="form-check-input" name="wanted_only" value="1">
         <label class="form-check-label" for="checkbox6">
           Only add if matches any WantedGallery
         </label>
       </div>
-      <div class="form-check">
+
+      <div class="form-check mb-2">
         <input id="checkbox4" type="checkbox" class="form-check-input" name="gallery_only" value="1">
         <label class="form-check-label" for="checkbox4">
           Only add as Gallery
         </label>
       </div>
-      <div class="form-check">
-        <input id="checkbox5" type="checkbox" class="form-check-input" name="skip-non-current" value="1" {% if settings.non_current_links_as_deleted == 1 %}checked{% endif %}>
+
+      <div class="form-check mb-2">
+        <input id="checkbox5" type="checkbox" class="form-check-input" name="skip-non-current" value="1" {% if settings.non_current_links_as_deleted %}checked{% endif %}>
         <label class="form-check-label" for="checkbox5">
           Add non-current galleries as deleted
         </label>
+        <div class="crawler-help-text">
+          Marks galleries that are not the latest revision in a parent/child chain as deleted.
+        </div>
+      </div>
+
+      <div class="crawler-storage-box">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <button type="button" class="btn btn-sm btn-pg" id="btn-save-local-settings">
+            <i class="fas fa-save me-1"></i>Save current settings
+          </button>
+          <button type="button" class="btn btn-sm btn-pg-outline" id="btn-clear-local-settings">
+            <i class="fas fa-trash-alt me-1"></i>Clear saved settings
+          </button>
+          <span id="local-settings-status" class="small ms-2" style="display: none;"></span>
+        </div>
+        <div class="crawler-help-text mt-2">
+          Saves current form options (Priority, Only add if matches WantedGallery, Only add as Gallery, Add non-current as deleted, Reason) to your browser's local storage to persist between visits.
+        </div>
       </div>
     </div>
-    <div class="mb-2">
-      <input size="10" class="form-control" name="reason" value="" placeholder="Reason" maxlength="200"/>
+
+    <div class="mb-3">
+      <label for="crawler_reason" class="form-label">Reason</label>
+      <input id="crawler_reason" size="10" class="form-control" name="reason" value="" placeholder="Reason for crawling/archiving" maxlength="200"/>
     </div>
-    <div class="mb-2">
-      <button class="btn btn-light">Submit to Web Crawler</button>
+
+    <div class="mb-3">
+      <button class="btn btn-primary">Submit to Web Crawler</button>
     </div>
 
   </form>
+{% endblock %}
+
+{% block afterJQ %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  const LOCAL_STORAGE_KEY = "pandagallery_webcrawler_saved_settings";
+  const priorityInput = document.getElementById("crawler_priority");
+  const wantedOnlyInput = document.getElementById("checkbox6");
+  const galleryOnlyInput = document.getElementById("checkbox4");
+  const skipNonCurrentInput = document.getElementById("checkbox5");
+  const reasonInput = document.getElementById("crawler_reason");
+  const statusEl = document.getElementById("local-settings-status");
+  const saveBtn = document.getElementById("btn-save-local-settings");
+  const clearBtn = document.getElementById("btn-clear-local-settings");
+
+  function showStatus(msg, isSuccess) {
+    if (!statusEl) return;
+    statusEl.textContent = msg;
+    statusEl.className = "small ms-2 " + (isSuccess ? "text-success fw-bold" : "text-danger");
+    statusEl.style.display = "inline";
+    setTimeout(function() {
+      statusEl.style.display = "none";
+    }, 3500);
+  }
+
+  // Load saved settings if available
+  try {
+    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (raw) {
+      const data = JSON.parse(raw);
+      if (data.priority !== undefined && priorityInput) {
+        priorityInput.value = data.priority;
+      }
+      if (data.wanted_only !== undefined && wantedOnlyInput) {
+        wantedOnlyInput.checked = Boolean(data.wanted_only);
+      }
+      if (data.gallery_only !== undefined && galleryOnlyInput) {
+        galleryOnlyInput.checked = Boolean(data.gallery_only);
+      }
+      if (data.skip_non_current !== undefined && skipNonCurrentInput) {
+        skipNonCurrentInput.checked = Boolean(data.skip_non_current);
+      }
+      if (data.reason !== undefined && reasonInput) {
+        reasonInput.value = data.reason;
+      }
+      showStatus("Restored settings from browser storage.", true);
+    }
+  } catch (err) {
+    console.warn("Could not restore web crawler settings from localStorage:", err);
+  }
+
+  // Save current settings button
+  if (saveBtn) {
+    saveBtn.addEventListener("click", function() {
+      try {
+        const data = {
+          priority: priorityInput ? priorityInput.value : "10",
+          wanted_only: wantedOnlyInput ? wantedOnlyInput.checked : false,
+          gallery_only: galleryOnlyInput ? galleryOnlyInput.checked : false,
+          skip_non_current: skipNonCurrentInput ? skipNonCurrentInput.checked : false,
+          reason: reasonInput ? reasonInput.value : ""
+        };
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
+        showStatus("Current settings saved to browser local storage!", true);
+      } catch (err) {
+        showStatus("Failed to save settings: " + err.message, false);
+      }
+    });
+  }
+
+  // Clear saved settings button
+  if (clearBtn) {
+    clearBtn.addEventListener("click", function() {
+      try {
+        localStorage.removeItem(LOCAL_STORAGE_KEY);
+        showStatus("Saved settings removed from browser storage.", true);
+      } catch (err) {
+        showStatus("Failed to clear settings.", false);
+      }
+    });
+  }
+});
+</script>
 {% endblock %}

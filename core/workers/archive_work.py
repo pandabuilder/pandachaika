@@ -95,7 +95,15 @@ class ArchiveWorker(object):
         if force_local:
             import os
             from viewer.models import Archive
-            archive_qs = archives if archives is not None else Archive.objects.all()
+            archive_qs: typing.Iterable[Archive]
+            if isinstance(archives, (list, tuple, set)) and all(isinstance(x, (int, str)) for x in archives):
+                archive_qs = Archive.objects.filter(pk__in=[int(x) for x in archives])
+            elif hasattr(archives, "filter"):
+                archive_qs = archives
+            elif archives is not None:
+                archive_qs = list(archives)
+            else:
+                archive_qs = Archive.objects.all()
             for archive in archive_qs:
                 try:
                     if archive.zipped and os.path.exists(archive.zipped.path):
@@ -105,7 +113,7 @@ class ArchiveWorker(object):
             self.start_info_thread(force_local=True)
         else:
             from workers.client import enqueue
-            archive_pks = [a.pk if hasattr(a, "pk") else a for a in archives] if archives is not None else []
+            archive_pks = [a.pk if hasattr(a, "pk") else int(a) for a in archives] if archives is not None else []
             enqueue(
                 args=archive_pks,
                 task_type="fileinfo_worker",
@@ -119,7 +127,15 @@ class ArchiveWorker(object):
         if force_local:
             import os
             from viewer.models import Archive
-            archive_qs = archives if archives is not None else Archive.objects.all()
+            archive_qs: typing.Iterable[Archive]
+            if isinstance(archives, (list, tuple, set)) and all(isinstance(x, (int, str)) for x in archives):
+                archive_qs = Archive.objects.filter(pk__in=[int(x) for x in archives])
+            elif hasattr(archives, "filter"):
+                archive_qs = archives
+            elif archives is not None:
+                archive_qs = list(archives)
+            else:
+                archive_qs = Archive.objects.all()
             for archive in archive_qs:
                 try:
                     if archive.zipped and os.path.exists(archive.zipped.path):
@@ -129,7 +145,7 @@ class ArchiveWorker(object):
             self.start_thumbs_thread(force_local=True)
         else:
             from workers.client import enqueue
-            archive_pks = [a.pk if hasattr(a, "pk") else a for a in archives] if archives is not None else []
+            archive_pks = [a.pk if hasattr(a, "pk") else int(a) for a in archives] if archives is not None else []
             enqueue(
                 args=archive_pks,
                 task_type="thumbnails_worker",
@@ -137,6 +153,43 @@ class ArchiveWorker(object):
                 user=user or (getattr(self.settings, "archive_user", None) if self.settings else None),
             )
             logger.info("Enqueued thumbnails_worker task to worker process (archive count: %d)", len(archive_pks) if archive_pks else -1)
+
+    def generate_missing_thumbs(
+        self,
+        archives: typing.Any = None,
+        user: typing.Any = None,
+        force_local: bool = False,
+    ) -> None:
+        """Enqueue or run thumbnail generation for archives missing thumbnails."""
+        if archives is None:
+            from viewer.models import Archive
+            archives = Archive.objects.filter(thumbnail="")
+        return self.regenerate_all_thumbs(archives=archives, user=user, force_local=force_local)
+
+    def calculate_missing_info(
+        self,
+        archives: typing.Any = None,
+        user: typing.Any = None,
+        force_local: bool = False,
+    ) -> None:
+        """Enqueue or run file info calculation for archives with missing file info."""
+        if archives is None:
+            from viewer.models import Archive
+            archives = Archive.objects.filter_by_missing_file_info()
+        return self.recalc_all_file_info(archives=archives, user=user, force_local=force_local)
+
+    def set_all_hidden_as_public(
+        self,
+        archives: typing.Any = None,
+        reason: str | None = None,
+        user: typing.Any = None,
+        force_local: bool = False,
+    ) -> None:
+        """Enqueue or run publishing for archives associated with hidden galleries."""
+        if archives is None:
+            from viewer.models import Archive
+            archives = Archive.objects.filter(gallery__hidden=True)
+        return self.publish_archives(archives=archives, reason=reason, user=user, force_local=force_local)
 
     def extract_archives(
         self,
@@ -247,6 +300,9 @@ class ArchiveWorker(object):
                 try:
                     archive.refresh_from_db()
                     if archive.public:
+                        if archive.gallery and not archive.gallery.public:
+                            archive.gallery.public = True
+                            archive.gallery.save()
                         continue
                     if activity_cb:
                         setattr(archive, "_activity_callback", activity_cb)
@@ -257,6 +313,8 @@ class ArchiveWorker(object):
                         continue
                     if activity_cb:
                         activity_cb()
+                    if not archive.crc32:
+                        archive.recalc_fileinfo()
                     res = archive.set_public(reason=effective_reason, skip_zip_check=True)
                     logger.info("Setting public status to public for Archive: %s", archive.get_absolute_url())
                     if (res or archive.public) and effective_user:
