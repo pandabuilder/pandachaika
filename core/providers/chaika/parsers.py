@@ -427,7 +427,7 @@ class Parser(BaseParser):
                         gallery_links.append(prev_matched_string)
 
                 if self.settings.workers.web_queue:
-                    self.settings.workers.web_queue.enqueue_args_list(gallery_links)
+                    self.settings.workers.web_queue.enqueue_args_list(gallery_links, override_options=self.settings)
 
 
 API = (Parser,)

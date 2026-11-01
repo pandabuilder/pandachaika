@@ -256,6 +256,11 @@ document.addEventListener("DOMContentLoaded", function() {
     clearBtn.addEventListener("click", function() {
       try {
         localStorage.removeItem(LOCAL_STORAGE_KEY);
+        if (priorityInput) priorityInput.value = "10";
+        if (wantedOnlyInput) wantedOnlyInput.checked = false;
+        if (galleryOnlyInput) galleryOnlyInput.checked = false;
+        if (skipNonCurrentInput) skipNonCurrentInput.checked = skipNonCurrentInput.defaultChecked;
+        if (reasonInput) reasonInput.value = "";
         showStatus("Saved settings removed from browser storage.", true);
       } catch (err) {
         showStatus("Failed to clear settings.", false);

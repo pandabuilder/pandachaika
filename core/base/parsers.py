@@ -682,7 +682,7 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
                                 )
                             )
 
-                            self.settings.workers.web_queue.enqueue_args_list(gallery_urls)
+                            self.settings.workers.web_queue.enqueue_args_list(gallery_urls, override_options=self.settings)
 
                         if gallery.magazine_chapters_gids:
                             existing_gids = self.settings.gallery_model.objects.filter(
@@ -705,7 +705,7 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
                                     )
                                 )
 
-                                self.settings.workers.web_queue.enqueue_args_list(gallery_urls)
+                                self.settings.workers.web_queue.enqueue_args_list(gallery_urls, override_options=self.settings)
 
                         if gallery.magazine_gid and not self.settings.gallery_model.objects.filter(
                             gid=gallery.magazine_gid, provider=gallery.provider
@@ -718,7 +718,7 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
                                     downloader[0].gallery_db_entry.get_absolute_url(), gallery_url
                                 )
                             )
-                            self.settings.workers.web_queue.enqueue_args_list([gallery_url, "--stop-nested"])
+                            self.settings.workers.web_queue.enqueue_args_list([gallery_url, "--stop-nested"], override_options=self.settings)
 
                         if gallery.gallery_container_gid and not self.settings.gallery_model.objects.filter(
                             gid=gallery.gallery_container_gid, provider=gallery.provider
@@ -731,7 +731,7 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
                                     downloader[0].gallery_db_entry.get_absolute_url(), gallery_url
                                 )
                             )
-                            self.settings.workers.web_queue.enqueue_args_list([gallery_url, "--stop-nested"])
+                            self.settings.workers.web_queue.enqueue_args_list([gallery_url, "--stop-nested"], override_options=self.settings)
 
                     self.post_gallery_processing(downloader[0].gallery_db_entry, gallery)
 

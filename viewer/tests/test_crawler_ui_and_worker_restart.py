@@ -133,7 +133,68 @@ class WebCrawlerViewTests(TestCase):
         mock_enqueue.assert_called_once()
         queued_options = mock_enqueue.call_args.kwargs["override_options"]
         self.assertEqual(queued_options.archive_reason, "Test crawler reason")
+        self.assertTrue(queued_options.non_current_links_as_deleted)
+        self.assertTrue(queued_options.replace_metadata)
         self.assertIn("--wanted-only", mock_enqueue.call_args.kwargs["args"])
+
+    def test_settings_load_from_config_non_current_links_as_deleted_precedence(self):
+        """Ensure settings loaded from config preserve allowed.non_current_links_as_deleted even when general section exists."""
+        s = Settings(
+            load_from_config={
+                "allowed": {"non_current_links_as_deleted": True},
+                "general": {"non_current_links_as_deleted": False},
+            }
+        )
+        self.assertTrue(s.non_current_links_as_deleted)
+
+        s2 = Settings(
+            load_from_config={
+                "allowed": {"non_current_links_as_deleted": True},
+                "general": {},
+            }
+        )
+        self.assertTrue(s2.non_current_links_as_deleted)
+
+    def test_panda_parser_post_processing_propagates_override_options_to_chain(self):
+        """Ensure chained parent/first galleries enqueued by panda parser preserve caller's override_options."""
+        from collections import defaultdict
+        from core.base.types import GalleryData
+        from core.providers.panda.parsers import Parser as PandaParser
+        from core.providers.panda.settings import OwnSettings as PandaSettings
+
+        settings = Settings(load_from_disk=False)
+        settings.providers["panda"] = PandaSettings(settings, {})
+        settings.non_current_links_as_deleted = True
+        mock_queue = MagicMock()
+        settings.workers.web_queue = mock_queue
+
+        parser = PandaParser(settings)
+        parser.own_settings.auto_process_parent = True
+        parser.own_settings.auto_process_first = True
+
+        mock_gallery_entry = MagicMock()
+        mock_gallery_entry.gid = 999
+        mock_gallery_entry.get_absolute_url.return_value = "https://example.com/g/999"
+
+        gallery_data = GalleryData(
+            gid="999",
+            provider="panda",
+            link="https://example.com/g/999",
+        )
+        gallery_data.extra_data = {
+            "parent_gid": "888",
+            "parent_key": "abc",
+            "first_gid": "777",
+            "first_key": "def",
+        }
+
+        with patch("core.providers.panda.parsers.logger"):
+            parser.post_gallery_processing(mock_gallery_entry, gallery_data)
+
+        self.assertEqual(mock_queue.enqueue_args_list.call_count, 2)
+        for call in mock_queue.enqueue_args_list.call_args_list:
+            self.assertIn("override_options", call.kwargs)
+            self.assertIs(call.kwargs["override_options"], settings)
 
 
 class RestartWorkersApiAndToolsTests(TestCase):

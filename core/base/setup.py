@@ -693,7 +693,10 @@ class Settings:
             self.disable_sql_log = self.general_model.disable_sql_log
             self.max_torrent_lifespan = self.general_model.max_torrent_lifespan
             self.max_torrent_lifespan_type = self.general_model.max_torrent_lifespan_type
-            self.non_current_links_as_deleted = self.general_model.non_current_links_as_deleted
+            if "non_current_links_as_deleted" in config["general"] and (
+                "allowed" not in config or "non_current_links_as_deleted" not in config["allowed"]
+            ):
+                self.non_current_links_as_deleted = self.general_model.non_current_links_as_deleted
             self.recycle_failed_checks_downloads = self.general_model.recycle_failed_checks_downloads
             self.requeue_failed_downloads = self.general_model.requeue_failed_downloads
             self.failed_download_downloader = self.general_model.failed_download_downloader

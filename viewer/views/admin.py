@@ -860,6 +860,9 @@ def crawler(request: HttpRequest) -> HttpResponse:
 
         current_settings.non_current_links_as_deleted = ("skip-non-current" in p)
         current_settings.config["allowed"]["non_current_links_as_deleted"] = current_settings.non_current_links_as_deleted
+        if "general" in current_settings.config and isinstance(current_settings.config["general"], dict):
+            if "non_current_links_as_deleted" in current_settings.config["general"]:
+                current_settings.config["general"]["non_current_links_as_deleted"] = current_settings.non_current_links_as_deleted
 
         for k, v in p.items():
             if isinstance(v, str):
@@ -889,6 +892,9 @@ def crawler(request: HttpRequest) -> HttpResponse:
             job_settings = Settings(load_from_config=crawler_settings.config)
         else:
             job_settings = current_settings
+
+        job_settings.non_current_links_as_deleted = ("skip-non-current" in p)
+        job_settings.replace_metadata = ("replace_metadata" in p)
 
         if "reason" in p and p["reason"] != "":
             reason = p["reason"]

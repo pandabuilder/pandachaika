@@ -841,6 +841,7 @@ class Parser(BaseParser):
             for gallery_to_add in list_galleries_to_add:
                 self.settings.workers.web_queue.enqueue_args_list(
                     gallery_to_add,
+                    override_options=self.settings,
                     gallery_callback=self.gallery_callback,
                     archive_callback=self.archive_callback
                 )
