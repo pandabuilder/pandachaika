@@ -115,7 +115,7 @@ type MatchesValues = tuple[str, GalleryData, float]
 class ProviderSettings:
     def __init__(self, global_settings: "Settings", config: dict[str, Any]) -> None:
         self.cookies: DataDict = {}
-        self.proxy: str = ""
+        self._proxy: str = ""
         self.proxies: DataDict = {}
         self.headers: DataDict = {}
         self.timeout_timer: int = global_settings.timeout_timer
@@ -147,7 +147,6 @@ class ProviderSettings:
         if "general" in config:
             if "proxy" in config["general"]:
                 self.proxy = config["general"]["proxy"]
-                self.proxies = {"http": config["general"]["proxy"], "https": config["general"]["proxy"]}
             if "timeout_timer" in config["general"]:
                 self.timeout_timer = int(config["general"]["timeout_timer"])
             if "wait_timer" in config["general"]:
@@ -166,7 +165,7 @@ class ProviderSettings:
                 self.stop_on_seen_links = bool(config["general"]["stop_on_seen_links"])
             elif "stop_on_seen_link" in config["general"]:
                 self.stop_on_seen_links = bool(config["general"]["stop_on_seen_link"])
-            if "queue_archive_downloads" in config["general"] and config["general"]["queue_archive_downloads"] is not None:
+            if "queue_archive_downloads" in config and config["general"]["queue_archive_downloads"] is not None:
                 self.queue_archive_downloads = bool(config["general"]["queue_archive_downloads"])
             if (
                 "max_parallel_archive_downloads" in config["general"]
@@ -175,6 +174,18 @@ class ProviderSettings:
                 self.max_parallel_archive_downloads = int(config["general"]["max_parallel_archive_downloads"])
         if "proxies" in config:
             self.proxies.update(config["proxies"])
+
+    @property
+    def proxy(self) -> str:
+        return self._proxy
+
+    @proxy.setter
+    def proxy(self, value: str | None) -> None:
+        self._proxy = str(value) if value else ""
+        if self._proxy:
+            self.proxies = {"http": self._proxy, "https": self._proxy}
+        else:
+            self.proxies = {}
 
     @property
     def stop_on_seen_link(self) -> bool:

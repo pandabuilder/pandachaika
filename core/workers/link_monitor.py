@@ -63,6 +63,7 @@ class LinkMonitor(BaseScheduler):
                     arguments_to_crawler.extend(["--restrict-wanted-galleries", str(wanted_gallery.pk)])
             if monitored_link.proxy:
                 logger.info("Using proxy: {}".format(monitored_link.proxy))
+                current_settings.proxy = monitored_link.proxy
                 for provider_settings in current_settings.providers.values():
                     provider_settings.proxy = monitored_link.proxy
             if monitored_link.stop_page is not None:

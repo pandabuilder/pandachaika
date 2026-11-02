@@ -298,6 +298,9 @@ class Settings:
 
         self.remote_site: dict[str, Any] = {}
 
+        self._proxy: str = ""
+        self.proxies: dict[str, Any] = {}
+
         self.wait_timer: float = 6.0
         self.timeout_timer = 25
 
@@ -825,3 +828,15 @@ class Settings:
     @stop_on_seen_link.setter
     def stop_on_seen_link(self, value: bool) -> None:
         self.stop_on_seen_links = value
+
+    @property
+    def proxy(self) -> str:
+        return self._proxy
+
+    @proxy.setter
+    def proxy(self, value: str | None) -> None:
+        self._proxy = str(value) if value else ""
+        if self._proxy:
+            self.proxies = {"http": self._proxy, "https": self._proxy}
+        else:
+            self.proxies = {}

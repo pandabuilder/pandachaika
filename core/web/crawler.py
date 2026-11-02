@@ -298,7 +298,10 @@ class WebCrawler(object):
                 json_string = f.read()
                 logger.info("Crawling a Panda Backup JSON string from a file.")
         else:
-            response = requests.get(args.json_source, timeout=current_settings.timeout_timer)
+            proxies = getattr(current_settings, "proxies", None)
+            if not proxies and getattr(current_settings, "proxy", None):
+                proxies = {"http": current_settings.proxy, "https": current_settings.proxy}
+            response = requests.get(args.json_source, timeout=current_settings.timeout_timer, proxies=proxies)
             json_string = response.text
             logger.info("Crawling a Panda Backup JSON string from a URL.")
         crawler = InternalParser(current_settings)

@@ -1076,8 +1076,13 @@ def construct_request_dict(
     if not no_cookies:
         request_dict["cookies"] = own_settings.cookies
 
-    if own_settings.proxies:
-        request_dict["proxies"] = own_settings.proxies
+    proxies = getattr(own_settings, "proxies", None) or getattr(settings, "proxies", None)
+    if not proxies:
+        proxy = getattr(own_settings, "proxy", "") or getattr(settings, "proxy", "")
+        if proxy:
+            proxies = {"http": proxy, "https": proxy}
+    if proxies:
+        request_dict["proxies"] = proxies
 
     if own_settings.headers:
         request_dict["headers"] = settings.requests_headers | own_settings.headers

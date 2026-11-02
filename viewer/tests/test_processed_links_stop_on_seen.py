@@ -11,7 +11,7 @@ django.setup()
 from core.base.setup import Settings
 from core.base.types import ProviderSettings
 from core.providers.panda.parsers import Parser
-from viewer.models import MonitoredLink, ProcessedLinks, Provider
+from viewer.models import MonitoredLink, ProcessedLinks, Provider, WantedGallery
 from workers.serialization import deserialize_settings_options, serialize_settings_options
 
 

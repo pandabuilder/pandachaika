@@ -92,8 +92,14 @@ def _serialize_provider_settings(prov_settings: Any) -> dict[str, Any]:
             if k == "monitored_link":
                 if v and hasattr(v, "pk"):
                     prov_dict["monitored_link_id"] = v.pk
+            elif k == "_proxy":
+                prov_dict["proxy"] = _to_serializable_value(v)
             else:
                 prov_dict[k] = _to_serializable_value(v)
+    if "proxy" not in prov_dict and hasattr(prov_settings, "proxy"):
+        prov_dict["proxy"] = _to_serializable_value(getattr(prov_settings, "proxy"))
+    if hasattr(prov_settings, "proxies") and getattr(prov_settings, "proxies"):
+        prov_dict["proxies"] = _to_serializable_value(getattr(prov_settings, "proxies"))
     return prov_dict
 
 
@@ -109,8 +115,14 @@ def serialize_settings_options(options: Any) -> dict[str, Any]:
                 clean_dict["user_id"] = v.pk
             elif k == "monitored_link" and v and getattr(v, "pk", None):
                 clean_dict["monitored_link_id"] = v.pk
+            elif k == "_proxy":
+                clean_dict["proxy"] = _to_serializable_value(v)
             else:
                 clean_dict[str(k)] = _to_serializable_value(v)
+        if "proxy" not in clean_dict and options.get("proxy"):
+            clean_dict["proxy"] = _to_serializable_value(options["proxy"])
+        if "proxies" not in clean_dict and options.get("proxies"):
+            clean_dict["proxies"] = _to_serializable_value(options["proxies"])
         return clean_dict
 
     if hasattr(options, "__dict__") or hasattr(options, "__slots__"):
@@ -137,6 +149,10 @@ def serialize_settings_options(options: Any) -> dict[str, Any]:
                     clean_dict["monitored_link_id"] = val.pk
                 continue
 
+            if key == "_proxy":
+                clean_dict["proxy"] = _to_serializable_value(val)
+                continue
+
             if key == "providers" and isinstance(val, dict):
                 providers_data: dict[str, Any] = {}
                 for prov_name, prov_settings in val.items():
@@ -148,6 +164,13 @@ def serialize_settings_options(options: Any) -> dict[str, Any]:
                 continue
 
             clean_dict[key] = _to_serializable_value(val)
+
+        opt_proxy = getattr(cast(Any, options), "proxy", None)
+        if "proxy" not in clean_dict and opt_proxy:
+            clean_dict["proxy"] = _to_serializable_value(opt_proxy)
+        opt_proxies = getattr(cast(Any, options), "proxies", None)
+        if "proxies" not in clean_dict and opt_proxies:
+            clean_dict["proxies"] = _to_serializable_value(opt_proxies)
 
         return clean_dict
 
@@ -197,13 +220,24 @@ def deserialize_settings_options(base_settings: Settings | None, options: dict[s
             ml = MonitoredLink.objects.filter(pk=options["monitored_link_id"]).first()
             if ml:
                 new_settings.monitored_link = ml
+                if ml.proxy:
+                    new_settings.proxy = ml.proxy
                 for prov_obj in new_settings.providers.values():
                     prov_obj.monitored_link = ml
+                    if ml.proxy and not getattr(prov_obj, "proxy", ""):
+                        prov_obj.proxy = ml.proxy
         except Exception:
             pass
 
     for k, v in options.items():
         if k in ("user_id", "archive_user", "monitored_link_id", "monitored_link"):
+            continue
+
+        if k in ("proxy", "_proxy") and v:
+            new_settings.proxy = str(v)
+            for prov_obj in new_settings.providers.values():
+                if not getattr(prov_obj, "proxy", ""):
+                    prov_obj.proxy = str(v)
             continue
 
         if k == "replace_metadata":
@@ -244,6 +278,12 @@ def deserialize_settings_options(base_settings: Settings | None, options: dict[s
                             continue
                         if p_attr == "how_long_after_already_seen" and isinstance(p_val, (int, float)):
                             p_val = timedelta(seconds=p_val)
+                        if p_attr in ("proxy", "_proxy") and p_val is not None:
+                            prov_obj.proxy = str(p_val)
+                            continue
+                        if p_attr == "proxies" and isinstance(p_val, dict) and p_val:
+                            prov_obj.proxies = dict(p_val)
+                            continue
                         if hasattr(prov_obj, p_attr):
                             setattr(prov_obj, p_attr, p_val)
             continue
@@ -264,5 +304,10 @@ def deserialize_settings_options(base_settings: Settings | None, options: dict[s
             setattr(new_settings, k, dict(v))
         else:
             setattr(new_settings, k, v)
+
+    if getattr(new_settings, "proxy", ""):
+        for prov_obj in new_settings.providers.values():
+            if not getattr(prov_obj, "proxy", ""):
+                prov_obj.proxy = new_settings.proxy
 
     return new_settings

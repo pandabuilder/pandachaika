@@ -232,6 +232,7 @@ class WorkersModelAndClientTests(TestCase):
 
         hydrated = deserialize_settings_options(base_settings, data)
         self.assertEqual(hydrated.providers["panda"].proxy, "http://proxy.test:8080")
+        self.assertEqual(hydrated.providers["panda"].proxies, {"http": "http://proxy.test:8080", "https": "http://proxy.test:8080"})
         self.assertEqual(hydrated.providers["panda"].wait_timer, 20)
         self.assertEqual(hydrated.providers["panda"].stop_page_number, 3)
         self.assertTrue(hydrated.providers["panda"].use_ex_for_fjord)
@@ -241,6 +242,7 @@ class WorkersModelAndClientTests(TestCase):
 
         # Base remains untouched
         self.assertEqual(base_settings.providers["panda"].proxy, "")
+        self.assertEqual(base_settings.providers["panda"].proxies, {})
         self.assertEqual(base_settings.providers["panda"].wait_timer, 5)
 
     def test_sensitive_attributes_not_serialized(self):
