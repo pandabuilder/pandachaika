@@ -14,6 +14,7 @@ from django import db
 from django.db import transaction
 
 from core.base.setup import Settings
+from core.base.utilities import get_part_filepath
 from core.web.crawler import WebCrawler
 from workers.client import expand_task_type_aliases
 from workers.models import TaskQueue, WorkerProcess, SchedulerState
@@ -142,7 +143,7 @@ class WorkerRunner:
                 ).exclude(download_id="")[:20]
             )
             for ev in inline_dls:
-                for candidate_path in (ev.download_id, f"{ev.download_id}.part"):
+                for candidate_path in (ev.download_id, get_part_filepath(ev.download_id)):
                     if candidate_path and os.path.exists(candidate_path):
                         try:
                             mtime = os.path.getmtime(candidate_path)

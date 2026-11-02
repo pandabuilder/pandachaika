@@ -65,7 +65,7 @@ def discard_string_by_cutoff(base: str, compare: str, cutoff: float) -> bool:
     return False
 
 
-def replace_illegal_name(filepath: str) -> str:
+def replace_illegal_name(filepath: str, max_bytes: int = 240) -> str:
     delete_chars = r'\/:*?"<>|'
 
     for c in delete_chars:
@@ -75,16 +75,20 @@ def replace_illegal_name(filepath: str) -> str:
     if filepath.endswith(".") and len(filepath) > 1:
         filepath = filepath[:-1]
 
-    # Limit to 255 characters, 251 plus .zip
-    # Update: Limit should be 256 bytes length (ext4).
+    # Limit to 240 bytes to ensure room for extensions (.zip: 4B), temporary suffixes (.part: 5B),
+    # and duplicate markers (-2: 2B). Ext4 filename limit is 255 bytes.
     try:
-        formatted_path = filepath.encode("utf-8")[0:251].decode("utf-8")
-    except UnicodeDecodeError:
-        formatted_path = filepath[0:251]
+        formatted_path = filepath.encode("utf-8")[:max_bytes].decode("utf-8", errors="ignore")
+    except Exception:
+        formatted_path = filepath[:max_bytes]
+
+    if formatted_path.endswith(".") and len(formatted_path) > 1:
+        formatted_path = formatted_path[:-1]
+
     return formatted_path
 
 
-def replace_illegal_win32_with_unicode_full_width(filepath: str) -> str:
+def replace_illegal_win32_with_unicode_full_width(filepath: str, max_bytes: int = 240) -> str:
     for c in REPLACE_CHARS:
         filepath = filepath.replace(c[0], c[1])
 
@@ -92,8 +96,16 @@ def replace_illegal_win32_with_unicode_full_width(filepath: str) -> str:
     if filepath.endswith(".") and len(filepath) > 1:
         filepath = filepath[:-1]
 
-    # Limit to 255 characters, 251 plus .zip
-    return filepath[0:251]
+    # Limit byte length
+    try:
+        formatted_path = filepath.encode("utf-8")[:max_bytes].decode("utf-8", errors="ignore")
+    except Exception:
+        formatted_path = filepath[:max_bytes]
+
+    if formatted_path.endswith(".") and len(formatted_path) > 1:
+        formatted_path = formatted_path[:-1]
+
+    return formatted_path
 
 
 def to_full_width(title: str) -> str:
@@ -440,11 +452,10 @@ def get_zip_fileinfo_for_gallery(filepath: str) -> tuple[int, int]:
     return total_size, total_count
 
 
-def available_filename(root: str, filename: str) -> str:
+def available_filename(root: str, filename: str, max_bytes: int = 245) -> str:
     file_head, file_tail = os.path.split(filename)
     name, ext = os.path.splitext(file_tail)
 
-    max_bytes = 255
     max_suffix_bytes = 15
 
     ext_bytes = ext.encode("utf-8")
@@ -486,6 +497,22 @@ def _is_filename_reserved_in_db(candidate_full: str) -> bool:
         ).exists()
     except Exception:
         return False
+
+
+def get_part_filepath(filepath: str) -> str:
+    """Return the temporary .part filepath for a given filepath, ensuring the filename does not exceed 255 bytes."""
+    file_head, file_tail = os.path.split(filepath)
+    ext = ".part"
+    max_bytes = 255
+    part_bytes = ext.encode("utf-8")
+    tail_bytes = file_tail.encode("utf-8")
+
+    if len(tail_bytes) + len(part_bytes) > max_bytes:
+        allowed = max_bytes - len(part_bytes)
+        truncated_tail = tail_bytes[:allowed].decode("utf-8", errors="ignore")
+        return os.path.join(file_head, f"{truncated_tail}{ext}")
+
+    return f"{filepath}{ext}"
 
 
 def get_base_filename_string_from_gallery_data(gallery_data: GalleryData) -> str:

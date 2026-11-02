@@ -1717,6 +1717,215 @@ class ArchiveDownloadQueueTests(TestCase):
             self.assertTrue(event.failed)
             self.assertTrue(event.completed)
 
+    def test_archive_download_worker_rejects_html_response(self):
+        from unittest.mock import MagicMock, patch
+        from core.workers.archive_download_queue import ArchiveDownloadQueue
+        from viewer.models import DownloadEvent
+        import os
+
+        target_path = os.path.join(self.temp_dir, "test_html_reject.zip")
+        event = DownloadEvent.objects.create(
+            name="Test HTML Reject",
+            method="archive",
+            provider="panda",
+            download_id=target_path,
+            download_url="http://example.com/not_an_archive.zip",
+            status=DownloadEvent.Status.IN_PROGRESS,
+            attempts=1,
+            max_attempts=3,
+            request_options={"rate_limit_name": "panda_web"},
+        )
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.headers = {"Content-Type": "text/html; charset=UTF-8"}
+        mock_resp.text = "<html><body>Error: Quota Exceeded</body></html>"
+        mock_resp.content = mock_resp.text.encode("utf-8")
+
+        adq = ArchiveDownloadQueue(self.settings)
+        with patch("core.workers.archive_download_queue.request_by_provider") as mock_req_prov:
+            mock_web_request = MagicMock(return_value=mock_resp)
+            mock_req_prov.return_value = mock_web_request
+
+            adq._download_worker(event.id)
+
+        event.refresh_from_db()
+        self.assertNotEqual(event.status, DownloadEvent.Status.COMPLETED)
+        self.assertEqual(event.status, DownloadEvent.Status.QUEUED)
+        self.assertIn("HTML instead of archive", event.error_message)
+        self.assertFalse(os.path.exists(target_path))
+        self.assertFalse(os.path.exists(f"{target_path}.part"))
+
+    def test_archive_download_worker_hath_processing_preserves_attempts(self):
+        from unittest.mock import MagicMock, patch
+        from core.workers.archive_download_queue import ArchiveDownloadQueue
+        from viewer.models import DownloadEvent
+        import os
+
+        target_path = os.path.join(self.temp_dir, "test_hath_processing.zip")
+        event = DownloadEvent.objects.create(
+            name="Test Hath Processing",
+            method="archive",
+            provider="panda",
+            download_id=target_path,
+            download_url="http://example.com/hath_pending.zip",
+            status=DownloadEvent.Status.IN_PROGRESS,
+            attempts=2,
+            max_attempts=3,
+            request_options={"rate_limit_name": "panda_web"},
+        )
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.headers = {"Content-Type": "text/html; charset=UTF-8"}
+        mock_resp.text = (
+            "<!DOCTYPE html><html><body>"
+            "<div id=\"db\"><p>The file is already being processed. Please contact staff if it is not ready within a few minutes.</p></div>"
+            "</body></html>"
+        )
+        mock_resp.content = mock_resp.text.encode("utf-8")
+
+        adq = ArchiveDownloadQueue(self.settings)
+        with patch("core.workers.archive_download_queue.request_by_provider") as mock_req_prov, \
+             patch("time.sleep") as mock_sleep:
+            mock_web_request = MagicMock(return_value=mock_resp)
+            mock_req_prov.return_value = mock_web_request
+
+            adq._download_worker(event.id)
+
+        event.refresh_from_db()
+        self.assertEqual(event.status, DownloadEvent.Status.QUEUED)
+        # Attempt count should not be incremented / burned because it is still being processed
+        self.assertEqual(event.attempts, 1)
+        self.assertIn("still being processed", event.error_message)
+        self.assertFalse(os.path.exists(target_path))
+        self.assertFalse(os.path.exists(f"{target_path}.part"))
+
+    def test_archive_download_worker_rejects_corrupted_non_zip_file(self):
+        from unittest.mock import MagicMock, patch
+        from core.workers.archive_download_queue import ArchiveDownloadQueue
+        from viewer.models import DownloadEvent
+        import os
+
+        target_path = os.path.join(self.temp_dir, "test_non_zip.zip")
+        event = DownloadEvent.objects.create(
+            name="Test Non Zip File",
+            method="archive",
+            provider="panda",
+            download_id=target_path,
+            download_url="http://example.com/fake.zip",
+            status=DownloadEvent.Status.IN_PROGRESS,
+            attempts=1,
+            max_attempts=3,
+            request_options={"rate_limit_name": "panda_web"},
+        )
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        # Headers say binary/octet-stream, but body is HTML
+        mock_resp.headers = {"Content-Type": "application/octet-stream", "Content-Length": "35"}
+        mock_resp.iter_content.return_value = [b"<!DOCTYPE html><html>error</html>\n"]
+
+        adq = ArchiveDownloadQueue(self.settings)
+        with patch("core.workers.archive_download_queue.request_by_provider") as mock_req_prov:
+            mock_web_request = MagicMock(return_value=mock_resp)
+            mock_req_prov.return_value = mock_web_request
+
+            adq._download_worker(event.id)
+
+        event.refresh_from_db()
+        self.assertNotEqual(event.status, DownloadEvent.Status.COMPLETED)
+        self.assertIn("not a valid zip", event.error_message)
+        self.assertFalse(os.path.exists(target_path))
+        self.assertFalse(os.path.exists(f"{target_path}.part"))
+
+    def test_filename_length_and_get_part_filepath(self):
+        import os
+        from core.base.utilities import available_filename, get_part_filepath, replace_illegal_name
+
+        # Very long title (300+ characters)
+        long_title = "A" * 300
+        cleaned = replace_illegal_name(long_title)
+        self.assertLessEqual(len(cleaned.encode("utf-8")), 240)
+
+        # available_filename ensures the total basename (with .zip) is <= 245 bytes
+        avail = available_filename(self.temp_dir, f"{cleaned}.zip")
+        avail_tail = os.path.basename(avail)
+        self.assertLessEqual(len(avail_tail.encode("utf-8")), 245)
+
+        # Appending .part with get_part_filepath is guaranteed to be <= 255 bytes
+        part_path = get_part_filepath(os.path.join(self.temp_dir, avail_tail))
+        part_tail = os.path.basename(part_path)
+        self.assertLessEqual(len(part_tail.encode("utf-8")), 255)
+
+        # Test extreme case: existing legacy file whose basename is already exactly 255 bytes
+        exact_255_tail = ("B" * 251) + ".zip"
+        self.assertEqual(len(exact_255_tail.encode("utf-8")), 255)
+        legacy_part_path = get_part_filepath(os.path.join(self.temp_dir, exact_255_tail))
+        legacy_part_tail = os.path.basename(legacy_part_path)
+        self.assertLessEqual(len(legacy_part_tail.encode("utf-8")), 255)
+        self.assertTrue(legacy_part_tail.endswith(".part"))
+
+    def test_archive_download_worker_with_max_length_filename(self):
+        import io
+        import os
+        import zipfile
+        from PIL import Image
+        from unittest.mock import MagicMock, patch
+        from core.workers.archive_download_queue import ArchiveDownloadQueue
+        from viewer.models import Archive, DownloadEvent
+
+        # Basename that is exactly 255 bytes (like event #4722)
+        tail_255 = ("N" * 251) + ".zip"
+        self.assertEqual(len(tail_255.encode("utf-8")), 255)
+        target_path = os.path.join(self.temp_dir, tail_255)
+
+        # Valid zip
+        img = Image.new("RGB", (10, 10), color="blue")
+        img_buf = io.BytesIO()
+        img.save(img_buf, format="JPEG")
+        zip_buf = io.BytesIO()
+        with zipfile.ZipFile(zip_buf, "w") as zf:
+            zf.writestr("001.jpg", img_buf.getvalue())
+        zip_bytes = zip_buf.getvalue()
+
+        archive = Archive.objects.create(
+            title="Max Length Gallery",
+            zipped=tail_255,
+            crc32="",
+            user=self.user,
+        )
+
+        event = DownloadEvent.objects.create(
+            name="Max Length Event",
+            method="archive",
+            provider="panda",
+            download_id=target_path,
+            download_url="http://example.com/long_archive.zip",
+            archive=archive,
+            status=DownloadEvent.Status.QUEUED,
+            request_options={"rate_limit_name": "panda_web"},
+        )
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.headers = {"Content-Length": str(len(zip_bytes))}
+        mock_resp.iter_content.return_value = [zip_bytes]
+
+        adq = ArchiveDownloadQueue(self.settings)
+        with patch("core.workers.archive_download_queue.request_by_provider") as mock_req_prov:
+            mock_web_request = MagicMock(return_value=mock_resp)
+            mock_req_prov.return_value = mock_web_request
+
+            # This must NOT throw [Errno 36] File name too long
+            adq._download_worker(event.id)
+
+        event.refresh_from_db()
+        self.assertEqual(event.status, DownloadEvent.Status.COMPLETED)
+        self.assertTrue(os.path.exists(target_path))
+        if os.path.exists(target_path):
+            os.remove(target_path)
+
     def test_cleanup_dead_workers_reverts_orphaned_archive_downloads(self):
         from datetime import timedelta
         import django.utils.timezone as django_tz

@@ -2275,6 +2275,7 @@ class RequeueFailedDownloadTest(TestCase):
              patch("os.path.exists", return_value=True), \
              patch("os.path.getsize", return_value=50), \
              patch("os.path.isfile", return_value=True), \
+             patch("core.workers.archive_download_queue.zipfile.is_zipfile", return_value=True), \
              patch.object(Archive, "save", lambda self, *a, **kw: self.simple_save(*a, **kw)), \
              patch("os.remove"), \
              patch("os.replace"), \

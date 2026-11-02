@@ -6,6 +6,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Any
 import html
 from urllib.parse import urljoin
+import zipfile
 
 import requests
 from bs4 import BeautifulSoup
@@ -307,6 +308,24 @@ class ArchiveDownloader(BaseDownloader[PandaSettings]):
                 request_file = self.web_request_function(download_url, request_dict)
 
                 if r and r.status_code == 200 and request_file:
+                    content_type = (request_file.headers.get("Content-Type") or "").lower()
+                    if "text/html" in content_type:
+                        html_text = ""
+                        try:
+                            html_text = request_file.text or ""
+                        except Exception:
+                            pass
+                        if "already being processed" in html_text or "is already being processed" in html_text:
+                            logger.info(
+                                "Archive is still being processed by Hath (attempt %d/3), waiting 20s...", attempt + 1
+                            )
+                            time.sleep(20)
+                            continue
+                        logger.warning("Download returned HTML instead of archive (attempt %d/3)", attempt + 1)
+                        if attempt < 2:
+                            time.sleep(2)
+                        continue
+
                     logger.info("Downloading gallery: {}.zip (Attempt {}/3)".format(to_use_filename, attempt + 1))
                     total_size = int(request_file.headers.get("Content-Length", 0))
                     self.download_event = self.create_download_event(
@@ -315,6 +334,17 @@ class ArchiveDownloader(BaseDownloader[PandaSettings]):
                     with open(filepath, "wb") as fo:
                         for chunk in request_file.iter_content(4096):
                             fo.write(chunk)
+
+                    if not zipfile.is_zipfile(filepath):
+                        logger.warning("Downloaded file is not a valid zip file (attempt %d/3)", attempt + 1)
+                        if os.path.exists(filepath):
+                            try:
+                                os.remove(filepath)
+                            except Exception:
+                                pass
+                        if attempt < 2:
+                            time.sleep(2)
+                        continue
 
                     self.gallery.filesize, self.gallery.filecount = get_zip_fileinfo_for_gallery(filepath)
                     if self.gallery.filesize > 0:
@@ -327,9 +357,19 @@ class ArchiveDownloader(BaseDownloader[PandaSettings]):
                         self.download_event.set_as_failed("Downloaded archive file is empty or invalid")
                         self.download_event.save()
                         self.download_event = None
+                    if os.path.exists(filepath):
+                        try:
+                            os.remove(filepath)
+                        except Exception:
+                            pass
 
             except Exception as e:
                 logger.warning("Download failed on attempt {}/3 with error: {}".format(attempt + 1, str(e)))
+                if os.path.exists(filepath):
+                    try:
+                        os.remove(filepath)
+                    except Exception:
+                        pass
                 if self.download_event:
                     self.download_event.set_as_failed(str(e))
                     self.download_event.save()

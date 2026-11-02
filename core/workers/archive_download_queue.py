@@ -3,6 +3,7 @@ import os
 import threading
 import time
 from typing import Any
+import zipfile
 
 import django.utils.timezone as django_tz
 import requests
@@ -11,7 +12,7 @@ from django.db.models import F, Q
 from django.db.models.functions import Greatest
 
 from core.base.setup import Settings
-from core.base.utilities import calc_crc32, request_by_provider
+from core.base.utilities import calc_crc32, get_part_filepath, request_by_provider
 from core.downloaders.postdownload import CurrentDownload, PostDownloader
 from core.workers.schedulers import BaseScheduler
 from viewer.models import DownloadEvent
@@ -186,7 +187,7 @@ class ArchiveDownloadQueue(BaseScheduler):
             if not event:
                 return
             if event.download_id:
-                part_path = f"{event.download_id}.part"
+                part_path = get_part_filepath(event.download_id)
                 if os.path.exists(part_path):
                     try:
                         os.remove(part_path)
@@ -375,7 +376,7 @@ class ArchiveDownloadQueue(BaseScheduler):
                 self._download_activity[event_id] = time.monotonic()
 
             os.makedirs(os.path.dirname(filepath), exist_ok=True)
-            part_filepath = f"{filepath}.part"
+            part_filepath = get_part_filepath(filepath)
 
             logger.info(
                 "Starting download for event #%s (archive %s, provider %s) from %s",
@@ -390,6 +391,74 @@ class ArchiveDownloadQueue(BaseScheduler):
             if not response or response.status_code >= 400:
                 code = getattr(response, "status_code", "None")
                 raise requests.exceptions.RequestException(f"HTTP error {code} fetching {event.download_url}")
+
+            content_type = (response.headers.get("Content-Type") or "").lower()
+            if "text/html" in content_type:
+                html_text = ""
+                try:
+                    html_text = response.text or ""
+                except Exception:
+                    try:
+                        html_text = response.content.decode("utf-8", errors="ignore")
+                    except Exception:
+                        pass
+
+                if "already being processed" in html_text or "is already being processed" in html_text:
+                    max_hath_waits = 3
+                    hath_waited = 0
+                    while hath_waited < max_hath_waits:
+                        hath_waited += 1
+                        logger.info(
+                            "Archive for event #%s is still being processed by the server; waiting 20s before retry (%d/%d)...",
+                            event_id,
+                            hath_waited,
+                            max_hath_waits,
+                        )
+                        for _ in range(20):
+                            if self.stop.is_set() or cancel_event.is_set():
+                                break
+                            time.sleep(1.0)
+                            self.touch_activity(event_id)
+
+                        if self.stop.is_set() or cancel_event.is_set():
+                            break
+
+                        response = web_request(event.download_url, req_dict)
+                        if not response or response.status_code >= 400:
+                            code = getattr(response, "status_code", "None")
+                            raise requests.exceptions.RequestException(
+                                f"HTTP error {code} fetching {event.download_url}"
+                            )
+
+                        new_content_type = (response.headers.get("Content-Type") or "").lower()
+                        if "text/html" not in new_content_type:
+                            break
+                        try:
+                            html_text = response.text or ""
+                        except Exception:
+                            html_text = ""
+                        if (
+                            "already being processed" not in html_text
+                            and "is already being processed" not in html_text
+                        ):
+                            break
+
+                    new_content_type = (response.headers.get("Content-Type") or "").lower()
+                    if "text/html" in new_content_type:
+                        if (
+                            "already being processed" in html_text
+                            or "is already being processed" in html_text
+                        ):
+                            raise ValueError(
+                                f"Archive for event #{event_id} is still being processed by the server"
+                            )
+                        raise ValueError(
+                            f"Server returned HTML instead of archive for event #{event_id} (Content-Type: {new_content_type})"
+                        )
+                else:
+                    raise ValueError(
+                        f"Server returned HTML instead of archive for event #{event_id} (Content-Type: {content_type})"
+                    )
 
             with self._lock:
                 self._download_responses[event_id] = response
@@ -480,6 +549,23 @@ class ArchiveDownloadQueue(BaseScheduler):
             if not os.path.exists(part_filepath) or os.path.getsize(part_filepath) == 0:
                 raise ValueError(f"Downloaded file for event #{event_id} is empty or missing")
 
+            # Validate zip archive integrity before moving into place
+            if filepath.lower().endswith((".zip", ".cbz")):
+                if not zipfile.is_zipfile(part_filepath):
+                    error_detail = ""
+                    try:
+                        with open(part_filepath, "r", encoding="utf-8", errors="ignore") as f:
+                            sample = f.read(2048)
+                            if "already being processed" in sample:
+                                error_detail = ": server reported archive is still being processed"
+                            elif "<html" in sample.lower() or "<!doctype" in sample.lower():
+                                error_detail = ": server returned an HTML page instead of a zip file"
+                    except Exception:
+                        pass
+                    raise zipfile.BadZipFile(
+                        f"Downloaded file for event #{event_id} is not a valid zip archive{error_detail}"
+                    )
+
             if os.path.exists(filepath):
                 os.remove(filepath)
             os.replace(part_filepath, filepath)
@@ -491,6 +577,16 @@ class ArchiveDownloadQueue(BaseScheduler):
                 archive.refresh_from_db()
                 self.touch_activity(event_id)
                 archive.recalc_fileinfo()
+                archive.refresh_from_db()
+                if archive.filesize is not None and archive.filesize < 0:
+                    if os.path.exists(filepath):
+                        try:
+                            os.remove(filepath)
+                        except Exception:
+                            pass
+                    raise ValueError(
+                        f"Downloaded archive for event #{event_id} contains no valid files or failed fileinfo extraction"
+                    )
                 archive.ingest()
                 if not archive.thumbnail:
                     try:
@@ -567,11 +663,25 @@ class ArchiveDownloadQueue(BaseScheduler):
                 except Exception:
                     pass
 
+            if filepath and os.path.exists(filepath):
+                try:
+                    if filepath.lower().endswith((".zip", ".cbz")) and not zipfile.is_zipfile(filepath):
+                        os.remove(filepath)
+                except Exception:
+                    pass
+
             if event and not self.stop.is_set():
                 try:
                     event.refresh_from_db()
                     if event.status == DownloadEvent.Status.IN_PROGRESS and not event.completed:
-                        if event.attempts >= event.max_attempts:
+                        is_server_processing = "still being processed" in str(e).lower()
+                        if is_server_processing:
+                            event.status = DownloadEvent.Status.QUEUED
+                            event.error_message = str(e)
+                            event.worker_pid = None
+                            event.attempts = max(0, event.attempts - 1)
+                            event.save(update_fields=["status", "error_message", "worker_pid", "attempts"])
+                        elif event.attempts >= event.max_attempts:
                             event.set_as_failed(error_message=str(e))
                             event.save()
                         else:
