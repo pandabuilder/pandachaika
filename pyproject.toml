@@ -1,5 +1,5 @@
 [tool.ruff]
-lint.ignore = ["E501", "E402" ,"F401", "F811"]
+lint.ignore = ["E501", "E402" ]
 lint.select = ["NPY201"]
 
 exclude = [

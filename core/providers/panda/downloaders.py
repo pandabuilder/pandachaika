@@ -739,13 +739,14 @@ class HathDownloader(BaseDownloader):
             logger.info("Queued download to client: {}".format(client_id.get_text()))
 
         to_use_filename = get_base_filename_string_from_gallery_data(self.gallery)
+        gid_suffix = f" [{self.gallery.gid}]" if getattr(self.gallery, "gid", None) else ""
+        max_title_bytes = max(10, 240 - len(gid_suffix.encode("utf-8")))
+        cleaned_title = replace_illegal_name(to_use_filename, max_bytes=max_title_bytes)
+        filename_tail = f"{cleaned_title}{gid_suffix}.zip"
 
         self.gallery.filename = available_filename(
             self.settings.MEDIA_ROOT,
-            os.path.join(
-                self.own_settings.hath_dl_folder,
-                replace_illegal_name(to_use_filename + " [" + str(self.gallery.gid) + "]") + ".zip",
-            ),
+            os.path.join(self.own_settings.hath_dl_folder, filename_tail),
         )
 
         self.download_id = self.gallery.gid

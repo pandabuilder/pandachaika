@@ -769,23 +769,24 @@ caption {
   display: block;
 }
 
-/* Select2 */
-.select2,
-.select2-selection,
-.select2-search__field::placeholder,
-.select2-search__field,
-.select2-results__options {
-  color: black !important;
+/* Autocomplete (DAL alight & text widgets) */
+autocomplete-select {
+  display: block;
+  width: 100%;
 }
 
-.select2-container .select2-selection--single {
-    /*height: 35px !important;*/
-  padding: 0 !important;
-}
-
-.select2-container .select2-selection--multiple {
-    /*height: 35px !important;*/
-  padding: 0 !important;
+autocomplete-select .vTextField,
+autocomplete-select input[slot="input"] {
+  display: block;
+  width: 100%;
+  padding: 0.375rem 0.75rem;
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1.5;
+  color: #212529;
+  background-color: #fff;
+  border: 1px solid #ced4da;
+  border-radius: 0.25rem;
 }
 
 .autocomplete-light-text-widget > .choice {

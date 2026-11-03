@@ -490,6 +490,227 @@ class ArchiveDownloadQueueTests(TestCase):
         if os.path.exists(target_path):
             os.remove(target_path)
 
+    def test_hath_downloader_filename_length_and_gid_preservation(self):
+        import os
+        from unittest.mock import MagicMock
+        from core.base.types import GalleryData
+        from core.providers.panda.downloaders import HathDownloader
+        from core.providers.panda.settings import OwnSettings as PandaSettings
+
+        long_jpn_title = (
+            "[おー] 後ろから激しく責め立てられて前戯で勢いよく潮を噴いてしまい "
+            "その後アソコがぐずぐずにデキあがった頃合いに対面座位で上も下も密着した状態で射精されながら深く抱き合う能代さん "
+            "(艦隊これくしょん -艦これ-)"
+        )
+        gid = 3802429
+
+        panda_settings = PandaSettings(self.settings, {})
+        panda_settings.hath_dl_folder = "galleries/hath_dls"
+        self.settings.providers["panda"] = panda_settings
+
+        downloader = HathDownloader(self.settings, MagicMock())
+        gallery = GalleryData(str(gid), "panda")
+        gallery.root = "https://exhentai.org"
+        gallery.token = "fake_token_123"
+        gallery.title = long_jpn_title
+        gallery.gid = str(gid)
+        downloader.gallery = gallery
+
+        downloader.web_request_function = MagicMock()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.content = (
+            b"<html><body><p>An original resolution download has been queued for client "
+            b"<strong>12345</strong></p></body></html>"
+        )
+        downloader.request_hath_download = MagicMock(return_value=mock_resp)
+
+        downloader.start_download()
+
+        self.assertEqual(downloader.return_code, 1)
+        tail = os.path.basename(downloader.gallery.filename)
+        tail_bytes = len(tail.encode("utf-8"))
+
+        # Must not exceed filesystem limit (NAME_MAX 255 bytes, reserved 245 bytes)
+        self.assertLessEqual(tail_bytes, 245)
+        # Must preserve GID bracket suffix
+        self.assertTrue(tail.endswith(f" [{gid}].zip"))
+
+    def test_ensure_archive_filename_within_limits_handles_overlong_legacy_path(self):
+        import os
+        import zipfile
+        from core.base.utilities import ensure_archive_filename_within_limits
+        from viewer.models import Archive
+
+        overlong_basename = (
+            "[おー] 後ろから激しく責め立てられて前戯で勢いよく潮を噴いてしまい "
+            "その後アソコがぐずぐずにデキあがった頃合いに対面座位で上も下も密着した状態で射精されながら深く抱き合う能代さん "
+            "(艦隊これくしょん -艦これ-) [3802429].zip"
+        )
+        # Confirm the raw basename exceeds 255 bytes
+        self.assertGreater(len(overlong_basename.encode("utf-8")), 255)
+
+        rel_path = os.path.join("galleries/hath_dls", overlong_basename)
+        archive = Archive.objects.create(
+            title="Overlong Hath Gallery",
+            zipped=rel_path,
+            crc32="",
+            user=self.user,
+        )
+
+        safe_path = ensure_archive_filename_within_limits(archive, self.temp_dir)
+        safe_tail = os.path.basename(safe_path)
+        safe_bytes = len(safe_tail.encode("utf-8"))
+
+        self.assertLessEqual(safe_bytes, 245)
+        self.assertTrue(safe_tail.endswith(" [3802429].zip"))
+
+        # Creating the zip file at safe_path must succeed without [Errno 36]
+        with zipfile.ZipFile(safe_path, "w") as zf:
+            zf.writestr("test.txt", "dummy content")
+
+        self.assertTrue(os.path.exists(safe_path))
+
+        archive.refresh_from_db()
+        self.assertEqual(archive.zipped.name, os.path.join("galleries/hath_dls", safe_tail))
+
+    def test_postdownloader_handles_overlong_legacy_hath_archive(self):
+        import os
+        from unittest.mock import patch
+        from core.downloaders.postdownload import PostDownloader
+        from core.providers.panda.settings import OwnSettings as PandaSettings
+        from viewer.models import Archive, Gallery
+
+        local_hath_dir = os.path.join(self.temp_dir, "hath_download")
+        os.makedirs(local_hath_dir, exist_ok=True)
+
+        panda_settings = PandaSettings(self.settings, {})
+        panda_settings.local_hath_folder = local_hath_dir
+        self.settings.providers["panda"] = panda_settings
+
+        # Create downloaded gallery folder from Hath client
+        gid = 3802429
+        dl_folder_name = f"Test Gallery Title [{gid}]"
+        dl_folder_path = os.path.join(local_hath_dir, dl_folder_name)
+        os.makedirs(dl_folder_path, exist_ok=True)
+
+        sample_img = os.path.join(dl_folder_path, "001.jpg")
+        with open(sample_img, "wb") as f:
+            f.write(b"fake image data 12345")
+        img_size = os.path.getsize(sample_img)
+
+        # Create Gallery model entry
+        gallery = Gallery.objects.create(
+            gid=str(gid),
+            provider="panda",
+            title="Overlong Title",
+        )
+
+        overlong_basename = (
+            "[おー] 後ろから激しく責め立てられて前戯で勢いよく潮を噴いてしまい "
+            "その後アソコがぐずぐずにデキあがった頃合いに対面座位で上も下も密着した状態で射精されながら深く抱き合う能代さん "
+            f"(艦隊これくしょん -艦これ-) [{gid}].zip"
+        )
+        archive = Archive.objects.create(
+            title="Overlong Hath Gallery",
+            zipped=os.path.join("galleries/hath_dls", overlong_basename),
+            crc32="",
+            filesize=img_size,
+            match_type="hath",
+            gallery=gallery,
+            user=self.user,
+        )
+
+        post_downloader = PostDownloader(self.settings)
+
+        from django.test import override_settings
+        with override_settings(MEDIA_ROOT=self.temp_dir):
+            with patch.object(post_downloader, "process_downloaded_archive", return_value=True) as mock_process:
+                post_downloader.copy_all_missing("local_copy", archives=[archive])
+                mock_process.assert_called_once()
+
+            archive.refresh_from_db()
+            # Zipped basename must not exceed 245 bytes
+            new_basename = os.path.basename(archive.zipped.name)
+            self.assertLessEqual(len(new_basename.encode("utf-8")), 245)
+            self.assertTrue(new_basename.endswith(f" [{gid}].zip"))
+            # Zip file must actually exist on disk at archive.zipped.path
+            self.assertTrue(os.path.isfile(archive.zipped.path))
+
+    def test_find_hath_directory_priority_and_fallback(self):
+        from core.base.utilities import find_hath_directory
+
+        gid = "3802429"
+
+        # 1. First priority: [gid] folder present
+        dirs_bracket = ["Unrelated Folder", "Some Artist - Title [3802429]", "Another [12345]"]
+        self.assertEqual(find_hath_directory(dirs_bracket, gid), "Some Artist - Title [3802429]")
+
+        # 2. Alternative fallback: bare gid folder present
+        dirs_bare = ["Unrelated Folder", "3802429", "Another [12345]"]
+        self.assertEqual(find_hath_directory(dirs_bare, gid), "3802429")
+
+        # 3. Both present: first priority must win
+        dirs_both = ["3802429", "Some Artist - Title [3802429]"]
+        self.assertEqual(find_hath_directory(dirs_both, gid), "Some Artist - Title [3802429]")
+
+        # 4. Neither present
+        dirs_none = ["Unrelated Folder", "Other [99999]"]
+        self.assertIsNone(find_hath_directory(dirs_none, gid))
+
+    def test_postdownloader_handles_bare_gid_hath_folder(self):
+        import os
+        from unittest.mock import patch
+        from core.downloaders.postdownload import PostDownloader
+        from core.providers.panda.settings import OwnSettings as PandaSettings
+        from viewer.models import Archive, Gallery
+
+        local_hath_dir = os.path.join(self.temp_dir, "hath_download_bare")
+        os.makedirs(local_hath_dir, exist_ok=True)
+
+        panda_settings = PandaSettings(self.settings, {})
+        panda_settings.local_hath_folder = local_hath_dir
+        self.settings.providers["panda"] = panda_settings
+
+        # Create downloaded gallery folder from Hath client with bare GID as folder name
+        gid = 3802429
+        dl_folder_name = str(gid)
+        dl_folder_path = os.path.join(local_hath_dir, dl_folder_name)
+        os.makedirs(dl_folder_path, exist_ok=True)
+
+        sample_img = os.path.join(dl_folder_path, "001.jpg")
+        with open(sample_img, "wb") as f:
+            f.write(b"bare gid image data")
+        img_size = os.path.getsize(sample_img)
+
+        gallery = Gallery.objects.create(
+            gid=str(gid),
+            provider="panda",
+            title="Bare GID Gallery",
+        )
+
+        archive = Archive.objects.create(
+            title="Bare GID Hath Gallery",
+            zipped=f"galleries/hath_dls/Bare GID Gallery [{gid}].zip",
+            crc32="",
+            filesize=img_size,
+            match_type="hath",
+            gallery=gallery,
+            user=self.user,
+        )
+
+        post_downloader = PostDownloader(self.settings)
+
+        from django.test import override_settings
+        with override_settings(MEDIA_ROOT=self.temp_dir):
+            with patch.object(post_downloader, "process_downloaded_archive", return_value=True) as mock_process:
+                post_downloader.copy_all_missing("local_copy", archives=[archive])
+                mock_process.assert_called_once()
+
+            archive.refresh_from_db()
+            self.assertTrue(os.path.isfile(archive.zipped.path))
+
+
     def test_cleanup_dead_workers_reverts_orphaned_archive_downloads(self):
         from datetime import timedelta
         import django.utils.timezone as django_tz

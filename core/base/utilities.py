@@ -14,7 +14,7 @@ import fnmatch
 from datetime import timedelta, datetime, timezone
 from difflib import SequenceMatcher
 from functools import wraps
-from collections.abc import Sequence, Iterator
+from collections.abc import Sequence, Iterator, Iterable
 from itertools import tee, islice, chain
 from tempfile import mkdtemp
 from typing import Any
@@ -513,6 +513,76 @@ def get_part_filepath(filepath: str) -> str:
         return os.path.join(file_head, f"{truncated_tail}{ext}")
 
     return f"{filepath}{ext}"
+
+
+def ensure_archive_filename_within_limits(archive: Any, root: str, max_bytes: int = 245) -> str:
+    """Ensure that archive.zipped.name fits within filesystem filename limits.
+
+    If the basename exceeds max_bytes, truncate it safely (preserving any [gid] suffix if present),
+    update archive.zipped in DB, and return the safe absolute path.
+    """
+    if not archive or not getattr(archive, "zipped", None):
+        return ""
+
+    current_name = archive.zipped.name if hasattr(archive.zipped, "name") else str(archive.zipped)
+    current_basename = os.path.basename(current_name)
+    current_bytes = len(current_basename.encode("utf-8"))
+
+    if current_bytes <= max_bytes:
+        dest_path = current_name if os.path.isabs(current_name) else os.path.join(root, current_name)
+        os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+        return dest_path
+
+    m = re.search(r"^(.*?)(?:\s*\[(\d+)\])?(\.[^.]+)$", current_basename)
+    if m:
+        base_title, gid_match, ext = m.group(1), m.group(2), m.group(3)
+        gid_suffix = f" [{gid_match}]" if gid_match else ""
+        max_base = max(10, max_bytes - len(ext.encode("utf-8")) - len(gid_suffix.encode("utf-8")) - 5)
+        truncated_base = replace_illegal_name(base_title, max_bytes=max_base)
+        candidate_tail = f"{truncated_base}{gid_suffix}{ext}"
+    else:
+        candidate_tail = current_basename
+
+    file_dir = os.path.dirname(current_name)
+    if os.path.isabs(file_dir) and file_dir.startswith(root):
+        file_dir = os.path.relpath(file_dir, root)
+    if file_dir == ".":
+        file_dir = ""
+
+    safe_rel_path = available_filename(root, os.path.join(file_dir, candidate_tail), max_bytes=max_bytes)
+    archive.zipped = safe_rel_path
+    if hasattr(archive, "save"):
+        try:
+            archive.save(update_fields=["zipped"])
+        except Exception as e:
+            logger.warning("Failed to update archive %s zipped path in DB: %s", getattr(archive, "pk", None), e)
+
+    dest_path = os.path.join(root, safe_rel_path)
+    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+    return dest_path
+
+
+def find_hath_directory(dir_names: Iterable[str], gid: str | int) -> str | None:
+    """Find the download folder for a given gallery gid.
+
+    First priority: folder ending with [gid] (e.g. 'Title [3802429]').
+    Alternative fallback: entire folder name is the gallery gid (e.g. '3802429').
+    """
+    gid_str = str(gid).strip()
+    dir_list = list(dir_names)
+
+    # 1. First priority: folder ending with [gid]
+    for name in dir_list:
+        m = re.search(r".*?\[(\d+)]$", name)
+        if m and m.group(1) == gid_str:
+            return name
+
+    # 2. Alternative: entire folder name is gid
+    for name in dir_list:
+        if name.strip() == gid_str:
+            return name
+
+    return None
 
 
 def get_base_filename_string_from_gallery_data(gallery_data: GalleryData) -> str:

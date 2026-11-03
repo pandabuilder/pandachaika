@@ -721,19 +721,19 @@ class TagAutocompleteJson(ListView):
         return results.order_by("pk")[0 : self.limit_choices]
 
 
-class TagPkAutocomplete(autocomplete.Select2QuerySetView):
+class TagPkAutocomplete(autocomplete.AlightQuerySetView):
     model = Tag
 
 
-class ProviderPkAutocomplete(autocomplete.Select2QuerySetView):
+class ProviderPkAutocomplete(autocomplete.AlightQuerySetView):
     model = Provider
 
 
-class CategoryPkAutocomplete(autocomplete.Select2QuerySetView):
+class CategoryPkAutocomplete(autocomplete.AlightQuerySetView):
     model = Category
 
 
-class NonCustomTagAutocomplete(autocomplete.Select2QuerySetView):
+class NonCustomTagAutocomplete(autocomplete.AlightQuerySetView):
     model = Tag
 
     def __init__(self, **kwargs: Any) -> None:
@@ -769,7 +769,7 @@ class NonCustomTagAutocomplete(autocomplete.Select2QuerySetView):
         return results.order_by("pk")
 
 
-class CustomTagAutocomplete(autocomplete.Select2QuerySetView):
+class CustomTagAutocomplete(autocomplete.AlightQuerySetView):
     model = Tag
 
     def create_object(self, text):
@@ -797,7 +797,7 @@ class CustomTagAutocomplete(autocomplete.Select2QuerySetView):
         return results.order_by("source")
 
 
-class GallerySelectAutocomplete(autocomplete.Select2QuerySetView):
+class GallerySelectAutocomplete(autocomplete.AlightQuerySetView):
     model = Gallery
     limit_choices = 10
 
@@ -833,7 +833,7 @@ class GallerySelectAutocomplete(autocomplete.Select2QuerySetView):
         return qs[0 : self.limit_choices]
 
 
-class ArchiveSelectSimpleAutocomplete(autocomplete.Select2QuerySetView):
+class ArchiveSelectSimpleAutocomplete(autocomplete.AlightQuerySetView):
     model = Archive
     limit_choices = 10
 
@@ -856,7 +856,7 @@ class ArchiveSelectSimpleAutocomplete(autocomplete.Select2QuerySetView):
         return qs[0 : self.limit_choices]
 
 
-class ArchiveSelectAutocomplete(autocomplete.Select2QuerySetView):
+class ArchiveSelectAutocomplete(autocomplete.AlightQuerySetView):
     model = Archive
     limit_choices = 10
 
@@ -883,7 +883,7 @@ class ArchiveSelectAutocomplete(autocomplete.Select2QuerySetView):
         return qs[0 : self.limit_choices]
 
 
-class ArchiveGroupSelectAutocomplete(autocomplete.Select2QuerySetView):
+class ArchiveGroupSelectAutocomplete(autocomplete.AlightQuerySetView):
     model = ArchiveGroup
     limit_choices = 100
 

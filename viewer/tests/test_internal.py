@@ -1230,6 +1230,7 @@ class OperationalFixesTest(TestCase):
         self.assertNotIn("<script>", rendered)
         self.assertIn("&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;", rendered)
         self.assertNotIn('onclick="alert(2)"', rendered)
+        self.assertIn('autocomplete="off"', rendered)
 
     def test_settings_views_superuser_and_redaction(self):
         from viewer.templatetags.viewer_extras import format_setting_value

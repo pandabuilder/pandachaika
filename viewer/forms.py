@@ -52,7 +52,7 @@ crawler_settings = settings.CRAWLER_SETTINGS
 class JalTextWidget(WidgetMixin, forms.TextInput):
 
     class Media:
-        js = ("js/vendor/jquery.autocomplete-light.min.js",)
+        js = ("js/vendor/jal.js",)
 
     autocomplete_function = "jal"
 
@@ -83,9 +83,11 @@ class JalTextWidget(WidgetMixin, forms.TextInput):
             "data-widget-bootstrap": "text",
             "data-autocomplete-url": self.url,
             "placeholder": gettext_lazy("type some text to search in this autocomplete"),
+            "autocomplete": "off",
         }
 
         attrs.update(self.attrs)
+        attrs.setdefault("autocomplete", "off")
 
         if "class" not in attrs.keys():
             attrs["class"] = ""
@@ -373,7 +375,7 @@ class ArchiveGroupSelectForm(forms.Form):
     archive_group = forms.ModelMultipleChoiceField(
         required=False,
         queryset=ArchiveGroup.objects.none(),
-        widget=autocomplete.ModelSelect2Multiple(
+        widget=autocomplete.ModelAlightMultiple(
             url="archive-group-select-autocomplete",
             attrs={"size": 1, "data-placeholder": "Group name", "class": "form-control"},
         ),
@@ -397,11 +399,11 @@ class ArchiveModForm(forms.ModelForm):
             "details",
         ]
         widgets = {
-            "tags": autocomplete.ModelSelect2Multiple(
+            "tags": autocomplete.ModelAlightMultiple(
                 url="customtag-autocomplete",
                 attrs={"size": 1, "data-placeholder": "Custom tag name", "class": "form-control", "data-width": "100%"},
             ),
-            "alternative_sources": autocomplete.ModelSelect2Multiple(
+            "alternative_sources": autocomplete.ModelAlightMultiple(
                 url="gallery-select-autocomplete",
                 attrs={
                     "size": 1,
@@ -439,7 +441,7 @@ class ArchiveModForm(forms.ModelForm):
     archive_groups = forms.models.ModelMultipleChoiceField(
         required=False,
         queryset=ArchiveGroup.objects.none(),
-        widget=autocomplete.ModelSelect2Multiple(
+        widget=autocomplete.ModelAlightMultiple(
             url="archive-group-select-autocomplete",
             attrs={"size": 1, "data-placeholder": "Archive groups", "class": "form-control", "data-width": "100%"},
         ),
@@ -919,11 +921,11 @@ class WantedGalleryCreateOrEditForm(ModelForm):
             "unwanted_title": forms.widgets.TextInput(attrs={"class": "form-control"}),
             "regexp_unwanted_title": forms.widgets.CheckboxInput(attrs={"class": "form-check-input"}),
             "regexp_unwanted_title_icase": forms.widgets.CheckboxInput(attrs={"class": "form-check-input"}),
-            "wanted_tags": autocomplete.ModelSelect2Multiple(
+            "wanted_tags": autocomplete.ModelAlightMultiple(
                 url="tag-pk-autocomplete",
                 attrs={"data-placeholder": "Tag name", "class": "form-control", "data-width": "100%"},
             ),
-            "unwanted_tags": autocomplete.ModelSelect2Multiple(
+            "unwanted_tags": autocomplete.ModelAlightMultiple(
                 url="tag-pk-autocomplete",
                 attrs={"data-placeholder": "Tag name", "class": "form-control", "data-width": "100%"},
             ),
@@ -931,18 +933,18 @@ class WantedGalleryCreateOrEditForm(ModelForm):
             "exclusive_scope_name": forms.widgets.TextInput(attrs={"class": "form-control"}),
             "wanted_tags_accept_if_none_scope": forms.widgets.TextInput(attrs={"class": "form-control"}),
             "category": forms.widgets.TextInput(attrs={"class": "form-control"}),
-            "categories": autocomplete.ModelSelect2Multiple(
+            "categories": autocomplete.ModelAlightMultiple(
                 url="category-pk-autocomplete",
                 attrs={"data-placeholder": "Category", "class": "form-control", "data-width": "100%"},
             ),
             "wanted_page_count_lower": forms.widgets.NumberInput(attrs={"min": 0, "class": "form-control"}),
             "wanted_page_count_upper": forms.widgets.NumberInput(attrs={"min": 0, "class": "form-control"}),
             "match_expression": forms.widgets.Textarea(attrs={"class": "form-control"}),
-            "wanted_providers": autocomplete.ModelSelect2Multiple(
+            "wanted_providers": autocomplete.ModelAlightMultiple(
                 url="provider-pk-autocomplete",
                 attrs={"data-placeholder": "Provider name", "class": "form-control", "data-width": "100%"},
             ),
-            "unwanted_providers": autocomplete.ModelSelect2Multiple(
+            "unwanted_providers": autocomplete.ModelAlightMultiple(
                 url="provider-pk-autocomplete",
                 attrs={"data-placeholder": "Provider name", "class": "form-control", "data-width": "100%"},
             ),
@@ -955,7 +957,7 @@ class WantedGalleryCreateOrEditForm(ModelForm):
             "book_type": forms.widgets.TextInput(attrs={"class": "form-control"}),
             "publisher": forms.widgets.TextInput(attrs={"class": "form-control"}),
             "page_count": forms.widgets.NumberInput(attrs={"min": 0, "class": "form-control"}),
-            "add_to_archive_group": autocomplete.ModelSelect2(
+            "add_to_archive_group": autocomplete.ModelAlight(
                 url="archive-group-select-autocomplete",
                 attrs={"size": 1, "data-placeholder": "Archive Group", "class": "form-control"},
             ),
@@ -990,11 +992,11 @@ class WantedGalleryCommand(forms.ModelForm):
         ]
 
         widgets = {
-            "categories": autocomplete.ModelSelect2Multiple(
+            "categories": autocomplete.ModelAlightMultiple(
                 url="category-pk-autocomplete",
                 attrs={"data-placeholder": "Category", "class": "form-control", "data-width": "100%"},
             ),
-            "wanted_providers": autocomplete.ModelSelect2Multiple(
+            "wanted_providers": autocomplete.ModelAlightMultiple(
                 url="provider-pk-autocomplete",
                 attrs={"data-placeholder": "Provider name", "class": "form-control", "data-width": "100%"},
             ),
@@ -1029,7 +1031,7 @@ class ArchiveGroupEntryForm(ModelForm):
         widgets = {
             "title": forms.widgets.TextInput(attrs={"class": "form-control"}),
             # 'position': forms.widgets.NumberInput(attrs={'class': 'form-control'}),
-            "archive": autocomplete.ModelSelect2(
+            "archive": autocomplete.ModelAlight(
                 url="archive-select-simple-autocomplete",
                 attrs={"size": 1, "data-placeholder": "Archive", "class": "form-control", "data-width": "100%"},
             ),
@@ -1075,7 +1077,7 @@ class ArchiveCreateForm(ModelForm):
             "title_jpn": forms.widgets.TextInput(attrs={"class": "form-control"}),
             "source_type": forms.widgets.TextInput(attrs={"class": "form-control"}),
             "reason": forms.widgets.TextInput(attrs={"class": "form-control"}),
-            "gallery": autocomplete.ModelSelect2(
+            "gallery": autocomplete.ModelAlight(
                 url="gallery-select-autocomplete",
                 attrs={"size": 1, "data-placeholder": "Gallery", "class": "form-control", "data-width": "100%"},
             ),
@@ -1127,11 +1129,11 @@ class ArchiveEditForm(ModelForm):
             "title_jpn": forms.widgets.TextInput(attrs={"class": "form-control"}),
             "source_type": forms.widgets.TextInput(attrs={"class": "form-control"}),
             "reason": forms.widgets.TextInput(attrs={"class": "form-control"}),
-            "gallery": autocomplete.ModelSelect2(
+            "gallery": autocomplete.ModelAlight(
                 url="gallery-select-autocomplete",
                 attrs={"size": 1, "data-placeholder": "Gallery", "class": "form-control", "data-width": "100%"},
             ),
-            "alternative_sources": autocomplete.ModelSelect2Multiple(
+            "alternative_sources": autocomplete.ModelAlightMultiple(
                 url="gallery-select-autocomplete",
                 attrs={"size": 1, "data-placeholder": "Gallery", "class": "form-control", "data-width": "100%"},
             ),
@@ -1308,11 +1310,11 @@ class GalleryCreateForm(ModelForm):
             "token": forms.widgets.TextInput(attrs={"class": "form-control"}),
             "title": forms.widgets.TextInput(attrs={"class": "form-control"}),
             "title_jpn": forms.widgets.TextInput(attrs={"class": "form-control"}),
-            "gallery_container": autocomplete.ModelSelect2(
+            "gallery_container": autocomplete.ModelAlight(
                 url="gallery-select-autocomplete",
                 attrs={"size": 1, "data-placeholder": "Gallery", "class": "form-control", "data-width": "100%"},
             ),
-            "magazine": autocomplete.ModelSelect2(
+            "magazine": autocomplete.ModelAlight(
                 url="gallery-select-autocomplete",
                 attrs={"size": 1, "data-placeholder": "Gallery", "class": "form-control", "data-width": "100%"},
             ),
@@ -1498,16 +1500,16 @@ class GallerySearchFields(forms.Form):
 
     providers = forms.MultipleChoiceField(
         required=False,
-        widget=autocomplete.Select2Multiple(
-            url="gallery-provider-json-autocomplete",
+        widget=autocomplete.TagAlight(
+            url="gallery-provider-autocomplete",
             attrs={"data-placeholder": "Providers", "class": "form-control mr-sm-1", "data-width": "80%"},
         )
     )
 
     categories = forms.MultipleChoiceField(
         required=False,
-        widget=autocomplete.Select2Multiple(
-            url="gallery-category-json-autocomplete",
+        widget=autocomplete.TagAlight(
+            url="gallery-category-autocomplete",
             attrs={"data-placeholder": "Categories", "class": "form-control mr-sm-1", "data-width": "80%"},
         ),
     )
@@ -1563,7 +1565,7 @@ class GalleryMatchGroupEntryForm(ModelForm):
         model = GalleryMatchGroupEntry
         fields = ["gallery"]
         widgets = {
-            "gallery": autocomplete.ModelSelect2(
+            "gallery": autocomplete.ModelAlight(
                 url="gallery-select-autocomplete",
                 attrs={"size": 1, "data-placeholder": "Gallery", "class": "form-control", "data-width": "100%"},
             ),

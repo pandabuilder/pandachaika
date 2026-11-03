@@ -23,7 +23,13 @@ from django.template.defaultfilters import filesizeformat
 import re
 
 from core.base.setup import Settings
-from core.base.utilities import convert_rar_to_zip, replace_illegal_name, convert_7z_to_zip
+from core.base.utilities import (
+    convert_rar_to_zip,
+    replace_illegal_name,
+    convert_7z_to_zip,
+    ensure_archive_filename_within_limits,
+    find_hath_directory,
+)
 from core.providers.chaika import constants as chaika_constants
 from core.providers.panda.parsers import Parser as PandaParser
 from core.workers.schedulers import BaseScheduler
@@ -592,15 +598,13 @@ class PostDownloader(object):
             self.set_current_dir(ftp_key_hath, self.settings.providers["panda"].remote_hath_dir)
             # self.ftps.encoding = 'utf8'
 
+            remote_dirs = [line[0] for line in ftp_data_hath.ftps.mlsd(facts=["type"]) if line[1].get("type") == "dir"]
             files_matched_hath = []
-            for line in ftp_data_hath.ftps.mlsd(facts=["type"]):
-                if line[1]["type"] != "dir":
-                    continue
-                m = re.search(r".*?\[(\d+)]$", line[0])
-                if m:
-                    for archive in files_hath:
-                        if archive.gallery and archive.filesize and m.group(1) == archive.gallery.gid:
-                            files_matched_hath.append((line[0], archive.zipped.path, int(archive.filesize), archive))
+            for archive in files_hath:
+                if archive.gallery and archive.filesize and archive.gallery.gid:
+                    matched_dir = find_hath_directory(remote_dirs, archive.gallery.gid)
+                    if matched_dir:
+                        files_matched_hath.append((matched_dir, archive.zipped.path, int(archive.filesize), archive))
 
             for matched_file_hath in files_matched_hath:
                 total_remote_size = 0
@@ -662,13 +666,16 @@ class PostDownloader(object):
                             self.set_current_dir(ftp_key_hath, self.settings.providers["panda"].remote_hath_dir)
                         else:
                             break
-                with ZipFile(os.path.join(self.settings.MEDIA_ROOT, matched_file_hath[1]), "w") as archive_file:
-                    for root_path, _, file_names in os.walk(dir_path):
-                        for current_file in file_names:
-                            archive_file.write(
-                                os.path.join(root_path, current_file), arcname=os.path.basename(current_file)
-                            )
-                shutil.rmtree(dir_path, ignore_errors=True)
+                target_zip_path = ensure_archive_filename_within_limits(matched_file_hath[3], self.settings.MEDIA_ROOT)
+                try:
+                    with ZipFile(target_zip_path, "w") as archive_file:
+                        for root_path, _, file_names in os.walk(dir_path):
+                            for current_file in file_names:
+                                archive_file.write(
+                                    os.path.join(root_path, current_file), arcname=os.path.basename(current_file)
+                                )
+                finally:
+                    shutil.rmtree(dir_path, ignore_errors=True)
 
                 self.process_downloaded_archive(matched_file_hath[3])
 
@@ -772,13 +779,16 @@ class PostDownloader(object):
                                 self.set_current_dir(ftp_key_torrent, self.settings.ftps["remote_torrent_dir"])
                             else:
                                 break
-                    with ZipFile(matched_file_torrent[3].zipped.path, "w") as archive_file:
-                        for root_path, _, file_names in os.walk(dir_path):
-                            for current_file in file_names:
-                                archive_file.write(
-                                    os.path.join(root_path, current_file), arcname=os.path.basename(current_file)
-                                )
-                    shutil.rmtree(dir_path, ignore_errors=True)
+                    target_zip_path = ensure_archive_filename_within_limits(matched_file_torrent[3], self.settings.MEDIA_ROOT)
+                    try:
+                        with ZipFile(target_zip_path, "w") as archive_file:
+                            for root_path, _, file_names in os.walk(dir_path):
+                                for current_file in file_names:
+                                    archive_file.write(
+                                        os.path.join(root_path, current_file), arcname=os.path.basename(current_file)
+                                    )
+                    finally:
+                        shutil.rmtree(dir_path, ignore_errors=True)
                 else:
                     logger.info(
                         "For archive: {archive} downloading remote file: {remote} to local file: {local}".format(
@@ -877,17 +887,20 @@ class PostDownloader(object):
 
         # Hath downloads
         if len(files_hath) > 0:
+            local_folder = self.settings.providers["panda"].local_hath_folder
+            local_dirs = [
+                matched_file
+                for matched_file in os.listdir(local_folder)
+                if not os.path.isfile(os.path.join(local_folder, matched_file))
+            ] if os.path.isdir(local_folder) else []
             files_matched_hath: list[tuple[str, str, int, Archive]] = []
-            for matched_file in os.listdir(self.settings.providers["panda"].local_hath_folder):
-                if os.path.isfile(os.path.join(self.settings.providers["panda"].local_hath_folder, matched_file)):
-                    continue
-                m = re.search(r".*?\[(\d+)]$", matched_file)
-                if m:
-                    for archive in files_hath:
-                        if archive.gallery and archive.filesize and m.group(1) == archive.gallery.gid:
-                            files_matched_hath.append(
-                                (matched_file, archive.zipped.path, int(archive.filesize), archive)
-                            )
+            for archive in files_hath:
+                if archive.gallery and archive.filesize and archive.gallery.gid:
+                    matched_dir = find_hath_directory(local_dirs, archive.gallery.gid)
+                    if matched_dir:
+                        files_matched_hath.append(
+                            (matched_dir, archive.zipped.path, int(archive.filesize), archive)
+                        )
 
             for img_dir in files_matched_hath:
                 total_remote_size = 0
@@ -926,13 +939,16 @@ class PostDownloader(object):
                         shutil.copy(img_file_original, os.path.join(dir_path, img_file))
                     else:
                         shutil.copy(img_file_original, os.path.join(dir_path, img_file))
-                with ZipFile(os.path.join(self.settings.MEDIA_ROOT, img_dir[1]), "w") as archive_file:
-                    for root_path, _, file_names in os.walk(dir_path):
-                        for current_file in file_names:
-                            archive_file.write(
-                                os.path.join(root_path, current_file), arcname=os.path.basename(current_file)
-                            )
-                shutil.rmtree(dir_path, ignore_errors=True)
+                target_zip_path = ensure_archive_filename_within_limits(img_dir[3], self.settings.MEDIA_ROOT)
+                try:
+                    with ZipFile(target_zip_path, "w") as archive_file:
+                        for root_path, _, file_names in os.walk(dir_path):
+                            for current_file in file_names:
+                                archive_file.write(
+                                    os.path.join(root_path, current_file), arcname=os.path.basename(current_file)
+                                )
+                finally:
+                    shutil.rmtree(dir_path, ignore_errors=True)
 
                 self.process_downloaded_archive(img_dir[3])
 
@@ -995,13 +1011,16 @@ class PostDownloader(object):
                         else:
                             shutil.copy(os.path.join(target, img_file), os.path.join(dir_path, img_file))
 
-                    with ZipFile(matched_archive.zipped.path, "w") as archive_file:
-                        for root_path, _, file_names in os.walk(dir_path):
-                            for current_file in file_names:
-                                archive_file.write(
-                                    os.path.join(root_path, current_file), arcname=os.path.basename(current_file)
-                                )
-                    shutil.rmtree(dir_path, ignore_errors=True)
+                    target_zip_path = ensure_archive_filename_within_limits(matched_archive, self.settings.MEDIA_ROOT)
+                    try:
+                        with ZipFile(target_zip_path, "w") as archive_file:
+                            for root_path, _, file_names in os.walk(dir_path):
+                                for current_file in file_names:
+                                    archive_file.write(
+                                        os.path.join(root_path, current_file), arcname=os.path.basename(current_file)
+                                    )
+                    finally:
+                        shutil.rmtree(dir_path, ignore_errors=True)
                 else:
                     logger.info(
                         "For archive: {archive}, downloading file: {filename}".format(
@@ -1090,15 +1109,13 @@ class PostDownloader(object):
         self.set_current_dir(self.ftp_key_hath, self.settings.providers["panda"].remote_hath_dir)
         # self.ftps.encoding = 'utf8'
 
+        remote_dirs = [line[0] for line in ftp_data_hath.ftps.mlsd(facts=["type"]) if line[1].get("type") == "dir"]
         files_matched_hath = []
-        for line in ftp_data_hath.ftps.mlsd(facts=["type"]):
-            if line[1]["type"] != "dir":
-                continue
-            m = re.search(r".*?\[(\d+)]$", line[0])
-            if m:
-                for archive, key in archives:
-                    if archive.gallery and archive.filesize and m.group(1) == archive.gallery.gid:
-                        files_matched_hath.append((line[0], archive.zipped.path, int(archive.filesize), key))
+        for archive, key in archives:
+            if archive.gallery and archive.filesize and archive.gallery.gid:
+                matched_dir = find_hath_directory(remote_dirs, archive.gallery.gid)
+                if matched_dir:
+                    files_matched_hath.append((matched_dir, archive.zipped.path, int(archive.filesize), key))
 
         for matched_file_hath in files_matched_hath:
             total_remote_size = 0
