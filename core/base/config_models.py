@@ -836,12 +836,70 @@ class DatabaseSettings(BaseConfigModel):
     postgresql_host: str = Field(default="localhost", description="PostgreSQL host server.")
     postgresql_port: str = Field(default="5432", description="PostgreSQL port.")
 
+    conn_max_age: int | None = Field(
+        default=600,
+        description="Maximum age in seconds of persistent database connections for web requests (0 to close after each request, null for unlimited).",
+    )
+    worker_conn_max_age: int | None = Field(
+        default=None,
+        description="Optional override for database connection max age in seconds for background worker processes. If null, falls back to conn_max_age.",
+    )
+    conn_health_checks: bool = Field(
+        default=True,
+        description="Perform a health check (is_usable) before reusing an existing database connection.",
+    )
+    pooling: bool = Field(
+        default=False,
+        description="Enable Django 5+ native connection pooling (via psycopg_pool). When true, CONN_MAX_AGE is forced to 0.",
+    )
+    pool_min_size: int = Field(
+        default=4,
+        description="Minimum number of database connections maintained in the pool when pooling is enabled.",
+    )
+    pool_max_size: int | None = Field(
+        default=10,
+        description="Maximum number of database connections allowed in the pool when pooling is enabled (null for unlimited/backend default).",
+    )
+    pool_timeout: float = Field(
+        default=30.0,
+        description="Timeout in seconds waiting for an available connection from the pool before erroring.",
+    )
+    pool_max_lifetime: float | None = Field(
+        default=None,
+        description="Maximum lifetime in seconds for a connection in the pool before being retired (null for no limit).",
+    )
+    pool_max_idle: float | None = Field(
+        default=600.0,
+        description="Maximum time in seconds an idle connection exceeding pool_min_size can remain in the pool (null for no idle closing).",
+    )
+
     @field_validator("postgresql_port", mode="before")
     @classmethod
     def _coerce_postgresql_port(cls, v: Any) -> str:
         if v is None:
             return "5432"
         return str(v)
+
+    @field_validator("conn_max_age", "worker_conn_max_age", mode="before")
+    @classmethod
+    def _coerce_conn_max_age(cls, v: Any) -> int | None:
+        if v is None or v == "" or str(v).lower() in ("none", "null"):
+            return None
+        return int(v)
+
+    @field_validator("pool_max_size", mode="before")
+    @classmethod
+    def _coerce_pool_max_size(cls, v: Any) -> int | None:
+        if v is None or v == "" or str(v).lower() in ("none", "null"):
+            return None
+        return int(v)
+
+    @field_validator("pool_max_lifetime", "pool_max_idle", mode="before")
+    @classmethod
+    def _coerce_pool_float_or_none(cls, v: Any) -> float | None:
+        if v is None or v == "" or str(v).lower() in ("none", "null"):
+            return None
+        return float(v)
 
 
 class TorrentSettings(BaseConfigModel):
@@ -1579,6 +1637,10 @@ general:
   # Default: panda_archive
   failed_download_downloader: panda_archive
 
+  # Stop crawling when encountering a link seen before.
+  # Default: false
+  stop_on_seen_links: false
+
 # ------------------------------------------------------------------------------
 # Operational Permissions ('allowed')
 # Controls whether existing archives can be replaced, redownloaded, or converted.
@@ -1929,6 +1991,45 @@ database:
   postgresql_host: localhost
   postgresql_port: '5432'
 
+  # Maximum age (in seconds) of persistent database connections for web requests.
+  # Set to 0 to close connection at the end of each request, or null for unlimited.
+  # Default: 600
+  conn_max_age: 600
+
+  # Override connection max age (in seconds) for long-running background workers.
+  # If null, falls back to conn_max_age.
+  # Default: null
+  worker_conn_max_age: null
+
+  # Check if connection is usable before reusing an existing connection.
+  # Default: true
+  conn_health_checks: true
+
+  # Enable Django 5+ native connection pooling (via psycopg_pool).
+  # When true, CONN_MAX_AGE is automatically forced to 0 as required by Django.
+  # Default: false
+  pooling: false
+
+  # Minimum number of database connections maintained in the pool when pooling is enabled.
+  # Default: 4
+  pool_min_size: 4
+
+  # Maximum number of database connections in the pool when pooling is enabled (null for backend default).
+  # Default: 10
+  pool_max_size: 10
+
+  # Timeout (in seconds) waiting for an available connection from the pool.
+  # Default: 30.0
+  pool_timeout: 30.0
+
+  # Maximum lifetime (in seconds) for a pooled connection before replacement (null for unlimited).
+  # Default: null
+  pool_max_lifetime: null
+
+  # Idle timeout (in seconds) before closing idle connections above pool_min_size.
+  # Default: 600.0
+  pool_max_idle: 600.0
+
 # ------------------------------------------------------------------------------
 # Torrent Client Integration
 # Connection settings for Transmission or qBittorrent WebUI.
@@ -2160,6 +2261,10 @@ providers:
       # Maximum page number to crawl when browsing gallery listings.
       # Default: 5
       stop_page_number: 5
+
+      # Stop processing when encountering a link seen before.
+      # Default: false
+      stop_on_seen_links: false
 
       # Accepted categories reported by upstream RSS. Unmatched categories are ignored.
       # Possible categories: Doujinshi, Manga, Artist CG Sets, Game CG Sets, Western, Image Sets, Non-H, Cosplay, Asian Porn, Misc, Private

@@ -83,3 +83,7 @@ class ProviderTimedAutoUpdater(BaseScheduler):
                     self.web_queue.enqueue_args_list(url_list, override_options=current_settings)
 
             self.update_last_run(django_tz.now())
+            try:
+                close_old_connections()
+            except Exception:
+                pass

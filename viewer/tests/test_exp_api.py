@@ -249,7 +249,11 @@ class ExpApiTests(TestCase):
         perm_publish = Permission.objects.get(codename="publish_archive")
         self.admin_user.user_permissions.add(perm_publish)
 
-        response = self.admin_client.get(f"/archive/{self.archive.pk}/public/", HTTP_REFERER="/archive/")
+        # GET should be rejected with 405 Method Not Allowed
+        get_resp = self.admin_client.get(f"/archive/{self.archive.pk}/public/", HTTP_REFERER="/archive/")
+        self.assertEqual(get_resp.status_code, 405)
+
+        response = self.admin_client.post(f"/archive/{self.archive.pk}/public/", HTTP_REFERER="/archive/")
         self.assertEqual(response.status_code, 302)
         mock_set_public.assert_not_called()
 
@@ -260,7 +264,7 @@ class ExpApiTests(TestCase):
         self.assertTrue(client.is_archive_publishing(self.archive.pk))
 
         # Calling again while task is pending does not enqueue a duplicate task
-        response = self.admin_client.get(f"/archive/{self.archive.pk}/public/", HTTP_REFERER="/archive/")
+        response = self.admin_client.post(f"/archive/{self.archive.pk}/public/", HTTP_REFERER="/archive/")
         self.assertEqual(response.status_code, 302)
         self.assertEqual(TaskQueue.objects.filter(task_type="publish_worker").count(), 1)
 
@@ -275,7 +279,7 @@ class ExpApiTests(TestCase):
         TaskQueue.objects.all().delete()
         self.archive.public = True
         self.archive.save()
-        response = self.admin_client.get(f"/archive/{self.archive.pk}/public/", HTTP_REFERER="/archive/")
+        response = self.admin_client.post(f"/archive/{self.archive.pk}/public/", HTTP_REFERER="/archive/")
         self.assertEqual(TaskQueue.objects.filter(task_type="publish_worker").count(), 0)
         mock_set_public.assert_not_called()
 

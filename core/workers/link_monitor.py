@@ -97,3 +97,7 @@ class LinkMonitor(BaseScheduler):
             self.timer = monitored_link.frequency.total_seconds()
 
             self.update_last_run(django_tz.now())
+            try:
+                close_old_connections()
+            except Exception:
+                pass

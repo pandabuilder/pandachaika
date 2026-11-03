@@ -1,5 +1,5 @@
 # Database backend (PostgreSQL)
-psycopg[c]==3.3.6
+psycopg[c,pool]==3.3.6
 # Main
 python-dateutil==3.0.0
 beautifulsoup4==4.15.0

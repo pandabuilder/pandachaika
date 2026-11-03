@@ -9,6 +9,23 @@ variables:
   PYTHON_VERSION: "3.13"
   FF_TIMESTAMPS: true
 
+# Skip the whole pipeline when the only change is TODO.md.
+# `changes` doesn't support negated globs, so we list everything that should
+# trigger a pipeline: every file inside a subdirectory, plus root-level files
+# by extension/name. If you add a new root-level file with an unlisted
+# extension, add it to the list below.
+workflow:
+  rules:
+    # Manually started, scheduled, API-triggered and downstream pipelines always run.
+    - if: $CI_PIPELINE_SOURCE =~ /^(web|schedule|api|trigger|pipeline|parent_pipeline)$/
+    - changes:
+        paths:
+          - "*/**/*"
+          - ".*"
+          - "*.{py,toml,yml,yaml,lock,txt,sh,json,ini,cfg,env,xml}"
+          - "{Dockerfile,LICENSE,README.md}"
+    - when: never
+
 cache: &global_cache
   key:
     files:
@@ -31,7 +48,7 @@ static-analysis:
     - python --version
     - uv sync --locked --active --group ci
     - uv run --no-sync ruff check --exclude=".venv" .
-    - uv run --no-sync mypy --show-traceback core pandabackup viewer
+    - uv run --no-sync mypy --show-traceback core pandabackup viewer workers
     - uv cache prune --ci
   tags:
     - django
@@ -66,9 +83,9 @@ test-all:
     STATIC_ROOT: /tmp/static/
   script:
     - python --version
-    - uv sync --locked --active --group ci
+    - uv sync --locked --active --group ci --group dev
     - uv run --no-sync manage.py migrate
-    - uv run --no-sync manage.py test --noinput viewer.tests.test_internal viewer.tests.test_core
+    - uv run --no-sync pytest --durations=20 --junitxml=test-results/TEST-pytest.xml
     - uv cache prune --ci
   tags:
     - django

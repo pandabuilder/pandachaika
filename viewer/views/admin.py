@@ -9,8 +9,8 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
 from django.urls import reverse
-from django.db.models import Avg, Max, Min, Sum, Count
-from django.http import HttpResponseRedirect, HttpRequest, HttpResponse
+from django.db.models import Avg, Max, Min, Sum, Count, Q
+from django.http import HttpResponseRedirect, HttpRequest, HttpResponse, HttpResponseNotAllowed
 from django.shortcuts import render
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
@@ -142,73 +142,147 @@ def stats_collection(request: HttpRequest) -> HttpResponse:
     }
 
     # Per provider
-    providers = Gallery.objects.all().values_list("provider", flat=True).distinct()
-
-    providers_dict = {}
-
-    for provider in providers:
-        providers_dict[provider] = {
-            "galleries": Gallery.objects.filter(provider=provider).count(),
-            "archives": Archive.objects.filter(gallery__provider=provider).count(),
-            "wanted_galleries": WantedGallery.objects.filter(wanted_providers__slug=provider).count(),
-        }
-
-    # Per category
-    categories = Gallery.objects.all().values_list("category", flat=True).distinct()
-
-    categories_dict = {}
-
-    for category in categories:
-        categories_dict[category] = {
-            "n_galleries": Gallery.objects.filter(category=category).count(),
-            "gallery": Gallery.objects.filter(filesize__gt=0, category=category).aggregate(
-                Avg("filesize"), Max("filesize"), Min("filesize"), Sum("filesize"), Avg("filecount"), Sum("filecount")
-            ),
-        }
-
-    # Per reason
-    reasons = Archive.objects.all().values_list("reason", flat=True).distinct().order_by("reason")
-
-    reasons_dict = {}
-
-    for reason in reasons:
-        reasons_dict[reason] = {
-            "n_archives": Archive.objects.filter(reason=reason).count(),
-            "archive": Archive.objects.filter(filesize__gt=0, reason=reason).aggregate(
-                Avg("filesize"), Max("filesize"), Min("filesize"), Sum("filesize"), Avg("filecount"), Sum("filecount")
-            ),
-        }
-
-    # Per language tag
-    languages = (
-        Tag.objects.filter(scope="language")
-        .exclude(scope="language", name="translated")
-        .annotate(num_gallery=Count("gallery"))
-        .order_by("-num_gallery")
-        .values_list("name", flat=True)
-        .distinct()
-    )
-
-    languages_dict = {}
-
-    languages_dict["untranslated"] = {
-        "n_galleries": Gallery.objects.exclude(tags__scope="language").distinct().count(),
-        "gallery": Gallery.objects.filter(filesize__gt=0)
-        .exclude(tags__scope="language")
-        .distinct()
-        .aggregate(
-            Avg("filesize"), Max("filesize"), Min("filesize"), Sum("filesize"), Avg("filecount"), Sum("filecount")
-        ),
+    gallery_counts = {
+        row["provider"]: row["count"]
+        for row in Gallery.objects.order_by("provider").values("provider").annotate(count=Count("id"))
+    }
+    archive_counts = {
+        row["gallery__provider"]: row["count"]
+        for row in Archive.objects.filter(gallery__provider__isnull=False)
+        .order_by()
+        .values("gallery__provider")
+        .annotate(count=Count("id"))
+    }
+    wanted_counts = {
+        row["wanted_providers__slug"]: row["count"]
+        for row in WantedGallery.objects.filter(wanted_providers__slug__isnull=False)
+        .order_by()
+        .values("wanted_providers__slug")
+        .annotate(count=Count("id", distinct=True))
     }
 
-    for language in languages:
-        languages_dict[str(language)] = {
-            "n_galleries": Gallery.objects.filter(tags__scope="language", tags__name=language).distinct().count(),
-            "gallery": Gallery.objects.filter(filesize__gt=0, tags__scope="language", tags__name=language)
-            .distinct()
-            .aggregate(
-                Avg("filesize"), Max("filesize"), Min("filesize"), Sum("filesize"), Avg("filecount"), Sum("filecount")
-            ),
+    providers_dict = {
+        provider: {
+            "galleries": count,
+            "archives": archive_counts.get(provider, 0),
+            "wanted_galleries": wanted_counts.get(provider, 0),
+        }
+        for provider, count in gallery_counts.items()
+    }
+
+    # Per category
+    category_stats = (
+        Gallery.objects.order_by("category")
+        .values("category")
+        .annotate(
+            n_galleries=Count("id"),
+            filesize__avg=Avg("filesize", filter=Q(filesize__gt=0)),
+            filesize__max=Max("filesize", filter=Q(filesize__gt=0)),
+            filesize__min=Min("filesize", filter=Q(filesize__gt=0)),
+            filesize__sum=Sum("filesize", filter=Q(filesize__gt=0)),
+            filecount__avg=Avg("filecount", filter=Q(filesize__gt=0)),
+            filecount__sum=Sum("filecount", filter=Q(filesize__gt=0)),
+        )
+    )
+
+    categories_dict = {
+        row["category"]: {
+            "n_galleries": row["n_galleries"],
+            "gallery": {
+                "filesize__avg": row["filesize__avg"],
+                "filesize__max": row["filesize__max"],
+                "filesize__min": row["filesize__min"],
+                "filesize__sum": row["filesize__sum"],
+                "filecount__avg": row["filecount__avg"],
+                "filecount__sum": row["filecount__sum"],
+            },
+        }
+        for row in category_stats
+    }
+
+    # Per reason
+    reason_stats = (
+        Archive.objects.order_by("reason")
+        .values("reason")
+        .annotate(
+            n_archives=Count("id"),
+            filesize__avg=Avg("filesize", filter=Q(filesize__gt=0)),
+            filesize__max=Max("filesize", filter=Q(filesize__gt=0)),
+            filesize__min=Min("filesize", filter=Q(filesize__gt=0)),
+            filesize__sum=Sum("filesize", filter=Q(filesize__gt=0)),
+            filecount__avg=Avg("filecount", filter=Q(filesize__gt=0)),
+            filecount__sum=Sum("filecount", filter=Q(filesize__gt=0)),
+        )
+    )
+
+    reasons_dict = {
+        row["reason"]: {
+            "n_archives": row["n_archives"],
+            "archive": {
+                "filesize__avg": row["filesize__avg"],
+                "filesize__max": row["filesize__max"],
+                "filesize__min": row["filesize__min"],
+                "filesize__sum": row["filesize__sum"],
+                "filecount__avg": row["filecount__avg"],
+                "filecount__sum": row["filecount__sum"],
+            },
+        }
+        for row in reason_stats
+    }
+
+    # Per language tag
+    untranslated_stats = Gallery.objects.exclude(tags__scope="language").aggregate(
+        n_galleries=Count("id", distinct=True),
+        filesize__avg=Avg("filesize", filter=Q(filesize__gt=0)),
+        filesize__max=Max("filesize", filter=Q(filesize__gt=0)),
+        filesize__min=Min("filesize", filter=Q(filesize__gt=0)),
+        filesize__sum=Sum("filesize", filter=Q(filesize__gt=0)),
+        filecount__avg=Avg("filecount", filter=Q(filesize__gt=0)),
+        filecount__sum=Sum("filecount", filter=Q(filesize__gt=0)),
+    )
+
+    languages_dict = {
+        "untranslated": {
+            "n_galleries": untranslated_stats["n_galleries"],
+            "gallery": {
+                "filesize__avg": untranslated_stats["filesize__avg"],
+                "filesize__max": untranslated_stats["filesize__max"],
+                "filesize__min": untranslated_stats["filesize__min"],
+                "filesize__sum": untranslated_stats["filesize__sum"],
+                "filecount__avg": untranslated_stats["filecount__avg"],
+                "filecount__sum": untranslated_stats["filecount__sum"],
+            },
+        }
+    }
+
+    language_stats = (
+        Tag.objects.filter(scope="language")
+        .exclude(name="translated")
+        .order_by()
+        .values("name")
+        .annotate(
+            n_galleries=Count("gallery", distinct=True),
+            filesize__avg=Avg("gallery__filesize", filter=Q(gallery__filesize__gt=0)),
+            filesize__max=Max("gallery__filesize", filter=Q(gallery__filesize__gt=0)),
+            filesize__min=Min("gallery__filesize", filter=Q(gallery__filesize__gt=0)),
+            filesize__sum=Sum("gallery__filesize", filter=Q(gallery__filesize__gt=0)),
+            filecount__avg=Avg("gallery__filecount", filter=Q(gallery__filesize__gt=0)),
+            filecount__sum=Sum("gallery__filecount", filter=Q(gallery__filesize__gt=0)),
+        )
+        .order_by("-n_galleries", "name")
+    )
+
+    for row in language_stats:
+        languages_dict[str(row["name"])] = {
+            "n_galleries": row["n_galleries"],
+            "gallery": {
+                "filesize__avg": row["filesize__avg"],
+                "filesize__max": row["filesize__max"],
+                "filesize__min": row["filesize__min"],
+                "filesize__sum": row["filesize__sum"],
+                "filecount__avg": row["filecount__avg"],
+                "filecount__sum": row["filecount__sum"],
+            },
         }
 
     d = {
@@ -246,6 +320,9 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
     """Tools listing."""
     if not request.user.is_staff:
         return render_error(request, "You need to be an admin to use the tools.")
+    if tool not in ("main", "modify_settings", "modify_settings_editor"):
+        if request.method != "POST":
+            return HttpResponseNotAllowed(["POST"])
     if tool == "transfer_missing_downloads":
         client.enqueue(args=["-tmd"], task_type="web_crawler", override_options=crawler_settings, user=request.user)
         return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
@@ -265,7 +342,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         client.enqueue(args=["--retry-failed"], task_type="web_crawler", override_options=crawler_settings, user=request.user)
         return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "update_newer_than":
-        p = request.GET
+        p = request.POST if request.POST else request.GET
         if p and "newer_than" in p:
             newer_than_date = p["newer_than"]
             try:
@@ -278,13 +355,13 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
                 messages.error(request, "Invalid date.", extra_tags="danger")
             return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "update_missing_thumbnails":
-        p = request.GET
+        p = request.POST if request.POST else request.GET
         if p and "limit_number" in p:
 
             try:
                 limit_number = int(p["limit_number"])
 
-                provider = request.GET.get("provider", "")
+                provider = p.get("provider", "")
                 if provider:
                     client.enqueue(args=["-umt", str(limit_number), "-ip", provider], task_type="web_crawler", override_options=crawler_settings, user=request.user)
                 else:
@@ -377,13 +454,14 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
     elif tool == "generate_possible_matches_internally":
         if thread_exists_in_db("match_unmatched_worker"):
             return render_error(request, "Matching worker is already running.")
-        provider = request.GET.get("provider", "")
+        p = request.POST if request.POST else request.GET
+        provider = p.get("provider", "")
         try:
-            cutoff = float(request.GET.get("cutoff", "0.4"))
+            cutoff = float(p.get("cutoff", "0.4"))
         except ValueError:
             cutoff = 0.4
         try:
-            max_matches = int(request.GET.get("max-matches", "10"))
+            max_matches = int(p.get("max-matches", p.get("max_matches", "10")))
         except ValueError:
             max_matches = 10
         logger.info(
@@ -423,7 +501,8 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
             messages.success(request, "No wanted galleries eligible to search.")
             return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
-        provider = request.GET.get("provider", "")
+        p = request.POST if request.POST else request.GET
+        provider = p.get("provider", "")
 
         logger.info("Searching for gallery matches in panda for wanted galleries, starting thread.")
         messages.success(request, "Searching for gallery matches in panda for wanted galleries, starting thread.")
@@ -448,14 +527,15 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
 
         logger.info("Looking for possible matches in gallery database " "for wanted galleries (fixed 0.4 cutoff)")
 
-        provider = request.GET.get("provider", "")
+        p = request.POST if request.POST else request.GET
+        provider = p.get("provider", "")
 
         try:
-            cutoff = float(request.GET.get("cutoff", "0.4"))
+            cutoff = float(p.get("cutoff", "0.4"))
         except ValueError:
             cutoff = 0.4
         try:
-            max_matches = int(request.GET.get("max-matches", "10"))
+            max_matches = int(p.get("max-matches", p.get("max_matches", "10")))
         except ValueError:
             max_matches = 10
 
@@ -893,9 +973,6 @@ def crawler(request: HttpRequest) -> HttpResponse:
         else:
             job_settings = current_settings
 
-        job_settings.non_current_links_as_deleted = ("skip-non-current" in p)
-        job_settings.replace_metadata = ("replace_metadata" in p)
-
         if "reason" in p and p["reason"] != "":
             reason = p["reason"]
             # Force limit string length (reason field max_length)
@@ -904,6 +981,9 @@ def crawler(request: HttpRequest) -> HttpResponse:
 
         if "gallery_only" in p:
             job_settings.allow_type_downloaders_only("info")
+
+        job_settings.non_current_links_as_deleted = ("skip-non-current" in p)
+        job_settings.replace_metadata = ("replace_metadata" in p)
 
         if "wanted_only" in p:
             urls.insert(0, "--wanted-only")

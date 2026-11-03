@@ -45,13 +45,27 @@ class TimedAutoWanted(BaseScheduler):
                     for count, wanted_generator in enumerate(
                         self.settings.provider_context.get_wanted_generators(provider_name)
                     ):
-                        # wanted_generator(self.settings, self.crawler_logger, attrs)
+                        def _run_wanted_gen(gen=wanted_generator):
+                            try:
+                                catch_and_log_error(gen)(self.settings, attrs)
+                            finally:
+                                try:
+                                    from django.db import connection, connections
+
+                                    if not connection.in_atomic_block:
+                                        connections.close_all()
+                                except Exception:
+                                    pass
+
                         wanted_generator_thread = threading.Thread(
                             name="{}-{}-{}".format(self.thread_name, provider_name, count),
-                            target=catch_and_log_error(wanted_generator),
-                            args=(self.settings, attrs),
+                            target=_run_wanted_gen,
                         )
                         wanted_generator_thread.daemon = True
                         wanted_generator_thread.start()
 
             self.update_last_run(django_tz.now())
+            try:
+                close_old_connections()
+            except Exception:
+                pass

@@ -15,7 +15,7 @@ import os
 import shutil
 import tempfile
 
-from viewer.models import Tag, Archive, Gallery, WantedGallery, ArchiveTag, FoundGallery
+from viewer.models import Tag, Archive, Gallery, WantedGallery, ArchiveTag, FoundGallery, ArchiveManageEntry
 
 
 class TagTestCase(TestCase):
@@ -1013,12 +1013,14 @@ class OperationalFixesTest(TestCase):
         # 3. Staff user with invalid arguments -> 401
         c_staff = Client()
         c_staff.login(username="admin_op", password="password")
-        response = c_staff.get(reverse("viewer:tools-api", args=["update_newer_than"]) + "?newer_than=invalid-date")
+        self.assertEqual(c_staff.get(reverse("viewer:tools-api", args=["update_newer_than"])).status_code, 405)
+        response = c_staff.post(reverse("viewer:tools-api", args=["update_newer_than"]), data={"newer_than": "invalid-date"})
         self.assertEqual(response.status_code, 401)
         data = json.loads(response.content)
         self.assertEqual(data.get("error"), "Invalid date format.")
 
-        response = c_staff.get(reverse("viewer:tools-api", args=["update_missing_thumbnails"]) + "?limit_number=notanumber")
+        self.assertEqual(c_staff.get(reverse("viewer:tools-api", args=["update_missing_thumbnails"])).status_code, 405)
+        response = c_staff.post(reverse("viewer:tools-api", args=["update_missing_thumbnails"]), data={"limit_number": "notanumber"})
         self.assertEqual(response.status_code, 401)
         data = json.loads(response.content)
         self.assertEqual(data.get("error"), "Invalid limit.")
@@ -1238,10 +1240,12 @@ class OperationalFixesTest(TestCase):
         for url in (
             reverse("viewer:stats-settings"),
             reverse("viewer:tools-id", args=["modify_settings_editor"]),
-            reverse("viewer:tools-id", args=["reload_settings"]),
         ):
             resp = c_staff.get(url, follow=True)
             self.assertIn(b"superuser", resp.content)
+
+        resp = c_staff.post(reverse("viewer:tools-id", args=["reload_settings"]), follow=True)
+        self.assertIn(b"superuser", resp.content)
 
         c_super = Client()
         c_super.login(username="super_op", password="password")
@@ -1477,3 +1481,169 @@ class ToolsSettingsTestCase(TestCase):
         resp = self.client.get(reverse("viewer:tools-id", args=["modify_settings_editor"]))
         self.assertEqual(resp.status_code, 200)
         self.assertTemplateUsed(resp, "viewer/settings.html")
+
+
+class LoginSecurityTestCase(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.active_user = User.objects.create_user(
+            username="active_user",
+            password="testpassword123",
+        )
+        cls.disabled_user = User.objects.create_user(
+            username="disabled_user",
+            password="testpassword123",
+            is_active=False,
+        )
+
+    def test_login_success_safe_relative_next(self):
+        resp = self.client.post(
+            reverse("viewer:login"),
+            {"username": "active_user", "password": "testpassword123", "next": "/galleries/"},
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.url, "/galleries/")
+
+    def test_login_success_unsafe_external_next_redirects_to_fallback(self):
+        resp = self.client.post(
+            reverse("viewer:login"),
+            {"username": "active_user", "password": "testpassword123", "next": "https://evil.com/phishing"},
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.url, reverse("viewer:main-page"))
+
+    def test_login_success_unsafe_scheme_relative_next_redirects_to_fallback(self):
+        resp = self.client.post(
+            reverse("viewer:login"),
+            {"username": "active_user", "password": "testpassword123", "next": "//evil.com"},
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.url, reverse("viewer:main-page"))
+
+    def test_login_success_unsafe_javascript_next_redirects_to_fallback(self):
+        resp = self.client.post(
+            reverse("viewer:login"),
+            {"username": "active_user", "password": "testpassword123", "next": "javascript:alert(1)"},
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.url, reverse("viewer:main-page"))
+
+    def test_login_success_missing_next_redirects_to_fallback(self):
+        resp = self.client.post(
+            reverse("viewer:login"),
+            {"username": "active_user", "password": "testpassword123"},
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.url, reverse("viewer:main-page"))
+
+    def test_login_malformed_post_missing_fields_does_not_500(self):
+        resp = self.client.post(reverse("viewer:login"), {})
+        self.assertIn(resp.status_code, (200, 302))
+
+        resp2 = self.client.post(reverse("viewer:login"), {"username": "active_user"})
+        self.assertIn(resp2.status_code, (200, 302))
+
+        resp3 = self.client.post(reverse("viewer:login"), {"password": "testpassword123"})
+        self.assertIn(resp3.status_code, (200, 302))
+
+    def test_login_disabled_user(self):
+        resp = self.client.post(
+            reverse("viewer:login"),
+            {"username": "disabled_user", "password": "testpassword123"},
+        )
+        self.assertEqual(resp.status_code, 302)
+
+    def test_login_invalid_credentials(self):
+        resp = self.client.post(
+            reverse("viewer:login"),
+            {"username": "active_user", "password": "wrongpassword"},
+        )
+        self.assertEqual(resp.status_code, 302)
+
+    def test_login_get_safe_next(self):
+        resp = self.client.get(reverse("viewer:login"), {"next": "/galleries/"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.context["next"], "/galleries/")
+
+    def test_login_get_unsafe_next_sanitized(self):
+        resp = self.client.get(reverse("viewer:login"), {"next": "https://evil.com"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.context["next"], "")
+
+
+class PostOnlyEndpointsTestCase(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_superuser(
+            username="super_post_only",
+            email="super_post@example.com",
+            password="testpassword",
+        )
+        self.client.login(username="super_post_only", password="testpassword")
+        self.archive = Archive.objects.create(
+            title="Test Archive",
+            user=self.user,
+            crc32="12345678",
+        )
+        self.manage_entry = ArchiveManageEntry.objects.create(
+            archive=self.archive,
+            mark_user=self.user,
+            mark_reason="Test Mark",
+        )
+
+    def test_api_logout_requires_post(self):
+        # GET should be rejected with 405 Method Not Allowed
+        resp_get = self.client.get(reverse("viewer:api-logout"))
+        self.assertEqual(resp_get.status_code, 405)
+
+        # POST should succeed
+        resp_post = self.client.post(reverse("viewer:api-logout"))
+        self.assertEqual(resp_post.status_code, 200)
+        data = json.loads(resp_post.content)
+        self.assertTrue(data.get("success"))
+
+    def test_archive_endpoints_require_post(self):
+        post_only_urls = [
+            reverse("viewer:archive-public", args=[self.archive.pk]),
+            reverse("viewer:archive-private", args=[self.archive.pk]),
+            reverse("viewer:archive-recalc-info", args=[self.archive.pk]),
+            reverse("viewer:archive-recall-api", args=[self.archive.pk]),
+            reverse("viewer:archive-rematch", args=[self.archive.pk]),
+            reverse("viewer:archive-calc-imgs-sha1", args=[self.archive.pk]),
+            reverse("viewer:archive-manage-delete", args=[self.manage_entry.pk]),
+            reverse("viewer:archive-manage-remove-from-index", args=[self.manage_entry.pk]),
+            reverse("viewer:archive-manage-add-to-index", args=[self.manage_entry.pk]),
+        ]
+
+        for url in post_only_urls:
+            resp = self.client.get(url, HTTP_REFERER="/archive/")
+            self.assertEqual(resp.status_code, 405, f"Expected 405 for GET on {url}, got {resp.status_code}")
+
+    def test_admin_tools_actions_require_post(self):
+        mutating_tools = [
+            "transfer_missing_downloads",
+            "retry_failed",
+            "generate_missing_thumbs",
+            "calculate_missing_info",
+            "recalc_all_file_info",
+            "set_all_hidden_as_public",
+            "regenerate_all_thumbs",
+            "clear_all_archive_possible_matches",
+            "restart_workers",
+            "reload_settings",
+            "start_download_progress_checker",
+            "start_archive_download_queue",
+            "start_timed_dl",
+            "start_timed_auto_wanted",
+            "start_web_queue",
+            "start_timed_updater",
+        ]
+
+        for tool in mutating_tools:
+            resp_view = self.client.get(reverse("viewer:tools-id", args=[tool]), HTTP_REFERER="/tools/")
+            self.assertEqual(resp_view.status_code, 405, f"Expected 405 for GET on tools-id {tool}, got {resp_view.status_code}")
+
+            resp_api = self.client.get(reverse("viewer:tools-api", args=[tool]))
+            self.assertEqual(resp_api.status_code, 405, f"Expected 405 for GET on tools-api {tool}, got {resp_api.status_code}")
+            data = json.loads(resp_api.content)
+            self.assertEqual(data.get("error"), "POST required")
+

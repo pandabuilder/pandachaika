@@ -227,9 +227,12 @@
     {% endif %}
 
     {% if user.is_staff %}
-      <a class="btn btn-sm btn-outline-light" href="{% url 'viewer:archive-recalc-info' archive.pk %}">
-        <i class="fas fa-calculator me-1"></i>Recalc
-      </a>
+      <form method="POST" action="{% url 'viewer:archive-recalc-info' archive.pk %}" class="d-inline">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-sm btn-outline-light">
+          <i class="fas fa-calculator me-1"></i>Recalc
+        </button>
+      </form>
     {% endif %}
 
     {% if perms.viewer.mark_similar_archive %}
@@ -242,27 +245,39 @@
     {% endif %}
 
     {% if perms.viewer.update_metadata %}
-      <a class="btn btn-sm btn-outline-light" href="{% url 'viewer:archive-recall-api' archive.pk %}">
-        <i class="fas fa-sync-alt me-1"></i>Recall API
-      </a>
+      <form method="POST" action="{% url 'viewer:archive-recall-api' archive.pk %}" class="d-inline">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-sm btn-outline-light">
+          <i class="fas fa-sync-alt me-1"></i>Recall API
+        </button>
+      </form>
     {% endif %}
 
     {% if perms.viewer.publish_archive %}
-      <a class="btn btn-sm btn-outline-light" href="{% url 'viewer:archive-calc-imgs-sha1' archive.pk %}">
-        <i class="fas fa-fingerprint me-1"></i>Calc SHA1
-      </a>
+      <form method="POST" action="{% url 'viewer:archive-calc-imgs-sha1' archive.pk %}" class="d-inline">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-sm btn-outline-light">
+          <i class="fas fa-fingerprint me-1"></i>Calc SHA1
+        </button>
+      </form>
       {% if archive.public %}
-        <a class="btn btn-sm btn-outline-warning" href="{% url 'viewer:archive-private' archive.pk %}">
-          <i class="fas fa-lock me-1"></i>Set Private
-        </a>
+        <form method="POST" action="{% url 'viewer:archive-private' archive.pk %}" class="d-inline">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-sm btn-outline-warning">
+            <i class="fas fa-lock me-1"></i>Set Private
+          </button>
+        </form>
       {% elif is_publishing %}
         <button class="btn btn-sm btn-outline-warning" type="button" disabled id="btn-publishing-archive">
           <i class="fas fa-spinner fa-spin me-1"></i>Publishing...
         </button>
       {% else %}
-        <a class="btn btn-sm btn-outline-success" href="{% url 'viewer:archive-public' archive.pk %}">
-          <i class="fas fa-lock-open me-1"></i>Set Public
-        </a>
+        <form method="POST" action="{% url 'viewer:archive-public' archive.pk %}" class="d-inline">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-sm btn-outline-success">
+            <i class="fas fa-lock-open me-1"></i>Set Public
+          </button>
+        </form>
       {% endif %}
     {% endif %}
 
@@ -296,9 +311,12 @@
             </a>
           </li>
           <li>
-            <a class="dropdown-item text-light small" href="{% url 'viewer:archive-rematch' archive.pk %}">
-              <i class="fas fa-link me-2 text-info"></i>Rematch
-            </a>
+            <form method="POST" action="{% url 'viewer:archive-rematch' archive.pk %}">
+              {% csrf_token %}
+              <button type="submit" class="dropdown-item text-light small">
+                <i class="fas fa-link me-2 text-info"></i>Rematch
+              </button>
+            </form>
           </li>
         {% endif %}
       </ul>
@@ -773,14 +791,23 @@
               {% if perms.viewer.edit_system_marks %}
                 {% if not archive_manage_instance.mark_user or archive_manage_instance.mark_user.pk == 1 %}
                   {% if archive_manage_instance.is_indexed %}
-                    <a href="{% url 'viewer:archive-manage-remove-from-index' archive_manage_instance.pk %}" class="btn btn-sm btn-outline-warning py-0 px-2">Un-index</a>
+                    <form method="POST" action="{% url 'viewer:archive-manage-remove-from-index' archive_manage_instance.pk %}" class="d-inline">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-sm btn-outline-warning py-0 px-2">Un-index</button>
+                    </form>
                   {% else %}
-                    <a href="{% url 'viewer:archive-manage-add-to-index' archive_manage_instance.pk %}" class="btn btn-sm btn-outline-info py-0 px-2">Re-index</a>
+                    <form method="POST" action="{% url 'viewer:archive-manage-add-to-index' archive_manage_instance.pk %}" class="d-inline">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-sm btn-outline-info py-0 px-2">Re-index</button>
+                    </form>
                   {% endif %}
                 {% endif %}
               {% endif %}
               {% if archive_manage_instance.mark_user == user or perms.viewer.delete_archivemanageentry %}
-                <a href="{% url 'viewer:archive-manage-delete' archive_manage_instance.pk %}" class="btn btn-sm btn-outline-danger py-0 px-2">Delete</a>
+                <form method="POST" action="{% url 'viewer:archive-manage-delete' archive_manage_instance.pk %}" class="d-inline">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2">Delete</button>
+                </form>
               {% endif %}
             </div>
           </div>

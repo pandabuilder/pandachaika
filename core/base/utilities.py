@@ -126,7 +126,7 @@ def calc_crc32(filename: str, use_pool: bool = False) -> str:
     with open(filename, "rb") as file_to_check:
         while chunk := file_to_check.read(1048576):
             prev = zlib.crc32(chunk, prev)
-    return "%X" % (prev & 0xFFFFFFFF)
+    return "%08X" % (prev & 0xFFFFFFFF)
 
 
 def sha1_from_file_object(fp: typing.IO | str, close_object: bool = False):

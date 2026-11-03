@@ -289,3 +289,7 @@ class DownloadProgressChecker(BaseScheduler):
                 logger.error(f"Error in DownloadProgressChecker job cycle: {e}")
 
             self.update_last_run(django_tz.now())
+            try:
+                close_old_connections()
+            except Exception:
+                pass

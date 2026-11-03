@@ -4,6 +4,7 @@ from concurrent.futures import ProcessPoolExecutor
 import io
 import logging
 import multiprocessing
+from multiprocessing.context import BaseContext
 import os
 import threading
 import typing
@@ -20,11 +21,16 @@ def _pool_initializer() -> None:
     """Initializer for child processes in the ProcessPoolExecutor.
 
     Ensures child processes do not share open database connections or handles
-    inherited from the parent process.
+    inherited from the parent process. If fork is used, we must NOT call
+    connection.close() because that sends a Terminate packet over the shared
+    socket to PostgreSQL, killing the connection in the parent process.
+    Instead, disassociate the connection object without closing the socket.
     """
     try:
         from django import db
-        db.connections.close_all()
+        for conn in db.connections.all():
+            setattr(conn, "close_at_end", False)
+            conn.connection = None
     except Exception:
         pass
 
@@ -61,7 +67,12 @@ def get_process_pool(max_workers: int | None = None) -> ProcessPoolExecutor:
 
         if _process_pool is None:
             workers = max_workers or get_default_max_workers()
-            ctx = multiprocessing.get_context()
+            start_methods = multiprocessing.get_all_start_methods()
+            ctx: BaseContext
+            if "forkserver" in start_methods:
+                ctx = multiprocessing.get_context("forkserver")
+            else:
+                ctx = multiprocessing.get_context()
             _process_pool = ProcessPoolExecutor(
                 max_workers=workers,
                 mp_context=ctx,
@@ -78,9 +89,8 @@ def shutdown_process_pool(wait: bool = True, cancel_futures: bool = True) -> Non
         if _process_pool is not None:
             try:
                 _process_pool.shutdown(wait=wait, cancel_futures=cancel_futures)
-                logger.info("ProcessPoolExecutor shut down successfully.")
-            except Exception as e:
-                logger.warning("Error shutting down ProcessPoolExecutor: %s", e)
+            except Exception:
+                pass
             finally:
                 _process_pool = None
 
@@ -156,7 +166,7 @@ def worker_calc_crc32(filepath: str, chunk_size: int = 1048576) -> str:
     with open(filepath, "rb") as f:
         while chunk := f.read(chunk_size):
             prev = zlib.crc32(chunk, prev)
-    return "%X" % (prev & 0xFFFFFFFF)
+    return "%08X" % (prev & 0xFFFFFFFF)
 
 
 def worker_calc_zip_fileinfo_and_crc(

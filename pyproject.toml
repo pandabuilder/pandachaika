@@ -83,8 +83,8 @@ dependencies = [
     "imagehash==4.3.2",
     "numpy==2.5.4",
     "pillow==13.0.0",
-    "psycopg[c]==3.3.6; sys_platform != 'win32'",
-    "psycopg-binary==3.3.6; sys_platform == 'win32'",
+    "psycopg[c,pool]==3.3.6; sys_platform != 'win32'",
+    "psycopg[binary,pool]==3.3.6; sys_platform == 'win32'",
     "py7zr==1.1.4",
     "pysocks==1.7.1",
     "python-dateutil==3.0.0",
@@ -100,7 +100,9 @@ dev = [
     "django-debug-toolbar==8.0.0",
     "django-stubs==6.1.2",
     "django-unused-media==0.2.2",
+    "factory-boy>=3.3.3",
     "mypy==2.4.1",
+    "pytest-django>=4.14.0",
     "ruff==0.17.3",
     "types-python-dateutil==2.9.0.20261021",
     "types-requests==2.33.0.20261006",
@@ -114,3 +116,9 @@ ci = [
     "types-python-dateutil==2.9.0.20261021",
     "unittest-xml-reporting==4.0.0",
 ]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "pandabackup.settings"
+python_files = ["tests.py", "test_*.py", "*_tests.py"]
+addopts = "--durations=20"
+

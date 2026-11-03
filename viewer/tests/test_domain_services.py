@@ -122,6 +122,7 @@ class DomainServicesTestCase(TestCase):
                             process_image_data=True,
                             process_other_data=False,
                             process_archive_statistics=True,
+                            skip_zip_check=True,
                         )
                         self.assertEqual(mock_es.update.call_count, 1)
             finally:
@@ -291,3 +292,196 @@ class DomainServicesTestCase(TestCase):
         matched_gallery_ids = set(matches.values_list("gallery_id", flat=True))
         self.assertIn(gal_panda.pk, matched_gallery_ids)
         self.assertNotIn(gal_fakku.pk, matched_gallery_ids)
+
+    def test_fix_image_positions_uses_bulk_update(self):
+        archive = Archive.objects.create(title="Fix Positions Archive", user=self.user)
+        img1 = Image.objects.create(archive=archive, archive_position=1, position=99)
+        img2 = Image.objects.create(archive=archive, archive_position=2, position=88)
+        img3 = Image.objects.create(archive=archive, archive_position=3, position=77)
+
+        with (
+            patch.object(Image.objects, "bulk_update", wraps=Image.objects.bulk_update) as mock_bulk_update,
+            patch.object(Image, "save") as mock_save,
+        ):
+            archive.fix_image_positions()
+            mock_bulk_update.assert_called_once()
+            _, kwargs_or_args = mock_bulk_update.call_args
+            # Verify fields argument is ['position']
+            args = mock_bulk_update.call_args[0]
+            self.assertEqual(args[1], ["position"])
+            mock_save.assert_not_called()
+
+        img1.refresh_from_db()
+        img2.refresh_from_db()
+        img3.refresh_from_db()
+        self.assertEqual(img3.position, 1)
+        self.assertEqual(img2.position, 2)
+        self.assertEqual(img1.position, 3)
+
+    def test_extraction_service_reduce_and_extract_delete_bulk_update(self):
+        archive = Archive.objects.create(title="Reduce Bulk Archive", user=self.user, extracted=True)
+        img1 = Image.objects.create(archive=archive, archive_position=1, position=1, extracted=True)
+        img2 = Image.objects.create(archive=archive, archive_position=2, position=2, extracted=True)
+
+        with (
+            patch.object(Image.objects, "bulk_update", wraps=Image.objects.bulk_update) as mock_bulk_update,
+            patch.object(Image, "save") as mock_save,
+        ):
+            res = ArchiveExtractionService.reduce(archive)
+            self.assertTrue(res)
+            mock_bulk_update.assert_called_once()
+            mock_save.assert_not_called()
+
+        img1.refresh_from_db()
+        img2.refresh_from_db()
+        self.assertFalse(img1.extracted)
+        self.assertFalse(img2.extracted)
+
+    def test_archive_ingestion_service_calls_testzip_once_per_ingestion(self):
+        temp_zip = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
+        archive = None
+        try:
+            with zipfile.ZipFile(temp_zip.name, "w") as zf:
+                for i in range(1, 3):
+                    img = PImage.new("RGB", (100, 100), color=(i * 10, i * 20, i * 30))
+                    buf = io.BytesIO()
+                    img.save(buf, format="JPEG")
+                    zf.writestr(f"p_{i:02d}.jpg", buf.getvalue())
+
+            archive = Archive.objects.create(title="Single Testzip Archive", user=self.user)
+            with open(temp_zip.name, "rb") as f:
+                archive.zipped.save("single_testzip.zip", File(f), save=False)
+
+            prev_auto_hash = settings.CRAWLER_SETTINGS.auto_hash_images
+            settings.CRAWLER_SETTINGS.auto_hash_images = True
+            try:
+                with patch("zipfile.ZipFile.testzip", autospec=True, return_value=None) as mock_testzip:
+                    res = ArchiveIngestionService.ingest(archive)
+                    self.assertTrue(res)
+                    # testzip must be called exactly once during ingestion
+                    self.assertEqual(mock_testzip.call_count, 1)
+            finally:
+                settings.CRAWLER_SETTINGS.auto_hash_images = prev_auto_hash
+        finally:
+            if os.path.exists(temp_zip.name):
+                os.unlink(temp_zip.name)
+            if archive and archive.zipped and archive.zipped.name and os.path.exists(archive.zipped.path):
+                os.unlink(archive.zipped.path)
+            if archive and archive.thumbnail and archive.thumbnail.name and os.path.exists(archive.thumbnail.path):
+                os.unlink(archive.thumbnail.path)
+
+    def test_archive_ingestion_service_skip_zip_check(self):
+        temp_zip = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
+        archive = None
+        try:
+            with zipfile.ZipFile(temp_zip.name, "w") as zf:
+                for i in range(1, 3):
+                    img = PImage.new("RGB", (100, 100), color=(i * 10, i * 20, i * 30))
+                    buf = io.BytesIO()
+                    img.save(buf, format="JPEG")
+                    zf.writestr(f"p_{i:02d}.jpg", buf.getvalue())
+
+            archive = Archive.objects.create(title="Skip Testzip Archive", user=self.user)
+            with open(temp_zip.name, "rb") as f:
+                archive.zipped.save("skip_testzip.zip", File(f), save=False)
+
+            prev_auto_hash = settings.CRAWLER_SETTINGS.auto_hash_images
+            settings.CRAWLER_SETTINGS.auto_hash_images = True
+            try:
+                with patch("zipfile.ZipFile.testzip", autospec=True, return_value=None) as mock_testzip:
+                    res = ArchiveIngestionService.ingest(archive, skip_zip_check=True)
+                    self.assertTrue(res)
+                    # When skip_zip_check=True, testzip must not be called at all
+                    mock_testzip.assert_not_called()
+            finally:
+                settings.CRAWLER_SETTINGS.auto_hash_images = prev_auto_hash
+        finally:
+            if os.path.exists(temp_zip.name):
+                os.unlink(temp_zip.name)
+            if archive and archive.zipped and archive.zipped.name and os.path.exists(archive.zipped.path):
+                os.unlink(archive.zipped.path)
+            if archive and archive.thumbnail and archive.thumbnail.name and os.path.exists(archive.thumbnail.path):
+                os.unlink(archive.thumbnail.path)
+
+    def test_generate_image_set_bulk_delete_and_create(self):
+        temp_zip = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
+        archive = None
+        try:
+            with zipfile.ZipFile(temp_zip.name, "w") as zf:
+                for i in range(1, 4):
+                    img = PImage.new("RGB", (80, 80), color=(i * 20, i * 20, i * 20))
+                    buf = io.BytesIO()
+                    img.save(buf, format="JPEG")
+                    zf.writestr(f"img_{i:02d}.jpg", buf.getvalue())
+
+            archive = Archive.objects.create(title="Gen Image Set Archive", user=self.user)
+            with open(temp_zip.name, "rb") as f:
+                archive.zipped.save("gen_image_set.zip", File(f), save=False)
+
+            with patch.object(Image.objects, "bulk_create", wraps=Image.objects.bulk_create) as mock_bulk_create:
+                res = archive.generate_image_set()
+                self.assertTrue(res)
+                mock_bulk_create.assert_called_once()
+                self.assertEqual(archive.image_set.count(), 3)
+
+            # Re-running with force=True should bulk delete and bulk create again
+            with (
+                patch.object(Image.objects, "bulk_create", wraps=Image.objects.bulk_create) as mock_bulk_create,
+                patch.object(Image, "delete") as mock_img_delete,
+            ):
+                res = archive.generate_image_set(force=True)
+                self.assertTrue(res)
+                mock_bulk_create.assert_called_once()
+                # per-row img.delete() must not be called
+                mock_img_delete.assert_not_called()
+                self.assertEqual(archive.image_set.count(), 3)
+        finally:
+            if os.path.exists(temp_zip.name):
+                os.unlink(temp_zip.name)
+            if archive and archive.zipped and archive.zipped.name and os.path.exists(archive.zipped.path):
+                os.unlink(archive.zipped.path)
+
+    def test_extraction_service_extract_bulk_update(self):
+        temp_zip = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
+        archive = None
+        try:
+            with zipfile.ZipFile(temp_zip.name, "w") as zf:
+                for i in range(1, 3):
+                    img = PImage.new("RGB", (60, 60), color=(i * 30, i * 30, i * 30))
+                    buf = io.BytesIO()
+                    img.save(buf, format="JPEG")
+                    zf.writestr(f"ext_{i:02d}.jpg", buf.getvalue())
+
+            archive = Archive.objects.create(title="Extract Bulk Archive", user=self.user)
+            with open(temp_zip.name, "rb") as f:
+                archive.zipped.save("extract_bulk.zip", File(f), save=False)
+
+            archive.generate_image_set()
+            self.assertEqual(archive.image_set.count(), 2)
+
+            with (
+                patch.object(Image.objects, "bulk_update", wraps=Image.objects.bulk_update) as mock_bulk_update,
+                patch.object(Image, "save") as mock_save,
+            ):
+                res = ArchiveExtractionService.extract(archive)
+                self.assertTrue(res)
+                mock_bulk_update.assert_called_once()
+                mock_save.assert_not_called()
+
+            archive.refresh_from_db()
+            self.assertTrue(archive.extracted)
+            for img_obj in archive.image_set.all():
+                self.assertTrue(img_obj.extracted)
+                self.assertTrue(bool(img_obj.image))
+                self.assertTrue(bool(img_obj.thumbnail))
+        finally:
+            if os.path.exists(temp_zip.name):
+                os.unlink(temp_zip.name)
+            if archive and archive.zipped and archive.zipped.name and os.path.exists(archive.zipped.path):
+                os.unlink(archive.zipped.path)
+            if archive:
+                for img_obj in archive.image_set.all():
+                    if img_obj.image and os.path.exists(img_obj.image.path):
+                        os.unlink(img_obj.image.path)
+                    if img_obj.thumbnail and os.path.exists(img_obj.thumbnail.path):
+                        os.unlink(img_obj.thumbnail.path)

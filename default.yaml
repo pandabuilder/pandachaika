@@ -599,6 +599,45 @@ database:
   postgresql_host: localhost
   postgresql_port: '5432'
 
+  # Maximum age (in seconds) of persistent database connections for web requests.
+  # Set to 0 to close connection at the end of each request, or null for unlimited.
+  # Default: 600
+  conn_max_age: 600
+
+  # Override connection max age (in seconds) for long-running background workers.
+  # If null, falls back to conn_max_age.
+  # Default: null
+  worker_conn_max_age: null
+
+  # Check if connection is usable before reusing an existing connection.
+  # Default: true
+  conn_health_checks: true
+
+  # Enable Django 5+ native connection pooling (via psycopg_pool).
+  # When true, CONN_MAX_AGE is automatically forced to 0 as required by Django.
+  # Default: false
+  pooling: false
+
+  # Minimum number of database connections maintained in the pool when pooling is enabled.
+  # Default: 4
+  pool_min_size: 4
+
+  # Maximum number of database connections in the pool when pooling is enabled (null for backend default).
+  # Default: 10
+  pool_max_size: 10
+
+  # Timeout (in seconds) waiting for an available connection from the pool.
+  # Default: 30.0
+  pool_timeout: 30.0
+
+  # Maximum lifetime (in seconds) for a pooled connection before replacement (null for unlimited).
+  # Default: null
+  pool_max_lifetime: null
+
+  # Idle timeout (in seconds) before closing idle connections above pool_min_size.
+  # Default: 600.0
+  pool_max_idle: 600.0
+
 # ------------------------------------------------------------------------------
 # Torrent Client Integration
 # Connection settings for Transmission or qBittorrent WebUI.

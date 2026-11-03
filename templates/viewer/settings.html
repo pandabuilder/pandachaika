@@ -740,7 +740,13 @@
   // --- Reload Settings in memory ---
   function reloadSettings() {
     reloadButton.classList.add('disabled');
-    fetch('../../tools-api/reload_settings/', { credentials: 'same-origin' })
+    fetch('../../tools-api/reload_settings/', {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': csrftoken,
+      },
+      credentials: 'same-origin',
+    })
       .then(res => res.json())
       .then(response => {
         reloadButton.classList.remove('disabled');
@@ -757,7 +763,13 @@
   if (restartWorkersButton) {
     restartWorkersButton.addEventListener('click', () => {
       restartWorkersButton.classList.add('disabled');
-      fetch('../../tools-api/restart_workers/', { credentials: 'same-origin' })
+      fetch('../../tools-api/restart_workers/', {
+        method: 'POST',
+        headers: {
+          'X-CSRFToken': csrftoken,
+        },
+        credentials: 'same-origin',
+      })
         .then(res => res.json())
         .then(response => {
           restartWorkersButton.classList.remove('disabled');

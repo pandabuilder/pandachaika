@@ -48,7 +48,7 @@ class ArchiveIngestionService:
         archive.create_mark_if_parent_gallery()
 
     @classmethod
-    def ingest(cls, archive: "Archive", save: bool = True) -> bool:
+    def ingest(cls, archive: "Archive", save: bool = True, skip_zip_check: bool = False) -> bool:
         """Ingest an archive's zip file: verify integrity, create image set, compute hashes/stats, and generate cover."""
         from viewer.models.archive import Archive, ArchiveManageEntry, Image, thumb_path_handler
         from viewer.services.archive_hashing import ArchiveHashingService
@@ -73,18 +73,19 @@ class ArchiveIngestionService:
             my_zip = None
             try:
                 my_zip = zipfile.ZipFile(archive.zipped.path, "r")
-                bad_file = my_zip.testzip()
-                if bad_file:
-                    logger.error(
-                        "Zip file CRC check failed on file %s for archive: %s on file: %s",
-                        bad_file,
-                        archive,
-                        archive.zipped.path,
-                    )
-                    my_zip.close()
-                    if save:
-                        archive.save(force_update=True)
-                    return False
+                if not skip_zip_check:
+                    bad_file = my_zip.testzip()
+                    if bad_file:
+                        logger.error(
+                            "Zip file CRC check failed on file %s for archive: %s on file: %s",
+                            bad_file,
+                            archive,
+                            archive.zipped.path,
+                        )
+                        my_zip.close()
+                        if save:
+                            archive.save(force_update=True)
+                        return False
             except (zipfile.BadZipFile, NotImplementedError, zlib.error, OSError) as e:
                 logger.error(
                     "Error opening or testing zipfile for archive: %s on file: %s: %s",
@@ -173,6 +174,7 @@ class ArchiveIngestionService:
                     process_image_data=True,
                     process_other_data=False,
                     process_archive_statistics=True,
+                    skip_zip_check=True,
                 )
 
         cls.sync_gallery_metadata(archive)

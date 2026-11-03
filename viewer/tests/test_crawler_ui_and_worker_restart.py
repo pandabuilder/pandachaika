@@ -213,17 +213,24 @@ class RestartWorkersApiAndToolsTests(TestCase):
 
     def test_api_restart_workers_unauthorized(self):
         self.client.login(username="normal_restart", password="testpassword")
-        resp = self.client.get(reverse("viewer:tools-api", args=["restart_workers"]))
+        resp = self.client.post(reverse("viewer:tools-api", args=["restart_workers"]))
         self.assertEqual(resp.status_code, 401)
         data = json.loads(resp.content)
         self.assertEqual(data["error"], "Not allowed")
+
+    def test_restart_workers_require_post(self):
+        self.client.login(username="admin_restart", password="testpassword")
+        resp_api = self.client.get(reverse("viewer:tools-api", args=["restart_workers"]))
+        self.assertEqual(resp_api.status_code, 405)
+        resp_id = self.client.get(reverse("viewer:tools-id", args=["restart_workers"]), HTTP_REFERER="/tools/")
+        self.assertEqual(resp_id.status_code, 405)
 
     def test_api_restart_workers_no_running_workers(self):
         self.client.login(username="admin_restart", password="testpassword")
         SchedulerState.objects.filter(name="worker_runner").delete()
         WorkerProcess.objects.all().delete()
 
-        resp = self.client.get(reverse("viewer:tools-api", args=["restart_workers"]))
+        resp = self.client.post(reverse("viewer:tools-api", args=["restart_workers"]))
         self.assertEqual(resp.status_code, 200)
         data = json.loads(resp.content)
         self.assertIn("Restart command queued", data["message"])
@@ -245,7 +252,7 @@ class RestartWorkersApiAndToolsTests(TestCase):
             last_heartbeat=now,
         )
 
-        resp = self.client.get(reverse("viewer:tools-api", args=["restart_workers"]))
+        resp = self.client.post(reverse("viewer:tools-api", args=["restart_workers"]))
         self.assertEqual(resp.status_code, 200)
         data = json.loads(resp.content)
         self.assertIn("Restart requested for 1 running worker process", data["message"])
@@ -267,7 +274,7 @@ class RestartWorkersApiAndToolsTests(TestCase):
             status="running",
             last_heartbeat=django_tz.now(),
         )
-        resp = self.client.get(
+        resp = self.client.post(
             reverse("viewer:tools-id", args=["restart_workers"]),
             HTTP_REFERER="/tools/",
         )

@@ -2,8 +2,10 @@ version = 1
 revision = 5
 requires-python = ">=3.13"
 resolution-markers = [
-    "python_full_version >= '3.15'",
-    "python_full_version < '3.15'",
+    "python_full_version >= '3.15' and sys_platform != 'win32'",
+    "python_full_version >= '3.15' and sys_platform == 'win32'",
+    "python_full_version < '3.15' and sys_platform != 'win32'",
+    "python_full_version < '3.15' and sys_platform == 'win32'",
 ]
 
 [[package]]
@@ -618,6 +620,30 @@ wheels = [
 ]
 
 [[package]]
+name = "factory-boy"
+version = "3.3.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "faker" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ba/98/75cacae9945f67cfe323829fc2ac451f64517a8a330b572a06a323997065/factory_boy-3.3.3.tar.gz", hash = "sha256:866862d226128dfac7f2b4160287e899daf54f2612778327dd03d0e2cb1e3d03", size = 164146, upload-time = "2025-02-03T09:49:04.433Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/27/8d/2bc5f5546ff2ccb3f7de06742853483ab75bf74f36a92254702f8baecc79/factory_boy-3.3.3-py2.py3-none-any.whl", hash = "sha256:1c39e3289f7e667c4285433f305f8d506efc2fe9c73aaea4151ebd5cdea394fc", size = 37036, upload-time = "2025-02-03T09:49:01.659Z" },
+]
+
+[[package]]
+name = "faker"
+version = "40.44.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "tzdata", marker = "sys_platform == 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/87/22/965c7b822f4c80f6e003c696d5fa01b48eea6cc7852d61aec8779519b346/faker-40.44.0.tar.gz", hash = "sha256:97245a3756dcaf35418b89bea9f03ae6881557db0032bf048744c2aaee2a9108", size = 2034259, upload-time = "2026-10-28T17:06:41.048Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/58/9e/3da962809aefa00ddf457d1b11bba41d7766373a0ad9e537fa0804604361/faker-40.44.0-py3-none-any.whl", hash = "sha256:db808a3ec33fe9ce5caf40b9fb61f85f46e429a56966f765209272adec83e4c6", size = 2069747, upload-time = "2026-10-28T17:06:39.109Z" },
+]
+
+[[package]]
 name = "feedparser"
 version = "6.0.14"
 source = { registry = "https://pypi.org/simple" }
@@ -707,6 +733,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/8e/30/8bbc587bb2ad09ab7edf1f9215b2c5faf4fa7ee7c071daefe9ed55e28814/inflate64-1.0.4-cp314-cp314t-win32.whl", hash = "sha256:f8964ceaabea294bc20abc9ef408c6aae978a75c25c83168a76cd87a37c38938", size = 33865, upload-time = "2025-11-28T10:55:35.335Z" },
     { url = "https://files.pythonhosted.org/packages/91/87/8bf6f412f93c8b6dc14866a021b83321331fbdd17f6ab902a24dbf88773d/inflate64-1.0.4-cp314-cp314t-win_amd64.whl", hash = "sha256:7d13b04cba65c12d21e65eaa77da9484e265e8e821b26e0761d1455ad3a878d9", size = 36943, upload-time = "2025-11-28T10:55:36.983Z" },
     { url = "https://files.pythonhosted.org/packages/7d/85/33447bb3c4e3c0ae7b1fde3aadc52a18b2b0193cfcf4f585977e924c6463/inflate64-1.0.4-cp314-cp314t-win_arm64.whl", hash = "sha256:9ae3ee727235a06dc3cd353ee5761fdd8e3b56ad119c711f61680528972a6ced", size = 34846, upload-time = "2025-11-28T10:55:38.433Z" },
+]
+
+[[package]]
+name = "iniconfig"
+version = "2.3.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/01/e1/2069291243c926a2ff1cd706c7f3eeb9b62144bf60f77c9fb9ff2fb26bd3/iniconfig-2.3.1.tar.gz", hash = "sha256:67f4b9c50da0dedf52af349e7749a80a9057a5031199791b906c3bb3ae878960", size = 21209, upload-time = "2026-10-06T22:48:38.076Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/56/43/4ca9e49d27a1fcf6bece6f6aec0ea46bb9112489b93d4b688fb415457bdb/iniconfig-2.3.1-py3-none-any.whl", hash = "sha256:9121e2c1fdb355232495be3194c8dfe87ccc2d5dee45947b78e68f499790d7a7", size = 7552, upload-time = "2026-10-06T22:48:36.959Z" },
 ]
 
 [[package]]
@@ -1094,6 +1129,15 @@ wheels = [
 ]
 
 [[package]]
+name = "packaging"
+version = "26.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/7d/fa/3944b40b07da9ce895c0e6303a5ab7d53da063554f534556b134a54d6093/packaging-26.3.tar.gz", hash = "sha256:94edc256424af38762eb31306eed28beb9f0efc50a8837492c9d6fd6004aed79", size = 313412, upload-time = "2026-08-04T18:15:28.737Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/63/34/ba1c580383c9eada3711951fef0795c80b829a078d72188184bcab9dd527/packaging-26.3-py3-none-any.whl", hash = "sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c", size = 129956, upload-time = "2026-08-04T18:15:27.159Z" },
+]
+
+[[package]]
 name = "pandagallery"
 version = "0.0.1"
 source = { virtual = "." }
@@ -1114,8 +1158,9 @@ dependencies = [
     { name = "imagehash" },
     { name = "numpy" },
     { name = "pillow" },
+    { name = "psycopg", extra = ["binary"], marker = "sys_platform == 'win32'" },
     { name = "psycopg", extra = ["c"], marker = "sys_platform != 'win32'" },
-    { name = "psycopg-binary", marker = "sys_platform == 'win32'" },
+    { name = "psycopg", extra = ["pool"] },
     { name = "py7zr" },
     { name = "pydantic" },
     { name = "pysocks" },
@@ -1139,7 +1184,9 @@ dev = [
     { name = "django-debug-toolbar" },
     { name = "django-stubs" },
     { name = "django-unused-media" },
+    { name = "factory-boy" },
     { name = "mypy" },
+    { name = "pytest-django" },
     { name = "ruff" },
     { name = "types-python-dateutil" },
     { name = "types-requests" },
@@ -1163,8 +1210,8 @@ requires-dist = [
     { name = "imagehash", specifier = "==4.3.2" },
     { name = "numpy", specifier = "==2.5.4" },
     { name = "pillow", specifier = "==13.0.0" },
-    { name = "psycopg", extras = ["c"], marker = "sys_platform != 'win32'", specifier = "==3.3.6" },
-    { name = "psycopg-binary", marker = "sys_platform == 'win32'", specifier = "==3.3.6" },
+    { name = "psycopg", extras = ["binary", "pool"], marker = "sys_platform == 'win32'", specifier = "==3.3.6" },
+    { name = "psycopg", extras = ["c", "pool"], marker = "sys_platform != 'win32'", specifier = "==3.3.6" },
     { name = "py7zr", specifier = "==1.1.4" },
     { name = "pydantic", specifier = "==2.14.2" },
     { name = "pysocks", specifier = "==1.7.1" },
@@ -1188,7 +1235,9 @@ dev = [
     { name = "django-debug-toolbar", specifier = "==8.0.0" },
     { name = "django-stubs", specifier = "==6.1.2" },
     { name = "django-unused-media", specifier = "==0.2.2" },
+    { name = "factory-boy", specifier = ">=3.3.3" },
     { name = "mypy", specifier = "==2.4.1" },
+    { name = "pytest-django", specifier = ">=4.14.0" },
     { name = "ruff", specifier = "==0.17.3" },
     { name = "types-python-dateutil", specifier = "==2.9.0.20261021" },
     { name = "types-requests", specifier = "==2.33.0.20261006" },
@@ -1266,6 +1315,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pluggy"
+version = "1.7.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/bf/db/7fc19e6f2dc92a966727031389fc2e08b558f0f25eb7403c1119ad4713cd/pluggy-1.7.0.tar.gz", hash = "sha256:d1eaa46ebb595891b860ab086b4d09c8588af65ebd4361b8e8f4bb8920b90ba8", size = 123304, upload-time = "2026-10-15T09:50:58.343Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/40/9e/2b38731e0fc536806f16490e1a12d7f0dc2a1235aa8cc07bcc75416a7daa/pluggy-1.7.0-py3-none-any.whl", hash = "sha256:7dd7b0d8832ba3cb632c306926ded123429211b83641b35dc5c41ad2d34f9bec", size = 27082, upload-time = "2026-10-15T09:50:56.808Z" },
+]
+
+[[package]]
 name = "portend"
 version = "3.2.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1310,7 +1368,7 @@ name = "psycopg"
 version = "3.3.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "tzdata", marker = "python_version < '0'" },
+    { name = "tzdata", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/76/26/3ea4ca5eaea1c0debcdf7ee7c1613fbe721dc27a03c461c0817ffd8a0601/psycopg-3.3.6.tar.gz", hash = "sha256:c081f2250df751a943036e42db6df4571c66cd0aabe8291a7a506512b12007d2", size = 168171, upload-time = "2026-09-18T13:22:55.152Z" }
 wheels = [
@@ -1318,8 +1376,14 @@ wheels = [
 ]
 
 [package.optional-dependencies]
+binary = [
+    { name = "psycopg-binary", marker = "implementation_name != 'pypy'" },
+]
 c = [
     { name = "psycopg-c", marker = "implementation_name != 'pypy'" },
+]
+pool = [
+    { name = "psycopg-pool" },
 ]
 
 [[package]]
@@ -1337,6 +1401,18 @@ name = "psycopg-c"
 version = "3.3.6"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/58/53/bf15aa48cd6f0ad0039b9f48681d2e76e8564d413af47b13fab50dd03555/psycopg_c-3.3.6.tar.gz", hash = "sha256:29c568426ad61c1b702c7d73505c43ca2c9fc5d97a8431d8d9049e731e319ff8", size = 698245, upload-time = "2026-09-18T13:22:57.752Z" }
+
+[[package]]
+name = "psycopg-pool"
+version = "3.3.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/74/5e/c0664b968b102ff68b811d999c728546c48d5c1eec03e3bbaf88c0cb4472/psycopg_pool-3.3.3.tar.gz", hash = "sha256:df87b5d9d0ad7db37f6cdad4fa8ce113d250f5997f6db38e9a99192fb67f9e1d", size = 32006, upload-time = "2026-09-22T15:53:24.947Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5d/b4/452c6607a0f479465cd8a9b0d9956919fcb150050c1f83f9f11e6b8ee8dc/psycopg_pool-3.3.3-py3-none-any.whl", hash = "sha256:9b9cd6a4fcec47a410f7e82d408540e7f77b478509e91b44c1a5457a13e5ff37", size = 40304, upload-time = "2026-09-22T15:53:23.712Z" },
+]
 
 [[package]]
 name = "py7zr"
@@ -1594,6 +1670,34 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/bd/11/293dd436aea955d45fc4e8a35b6ae7270f5b8e00b53cf6c024c83b657a11/PySocks-1.7.1.tar.gz", hash = "sha256:3f8804571ebe159c380ac6de37643bb4685970655d3bba243530d6558b799aa0", size = 284429, upload-time = "2019-09-20T02:07:35.714Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/8d/59/b4572118e098ac8e46e399a1dd0f2d85403ce8bbaad9ec79373ed6badaf9/PySocks-1.7.1-py3-none-any.whl", hash = "sha256:2725bd0a9925919b9b51739eea5f9e2bae91e83288108a9ad338b2e3a4435ee5", size = 16725, upload-time = "2019-09-20T02:06:22.938Z" },
+]
+
+[[package]]
+name = "pytest"
+version = "9.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "iniconfig" },
+    { name = "packaging" },
+    { name = "pluggy" },
+    { name = "pygments" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/79/42/bb4641652e58dedeac2ec51abc1f8cae4fee4ec63899a0999016229a0f2a/pytest-9.2.0.tar.gz", hash = "sha256:97c4f3b1f3c7414aa36465e09b8220f1d03627993bd51b1282e193753c80557b", size = 1797555, upload-time = "2026-10-27T21:30:20.728Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/51/39/1f5d8c8877a0fa327db959c19341d4be61660de1ab6b7391f9eb805bcd67/pytest-9.2.0-py3-none-any.whl", hash = "sha256:07acdcf88ec174f907dc01af70bf52d49b014bbab03faeeade31c96b18c2e588", size = 411776, upload-time = "2026-10-27T21:30:19.131Z" },
+]
+
+[[package]]
+name = "pytest-django"
+version = "4.14.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pytest" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/44/f6/3851312120c2bf2f19cafff931e75059aad1ba670703cd751e2fde9bc942/pytest_django-4.14.0.tar.gz", hash = "sha256:26787dd3f422cfbab8f55b80a776e2edea7a11092cb74e960bef1312515708ef", size = 94700, upload-time = "2026-08-10T14:13:08.319Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9c/03/850bffad2b581c440ca51c039d74504d5a422c94bda0bdb8a8ba5068d48b/pytest_django-4.14.0-py3-none-any.whl", hash = "sha256:c533b08d89cc675efcd5398eea270b34547e35f9a3608e2c9748dd88428ea187", size = 27067, upload-time = "2026-08-10T14:13:06.998Z" },
 ]
 
 [[package]]

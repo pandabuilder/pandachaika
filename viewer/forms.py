@@ -1605,12 +1605,30 @@ class MonitoredLinkCreateOrEditForm(ModelForm):
         widget=forms.widgets.NumberInput(attrs={"class": "form-control", "placeholder": "10"}),
         help_text="Queue priority for crawler task (default 10; lower number means higher priority)",
     )
+    stop_on_seen_link = forms.ChoiceField(
+        choices=MonitoredLink.StopOnSeenChoices.choices,
+        required=False,
+        initial=MonitoredLink.StopOnSeenChoices.FOLLOW_GLOBAL,
+        widget=forms.widgets.Select(attrs={"class": "form-select form-control"}),
+    )
+    already_seen_links_mode = forms.ChoiceField(
+        choices=MonitoredLink.AlreadySeenLinksMode.choices,
+        required=False,
+        initial=MonitoredLink.AlreadySeenLinksMode.DONT_USE,
+        widget=forms.widgets.Select(attrs={"class": "form-select form-control"}),
+    )
 
     def clean_priority(self) -> int:
         priority = self.cleaned_data.get("priority")
         if priority is None:
             return 10
         return priority
+
+    def clean_stop_on_seen_link(self) -> str:
+        return self.cleaned_data.get("stop_on_seen_link") or MonitoredLink.StopOnSeenChoices.FOLLOW_GLOBAL
+
+    def clean_already_seen_links_mode(self) -> str:
+        return self.cleaned_data.get("already_seen_links_mode") or MonitoredLink.AlreadySeenLinksMode.DONT_USE
 
     class Meta:
         model = MonitoredLink

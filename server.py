@@ -57,6 +57,8 @@ class DjangoAppPlugin(plugins.SimplePlugin):
 
         settings.crawler_settings = self.crawler_settings
         settings.CRAWLER_SETTINGS = self.crawler_settings
+        if hasattr(settings, "configure_database"):
+            settings.configure_database(self.crawler_settings)
 
         os.environ["DJANGO_SETTINGS_MODULE"] = self.settings_module
 
@@ -179,6 +181,8 @@ def run_gunicorn(crawler_settings: Settings, args: argparse.Namespace) -> None:
 
     settings.crawler_settings = crawler_settings
     settings.CRAWLER_SETTINGS = crawler_settings
+    if hasattr(settings, "configure_database"):
+        settings.configure_database(crawler_settings)
 
     from django.core.wsgi import get_wsgi_application
 
@@ -211,10 +215,22 @@ def run_gunicorn(crawler_settings: Settings, args: argparse.Namespace) -> None:
             except OSError:
                 pass
 
-    def post_fork(server: typing.Any, worker: typing.Any) -> None:
+    def _close_pools_and_connections() -> None:
         from django.db import connections
 
+        for conn in connections.all(initialized_only=False):
+            if hasattr(conn, "close_pool"):
+                try:
+                    conn.close_pool()
+                except Exception:
+                    pass
         connections.close_all()
+
+    def post_fork(server: typing.Any, worker: typing.Any) -> None:
+        _close_pools_and_connections()
+
+    def worker_exit(server: typing.Any, worker: typing.Any) -> None:
+        _close_pools_and_connections()
 
     log_base_dir = os.path.dirname(crawler_settings.log_location) if crawler_settings.log_location else ""
 
@@ -253,6 +269,7 @@ def run_gunicorn(crawler_settings: Settings, args: argparse.Namespace) -> None:
         "reload": crawler_settings.cherrypy_auto_restart,
         "when_ready": when_ready,
         "post_fork": post_fork,
+        "worker_exit": worker_exit,
     }
 
     if threads > 1:
@@ -268,9 +285,7 @@ def run_gunicorn(crawler_settings: Settings, args: argparse.Namespace) -> None:
     if args.daemonize:
         options["daemon"] = True
 
-    from django.db import connections
-
-    connections.close_all()
+    _close_pools_and_connections()
 
     print(f"Loading and serving Panda Backup with Gunicorn. Listening on {listening_on_message}")
     GunicornApplication(app, options).run()
@@ -354,6 +369,19 @@ def run_cherrypy(crawler_settings: Settings, args: argparse.Namespace) -> None:
         listening_on_message = "{}:{}".format(crawler_settings.webserver.bind_address, str(cherrypy_port))
 
     cherrypy.log("Loading and serving Panda Backup with CherryPy. Listening on {}".format(listening_on_message))
+
+    def _cherrypy_close_pools() -> None:
+        from django.db import connections
+
+        for conn in connections.all(initialized_only=False):
+            if hasattr(conn, "close_pool"):
+                try:
+                    conn.close_pool()
+                except Exception:
+                    pass
+        connections.close_all()
+
+    cherrypy.engine.subscribe("stop", _cherrypy_close_pools)
 
     cherrypy.engine.signals.subscribe()
     cherrypy.engine.start()

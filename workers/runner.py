@@ -29,8 +29,11 @@ class TaskCancelledError(Exception):
 
 
 def _safe_close_old_connections() -> None:
-    if not db.connection.in_atomic_block:
-        db.close_old_connections()
+    try:
+        if not db.connection.in_atomic_block:
+            db.close_old_connections()
+    except Exception:
+        pass
 
 
 class WorkerRunner:
@@ -62,6 +65,12 @@ class WorkerRunner:
         self._jobs_lock = threading.Lock()
         self._job_finished_event = threading.Event()
         self.settings.is_worker_process = True
+        try:
+            from pandabackup.settings import configure_database
+
+            configure_database(self.settings)
+        except Exception:
+            pass
         if self.settings.workers.web_queue is None:
             from core.workers.webqueue import WebQueue
             self.settings.workers.web_queue = WebQueue(self.settings)
@@ -435,16 +444,23 @@ class WorkerRunner:
 
     def _heartbeat_loop(self) -> None:
         check_interval = min(self.heartbeat_interval / 2, 2.0)
-        while not self.heartbeat_stop_event.is_set():
+        try:
+            while not self.heartbeat_stop_event.is_set():
+                try:
+                    _safe_close_old_connections()
+                    self.check_scheduler_commands()
+                    self.update_heartbeat()
+                except Exception as e:
+                    logger.warning("Error in heartbeat loop: %s", e)
+                finally:
+                    _safe_close_old_connections()
+                self.heartbeat_stop_event.wait(timeout=check_interval)
+        finally:
             try:
-                _safe_close_old_connections()
-                self.check_scheduler_commands()
-                self.update_heartbeat()
-            except Exception as e:
-                logger.warning("Error in heartbeat loop: %s", e)
-            finally:
-                _safe_close_old_connections()
-            self.heartbeat_stop_event.wait(timeout=check_interval)
+                if not db.connection.in_atomic_block:
+                    db.connections.close_all()
+            except Exception:
+                pass
 
     def register_start(self) -> None:
         _safe_close_old_connections()
@@ -561,7 +577,11 @@ class WorkerRunner:
                 self.active_job_activity.pop(job.pk, None)
                 self.active_cancel_events.pop(job.pk, None)
             self._job_finished_event.set()
-            db.connections.close_all()
+            if not db.connection.in_atomic_block:
+                try:
+                    db.connections.close_all()
+                except Exception:
+                    pass
 
     def execute_job(self, job: TaskQueue) -> None:
         logger.info("Starting execution of Task #%d (%s), args: %s", job.pk, job.task_type, job.args)
@@ -796,6 +816,17 @@ class WorkerRunner:
 
             self.register_stop()
             logger.info("Worker loop ended.")
+            try:
+                if not db.connection.in_atomic_block:
+                    for conn in db.connections.all(initialized_only=False):
+                        if hasattr(conn, "close_pool"):
+                            try:
+                                conn.close_pool()
+                            except Exception:
+                                pass
+                    db.connections.close_all()
+            except Exception:
+                pass
 
         if getattr(self, "should_restart", False):
             self._restart_process()
@@ -803,6 +834,12 @@ class WorkerRunner:
     def _restart_process(self) -> None:
         logger.info("Restarting worker runner process (PID %d) via execv...", os.getpid())
         try:
+            for conn in db.connections.all(initialized_only=False):
+                if hasattr(conn, "close_pool"):
+                    try:
+                        conn.close_pool()
+                    except Exception:
+                        pass
             db.connections.close_all()
         except Exception:
             pass

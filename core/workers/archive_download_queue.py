@@ -591,7 +591,7 @@ class ArchiveDownloadQueue(BaseScheduler):
                 if not archive.thumbnail:
                     try:
                         self.touch_activity(event_id)
-                        archive.generate_thumbnails()
+                        archive.generate_thumbnails(skip_zip_check=True)
                     except Exception as e:
                         logger.warning("Failed to generate thumbnails for archive #%s: %s", archive.pk, e)
                 if req_opts.get("mark_similar_new_archives"):
@@ -726,7 +726,13 @@ class ArchiveDownloadQueue(BaseScheduler):
                     st.save(update_fields=["extra_data"])
             except Exception:
                 pass
-            _safe_close_old_connections()
+            try:
+                if not connection.in_atomic_block:
+                    from django.db import connections
+
+                    connections.close_all()
+            except Exception:
+                pass
 
     def job(self) -> None:
         """Main scheduler loop."""
@@ -742,6 +748,7 @@ class ArchiveDownloadQueue(BaseScheduler):
                 logger.error("Error processing archive download queue: %s", e, exc_info=True)
 
             self.update_last_run(django_tz.now())
+            _safe_close_old_connections()
 
     def stop_running(self, force_local: bool = False) -> None:
         """Stop running scheduler and reset any locally active downloads to QUEUED."""

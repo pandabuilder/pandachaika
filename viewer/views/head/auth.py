@@ -12,6 +12,7 @@ from django.http.request import QueryDict
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.conf import settings
+from django.utils.http import url_has_allowed_host_and_scheme
 
 from viewer.forms import BootstrapPasswordChangeForm, DivErrorList, ProfileChangeForm, UserChangeForm
 from viewer.models import Archive, Profile, UserArchivePrefs
@@ -41,20 +42,32 @@ def about(request: HttpRequest) -> HttpResponse:
 def viewer_login(request: HttpRequest) -> HttpResponse:
 
     if request.method == "POST":
-        username = request.POST["username"]
-        password = request.POST["password"]
+        username = request.POST.get("username", "")
+        password = request.POST.get("password", "")
         user = authenticate(username=username, password=password)
         if user is not None:
             if user.is_active:
                 login(request, user)
-                next_url = request.POST.get("next", "viewer:main-page")
+                next_url = request.POST.get("next") or request.GET.get("next")
+                if not next_url or not url_has_allowed_host_and_scheme(
+                    url=next_url,
+                    allowed_hosts={request.get_host()},
+                    require_https=request.is_secure(),
+                ):
+                    next_url = reverse("viewer:main-page")
                 return redirect(next_url)
             else:
                 return render_error(request, "This account has been disabled.")
         else:
             return render_error(request, "Invalid login credentials.")
     else:
-        next_url = request.GET.get("next", "viewer:main-page")
+        next_url = request.GET.get("next", "")
+        if next_url and not url_has_allowed_host_and_scheme(
+            url=next_url,
+            allowed_hosts={request.get_host()},
+            require_https=request.is_secure(),
+        ):
+            next_url = ""
         d = {"next": next_url}
         return render(request, "viewer/accounts/login.html", d)
 

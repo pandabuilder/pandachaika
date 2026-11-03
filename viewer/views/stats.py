@@ -107,9 +107,15 @@ def stats_api(request):
         top_tags = list(Tag.objects.filter(tag_filter).annotate(count=Count('gallery', filter=Q(gallery__in=filtered_galleries))).order_by('-count')[:40])
         
         heatmap_data = []
-        tag_names = [t.name for t in top_tags]
+        tag_names = [
+            f"{t.scope}:{t.name}" if getattr(t, "scope", "") and isinstance(getattr(t, "scope", None), str) else str(getattr(t, "name", t))
+            for t in top_tags
+        ]
         top_tag_ids = [t.id for t in top_tags]
-        tag_names_map = {t.id: t.name for t in top_tags}
+        tag_names_map = {
+            t.id: (f"{t.scope}:{t.name}" if getattr(t, "scope", "") and isinstance(getattr(t, "scope", None), str) else str(getattr(t, "name", t)))
+            for t in top_tags
+        }
         # tag_order_map = {val: i for i, val in enumerate(top_tag_ids)}
 
         gallery_ids = filtered_galleries.values_list("id", flat=True)

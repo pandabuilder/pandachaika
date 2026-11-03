@@ -58,6 +58,18 @@ class ProcessPoolUnitTests(TestCase):
         finally:
             os.unlink(temp_path)
 
+        # Specifically test content whose CRC32 has leading zeros (0x079DEFB0)
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            f.write(b"\x00\x00\x000")
+            zero_padded_path = f.name
+        try:
+            crc_zero = worker_calc_crc32(zero_padded_path)
+            self.assertEqual(len(crc_zero), 8)
+            self.assertEqual(crc_zero, "079DEFB0")
+            self.assertEqual(calc_crc32(zero_padded_path), "079DEFB0")
+        finally:
+            os.unlink(zero_padded_path)
+
     def test_worker_calc_crc32_file_not_found(self) -> None:
         with self.assertRaises(FileNotFoundError):
             worker_calc_crc32("/nonexistent/file/path.zip")

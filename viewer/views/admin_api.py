@@ -159,6 +159,7 @@ def validate_yaml_settings(settings_text: str) -> dict[str, Any]:
 # (database, providers, torrent clients) and command templates that get executed on the host
 # (e.g. cloning_image_tool.executable_path), so access is equivalent to OS-level access: superusers only.
 SUPERUSER_ONLY_TOOLS = frozenset({"settings", "validate_settings", "reload_settings"})
+READ_ONLY_TOOLS = frozenset({"config_schema", "settings_schema", "default_config", "threads_status"})
 
 
 # Admin related APIs
@@ -171,6 +172,10 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
     if tool in SUPERUSER_ONLY_TOOLS and not request.user.is_superuser:
         response["error"] = "Superuser required"
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status=403)
+    if tool not in READ_ONLY_TOOLS and tool not in ("settings", "main"):
+        if request.method != "POST":
+            response["error"] = "POST required"
+            return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status=405)
     if tool == "transfer_missing_downloads":
         client.enqueue(args=["-tmd"], task_type="web_crawler", override_options=crawler_settings, user=request.user)
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
@@ -184,7 +189,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         client.enqueue(args=["--retry-failed"], task_type="web_crawler", override_options=crawler_settings, user=request.user)
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
     elif tool == "update_newer_than":
-        p = request.GET
+        p = request.POST if request.POST else request.GET
         if p and "newer_than" in p:
             newer_than_date = p["newer_than"]
             try:
@@ -197,13 +202,13 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
                 response["error"] = "Invalid date."
             return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status=401)
     elif tool == "update_missing_thumbnails":
-        p = request.GET
+        p = request.POST if request.POST else request.GET
         if p and "limit_number" in p:
 
             try:
                 limit_number = int(p["limit_number"])
 
-                provider = request.GET.get("provider", "")
+                provider = p.get("provider", "")
                 if provider:
                     client.enqueue(args=["-umt", str(limit_number), "-ip", provider], task_type="web_crawler", override_options=crawler_settings, user=request.user)
                 else:
@@ -300,13 +305,14 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         if thread_exists_in_db("match_unmatched_worker"):
             response["error"] = "Matching worker is already running."
             return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status=401)
-        provider = request.GET.get("provider", "")
+        p = request.POST if request.POST else request.GET
+        provider = p.get("provider", "")
         try:
-            cutoff = float(request.GET.get("cutoff", "0.4"))
+            cutoff = float(p.get("cutoff", "0.4"))
         except ValueError:
             cutoff = 0.4
         try:
-            max_matches = int(request.GET.get("max-matches", "10"))
+            max_matches = int(p.get("max-matches", p.get("max_matches", "10")))
         except ValueError:
             max_matches = 10
         logger.info(
@@ -346,7 +352,8 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
             response["message"] = "No wanted galleries eligible to search."
             return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
 
-        provider = request.GET.get("provider", "")
+        p = request.POST if request.POST else request.GET
+        provider = p.get("provider", "")
 
         logger.info("Searching for gallery matches in panda for wanted galleries, starting thread.")
         response["message"] = "Searching for gallery matches in panda for wanted galleries, starting thread."
@@ -371,14 +378,15 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
 
         logger.info("Looking for possible matches in gallery database " "for wanted galleries (fixed 0.4 cutoff)")
 
-        provider = request.GET.get("provider", "")
+        p = request.POST if request.POST else request.GET
+        provider = p.get("provider", "")
 
         try:
-            cutoff = float(request.GET.get("cutoff", "0.4"))
+            cutoff = float(p.get("cutoff", "0.4"))
         except ValueError:
             cutoff = 0.4
         try:
-            max_matches = int(request.GET.get("max-matches", "10"))
+            max_matches = int(p.get("max-matches", p.get("max_matches", "10")))
         except ValueError:
             max_matches = 10
 

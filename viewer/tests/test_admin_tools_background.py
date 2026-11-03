@@ -25,16 +25,22 @@ class AdminToolsBackgroundTests(TestCase):
         self.client.login(username="admin_user", password="testpassword")
         self.settings = Settings(load_from_disk=False)
 
+    def test_tools_require_post(self):
+        resp_id = self.client.get(reverse("viewer:tools-id", args=["generate_missing_thumbs"]), HTTP_REFERER="/tools/")
+        self.assertEqual(resp_id.status_code, 405)
+        resp_api = self.client.get(reverse("viewer:tools-api", args=["generate_missing_thumbs"]))
+        self.assertEqual(resp_api.status_code, 405)
+
     def test_generate_missing_thumbs_view_no_archives(self):
         Archive.objects.all().delete()
-        resp = self.client.get(reverse("viewer:tools-id", args=["generate_missing_thumbs"]), HTTP_REFERER="/tools/")
+        resp = self.client.post(reverse("viewer:tools-id", args=["generate_missing_thumbs"]), HTTP_REFERER="/tools/")
         self.assertEqual(resp.status_code, 302)
         self.assertFalse(TaskQueue.objects.filter(task_type="thumbnails_worker").exists())
 
     def test_generate_missing_thumbs_view_enqueues_task(self):
         a1 = Archive.objects.create(title="A1", thumbnail="", user=self.admin_user)
         a2 = Archive.objects.create(title="A2", thumbnail="", user=self.admin_user)
-        resp = self.client.get(reverse("viewer:tools-id", args=["generate_missing_thumbs"]), HTTP_REFERER="/tools/")
+        resp = self.client.post(reverse("viewer:tools-id", args=["generate_missing_thumbs"]), HTTP_REFERER="/tools/")
         self.assertEqual(resp.status_code, 302)
         task = TaskQueue.objects.filter(task_type="thumbnails_worker").latest("pk")
         self.assertEqual(sorted(task.args), sorted([a1.pk, a2.pk]))
@@ -42,19 +48,19 @@ class AdminToolsBackgroundTests(TestCase):
     def test_generate_missing_thumbs_view_already_running(self):
         TaskQueue.objects.create(task_type="thumbnails_worker", status=TaskQueue.Status.PENDING)
         Archive.objects.create(title="A1", thumbnail="", user=self.admin_user)
-        resp = self.client.get(reverse("viewer:tools-id", args=["generate_missing_thumbs"]), HTTP_REFERER="/tools/", follow=True)
+        resp = self.client.post(reverse("viewer:tools-id", args=["generate_missing_thumbs"]), HTTP_REFERER="/tools/", follow=True)
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "Thumbnails worker is already running.")
 
     def test_generate_missing_thumbs_api_no_archives(self):
-        resp = self.client.get(reverse("viewer:tools-api", args=["generate_missing_thumbs"]))
+        resp = self.client.post(reverse("viewer:tools-api", args=["generate_missing_thumbs"]))
         self.assertEqual(resp.status_code, 200)
         data = json.loads(resp.content)
         self.assertEqual(data["message"], "No archives missing thumbnails found.")
 
     def test_generate_missing_thumbs_api_enqueues_task(self):
         a1 = Archive.objects.create(title="A1", thumbnail="", user=self.admin_user)
-        resp = self.client.get(reverse("viewer:tools-api", args=["generate_missing_thumbs"]))
+        resp = self.client.post(reverse("viewer:tools-api", args=["generate_missing_thumbs"]))
         self.assertEqual(resp.status_code, 200)
         data = json.loads(resp.content)
         self.assertIn("Thumbnails worker started in background for 1 archives", data["message"])
@@ -63,19 +69,19 @@ class AdminToolsBackgroundTests(TestCase):
 
     def test_generate_missing_thumbs_api_already_running(self):
         TaskQueue.objects.create(task_type="thumbnails_worker", status=TaskQueue.Status.PROCESSING)
-        resp = self.client.get(reverse("viewer:tools-api", args=["generate_missing_thumbs"]))
+        resp = self.client.post(reverse("viewer:tools-api", args=["generate_missing_thumbs"]))
         self.assertEqual(resp.status_code, 200)
         data = json.loads(resp.content)
         self.assertEqual(data["error"], "Thumbnails worker is already running.")
 
     def test_calculate_missing_info_view_no_archives(self):
-        resp = self.client.get(reverse("viewer:tools-id", args=["calculate_missing_info"]), HTTP_REFERER="/tools/")
+        resp = self.client.post(reverse("viewer:tools-id", args=["calculate_missing_info"]), HTTP_REFERER="/tools/")
         self.assertEqual(resp.status_code, 302)
         self.assertFalse(TaskQueue.objects.filter(task_type="fileinfo_worker").exists())
 
     def test_calculate_missing_info_view_enqueues_task(self):
         a1 = Archive.objects.create(title="A1", crc32="", filesize=0, filecount=0, user=self.admin_user)
-        resp = self.client.get(reverse("viewer:tools-id", args=["calculate_missing_info"]), HTTP_REFERER="/tools/")
+        resp = self.client.post(reverse("viewer:tools-id", args=["calculate_missing_info"]), HTTP_REFERER="/tools/")
         self.assertEqual(resp.status_code, 302)
         task = TaskQueue.objects.filter(task_type="fileinfo_worker").latest("pk")
         self.assertEqual(task.args, [a1.pk])
@@ -83,19 +89,19 @@ class AdminToolsBackgroundTests(TestCase):
     def test_calculate_missing_info_view_already_running(self):
         TaskQueue.objects.create(task_type="fileinfo_worker", status=TaskQueue.Status.PENDING)
         Archive.objects.create(title="A1", crc32="", filesize=0, filecount=0, user=self.admin_user)
-        resp = self.client.get(reverse("viewer:tools-id", args=["calculate_missing_info"]), HTTP_REFERER="/tools/", follow=True)
+        resp = self.client.post(reverse("viewer:tools-id", args=["calculate_missing_info"]), HTTP_REFERER="/tools/", follow=True)
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "File info worker is already running.")
 
     def test_calculate_missing_info_api_no_archives(self):
-        resp = self.client.get(reverse("viewer:tools-api", args=["calculate_missing_info"]))
+        resp = self.client.post(reverse("viewer:tools-api", args=["calculate_missing_info"]))
         self.assertEqual(resp.status_code, 200)
         data = json.loads(resp.content)
         self.assertEqual(data["message"], "No archives missing file info found.")
 
     def test_calculate_missing_info_api_enqueues_task(self):
         a1 = Archive.objects.create(title="A1", crc32="", filesize=0, filecount=0, user=self.admin_user)
-        resp = self.client.get(reverse("viewer:tools-api", args=["calculate_missing_info"]))
+        resp = self.client.post(reverse("viewer:tools-api", args=["calculate_missing_info"]))
         self.assertEqual(resp.status_code, 200)
         data = json.loads(resp.content)
         self.assertIn("File info worker started in background for 1 archives", data["message"])
@@ -104,20 +110,20 @@ class AdminToolsBackgroundTests(TestCase):
 
     def test_calculate_missing_info_api_already_running(self):
         TaskQueue.objects.create(task_type="fileinfo_worker", status=TaskQueue.Status.PROCESSING)
-        resp = self.client.get(reverse("viewer:tools-api", args=["calculate_missing_info"]))
+        resp = self.client.post(reverse("viewer:tools-api", args=["calculate_missing_info"]))
         self.assertEqual(resp.status_code, 200)
         data = json.loads(resp.content)
         self.assertEqual(data["error"], "File info worker is already running.")
 
     def test_set_all_hidden_as_public_view_no_archives(self):
-        resp = self.client.get(reverse("viewer:tools-id", args=["set_all_hidden_as_public"]), HTTP_REFERER="/tools/")
+        resp = self.client.post(reverse("viewer:tools-id", args=["set_all_hidden_as_public"]), HTTP_REFERER="/tools/")
         self.assertEqual(resp.status_code, 302)
         self.assertFalse(TaskQueue.objects.filter(task_type="publish_worker").exists())
 
     def test_set_all_hidden_as_public_view_enqueues_task(self):
         g = Gallery.objects.create(title="G1", hidden=True)
         a1 = Archive.objects.create(title="A1", gallery=g, public=False, user=self.admin_user)
-        resp = self.client.get(reverse("viewer:tools-id", args=["set_all_hidden_as_public"]), HTTP_REFERER="/tools/")
+        resp = self.client.post(reverse("viewer:tools-id", args=["set_all_hidden_as_public"]), HTTP_REFERER="/tools/")
         self.assertEqual(resp.status_code, 302)
         task = TaskQueue.objects.filter(task_type="publish_worker").latest("pk")
         self.assertEqual(task.args, [a1.pk])
@@ -126,12 +132,12 @@ class AdminToolsBackgroundTests(TestCase):
         TaskQueue.objects.create(task_type="publish_worker", status=TaskQueue.Status.PENDING)
         g = Gallery.objects.create(title="G1", hidden=True)
         Archive.objects.create(title="A1", gallery=g, public=False, user=self.admin_user)
-        resp = self.client.get(reverse("viewer:tools-id", args=["set_all_hidden_as_public"]), HTTP_REFERER="/tools/", follow=True)
+        resp = self.client.post(reverse("viewer:tools-id", args=["set_all_hidden_as_public"]), HTTP_REFERER="/tools/", follow=True)
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "Publish worker is already running.")
 
     def test_set_all_hidden_as_public_api_no_archives(self):
-        resp = self.client.get(reverse("viewer:tools-api", args=["set_all_hidden_as_public"]))
+        resp = self.client.post(reverse("viewer:tools-api", args=["set_all_hidden_as_public"]))
         self.assertEqual(resp.status_code, 200)
         data = json.loads(resp.content)
         self.assertEqual(data["message"], "No archives of hidden galleries found.")
@@ -139,7 +145,7 @@ class AdminToolsBackgroundTests(TestCase):
     def test_set_all_hidden_as_public_api_enqueues_task(self):
         g = Gallery.objects.create(title="G1", hidden=True)
         a1 = Archive.objects.create(title="A1", gallery=g, public=False, user=self.admin_user)
-        resp = self.client.get(reverse("viewer:tools-api", args=["set_all_hidden_as_public"]))
+        resp = self.client.post(reverse("viewer:tools-api", args=["set_all_hidden_as_public"]))
         self.assertEqual(resp.status_code, 200)
         data = json.loads(resp.content)
         self.assertIn("Publish worker started in background for 1 archives", data["message"])
@@ -148,7 +154,7 @@ class AdminToolsBackgroundTests(TestCase):
 
     def test_set_all_hidden_as_public_api_already_running(self):
         TaskQueue.objects.create(task_type="publish_worker", status=TaskQueue.Status.PROCESSING)
-        resp = self.client.get(reverse("viewer:tools-api", args=["set_all_hidden_as_public"]))
+        resp = self.client.post(reverse("viewer:tools-api", args=["set_all_hidden_as_public"]))
         self.assertEqual(resp.status_code, 200)
         data = json.loads(resp.content)
         self.assertEqual(data["error"], "Publish worker is already running.")

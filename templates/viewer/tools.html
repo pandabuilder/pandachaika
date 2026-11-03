@@ -18,24 +18,26 @@
 
       <div class="list-group col-lg-3 col-md-4 col-sm-6 col-xs-12">
         <div class="list-group-item active">Archives and galleries</div>
-        <a class="list-group-item" href="{% url 'viewer:tools-id' 'generate_missing_thumbs' %}">Generate missing thumbnails</a>
-        <a class="list-group-item" href="{% url 'viewer:tools-id' 'calculate_missing_info' %}">Calculate missing file info</a>
-        <a class="list-group-item" href="{% url 'viewer:tools-id' 'recalc_all_file_info' %}">Recalculate all file info</a>
-        <a class="list-group-item" href="{% url 'viewer:tools-id' 'set_all_hidden_as_public' %}">Set all hidden as public</a>
-        <a class="list-group-item" href="{% url 'viewer:tools-id' 'regenerate_all_thumbs' %}">Regenerate all thumbnails (might be slow)</a>
-        <form action="{% url 'viewer:tools-id' 'search_wanted_galleries_provider_titles' %}" method="GET" role="form">
+        <form action="{% url 'viewer:tools-id' 'generate_missing_thumbs' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Generate missing thumbnails</button></form>
+        <form action="{% url 'viewer:tools-id' 'calculate_missing_info' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Calculate missing file info</button></form>
+        <form action="{% url 'viewer:tools-id' 'recalc_all_file_info' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Recalculate all file info</button></form>
+        <form action="{% url 'viewer:tools-id' 'set_all_hidden_as_public' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Set all hidden as public</button></form>
+        <form action="{% url 'viewer:tools-id' 'regenerate_all_thumbs' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Regenerate all thumbnails (might be slow)</button></form>
+        <form action="{% url 'viewer:tools-id' 'search_wanted_galleries_provider_titles' %}" method="POST" role="form">
+          {% csrf_token %}
           <div class="list-group-item">
               <div class="row g-1">
                 <div class="col-md-auto">
                     <input size="10" class="form-control" name="provider" value="" placeholder="Provider filter"/>
                 </div>
                 <div class="col-md-auto">
-                    <button class="btn btn-light">Search wanted galleries by provider titles</button>
+                    <button type="submit" class="btn btn-light">Search wanted galleries by provider titles</button>
                 </div>
               </div>
           </div>
         </form>
-        <form action="{% url 'viewer:tools-id' 'wanted_galleries_possible_matches' %}" method="GET" role="form">
+        <form action="{% url 'viewer:tools-id' 'wanted_galleries_possible_matches' %}" method="POST" role="form">
+          {% csrf_token %}
           <div class="list-group-item">
               <div class="row g-1">
                   <div class="col-md-auto">
@@ -48,15 +50,16 @@
             <input size="10" class="form-control" name="provider" value="" placeholder="Provider filter"/>
                   </div>
                   <div class="col-md-auto">
-            <button class="btn btn-light">Search wanted galleries by internal galleries</button>
+            <button type="submit" class="btn btn-light">Search wanted galleries by internal galleries</button>
                   </div>
               </div>
           </div>
         </form>
-        <a class="list-group-item" href="{% url 'viewer:tools-id' 'transfer_missing_downloads' %}">Transfer missing downloads</a>
-        <a class="list-group-item" href="{% url 'viewer:tools-id' 'retry_failed' %}">Retry failed downloads</a>
-        <a class="list-group-item" href="{% url 'viewer:tools-id' 'reconcile_downloads' %}">Reconcile downloads and archives (sync missing CRC32)</a>
-        <form action="{% url 'viewer:tools-id' 'update_newer_than' %}" method="GET" role="form">
+        <form action="{% url 'viewer:tools-id' 'transfer_missing_downloads' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Transfer missing downloads</button></form>
+        <form action="{% url 'viewer:tools-id' 'retry_failed' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Retry failed downloads</button></form>
+        <form action="{% url 'viewer:tools-id' 'reconcile_downloads' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Reconcile downloads and archives (sync missing CRC32)</button></form>
+        <form action="{% url 'viewer:tools-id' 'update_newer_than' %}" method="POST" role="form">
+            {% csrf_token %}
             <div class="list-group-item">
                 <div class="row g-1">
                     <div class="col-md-auto">
@@ -71,7 +74,8 @@
                 </div>
             </div>
         </form>
-        <form action="{% url 'viewer:tools-id' 'update_missing_thumbnails' %}" method="GET" role="form">
+        <form action="{% url 'viewer:tools-id' 'update_missing_thumbnails' %}" method="POST" role="form">
+            {% csrf_token %}
             <div class="list-group-item">
                 <div class="row g-1">
                     <div class="col-md-auto">
@@ -89,8 +93,9 @@
                 </div>
             </div>
         </form>
-        <a class="list-group-item" href="{% url 'viewer:tools-id' 'generate_possible_matches_internally' %}">Generate possible matches for non-matches (all providers)</a>
-        <form action="{% url 'viewer:tools-id' 'generate_possible_matches_internally' %}" method="GET" role="form">
+        <form action="{% url 'viewer:tools-id' 'generate_possible_matches_internally' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Generate possible matches for non-matches (all providers)</button></form>
+        <form action="{% url 'viewer:tools-id' 'generate_possible_matches_internally' %}" method="POST" role="form">
+            {% csrf_token %}
             <div class="list-group-item">
                 <div class="row g-1">
                     <div class="col-md-auto">
@@ -108,38 +113,38 @@
                 </div>
             </div>
         </form>
-        <a class="list-group-item" href="{% url 'viewer:tools-id' 'clear_all_archive_possible_matches' %}">Clear all archive possible matches</a>
+        <form action="{% url 'viewer:tools-id' 'clear_all_archive_possible_matches' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Clear all archive possible matches</button></form>
       </div>
       {% if user.is_superuser %}
       <div class="list-group col-lg-3 col-md-4 col-sm-6 col-xs-12">
         <div class="list-group-item active">Settings file</div>
         <a class="list-group-item" href="{% url 'viewer:tools-id' 'modify_settings_editor' %}">Modify settings file for crawler</a>
-        <a class="list-group-item" href="{% url 'viewer:tools-id' 'reload_settings' %}">Reload settings file for crawler</a>
+        <form action="{% url 'viewer:tools-id' 'reload_settings' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Reload settings file for crawler</button></form>
       </div>
       {% endif %}
       <div class="list-group col-lg-3 col-md-4 col-sm-6 col-xs-12">
         <div class="list-group-item active">Workers</div>
-        {% if not threads_status.download_progress_checker %}<a class="list-group-item" href="{% url 'viewer:tools-id' 'start_download_progress_checker' %}">Start Download progress checker</a>{% else %}<a class="list-group-item" href="{% url 'viewer:tools-id' 'stop_download_progress_checker' %}">Stop Download progress checker</a>{% endif %}
-        <a class="list-group-item" href="{% url 'viewer:tools-id' 'force_download_progress_checker' %}">Force run Download progress checker</a>
-        {% if not threads_status.archive_download_queue %}<a class="list-group-item" href="{% url 'viewer:tools-id' 'start_archive_download_queue' %}">Start Archive download queue</a>{% else %}<a class="list-group-item" href="{% url 'viewer:tools-id' 'stop_archive_download_queue' %}">Stop Archive download queue</a>{% endif %}
-        <a class="list-group-item" href="{% url 'viewer:tools-id' 'force_archive_download_queue' %}">Force run Archive download queue</a>
-        {% if not threads_status.post_downloader %}<a class="list-group-item" href="{% url 'viewer:tools-id' 'start_timed_dl' %}">Start Post downloader</a>{% else %}<a class="list-group-item" href="{% url 'viewer:tools-id' 'stop_timed_dl' %}">Stop Post downloader</a>{% endif %}
-        <a class="list-group-item" href="{% url 'viewer:tools-id' 'force_run_timed_dl' %}">Force run Post downloader</a>
-        {% if not threads_status.auto_wanted %}<a class="list-group-item" href="{% url 'viewer:tools-id' 'start_timed_auto_wanted' %}">Start Auto wanted</a>{% else %}<a class="list-group-item" href="{% url 'viewer:tools-id' 'stop_timed_auto_wanted' %}">Stop Auto Wanted</a>{% endif %}
-        <a class="list-group-item" href="{% url 'viewer:tools-id' 'force_run_timed_auto_wanted' %}">Force run Auto wanted</a>
-        {% if not threads_status.web_queue %}<a class="list-group-item" href="{% url 'viewer:tools-id' 'start_web_queue' %}">Start Web queue</a>{% else %}<a class=" list-group-item" href="#">Stop Web queue</a>{% endif %}
-        {% if not threads_status.auto_updater %}<a class="list-group-item" href="{% url 'viewer:tools-id' 'start_timed_updater' %}">Start Auto updater (all)</a>{% else %}<a class="list-group-item" href="{% url 'viewer:tools-id' 'stop_timed_updater' %}">Stop Auto updater (all)</a>{% endif %}
-        <a class="list-group-item" href="{% url 'viewer:tools-id' 'force_run_timed_updater' %}">Force run Auto updater (all)</a>
+        {% if not threads_status.download_progress_checker %}<form action="{% url 'viewer:tools-id' 'start_download_progress_checker' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Start Download progress checker</button></form>{% else %}<form action="{% url 'viewer:tools-id' 'stop_download_progress_checker' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Stop Download progress checker</button></form>{% endif %}
+        <form action="{% url 'viewer:tools-id' 'force_download_progress_checker' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Force run Download progress checker</button></form>
+        {% if not threads_status.archive_download_queue %}<form action="{% url 'viewer:tools-id' 'start_archive_download_queue' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Start Archive download queue</button></form>{% else %}<form action="{% url 'viewer:tools-id' 'stop_archive_download_queue' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Stop Archive download queue</button></form>{% endif %}
+        <form action="{% url 'viewer:tools-id' 'force_archive_download_queue' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Force run Archive download queue</button></form>
+        {% if not threads_status.post_downloader %}<form action="{% url 'viewer:tools-id' 'start_timed_dl' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Start Post downloader</button></form>{% else %}<form action="{% url 'viewer:tools-id' 'stop_timed_dl' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Stop Post downloader</button></form>{% endif %}
+        <form action="{% url 'viewer:tools-id' 'force_run_timed_dl' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Force run Post downloader</button></form>
+        {% if not threads_status.auto_wanted %}<form action="{% url 'viewer:tools-id' 'start_timed_auto_wanted' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Start Auto wanted</button></form>{% else %}<form action="{% url 'viewer:tools-id' 'stop_timed_auto_wanted' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Stop Auto Wanted</button></form>{% endif %}
+        <form action="{% url 'viewer:tools-id' 'force_run_timed_auto_wanted' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Force run Auto wanted</button></form>
+        {% if not threads_status.web_queue %}<form action="{% url 'viewer:tools-id' 'start_web_queue' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Start Web queue</button></form>{% else %}<a class=" list-group-item" href="#">Stop Web queue</a>{% endif %}
+        {% if not threads_status.auto_updater %}<form action="{% url 'viewer:tools-id' 'start_timed_updater' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Start Auto updater (all)</button></form>{% else %}<form action="{% url 'viewer:tools-id' 'stop_timed_updater' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Stop Auto updater (all)</button></form>{% endif %}
+        <form action="{% url 'viewer:tools-id' 'force_run_timed_updater' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Force run Auto updater (all)</button></form>
         {% for provider_name, provider_thread_status in autoupdater_providers %}
-          {% if not provider_thread_status %}<a class="list-group-item" href="{% url 'viewer:tools-id-arg' 'start_timed_updater' provider_name %}">Start Auto updater ({{ provider_name }})</a>{% else %}<a class="list-group-item" href="{% url 'viewer:tools-id-arg' 'stop_timed_updater' provider_name %}">Stop Auto updater ({{ provider_name }})</a>{% endif %}
-          <a class="list-group-item" href="{% url 'viewer:tools-id-arg' 'force_run_timed_updater' provider_name %}">Force run Auto updater ({{ provider_name }})</a>
+          {% if not provider_thread_status %}<form action="{% url 'viewer:tools-id-arg' 'start_timed_updater' provider_name %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Start Auto updater ({{ provider_name }})</button></form>{% else %}<form action="{% url 'viewer:tools-id-arg' 'stop_timed_updater' provider_name %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Stop Auto updater ({{ provider_name }})</button></form>{% endif %}
+          <form action="{% url 'viewer:tools-id-arg' 'force_run_timed_updater' provider_name %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Force run Auto updater ({{ provider_name }})</button></form>
         {% endfor %}
       </div>
       <div class="list-group col-lg-3 col-md-4 col-sm-6 col-xs-12">
         <div class="list-group-item active">Misc</div>
         <a class="list-group-item" href="{% static 'js/panda.user.js' %}">Install JS userscript</a>
-        <a class="list-group-item" href="{% url 'viewer:tools-id' 'restart_viewer' %}">Restart Viewer (for code changes)</a>
-        <a class="list-group-item" href="{% url 'viewer:tools-id' 'restart_workers' %}">Restart Workers (apply settings / code changes)</a>
+        <form action="{% url 'viewer:tools-id' 'restart_viewer' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Restart Viewer (for code changes)</button></form>
+        <form action="{% url 'viewer:tools-id' 'restart_workers' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Restart Workers (apply settings / code changes)</button></form>
       </div>
 
     </div>

@@ -54,7 +54,7 @@ class ArchiveExtractionService:
     @classmethod
     def extract_delete(cls, archive: "Archive") -> None:
         """Delete all extracted image files for the given archive."""
-        extracted_images = archive.image_set.filter(extracted=True)
+        extracted_images = list(archive.image_set.filter(extracted=True))
 
         if extracted_images:
             for img in extracted_images:
@@ -63,7 +63,10 @@ class ArchiveExtractionService:
                 img.thumbnail.delete(save=False)
                 img.thumbnail = None
                 img.extracted = False
-                img.save()
+
+            from viewer.models import Image
+
+            Image.objects.bulk_update(extracted_images, ["image", "thumbnail", "extracted"])
 
         archive.extracted = False
         archive.simple_save()
@@ -74,7 +77,7 @@ class ArchiveExtractionService:
         if not archive.extracted:
             return False
 
-        extracted_images = archive.image_set.filter(extracted=True)
+        extracted_images = list(archive.image_set.filter(extracted=True))
 
         for img in extracted_images:
             img.image.delete(save=False)
@@ -82,14 +85,18 @@ class ArchiveExtractionService:
             img.thumbnail.delete(save=False)
             img.thumbnail = None
             img.extracted = False
-            img.save()
+
+        if extracted_images:
+            from viewer.models import Image
+
+            Image.objects.bulk_update(extracted_images, ["image", "thumbnail", "extracted"])
 
         archive.extracted = False
         archive.simple_save()
         return True
 
     @classmethod
-    def extract(cls, archive: "Archive", resized: bool = False) -> bool:
+    def extract(cls, archive: "Archive", resized: bool = False, skip_zip_check: bool = False) -> bool:
         """Extract images from the archive's zip file to the media storage."""
         if archive.extracted:
             return False
@@ -99,16 +106,17 @@ class ArchiveExtractionService:
         my_zip = None
         try:
             my_zip = zipfile.ZipFile(archive.zipped.path, "r")
-            bad_file = my_zip.testzip()
-            if bad_file:
-                logger.error(
-                    "Zip file CRC check failed on file %s for archive: %s on file: %s",
-                    bad_file,
-                    archive,
-                    archive.zipped.path,
-                )
-                my_zip.close()
-                return False
+            if not skip_zip_check:
+                bad_file = my_zip.testzip()
+                if bad_file:
+                    logger.error(
+                        "Zip file CRC check failed on file %s for archive: %s on file: %s",
+                        bad_file,
+                        archive,
+                        archive.zipped.path,
+                    )
+                    my_zip.close()
+                    return False
         except (zipfile.BadZipFile, NotImplementedError, zlib.error) as e:
             logger.error(
                 "Error opening or testing zipfile for archive: %s on file: %s: %s",
@@ -124,27 +132,27 @@ class ArchiveExtractionService:
         os.makedirs(pjoin(settings.MEDIA_ROOT, f"images/extracted/archive_{archive.pk}/thumb/"), exist_ok=True)
 
         non_extracted_images = archive.image_set.filter(extracted=False)
-        if not non_extracted_images:
-            archive.generate_image_set()
+        if not non_extracted_images.exists():
+            archive.generate_image_set(skip_zip_check=True)
             non_extracted_images = archive.image_set.filter(extracted=False)
-        non_extracted_positions = non_extracted_images.values_list("archive_position", flat=True)
+        images_by_position = {img.archive_position: img for img in non_extracted_images}
 
         filtered_files = get_images_from_zip(my_zip)
 
         from viewer.models import Image, upload_imgpath, upload_thumbpath_handler
 
         activity_cb = getattr(archive, "_activity_callback", None)
+        images_to_update: list[Image] = []
 
         for count, filename_tuple in enumerate(filtered_files, start=1):
             if callable(activity_cb):
                 activity_cb()
-            if count not in non_extracted_positions:
-                continue
-            try:
-                image: "Image" = non_extracted_images.get(archive_position=count)
-            except Image.DoesNotExist:
-                archive.generate_image_set()
-                image = non_extracted_images.get(archive_position=count)
+            if count not in images_by_position:
+                archive.generate_image_set(skip_zip_check=True)
+                images_by_position = {img.archive_position: img for img in archive.image_set.filter(extracted=False)}
+                if count not in images_by_position:
+                    continue
+            image = images_by_position[count]
             image_name = os.path.split(filename_tuple[2].replace("\\", os.sep))[1]
 
             # Image
@@ -211,6 +219,8 @@ class ArchiveExtractionService:
             thumb_im = img_to_thumbnail(raw_full_im)
             thumb_im.save(pjoin(settings.MEDIA_ROOT, thumb_img_name), "JPEG")
             im_size = thumb_im.size
+            if not image.image_height and raw_full_im.size:
+                image.image_width, image.image_height = raw_full_im.size
             raw_full_im.close()
             thumb_im.close()
             image.thumbnail = thumb_img_name
@@ -218,7 +228,21 @@ class ArchiveExtractionService:
                 image.thumbnail_width, image.thumbnail_height = im_size
 
             image.extracted = True
-            image.save()
+            images_to_update.append(image)
+
+        if images_to_update:
+            Image.objects.bulk_update(
+                images_to_update,
+                [
+                    "image",
+                    "thumbnail",
+                    "thumbnail_width",
+                    "thumbnail_height",
+                    "image_width",
+                    "image_height",
+                    "extracted",
+                ],
+            )
 
         my_zip.close()
         archive.extracted = True

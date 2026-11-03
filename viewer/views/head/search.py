@@ -496,55 +496,94 @@ def public_stats(request: HttpRequest) -> HttpResponse:
     }
 
     # Per category
-    categories = Gallery.objects.filter(public=True).values_list("category", flat=True).distinct()
-
-    categories_dict = {}
-
-    for category in categories:
-        categories_dict[category] = {
-            "n_galleries": Gallery.objects.filter(public=True, category=category).count(),
-            "gallery": Gallery.objects.filter(public=True)
-            .filter(filesize__gt=0, category=category)
-            .aggregate(
-                Avg("filesize"), Max("filesize"), Min("filesize"), Sum("filesize"), Avg("filecount"), Sum("filecount")
-            ),
-        }
-
-    # Per language tag
-    languages = (
-        Tag.objects.filter(scope="language")
-        .exclude(scope="language", name="translated")
-        .annotate(num_gallery=Count("gallery"))
-        .order_by("-num_gallery")
-        .values_list("name", flat=True)
-        .distinct()
+    category_stats = (
+        Gallery.objects.filter(public=True)
+        .order_by("category")
+        .values("category")
+        .annotate(
+            n_galleries=Count("id"),
+            filesize__avg=Avg("filesize", filter=Q(filesize__gt=0)),
+            filesize__max=Max("filesize", filter=Q(filesize__gt=0)),
+            filesize__min=Min("filesize", filter=Q(filesize__gt=0)),
+            filesize__sum=Sum("filesize", filter=Q(filesize__gt=0)),
+            filecount__avg=Avg("filecount", filter=Q(filesize__gt=0)),
+            filecount__sum=Sum("filecount", filter=Q(filesize__gt=0)),
+        )
     )
 
-    languages_dict = {}
-
-    languages_dict["untranslated"] = {
-        "n_galleries": Gallery.objects.filter(public=True).exclude(tags__scope="language").distinct().count(),
-        "gallery": Gallery.objects.filter(public=True)
-        .filter(filesize__gt=0)
-        .exclude(tags__scope="language")
-        .distinct()
-        .aggregate(
-            Avg("filesize"), Max("filesize"), Min("filesize"), Sum("filesize"), Avg("filecount"), Sum("filecount")
-        ),
+    categories_dict = {
+        row["category"]: {
+            "n_galleries": row["n_galleries"],
+            "gallery": {
+                "filesize__avg": row["filesize__avg"],
+                "filesize__max": row["filesize__max"],
+                "filesize__min": row["filesize__min"],
+                "filesize__sum": row["filesize__sum"],
+                "filecount__avg": row["filecount__avg"],
+                "filecount__sum": row["filecount__sum"],
+            },
+        }
+        for row in category_stats
     }
 
-    for language in languages:
-        languages_dict[str(language)] = {
-            "n_galleries": Gallery.objects.filter(public=True)
-            .filter(tags__scope="language", tags__name=language)
-            .distinct()
-            .count(),
-            "gallery": Gallery.objects.filter(public=True)
-            .filter(filesize__gt=0, tags__scope="language", tags__name=language)
-            .distinct()
-            .aggregate(
-                Avg("filesize"), Max("filesize"), Min("filesize"), Sum("filesize"), Avg("filecount"), Sum("filecount")
-            ),
+    # Per language tag
+    untranslated_stats = (
+        Gallery.objects.filter(public=True)
+        .exclude(tags__scope="language")
+        .aggregate(
+            n_galleries=Count("id", distinct=True),
+            filesize__avg=Avg("filesize", filter=Q(filesize__gt=0)),
+            filesize__max=Max("filesize", filter=Q(filesize__gt=0)),
+            filesize__min=Min("filesize", filter=Q(filesize__gt=0)),
+            filesize__sum=Sum("filesize", filter=Q(filesize__gt=0)),
+            filecount__avg=Avg("filecount", filter=Q(filesize__gt=0)),
+            filecount__sum=Sum("filecount", filter=Q(filesize__gt=0)),
+        )
+    )
+
+    languages_dict = {
+        "untranslated": {
+            "n_galleries": untranslated_stats["n_galleries"],
+            "gallery": {
+                "filesize__avg": untranslated_stats["filesize__avg"],
+                "filesize__max": untranslated_stats["filesize__max"],
+                "filesize__min": untranslated_stats["filesize__min"],
+                "filesize__sum": untranslated_stats["filesize__sum"],
+                "filecount__avg": untranslated_stats["filecount__avg"],
+                "filecount__sum": untranslated_stats["filecount__sum"],
+            },
+        }
+    }
+
+    language_stats = (
+        Tag.objects.filter(scope="language")
+        .exclude(name="translated")
+        .order_by()
+        .values("name")
+        .annotate(
+            n_galleries=Count("gallery", filter=Q(gallery__public=True), distinct=True),
+            filesize__avg=Avg("gallery__filesize", filter=Q(gallery__public=True, gallery__filesize__gt=0)),
+            filesize__max=Max("gallery__filesize", filter=Q(gallery__public=True, gallery__filesize__gt=0)),
+            filesize__min=Min("gallery__filesize", filter=Q(gallery__public=True, gallery__filesize__gt=0)),
+            filesize__sum=Sum("gallery__filesize", filter=Q(gallery__public=True, gallery__filesize__gt=0)),
+            filecount__avg=Avg("gallery__filecount", filter=Q(gallery__public=True, gallery__filesize__gt=0)),
+            filecount__sum=Sum("gallery__filecount", filter=Q(gallery__public=True, gallery__filesize__gt=0)),
+            total_galleries=Count("gallery", distinct=True),
+        )
+        .order_by("-total_galleries", "name")
+    )
+
+    for row in language_stats:
+        languages_dict[str(row["name"])] = {
+            "n_galleries": row["n_galleries"],
+            "gallery": {
+                "filesize__avg": row["filesize__avg"],
+                "filesize__max": row["filesize__max"],
+                "filesize__min": row["filesize__min"],
+                "filesize__sum": row["filesize__sum"],
+                "filecount__avg": row["filecount__avg"],
+                "filecount__sum": row["filecount__sum"],
+            },
         }
 
     d = {"stats": stats_dict, "gallery_categories": categories_dict, "gallery_languages": languages_dict}

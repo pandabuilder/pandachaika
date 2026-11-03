@@ -65,7 +65,7 @@ For session-based integration, helper endpoints are available in [`viewer/views/
   ```json
   {"success": false, "message": "Invalid login credentials."}
   ```
-- **Logout**: `POST /api-logout/` (or `GET`)  
+- **Logout**: `POST /api-logout/`  
   Clears the session. Response:
   ```json
   {"success": true, "message": "Logged out."}

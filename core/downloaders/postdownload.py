@@ -225,7 +225,7 @@ class PostDownloader(object):
         # updated_archive = Archive.objects.add_or_update_from_values(values, pk=archive.pk)
 
         archive.recalc_fileinfo()
-        archive.ingest()
+        archive.ingest(skip_zip_check=True)
 
         if self.settings.mark_similar_new_archives:
             archive.create_marks_for_similar_archives()
@@ -1166,18 +1166,33 @@ class TimedPostDownloader(BaseScheduler):
                 logger.info("All downloader threads finished.")
 
             self.update_last_run(django_tz.now())
+            try:
+                from django.db import close_old_connections
+
+                close_old_connections()
+            except Exception:
+                pass
 
     def start_post_downloader(self, post_downloader: PostDownloader) -> None:
-        while True:
+        try:
+            while True:
+                try:
+                    item = self.post_queue.get_nowait()
+                except queue.Empty:
+                    return
+                try:
+                    post_downloader.transfer_all_missing((item,))
+                    self.post_queue.task_done()
+                except BaseException:
+                    logger.critical("Error downloading Archive: {}\n{}".format(item.title, traceback.format_exc()))
+        finally:
             try:
-                item = self.post_queue.get_nowait()
-            except queue.Empty:
-                return
-            try:
-                post_downloader.transfer_all_missing((item,))
-                self.post_queue.task_done()
-            except BaseException:
-                logger.critical("Error downloading Archive: {}\n{}".format(item.title, traceback.format_exc()))
+                from django.db import connection, connections
+
+                if not connection.in_atomic_block:
+                    connections.close_all()
+            except Exception:
+                pass
 
     def current_download(self) -> list[CurrentDownload]:
         if self.is_running_locally():

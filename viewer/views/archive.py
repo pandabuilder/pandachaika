@@ -16,6 +16,7 @@ from django.db import transaction
 from django.http import Http404, HttpRequest
 from django.http import HttpResponseRedirect, HttpResponse
 from django.templatetags.static import static
+from django.views.decorators.http import require_POST
 from django.shortcuts import render
 from django.conf import settings
 
@@ -1147,6 +1148,7 @@ def split(request: HttpRequest, pk: int) -> HttpResponse:
 
 
 @login_required
+@require_POST
 def public(request: HttpRequest, pk: int) -> HttpResponse:
     """Public archive (idempotent, queued to background worker)."""
 
@@ -1180,6 +1182,7 @@ def public(request: HttpRequest, pk: int) -> HttpResponse:
 
 
 @login_required
+@require_POST
 def private(request: HttpRequest, pk: int) -> HttpResponse:
     """Private archive."""
 
@@ -1201,6 +1204,7 @@ def private(request: HttpRequest, pk: int) -> HttpResponse:
 
 
 @login_required
+@require_POST
 def calculate_images_sha1(request: HttpRequest, pk: int) -> HttpResponse:
     """Calculate archive's images SHA1."""
 
@@ -1226,6 +1230,7 @@ def calculate_images_sha1(request: HttpRequest, pk: int) -> HttpResponse:
 
 
 @login_required
+@require_POST
 def recalc_info(request: HttpRequest, pk: int) -> HttpResponse:
     """Recalculate archive info."""
 
@@ -1246,9 +1251,9 @@ def recalc_info(request: HttpRequest, pk: int) -> HttpResponse:
         logger.error(message)
         messages.error(request, message)
         return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
-    archive.generate_image_set(force=False)
+    archive.generate_image_set(force=False, skip_zip_check=True)
     archive.fix_image_positions()
-    archive.generate_thumbnails()
+    archive.generate_thumbnails(skip_zip_check=True)
 
     return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
@@ -1277,6 +1282,7 @@ def mark_similar_archives(request: HttpRequest, pk: int) -> HttpResponse:
 
 
 @login_required
+@require_POST
 def recall_api(request: HttpRequest, pk: int) -> HttpResponse:
     """Recall provider API, if possible."""
 
@@ -1351,6 +1357,7 @@ def generate_matches(request: HttpRequest, pk: int) -> HttpResponse:
 
 
 @login_required
+@require_POST
 def rematch_archive(request: HttpRequest, pk: int) -> HttpResponse:
     """Match an Archive."""
 
@@ -1520,6 +1527,7 @@ def delete_archive(request: HttpRequest, pk: int) -> HttpResponse:
 
 
 @login_required
+@require_POST
 def delete_manage_archive(request: HttpRequest, pk: int) -> HttpResponse:
     """Delete Manage Archive entry."""
 
@@ -1545,6 +1553,7 @@ def delete_manage_archive(request: HttpRequest, pk: int) -> HttpResponse:
 
 
 @login_required
+@require_POST
 def remove_from_index_manage_archive(request: HttpRequest, pk: int) -> HttpResponse:
     """Mark Archive entry as non-searchable."""
 
@@ -1569,6 +1578,7 @@ def remove_from_index_manage_archive(request: HttpRequest, pk: int) -> HttpRespo
     return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
 @login_required
+@require_POST
 def add_to_index_manage_archive(request: HttpRequest, pk: int) -> HttpResponse:
     """Mark Archive entry as searchable."""
 

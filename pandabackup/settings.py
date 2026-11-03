@@ -167,7 +167,12 @@ if module_exists("compressor"):
 if module_exists("django_unused_media"):
     INSTALLED_APPS += ["django_unused_media"]
 
-TESTING = sys.argv[1:2] == ["test"]
+TESTING = sys.argv[1:2] == ["test"] or "pytest" in sys.modules or os.environ.get("TESTING") == "true" or any("test" in arg for arg in sys.argv)
+
+if TESTING:
+    PASSWORD_HASHERS = [
+        "django.contrib.auth.hashers.MD5PasswordHasher",
+    ]
 
 if DEBUG and not TESTING and module_exists("debug_toolbar"):
     INSTALLED_APPS += ["debug_toolbar"]
@@ -248,24 +253,99 @@ if DEBUG and not TESTING and module_exists("debug_toolbar"):
 if (CORS_ALLOW_ALL_ORIGINS or CORS_ALLOWED_ORIGINS) and module_exists("corsheaders"):
     MIDDLEWARE = ["corsheaders.middleware.CorsMiddleware"] + MIDDLEWARE
 
-# Database
-if crawler_settings.db_engine == "postgresql":
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.postgresql_psycopg2",
-            "NAME": crawler_settings.database["postgresql_name"],
-            "USER": crawler_settings.database["postgresql_user"],
-            "PASSWORD": crawler_settings.database["postgresql_password"],
-            "HOST": crawler_settings.database["postgresql_host"],
-            "PORT": crawler_settings.database["postgresql_port"],
-            "CONN_MAX_AGE": 600,
-            "CONN_HEALTH_CHECKS": True,
-        }
-    }
-else:
-    raise ValueError(
-        f"Unsupported database engine '{crawler_settings.db_engine}'. PostgreSQL is the only supported database backend."
+def get_database_config(settings_obj: Any = None) -> dict[str, Any]:
+    """Build the DATABASES configuration dictionary from crawler Settings,
+
+    tuning connection pooling and CONN_MAX_AGE for web server vs worker environments.
+    """
+    if settings_obj is None:
+        settings_obj = crawler_settings
+
+    engine = getattr(settings_obj, "db_engine", "postgresql")
+    if engine != "postgresql":
+        raise ValueError(
+            f"Unsupported database engine '{engine}'. PostgreSQL is the only supported database backend."
+        )
+
+    db_dict = getattr(settings_obj, "database", {}) or {}
+
+    is_worker = bool(
+        getattr(settings_obj, "is_worker_process", False)
+        or os.environ.get("MODE") == "worker"
+        or os.environ.get("CONTAINER_ROLE") == "worker"
+        or (len(sys.argv) > 1 and sys.argv[1] in ("run_workers", "worker"))
     )
+
+    pooling = bool(db_dict.get("pooling", False))
+    conn_health_checks = bool(db_dict.get("conn_health_checks", True))
+
+    default_config: dict[str, Any] = {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": db_dict.get("postgresql_name", "pandaweb"),
+        "USER": db_dict.get("postgresql_user", "pandaadmin"),
+        "PASSWORD": db_dict.get("postgresql_password", "pandaadmin"),
+        "HOST": db_dict.get("postgresql_host", "localhost"),
+        "PORT": db_dict.get("postgresql_port", "5432"),
+        "CONN_HEALTH_CHECKS": conn_health_checks,
+        "TIME_ZONE": None,
+        "AUTOCOMMIT": True,
+    }
+
+    if pooling:
+        # Django 5.1+ native connection pooling (psycopg_pool) requires CONN_MAX_AGE = 0
+        default_config["CONN_MAX_AGE"] = 0
+        pool_options: dict[str, Any] = {}
+        if db_dict.get("pool_min_size") is not None:
+            pool_options["min_size"] = int(db_dict["pool_min_size"])
+        if db_dict.get("pool_max_size") is not None:
+            pool_options["max_size"] = int(db_dict["pool_max_size"])
+        if db_dict.get("pool_timeout") is not None:
+            pool_options["timeout"] = float(db_dict["pool_timeout"])
+        if db_dict.get("pool_max_lifetime") is not None:
+            pool_options["max_lifetime"] = float(db_dict["pool_max_lifetime"])
+        if db_dict.get("pool_max_idle") is not None:
+            pool_options["max_idle"] = float(db_dict["pool_max_idle"])
+
+        default_config["OPTIONS"] = {"pool": pool_options or True}
+    else:
+        # Tune connection reuse via CONN_MAX_AGE
+        if is_worker and db_dict.get("worker_conn_max_age") is not None:
+            raw_age = db_dict.get("worker_conn_max_age")
+        else:
+            raw_age = db_dict.get("conn_max_age", 600)
+
+        if raw_age is None or str(raw_age).lower() in ("none", "null", ""):
+            max_age = None
+        else:
+            max_age = int(raw_age)
+
+        default_config["CONN_MAX_AGE"] = max_age
+        default_config["OPTIONS"] = {}
+
+    return {"default": default_config}
+
+
+def configure_database(settings_obj: Any = None) -> None:
+    """Update DATABASES and runtime connection handler for the active settings."""
+    global DATABASES
+    new_config = get_database_config(settings_obj)
+    for key in ("CONN_MAX_AGE", "CONN_HEALTH_CHECKS", "OPTIONS"):
+        if key in new_config["default"]:
+            DATABASES["default"][key] = new_config["default"][key]
+    try:
+        from django.db import connections
+
+        if hasattr(connections, "databases") and "default" in connections.databases:
+            for key in ("CONN_MAX_AGE", "CONN_HEALTH_CHECKS", "OPTIONS"):
+                if key in new_config["default"]:
+                    connections.databases["default"][key] = new_config["default"][key]
+            if hasattr(connections, "ensure_defaults"):
+                connections.ensure_defaults("default")
+    except Exception:
+        pass
+
+
+DATABASES = get_database_config(crawler_settings)
 
 # Internationalization
 

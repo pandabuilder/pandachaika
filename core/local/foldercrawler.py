@@ -513,7 +513,7 @@ class FolderCrawler(object):
                         if self.settings.archive_source:
                             values.update({"source_type": self.settings.archive_source})
                         resulting_archive = Archive.objects.update_or_create_by_values_and_gid(
-                            values, None, zipped=filepath
+                            values, None, zipped=filepath, skip_zip_check=True
                         )
                         resulting_archive.fill_other_file_data(other_file_datas)
                         if self.settings.mark_similar_new_archives:
@@ -546,7 +546,9 @@ class FolderCrawler(object):
                                 values.update({"details": self.settings.archive_details})
                             if self.settings.archive_source:
                                 values.update({"source_type": self.settings.archive_source})
-                            resulting_archive = Archive.objects.add_or_update_from_values(values, zipped=filepath)
+                            resulting_archive = Archive.objects.add_or_update_from_values(
+                                values, zipped=filepath, skip_zip_check=True
+                            )
                             resulting_archive.fill_other_file_data(other_file_datas)
                             if self.settings.mark_similar_new_archives:
                                 resulting_archive.create_marks_for_similar_archives()
@@ -606,7 +608,9 @@ class FolderCrawler(object):
                         values.update({"details": self.settings.archive_details})
                     if self.settings.archive_source:
                         values.update({"source_type": self.settings.archive_source})
-                    archive = Archive.objects.update_or_create_by_values_and_gid(values, None, zipped=filepath)
+                    archive = Archive.objects.update_or_create_by_values_and_gid(
+                        values, None, zipped=filepath, skip_zip_check=True
+                    )
 
                     archive.fill_other_file_data(other_file_datas)
                     if self.settings.mark_similar_new_archives:

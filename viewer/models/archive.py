@@ -183,20 +183,28 @@ class ArchiveManager(models.Manager["Archive"]):
         ).first()
 
     def update_or_create_by_values_and_gid(
-        self, values: DataDict, gid_provider: tuple[str, str] | None, **kwargs: typing.Any
+        self,
+        values: DataDict,
+        gid_provider: tuple[str, str] | None,
+        skip_zip_check: bool = False,
+        **kwargs: typing.Any,
     ) -> "Archive":
         archive, _ = self.update_or_create(defaults=values, **kwargs)
         if gid_provider:
             gallery, _ = Gallery.objects.get_or_create(gid=gid_provider[0], provider=gid_provider[1])
             archive.gallery = gallery
-        archive.ingest()
+        archive.ingest(skip_zip_check=skip_zip_check)
         if archive.gallery:
             archive.set_tags_from_gallery(archive.gallery)
 
         return archive
 
     @staticmethod
-    def create_by_values_and_gid(values: DataDict, gid_provider: tuple[str, str] | None) -> "Archive":
+    def create_by_values_and_gid(
+        values: DataDict,
+        gid_provider: tuple[str, str] | None,
+        skip_zip_check: bool = False,
+    ) -> "Archive":
         archive = Archive(**values)
         archive.simple_save()
         if gid_provider:
@@ -214,14 +222,16 @@ class ArchiveManager(models.Manager["Archive"]):
             "galleries/archives/{id}/{file}".format(id=archive.id, file=base_file_name + ".zip"),
         )
         os.makedirs(os.path.join(settings.MEDIA_ROOT, "galleries/archives/{id}".format(id=archive.id)), exist_ok=True)
-        archive.ingest()
+        archive.ingest(skip_zip_check=skip_zip_check)
 
         return archive
 
-    def add_or_update_from_values(self, values: DataDict, **kwargs: typing.Any) -> "Archive":
+    def add_or_update_from_values(
+        self, values: DataDict, skip_zip_check: bool = False, **kwargs: typing.Any
+    ) -> "Archive":
 
         archive, _ = self.update_or_create(defaults=values, **kwargs)
-        archive.ingest()
+        archive.ingest(skip_zip_check=skip_zip_check)
         return archive
 
     def delete_by_filter(self, **kwargs: typing.Any) -> bool:
@@ -771,17 +781,17 @@ class Archive(models.Model):
 
         return ArchiveExtractionService.reduce(self)
 
-    def extract(self, resized: bool = False) -> bool:
+    def extract(self, resized: bool = False, skip_zip_check: bool = False) -> bool:
         from viewer.services.archive_extraction import ArchiveExtractionService
 
-        return ArchiveExtractionService.extract(self, resized=resized)
+        return ArchiveExtractionService.extract(self, resized=resized, skip_zip_check=skip_zip_check)
 
     def generate_image_set(self, force: bool = False, ignore_files: bool = False, skip_zip_check: bool = False) -> bool:
 
         if not os.path.isfile(self.zipped.path):
             return False
         # large thumbnail and image set
-        if force or not bool(self.image_set.all()):
+        if force or not self.image_set.exists():
             my_zip = None
             try:
                 my_zip = zipfile.ZipFile(self.zipped.path, "r")
@@ -812,11 +822,10 @@ class Archive(models.Model):
             if ignore_files:
                 self.image_set.all().delete()
             else:
-                for img in self.image_set.all():
-                    if img.extracted:
-                        img.image.delete(save=False)
-                        img.thumbnail.delete(save=False)
-                    img.delete()
+                for img in self.image_set.filter(extracted=True):
+                    img.image.delete(save=False)
+                    img.thumbnail.delete(save=False)
+                self.image_set.all().delete()
             if filtered_files:
                 Image.objects.bulk_create(
                     [
@@ -830,13 +839,11 @@ class Archive(models.Model):
         return True
 
     def fix_image_positions(self) -> None:
-        image_set_present = bool(self.image_set.all())
-        # large thumbnail and image set
-        if image_set_present:
-            for count, image in enumerate(self.image_set.all(), start=1):
+        images = list(self.image_set.all())
+        if images:
+            for count, image in enumerate(images, start=1):
                 image.position = count
-                # image.archive_position = count
-                image.save()
+            Image.objects.bulk_update(images, ["position"])
 
     def delete(self, *args: typing.Any, **kwargs: typing.Any) -> tuple[int, dict[str, int]]:
         prev_pk = self.pk
@@ -906,10 +913,10 @@ class Archive(models.Model):
         super(Archive, self).save(*args, **kwargs)
         self.schedule_index_update()
 
-    def ingest(self, save: bool = True) -> bool:
+    def ingest(self, save: bool = True, skip_zip_check: bool = False) -> bool:
         from viewer.services.archive_ingestion import ArchiveIngestionService
 
-        return ArchiveIngestionService.ingest(self, save=save)
+        return ArchiveIngestionService.ingest(self, save=save, skip_zip_check=skip_zip_check)
 
     def sync_gallery_metadata(self) -> None:
         from viewer.services.archive_ingestion import ArchiveIngestionService

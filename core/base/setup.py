@@ -356,6 +356,39 @@ class Settings:
         if 'DATABASE_PORT' in os.environ:
             self.database['postgresql_port'] = os.environ['DATABASE_PORT']
 
+        if 'DATABASE_CONN_MAX_AGE' in os.environ:
+            val = os.environ['DATABASE_CONN_MAX_AGE'].strip()
+            self.database['conn_max_age'] = None if val.lower() in ('none', 'null', '') else int(val)
+
+        if 'DATABASE_WORKER_CONN_MAX_AGE' in os.environ:
+            val = os.environ['DATABASE_WORKER_CONN_MAX_AGE'].strip()
+            self.database['worker_conn_max_age'] = None if val.lower() in ('none', 'null', '') else int(val)
+
+        if 'DATABASE_CONN_HEALTH_CHECKS' in os.environ:
+            self.database['conn_health_checks'] = os.environ['DATABASE_CONN_HEALTH_CHECKS'].strip().lower() in ('true', '1', 't', 'yes')
+
+        for pool_env in ('DATABASE_POOLING_ENABLE', 'DATABASE_POOL_ENABLE'):
+            if pool_env in os.environ:
+                self.database['pooling'] = os.environ[pool_env].strip().lower() in ('true', '1', 't', 'yes')
+
+        if 'DATABASE_POOL_MIN_SIZE' in os.environ:
+            self.database['pool_min_size'] = int(os.environ['DATABASE_POOL_MIN_SIZE'].strip())
+
+        if 'DATABASE_POOL_MAX_SIZE' in os.environ:
+            val = os.environ['DATABASE_POOL_MAX_SIZE'].strip()
+            self.database['pool_max_size'] = None if val.lower() in ('none', 'null', '') else int(val)
+
+        if 'DATABASE_POOL_TIMEOUT' in os.environ:
+            self.database['pool_timeout'] = float(os.environ['DATABASE_POOL_TIMEOUT'].strip())
+
+        if 'DATABASE_POOL_MAX_LIFETIME' in os.environ:
+            val = os.environ['DATABASE_POOL_MAX_LIFETIME'].strip()
+            self.database['pool_max_lifetime'] = None if val.lower() in ('none', 'null', '') else float(val)
+
+        if 'DATABASE_POOL_MAX_IDLE' in os.environ:
+            val = os.environ['DATABASE_POOL_MAX_IDLE'].strip()
+            self.database['pool_max_idle'] = None if val.lower() in ('none', 'null', '') else float(val)
+
         if 'DEBUG' in os.environ:
             self.django_debug_mode = os.getenv("DEBUG", "False").lower() in ('true', '1', 't')
 

@@ -1,5 +1,7 @@
+import unittest
 from collections import defaultdict
 
+from django.conf import settings as django_settings
 from django.test import TestCase
 
 from core.base.setup import Settings
@@ -7,6 +9,20 @@ from core.base.types import GalleryData
 from core.providers.panda.parsers import Parser as PandaParser
 from viewer.models import Gallery, WantedGallery, Tag
 
+
+def es_match_available() -> bool:
+    if not getattr(django_settings, "ES_MATCH_ENABLED", False):
+        return False
+    client = getattr(django_settings, "ES_CLIENT", None)
+    if not client:
+        return False
+    try:
+        return bool(client.ping())
+    except Exception:
+        return False
+
+
+@unittest.skipUnless(es_match_available(), "Elasticsearch match service is not available")
 class WantedGalleryElasticSearchTest(TestCase):
     def setUp(self):
         # Tags
@@ -77,11 +93,8 @@ class WantedGalleryElasticSearchTest(TestCase):
 
         gallery_wanted_lists: dict[str, list["WantedGallery"]] = defaultdict(list)
 
-        # 5 viewer related queries, 1 log related query
-        if settings.disable_sql_log:
-            expected_queries = 5
-        else:
-            expected_queries = 6
+        # 4 viewer related queries
+        expected_queries = 4
         with self.assertNumQueries(expected_queries):
             parser.compare_gallery_with_wanted_filters(
                 incoming_gallery, gallery_link, wanted_galleries, gallery_wanted_lists
