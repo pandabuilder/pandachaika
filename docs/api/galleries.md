@@ -86,6 +86,12 @@ curl "https://example.chaika.moe/api/?gid=1234567&provider=panda" \
 }
 ```
 
+When authenticated, the response also includes:
+- `status`: `"normal"`, `"denied"`, `"deleted"`, or `"no metadata"`
+- `public`: `boolean`
+- `origin`: `"normal"` or `"submitted"`
+- `create_date`: Unix timestamp (`integer`)
+
 **Error (404 Not Found)**  
 Returned if the gallery does not exist or is not public for an unauthenticated request:
 ```json

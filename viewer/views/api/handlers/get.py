@@ -303,7 +303,7 @@ def handle_get_gallery(request: HttpRequest, data: QueryDict, user_is_authentica
 
 
 def _gallery_by_gid_to_json(gallery: Gallery, user_is_authenticated: bool) -> dict[str, Any]:
-    return {
+    data: dict[str, Any] = {
         "gid": gallery.gid,
         "title": gallery.title,
         "title_jpn": gallery.title_jpn,
@@ -323,6 +323,16 @@ def _gallery_by_gid_to_json(gallery: Gallery, user_is_authenticated: bool) -> di
             for archive in gallery.archive_set.filter_by_authenticated_status(authenticated=user_is_authenticated)
         ],
     }
+    if user_is_authenticated:
+        data.update(
+            {
+                "status": gallery.get_status_display().lower(),
+                "public": gallery.public,
+                "origin": gallery.get_origin_display().lower(),
+                "create_date": int(timestamp_or_zero(gallery.create_date)),
+            }
+        )
+    return data
 
 
 def _gallery_for_gid(data: QueryDict, gallery_gid: str | list[object]) -> Gallery | None:

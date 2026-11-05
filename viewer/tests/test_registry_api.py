@@ -699,6 +699,10 @@ class RegistryApiGalleryEndpointsTests(BaseRegistryApiMixin, TestCase):
         data = json.loads(response.content)
         self.assertEqual(data["gid"], "30001")
         self.assertEqual(data["title"], "Public Gallery Endpoint Test")
+        self.assertNotIn("status", data)
+        self.assertNotIn("public", data)
+        self.assertNotIn("origin", data)
+        self.assertNotIn("create_date", data)
 
     def test_get_gid_different_provider(self):
         response = self._api_get(self.anon_client, gid="30001", provider="nhentai")
@@ -716,6 +720,28 @@ class RegistryApiGalleryEndpointsTests(BaseRegistryApiMixin, TestCase):
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.content)
         self.assertEqual(data["gid"], "30002")
+        self.assertEqual(data["status"], "normal")
+        self.assertFalse(data["public"])
+        self.assertEqual(data["origin"], "normal")
+        self.assertIsInstance(data["create_date"], int)
+
+    def test_get_gid_deleted_status_auth(self):
+        deleted_gallery = Gallery.objects.create(
+            title="Deleted Gallery Endpoint Test",
+            gid="30003",
+            provider="panda",
+            public=False,
+            status=Gallery.StatusChoices.DELETED,
+            origin=Gallery.OriginChoices.ORIGIN_SUBMITTED,
+        )
+        response = self._api_get(self.auth_client, gid=deleted_gallery.gid, provider="panda")
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertEqual(data["gid"], "30003")
+        self.assertEqual(data["status"], "deleted")
+        self.assertFalse(data["public"])
+        self.assertEqual(data["origin"], "submitted")
+        self.assertIsInstance(data["create_date"], int)
 
     def test_get_gid_not_found(self):
         response = self._api_get(self.anon_client, gid="999999")
@@ -728,6 +754,10 @@ class RegistryApiGalleryEndpointsTests(BaseRegistryApiMixin, TestCase):
         gids = [item["gid"] for item in data]
         self.assertIn("30001", gids)
         self.assertNotIn("30002", gids)
+        self.assertNotIn("status", data[0])
+        self.assertNotIn("public", data[0])
+        self.assertNotIn("origin", data[0])
+        self.assertNotIn("create_date", data[0])
 
     def test_get_gids_multiple_auth_all(self):
         response = self._api_get(self.auth_client, gids=["30001", "30002"], provider="panda")
@@ -736,6 +766,11 @@ class RegistryApiGalleryEndpointsTests(BaseRegistryApiMixin, TestCase):
         gids = [item["gid"] for item in data]
         self.assertIn("30001", gids)
         self.assertIn("30002", gids)
+        for item in data:
+            self.assertEqual(item["status"], "normal")
+            self.assertIn("public", item)
+            self.assertEqual(item["origin"], "normal")
+            self.assertIsInstance(item["create_date"], int)
 
     def test_get_gids_nonexistent(self):
         response = self._api_get(self.anon_client, gids=["999999"], provider="panda")
