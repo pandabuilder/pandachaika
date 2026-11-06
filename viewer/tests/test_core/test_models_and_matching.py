@@ -397,4 +397,90 @@ class CoreTest(TestCase):
         self.assertEqual(resolve("/jsearch/").view_name, "viewer:json-search")
         self.assertEqual(resolve("/jsearch").view_name, "viewer:json-search-slashless")
 
+    def test_panda_string_filecount_and_similarity_marks(self):
+        from django.contrib.contenttypes.models import ContentType
+        from core.providers.panda.utilities import map_external_gallery_data_to_internal
+        from viewer.models import ArchiveManageEntry, ItemProperties
 
+        raw_api_payload = {
+            "gid": 1710804,
+            "token": "eb02584b59",
+            "title": "Sample Title",
+            "title_jpn": "",
+            "thumb": "https://ehgt.org/t/00/00/00.jpg",
+            "category": "Doujinshi",
+            "uploader": "tester",
+            "posted": "1597722247",
+            "filecount": "25",
+            "filesize": 31745097,
+            "expunged": False,
+            "rating": "4.50",
+            "tags": ["language:english"],
+            "torrents": [],
+            "torrentcount": "0",
+        }
+        mapped = map_external_gallery_data_to_internal(raw_api_payload)
+        self.assertIsInstance(mapped.filecount, int)
+        self.assertEqual(mapped.filecount, 25)
+        self.assertIsInstance(mapped.filesize, int)
+        self.assertEqual(mapped.filesize, 31745097)
+
+        image_ct = ContentType.objects.get_for_model(Image)
+        other_archive = Archive.objects.create(
+            title="Existing Similar Archive",
+            zipped="galleries/torrent_dls/existing.zip",
+            filecount=25,
+            filesize=31745097,
+            user=None,
+        )
+        other_img = Image.objects.create(archive=other_archive, position=1, archive_position=1, sha1="abc123sha1")
+        ItemProperties.objects.create(
+            content_type=image_ct,
+            object_id=other_img.pk,
+            tag="hash-compare",
+            name="phash",
+            value="123456789abcdef0",
+        )
+
+        target_archive = Archive.objects.create(
+            title="Target Archive",
+            zipped="galleries/torrent_dls/target.zip",
+            filecount=25,
+            filesize=31745097,
+            user=None,
+        )
+        target_img = Image.objects.create(archive=target_archive, position=1, archive_position=1, sha1="abc123sha1")
+        ItemProperties.objects.create(
+            content_type=image_ct,
+            object_id=target_img.pk,
+            tag="hash-compare",
+            name="phash",
+            value="123456789abcdef0",
+        )
+
+        # Simulate update_or_create_by_values_and_gid or string filecount in memory
+        updated_archive = Archive.objects.update_or_create_by_values_and_gid(
+            {
+                "title": mapped.title,
+                "title_jpn": mapped.title_jpn,
+                "zipped": "galleries/torrent_dls/target.zip",
+                "crc32": "",
+                "filesize": mapped.filesize,
+                "filecount": mapped.filecount,
+                "user": None,
+            },
+            (mapped.gid, mapped.provider),
+            zipped="galleries/torrent_dls/target.zip",
+        )
+        self.assertIsInstance(updated_archive.filecount, int)
+        updated_archive.create_marks_for_similar_archives()
+
+        # Also verify defensive handling if filecount is still a string on the model instance
+        updated_archive.filecount = "25"  # type: ignore[assignment]
+        updated_archive.create_marks_for_similar_archives()
+
+        phash_mark = ArchiveManageEntry.objects.filter(
+            archive=updated_archive, mark_reason="images_phash_similarity"
+        ).first()
+        self.assertIsNotNone(phash_mark)
+        self.assertAlmostEqual(phash_mark.mark_priority, (1 / 25) * 3.0)

@@ -328,7 +328,7 @@
         <i class="fas fa-trash-alt me-1"></i>Delete
       </a>
       {% if archive.gallery %}
-        <a class="btn btn-sm btn-outline-secondary" href="{% url 'viewer:gallery-tool' archive.gallery.pk 'toggle-hidden' %}">
+        <a class="btn btn-sm btn-outline-light" href="{% url 'viewer:gallery-tool' archive.gallery.pk 'toggle-hidden' %}">
           <i class="fas fa-eye-slash me-1"></i>{% if archive.gallery.hidden %}Open Gallery{% else %}Hide Gallery{% endif %}
         </a>
       {% endif %}
@@ -341,7 +341,7 @@
           <i class="fas fa-eye me-1"></i>View Mode
         </a>
       {% endif %}
-      <a class="btn btn-sm btn-outline-secondary ms-auto" href="{% url 'admin:viewer_archive_change' archive.pk %}">
+      <a class="btn btn-sm btn-outline-light ms-auto" href="{% url 'admin:viewer_archive_change' archive.pk %}">
         <i class="fas fa-cog me-1"></i>Admin
       </a>
     {% endif %}

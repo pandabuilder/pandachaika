@@ -1202,8 +1202,8 @@ class Archive(models.Model):
                     other_images_sha1 = archive_sha1.image_set.filter(sha1__isnull=False).values_list("sha1", flat=True)
                     found_sha1 = list((Counter(images_sha1) & Counter(other_images_sha1)).elements())
 
-                    if self.filecount:
-                        possible_priority = (len(found_sha1) / self.filecount) * 4.0
+                    if self.filecount and int(self.filecount) > 0:
+                        possible_priority = (len(found_sha1) / int(self.filecount)) * 4.0
                         if possible_priority > mark_priority:
                             mark_priority = possible_priority
                     per_archives_comment.append(
@@ -1300,8 +1300,8 @@ class Archive(models.Model):
                     ):
                         continue
 
-                    if self.filecount:
-                        possible_priority = (len(found_phash) / self.filecount) * 3.0
+                    if self.filecount and int(self.filecount) > 0:
+                        possible_priority = (len(found_phash) / int(self.filecount)) * 3.0
                         if possible_priority > mark_priority:
                             mark_priority = possible_priority
                     per_archives_comment.append(

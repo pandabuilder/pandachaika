@@ -187,7 +187,7 @@
           </li>
           <li>
             <a class="dropdown-item text-light" href="{% url 'admin:viewer_gallery_change' gallery.pk %}">
-              <i class="fas fa-cog me-2 text-secondary"></i>Django Admin
+              <i class="fas fa-cog me-2 text-light"></i>Django Admin
             </a>
           </li>
           {% if settings.downloaders %}
@@ -197,7 +197,7 @@
               <li>
                 <a class="dropdown-item text-light small" href="#"
                    onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{% static 'favicon-160.png' %}', 'webcrawler', {link: '{{ gallery.get_link }}', downloader: '{{ downloader }}'}); return false;">
-                  <i class="fas fa-cloud-download-alt me-2 text-muted"></i>{{ downloader }}
+                  <i class="fas fa-cloud-download-alt me-2 text-info"></i>{{ downloader }}
                 </a>
               </li>
             {% endfor %}
@@ -205,6 +205,12 @@
         {% endif %}
       </ul>
     </div>
+
+    {% if user.is_staff %}
+      <a class="btn btn-sm btn-outline-light ms-auto" href="{% url 'admin:viewer_gallery_change' gallery.pk %}">
+        <i class="fas fa-cog me-1"></i>Admin
+      </a>
+    {% endif %}
   </div>
 </div>
 {% endif %}

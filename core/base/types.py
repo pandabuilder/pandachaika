@@ -71,8 +71,8 @@ class GalleryData:
         self.comment = comment
         self.category = category
         self.posted = posted
-        self.filesize = filesize
-        self.filecount = filecount
+        self.filesize = int(filesize) if filesize is not None else None
+        self.filecount = int(filecount) if filecount is not None else None
         self.uploader = uploader
         self.thumbnail = thumbnail
         self.thumbnail_url = thumbnail_url
