@@ -185,6 +185,85 @@ Filters and searches WantedGallery records.
 curl "https://example.chaika.moe/api/?wanted-galleries-search=&title=Example&wanted-not-found=1&sort=release_date&asc_desc=desc&include_found_galleries"
 ```
 
+### Response
+**Success (200 OK)**  
+Returns a JSON array of WantedGallery objects matching the search criteria. When `include_found_galleries` is requested, each entry includes a `found_galleries` array containing matching gallery entries. Inaccessible non-public items are automatically omitted for unauthenticated callers.
+
+```json
+[
+  {
+    "id": 123,
+    "title": "Example Manga Vol. 1",
+    "title_jpn": "Example Manga Vol. 1 JPN",
+    "search_title": "Example Manga",
+    "regexp_search_title": false,
+    "regexp_search_title_icase": false,
+    "unwanted_title": "",
+    "regexp_unwanted_title": false,
+    "regexp_unwanted_title_icase": false,
+    "wanted_page_count_lower": 0,
+    "wanted_page_count_upper": 0,
+    "match_expression": null,
+    "wanted_tags_exclusive_scope": false,
+    "exclusive_scope_name": "",
+    "wanted_tags_accept_if_none_scope": "",
+    "category": "Manga",
+    "wait_for_time": null,
+    "should_search": true,
+    "keep_searching": false,
+    "notify_when_found": true,
+    "reason": "Collection completion",
+    "book_type": "",
+    "publisher": "",
+    "page_count": 0,
+    "restricted_to_links": false,
+    "release_date": 1600000000,
+    "add_to_archive_group": null,
+    "wanted_tags": ["artist:example_artist", "female:nekomimi"],
+    "unwanted_tags": ["male:ugly_bastard"],
+    "wanted_providers": ["panda", "nhentai"],
+    "unwanted_providers": [],
+    "categories": ["Manga"],
+    "public": true,
+    "found": true,
+    "date_found": 1600000500,
+    "create_date": 1600000000,
+    "last_modified": 1600000500,
+    "found_galleries": [
+      {
+        "id": 4567,
+        "gid": 1234567,
+        "token": "abcdef1234",
+        "title": "Example Manga Vol. 1",
+        "title_jpn": "Example Manga Vol. 1 JPN",
+        "category": "Manga",
+        "uploader": "ExampleUploader",
+        "posted": 1599999000,
+        "filecount": 180,
+        "filesize": 104857600,
+        "expunged": false,
+        "disowned": false,
+        "provider": "panda",
+        "rating": "4.85",
+        "fjord": false,
+        "public": true,
+        "tags": ["artist:example_artist", "female:nekomimi"],
+        "link": "https://e-hentai.org/g/1234567/abcdef1234/",
+        "match_accuracy": 0.95,
+        "source": "crawler",
+        "found_create_date": 1600000500
+      }
+    ]
+  }
+]
+```
+
+**Empty Result (200 OK)**  
+If no records match the criteria:
+```json
+[]
+```
+
 ---
 
 ## 4. Create Wanted Gallery (`POST ?wanted-gallery=`)

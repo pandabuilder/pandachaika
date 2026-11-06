@@ -79,7 +79,8 @@ class ArchiveHashingService:
             archive_stats_calc = ArchiveStatisticsCalculator()
 
         images_to_update = []
-        phash_tasks = []
+        phash_tasks: list[tuple[str, str, str | None]] = []
+        phash_task_images: list[Image] = []
         member_to_image_map: dict[str, Image] = {}
 
         for filename_tuple, image in zip(filtered_files, image_set):
@@ -92,6 +93,7 @@ class ArchiveHashingService:
 
             if process_image_data and settings.CRAWLER_SETTINGS.auto_phash_images:
                 phash_tasks.append((archive.zipped.path, image_filename, nested_zip_filename))
+                phash_task_images.append(image)
 
             if nested_zip_filename is None:
                 with my_zip.open(image_filename) as current_zip_img:
@@ -116,7 +118,7 @@ class ArchiveHashingService:
                                 )
 
             member_to_image_map[image_filename] = image
-            if image.image_name:
+            if image.image_name and image.image_name not in member_to_image_map:
                 member_to_image_map[image.image_name] = image
 
             if process_image_data:
@@ -134,11 +136,26 @@ class ArchiveHashingService:
                     file_type=os.path.splitext(image_filename)[1],
                 )
 
-        phash_results = {}
+        phash_by_image_id: dict[int, str] = {}
         if phash_tasks:
             from core.base.process_pool import calculate_phash_for_zip_members_in_pool
 
             phash_results = calculate_phash_for_zip_members_in_pool(phash_tasks)
+            for ( _, image_filename, _), image in zip(phash_tasks, phash_task_images):
+                if not image.pk:
+                    continue
+                hash_val = phash_results.get(image_filename)
+                if hash_val:
+                    phash_by_image_id[image.pk] = hash_val
+
+            for filename, hash_val in phash_results.items():
+                if not hash_val:
+                    continue
+                image_from_name = member_to_image_map.get(filename) or member_to_image_map.get(
+                    os.path.basename(filename)
+                )
+                if image_from_name and image_from_name.pk and image_from_name.pk not in phash_by_image_id:
+                    phash_by_image_id[image_from_name.pk] = hash_val
 
         if images_to_update:
             Image.objects.bulk_update(
@@ -146,33 +163,27 @@ class ArchiveHashingService:
                 ["sha1", "image_size", "original_height", "original_width", "image_format", "image_mode", "image_name"],
             )
 
-        if phash_results:
+        if phash_by_image_id:
             props_to_create = []
             props_to_update = []
             existing_props_qs = ItemProperties.objects.filter(
                 content_type=image_type,
-                object_id__in=[img.pk for img in member_to_image_map.values() if img.pk],
+                object_id__in=list(phash_by_image_id.keys()),
                 tag="hash-compare",
                 name="phash",
             )
             existing_props_map = {prop.object_id: prop for prop in existing_props_qs}
 
-            for filename, hash_val in phash_results.items():
-                image_from_name = member_to_image_map.get(filename) or member_to_image_map.get(
-                    os.path.basename(filename)
-                )
-                if not image_from_name:
-                    continue
-
-                if image_from_name.pk in existing_props_map:
-                    prop = existing_props_map[image_from_name.pk]
+            for image_pk, hash_val in phash_by_image_id.items():
+                if image_pk in existing_props_map:
+                    prop = existing_props_map[image_pk]
                     prop.value = hash_val
                     props_to_update.append(prop)
                 else:
                     props_to_create.append(
                         ItemProperties(
                             content_type=image_type,
-                            object_id=image_from_name.pk,
+                            object_id=image_pk,
                             tag="hash-compare",
                             name="phash",
                             value=hash_val,
@@ -180,7 +191,12 @@ class ArchiveHashingService:
                     )
 
             if props_to_create:
-                ItemProperties.objects.bulk_create(props_to_create)
+                ItemProperties.objects.bulk_create(
+                    props_to_create,
+                    update_conflicts=True,
+                    unique_fields=["content_type", "object_id", "name"],
+                    update_fields=["value", "tag"],
+                )
             if props_to_update:
                 ItemProperties.objects.bulk_update(props_to_update, ["value"])
 

@@ -309,3 +309,53 @@ class ProcessPoolArchiveIntegrationTests(TestCase):
         worker.regenerate_thumbs_batch([self.archive])
         self.archive.refresh_from_db()
         self.assertTrue(bool(self.archive.thumbnail))
+
+    def test_calculate_sha1_and_data_for_images_duplicate_basenames_across_dirs(self) -> None:
+        """Verify that archives containing identical image basenames in different folders do not raise UniqueViolation."""
+        dup_zip = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
+        dup_archive = Archive.objects.create(
+            title="Duplicate Basenames Test Archive",
+            user=self.user,
+        )
+        try:
+            with zipfile.ZipFile(dup_zip.name, "w") as zf:
+                for idx, folder in enumerate(("chapter1", "chapter2"), start=1):
+                    img = Image.new("RGB", (200, 200), color=(idx * 80, idx * 40, idx * 20))
+                    buf = io.BytesIO()
+                    img.save(buf, format="JPEG")
+                    zf.writestr(f"{folder}/001.jpg", buf.getvalue())
+
+            with open(dup_zip.name, "rb") as f:
+                dup_archive.zipped.save("dup_basenames.zip", File(f), save=False)
+            dup_archive.save()
+
+            GalleryImage.objects.filter(archive=dup_archive).delete()
+            img1 = GalleryImage.objects.create(archive=dup_archive, archive_position=1, position=1)
+            img2 = GalleryImage.objects.create(archive=dup_archive, archive_position=2, position=2)
+
+            from django.conf import settings
+            settings.CRAWLER_SETTINGS.auto_phash_images = True
+            try:
+                success = dup_archive.calculate_sha1_and_data_for_images(
+                    process_image_data=True, process_other_data=False, process_archive_statistics=True
+                )
+                self.assertTrue(success)
+
+                props = ItemProperties.objects.filter(
+                    tag="hash-compare", name="phash", object_id__in=[img1.pk, img2.pk]
+                )
+                self.assertEqual(props.count(), 2)
+
+                # Re-running (e.g. concurrent or repeated ingest) should also succeed without UniqueViolation
+                success_again = dup_archive.calculate_sha1_and_data_for_images(
+                    process_image_data=True, process_other_data=False, process_archive_statistics=True
+                )
+                self.assertTrue(success_again)
+                self.assertEqual(props.count(), 2)
+            finally:
+                settings.CRAWLER_SETTINGS.auto_phash_images = False
+        finally:
+            if os.path.exists(dup_zip.name):
+                os.unlink(dup_zip.name)
+            if dup_archive.zipped and os.path.exists(dup_archive.zipped.path):
+                os.unlink(dup_archive.zipped.path)
