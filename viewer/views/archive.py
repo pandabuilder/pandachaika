@@ -1,4 +1,7 @@
+import base64
 import logging
+import mimetypes
+import os
 import re
 import time
 import zipfile
@@ -6,15 +9,16 @@ from os.path import basename
 from urllib.parse import quote, urlparse, unquote
 import typing
 import warnings
-import base64
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
+from django.contrib.auth.views import redirect_to_login
 from django.core.paginator import Paginator, InvalidPage, EmptyPage, Page
 from django.urls import reverse
 from django.db import transaction
 from django.http import Http404, HttpRequest
-from django.http import HttpResponseRedirect, HttpResponse
+from django.http import HttpResponseRedirect, HttpResponse, FileResponse, StreamingHttpResponse, HttpResponseBase
+from django.utils.http import content_disposition_header
 from django.templatetags.static import static
 from django.views.decorators.http import require_POST
 from django.shortcuts import render
@@ -42,6 +46,7 @@ from viewer.models import (
 from viewer.utils.general import clean_up_referer, should_use_refined_views
 from viewer.utils.requests import double_check_auth, authenticate_by_token
 from viewer.views.head import render_error
+from viewer.services.archive_extraction import ArchiveExtractionService
 
 logger = logging.getLogger(__name__)
 crawler_settings = settings.CRAWLER_SETTINGS
@@ -665,6 +670,77 @@ def image_live_thumb(request: HttpRequest, archive_pk: int, position: int) -> Ht
         response["Content-Type"] = "image/jpeg"
         response["Cache-Control"] = "max-age=86400"
     return response
+
+
+def image_download(request: HttpRequest, pk: int) -> HttpResponseBase:
+    """Download an individual image in its original resolution (only for authenticated users)."""
+    is_auth, auth_user = double_check_auth(request)
+    if not is_auth:
+        return redirect_to_login(request.get_full_path())
+
+    try:
+        image = Image.objects.select_related("archive").get(pk=pk)
+    except Image.DoesNotExist:
+        raise Http404("Image does not exist")
+
+    archive = image.archive
+    if not archive.public and not is_auth:
+        raise Http404("Archive does not exist")
+
+    if archive.is_recycled() or archive.is_file_deleted():
+        raise Http404("Archive does not exist")
+
+    # If the file is extracted and it's not "resized", download directly from filesystem
+    if image.is_extracted_and_not_resized():
+        img_name = image.image.name if image.image and image.image.name else ""
+        filename: str = (
+            image.image_name or (os.path.basename(img_name) if img_name else f"image_{image.position}.jpg")
+        )
+        guessed_type = mimetypes.guess_type(filename)[0]
+        content_type: str = guessed_type if guessed_type is not None else "application/octet-stream"
+
+        if "HTTP_X_FORWARDED_HOST" in request.META:
+            forwarded_response = HttpResponse()
+            forwarded_response["Content-Type"] = content_type
+            forwarded_response["Content-Disposition"] = content_disposition_header(True, filename)
+            forwarded_response["X-Accel-Redirect"] = f"/image/{img_name}"
+            return forwarded_response
+        else:
+            file_response = FileResponse(open(image.image.path, "rb"), as_attachment=True, filename=filename)
+            file_response["Content-Type"] = content_type
+            return file_response
+
+    # Otherwise, dynamically access it from the original .zip file and stream it back
+    stream_info = ArchiveExtractionService.get_image_zip_stream(image)
+    if not stream_info:
+        if image.extracted and image.image and os.path.isfile(image.image.path):
+            img_name = image.image.name if image.image and image.image.name else ""
+            filename = (
+                image.image_name or (os.path.basename(img_name) if img_name else f"image_{image.position}.jpg")
+            )
+            guessed_type = mimetypes.guess_type(filename)[0]
+            fallback_content_type: str = guessed_type if guessed_type is not None else "application/octet-stream"
+            fallback_response = FileResponse(open(image.image.path, "rb"), as_attachment=True, filename=filename)
+            fallback_response["Content-Type"] = fallback_content_type
+            return fallback_response
+        raise Http404("Image file does not exist")
+
+    stream_generator, filename, zip_content_type, file_size = stream_info
+    stream_content_type: str = zip_content_type if zip_content_type is not None else "application/octet-stream"
+    streaming_response = StreamingHttpResponse(stream_generator(), content_type=stream_content_type)
+    streaming_response["Content-Disposition"] = content_disposition_header(True, filename)
+    if file_size is not None:
+        streaming_response["Content-Length"] = str(file_size)
+    return streaming_response
+
+
+def archive_image_download(request: HttpRequest, archive_pk: int, position: int) -> HttpResponseBase:
+    """Download an individual image by archive pk and position in original resolution."""
+    try:
+        image = Image.objects.get(archive_id=archive_pk, position=position)
+    except Image.DoesNotExist:
+        raise Http404("Image does not exist")
+    return image_download(request, image.pk)
 
 
 @login_required

@@ -514,8 +514,8 @@ def get_workers_dashboard_snapshot(
                 "progress": dl_progress,
                 "speed": spd,
                 "speed_formatted": f"{format_bytes(spd)}/s",
-                "is_transferring": spd > 0,
-                "status": dl.status,
+                "is_transferring": spd > 0 or (dl.status == DownloadEvent.Status.IN_PROGRESS and dl_progress >= 100),
+                "status": "in_progress (transferring)" if (dl.status == DownloadEvent.Status.IN_PROGRESS and dl_progress >= 100) else dl.status,
                 "worker_pid": dl.worker_pid or (matched_cd.get("worker_pid") if matched_cd else None),
                 "created_at": dl.create_date.isoformat() if dl.create_date else None,
             }

@@ -107,6 +107,65 @@ class ReconciliationAndLifecycleSyncTest(TestCase):
         self.assertFalse(event.completed)
         self.assertEqual(event.status, DownloadEvent.Status.IN_PROGRESS)
 
+    def test_check_hath_progress_defers_completion_if_archive_crc32_empty(self):
+        settings = Settings(load_from_disk=False)
+        checker = DownloadProgressChecker(settings)
+
+        archive = Archive.objects.create(title="hath awaiting postdownload", match_type="hath", crc32="", user=None)
+        event = DownloadEvent.objects.create(
+            name="test_hath_100_unprocessed",
+            method="hath",
+            download_id="hath_unproc",
+            archive=archive,
+            progress=50.0,
+        )
+
+        checker.check_hath_progress(event, 1.0)
+        event.refresh_from_db()
+
+        # Progress should be 100%, but completed should stay False until PostDownloader finishes
+        self.assertEqual(event.progress, 100.0)
+        self.assertFalse(event.completed)
+        self.assertEqual(event.status, DownloadEvent.Status.IN_PROGRESS)
+
+    def test_check_hath_progress_finishes_when_crc32_set(self):
+        settings = Settings(load_from_disk=False)
+        checker = DownloadProgressChecker(settings)
+
+        archive = Archive.objects.create(title="hath processed archive", match_type="hath", crc32="A1B2C3D4", user=None)
+        event = DownloadEvent.objects.create(
+            name="test_hath_completed",
+            method="hath",
+            download_id="hath_comp",
+            archive=archive,
+            progress=50.0,
+        )
+
+        checker.check_hath_progress(event, 1.0)
+        event.refresh_from_db()
+
+        self.assertEqual(event.progress, 100.0)
+        self.assertTrue(event.completed)
+        self.assertEqual(event.status, DownloadEvent.Status.COMPLETED)
+
+    def test_check_hath_progress_finish_on_100_percent_without_archive(self):
+        settings = Settings(load_from_disk=False)
+        checker = DownloadProgressChecker(settings)
+
+        event = DownloadEvent.objects.create(
+            name="test_hath_no_archive",
+            method="hath",
+            download_id="hath_noarch",
+            progress=50.0,
+        )
+
+        checker.check_hath_progress(event, 1.0)
+        event.refresh_from_db()
+
+        self.assertEqual(event.progress, 100.0)
+        self.assertTrue(event.completed)
+        self.assertEqual(event.status, DownloadEvent.Status.COMPLETED)
+
     @patch("core.downloaders.postdownload.ZipFile")
     def test_process_downloaded_archive_finishes_download_event(self, mock_zipfile):
         mock_zip = MagicMock()

@@ -2062,5 +2062,10 @@ class Image(models.Model):
     def simple_save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
         super(Image, self).save(*args, **kwargs)
 
+    def is_extracted_and_not_resized(self) -> bool:
+        from viewer.services.archive_extraction import ArchiveExtractionService
+
+        return ArchiveExtractionService.is_image_extracted_and_not_resized(self)
+
 
 

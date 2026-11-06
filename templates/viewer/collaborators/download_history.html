@@ -151,7 +151,11 @@
           {% if download_event.effective_status == "queued" %}
           <span class="badge bg-warning text-dark"><i class="fas fa-clock me-1"></i>Queued</span>
           {% elif download_event.effective_status == "in_progress" %}
+          {% if download_event.progress >= 100 %}
+          <span class="badge bg-info text-dark"><i class="fas fa-sync fa-spin me-1"></i>Transferring</span>
+          {% else %}
           <span class="badge bg-primary"><i class="fas fa-spinner fa-spin me-1"></i>Downloading</span>
+          {% endif %}
           {% elif download_event.effective_status == "completed" %}
           <span class="badge bg-success"><i class="fas fa-check me-1"></i>Completed</span>
           {% elif download_event.effective_status == "cancelled" %}

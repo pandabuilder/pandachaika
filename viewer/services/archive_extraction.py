@@ -1,4 +1,5 @@
 import logging
+import mimetypes
 import os
 import shutil
 import typing
@@ -248,3 +249,145 @@ class ArchiveExtractionService:
         archive.extracted = True
         archive.simple_save()
         return True
+
+    @classmethod
+    def is_image_extracted_and_not_resized(cls, image: "Image") -> bool:
+        """Check if an image is extracted on the filesystem in its original, unresized resolution."""
+        if not image.extracted or not image.image:
+            return False
+
+        try:
+            file_path = image.image.path
+            if not os.path.isfile(file_path):
+                return False
+        except (ValueError, AttributeError):
+            return False
+
+        # If original dimensions are recorded, compare against extracted dimensions
+        if image.original_width and image.original_height:
+            w = image.image_width
+            h = image.image_height
+            if not w or not h:
+                try:
+                    with PImage.open(file_path) as im:
+                        w, h = im.size
+                except Exception:
+                    return False
+            if w != image.original_width or h != image.original_height:
+                return False
+
+        # If original file size is recorded, compare against disk file size
+        # (shutil.copyfileobj preserves exact original size, while resized re-encodes)
+        if image.image_size:
+            try:
+                if os.path.getsize(file_path) != image.image_size:
+                    return False
+            except OSError:
+                return False
+        elif not (image.original_width and image.original_height):
+            # Neither dimensions nor size were cached on the model. Check against original zip if available.
+            try:
+                archive = image.archive
+                if archive and archive.zipped.name and os.path.isfile(archive.zipped.path):
+                    with zipfile.ZipFile(archive.zipped.path, "r") as my_zip:
+                        filtered_files = get_images_from_zip(my_zip)
+                        target = None
+                        if image.archive_position and 1 <= image.archive_position <= len(filtered_files):
+                            target = filtered_files[image.archive_position - 1]
+                        elif image.image_name:
+                            for f in filtered_files:
+                                if os.path.split(f[2].replace("\\", os.sep))[1] == image.image_name:
+                                    target = f
+                                    break
+                        if target:
+                            if target[1] is None:
+                                expected_size = my_zip.getinfo(target[0]).file_size
+                            else:
+                                with my_zip.open(target[1]) as nested_f:
+                                    with zipfile.ZipFile(nested_f) as nested_zip:
+                                        expected_size = nested_zip.getinfo(target[0]).file_size
+                            if os.path.getsize(file_path) != expected_size:
+                                return False
+            except Exception:
+                return False
+
+        return True
+
+    @classmethod
+    def get_image_zip_stream(
+        cls, image: "Image", chunk_size: int = 64 * 1024
+    ) -> tuple[typing.Callable[[], typing.Generator[bytes, None, None]], str, str | None, int | None] | None:
+        """
+        Locate image in archive zip and return (stream_generator_factory, filename, content_type, file_size).
+        Returns None if zip or image cannot be found.
+        """
+        archive = image.archive
+        if not archive.zipped.name or not os.path.isfile(archive.zipped.path):
+            return None
+
+        zip_path = archive.zipped.path
+        try:
+            with zipfile.ZipFile(zip_path, "r") as my_zip:
+                if my_zip.testzip():
+                    return None
+                filtered_files = get_images_from_zip(my_zip)
+                if not filtered_files:
+                    return None
+
+                target_tuple = None
+                if image.archive_position and 1 <= image.archive_position <= len(filtered_files):
+                    candidate = filtered_files[image.archive_position - 1]
+                    cand_name = os.path.split(candidate[2].replace("\\", os.sep))[1]
+                    if (
+                        not image.image_name
+                        or cand_name == image.image_name
+                        or os.path.basename(candidate[0]) == image.image_name
+                    ):
+                        target_tuple = candidate
+
+                if not target_tuple and image.image_name:
+                    for cand in filtered_files:
+                        cand_name = os.path.split(cand[2].replace("\\", os.sep))[1]
+                        if cand_name == image.image_name or os.path.basename(cand[0]) == image.image_name:
+                            target_tuple = cand
+                            break
+
+                if not target_tuple and 1 <= image.position <= len(filtered_files):
+                    target_tuple = filtered_files[image.position - 1]
+
+                if not target_tuple:
+                    return None
+
+                file_size = None
+                try:
+                    if target_tuple[1] is None:
+                        file_size = my_zip.getinfo(target_tuple[0]).file_size
+                    else:
+                        with my_zip.open(target_tuple[1]) as nested_f:
+                            with zipfile.ZipFile(nested_f) as nested_zip:
+                                file_size = nested_zip.getinfo(target_tuple[0]).file_size
+                except Exception:
+                    file_size = image.image_size
+
+                filename = image.image_name or os.path.basename(target_tuple[0])
+                content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+
+        except Exception as e:
+            logger.error("Error reading zip file for archive %s: %s", archive.pk, e)
+            return None
+
+        def stream_generator() -> typing.Generator[bytes, None, None]:
+            with zipfile.ZipFile(zip_path, "r") as zf:
+                if target_tuple[1] is None:
+                    with zf.open(target_tuple[0]) as current_img:
+                        while chunk := current_img.read(chunk_size):
+                            yield chunk
+                else:
+                    with zf.open(target_tuple[1]) as current_zip:
+                        with zipfile.ZipFile(current_zip) as my_nested_zip:
+                            with my_nested_zip.open(target_tuple[0]) as current_img:
+                                while chunk := current_img.read(chunk_size):
+                                    yield chunk
+
+        return stream_generator, filename, content_type, file_size
+

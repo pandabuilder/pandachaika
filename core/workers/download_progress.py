@@ -43,6 +43,35 @@ class DownloadProgressChecker(BaseScheduler):
     def timer_to_seconds(timer: float) -> float:
         return timer
 
+    def check_hath_progress(
+        self, download_event: DownloadEvent, download_progress: float | None = None
+    ) -> None:
+        if download_progress is not None:
+            download_event.progress = download_progress * 100
+
+        archive_entry = None
+        archive_completed = False
+        try:
+            archive_entry = download_event.archive
+        except Exception:
+            archive_entry = None
+
+        if archive_entry:
+            try:
+                archive_entry.refresh_from_db(fields=["crc32"])
+            except Exception:
+                pass
+            archive_completed = bool(archive_entry.crc32)
+
+        if archive_entry is None:
+            is_completed = (download_event.progress >= 100)
+        else:
+            is_completed = archive_completed
+
+        if is_completed:
+            download_event.finish_download()
+        download_event.save()
+
     def check_torrent_progress(
         self, download_event: DownloadEvent, download_progress: float | None = None
     ) -> None:
@@ -260,10 +289,7 @@ class DownloadProgressChecker(BaseScheduler):
                             post_downloader = PostDownloader(self.settings)
                             post_download_progresses = post_downloader.check_download_progress_archives(archives_to_check)
                             for download_event, download_progress in post_download_progresses.items():
-                                download_event.progress = download_progress * 100
-                                if download_event.progress >= 100:
-                                    download_event.finish_download()
-                                download_event.save()
+                                self.check_hath_progress(download_event, download_progress)
                     elif download_method in self.ARCHIVE_METHODS:
                         for download_event in download_events:
                             if download_event.status == DownloadEvent.Status.QUEUED:

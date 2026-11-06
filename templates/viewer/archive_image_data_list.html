@@ -51,7 +51,7 @@
       <table class="table table-bordered table-sm generic-table">
         <thead>
         <tr>
-          <th style="width:4%">#</th><th style="width:7%">Archive Position</th><th>File Name</th><th style="width:7%">File Size</th><th style="width:7%">SHA1</th><th style="width:4%">Height</th><th style="width:4%">Width</th><th style="width:4%">Format</th><th style="width:4%">Mode</th>
+          <th style="width:4%">#</th><th style="width:7%">Archive Position</th><th>File Name</th><th style="width:7%">File Size</th><th style="width:7%">SHA1</th><th style="width:4%">Height</th><th style="width:4%">Width</th><th style="width:4%">Format</th><th style="width:4%">Mode</th>{% if user.is_authenticated %}<th style="width:7%">Download</th>{% endif %}
         </tr>
         </thead>
         <tbody>
@@ -64,7 +64,11 @@
               {{ image.archive_position }}
             </td>
             <td>
-              {{ image.image_name }}
+              {% if user.is_authenticated %}
+                <a href="{% url 'viewer:image-download' image.pk %}">{{ image.image_name }}</a>
+              {% else %}
+                {{ image.image_name }}
+              {% endif %}
             </td>
             <td>
               {{ image.image_size|filesizeformat }}
@@ -84,6 +88,11 @@
             <td>
               {{ image.image_mode }}
             </td>
+            {% if user.is_authenticated %}
+              <td class="text-center">
+                <a class="btn btn-outline-primary btn-sm" href="{% url 'viewer:image-download' image.pk %}">Download</a>
+              </td>
+            {% endif %}
           </tr>
         {% endfor %}
         </tbody>
