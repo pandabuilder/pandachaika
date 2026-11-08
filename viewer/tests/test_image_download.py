@@ -203,18 +203,90 @@ class ImageDownloadTests(TestCase):
             url = reverse("viewer:image-data-list", args=[archive.pk])
             image = archive.image_set.first()
             download_url = reverse("viewer:image-download", args=[image.pk])
+            view_url = reverse("viewer:image-view", args=[image.pk])
 
-            # Authenticated user should see Download header and download link
+            # Authenticated user should see Download header, download link, and view link for File Name
             auth_response = self.auth_client.get(url)
             self.assertEqual(auth_response.status_code, 200)
             self.assertContains(auth_response, ">Download</th>")
             self.assertContains(auth_response, download_url)
+            self.assertContains(auth_response, view_url)
 
-            # Anonymous user should NOT see Download header or download link
+            # Anonymous user should NOT see Download header, download link, or view link
             anon_response = self.anon_client.get(url)
             self.assertEqual(anon_response.status_code, 200)
             self.assertNotContains(anon_response, ">Download</th>")
             self.assertNotContains(anon_response, download_url)
+            self.assertNotContains(anon_response, view_url)
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+
+    def test_image_view_unauthenticated_user_redirected_to_login(self):
+        archive, raw_bytes, tmp_path = self._create_archive_with_zip()
+        try:
+            image = archive.image_set.first()
+            url = reverse("viewer:image-view", args=[image.pk])
+            response = self.anon_client.get(url)
+            self.assertEqual(response.status_code, 302)
+            self.assertIn("/login/", response.headers.get("Location", ""))
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+
+    def test_image_view_unextracted_streams_inline(self):
+        archive, raw_bytes, tmp_path = self._create_archive_with_zip()
+        try:
+            image = archive.image_set.first()
+            self.assertFalse(image.extracted)
+            self.assertFalse(image.is_extracted_and_not_resized())
+
+            url = reverse("viewer:image-view", args=[image.pk])
+            response = self.auth_client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertTrue(response.streaming)
+            self.assertIn('inline; filename="ext_01.jpg"', response.headers.get("Content-Disposition", ""))
+            content = b"".join(response.streaming_content)
+            self.assertEqual(content, raw_bytes[0])
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+
+    def test_image_view_extracted_not_resized_serves_inline(self):
+        archive, raw_bytes, tmp_path = self._create_archive_with_zip()
+        try:
+            res = ArchiveExtractionService.extract(archive, resized=False)
+            self.assertTrue(res)
+
+            image = archive.image_set.first()
+            self.assertTrue(image.extracted)
+            self.assertTrue(image.is_extracted_and_not_resized())
+
+            url = reverse("viewer:image-view", args=[image.pk])
+            response = self.auth_client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertIn('inline; filename="ext_01.jpg"', response.headers.get("Content-Disposition", ""))
+            content = b"".join(response.streaming_content)
+            self.assertEqual(content, raw_bytes[0])
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+
+    def test_archive_image_view_by_position(self):
+        archive, raw_bytes, tmp_path = self._create_archive_with_zip()
+        try:
+            url = reverse("viewer:archive-image-view", args=[archive.pk, 2])
+            response = self.auth_client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertIn('inline; filename="ext_02.png"', response.headers.get("Content-Disposition", ""))
+            content = b"".join(response.streaming_content)
+            self.assertEqual(content, raw_bytes[1])
+
+            img_url = reverse("viewer:archive-img-view", args=[archive.pk, 2])
+            img_response = self.auth_client.get(img_url)
+            self.assertEqual(img_response.status_code, 200)
+            img_content = b"".join(img_response.streaming_content)
+            self.assertEqual(img_content, raw_bytes[1])
         finally:
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)

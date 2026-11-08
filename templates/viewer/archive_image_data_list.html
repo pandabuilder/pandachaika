@@ -65,7 +65,7 @@
             </td>
             <td>
               {% if user.is_authenticated %}
-                <a href="{% url 'viewer:image-download' image.pk %}">{{ image.image_name }}</a>
+                <a href="{% url 'viewer:image-view' image.pk %}">{{ image.image_name }}</a>
               {% else %}
                 {{ image.image_name }}
               {% endif %}

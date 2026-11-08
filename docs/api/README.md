@@ -116,7 +116,7 @@ Detailed endpoint references and request/response examples are organized into th
 | :--- | :--- | :--- |
 | **[galleries.md](galleries.md)** | Galleries & Provider Metadata | `gid`, `gids`, `gallery`, `gd`, `gt`, `g`, `gc`, `gs`, `gsp`, `match` |
 | **[archives.md](archives.md)** | Archives, Images & Downloads | `archive`, `archives`, `at`, `ah`, `aof`, `aid`, `sha1`, `qa`, `q`, `as`, `archive-wanted-image` |
-| **[wanted_galleries.md](wanted_galleries.md)** | Wanted Galleries & Tracking | `wanted-gallery`, `wanted-galleries`, `wanted-galleries-search` |
+| **[wanted_galleries.md](wanted_galleries.md)** | Wanted Galleries & Tracking | `wanted-gallery`, `wanted-galleries`, `wanted-galleries-search`, `wanted-tags` |
 | **[archive_groups.md](archive_groups.md)** | Archive Groups & Collections | `archive-group`, `archive-group-entry`, `archive-group-entry-archive` |
 
 ---
@@ -155,6 +155,7 @@ Below is the complete list of available commands on `/api/` (and `/api`):
 | `wanted-gallery` | WantedGallery | `?wanted-gallery=<id>[&include_found_galleries]` | Single wanted gallery |
 | `wanted-galleries` | WantedGallery | `?wanted-galleries=<id>&wanted-galleries=<id>...` | Multiple wanted galleries |
 | `wanted-galleries-search` | WantedGallery | `?wanted-galleries-search=[&...filters]` | Filtered search of wanted galleries |
+| `wanted-tags` | WantedGallery | `?wanted-tags=[&tags=<tag1>,<tag2>...]` | Batch lookup wanted galleries by wanted tags |
 
 ### POST Commands
 | Key | Target | Parameters | Permission | Description |

@@ -192,15 +192,15 @@
   <div class="card-body py-2 px-3 text-center">
     <span class="card-field-title me-2">Jump to:</span>
     <a href="#found-galleries" class="btn btn-sm btn-outline-success me-2 mb-1">
-      Found Galleries <span class="badge bg-success ms-1">{{ wanted_gallery.foundgallery_set.count }}</span>
+      Found Galleries <span class="badge bg-success ms-1">{{ found_galleries.paginator.count }}</span>
     </a>
     {% if can_view_internal %}
       <a href="#possible-matches" class="btn btn-sm btn-outline-info me-2 mb-1">
-        Possible Matches <span class="badge bg-info text-dark ms-1">{{ wanted_gallery.gallerymatch_set.count }}</span>
+        Possible Matches <span class="badge bg-info text-dark ms-1">{% if possible_matches %}{{ possible_matches.paginator.count }}{% else %}0{% endif %}</span>
       </a>
     {% endif %}
     <a href="#mentions" class="btn btn-sm btn-outline-light mb-1">
-      Mentions <span class="badge bg-secondary ms-1">{{ wanted_gallery.mentions.count }}</span>
+      Mentions <span class="badge bg-secondary ms-1">{{ mentions.paginator.count }}</span>
     </a>
   </div>
 </div>
@@ -420,14 +420,39 @@
 
 <!-- Found Galleries Section -->
 <div class="card bg-dark border-secondary mb-4 shadow-sm" id="found-galleries">
-  <div class="card-header bg-secondary text-white py-2 d-flex justify-content-between align-items-center">
+  <div class="card-header bg-secondary text-white py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
     <h4 class="h6 mb-0 fw-bold">
       <i class="fas fa-check-circle text-success me-2"></i>Found Galleries
-      <span class="badge bg-success ms-1">{{ wanted_gallery.foundgallery_set.count }}</span>
+      <span class="badge bg-success ms-1">{{ found_galleries.paginator.count }}</span>
     </h4>
+    {% if found_galleries.paginator.num_pages > 1 %}
+      <nav aria-label="Found galleries top pagination">
+        <ul class="pagination pagination-sm my-0">
+          <li class="page-item{% if not found_galleries.has_previous %} disabled{% endif %}">
+            <a class="page-link" href="?{% url_replace 'found_page' 1 %}#found-galleries" aria-label="First">&laquo;</a>
+          </li>
+          {% if found_galleries.has_previous %}
+            <li class="page-item"><a class="page-link" href="?{% url_replace 'found_page' found_galleries.previous_page_number %}#found-galleries">Prev</a></li>
+          {% else %}
+            <li class="page-item disabled"><span class="page-link">Prev</span></li>
+          {% endif %}
+          <li class="page-item disabled">
+            <span class="page-link text-white bg-secondary border-secondary">Page {{ found_galleries.number }} of {{ found_galleries.paginator.num_pages }}</span>
+          </li>
+          {% if found_galleries.has_next %}
+            <li class="page-item"><a class="page-link" href="?{% url_replace 'found_page' found_galleries.next_page_number %}#found-galleries">Next</a></li>
+          {% else %}
+            <li class="page-item disabled"><span class="page-link">Next</span></li>
+          {% endif %}
+          <li class="page-item{% if not found_galleries.has_next %} disabled{% endif %}">
+            <a class="page-link" href="?{% url_replace 'found_page' found_galleries.paginator.num_pages %}#found-galleries" aria-label="Last">&raquo;</a>
+          </li>
+        </ul>
+      </nav>
+    {% endif %}
   </div>
   <div class="card-body p-0">
-    {% if wanted_gallery.foundgallery_set.count > 0 %}
+    {% if found_galleries.paginator.count > 0 %}
       <div class="table-responsive">
         <table class="table table-dark table-hover table-bordered border-secondary align-middle mb-0">
           <thead class="table-secondary text-dark">
@@ -443,7 +468,7 @@
             </tr>
           </thead>
           <tbody>
-            {% for found_entry in wanted_gallery.foundgallery_set.all %}
+            {% for found_entry in found_galleries %}
               <tr>
                 <td>
                   <a title="{{ found_entry.gallery.title_jpn }}" href="{% url 'viewer:gallery' found_entry.gallery.pk %}" class="fw-semibold text-decoration-none">
@@ -521,24 +546,78 @@
       </div>
     {% endif %}
   </div>
+  {% if found_galleries.paginator.num_pages > 1 %}
+    <div class="card-footer bg-secondary bg-opacity-25 py-2 d-flex justify-content-center">
+      <nav aria-label="Found galleries bottom pagination">
+        <ul class="pagination pagination-sm my-0">
+          <li class="page-item{% if not found_galleries.has_previous %} disabled{% endif %}">
+            <a class="page-link" href="?{% url_replace 'found_page' 1 %}#found-galleries" aria-label="First">&laquo;</a>
+          </li>
+          {% if found_galleries.has_previous %}
+            <li class="page-item"><a class="page-link" href="?{% url_replace 'found_page' found_galleries.previous_page_number %}#found-galleries">Prev</a></li>
+          {% else %}
+            <li class="page-item disabled"><span class="page-link">Prev</span></li>
+          {% endif %}
+          <li class="page-item disabled">
+            <span class="page-link text-white bg-secondary border-secondary">Page {{ found_galleries.number }} of {{ found_galleries.paginator.num_pages }}</span>
+          </li>
+          {% if found_galleries.has_next %}
+            <li class="page-item"><a class="page-link" href="?{% url_replace 'found_page' found_galleries.next_page_number %}#found-galleries">Next</a></li>
+          {% else %}
+            <li class="page-item disabled"><span class="page-link">Next</span></li>
+          {% endif %}
+          <li class="page-item{% if not found_galleries.has_next %} disabled{% endif %}">
+            <a class="page-link" href="?{% url_replace 'found_page' found_galleries.paginator.num_pages %}#found-galleries" aria-label="Last">&raquo;</a>
+          </li>
+        </ul>
+      </nav>
+    </div>
+  {% endif %}
 </div>
 
 <!-- Possible Matches Section (if can_view_internal) -->
 {% if can_view_internal %}
 <div class="card bg-dark border-secondary mb-4 shadow-sm" id="possible-matches">
-  <div class="card-header bg-secondary text-white py-2 d-flex justify-content-between align-items-center">
+  <div class="card-header bg-secondary text-white py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
     <h4 class="h6 mb-0 fw-bold">
       <i class="fas fa-search-plus text-info me-2"></i>Possible Matches
-      <span class="badge bg-info text-dark ms-1">{{ wanted_gallery.gallerymatch_set.count }}</span>
+      <span class="badge bg-info text-dark ms-1">{% if possible_matches %}{{ possible_matches.paginator.count }}{% else %}0{% endif %}</span>
     </h4>
-    {% if user.is_staff and wanted_gallery.gallerymatch_set.count > 0 %}
-      <a class="btn btn-outline-light btn-sm" href="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}?tool=clear-possible-matches">
-        <i class="fas fa-trash-alt me-1"></i>Clear all possible matches
-      </a>
-    {% endif %}
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      {% if possible_matches and possible_matches.paginator.num_pages > 1 %}
+        <nav aria-label="Possible matches top pagination">
+          <ul class="pagination pagination-sm my-0">
+            <li class="page-item{% if not possible_matches.has_previous %} disabled{% endif %}">
+              <a class="page-link" href="?{% url_replace 'matches_page' 1 %}#possible-matches" aria-label="First">&laquo;</a>
+            </li>
+            {% if possible_matches.has_previous %}
+              <li class="page-item"><a class="page-link" href="?{% url_replace 'matches_page' possible_matches.previous_page_number %}#possible-matches">Prev</a></li>
+            {% else %}
+              <li class="page-item disabled"><span class="page-link">Prev</span></li>
+            {% endif %}
+            <li class="page-item disabled">
+              <span class="page-link text-white bg-secondary border-secondary">Page {{ possible_matches.number }} of {{ possible_matches.paginator.num_pages }}</span>
+            </li>
+            {% if possible_matches.has_next %}
+              <li class="page-item"><a class="page-link" href="?{% url_replace 'matches_page' possible_matches.next_page_number %}#possible-matches">Next</a></li>
+            {% else %}
+              <li class="page-item disabled"><span class="page-link">Next</span></li>
+            {% endif %}
+            <li class="page-item{% if not possible_matches.has_next %} disabled{% endif %}">
+              <a class="page-link" href="?{% url_replace 'matches_page' possible_matches.paginator.num_pages %}#possible-matches" aria-label="Last">&raquo;</a>
+            </li>
+          </ul>
+        </nav>
+      {% endif %}
+      {% if user.is_staff and possible_matches and possible_matches.paginator.count > 0 %}
+        <a class="btn btn-outline-light btn-sm" href="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}?tool=clear-possible-matches">
+          <i class="fas fa-trash-alt me-1"></i>Clear all possible matches
+        </a>
+      {% endif %}
+    </div>
   </div>
   <div class="card-body p-0">
-    {% if wanted_gallery.gallerymatch_set.count > 0 %}
+    {% if possible_matches and possible_matches.paginator.count > 0 %}
       <div class="table-responsive">
         <table class="table table-dark table-hover table-bordered border-secondary align-middle mb-0">
           <thead class="table-secondary text-dark">
@@ -554,7 +633,7 @@
             </tr>
           </thead>
           <tbody>
-            {% for match in wanted_gallery.gallerymatch_set.all %}
+            {% for match in possible_matches %}
               <tr>
                 <td class="text-center">
                   {% if can_change %}
@@ -633,19 +712,71 @@
       </div>
     {% endif %}
   </div>
+  {% if possible_matches and possible_matches.paginator.num_pages > 1 %}
+    <div class="card-footer bg-secondary bg-opacity-25 py-2 d-flex justify-content-center">
+      <nav aria-label="Possible matches bottom pagination">
+        <ul class="pagination pagination-sm my-0">
+          <li class="page-item{% if not possible_matches.has_previous %} disabled{% endif %}">
+            <a class="page-link" href="?{% url_replace 'matches_page' 1 %}#possible-matches" aria-label="First">&laquo;</a>
+          </li>
+          {% if possible_matches.has_previous %}
+            <li class="page-item"><a class="page-link" href="?{% url_replace 'matches_page' possible_matches.previous_page_number %}#possible-matches">Prev</a></li>
+          {% else %}
+            <li class="page-item disabled"><span class="page-link">Prev</span></li>
+          {% endif %}
+          <li class="page-item disabled">
+            <span class="page-link text-white bg-secondary border-secondary">Page {{ possible_matches.number }} of {{ possible_matches.paginator.num_pages }}</span>
+          </li>
+          {% if possible_matches.has_next %}
+            <li class="page-item"><a class="page-link" href="?{% url_replace 'matches_page' possible_matches.next_page_number %}#possible-matches">Next</a></li>
+          {% else %}
+            <li class="page-item disabled"><span class="page-link">Next</span></li>
+          {% endif %}
+          <li class="page-item{% if not possible_matches.has_next %} disabled{% endif %}">
+            <a class="page-link" href="?{% url_replace 'matches_page' possible_matches.paginator.num_pages %}#possible-matches" aria-label="Last">&raquo;</a>
+          </li>
+        </ul>
+      </nav>
+    </div>
+  {% endif %}
 </div>
 {% endif %}
 
 <!-- Mentions Section -->
 <div class="card bg-dark border-secondary mb-4 shadow-sm" id="mentions">
-  <div class="card-header bg-secondary text-white py-2 d-flex justify-content-between align-items-center">
+  <div class="card-header bg-secondary text-white py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
     <h4 class="h6 mb-0 fw-bold">
       <i class="fas fa-bullhorn text-warning me-2"></i>Mentions
-      <span class="badge bg-secondary ms-1">{{ wanted_gallery.mentions.count }}</span>
+      <span class="badge bg-secondary ms-1">{{ mentions.paginator.count }}</span>
     </h4>
+    {% if mentions.paginator.num_pages > 1 %}
+      <nav aria-label="Mentions top pagination">
+        <ul class="pagination pagination-sm my-0">
+          <li class="page-item{% if not mentions.has_previous %} disabled{% endif %}">
+            <a class="page-link" href="?{% url_replace 'mentions_page' 1 %}#mentions" aria-label="First">&laquo;</a>
+          </li>
+          {% if mentions.has_previous %}
+            <li class="page-item"><a class="page-link" href="?{% url_replace 'mentions_page' mentions.previous_page_number %}#mentions">Prev</a></li>
+          {% else %}
+            <li class="page-item disabled"><span class="page-link">Prev</span></li>
+          {% endif %}
+          <li class="page-item disabled">
+            <span class="page-link text-white bg-secondary border-secondary">Page {{ mentions.number }} of {{ mentions.paginator.num_pages }}</span>
+          </li>
+          {% if mentions.has_next %}
+            <li class="page-item"><a class="page-link" href="?{% url_replace 'mentions_page' mentions.next_page_number %}#mentions">Next</a></li>
+          {% else %}
+            <li class="page-item disabled"><span class="page-link">Next</span></li>
+          {% endif %}
+          <li class="page-item{% if not mentions.has_next %} disabled{% endif %}">
+            <a class="page-link" href="?{% url_replace 'mentions_page' mentions.paginator.num_pages %}#mentions" aria-label="Last">&raquo;</a>
+          </li>
+        </ul>
+      </nav>
+    {% endif %}
   </div>
   <div class="card-body p-0">
-    {% if wanted_gallery.mentions.count > 0 %}
+    {% if mentions.paginator.count > 0 %}
       <div class="table-responsive">
         <table class="table table-dark table-hover table-bordered border-secondary align-middle mb-0">
           <thead class="table-secondary text-dark">
@@ -660,7 +791,7 @@
             </tr>
           </thead>
           <tbody>
-            {% for mention in wanted_gallery.mentions.all %}
+            {% for mention in mentions %}
               <tr>
                 <th scope="row">
                   {% if user.is_staff %}
@@ -694,6 +825,33 @@
       </div>
     {% endif %}
   </div>
+  {% if mentions.paginator.num_pages > 1 %}
+    <div class="card-footer bg-secondary bg-opacity-25 py-2 d-flex justify-content-center">
+      <nav aria-label="Mentions bottom pagination">
+        <ul class="pagination pagination-sm my-0">
+          <li class="page-item{% if not mentions.has_previous %} disabled{% endif %}">
+            <a class="page-link" href="?{% url_replace 'mentions_page' 1 %}#mentions" aria-label="First">&laquo;</a>
+          </li>
+          {% if mentions.has_previous %}
+            <li class="page-item"><a class="page-link" href="?{% url_replace 'mentions_page' mentions.previous_page_number %}#mentions">Prev</a></li>
+          {% else %}
+            <li class="page-item disabled"><span class="page-link">Prev</span></li>
+          {% endif %}
+          <li class="page-item disabled">
+            <span class="page-link text-white bg-secondary border-secondary">Page {{ mentions.number }} of {{ mentions.paginator.num_pages }}</span>
+          </li>
+          {% if mentions.has_next %}
+            <li class="page-item"><a class="page-link" href="?{% url_replace 'mentions_page' mentions.next_page_number %}#mentions">Next</a></li>
+          {% else %}
+            <li class="page-item disabled"><span class="page-link">Next</span></li>
+          {% endif %}
+          <li class="page-item{% if not mentions.has_next %} disabled{% endif %}">
+            <a class="page-link" href="?{% url_replace 'mentions_page' mentions.paginator.num_pages %}#mentions" aria-label="Last">&raquo;</a>
+          </li>
+        </ul>
+      </nav>
+    </div>
+  {% endif %}
 </div>
 
 {% endblock %}

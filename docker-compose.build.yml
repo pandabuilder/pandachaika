@@ -87,7 +87,7 @@ services:
       - .env
 
   elasticsearch:
-    image: elasticsearch:8.18.1
+    image: elasticsearch:8.19.23
     container_name: pandachaika_elasticsearch
     restart: unless-stopped
     environment:

@@ -9,7 +9,7 @@ from django.urls import reverse
 
 import django.utils.timezone as django_tz
 from core.base.setup import Settings
-from viewer.models import MonitoredLink, Provider
+from viewer.models import MonitoredLink, Provider, WantedGallery
 from workers.models import SchedulerState, TaskQueue
 from viewer.templatetags.dict_key import dict_key
 from workers.runner import WorkerRunner
@@ -613,6 +613,95 @@ class MonitoredLinkViewsTests(TestCase):
         self.assertEqual(dict_key({"a": 10, "b": 20}, "a"), 10)
         self.assertEqual(dict_key({"a": 10}, "c"), "")
         self.assertEqual(dict_key(None, "a"), "")
+
+    def test_wanted_gallery_select_autocomplete_view(self):
+        wg1 = WantedGallery.objects.create(title="Special Collection Art", public=True)
+        wg2 = WantedGallery.objects.create(title="Secret Private Draft", public=False)
+        wg3 = WantedGallery.objects.create(title="Another Japanese Comic", title_jpn="別の漫画", public=True)
+
+        url = reverse("wanted-gallery-select-autocomplete")
+
+        # Authenticated search by title
+        res = self.client.get(url, {"q": "Special"})
+        self.assertEqual(res.status_code, 200)
+        self.assertIn(f"({wg1.pk}) (Special Collection Art)", res.content.decode("utf-8"))
+        self.assertNotIn("Secret Private Draft", res.content.decode("utf-8"))
+
+        # Authenticated search by japanese title
+        res_jpn = self.client.get(url, {"q": "漫画"})
+        self.assertEqual(res_jpn.status_code, 200)
+        self.assertIn(f"({wg3.pk})", res_jpn.content.decode("utf-8"))
+
+        # Authenticated search by pk
+        res_pk = self.client.get(url, {"q": str(wg2.pk)})
+        self.assertEqual(res_pk.status_code, 200)
+        self.assertIn(f"({wg2.pk}) (Secret Private Draft)", res_pk.content.decode("utf-8"))
+
+        # Anonymous user should only see public wanted galleries
+        anon_client = Client()
+        res_anon = anon_client.get(url, {"q": "Secret"})
+        self.assertEqual(res_anon.status_code, 200)
+        self.assertNotIn("Secret Private Draft", res_anon.content.decode("utf-8"))
+
+    def test_monitored_link_create_and_edit_with_limited_wanted_galleries(self):
+        from dal import autocomplete
+        from viewer.forms import MonitoredLinkCreateOrEditForm
+
+        wg1 = WantedGallery.objects.create(title="Target Wanted 1", public=True)
+        wg2 = WantedGallery.objects.create(title="Target Wanted 2", public=True)
+
+        form = MonitoredLinkCreateOrEditForm()
+        widget = form.fields["limited_wanted_galleries"].widget
+        self.assertIsInstance(widget, autocomplete.ModelAlightMultiple)
+        self.assertEqual(widget.url, "/wanted-gallery-select-autocomplete/")
+
+        # Verify pages render autocomplete media and widget
+        res = self.client.get(reverse("viewer:monitored-links"))
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, "autocomplete-light.js")
+        self.assertContains(res, "autocomplete-select")
+
+        # Create monitored link with limited_wanted_galleries
+        post_data = {
+            "name": "Limited Wanted Link",
+            "url": "https://example.com/limited",
+            "provider": self.provider.pk,
+            "frequency": "01:00:00",
+            "priority": 5,
+            "enabled": True,
+            "use_limited_wanted_galleries": True,
+            "limited_wanted_galleries": [wg1.pk, wg2.pk],
+            "submit-monitored-link": "1",
+        }
+        res_create = self.client.post(reverse("viewer:monitored-links"), post_data)
+        self.assertEqual(res_create.status_code, 302)
+
+        link = MonitoredLink.objects.get(name="Limited Wanted Link")
+        self.assertTrue(link.use_limited_wanted_galleries)
+        self.assertEqual(set(link.limited_wanted_galleries.values_list("pk", flat=True)), {wg1.pk, wg2.pk})
+
+        # Edit monitored link to remove wg2
+        edit_url = reverse("viewer:col-edit-monitored-link", args=[link.pk])
+        res_edit_get = self.client.get(edit_url)
+        self.assertEqual(res_edit_get.status_code, 200)
+        self.assertContains(res_edit_get, "autocomplete-light.js")
+
+        post_edit_data = {
+            "name": "Limited Wanted Link",
+            "url": "https://example.com/limited",
+            "provider": self.provider.pk,
+            "frequency": "01:00:00",
+            "priority": 5,
+            "enabled": True,
+            "use_limited_wanted_galleries": True,
+            "limited_wanted_galleries": [wg1.pk],
+        }
+        res_edit_post = self.client.post(edit_url, post_edit_data)
+        self.assertEqual(res_edit_post.status_code, 302)
+
+        link.refresh_from_db()
+        self.assertEqual(set(link.limited_wanted_galleries.values_list("pk", flat=True)), {wg1.pk})
+
 
         # Sequence / tuple indexing
         t = ("item0", "item1", "item2")

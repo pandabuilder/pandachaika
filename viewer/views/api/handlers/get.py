@@ -1,6 +1,7 @@
 """GET command handlers for the public JSON API."""
 
 import json
+import re
 from collections import defaultdict
 from typing import Any
 
@@ -274,6 +275,8 @@ def handle_get_gallery(request: HttpRequest, data: QueryDict, user_is_authentica
         )
     response = json.dumps(
         {
+            "id": gallery.id,
+            "gid": gallery.gid,
             "title": gallery.title,
             "title_jpn": gallery.title_jpn,
             "category": gallery.category,
@@ -286,6 +289,7 @@ def handle_get_gallery(request: HttpRequest, data: QueryDict, user_is_authentica
             "rating": float(str_to_int(gallery.rating)),
             "fjord": gallery.fjord,
             "link": gallery.get_link(),
+            "url": reverse("viewer:gallery", args=(gallery.pk,)),
             "tags": gallery.tag_list(),
             "archives": [
                 {"id": archive.id, "download": reverse("viewer:archive-download", args=(archive.pk,))}
@@ -304,6 +308,7 @@ def handle_get_gallery(request: HttpRequest, data: QueryDict, user_is_authentica
 
 def _gallery_by_gid_to_json(gallery: Gallery, user_is_authenticated: bool) -> dict[str, Any]:
     data: dict[str, Any] = {
+        "id": gallery.id,
         "gid": gallery.gid,
         "title": gallery.title,
         "title_jpn": gallery.title_jpn,
@@ -317,6 +322,7 @@ def _gallery_by_gid_to_json(gallery: Gallery, user_is_authenticated: bool) -> di
         "rating": float(str_to_int(gallery.rating)),
         "fjord": gallery.fjord,
         "link": gallery.get_link(),
+        "url": reverse("viewer:gallery", args=(gallery.pk,)),
         "tags": gallery.tag_list(),
         "archives": [
             {"id": archive.id, "download": reverse("viewer:archive-download", args=(archive.pk,))}
@@ -1159,4 +1165,139 @@ def handle_get_wanted_galleries_search(request: HttpRequest, data: QueryDict, us
         ensure_ascii=False,
     )
     return HttpResponse(response, content_type="application/json; charset=utf-8")
+
+
+def handle_get_wanted_tags(request: HttpRequest, data: QueryDict, user_is_authenticated: bool):
+    candidates: list[str] = []
+    candidates.extend(data.getlist("tags"))
+    for key in ("wanted-tags", "wanted-tags-search"):
+        val = data.get(key, "")
+        if val:
+            candidates.append(val)
+
+    queried_tags: list[str] = []
+    for item in candidates:
+        if not item:
+            continue
+        for t in item.split(","):
+            t = t.strip()
+            if t and t not in queried_tags:
+                queried_tags.append(t)
+
+    if not queried_tags:
+        return HttpResponse(json.dumps({}), content_type="application/json; charset=utf-8")
+
+    tag_q = Q()
+    tag_lookup_map: dict[tuple[str, str], list[str]] = {}
+
+    for tag_str in queried_tags:
+        t_cleaned = re.sub(r"^[-|^]+", "", tag_str).strip()
+        if not t_cleaned:
+            continue
+
+        if ":" in t_cleaned:
+            scope, name = t_cleaned.split(":", 1)
+        else:
+            scope, name = "", t_cleaned
+
+        scope_lower = scope.strip().lower()
+        name_lower = name.strip().lower()
+        if not name_lower:
+            continue
+
+        name_underscored = name_lower.replace(" ", "_")
+        name_spaced = name_lower.replace("_", " ")
+
+        if scope_lower:
+            curr_q = (
+                Q(wanted_tags__scope__iexact=scope_lower)
+                & (Q(wanted_tags__name__iexact=name_underscored) | Q(wanted_tags__name__iexact=name_spaced))
+            )
+        else:
+            curr_q = (
+                Q(wanted_tags__name__iexact=name_underscored) | Q(wanted_tags__name__iexact=name_spaced)
+            )
+        tag_q |= curr_q
+
+        for n in {name_underscored, name_spaced}:
+            tag_lookup_map.setdefault((scope_lower, n), []).append(tag_str)
+
+    if not tag_lookup_map:
+        return HttpResponse(json.dumps({t: [] for t in queried_tags}), content_type="application/json; charset=utf-8")
+
+    qs = WantedGallery.objects.filter(tag_q)
+    if not user_is_authenticated:
+        qs = qs.filter(public=True)
+
+    if "wanted-not-found" in data or data.get("unfound") == "1":
+        qs = qs.filter(found=False)
+    elif "wanted-found" in data or data.get("found") == "1":
+        qs = qs.filter(found=True)
+
+    rows = qs.order_by("-release_date", "-id").values(
+        "id",
+        "title",
+        "title_jpn",
+        "found",
+        "public",
+        "wanted_tags__scope",
+        "wanted_tags__name",
+    ).distinct()
+
+    result: dict[str, list[dict[str, Any]]] = {t: [] for t in queried_tags}
+    seen_ids: dict[str, set[int]] = {t: set() for t in queried_tags}
+
+    full_records = data.get("full") in ("1", "true", "True")
+    if full_records:
+        include_found_galleries = _include_found_galleries(data)
+        all_ids = {row["id"] for row in rows}
+        wanted_galleries = _wanted_galleries_prefetch(include_found_galleries).filter(pk__in=all_ids)
+        gallery_objects = {
+            wg.pk: wanted_gallery_to_json(
+                wg,
+                request=request,
+                user_is_authenticated=user_is_authenticated,
+                include_found_galleries=include_found_galleries,
+            )
+            for wg in wanted_galleries
+        }
+    else:
+        gallery_objects = {}
+
+    for row in rows:
+        gallery_id = row["id"]
+        db_scope = (row["wanted_tags__scope"] or "").lower()
+        db_name = (row["wanted_tags__name"] or "").lower()
+
+        matched_tags: list[str] = []
+        if (db_scope, db_name) in tag_lookup_map:
+            matched_tags.extend(tag_lookup_map[(db_scope, db_name)])
+        if ("", db_name) in tag_lookup_map:
+            matched_tags.extend(tag_lookup_map[("", db_name)])
+
+        if not matched_tags:
+            continue
+
+        if full_records:
+            entry = gallery_objects.get(gallery_id)
+            if not entry:
+                continue
+        else:
+            entry = {
+                "id": gallery_id,
+                "title": row["title"],
+                "title_jpn": row["title_jpn"],
+                "found": row["found"],
+                "public": row["public"],
+            }
+
+        for t in matched_tags:
+            if gallery_id not in seen_ids[t]:
+                seen_ids[t].add(gallery_id)
+                result[t].append(entry)
+
+    return HttpResponse(
+        json.dumps(result, sort_keys=True, ensure_ascii=False),
+        content_type="application/json; charset=utf-8",
+    )
 

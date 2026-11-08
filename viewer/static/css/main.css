@@ -789,6 +789,12 @@ autocomplete-select input[slot="input"] {
   border-radius: 0.25rem;
 }
 
+autocomplete-select-input[loading] input,
+autocomplete-light[loading] input {
+  opacity: 1 !important;
+  cursor: auto !important;
+}
+
 .autocomplete-light-text-widget > .choice {
   color: black !important;
 }

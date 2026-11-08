@@ -1683,7 +1683,15 @@ class MonitoredLinkCreateOrEditForm(ModelForm):
             "auto_start": forms.widgets.CheckboxInput(attrs={"class": "form-check-input"}),
             "frequency": forms.widgets.TextInput(attrs={"class": "form-control", "placeholder": "01:00:00"}),
             "use_limited_wanted_galleries": forms.widgets.CheckboxInput(attrs={"class": "form-check-input"}),
-            "limited_wanted_galleries": forms.widgets.SelectMultiple(attrs={"class": "form-control", "size": 5}),
+            "limited_wanted_galleries": autocomplete.ModelAlightMultiple(
+                url="wanted-gallery-select-autocomplete",
+                attrs={
+                    "size": 1,
+                    "data-placeholder": "Wanted galleries",
+                    "class": "form-control",
+                    "data-width": "100%",
+                },
+            ),
         }
 
 

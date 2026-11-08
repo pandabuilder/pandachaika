@@ -672,8 +672,8 @@ def image_live_thumb(request: HttpRequest, archive_pk: int, position: int) -> Ht
     return response
 
 
-def image_download(request: HttpRequest, pk: int) -> HttpResponseBase:
-    """Download an individual image in its original resolution (only for authenticated users)."""
+def _serve_image(request: HttpRequest, pk: int, as_attachment: bool = True) -> HttpResponseBase:
+    """Serve an individual image in its original resolution (only for authenticated users)."""
     is_auth, auth_user = double_check_auth(request)
     if not is_auth:
         return redirect_to_login(request.get_full_path())
@@ -690,7 +690,7 @@ def image_download(request: HttpRequest, pk: int) -> HttpResponseBase:
     if archive.is_recycled() or archive.is_file_deleted():
         raise Http404("Archive does not exist")
 
-    # If the file is extracted and it's not "resized", download directly from filesystem
+    # If the file is extracted and it's not "resized", serve directly from filesystem
     if image.is_extracted_and_not_resized():
         img_name = image.image.name if image.image and image.image.name else ""
         filename: str = (
@@ -702,11 +702,13 @@ def image_download(request: HttpRequest, pk: int) -> HttpResponseBase:
         if "HTTP_X_FORWARDED_HOST" in request.META:
             forwarded_response = HttpResponse()
             forwarded_response["Content-Type"] = content_type
-            forwarded_response["Content-Disposition"] = content_disposition_header(True, filename)
+            disposition = content_disposition_header(as_attachment, filename)
+            if disposition:
+                forwarded_response["Content-Disposition"] = disposition
             forwarded_response["X-Accel-Redirect"] = f"/image/{img_name}"
             return forwarded_response
         else:
-            file_response = FileResponse(open(image.image.path, "rb"), as_attachment=True, filename=filename)
+            file_response = FileResponse(open(image.image.path, "rb"), as_attachment=as_attachment, filename=filename)
             file_response["Content-Type"] = content_type
             return file_response
 
@@ -720,7 +722,7 @@ def image_download(request: HttpRequest, pk: int) -> HttpResponseBase:
             )
             guessed_type = mimetypes.guess_type(filename)[0]
             fallback_content_type: str = guessed_type if guessed_type is not None else "application/octet-stream"
-            fallback_response = FileResponse(open(image.image.path, "rb"), as_attachment=True, filename=filename)
+            fallback_response = FileResponse(open(image.image.path, "rb"), as_attachment=as_attachment, filename=filename)
             fallback_response["Content-Type"] = fallback_content_type
             return fallback_response
         raise Http404("Image file does not exist")
@@ -728,10 +730,22 @@ def image_download(request: HttpRequest, pk: int) -> HttpResponseBase:
     stream_generator, filename, zip_content_type, file_size = stream_info
     stream_content_type: str = zip_content_type if zip_content_type is not None else "application/octet-stream"
     streaming_response = StreamingHttpResponse(stream_generator(), content_type=stream_content_type)
-    streaming_response["Content-Disposition"] = content_disposition_header(True, filename)
+    stream_disposition = content_disposition_header(as_attachment, filename)
+    if stream_disposition:
+        streaming_response["Content-Disposition"] = stream_disposition
     if file_size is not None:
         streaming_response["Content-Length"] = str(file_size)
     return streaming_response
+
+
+def image_download(request: HttpRequest, pk: int) -> HttpResponseBase:
+    """Download an individual image in its original resolution (only for authenticated users)."""
+    return _serve_image(request, pk, as_attachment=True)
+
+
+def image_view(request: HttpRequest, pk: int) -> HttpResponseBase:
+    """View an individual image inline in its original resolution (only for authenticated users)."""
+    return _serve_image(request, pk, as_attachment=False)
 
 
 def archive_image_download(request: HttpRequest, archive_pk: int, position: int) -> HttpResponseBase:
@@ -741,6 +755,15 @@ def archive_image_download(request: HttpRequest, archive_pk: int, position: int)
     except Image.DoesNotExist:
         raise Http404("Image does not exist")
     return image_download(request, image.pk)
+
+
+def archive_image_view(request: HttpRequest, archive_pk: int, position: int) -> HttpResponseBase:
+    """View an individual image inline by archive pk and position in original resolution."""
+    try:
+        image = Image.objects.get(archive_id=archive_pk, position=position)
+    except Image.DoesNotExist:
+        raise Http404("Image does not exist")
+    return image_view(request, image.pk)
 
 
 @login_required

@@ -59,6 +59,7 @@ curl "https://example.chaika.moe/api/?gid=1234567&provider=panda" \
 **Success (200 OK)**
 ```json
 {
+  "id": 9636,
   "gid": "1234567",
   "title": "Example Title",
   "title_jpn": "Example Japanese Title",
@@ -72,6 +73,7 @@ curl "https://example.chaika.moe/api/?gid=1234567&provider=panda" \
   "rating": 4.5,
   "fjord": false,
   "link": "https://exhentai.org/g/1234567/abcdef/",
+  "url": "/gallery/9636/",
   "tags": [
     "artist:sample",
     "female:schoolgirl",
@@ -122,20 +124,24 @@ curl "https://example.chaika.moe/api/?gids=1234567&gids=7654321&provider=panda"
 
 ### Response
 **Success (200 OK)**  
-Returns a JSON array of gallery objects (same schema as `gid`). GIDs that do not exist or are inaccessible are silently omitted:
+Returns a JSON array of gallery objects (same schema as `gid`, including `id` and `url`). GIDs that do not exist or are inaccessible are silently omitted:
 ```json
 [
   {
+    "id": 101,
     "gid": "1234567",
     "title": "Example Title 1",
     "link": "https://...",
+    "url": "/gallery/101/",
     "tags": ["language:english"],
     "archives": []
   },
   {
+    "id": 102,
     "gid": "7654321",
     "title": "Example Title 2",
     "link": "https://...",
+    "url": "/gallery/102/",
     "tags": ["female:nekomimi"],
     "archives": [{"id": 42, "download": "/archive/42/download/"}]
   }
@@ -158,7 +164,7 @@ curl "https://example.chaika.moe/api/?gallery=105"
 ```
 
 ### Response
-Returns the standard gallery object (same schema as `gid`). Returns `404 Not Found` with `{"result": "Gallery does not exist."}` if invalid or inaccessible.
+Returns the standard gallery object (same schema as `gid`, including `id`, `gid`, and `url`). Returns `404 Not Found` with `{"result": "Gallery does not exist."}` if invalid or inaccessible.
 
 ---
 
@@ -377,7 +383,7 @@ These query parameters can be passed to `g`, `gc`, `gs`, `gsp`, and `match`:
 | `fjord` | `boolean` | Internal flagging status |
 | `provider` / `source` | `string` | Provider slug |
 | `link` | `string` | URL to the original gallery on the provider site |
-| `url` | `string` | Absolute URL to the gallery view on this Panda Backup instance |
+| `url` | `string` | Relative URL (e.g. `/gallery/9636/`) or absolute URL to the gallery view on this Panda Backup instance |
 | `thumbnail` | `string` | Absolute URL to local cached thumbnail |
 | `thumbnail_url` | `string` | Remote provider thumbnail URL |
 | `tags` | `array[string]` | List of tags formatted as `scope:name` or `name` |

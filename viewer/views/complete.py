@@ -907,3 +907,39 @@ class ArchiveGroupSelectAutocomplete(autocomplete.AlightQuerySetView):
             qs = qs.filter(public=True).filter(Q(title__ss=q_formatted))
 
         return qs[0 : self.limit_choices]
+
+
+class WantedGallerySelectAutocomplete(autocomplete.AlightQuerySetView):
+    model = WantedGallery
+    limit_choices = 10
+
+    def get_result_label(self, result: WantedGallery) -> str:
+        label = result.title or result.title_jpn or ""
+        return "({}) ({})".format(result.pk, label)
+
+    def get_queryset(self) -> QuerySet:
+        qs = WantedGallery.objects.all().order_by("pk")
+
+        q = (self.q or "").strip()
+        if q:
+            q_formatted = "%" + q.replace(" ", "%") + "%"
+            q_object = (
+                Q(title__ss=q_formatted)
+                | Q(title_jpn__ss=q_formatted)
+                | Q(search_title__ss=q_formatted)
+                | Q(unwanted_title__ss=q_formatted)
+            )
+            m = re.search(r"(\d+)", q)
+            if m:
+                q_object |= Q(pk=int(m.group(1)))
+
+            if self.request.user.is_authenticated:
+                qs = qs.filter(q_object)
+            else:
+                qs = qs.filter(public=True).filter(q_object)
+        else:
+            if not self.request.user.is_authenticated:
+                qs = qs.filter(public=True)
+
+        return qs[0 : self.limit_choices]
+

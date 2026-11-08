@@ -23,6 +23,7 @@ All endpoints use the public JSON API at `/api/` (or `/jsearch/`, or slashless `
 | `?wanted-gallery=<id>` | `GET` | None | Get a single WantedGallery object |
 | `?wanted-galleries=<id>&wanted-galleries=<id>...` | `GET` | None | Get multiple WantedGallery objects |
 | `?wanted-galleries-search=` | `GET` | None | Search WantedGallery objects with filters |
+| `?wanted-tags=[&tags=<tag1>,<tag2>...]` | `GET` | None | Batch lookup WantedGallery entries matching requested wanted tags |
 | `?wanted-gallery=` | `POST` | `viewer.add_wantedgallery` | Create a new WantedGallery |
 | `?wanted-gallery=<id>` | `PUT` | `viewer.change_wantedgallery` | Modify an existing WantedGallery |
 | `?wanted-gallery=<id>` | `DELETE` | `viewer.delete_wantedgallery` | Delete a WantedGallery |
@@ -266,7 +267,70 @@ If no records match the criteria:
 
 ---
 
-## 4. Create Wanted Gallery (`POST ?wanted-gallery=`)
+## 4. Batch Search by Wanted Tags (`wanted-tags` / `wanted-tags-search`)
+
+Optimized batch endpoint to verify multiple tags against `WantedGallery.wanted_tags` in a single fast, indexed query. Specifically designed for userscripts and integrations (e.g., anthology galleries with 10–15 artists) to test which artists or tags already have wanted gallery entries without firing separate requests.
+
+- **Endpoint**: `/api/`
+- **Method**: `GET`
+- **Query Parameters**:
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `wanted-tags` | `flag` / `string` | Yes* | Command trigger. Can be empty (`?wanted-tags=`) or contain tags directly (`?wanted-tags=artist:alice,artist:bob`). |
+| `wanted-tags-search`| `flag` / `string`| Yes* | Alias for `wanted-tags`. |
+| `tags` | `string` | No | Comma-separated or repeatable tag list (`tags=artist:alice,artist:bob` or `tags=artist:alice&tags=artist:bob`). |
+| `wanted-not-found` | `flag` | No | Filter to only include unfound wanted galleries (`found=false`). |
+| `wanted-found` | `flag` | No | Filter to only include found wanted galleries (`found=true`). |
+| `full` | `flag` / `boolean` | No | Set to `1` or `true` to return full `WantedGallery` records instead of lightweight summaries. Default is `false` (lean mode). |
+| `include_found_galleries` | `flag` | No | When `full=1`, embeds linked `found_galleries` in each entry. |
+
+*\* Either `wanted-tags` or `wanted-tags-search` must be present.*
+
+### Tag Syntax & Matching Behavior
+- **Scoped tags** (`artist:alice`): Matches exact tag scope and tag name.
+- **Unscoped tags** (`alice`): Matches tags with that name across any scope or with no scope.
+- **Spacing / Underscores**: Automatically normalizes spaces and underscores (e.g., `artist:john doe` matches `artist:john_doe`).
+- **Access control**: Unauthenticated callers only receive matching entries where `public=true`. Authenticated callers receive both public and private wanted entries.
+
+### Example Request
+```bash
+curl "https://example.chaika.moe/api/?wanted-tags=&tags=artist:alice,artist:bob_ross,artist:nonexistent"
+```
+
+### Response
+**Success (200 OK - Default Lean Mode)**  
+Returns a dictionary keyed by each requested tag string, mapping to an array of matching gallery summary objects:
+
+```json
+{
+  "artist:alice": [
+    {
+      "id": 101,
+      "title": "Anthology Collection Vol. 1",
+      "title_jpn": "アンソロジーコレクション Vol. 1",
+      "found": false,
+      "public": true
+    }
+  ],
+  "artist:bob_ross": [
+    {
+      "id": 205,
+      "title": "Bob Ross Illustration Works",
+      "title_jpn": "ボブ・ロス作品集",
+      "found": true,
+      "public": true
+    }
+  ],
+  "artist:nonexistent": []
+}
+```
+
+When `full=1` is provided, each array element contains the complete `WantedGallery` object definition.
+
+---
+
+## 5. Create Wanted Gallery (`POST ?wanted-gallery=`)
 
 Creates a new WantedGallery record.
 
@@ -354,7 +418,7 @@ Missing authentication or `viewer.add_wantedgallery` permission:
 
 ---
 
-## 5. Modify Wanted Gallery (`PUT ?wanted-gallery=<id>`)
+## 6. Modify Wanted Gallery (`PUT ?wanted-gallery=<id>`)
 
 Modifies an existing WantedGallery record.
 
@@ -485,7 +549,7 @@ Missing authentication or `viewer.change_wantedgallery` permission:
 
 ---
 
-## 6. Delete Wanted Gallery (`DELETE ?wanted-gallery=<id>`)
+## 7. Delete Wanted Gallery (`DELETE ?wanted-gallery=<id>`)
 
 Deletes an existing WantedGallery record.
 

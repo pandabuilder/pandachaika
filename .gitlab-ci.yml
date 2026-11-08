@@ -97,18 +97,23 @@ test-all:
     reports:
       junit: test-results/TEST-*.xml
 
-build:
-  image: docker:29.9.2
-  when: manual
-  services:
-    - docker:29.9.2-dind
-  before_script:
-    - docker info
+build-image:
   stage: build
-  variables:
-    IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
-    DOCKER_TLS_CERTDIR: "/certs"
+  when: manual
+  dependencies: []
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
   script:
-    - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
-    - docker build -t $IMAGE_TAG .
-    - docker push $IMAGE_TAG
+    - mkdir -p /kaniko/.docker
+    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(printf "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
+    # Kaniko/Go looks in /kaniko/ssl/certs/ca-certificates.crt:
+    - cat "$INTERNAL_CA_CERT" >> /kaniko/ssl/certs/ca-certificates.crt
+    - >-
+      /kaniko/executor
+      --context "${CI_PROJECT_DIR}"
+      --dockerfile "${CI_PROJECT_DIR}/Dockerfile"
+      --destination "${CI_REGISTRY_IMAGE}:${CI_COMMIT_REF_SLUG}"
+      --destination "${CI_REGISTRY_IMAGE}:latest"
+#  rules:
+#    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

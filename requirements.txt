@@ -1,11 +1,11 @@
 # Database backend (PostgreSQL)
-psycopg[c,pool]==3.3.6
+psycopg[c,pool]==3.3.8
 # Main
 python-dateutil==3.0.0
 beautifulsoup4==4.15.0
 CherryPy==18.10.0
 gunicorn==26.2.0; sys_platform != 'win32'
-Django==6.1.2
+Django==6.1.3
 django-compressor==4.6.0
 django-db-logger==0.1.13
 django-cors-headers==4.9.0
@@ -17,10 +17,10 @@ feedparser==6.0.14
 transmission-rpc==7.0.12
 django-autocomplete-light==5.0.0
 django-vite==3.2.0
-elasticsearch==8.18.1
+elasticsearch==8.19.3
 django-simple-history==3.13.0
 PyYAML==6.0.3
-pydantic==2.14.2
+pydantic==2.14.3
 deckar01-ratelimit==3.0.2
 # For image operations in edge cases
 numpy==2.5.4

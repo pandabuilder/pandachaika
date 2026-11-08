@@ -29,6 +29,7 @@ from viewer.views.complete import (
     GalleryUploaderAutocomplete,
     GalleryReasonAutocomplete,
     WantedGalleryColAutocomplete,
+    WantedGallerySelectAutocomplete,
     ArchiveManageEntryMarkReasonAutocomplete,
     GalleryAllAutocomplete,
     TagAutocompleteJson,
@@ -119,6 +120,11 @@ urlpatterns += [
         r"^" + settings.MAIN_URL + r"wanted-gallery-autocomplete/$",
         WantedGalleryAutocomplete.as_view(),
         name="wanted-gallery-autocomplete",
+    ),
+    re_path(
+        r"^" + settings.MAIN_URL + r"wanted-gallery-select-autocomplete/$",
+        WantedGallerySelectAutocomplete.as_view(),
+        name="wanted-gallery-select-autocomplete",
     ),
     re_path(
         r"^" + settings.MAIN_URL + r"col-wanted-gallery-autocomplete/$",

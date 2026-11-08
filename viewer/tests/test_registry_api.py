@@ -670,6 +670,9 @@ class RegistryApiGalleryEndpointsTests(BaseRegistryApiMixin, TestCase):
         self.assertEqual(data["uploader"], "gallery_uploader")
         self.assertEqual(data["filecount"], 15)
         self.assertEqual(data["filesize"], 5000000)
+        self.assertEqual(data["id"], self.gallery_pub.pk)
+        self.assertEqual(data["gid"], "30001")
+        self.assertEqual(data["url"], reverse("viewer:gallery", args=(self.gallery_pub.pk,)))
         self.assertEqual(len(data["archives"]), 1)
         self.assertEqual(data["archives"][0]["id"], self.archive_pub.pk)
 
@@ -697,7 +700,9 @@ class RegistryApiGalleryEndpointsTests(BaseRegistryApiMixin, TestCase):
         response = self._api_get(self.anon_client, gid="30001", provider="panda")
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.content)
+        self.assertEqual(data["id"], self.gallery_pub.pk)
         self.assertEqual(data["gid"], "30001")
+        self.assertEqual(data["url"], reverse("viewer:gallery", args=(self.gallery_pub.pk,)))
         self.assertEqual(data["title"], "Public Gallery Endpoint Test")
         self.assertNotIn("status", data)
         self.assertNotIn("public", data)
@@ -754,6 +759,8 @@ class RegistryApiGalleryEndpointsTests(BaseRegistryApiMixin, TestCase):
         gids = [item["gid"] for item in data]
         self.assertIn("30001", gids)
         self.assertNotIn("30002", gids)
+        self.assertEqual(data[0]["id"], self.gallery_pub.pk)
+        self.assertEqual(data[0]["url"], reverse("viewer:gallery", args=(self.gallery_pub.pk,)))
         self.assertNotIn("status", data[0])
         self.assertNotIn("public", data[0])
         self.assertNotIn("origin", data[0])
@@ -1331,6 +1338,12 @@ class RegistryApiWantedGalleryEndpointsTests(BaseRegistryApiMixin, TestCase):
             notify_when_found=False,
         )
 
+        cls.tag_artist_alice, _ = Tag.objects.get_or_create(scope="artist", name="alice")
+        cls.tag_artist_bob, _ = Tag.objects.get_or_create(scope="artist", name="bob_ross")
+        cls.tag_character_carol, _ = Tag.objects.get_or_create(scope="character", name="carol")
+        cls.wanted_pub.wanted_tags.add(cls.tag_artist_alice, cls.tag_artist_bob)
+        cls.wanted_priv.wanted_tags.add(cls.tag_artist_alice, cls.tag_character_carol)
+
     def setUp(self):
         super().setUp()
         self.manage_client = Client()
@@ -1426,6 +1439,93 @@ class RegistryApiWantedGalleryEndpointsTests(BaseRegistryApiMixin, TestCase):
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.content)
         self.assertEqual(data, [])
+
+    def test_get_wanted_tags_empty_parameters(self):
+        response = self._api_get(self.anon_client, **{"wanted-tags": ""})
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertEqual(data, {})
+
+    def test_get_wanted_tags_anon_client_only_public(self):
+        response = self._api_get(
+            self.anon_client,
+            **{"wanted-tags": "", "tags": "artist:alice"},
+        )
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertIn("artist:alice", data)
+        ids = [item["id"] for item in data["artist:alice"]]
+        self.assertIn(self.wanted_pub.pk, ids)
+        self.assertNotIn(self.wanted_priv.pk, ids)
+
+    def test_get_wanted_tags_auth_client_includes_private(self):
+        response = self._api_get(
+            self.auth_client,
+            **{"wanted-tags": "", "tags": "artist:alice"},
+        )
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertIn("artist:alice", data)
+        ids = [item["id"] for item in data["artist:alice"]]
+        self.assertIn(self.wanted_pub.pk, ids)
+        self.assertIn(self.wanted_priv.pk, ids)
+
+    def test_get_wanted_tags_multiple_tags_batch(self):
+        response = self._api_get(
+            self.anon_client,
+            **{"wanted-tags": "", "tags": "artist:alice,artist:bob_ross,artist:nonexistent"},
+        )
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertIn("artist:alice", data)
+        self.assertIn("artist:bob_ross", data)
+        self.assertIn("artist:nonexistent", data)
+        self.assertEqual(data["artist:nonexistent"], [])
+        self.assertEqual(data["artist:bob_ross"][0]["id"], self.wanted_pub.pk)
+
+    def test_get_wanted_tags_space_and_underscore_handling(self):
+        response = self._api_get(
+            self.anon_client,
+            **{"wanted-tags": "", "tags": "artist:bob ross"},
+        )
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertIn("artist:bob ross", data)
+        self.assertEqual(data["artist:bob ross"][0]["id"], self.wanted_pub.pk)
+
+    def test_get_wanted_tags_unscoped_search(self):
+        response = self._api_get(
+            self.anon_client,
+            **{"wanted-tags": "", "tags": "alice"},
+        )
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertIn("alice", data)
+        self.assertEqual(data["alice"][0]["id"], self.wanted_pub.pk)
+
+    def test_get_wanted_tags_with_full_records(self):
+        response = self._api_get(
+            self.anon_client,
+            **{"wanted-tags": "", "tags": "artist:alice", "full": "1"},
+        )
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertIn("artist:alice", data)
+        self.assertEqual(len(data["artist:alice"]), 1)
+        item = data["artist:alice"][0]
+        self.assertEqual(item["id"], self.wanted_pub.pk)
+        self.assertIn("wanted_tags", item)
+        self.assertIn("artist:alice", item["wanted_tags"])
+
+    def test_get_wanted_tags_alias_search(self):
+        response = self._api_get(
+            self.anon_client,
+            **{"wanted-tags-search": "", "tags": "artist:alice"},
+        )
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertIn("artist:alice", data)
+        self.assertEqual(data["artist:alice"][0]["id"], self.wanted_pub.pk)
 
     def test_post_wanted_gallery_unauthorized(self):
         payload = {"title": "Denied Wanted"}

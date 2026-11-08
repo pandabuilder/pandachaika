@@ -36,6 +36,7 @@ from viewer.views.api.handlers.get import (
     handle_get_wanted_gallery,
     handle_get_wanted_galleries,
     handle_get_wanted_galleries_search,
+    handle_get_wanted_tags,
 )
 from viewer.views.api.handlers.post import (
     handle_post_archive_group,
@@ -76,6 +77,8 @@ GET_HANDLERS = [
     ("wanted-gallery", handle_get_wanted_gallery),
     ("wanted-galleries", handle_get_wanted_galleries),
     ("wanted-galleries-search", handle_get_wanted_galleries_search),
+    ("wanted-tags", handle_get_wanted_tags),
+    ("wanted-tags-search", handle_get_wanted_tags),
 ]
 
 

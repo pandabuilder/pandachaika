@@ -99,15 +99,26 @@ urlpatterns = [
     path("archive/<int:pk>/thumb/", archive.archive_thumb, name="archive-thumb"),
     path("archive/<int:pk>/image-data-list/", archive.image_data_list, name="image-data-list"),
     path("img/<int:pk>/download/", archive.image_download, name="image-download"),
+    path("img/<int:pk>/view/", archive.image_view, name="image-view"),
     path(
         "archive/<int:archive_pk>/image/<int:position>/download/",
         archive.archive_image_download,
         name="archive-image-download",
     ),
     path(
+        "archive/<int:archive_pk>/image/<int:position>/view/",
+        archive.archive_image_view,
+        name="archive-image-view",
+    ),
+    path(
         "archive/<int:archive_pk>/img/<int:position>/download/",
         archive.archive_image_download,
         name="archive-img-download",
+    ),
+    path(
+        "archive/<int:archive_pk>/img/<int:position>/view/",
+        archive.archive_image_view,
+        name="archive-img-view",
     ),
     path("archive/<int:pk>/change-log/", archive.change_log, name="archive-change-log"),
     path("archive-manage/<int:pk>/delete/", archive.delete_manage_archive, name="archive-manage-delete"),
