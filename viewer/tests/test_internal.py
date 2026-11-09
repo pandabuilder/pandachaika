@@ -969,6 +969,108 @@ class JsonParserWebcrawlerTest(TestCase):
             mock_enqueue.assert_called_once()
             self.assertEqual(mock_enqueue.call_args.kwargs["args"], links)
 
+    def test_ignore_global_filters_snake_case(self):
+        from unittest.mock import patch
+        with patch("workers.client.enqueue") as mock_enqueue:
+            response = self._post_json_parser(
+                {
+                    "operation": "webcrawler",
+                    "args": {
+                        "link": "https://example.com/test1",
+                        "ignore_global_filters": True,
+                    },
+                }
+            )
+            self.assertEqual(response.status_code, 200)
+            mock_enqueue.assert_called_once()
+            call_kwargs = mock_enqueue.call_args.kwargs
+            self.assertIn("--ignore-global-filters", call_kwargs["args"])
+            self.assertIn("https://example.com/test1", call_kwargs["args"])
+            self.assertTrue(call_kwargs["override_options"].ignore_global_filters)
+
+    def test_ignore_global_filters_kebab_case(self):
+        from unittest.mock import patch
+        with patch("workers.client.enqueue") as mock_enqueue:
+            response = self._post_json_parser(
+                {
+                    "operation": "webcrawler",
+                    "args": {
+                        "links": ["https://example.com/test1"],
+                        "ignore-global-filters": True,
+                    },
+                }
+            )
+            self.assertEqual(response.status_code, 200)
+            mock_enqueue.assert_called_once()
+            call_kwargs = mock_enqueue.call_args.kwargs
+            self.assertIn("--ignore-global-filters", call_kwargs["args"])
+            self.assertTrue(call_kwargs["override_options"].ignore_global_filters)
+
+    def test_ignore_global_filters_top_level_flag(self):
+        from unittest.mock import patch
+        with patch("workers.client.enqueue") as mock_enqueue:
+            response = self._post_json_parser(
+                {
+                    "operation": "webcrawler",
+                    "args": ["https://example.com/test1"],
+                    "ignore_global_filters": True,
+                }
+            )
+            self.assertEqual(response.status_code, 200)
+            mock_enqueue.assert_called_once()
+            call_kwargs = mock_enqueue.call_args.kwargs
+            self.assertIn("--ignore-global-filters", call_kwargs["args"])
+            self.assertTrue(call_kwargs["override_options"].ignore_global_filters)
+
+    def test_ignore_global_filters_with_downloader(self):
+        from unittest.mock import patch
+        with patch("workers.client.enqueue") as mock_enqueue:
+            response = self._post_json_parser(
+                {
+                    "operation": "webcrawler",
+                    "args": {
+                        "link": "https://example.com/test1",
+                        "downloader": "fake",
+                        "ignore_global_filters": True,
+                    },
+                }
+            )
+            self.assertEqual(response.status_code, 200)
+            mock_enqueue.assert_called_once()
+            call_kwargs = mock_enqueue.call_args.kwargs
+            self.assertIn("--ignore-global-filters", call_kwargs["args"])
+            self.assertTrue(call_kwargs["override_options"].ignore_global_filters)
+
+    def test_ignore_global_filters_other_operations(self):
+        from unittest.mock import patch
+        with patch("workers.client.enqueue") as mock_enqueue:
+            # Operation: links
+            response = self._post_json_parser(
+                {
+                    "operation": "links",
+                    "args": ["https://example.com/link1"],
+                    "ignore_global_filters": True,
+                }
+            )
+            self.assertEqual(response.status_code, 200)
+            call_kwargs = mock_enqueue.call_args.kwargs
+            self.assertIn("--ignore-global-filters", call_kwargs["args"])
+            self.assertTrue(call_kwargs["override_options"].ignore_global_filters)
+
+            mock_enqueue.reset_mock()
+            # Operation: force_queue_archives
+            response = self._post_json_parser(
+                {
+                    "operation": "force_queue_archives",
+                    "args": ["https://example.com/fq1"],
+                    "ignore_global_filters": True,
+                }
+            )
+            self.assertEqual(response.status_code, 200)
+            call_kwargs = mock_enqueue.call_args.kwargs
+            self.assertIn("--ignore-global-filters", call_kwargs["args"])
+            self.assertTrue(call_kwargs["override_options"].ignore_global_filters)
+
 
 class OperationalFixesTest(TestCase):
     @classmethod

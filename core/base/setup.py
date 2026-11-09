@@ -119,6 +119,7 @@ from core.base.config_models import (
     PandaGalleryConfig,
     PushoverSettings,
     RemoteSiteSettings,
+    RetentionSettings,
     TorrentSettings,
     UrlSettings,
     WebServerSettings,
@@ -218,6 +219,8 @@ class Settings:
 
         self.monitored_links = MonitoredLinksSettings()
 
+        self.retention = RetentionSettings()
+
         self.filename_filter = ["*.zip"]
 
         self.retry_failed = False
@@ -263,6 +266,7 @@ class Settings:
         self.banned_tags: list[str] = []
         self.banned_uploaders: list[str] = []
         self.banned_search_queries: list[str] = []
+        self.ignore_global_filters: bool = False
 
         self.matchers: dict[str, int] = {}
         self.downloaders: dict[str, int] = {}
@@ -712,6 +716,7 @@ class Settings:
             self.banned_tags = list(self.general_model.banned_tags)
             self.banned_uploaders = list(self.general_model.banned_uploaders)
             self.banned_search_queries = list(self.general_model.banned_search_queries)
+            self.ignore_global_filters = getattr(self.general_model, "ignore_global_filters", False)
             self.add_as_public = self.general_model.add_as_public
             self.mark_similar_new_archives = self.general_model.mark_similar_new_archives
             self.auto_hash_images = self.general_model.auto_hash_images
@@ -838,6 +843,8 @@ class Settings:
             self.remote_site = self.remote_site_model.to_dict()
         if "monitored_links" in config and isinstance(config["monitored_links"], dict):
             self.monitored_links.update_from_dict(config["monitored_links"])
+        if "retention" in config and isinstance(config["retention"], dict):
+            self.retention.update_from_dict(config["retention"])
 
         for provider_name, parse_config in self.provider_context.settings_parsers:
             if "providers" in config and provider_name in config["providers"] and config["providers"][provider_name] is not None:

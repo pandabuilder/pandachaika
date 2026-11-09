@@ -37,6 +37,9 @@ class GeneralUtils:
         discarded = False
         reasons: list[str] = []
 
+        if getattr(self.settings, "ignore_global_filters", False):
+            return discarded, reasons
+
         if not force_check and self.settings.update_metadata_mode:
             return discarded, reasons
         if tag_list is not None and self.settings.banned_tags:

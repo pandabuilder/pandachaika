@@ -889,6 +889,15 @@ class Gallery(models.Model):
     def is_denied(self) -> bool:
         return self.status == self.StatusChoices.DENIED
 
+    def is_replaced(self) -> bool:
+        if not self.pk:
+            return False
+        if Gallery.objects.filter(Q(parent_gallery=self) | Q(first_gallery=self)).exclude(pk=self.pk).exists():
+            return True
+        if self.first_gallery and not self.get_es_last_in_chain():
+            return True
+        return False
+
     # Kinda not optimal
     def is_submitted(self) -> bool:
         return (

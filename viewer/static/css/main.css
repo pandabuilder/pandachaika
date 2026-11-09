@@ -19,6 +19,16 @@ textarea,
   color: lightgrey;
 }
 
+.form-check-label {
+  color: lightgrey;
+}
+
+.form-text,
+.form-text.text-muted,
+.text-muted {
+  color: lightgrey !important;
+}
+
 body a {
   text-decoration: none;
   color: rgb(54, 176, 249);

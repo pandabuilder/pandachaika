@@ -223,6 +223,7 @@ urlpatterns += [
     path("stats/workers/", admin.stats_workers, name="stats-workers"),
     re_path(r"^stats/workers$", admin.stats_workers),
     path("stats/settings/", admin.stats_settings, name="stats-settings"),
+    path("database/maintenance/", admin.database_maintenance, name="database-maintenance"),
     path("web-queue/<str:operation>/<str:arguments>/", admin.queue_operations, name="queue-operations"),
     re_path(r"^web-queue/(?P<operation>[\w-]+)/(?P<arguments>[\w-]+)$", admin.queue_operations),
     path("web-crawler/", admin.crawler, name="crawler"),

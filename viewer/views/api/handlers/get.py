@@ -292,7 +292,11 @@ def handle_get_gallery(request: HttpRequest, data: QueryDict, user_is_authentica
             "url": reverse("viewer:gallery", args=(gallery.pk,)),
             "tags": gallery.tag_list(),
             "archives": [
-                {"id": archive.id, "download": reverse("viewer:archive-download", args=(archive.pk,))}
+                {
+                    "id": archive.id,
+                    "download": reverse("viewer:archive-download", args=(archive.pk,)),
+                    "recycled": archive.is_recycled(),
+                }
                 for archive in gallery.archive_set.filter_by_authenticated_status(authenticated=user_is_authenticated)
             ],
         },
@@ -319,13 +323,19 @@ def _gallery_by_gid_to_json(gallery: Gallery, user_is_authenticated: bool) -> di
         "filesize": gallery.filesize,
         "expunged": gallery.expunged,
         "disowned": gallery.disowned,
+        "hidden": gallery.hidden,
+        "replaced": gallery.is_replaced(),
         "rating": float(str_to_int(gallery.rating)),
         "fjord": gallery.fjord,
         "link": gallery.get_link(),
         "url": reverse("viewer:gallery", args=(gallery.pk,)),
         "tags": gallery.tag_list(),
         "archives": [
-            {"id": archive.id, "download": reverse("viewer:archive-download", args=(archive.pk,))}
+            {
+                "id": archive.id,
+                "download": reverse("viewer:archive-download", args=(archive.pk,)),
+                "recycled": archive.is_recycled(),
+            }
             for archive in gallery.archive_set.filter_by_authenticated_status(authenticated=user_is_authenticated)
         ],
     }

@@ -296,7 +296,7 @@
               {% endif %}
             </td>
             <td>
-              {{ monitored_link.stop_page|default:"-" }}
+              {{ monitored_link.stop_page|default_if_none:"-" }}
             </td>
             <td class="small">
                 {% if sched and sched.last_run %}

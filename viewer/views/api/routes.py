@@ -196,16 +196,27 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                     response["error"] = "No links provided"
                     return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
 
+                ignore_global_filters = bool(
+                    args.get("ignore_global_filters")
+                    or args.get("ignore-global-filters")
+                    or data.get("ignore_global_filters")
+                    or data.get("ignore-global-filters")
+                )
+
                 if "downloader" in args:
                     current_settings = Settings(load_from_config=crawler_settings.config)
                     current_settings.allow_downloaders_only([args["downloader"]], True, True, True)
                     parsers = current_settings.provider_context.get_parsers(current_settings)
                     current_settings.archive_user = actual_user
                     current_settings.archive_origin = Archive.ORIGIN_ADD_URL
+                    extra_args = []
+                    if ignore_global_filters:
+                        current_settings.ignore_global_filters = True
+                        extra_args.append("--ignore-global-filters")
 
                     existing_archives = _find_existing_archives_count(parsers, links)
                     client.enqueue(
-                        args=links,
+                        args=links + extra_args,
                         task_type="web_crawler",
                         override_options=current_settings,
                         user=actual_user,
@@ -236,6 +247,9 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                     if reason:
                         extra_args.extend(["-reason", reason])
                         current_settings.archive_reason = reason
+                    if ignore_global_filters:
+                        current_settings.ignore_global_filters = True
+                        extra_args.append("--ignore-global-filters")
 
                     handled_parent = False
                     if "parentLink" in args and args["parentLink"]:
@@ -352,12 +366,16 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                         current_settings.archive_reason = data["archive_reason"]
                     if "archive_details" in data:
                         current_settings.archive_details = data["archive_details"]
+                    extra_args = []
+                    if data.get("ignore_global_filters") or data.get("ignore-global-filters"):
+                        current_settings.ignore_global_filters = True
+                        extra_args.append("--ignore-global-filters")
                     current_settings.allow_type_downloaders_only("fake")
                     current_settings.set_enable_download()
                     current_settings.archive_user = actual_user
                     current_settings.archive_origin = Archive.ORIGIN_ADD_URL
                     client.enqueue(
-                        args=pages_links,
+                        args=pages_links + extra_args,
                         task_type="web_crawler",
                         override_options=current_settings,
                         user=actual_user,
@@ -411,6 +429,10 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                 pages_links = list(new_urls_set)
                 if len(pages_links) > 0:
                     current_settings = Settings(load_from_config=crawler_settings.config)
+                    extra_args = []
+                    if data.get("ignore_global_filters") or data.get("ignore-global-filters"):
+                        current_settings.ignore_global_filters = True
+                        extra_args.append("--ignore-global-filters")
                     if data["operation"] == "queue_galleries":
                         current_settings.allow_type_downloaders_only("info")
                     elif data["operation"] == "queue_archives":
@@ -422,7 +444,7 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                     current_settings.archive_user = actual_user
                     current_settings.archive_origin = Archive.ORIGIN_ADD_URL
                     client.enqueue(
-                        args=pages_links,
+                        args=pages_links + extra_args,
                         task_type="web_crawler",
                         override_options=current_settings,
                         user=actual_user,
@@ -434,7 +456,18 @@ def json_parser(request: HttpRequest) -> HttpResponse:
             elif data["operation"] == "links":
                 links = args
                 if len(links) > 0:
-                    client.enqueue(args=links, task_type="web_crawler", user=actual_user)
+                    extra_args = []
+                    override_options = None
+                    if data.get("ignore_global_filters") or data.get("ignore-global-filters"):
+                        override_options = Settings(load_from_config=crawler_settings.config)
+                        override_options.ignore_global_filters = True
+                        extra_args.append("--ignore-global-filters")
+                    client.enqueue(
+                        args=links + extra_args,
+                        task_type="web_crawler",
+                        override_options=override_options,
+                        user=actual_user,
+                    )
                 return HttpResponse(
                     json.dumps({"result": str(len(links))}), content_type="application/json; charset=utf-8"
                 )

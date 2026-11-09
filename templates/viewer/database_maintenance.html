@@ -1,0 +1,493 @@
+{% extends "viewer/base.html" %}
+{% block title %}Database Maintenance & Retention | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+
+{% block extra_head %}
+<style>
+  :root {
+    --pg-bg-darkest: #001122;
+    --pg-bg-card: #001a4c;
+    --pg-bg-card-header: #002855;
+    --pg-border: #17428b;
+    --pg-border-subtle: #123066;
+    --pg-text-primary: #e6edf3;
+    --pg-text-secondary: #8ba4be;
+    --pg-accent-blue: #36b0f9;
+    --pg-accent-green: #28a745;
+  }
+
+  .dm-card {
+    border-radius: 8px;
+    border: 1px solid var(--pg-border);
+    background: var(--pg-bg-card);
+    color: var(--pg-text-primary);
+    box-shadow: 0 4px 12px rgba(0, 17, 34, 0.4);
+    margin-bottom: 1.5rem;
+  }
+  .dm-card .card-header {
+    background: var(--pg-bg-card-header);
+    border-bottom: 1px solid var(--pg-border);
+    font-weight: 600;
+  }
+  .dm-val {
+    font-size: 1.75rem;
+    font-weight: 700;
+    line-height: 1.1;
+  }
+  .dm-lbl {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--pg-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .table-dm {
+    --bs-table-color: var(--pg-text-primary);
+    --bs-table-bg: var(--pg-bg-card);
+    --bs-table-hover-color: var(--pg-text-primary);
+    --bs-table-hover-bg: #0c3268;
+    color: var(--pg-text-primary);
+    border-color: var(--pg-border-subtle);
+  }
+  .table-dm th {
+    background: var(--pg-bg-card-header);
+    color: var(--pg-text-secondary);
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    border-color: var(--pg-border);
+  }
+  .table-dm td {
+    background: var(--pg-bg-card);
+    color: var(--pg-text-primary);
+    border-color: var(--pg-border-subtle);
+    vertical-align: middle;
+  }
+  .table-dm.table-hover > tbody > tr:hover > * {
+    --bs-table-hover-color: var(--pg-text-primary);
+    --bs-table-hover-bg: #0c3268;
+    background-color: #0c3268 !important;
+    color: var(--pg-text-primary) !important;
+  }
+  .table-dm.table-hover > tbody > tr:hover strong,
+  .table-dm.table-hover > tbody > tr:hover span:not(.badge),
+  .table-dm.table-hover > tbody > tr:hover div {
+    color: inherit;
+  }
+  .table-dm.table-hover > tbody > tr:hover .text-muted {
+    color: var(--pg-text-secondary) !important;
+  }
+  .table-dm.table-hover > tbody > tr:hover .text-info {
+    color: var(--pg-accent-blue) !important;
+  }
+  .table-dm.table-hover > tbody > tr:hover .text-success {
+    color: #4cd964 !important;
+  }
+  .table-dm.table-hover > tbody > tr:hover code {
+    background-color: #001a4c;
+    color: #90caf9;
+  }
+  .table-dm code {
+    color: #90caf9;
+    background-color: #001122;
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--pg-border-subtle);
+  }
+  .badge-prunable {
+    font-size: 0.9rem;
+    padding: 0.35em 0.65em;
+  }
+  .action-btn-group .btn {
+    margin-right: 0.25rem;
+    margin-bottom: 0.25rem;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% else %}alert-info{% endif %} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  <!-- Header -->
+  <div class="d-flex justify-content-between align-items-center mb-4 pb-2 border-bottom border-secondary">
+    <div>
+      <h2 class="h3 text-light mb-1">
+        <i class="fas fa-database text-info me-2"></i>Database Maintenance & Retention
+      </h2>
+      <p class="text-muted mb-0 small">
+        Monitor database entity row counts, manage retention horizons, and trigger background cleanup operations.
+        Current server time: {% now "Y-m-d H:i:s T" %}
+      </p>
+    </div>
+    <div>
+      <a href="{% url 'viewer:stats-workers' %}" class="btn btn-outline-info btn-sm me-2">
+        <i class="fas fa-tasks me-1"></i>Workers Dashboard
+      </a>
+      <a href="{% url 'viewer:logs' %}" class="btn btn-outline-secondary btn-sm">
+        <i class="fas fa-file-alt me-1"></i>Server Logs
+      </a>
+    </div>
+  </div>
+
+  <!-- Top Metrics Cards -->
+  <div class="row g-3 mb-4">
+    <!-- DB Info Card -->
+    <div class="col-md-4">
+      <div class="dm-card h-100 p-3">
+        <div class="dm-lbl mb-2"><i class="fas fa-server me-1"></i>Database Storage & Engine</div>
+        <div class="dm-val text-info mb-1">{{ db_info.db_size }}</div>
+        <div class="small text-muted mb-2">Total Database Size on Disk</div>
+        <hr class="my-2 border-secondary">
+        <div class="small">
+          <div><strong class="text-light">Vendor:</strong> {{ db_info.vendor|title }} ({{ db_info.engine|slice:":30" }})</div>
+          <div><strong class="text-light">Database:</strong> {{ db_info.name }} @ {{ db_info.host }}:{{ db_info.port }}</div>
+          <div><strong class="text-light">Version:</strong> {{ db_info.version|truncatechars:45 }}</div>
+          <div><strong class="text-light">Pooling:</strong> {% if db_info.pooling %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Disabled</span>{% endif %} (CONN_MAX_AGE: {{ db_info.conn_max_age|default:"None" }})</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scheduled Pruner Card -->
+    <div class="col-md-4">
+      <div class="dm-card h-100 p-3">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+          <div class="dm-lbl"><i class="fas fa-clock me-1"></i>Scheduled Auto-Pruner</div>
+          {% if scheduler_state and scheduler_state.is_running %}
+            <span class="badge bg-success"><i class="fas fa-check-circle me-1"></i>Running</span>
+          {% else %}
+            <span class="badge bg-secondary"><i class="fas fa-pause-circle me-1"></i>Stopped</span>
+          {% endif %}
+        </div>
+        <div class="dm-val text-warning mb-1">
+          {% if retention %}{{ retention.schedule_interval_hours }}h{% else %}24h{% endif %}
+        </div>
+        <div class="small text-muted mb-2">Scheduled Execution Interval</div>
+        <hr class="my-2 border-secondary">
+        <div class="small mb-3">
+          <div><strong class="text-light">Auto-Prune Config:</strong>
+            {% if retention and retention.enabled %}
+              <span class="badge bg-success">Enabled</span>
+            {% else %}
+              <span class="badge bg-secondary">Disabled in config</span>
+            {% endif %}
+          </div>
+          <div><strong class="text-light">Last Run:</strong> {{ scheduler_state.last_run|default:"Never" }}</div>
+          <div><strong class="text-light">Next Run:</strong> {{ scheduler_state.next_run|default:"Not scheduled" }}</div>
+        </div>
+        <div class="d-flex gap-2">
+          <form method="post" action="{% url 'viewer:database-maintenance' %}" class="d-inline">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="scheduler_control">
+            <input type="hidden" name="command" value="force_run">
+            <button type="submit" class="btn btn-sm btn-outline-warning" title="Trigger immediate scheduled cycle">
+              <i class="fas fa-play me-1"></i>Force Run Now
+            </button>
+          </form>
+          {% if scheduler_state and scheduler_state.is_running %}
+            <form method="post" action="{% url 'viewer:database-maintenance' %}" class="d-inline">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="scheduler_control">
+              <input type="hidden" name="command" value="stop">
+              <button type="submit" class="btn btn-sm btn-outline-danger">
+                <i class="fas fa-stop me-1"></i>Stop
+              </button>
+            </form>
+          {% else %}
+            <form method="post" action="{% url 'viewer:database-maintenance' %}" class="d-inline">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="scheduler_control">
+              <input type="hidden" name="command" value="start">
+              <button type="submit" class="btn btn-sm btn-outline-success">
+                <i class="fas fa-play-circle me-1"></i>Start
+              </button>
+            </form>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Health & Prunable Summary -->
+    <div class="col-md-4">
+      <div class="dm-card h-100 p-3">
+        <div class="dm-lbl mb-2"><i class="fas fa-broom me-1"></i>Pruning Overview</div>
+        <div class="dm-val {% if total_prunable > 0 %}text-danger{% else %}text-success{% endif %} mb-1">
+          {{ total_prunable }}
+        </div>
+        <div class="small text-muted mb-2">Prunable Rows Eligible Across Entities</div>
+        <hr class="my-2 border-secondary">
+        <div class="small mb-3">
+          <div><strong class="text-light">Total Monitored Rows:</strong> {{ total_rows }}</div>
+          <div><strong class="text-light">Monitored Entities:</strong> {{ entities|length }} models</div>
+          <div><strong class="text-light">Batch Chunk Size:</strong> {{ retention.chunk_size|default:5000 }} rows</div>
+        </div>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#pruneAllModal">
+            <i class="fas fa-broom me-1"></i>Prune All Eligible
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Entity Overview Table Card -->
+  <div class="dm-card">
+    <div class="card-header d-flex justify-content-between align-items-center py-2 px-3">
+      <span class="text-light"><i class="fas fa-table me-2"></i>Monitored Database Entities</span>
+      <span class="small text-muted">Rows older than retention threshold are eligible for pruning</span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-dm table-hover mb-0">
+        <thead>
+          <tr>
+            <th>Entity / Model</th>
+            <th>Table & Size</th>
+            <th class="text-end">Total Rows</th>
+            <th>Retention Policy</th>
+            <th class="text-end">Prunable Rows</th>
+            <th>Date Range</th>
+            <th class="text-center">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for entity in entities %}
+            <tr>
+              <td>
+                <strong class="text-info">{{ entity.label }}</strong>
+                <div class="small text-muted">{{ entity.description }}</div>
+              </td>
+              <td>
+                <code>{{ entity.table_name }}</code>
+                {% if entity.table_size != "N/A" %}
+                  <div class="small text-muted">{{ entity.table_size }}</div>
+                {% endif %}
+              </td>
+              <td class="text-end font-monospace">
+                <strong class="text-light">{{ entity.total_count }}</strong>
+                {% if entity.active_count is not None %}
+                  <div class="small text-success">{{ entity.active_count }} active</div>
+                {% endif %}
+              </td>
+              <td>
+                {% if entity.retention_days > 0 %}
+                  <span class="badge bg-primary">{{ entity.retention_days }} days</span>
+                  <div class="small text-muted">{{ entity.policy }}</div>
+                {% else %}
+                  <span class="badge bg-secondary">Disabled (0d)</span>
+                {% endif %}
+              </td>
+              <td class="text-end font-monospace">
+                {% if entity.prunable_count > 0 %}
+                  <span class="badge bg-danger badge-prunable">{{ entity.prunable_count }}</span>
+                {% else %}
+                  <span class="badge bg-secondary badge-prunable">0</span>
+                {% endif %}
+              </td>
+              <td class="small">
+                {% if entity.oldest_timestamp %}
+                  <div><span class="text-muted">Oldest:</span> <span class="text-light">{{ entity.oldest_timestamp|date:"Y-m-d" }}</span></div>
+                {% endif %}
+                {% if entity.newest_timestamp %}
+                  <div><span class="text-muted">Newest:</span> <span class="text-light">{{ entity.newest_timestamp|date:"Y-m-d" }}</span></div>
+                {% endif %}
+                {% if not entity.oldest_timestamp and not entity.newest_timestamp %}
+                  <span class="text-muted">Empty</span>
+                {% endif %}
+              </td>
+              <td class="text-center">
+                <button type="button" class="btn btn-outline-warning btn-sm"
+                        data-bs-toggle="modal" data-bs-target="#pruneEntityModal{{ entity.key }}">
+                  <i class="fas fa-trash-alt me-1"></i>Prune
+                </button>
+              </td>
+            </tr>
+
+            <!-- Modal for Entity Pruning -->
+            <div class="modal fade" id="pruneEntityModal{{ entity.key }}" tabindex="-1" aria-labelledby="modalLabel{{ entity.key }}" aria-hidden="true">
+              <div class="modal-dialog">
+                <div class="modal-content bg-dark text-light border border-secondary">
+                  <form method="post" action="{% url 'viewer:database-maintenance' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="entity" value="{{ entity.key }}">
+                    <div class="modal-header border-secondary">
+                      <h5 class="modal-title" id="modalLabel{{ entity.key }}">
+                        <i class="fas fa-trash-alt text-warning me-2"></i>Prune {{ entity.label }}
+                      </h5>
+                      <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                      <p>
+                        Configure pruning options for <strong>{{ entity.label }}</strong>.
+                        Currently <strong>{{ entity.prunable_count }}</strong> rows are eligible based on the default threshold of
+                        <strong>{{ entity.retention_days }} days</strong>.
+                      </p>
+                      <div class="mb-3">
+                        <label class="form-label text-light">Retention Days Override:</label>
+                        <input type="number" name="days" class="form-control" value="{{ entity.retention_days }}" min="1" max="3650">
+                        <div class="form-text text-muted">Rows older than this many days will be pruned.</div>
+                      </div>
+                      <div class="mb-3 form-check">
+                        <input type="checkbox" name="dry_run" value="1" class="form-check-input" id="dryRun{{ entity.key }}">
+                        <label class="form-check-label text-light" for="dryRun{{ entity.key }}">
+                          Dry Run (simulate without deleting)
+                        </label>
+                      </div>
+                      <div class="mb-3">
+                        <label class="form-label text-light">Execution Mode:</label>
+                        <div class="form-check">
+                          <input class="form-check-input" type="radio" name="action" id="execBg{{ entity.key }}" value="prune_background" checked>
+                          <label class="form-check-label text-light" for="execBg{{ entity.key }}">
+                            Background Task (Recommended - non-blocking, dispatched to worker queue)
+                          </label>
+                        </div>
+                        <div class="form-check">
+                          <input class="form-check-input" type="radio" name="action" id="execNow{{ entity.key }}" value="prune_immediate">
+                          <label class="form-check-label text-light" for="execNow{{ entity.key }}">
+                            Immediate (Synchronous web request)
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="modal-footer border-secondary">
+                      <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                      <button type="submit" class="btn btn-warning">
+                        <i class="fas fa-play me-1"></i>Run Pruning
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Prune All Modal -->
+  <div class="modal fade" id="pruneAllModal" tabindex="-1" aria-labelledby="pruneAllModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content bg-dark text-light border border-secondary">
+        <form method="post" action="{% url 'viewer:database-maintenance' %}">
+          {% csrf_token %}
+          <input type="hidden" name="entity" value="all">
+          <div class="modal-header border-secondary">
+            <h5 class="modal-title" id="pruneAllModalLabel">
+              <i class="fas fa-broom text-primary me-2"></i>Prune All Eligible Entities
+            </h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <p>
+              This operation will prune all entities according to their configured retention horizons:
+            </p>
+            <ul>
+              {% for entity in entities %}
+                {% if entity.retention_days > 0 %}
+                  <li><strong>{{ entity.label }}:</strong> older than {{ entity.retention_days }} days ({{ entity.prunable_count }} prunable)</li>
+                {% endif %}
+              {% endfor %}
+            </ul>
+            <div class="mb-3 form-check">
+              <input type="checkbox" name="dry_run" value="1" class="form-check-input" id="dryRunAll">
+              <label class="form-check-label text-light" for="dryRunAll">
+                Dry Run (simulate without deleting)
+              </label>
+            </div>
+            <div class="mb-3">
+              <label class="form-label text-light">Execution Mode:</label>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="action" id="execBgAll" value="prune_background" checked>
+                <label class="form-check-label text-light" for="execBgAll">
+                  Background Task (Recommended - non-blocking, dispatched to worker queue)
+                </label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="action" id="execNowAll" value="prune_immediate">
+                <label class="form-check-label text-light" for="execNowAll">
+                  Immediate (Synchronous web request)
+                </label>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer border-secondary">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary">
+              <i class="fas fa-broom me-1"></i>Start Pruning
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent Maintenance Tasks Card -->
+  <div class="dm-card mt-4">
+    <div class="card-header d-flex justify-content-between align-items-center py-2 px-3">
+      <span class="text-light"><i class="fas fa-history me-2"></i>Recent Database Maintenance Tasks</span>
+      <span class="small text-muted">Latest background worker pruning jobs</span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-dm table-hover mb-0">
+        <thead>
+          <tr>
+            <th>Task #</th>
+            <th>Type</th>
+            <th>Status</th>
+            <th>Initiated By</th>
+            <th>Target & Options</th>
+            <th>Created</th>
+            <th>Finished</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for task in recent_tasks %}
+            <tr>
+              <td><code>#{{ task.pk }}</code></td>
+              <td><span class="badge bg-info text-dark">{{ task.task_type }}</span></td>
+              <td>
+                {% if task.status == "completed" %}
+                  <span class="badge bg-success">Completed</span>
+                {% elif task.status == "processing" %}
+                  <span class="badge bg-warning text-dark">Processing</span>
+                {% elif task.status == "failed" %}
+                  <span class="badge bg-danger">Failed</span>
+                {% elif task.status == "cancelled" %}
+                  <span class="badge bg-secondary">Cancelled</span>
+                {% else %}
+                  <span class="badge bg-light text-dark">Pending</span>
+                {% endif %}
+              </td>
+              <td>{{ task.user.username|default:"System" }}</td>
+              <td class="small">
+                {% if task.override_options %}
+                  Target: <code>{{ task.override_options.entity|default:"all" }}</code>
+                  {% if task.override_options.dry_run %}<span class="badge bg-warning text-dark ms-1">Dry Run</span>{% endif %}
+                {% else %}
+                  <span class="text-muted">Standard options</span>
+                {% endif %}
+              </td>
+              <td class="small text-muted">{{ task.created_at|date:"Y-m-d H:i:s" }}</td>
+              <td class="small text-muted">{{ task.finished_at|date:"Y-m-d H:i:s"|default:"-" }}</td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="7" class="text-center text-muted py-3">
+                No database pruning tasks recorded yet. Use the buttons above to enqueue maintenance jobs.
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

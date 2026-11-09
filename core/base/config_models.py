@@ -242,6 +242,10 @@ class GeneralSettings(BaseConfigModel):
         ],
         description="Elasticsearch DSL query filters. Galleries matching these queries in the match index are automatically discarded.",
     )
+    ignore_global_filters: bool = Field(
+        default=False,
+        description="Ignore banned tags, banned uploaders, and banned search queries when crawling.",
+    )
     add_as_public: bool = Field(
         default=False,
         description="Automatically mark all newly discovered or downloaded galleries as public (visible to anonymous guests).",
@@ -999,6 +1003,47 @@ class ArchiveDownloadQueueSettings(BaseConfigModel):
     )
 
 
+class RetentionSettings(BaseConfigModel):
+    """Database retention and automated pruning settings."""
+
+    enabled: bool = Field(
+        default=False,
+        description="Enable automatic periodic database pruning scheduler.",
+    )
+    schedule_interval_hours: float = Field(
+        default=24.0,
+        description="Cycle timer in hours between automatic pruning runs.",
+    )
+    task_queue_days: int = Field(
+        default=30,
+        description="Retention in days for completed, failed, and cancelled background tasks (0 to disable).",
+    )
+    download_event_days: int = Field(
+        default=30,
+        description="Retention in days for finished and failed download events (0 to disable).",
+    )
+    event_log_days: int = Field(
+        default=90,
+        description="Retention in days for activity event logs (0 to disable).",
+    )
+    status_log_days: int = Field(
+        default=30,
+        description="Retention in days for application server status logs (0 to disable).",
+    )
+    processed_links_days: int = Field(
+        default=180,
+        description="Retention in days for crawler processed links history (0 to disable).",
+    )
+    history_days: int = Field(
+        default=90,
+        description="Retention in days for django-simple-history records (0 to disable).",
+    )
+    chunk_size: int = Field(
+        default=5000,
+        description="Batch size for batch deletions to prevent database locking.",
+    )
+
+
 # ============================================================================
 # Provider Models
 # ============================================================================
@@ -1363,6 +1408,10 @@ class PandaGalleryConfig(BaseConfigModel):
     archive_download_queue: ArchiveDownloadQueueSettings | None = Field(
         default_factory=ArchiveDownloadQueueSettings,
         description="Background archive download queue scheduler settings.",
+    )
+    retention: RetentionSettings = Field(
+        default_factory=RetentionSettings,
+        description="Database retention and automated pruning configuration.",
     )
     experimental: dict[str, Any] = Field(
         default_factory=dict,

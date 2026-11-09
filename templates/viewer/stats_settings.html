@@ -1,5 +1,5 @@
 {% extends "viewer/base.html" %}
-{% block title %}Settings | {{ block.super }}{% endblock %}
+{% block title %}Configuration | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
 
 {% block content %}
@@ -10,10 +10,10 @@
     {% endfor %}
   {% endif %}
 
-  <!-- Stats  -->
+  <!-- Configuration -->
   <div class="page-header">
-    <h2>Settings</h2>
-    <p class="lead">View settings objects, mainly as a debug tool. Current server time: {% now "y-m-d, H:i:s" %}</p>
+    <h2>System Configuration</h2>
+    <p class="lead">View active application settings and provider configurations. Current server time: {% now "Y-m-d, H:i:s" %}</p>
   </div>
   <h3>Current global settings</h3>
   <table class="table table-striped">

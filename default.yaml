@@ -853,6 +853,47 @@ monitored_links:
   enable: false
 
 # ------------------------------------------------------------------------------
+# Database Retention and Pruning Subsystem
+# Configurable retention horizons (in days) and automated periodic pruning.
+# ------------------------------------------------------------------------------
+retention:
+  # Enable automatic periodic database pruning scheduler.
+  # Default: false
+  enabled: false
+
+  # Interval (in hours) between automatic prune runs when enabled.
+  # Default: 24.0 (runs once every 24 hours)
+  schedule_interval_hours: 24.0
+
+  # Days to retain finished, failed, or cancelled background tasks (TaskQueue).
+  # 0 to disable pruning for this entity. Default: 30
+  task_queue_days: 30
+
+  # Days to retain completed or failed download events (DownloadEvent).
+  # 0 to disable pruning for this entity. Default: 30
+  download_event_days: 30
+
+  # Days to retain user and system activity event logs (EventLog).
+  # 0 to disable pruning for this entity. Default: 90
+  event_log_days: 90
+
+  # Days to retain server application status logs (StatusLog).
+  # 0 to disable pruning for this entity. Default: 30
+  status_log_days: 30
+
+  # Days to retain crawler processed URLs history (ProcessedLinks).
+  # 0 to disable pruning for this entity. Default: 180
+  processed_links_days: 180
+
+  # Days to retain django-simple-history revision snapshots (HistoricalArchive/Gallery).
+  # 0 to disable pruning for this entity. Default: 90
+  history_days: 90
+
+  # Maximum rows deleted per batch transaction to avoid database locks.
+  # Default: 5000
+  chunk_size: 5000
+
+# ------------------------------------------------------------------------------
 # Per-Provider Settings
 # Individual configurations, credentials, API limits, and directories per provider.
 # All provider settings must be nested under the 'providers' key.

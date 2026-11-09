@@ -70,6 +70,8 @@ curl "https://example.chaika.moe/api/?gid=1234567&provider=panda" \
   "filesize": 12453880,
   "expunged": false,
   "disowned": false,
+  "hidden": false,
+  "replaced": false,
   "rating": 4.5,
   "fjord": false,
   "link": "https://exhentai.org/g/1234567/abcdef/",
@@ -82,7 +84,8 @@ curl "https://example.chaika.moe/api/?gid=1234567&provider=panda" \
   "archives": [
     {
       "id": 42,
-      "download": "/archive/42/download/"
+      "download": "/archive/42/download/",
+      "recycled": false
     }
   ]
 }
@@ -131,6 +134,8 @@ Returns a JSON array of gallery objects (same schema as `gid`, including `id` an
     "id": 101,
     "gid": "1234567",
     "title": "Example Title 1",
+    "hidden": false,
+    "replaced": true,
     "link": "https://...",
     "url": "/gallery/101/",
     "tags": ["language:english"],
@@ -140,10 +145,12 @@ Returns a JSON array of gallery objects (same schema as `gid`, including `id` an
     "id": 102,
     "gid": "7654321",
     "title": "Example Title 2",
+    "hidden": false,
+    "replaced": false,
     "link": "https://...",
     "url": "/gallery/102/",
     "tags": ["female:nekomimi"],
-    "archives": [{"id": 42, "download": "/archive/42/download/"}]
+    "archives": [{"id": 42, "download": "/archive/42/download/", "recycled": false}]
   }
 ]
 ```
@@ -379,6 +386,8 @@ These query parameters can be passed to `g`, `gc`, `gs`, `gsp`, and `match`:
 | `filesize` | `integer` | Total filesize in bytes |
 | `expunged` | `boolean` | Indicates if the gallery was deleted/expunged on the provider site |
 | `disowned` | `boolean` | Indicates if the gallery was disowned by its uploader |
+| `hidden` | `boolean` | Indicates if the gallery is marked as hidden |
+| `replaced` | `boolean` | Calculated field indicating whether this gallery has been replaced by a newer version in a chain (i.e. other galleries reference this gallery as `parent_gallery` or `first_gallery`) |
 | `rating` | `float` / `string` | Average user rating (0.0 to 5.0) |
 | `fjord` | `boolean` | Internal flagging status |
 | `provider` / `source` | `string` | Provider slug |

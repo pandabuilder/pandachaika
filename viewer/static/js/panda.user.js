@@ -238,7 +238,7 @@ function displayModalConfirm(message, cbOK, cbNO) {
 
 }
 
-function sendWebCrawlerAction(link, parentLink, action, reason) {
+function sendWebCrawlerAction(link, parentLink, action, reason, ignoreGlobalFilters = false) {
 
     var data = { operation: 'webcrawler', args: { link: link, action: action } };
 
@@ -248,6 +248,10 @@ function sendWebCrawlerAction(link, parentLink, action, reason) {
 
     if (reason !== null) {
         data.args.reason = reason;
+    }
+
+    if (ignoreGlobalFilters) {
+        data.args.ignore_global_filters = true;
     }
 
     const token = GM_getValue("activeUserToken", '');

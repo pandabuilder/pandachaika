@@ -675,6 +675,8 @@ class RegistryApiGalleryEndpointsTests(BaseRegistryApiMixin, TestCase):
         self.assertEqual(data["url"], reverse("viewer:gallery", args=(self.gallery_pub.pk,)))
         self.assertEqual(len(data["archives"]), 1)
         self.assertEqual(data["archives"][0]["id"], self.archive_pub.pk)
+        self.assertEqual(data["archives"][0]["download"], reverse("viewer:archive-download", args=(self.archive_pub.pk,)))
+        self.assertEqual(data["archives"][0]["recycled"], False)
 
     def test_get_gallery_private_anon_404(self):
         response = self._api_get(self.anon_client, gallery=self.gallery_priv.pk)
@@ -704,6 +706,10 @@ class RegistryApiGalleryEndpointsTests(BaseRegistryApiMixin, TestCase):
         self.assertEqual(data["gid"], "30001")
         self.assertEqual(data["url"], reverse("viewer:gallery", args=(self.gallery_pub.pk,)))
         self.assertEqual(data["title"], "Public Gallery Endpoint Test")
+        self.assertEqual(len(data["archives"]), 1)
+        self.assertEqual(data["archives"][0]["id"], self.archive_pub.pk)
+        self.assertEqual(data["archives"][0]["download"], reverse("viewer:archive-download", args=(self.archive_pub.pk,)))
+        self.assertEqual(data["archives"][0]["recycled"], False)
         self.assertNotIn("status", data)
         self.assertNotIn("public", data)
         self.assertNotIn("origin", data)
@@ -761,6 +767,8 @@ class RegistryApiGalleryEndpointsTests(BaseRegistryApiMixin, TestCase):
         self.assertNotIn("30002", gids)
         self.assertEqual(data[0]["id"], self.gallery_pub.pk)
         self.assertEqual(data[0]["url"], reverse("viewer:gallery", args=(self.gallery_pub.pk,)))
+        self.assertEqual(data[0]["archives"][0]["id"], self.archive_pub.pk)
+        self.assertEqual(data[0]["archives"][0]["recycled"], False)
         self.assertNotIn("status", data[0])
         self.assertNotIn("public", data[0])
         self.assertNotIn("origin", data[0])
@@ -784,6 +792,163 @@ class RegistryApiGalleryEndpointsTests(BaseRegistryApiMixin, TestCase):
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.content)
         self.assertEqual(data, [])
+
+    def test_get_gid_archive_recycled_status(self):
+        recycled_archive = Archive.objects.create(
+            title="Recycled Archive",
+            user=self.superuser,
+            gallery=self.gallery_pub,
+            public=True,
+            binned=True,
+            source_type="web",
+            reason="Recycled test archive",
+        )
+        response = self._api_get(self.anon_client, gid=self.gallery_pub.gid, provider=self.gallery_pub.provider)
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        archive_map = {item["id"]: item for item in data["archives"]}
+        self.assertIn(self.archive_pub.pk, archive_map)
+        self.assertFalse(archive_map[self.archive_pub.pk]["recycled"])
+        self.assertIn(recycled_archive.pk, archive_map)
+        self.assertTrue(archive_map[recycled_archive.pk]["recycled"])
+
+    def test_get_gids_archive_recycled_status(self):
+        recycled_archive = Archive.objects.create(
+            title="Recycled Archive Gids",
+            user=self.superuser,
+            gallery=self.gallery_pub,
+            public=True,
+            binned=True,
+            source_type="web",
+            reason="Recycled test archive",
+        )
+        response = self._api_get(self.anon_client, gids=[self.gallery_pub.gid], provider=self.gallery_pub.provider)
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertEqual(len(data), 1)
+        archive_map = {item["id"]: item for item in data[0]["archives"]}
+        self.assertIn(self.archive_pub.pk, archive_map)
+        self.assertFalse(archive_map[self.archive_pub.pk]["recycled"])
+        self.assertIn(recycled_archive.pk, archive_map)
+        self.assertTrue(archive_map[recycled_archive.pk]["recycled"])
+
+    def test_get_gallery_archive_recycled_status(self):
+        recycled_archive = Archive.objects.create(
+            title="Recycled Archive Gallery",
+            user=self.superuser,
+            gallery=self.gallery_pub,
+            public=True,
+            binned=True,
+            source_type="web",
+            reason="Recycled test archive",
+        )
+        response = self._api_get(self.anon_client, gallery=self.gallery_pub.pk)
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        archive_map = {item["id"]: item for item in data["archives"]}
+        self.assertIn(self.archive_pub.pk, archive_map)
+        self.assertFalse(archive_map[self.archive_pub.pk]["recycled"])
+
+    def test_get_gid_hidden_and_replaced(self):
+        # self.parent_gallery (gid="30000") is parent to self.gallery_pub (gid="30001")
+        # Therefore parent_gallery has children -> replaced=True
+        # gallery_pub has parent_gallery=parent_gallery, but no children -> replaced=False
+        response = self._api_get(self.anon_client, gid="30000", provider="panda")
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertEqual(data["gid"], "30000")
+        self.assertIn("hidden", data)
+        self.assertFalse(data["hidden"])
+        self.assertIn("replaced", data)
+        self.assertTrue(data["replaced"])
+
+        # gallery_pub is not replaced
+        response_pub = self._api_get(self.anon_client, gid="30001", provider="panda")
+        self.assertEqual(response_pub.status_code, 200)
+        data_pub = json.loads(response_pub.content)
+        self.assertEqual(data_pub["gid"], "30001")
+        self.assertIn("hidden", data_pub)
+        self.assertFalse(data_pub["hidden"])
+        self.assertIn("replaced", data_pub)
+        self.assertFalse(data_pub["replaced"])
+
+        # Test hidden=True gallery
+        hidden_gallery = Gallery.objects.create(
+            title="Hidden Gallery Endpoint Test",
+            gid="30010",
+            provider="panda",
+            public=True,
+            hidden=True,
+        )
+        response_hidden = self._api_get(self.anon_client, gid=hidden_gallery.gid, provider="panda")
+        self.assertEqual(response_hidden.status_code, 200)
+        data_hidden = json.loads(response_hidden.content)
+        self.assertEqual(data_hidden["gid"], "30010")
+        self.assertTrue(data_hidden["hidden"])
+        self.assertFalse(data_hidden["replaced"])
+
+    def test_get_gids_hidden_and_replaced(self):
+        hidden_gallery = Gallery.objects.create(
+            title="Hidden Gallery for Gids Test",
+            gid="30020",
+            provider="panda",
+            public=True,
+            hidden=True,
+        )
+        response = self._api_get(
+            self.anon_client,
+            gids=["30000", "30001", "30020"],
+            provider="panda",
+        )
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        data_map = {item["gid"]: item for item in data}
+        # 30000 has child 30001 -> replaced=True, hidden=False
+        self.assertTrue(data_map["30000"]["replaced"])
+        self.assertFalse(data_map["30000"]["hidden"])
+        # 30001 has no children -> replaced=False, hidden=False
+        self.assertFalse(data_map["30001"]["replaced"])
+        self.assertFalse(data_map["30001"]["hidden"])
+        # 30020 has no children -> replaced=False, hidden=True
+        self.assertFalse(data_map["30020"]["replaced"])
+        self.assertTrue(data_map["30020"]["hidden"])
+
+    def test_get_gid_replaced_chain_hierarchy(self):
+        # Chain of 3: chain1 -> chain2 -> chain3
+        chain1 = Gallery.objects.create(
+            title="Chain V1",
+            gid="30031",
+            provider="panda",
+            public=True,
+        )
+        chain2 = Gallery.objects.create(
+            title="Chain V2",
+            gid="30032",
+            provider="panda",
+            public=True,
+            parent_gallery=chain1,
+            first_gallery=chain1,
+        )
+        chain3 = Gallery.objects.create(
+            title="Chain V3",
+            gid="30033",
+            provider="panda",
+            public=True,
+            parent_gallery=chain2,
+            first_gallery=chain1,
+        )
+
+        # chain1 is replaced by chain2
+        res1 = self._api_get(self.anon_client, gid="30031", provider="panda")
+        self.assertTrue(json.loads(res1.content)["replaced"])
+
+        # chain2 is replaced by chain3
+        res2 = self._api_get(self.anon_client, gid="30032", provider="panda")
+        self.assertTrue(json.loads(res2.content)["replaced"])
+
+        # chain3 is newest, not replaced
+        res3 = self._api_get(self.anon_client, gid="30033", provider="panda")
+        self.assertFalse(json.loads(res3.content)["replaced"])
 
     def test_get_gt_gallery_tags_public(self):
         response = self._api_get(self.anon_client, gt=self.gallery_pub.pk)

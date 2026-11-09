@@ -245,6 +245,14 @@ class WebCrawler(object):
             help="Download archives synchronously inline instead of queueing to the background queue.",
         )
 
+        parser.add_argument(
+            "-igf",
+            "--ignore-global-filters",
+            required=False,
+            action="store_true",
+            help="Ignore global filters (banned tags, banned uploaders, banned search queries) when crawling.",
+        )
+
         try:
             args = parser.parse_args(arg_line)
             self.parse_error = False
@@ -335,6 +343,9 @@ class WebCrawler(object):
             current_settings.archive_reason = reason
         if event_action:
             current_settings.event_action = event_action
+
+        if getattr(args, "ignore_global_filters", False) or getattr(current_settings, "ignore_global_filters", False):
+            current_settings.ignore_global_filters = True
 
         if args.wait_timer:
             current_settings.wait_timer = args.wait_timer

@@ -695,6 +695,22 @@ class WorkerRunner:
                 groups = GalleryMatchGroup.objects.filter(pk__in=job.args) if job.args else GalleryMatchGroup.objects.all()
                 kwargs = job.options.get("matching_kwargs", {})
                 generate_possible_matches_for_gallery_match_groups(groups, **kwargs)
+            elif job.task_type in ("database_prune", "prune_database"):
+                from viewer.services.retention import prune_database
+                options = job.options if isinstance(job.options, dict) else {}
+                entity = options.get("entity", "all")
+                days_override = options.get("days")
+                dry_run = bool(options.get("dry_run", False))
+                chunk_size = options.get("chunk_size")
+                res = prune_database(
+                    settings_obj=current_settings,
+                    entity=entity,
+                    days_override=days_override,
+                    dry_run=dry_run,
+                    chunk_size=chunk_size,
+                    user=job.user,
+                )
+                logger.info("Task #%d pruned database: %s", job.pk, res)
             else:
                 logger.warning("Unknown task_type: %s. Falling back to WebCrawler.", job.task_type)
                 crawler = WebCrawler(current_settings)

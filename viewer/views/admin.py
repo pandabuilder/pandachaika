@@ -10,7 +10,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
 from django.urls import reverse
 from django.db.models import Avg, Max, Min, Sum, Count, Q
-from django.http import HttpResponseRedirect, HttpRequest, HttpResponse, HttpResponseNotAllowed
+from django.http import HttpResponseRedirect, HttpRequest, HttpResponse, HttpResponseNotAllowed, JsonResponse
 from django.shortcuts import render
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
@@ -985,6 +985,10 @@ def crawler(request: HttpRequest) -> HttpResponse:
         job_settings.non_current_links_as_deleted = ("skip-non-current" in p)
         job_settings.replace_metadata = ("replace_metadata" in p)
 
+        if "ignore_global_filters" in p or "ignore-global-filters" in p:
+            job_settings.ignore_global_filters = True
+            urls.append("--ignore-global-filters")
+
         if "wanted_only" in p:
             urls.insert(0, "--wanted-only")
 
@@ -1087,3 +1091,109 @@ def foldercrawler(request: HttpRequest) -> HttpResponse:
     )
 
     return render(request, "viewer/foldercrawler.html", d)
+
+
+@login_required
+def database_maintenance(request: HttpRequest) -> HttpResponse:
+    """Database metrics, retention settings, and maintenance trigger dashboard."""
+    if not request.user.is_staff:
+        return render_error(request, "You need to be an admin to view database maintenance.")
+
+    from viewer.services.retention import (
+        get_database_info,
+        get_retention_counts,
+        prune_database,
+    )
+    from workers.models import SchedulerState, TaskQueue
+
+    if request.method == "POST":
+        action = request.POST.get("action", "prune_background")
+        entity = request.POST.get("entity", "all")
+        days_str = request.POST.get("days", "").strip()
+        dry_run = request.POST.get("dry_run") in ("1", "true", "True", True)
+        days = int(days_str) if days_str.isdigit() else None
+
+        if action == "scheduler_control":
+            cmd = request.POST.get("command", "")
+            timer_str = request.POST.get("timer", "")
+            if cmd in ("start", "stop", "force_run", "reload"):
+                SchedulerState.request_command("timed_database_pruner", cmd, timer_str)
+                messages.success(request, f"Sent '{cmd}' command to Database Pruner scheduler.")
+                if request.headers.get("x-requested-with") == "XMLHttpRequest" or request.POST.get("json"):
+                    return JsonResponse({"success": True, "message": f"Command '{cmd}' dispatched."})
+            else:
+                messages.error(request, f"Unknown scheduler command '{cmd}'.", extra_tags="danger")
+
+        elif action == "prune_immediate":
+            try:
+                res = prune_database(
+                    settings_obj=crawler_settings,
+                    entity=entity,
+                    days_override=days,
+                    dry_run=dry_run,
+                    user=request.user,
+                )
+                action_text = "Dry run: would delete" if dry_run else "Successfully deleted"
+                msg = f"{action_text} {res['total_deleted']} rows across targeted tables in {res['duration_seconds']}s."
+                messages.success(request, msg)
+                if request.headers.get("x-requested-with") == "XMLHttpRequest" or request.POST.get("json"):
+                    return JsonResponse({"success": True, "message": msg, "results": res})
+            except Exception as e:
+                err_msg = f"Failed to execute database pruning: {e}"
+                logger.error(err_msg, exc_info=True)
+                messages.error(request, err_msg, extra_tags="danger")
+                if request.headers.get("x-requested-with") == "XMLHttpRequest" or request.POST.get("json"):
+                    return JsonResponse({"success": False, "error": err_msg}, status=500)
+
+        else:
+            # Default: prune_background (enqueue to background worker)
+            try:
+                task = client.enqueue(
+                    args=[],
+                    task_type="database_prune",
+                    override_options={
+                        "entity": entity,
+                        "days": days,
+                        "dry_run": dry_run,
+                    },
+                    user=request.user,
+                    reason=f"Database maintenance prune ({entity})",
+                    event_action="DATABASE_PRUNE",
+                )
+                mode_str = " (dry-run)" if dry_run else ""
+                msg = f"Enqueued background task #{task.pk} to prune {entity}{mode_str}. Worker will process it shortly."
+                messages.success(request, msg)
+                if request.headers.get("x-requested-with") == "XMLHttpRequest" or request.POST.get("json"):
+                    return JsonResponse({"success": True, "task_id": task.pk, "message": msg})
+            except Exception as e:
+                err_msg = f"Failed to enqueue database pruning task: {e}"
+                logger.error(err_msg, exc_info=True)
+                messages.error(request, err_msg, extra_tags="danger")
+                if request.headers.get("x-requested-with") == "XMLHttpRequest" or request.POST.get("json"):
+                    return JsonResponse({"success": False, "error": err_msg}, status=500)
+
+        return HttpResponseRedirect(reverse("viewer:database-maintenance"))
+
+    db_info = get_database_info()
+    entity_metrics = get_retention_counts(crawler_settings)
+    retention_cfg = getattr(crawler_settings, "retention", None)
+    scheduler_state = SchedulerState.objects.filter(name="timed_database_pruner").first()
+    recent_tasks = TaskQueue.objects.filter(
+        task_type__in=["database_prune", "prune_database"]
+    ).order_by("-created_at")[:10]
+
+    total_prunable = sum(m["prunable_count"] for m in entity_metrics)
+    total_rows = sum(m["total_count"] for m in entity_metrics)
+
+    d = {
+        "db_info": db_info,
+        "entities": entity_metrics,
+        "retention": retention_cfg,
+        "scheduler_state": scheduler_state,
+        "recent_tasks": recent_tasks,
+        "total_prunable": total_prunable,
+        "total_rows": total_rows,
+    }
+
+    return render(request, "viewer/database_maintenance.html", d)
+

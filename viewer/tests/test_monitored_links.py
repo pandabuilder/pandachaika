@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
-from django.test import Client, TestCase
+from django.test import Client, SimpleTestCase, TestCase
 from django.urls import reverse
 
 import django.utils.timezone as django_tz
@@ -365,11 +365,21 @@ class MonitoredLinkViewsTests(TestCase):
             frequency=timedelta(minutes=30),
             provider=self.provider,
             enabled=True,
+            stop_page=None,
+        )
+        link_zero = MonitoredLink.objects.create(
+            name="Feed Zero",
+            url="https://example.com/zero.xml",
+            frequency=timedelta(minutes=30),
+            provider=self.provider,
+            enabled=True,
+            stop_page=0,
         )
         res = self.client.get(reverse("viewer:monitored-links"))
         self.assertEqual(res.status_code, 200)
         self.assertContains(res, "Feed A")
         self.assertContains(res, "https://example.com/a.xml")
+        self.assertContains(res, "Feed Zero")
 
     def test_monitored_links_view_filtering(self):
         MonitoredLink.objects.create(
@@ -715,4 +725,36 @@ class MonitoredLinkViewsTests(TestCase):
             def __init__(self):
                 self.title = "test"
         self.assertEqual(dict_key(Dummy(), "title"), "test")
+
+
+class MonitoredLinksTemplateUnitTests(SimpleTestCase):
+
+    def test_stop_page_column_rendering(self):
+        from django.template import Context, Template
+
+        template_snippet = (
+            '{% for monitored_link in results %}'
+            '<td>{{ monitored_link.stop_page|default_if_none:"-" }}</td>'
+            '{% endfor %}'
+        )
+        t = Template(template_snippet)
+        rendered = t.render(Context({
+            "results": [
+                {"stop_page": None},
+                {"stop_page": 0},
+                {"stop_page": 42},
+            ]
+        }))
+        self.assertIn("<td>-</td>", rendered)
+        self.assertIn("<td>0</td>", rendered)
+        self.assertIn("<td>42</td>", rendered)
+
+    def test_monitored_links_template_uses_default_if_none_for_stop_page(self):
+        from django.template.loader import get_template
+
+        template = get_template("viewer/collaborators/monitored_links.html")
+        with open(template.origin.name, "r", encoding="utf-8") as f:
+            content = f.read()
+        self.assertIn('monitored_link.stop_page|default_if_none:"-"', content)
+        self.assertNotIn('monitored_link.stop_page|default:"-"', content)
 

@@ -1,6 +1,18 @@
 {% extends "viewer/base.html" %}
 {% block title %}User URL Crawler | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
+{% block extra_head %}
+<style>
+  .form-check-label {
+    color: lightgrey;
+  }
+  .form-text,
+  .form-text.text-muted,
+  small.text-muted {
+    color: lightgrey !important;
+  }
+</style>
+{% endblock %}
 {% block content %}
   {% if messages %}
     {% for message in messages %}
@@ -39,19 +51,24 @@
   <div class="form-check ms-sm-2 mb-sm-3">
     <input id="checkbox4" type="checkbox" class="form-check-input" name="as-deleted" value="1">
     <label class="form-check-label" for="checkbox4">Add as deleted</label>
-    <small id="asDeletedHelp" class="form-text text-muted">Useful for adding chain updated galleries, or replaced. This will skip any file download and only create a Gallery (metadata) marked as deleted.</small>
+    <small id="asDeletedHelp" class="form-text text-muted" style="color: lightgrey !important;">Useful for adding chain updated galleries, or replaced. This will skip any file download and only create a Gallery (metadata) marked as deleted.</small>
   </div>
   <div class="form-check ms-sm-2 mb-sm-3">
     <input id="checkbox5" type="checkbox" class="form-check-input" name="skip-non-current" value="1">
     <label class="form-check-label" for="checkbox5">Add non-current galleries as deleted</label>
-    <small id="skipNonCurrentHelp" class="form-text text-muted">For panda links, when a gallery is detected as part of a chain, and it's not the final one, it will be marked as deleted.</small>
+    <small id="skipNonCurrentHelp" class="form-text text-muted" style="color: lightgrey !important;">For panda links, when a gallery is detected as part of a chain, and it's not the final one, it will be marked as deleted.</small>
   </div>
   <div class="form-check ms-sm-2 mb-sm-3">
     <input id="checkbox5-2" type="checkbox" class="form-check-input" name="process-parents-first" value="1">
     <label class="form-check-label" for="checkbox5-2">Crawl parent and first galleries for each link found</label>
-    <small id="crawlParentFirst" class="form-text text-muted">For panda links, when a gallery is detected as part of a chain, and it has parent or first galleries, those galleries will also be crawled (recommended to use with "Add non-current galleries as deleted").</small>
+    <small id="crawlParentFirst" class="form-text text-muted" style="color: lightgrey !important;">For panda links, when a gallery is detected as part of a chain, and it has parent or first galleries, those galleries will also be crawled (recommended to use with "Add non-current galleries as deleted").</small>
   </div>
   {% endif %}
+  <div class="form-check ms-sm-2 mb-sm-3">
+    <input id="checkbox6" type="checkbox" class="form-check-input" name="ignore-global-filters" value="1">
+    <label class="form-check-label" for="checkbox6">Ignore global filters</label>
+    <small id="ignoreGlobalFiltersHelp" class="form-text text-muted" style="color: lightgrey !important;">Bypasses banned tags, banned uploaders, and banned search queries for this crawl.</small>
+  </div>
   <div class="mb-3">
     <button class="btn btn-light">Submit URLs to Web Crawler</button>
   </div>

@@ -8,6 +8,7 @@ if typing.TYPE_CHECKING:
     from core.downloaders.postdownload import TimedPostDownloader
     from core.workers.download_progress import DownloadProgressChecker
     from core.workers.archive_download_queue import ArchiveDownloadQueue
+    from core.workers.retention import TimedDatabasePruner
     from core.workers.autoupdate import ProviderTimedAutoUpdater
     from core.workers.auto_wanted import TimedAutoWanted
     from core.workers.webqueue import WebQueue
@@ -27,6 +28,7 @@ class WorkerContext:
     timed_downloader: "TimedPostDownloader | None" = None
     download_progress_checker: "DownloadProgressChecker | None" = None
     archive_download_queue: "ArchiveDownloadQueue | None" = None
+    timed_database_pruner: "TimedDatabasePruner | None" = None
     timed_auto_updaters: list["ProviderTimedAutoUpdater"] = []
     timed_link_monitors: list["LinkMonitor"] = []
 
@@ -40,6 +42,8 @@ class WorkerContext:
             workers.append(self.download_progress_checker)
         if self.archive_download_queue:
             workers.append(self.archive_download_queue)
+        if self.timed_database_pruner:
+            workers.append(self.timed_database_pruner)
         workers.extend(self.timed_auto_updaters)
         workers.extend(self.timed_link_monitors)
         return workers
@@ -263,6 +267,28 @@ class WorkerContext:
         if start_threads and crawler_settings.archive_download_queue_startup:
             self.archive_download_queue.start_running(timer=crawler_settings.archive_download_queue_cycle_timer)
 
+        from core.workers.retention import TimedDatabasePruner
+
+        retention_cfg = getattr(crawler_settings, "retention", None)
+        prune_timer = getattr(retention_cfg, "schedule_interval_hours", 24.0) if retention_cfg else 24.0
+        self.timed_database_pruner = TimedDatabasePruner(
+            crawler_settings,
+            timer=prune_timer,
+        )
+
+        obj, _ = SchedulerState.objects.get_or_create(
+            name=self.timed_database_pruner.thread_name,
+            defaults={
+                "display_name": "Database Pruner",
+                "schedule_type": "scheduler",
+                "cycle_timer": self.timed_database_pruner.timer,
+            },
+        )
+        self.timed_database_pruner.last_run = obj.last_run
+        self.timed_database_pruner.pk = obj.name
+        if start_threads and retention_cfg and retention_cfg.enabled:
+            self.timed_database_pruner.start_running(timer=prune_timer)
+
     @property
     def is_worker_process(self) -> bool:
         return bool(self.crawler_settings and getattr(self.crawler_settings, "is_worker_process", False))
@@ -277,6 +303,8 @@ class WorkerContext:
             self.download_progress_checker.stop_running(force_local=True)
         if self.archive_download_queue:
             self.archive_download_queue.stop_running(force_local=True)
+        if self.timed_database_pruner:
+            self.timed_database_pruner.stop_running(force_local=True)
         if self.timed_auto_wanted:
             self.timed_auto_wanted.stop_running(force_local=True)
         for provider_auto_updater in self.timed_auto_updaters:

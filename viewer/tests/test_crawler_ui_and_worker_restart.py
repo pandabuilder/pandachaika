@@ -47,6 +47,9 @@ class WebCrawlerViewTests(TestCase):
         # Check replace metadata explanation
         self.assertContains(resp, "Replace metadata")
         self.assertContains(resp, "Re-fetches and overwrites existing gallery metadata")
+        # Check ignore global filters checkbox
+        self.assertContains(resp, 'name="ignore_global_filters"')
+        self.assertContains(resp, "Ignore global filters")
         # Check Keep this settings note about restarting background workers
         self.assertContains(resp, "Keep this settings")
         self.assertContains(resp, "Settings saved to <code>settings.yaml</code> will only be applied to background workers when restarted")
@@ -195,6 +198,129 @@ class WebCrawlerViewTests(TestCase):
         for call in mock_queue.enqueue_args_list.call_args_list:
             self.assertIn("override_options", call.kwargs)
             self.assertIs(call.kwargs["override_options"], settings)
+
+    @patch("workers.client.enqueue")
+    def test_crawler_enqueue_with_ignore_global_filters(self, mock_enqueue):
+        self.client.login(username="admin_crawler", password="testpassword")
+        resp = self.client.post(
+            reverse("viewer:crawler"),
+            data={
+                "urls": "https://example.com/g/123/abc",
+                "ignore_global_filters": "1",
+            },
+        )
+        self.assertEqual(resp.status_code, 302)
+        mock_enqueue.assert_called_once()
+        kwargs = mock_enqueue.call_args.kwargs
+        self.assertIn("--ignore-global-filters", kwargs["args"])
+        self.assertTrue(kwargs["override_options"].ignore_global_filters)
+
+    def test_user_crawler_page_renders_ignore_global_filters(self):
+        from django.contrib.auth.models import Permission
+        perm = Permission.objects.get(codename="crawler_adder")
+        self.non_staff_user.user_permissions.add(perm)
+        self.client.login(username="normal_user", password="testpassword")
+        resp = self.client.get(reverse("viewer:user-crawler"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'name="ignore-global-filters"')
+        self.assertContains(resp, "Ignore global filters")
+
+    @patch("workers.client.enqueue")
+    def test_user_crawler_enqueue_with_ignore_global_filters(self, mock_enqueue):
+        from django.contrib.auth.models import Permission
+        perm = Permission.objects.get(codename="crawler_adder")
+        self.non_staff_user.user_permissions.add(perm)
+        self.client.login(username="normal_user", password="testpassword")
+        resp = self.client.post(
+            reverse("viewer:user-crawler"),
+            data={
+                "urls": "https://example.com/g/123/abc",
+                "ignore-global-filters": "1",
+            },
+            HTTP_REFERER="/upload/",
+        )
+        self.assertEqual(resp.status_code, 302)
+        mock_enqueue.assert_called_once()
+        kwargs = mock_enqueue.call_args.kwargs
+        self.assertIn("--ignore-global-filters", kwargs["args"])
+        self.assertTrue(kwargs["override_options"].ignore_global_filters)
+
+
+class WebCrawlerArgsAndFiltersTest(TestCase):
+    def test_webcrawler_cli_argument_parsing(self):
+        from core.web.crawler import WebCrawler
+        settings = Settings(load_from_disk=False)
+        crawler = WebCrawler(settings)
+
+        # Long option
+        args = crawler.get_args(["--ignore-global-filters", "https://example.com/g/123/abc"])
+        self.assertTrue(args.ignore_global_filters)
+        self.assertEqual(args.url, ["https://example.com/g/123/abc"])
+
+        # Short option
+        args_short = crawler.get_args(["-igf", "https://example.com/g/456/def"])
+        self.assertTrue(args_short.ignore_global_filters)
+        self.assertEqual(args_short.url, ["https://example.com/g/456/def"])
+
+        # Default (not set)
+        args_default = crawler.get_args(["https://example.com/g/789/ghi"])
+        self.assertFalse(args_default.ignore_global_filters)
+
+    def test_discard_by_gallery_data_respects_ignore_global_filters(self):
+        from core.base.setup_utilities import GeneralUtils
+
+        settings = Settings(load_from_disk=False)
+        settings.banned_tags = ["banned_tag_1", "banned_tag_2"]
+        settings.banned_uploaders = ["bad_uploader"]
+        utils = GeneralUtils(settings)
+
+        # Normal mode: matching tags should discard
+        discarded, reasons = utils.discard_by_gallery_data(["banned_tag_1", "safe_tag"], uploader="normal_user")
+        self.assertTrue(discarded)
+        self.assertIn("Banned tags: banned_tag_1", reasons[0])
+
+        # Normal mode: matching uploader should discard
+        discarded, reasons = utils.discard_by_gallery_data(["safe_tag"], uploader="bad_uploader")
+        self.assertTrue(discarded)
+        self.assertEqual(reasons, ["Banned uploader: bad_uploader"])
+
+        # When ignore_global_filters is True: neither tags nor uploader discard
+        settings.ignore_global_filters = True
+        discarded, reasons = utils.discard_by_gallery_data(["banned_tag_1", "safe_tag"], uploader="bad_uploader")
+        self.assertFalse(discarded)
+        self.assertEqual(reasons, [])
+
+    def test_start_crawling_parse_args_sets_ignore_global_filters_on_settings(self):
+        from core.web.crawler import WebCrawler
+        settings = Settings(load_from_disk=False)
+        crawler = WebCrawler(settings)
+
+        with patch.object(crawler, "get_args") as mock_get_args:
+            mock_args = MagicMock()
+            mock_args.ignore_global_filters = True
+            mock_args.wait_timer = None
+            mock_args.queue_archive_downloads = None
+            mock_args.retry_failed = False
+            mock_args.retry_dl_type = False
+            mock_args.retry_wrong_filesize = False
+            mock_args.update_newer_than = None
+            mock_args.update_missing_thumbnails = None
+            mock_args.transfer_missing_downloads = False
+            mock_args.set_reason = None
+            mock_args.set_details = None
+            mock_args.stop_nested = False
+            mock_args.link_child = None
+            mock_args.link_newer = None
+            mock_args.preselect_wanted_match = None
+            mock_args.include_providers = None
+            mock_args.crawl_from_feed = False
+            mock_args.url = []
+            mock_args.json_source = None
+            mock_get_args.return_value = mock_args
+
+            with patch.object(settings.provider_context, "get_parsers", return_value=[]):
+                crawler.start_crawling_parse_args(["--ignore-global-filters"])
+            self.assertTrue(settings.ignore_global_filters)
 
 
 class RestartWorkersApiAndToolsTests(TestCase):

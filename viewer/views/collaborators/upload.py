@@ -455,11 +455,17 @@ def user_crawler(request: AuthenticatedHttpRequest) -> HttpResponse:
 
         parsers = crawler_settings.provider_context.get_parsers(crawler_settings)
 
+        ignore_global_filters = "ignore-global-filters" in p and p["ignore-global-filters"] in ("1", "true", "on")
+        extra_args: list[str] = []
+        if ignore_global_filters:
+            current_settings.ignore_global_filters = True
+            extra_args.append("--ignore-global-filters")
+
         current_settings.archive_user = request.user
         current_settings.event_action = "ADD"
 
         client.enqueue(
-            args=urls,
+            args=urls + extra_args,
             task_type="web_crawler",
             override_options=current_settings,
             user=request.user,

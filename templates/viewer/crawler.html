@@ -155,6 +155,16 @@
         </div>
       </div>
 
+      <div class="form-check mb-2">
+        <input id="checkbox-ignore-global-filters" type="checkbox" class="form-check-input" name="ignore_global_filters" value="1" {% if settings.ignore_global_filters %}checked{% endif %}>
+        <label class="form-check-label fw-semibold" for="checkbox-ignore-global-filters">
+          Ignore global filters
+        </label>
+        <div class="crawler-help-text">
+          Bypasses banned tags, banned uploaders, and banned search queries when crawling these URLs.
+        </div>
+      </div>
+
       <div class="crawler-storage-box">
         <div class="d-flex flex-wrap align-items-center gap-2">
           <button type="button" class="btn btn-sm btn-pg" id="btn-save-local-settings">

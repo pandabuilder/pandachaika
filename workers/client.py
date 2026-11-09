@@ -103,6 +103,7 @@ TASK_TYPE_ALIAS_GROUPS: list[set[str]] = [
     {"wanted_local_search_worker", "wanted_galleries_possible_matches"},
     {"match_unmatched_gallery_groups_worker"},
     {"web_match_worker"},
+    {"database_prune", "prune_database"},
 ]
 
 
