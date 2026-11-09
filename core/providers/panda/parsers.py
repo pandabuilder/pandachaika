@@ -804,37 +804,97 @@ class Parser(BaseParser):
         extra_gal_data = gallery_data.extra_data
 
         galleries_to_add: dict[str, list[str]] = defaultdict(list)
+        gallery_model = getattr(self.settings, "gallery_model", None) or Gallery
+        entry_needs_save = False
 
         if self.own_settings.auto_process_newer:
             if "current_gid" in extra_gal_data and "current_key" in extra_gal_data:
-                current_url = link_from_gid_token_fjord(extra_gal_data["current_gid"], extra_gal_data["current_key"])
+                current_gid = str(extra_gal_data["current_gid"])
+                calling_gid = str(self.settings.link_child or self.settings.link_newer or "")
+                is_caller = calling_gid == current_gid
+                is_self = current_gid == str(gallery_entry.gid)
 
-                logger.info(
-                    "Gallery: {} has current in: {}, adding to queue".format(
-                        gallery_entry.get_absolute_url(), current_url
-                    )
-                )
-                galleries_to_add[current_url] = []
+                if not is_self and not is_caller:
+                    existing_current = None
+                    if gallery_model and hasattr(gallery_model, "objects"):
+                        existing_current = gallery_model.objects.filter(
+                            gid=current_gid, provider=self.name
+                        ).first()
+
+                    if existing_current:
+                        logger.info(
+                            "Gallery: {} has current in: {}, already in database, skipping queue".format(
+                                gallery_entry.get_absolute_url(), existing_current.get_absolute_url()
+                            )
+                        )
+                    else:
+                        current_url = link_from_gid_token_fjord(extra_gal_data["current_gid"], extra_gal_data["current_key"])
+
+                        logger.info(
+                            "Gallery: {} has current in: {}, adding to queue".format(
+                                gallery_entry.get_absolute_url(), current_url
+                            )
+                        )
+                        galleries_to_add[current_url] = []
 
         if self.own_settings.auto_process_first:
             if "first_gid" in extra_gal_data and "first_key" in extra_gal_data:
-                first_url = link_from_gid_token_fjord(extra_gal_data["first_gid"], extra_gal_data["first_key"])
+                first_gid = str(extra_gal_data["first_gid"])
+                if first_gid != str(gallery_entry.gid):
+                    existing_first = None
+                    if gallery_model and hasattr(gallery_model, "objects"):
+                        existing_first = gallery_model.objects.filter(
+                            gid=first_gid, provider=self.name
+                        ).first()
 
-                logger.info(
-                    "Gallery: {} has first in: {}, adding to queue".format(gallery_entry.get_absolute_url(), first_url)
-                )
-                galleries_to_add[first_url].extend(["--link-newer", str(gallery_entry.gid)])
+                    if existing_first:
+                        if hasattr(gallery_entry, "first_gallery_id") and not gallery_entry.first_gallery_id:
+                            gallery_entry.first_gallery = existing_first
+                            entry_needs_save = True
+                        logger.info(
+                            "Gallery: {} has first in: {}, already in database, skipping queue".format(
+                                gallery_entry.get_absolute_url(), existing_first.get_absolute_url()
+                            )
+                        )
+                    else:
+                        first_url = link_from_gid_token_fjord(extra_gal_data["first_gid"], extra_gal_data["first_key"])
+
+                        logger.info(
+                            "Gallery: {} has first in: {}, adding to queue".format(gallery_entry.get_absolute_url(), first_url)
+                        )
+                        galleries_to_add[first_url].extend(["--link-newer", str(gallery_entry.gid)])
 
         if self.own_settings.auto_process_parent:
             if "parent_gid" in extra_gal_data and "parent_key" in extra_gal_data:
-                parent_url = link_from_gid_token_fjord(extra_gal_data["parent_gid"], extra_gal_data["parent_key"])
+                parent_gid = str(extra_gal_data["parent_gid"])
+                if parent_gid != str(gallery_entry.gid):
+                    existing_parent = None
+                    if gallery_model and hasattr(gallery_model, "objects"):
+                        existing_parent = gallery_model.objects.filter(
+                            gid=parent_gid, provider=self.name
+                        ).first()
 
-                logger.info(
-                    "Gallery: {} has parent in: {}, adding to queue".format(
-                        gallery_entry.get_absolute_url(), parent_url
-                    )
-                )
-                galleries_to_add[parent_url].extend(["--link-child", str(gallery_entry.gid)])
+                    if existing_parent:
+                        if hasattr(gallery_entry, "parent_gallery_id") and not gallery_entry.parent_gallery_id:
+                            gallery_entry.parent_gallery = existing_parent
+                            entry_needs_save = True
+                        logger.info(
+                            "Gallery: {} has parent in: {}, already in database, skipping queue".format(
+                                gallery_entry.get_absolute_url(), existing_parent.get_absolute_url()
+                            )
+                        )
+                    else:
+                        parent_url = link_from_gid_token_fjord(extra_gal_data["parent_gid"], extra_gal_data["parent_key"])
+
+                        logger.info(
+                            "Gallery: {} has parent in: {}, adding to queue".format(
+                                gallery_entry.get_absolute_url(), parent_url
+                            )
+                        )
+                        galleries_to_add[parent_url].extend(["--link-child", str(gallery_entry.gid)])
+
+        if entry_needs_save and hasattr(gallery_entry, "save"):
+            gallery_entry.save()
 
         if self.settings.workers.web_queue and galleries_to_add:
             list_galleries_to_add = [[x] + galleries_to_add[x] for x in galleries_to_add.keys()]

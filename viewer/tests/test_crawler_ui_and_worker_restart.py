@@ -199,6 +199,93 @@ class WebCrawlerViewTests(TestCase):
             self.assertIn("override_options", call.kwargs)
             self.assertIs(call.kwargs["override_options"], settings)
 
+    def test_panda_parser_post_processing_skips_enqueuing_existing_galleries_and_links_directly(self):
+        """Ensure post_gallery_processing skips enqueuing galleries that already exist in DB and links them directly."""
+        from core.base.types import GalleryData
+        from core.providers.panda.parsers import Parser as PandaParser
+        from core.providers.panda.settings import OwnSettings as PandaSettings
+        from viewer.models import Gallery
+
+        settings = Settings(load_from_disk=False)
+        settings.providers["panda"] = PandaSettings(settings, {})
+        mock_queue = MagicMock()
+        settings.workers.web_queue = mock_queue
+
+        parser = PandaParser(settings)
+        parser.own_settings.auto_process_newer = True
+        parser.own_settings.auto_process_parent = True
+        parser.own_settings.auto_process_first = True
+
+        parent_gallery = Gallery.objects.create(gid="888", provider="panda", title="Parent Gallery")
+        first_gallery = Gallery.objects.create(gid="777", provider="panda", title="First Gallery")
+        current_gallery = Gallery.objects.create(gid="999", provider="panda", title="Current Gallery")
+        entry = Gallery.objects.create(gid="800", provider="panda", title="Child Gallery")
+
+        gallery_data = GalleryData(
+            gid="800",
+            provider="panda",
+            link="https://e-hentai.org/g/800/token800/",
+        )
+        gallery_data.extra_data = {
+            "current_gid": "999",
+            "current_key": "key999",
+            "parent_gid": "888",
+            "parent_key": "key888",
+            "first_gid": "777",
+            "first_key": "key777",
+        }
+
+        with patch("core.providers.panda.parsers.logger"):
+            parser.post_gallery_processing(entry, gallery_data)
+
+        # Nothing should be enqueued since all three exist in DB
+        self.assertEqual(mock_queue.enqueue_args_list.call_count, 0)
+
+        # Relationships should be linked directly on entry
+        entry.refresh_from_db()
+        self.assertEqual(entry.parent_gallery_id, parent_gallery.id)
+        self.assertEqual(entry.first_gallery_id, first_gallery.id)
+
+    def test_panda_parser_post_processing_skips_caller_and_self_requeue(self):
+        """Ensure post_gallery_processing does not re-enqueue caller or self to avoid infinite loops."""
+        from core.base.types import GalleryData
+        from core.providers.panda.parsers import Parser as PandaParser
+        from core.providers.panda.settings import OwnSettings as PandaSettings
+        from viewer.models import Gallery
+
+        settings = Settings(load_from_disk=False)
+        settings.providers["panda"] = PandaSettings(settings, {})
+        # Simulate caller was child gallery 999
+        settings.link_child = "999"
+        mock_queue = MagicMock()
+        settings.workers.web_queue = mock_queue
+
+        parser = PandaParser(settings)
+        parser.own_settings.auto_process_newer = True
+        parser.own_settings.auto_process_parent = True
+        parser.own_settings.auto_process_first = True
+
+        entry = Gallery.objects.create(gid="888", provider="panda", title="Parent Gallery")
+
+        gallery_data = GalleryData(
+            gid="888",
+            provider="panda",
+            link="https://e-hentai.org/g/888/key888/",
+        )
+        # current_gid points to caller 999 (should be skipped due to is_caller check),
+        # first_gid is self 888 (should be skipped due to is_self check)
+        gallery_data.extra_data = {
+            "current_gid": "999",
+            "current_key": "key999",
+            "first_gid": "888",
+            "first_key": "key888",
+        }
+
+        with patch("core.providers.panda.parsers.logger"):
+            parser.post_gallery_processing(entry, gallery_data)
+
+        self.assertEqual(mock_queue.enqueue_args_list.call_count, 0)
+
     @patch("workers.client.enqueue")
     def test_crawler_enqueue_with_ignore_global_filters(self, mock_enqueue):
         self.client.login(username="admin_crawler", password="testpassword")
