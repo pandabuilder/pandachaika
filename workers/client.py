@@ -165,6 +165,20 @@ def cancel_by_id(task_id: int) -> bool:
         return updated > 0
 
 
+def clear_pending_tasks(task_type: str | None = None, mode: str = "delete") -> int:
+    """Clear/delete or cancel pending tasks from the queue, optionally filtered by task_type.
+
+    Returns the number of affected tasks.
+    """
+    qs = TaskQueue.objects.filter(status=TaskQueue.Status.PENDING)
+    if task_type and task_type != "all":
+        qs = qs.filter(task_type__in=get_task_type_aliases(task_type))
+    if mode == "cancel":
+        return qs.update(status=TaskQueue.Status.CANCELLED, finished_at=django_tz.now())
+    deleted, _ = qs.delete()
+    return deleted
+
+
 def is_worker_running(threshold_seconds: int = 30) -> bool:
     """Check if any worker process is currently reporting a heartbeat."""
     return WorkerProcess.is_any_worker_running(threshold_seconds=threshold_seconds)
@@ -198,5 +212,3 @@ def is_archive_publishing(archive_pk: int) -> bool:
                 if arg == archive_pk or str(arg) == target_str:
                     return True
     return False
-
-

@@ -871,7 +871,7 @@
       <!-- Queue Breakdown Cards -->
       <div class="row g-2 mb-4" id="queues-breakdown-row">
         {% for q in dashboard.queues %}
-        <div class="col-6 col-md-4 col-lg-3">
+        <div class="col-6 col-md-4 col-lg-3" id="queue-breakdown-card-{{ q.task_type }}">
           <div class="card p-2 border-0 shadow-sm" style="background-color: var(--pg-bg-card); border: 1px solid var(--pg-border) !important;">
             <div class="d-flex justify-content-between align-items-center">
               <strong class="text-light small">{{ q.label }}</strong>
@@ -881,9 +881,16 @@
             </div>
             <div class="d-flex justify-content-between align-items-center mt-1">
               <span class="text-secondary small">Queued:</span>
-              <span class="badge {% if q.pending_count > 0 %}bg-warning text-dark{% else %}badge-dark-subtle{% endif %}">
-                {{ q.pending_count }}
-              </span>
+              <div class="d-flex align-items-center gap-1">
+                <span class="badge {% if q.pending_count > 0 %}bg-warning text-dark{% else %}badge-dark-subtle{% endif %}" id="queue-count-{{ q.task_type }}">
+                  {{ q.pending_count }}
+                </span>
+                {% if q.pending_count > 0 %}
+                <button class="btn btn-sm btn-link text-danger p-0 ms-1 btn-clear-queue-type" data-task-type="{{ q.task_type }}" data-label="{{ q.label }}" title="Clear pending {{ q.label }} tasks" style="font-size: 0.75rem; text-decoration: none;">
+                  <i class="fas fa-trash-alt"></i>
+                </button>
+                {% endif %}
+              </div>
             </div>
           </div>
         </div>
@@ -943,7 +950,12 @@
       <div class="card card-dark shadow-sm mb-4">
         <div class="card-header d-flex justify-content-between align-items-center py-2">
           <h5 class="mb-0 fw-bold fs-6 text-light"><i class="fas fa-hourglass-half text-warning me-2"></i>Pending Queue (Next in line)</h5>
-          <span class="badge bg-warning text-dark" id="pending-tasks-badge">{{ dashboard.pending_tasks|length }} of {{ dashboard.summary.pending_tasks_count }} queued</span>
+          <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-warning text-dark" id="pending-tasks-badge">{{ dashboard.pending_tasks|length }} of {{ dashboard.summary.pending_tasks_count }} queued</span>
+            <button class="btn btn-sm btn-outline-danger" id="btn-clear-pending-tasks" title="Clear all pending tasks from the queue">
+              <i class="fas fa-trash-alt"></i> Clear Pending Tasks
+            </button>
+          </div>
         </div>
         <div class="table-responsive">
           <table class="table table-dashboard align-middle mb-0" id="table-pending-tasks">
@@ -1530,6 +1542,7 @@
     renderSchedulersTable(data.schedulers || []);
 
     // 5. Render Tasks & Queues
+    renderQueuesBreakdown(data.queues || []);
     renderActiveTasksTable(data.active_tasks || []);
     renderPendingTasksTable(data.pending_tasks || [], s.pending_tasks_count);
     renderRecentTasksTable(data.recent_tasks || []);
@@ -1925,6 +1938,37 @@
     });
   }
 
+  function renderQueuesBreakdown(queues) {
+    const row = document.getElementById('queues-breakdown-row');
+    if (!row || !queues) return;
+    let html = '';
+    queues.forEach(q => {
+      const procBadge = q.processing_count > 0 ? `<span class="badge bg-primary">${q.processing_count} running</span>` : '';
+      const pendBadgeClass = q.pending_count > 0 ? 'bg-warning text-dark' : 'badge-dark-subtle';
+      const clearBtn = q.pending_count > 0
+        ? `<button class="btn btn-sm btn-link text-danger p-0 ms-1 btn-clear-queue-type" data-task-type="${esc(q.task_type)}" data-label="${esc(q.label)}" title="Clear pending ${esc(q.label)} tasks" style="font-size: 0.75rem; text-decoration: none;"><i class="fas fa-trash-alt"></i></button>`
+        : '';
+      html += `
+        <div class="col-6 col-md-4 col-lg-3" id="queue-breakdown-card-${esc(q.task_type)}">
+          <div class="card p-2 border-0 shadow-sm" style="background-color: var(--pg-bg-card); border: 1px solid var(--pg-border) !important;">
+            <div class="d-flex justify-content-between align-items-center">
+              <strong class="text-light small">${esc(q.label)}</strong>
+              ${procBadge}
+            </div>
+            <div class="d-flex justify-content-between align-items-center mt-1">
+              <span class="text-secondary small">Queued:</span>
+              <div class="d-flex align-items-center gap-1">
+                <span class="badge ${pendBadgeClass}" id="queue-count-${esc(q.task_type)}">${q.pending_count}</span>
+                ${clearBtn}
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    });
+    row.innerHTML = html;
+  }
+
   function renderActiveTasksTable(tasks) {
     const tbody = document.getElementById('active-tasks-tbody');
     const badge = document.getElementById('active-tasks-badge');
@@ -2318,8 +2362,28 @@
       });
     }
 
+    // Card header clear pending tasks button
+    const btnClearPending = document.getElementById('btn-clear-pending-tasks');
+    if (btnClearPending) {
+      btnClearPending.addEventListener('click', () => {
+        if (confirm('Clear all pending tasks from the queue? This will remove all queued tasks waiting to be processed.')) {
+          postAction('clear_pending_tasks');
+        }
+      });
+    }
+
     // Event delegation for dynamically updated tables
     document.addEventListener('click', (e) => {
+      // Clear specific queue type button
+      const clearQueueTypeBtn = e.target.closest('.btn-clear-queue-type');
+      if (clearQueueTypeBtn) {
+        const taskType = clearQueueTypeBtn.getAttribute('data-task-type');
+        const label = clearQueueTypeBtn.getAttribute('data-label') || taskType;
+        if (confirm(`Clear all pending tasks for queue "${label}"?`)) {
+          postAction('clear_pending_tasks', { task_type: taskType });
+        }
+        return;
+      }
       // Download type cards act as table filters
       const dlTypeCard = e.target.closest('.dl-type-card');
       if (dlTypeCard) {

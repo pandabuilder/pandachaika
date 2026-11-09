@@ -19,10 +19,7 @@ from workers.serialization import deserialize_settings_options, serialize_settin
 User = get_user_model()
 
 
-
-
 class WorkersDashboardAPITests(TestCase):
-
     def setUp(self):
         self.staff_user = User.objects.create_superuser(
             username="dash_admin", email="dash_admin@example.com", password="password123"
@@ -31,6 +28,7 @@ class WorkersDashboardAPITests(TestCase):
             username="dash_user", email="dash_user@example.com", password="password123"
         )
         from django.test import Client
+
         self.staff_client = Client()
         self.staff_client.force_login(self.staff_user)
 
@@ -119,6 +117,7 @@ class WorkersDashboardAPITests(TestCase):
 
     def test_workers_action_api_scheduler_commands(self):
         from workers.models import SchedulerState
+
         SchedulerState.objects.update_or_create(
             name="auto_wanted",
             defaults={"is_running": False},
@@ -212,14 +211,91 @@ class WorkersDashboardAPITests(TestCase):
         )
         self.assertEqual(res_retry.status_code, 200)
         self.assertTrue(res_retry.json()["success"])
-        retried_task = TaskQueue.objects.filter(
-            task_type="thumbnails_worker", status=TaskQueue.Status.PENDING
-        ).last()
+        retried_task = TaskQueue.objects.filter(task_type="thumbnails_worker", status=TaskQueue.Status.PENDING).last()
         self.assertIsNotNone(retried_task)
         self.assertIn("Retry of #", retried_task.reason)
 
+    def test_workers_action_api_clear_pending_tasks(self):
+        from workers.models import TaskQueue
+        from workers import client as worker_client
+
+        # 1. Clear all pending tasks via API
+        TaskQueue.objects.create(
+            task_type="web_crawler", args=["https://example.com/1/"], status=TaskQueue.Status.PENDING
+        )
+        TaskQueue.objects.create(
+            task_type="web_crawler", args=["https://example.com/2/"], status=TaskQueue.Status.PENDING
+        )
+        TaskQueue.objects.create(task_type="fileinfo_worker", args=[101], status=TaskQueue.Status.PENDING)
+        active_task = TaskQueue.objects.create(
+            task_type="web_crawler", args=["https://example.com/active/"], status=TaskQueue.Status.PROCESSING
+        )
+        completed_task = TaskQueue.objects.create(
+            task_type="web_crawler", args=["https://example.com/done/"], status=TaskQueue.Status.COMPLETED
+        )
+
+        res_clear_all = self.staff_client.post(
+            "/api/workers/action/",
+            data=json.dumps({"action": "clear_pending_tasks"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res_clear_all.status_code, 200)
+        self.assertTrue(res_clear_all.json()["success"])
+        self.assertIn("Cleared 3 pending task(s)", res_clear_all.json()["message"])
+
+        # Pending tasks are deleted, while active and completed are untouched
+        self.assertEqual(TaskQueue.objects.filter(status=TaskQueue.Status.PENDING).count(), 0)
+        self.assertTrue(TaskQueue.objects.filter(pk=active_task.pk).exists())
+        self.assertTrue(TaskQueue.objects.filter(pk=completed_task.pk).exists())
+
+        # 2. Clear pending tasks by specific task_type
+        TaskQueue.objects.create(
+            task_type="web_crawler", args=["https://example.com/w1/"], status=TaskQueue.Status.PENDING
+        )
+        TaskQueue.objects.create(
+            task_type="web_crawler", args=["https://example.com/w2/"], status=TaskQueue.Status.PENDING
+        )
+        thumb_task = TaskQueue.objects.create(
+            task_type="thumbnails_worker", args=[202], status=TaskQueue.Status.PENDING
+        )
+
+        res_clear_type = self.staff_client.post(
+            "/api/workers/action/",
+            data=json.dumps({"action": "clear_pending_tasks", "task_type": "web_crawler"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res_clear_type.status_code, 200)
+        self.assertTrue(res_clear_type.json()["success"])
+        self.assertIn("Cleared 2 pending task(s) for 'web_crawler'", res_clear_type.json()["message"])
+
+        # web_crawler pending tasks gone, thumbnails_worker still pending
+        self.assertEqual(TaskQueue.objects.filter(status=TaskQueue.Status.PENDING, task_type="web_crawler").count(), 0)
+        self.assertTrue(TaskQueue.objects.filter(pk=thumb_task.pk).exists())
+
+        # 3. Test clear_pending_tasks with mode="cancel"
+        TaskQueue.objects.create(task_type="fileinfo_worker", args=[301], status=TaskQueue.Status.PENDING)
+        res_cancel_mode = self.staff_client.post(
+            "/api/workers/action/",
+            data=json.dumps({"action": "clear_pending_tasks", "mode": "cancel"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res_cancel_mode.status_code, 200)
+        self.assertTrue(res_cancel_mode.json()["success"])
+        self.assertIn("Cancelled", res_cancel_mode.json()["message"])
+        self.assertEqual(TaskQueue.objects.filter(status=TaskQueue.Status.PENDING).count(), 0)
+        self.assertGreaterEqual(TaskQueue.objects.filter(status=TaskQueue.Status.CANCELLED).count(), 1)
+
+        # 4. Test client helper directly
+        TaskQueue.objects.create(
+            task_type="web_crawler", args=["https://example.com/c1/"], status=TaskQueue.Status.PENDING
+        )
+        deleted_count = worker_client.clear_pending_tasks()
+        self.assertEqual(deleted_count, 1)
+        self.assertEqual(TaskQueue.objects.filter(status=TaskQueue.Status.PENDING).count(), 0)
+
     def test_workers_action_api_cleanup_workers(self):
         from workers.models import WorkerProcess
+
         WorkerProcess.objects.create(
             pid=77777,
             hostname="dead-node",
@@ -548,5 +624,3 @@ class WorkersDashboardAPITests(TestCase):
         self.assertEqual(data["downloads"][0]["type"], "archive")
         self.assertEqual(data["downloads"][0]["type_label"], "Archive")
         self.assertEqual(data["summary"]["shown_downloads_count"], 6)
-
-

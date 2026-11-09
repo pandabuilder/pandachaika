@@ -20,8 +20,7 @@ from viewer.utils.actions import event_log
 
 from core.base.setup import Settings
 from core.base.setup_utilities import get_thread_status, get_thread_status_bool
-from core.base.utilities import thread_exists_in_db, get_schedulers_status, \
-    timestamp_or_zero
+from core.base.utilities import thread_exists_in_db, get_schedulers_status, timestamp_or_zero
 from core.workers.archive_work import ArchiveWorker
 
 from viewer.models import Archive, Tag, Gallery, ArchiveMatches, WantedGallery, FoundGallery, DownloadEvent
@@ -71,10 +70,12 @@ def stats_workers(request: HttpRequest) -> HttpResponse:
 
     if crawler_settings.workers.web_queue is None:
         from core.workers.webqueue import WebQueue
+
         crawler_settings.workers.web_queue = WebQueue(crawler_settings)
 
     if crawler_settings.workers.archive_download_queue is None:
         from core.workers.archive_download_queue import ArchiveDownloadQueue
+
         crawler_settings.workers.archive_download_queue = ArchiveDownloadQueue(crawler_settings)
 
     from viewer.views.workers_dashboard import get_workers_dashboard_snapshot, get_list_limits_from_request
@@ -309,6 +310,9 @@ def queue_operations(request: HttpRequest, operation: str, arguments: str = "") 
                 return render_error(request, "Invalid index.")
         else:
             return render_error(request, "Unknown argument.")
+    elif operation in ("clear", "clear_all"):
+        task_type = arguments or "web_crawler"
+        client.clear_pending_tasks(task_type=task_type if task_type != "all" else None)
     else:
         return render_error(request, "Unknown queue operation.")
 
@@ -339,7 +343,9 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         )
         return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "retry_failed":
-        client.enqueue(args=["--retry-failed"], task_type="web_crawler", override_options=crawler_settings, user=request.user)
+        client.enqueue(
+            args=["--retry-failed"], task_type="web_crawler", override_options=crawler_settings, user=request.user
+        )
         return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "update_newer_than":
         p = request.POST if request.POST else request.GET
@@ -347,7 +353,12 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
             newer_than_date = p["newer_than"]
             try:
                 if parse_date(newer_than_date) is not None:
-                    client.enqueue(args=["-unt", newer_than_date], task_type="web_crawler", override_options=crawler_settings, user=request.user)
+                    client.enqueue(
+                        args=["-unt", newer_than_date],
+                        task_type="web_crawler",
+                        override_options=crawler_settings,
+                        user=request.user,
+                    )
                     messages.success(request, "Updating galleries posted after " + newer_than_date)
                 else:
                     messages.error(request, "Invalid date format.", extra_tags="danger")
@@ -357,15 +368,24 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
     elif tool == "update_missing_thumbnails":
         p = request.POST if request.POST else request.GET
         if p and "limit_number" in p:
-
             try:
                 limit_number = int(p["limit_number"])
 
                 provider = p.get("provider", "")
                 if provider:
-                    client.enqueue(args=["-umt", str(limit_number), "-ip", provider], task_type="web_crawler", override_options=crawler_settings, user=request.user)
+                    client.enqueue(
+                        args=["-umt", str(limit_number), "-ip", provider],
+                        task_type="web_crawler",
+                        override_options=crawler_settings,
+                        user=request.user,
+                    )
                 else:
-                    client.enqueue(args=["-umt", str(limit_number)], task_type="web_crawler", override_options=crawler_settings, user=request.user)
+                    client.enqueue(
+                        args=["-umt", str(limit_number)],
+                        task_type="web_crawler",
+                        override_options=crawler_settings,
+                        user=request.user,
+                    )
                 messages.success(
                     request, "Updating galleries missing thumbnails, limiting to older {}".format(limit_number)
                 )
@@ -525,7 +545,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
             messages.success(request, "No wanted galleries eligible to search.")
             return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
-        logger.info("Looking for possible matches in gallery database " "for wanted galleries (fixed 0.4 cutoff)")
+        logger.info("Looking for possible matches in gallery database for wanted galleries (fixed 0.4 cutoff)")
 
         p = request.POST if request.POST else request.GET
         provider = p.get("provider", "")
@@ -762,7 +782,9 @@ def logs(request: HttpRequest, tool: str = "all") -> HttpResponse:
                     if timezone.is_naive(dt):
                         dt = timezone.make_aware(dt, timezone.get_current_timezone())
                     deleted_count, _ = StatusLog.objects.filter(create_datetime__lt=dt).delete()
-                    date_display = dt.strftime("%Y-%m-%d %H:%M:%S") if dt.time() != datetime.time.min else dt.strftime("%Y-%m-%d")
+                    date_display = (
+                        dt.strftime("%Y-%m-%d %H:%M:%S") if dt.time() != datetime.time.min else dt.strftime("%Y-%m-%d")
+                    )
                     msg = f"Successfully deleted {deleted_count} logs older than {date_display}."
                     success = True
                 else:
@@ -775,7 +797,12 @@ def logs(request: HttpRequest, tool: str = "all") -> HttpResponse:
             if success:
                 messages.success(request, msg)
                 try:
-                    event_log(request.user, "DELETE_STATUS_LOGS", data=f"delete_type={delete_type}, count={deleted_count}", result="success")
+                    event_log(
+                        request.user,
+                        "DELETE_STATUS_LOGS",
+                        data=f"delete_type={delete_type}, count={deleted_count}",
+                        result="success",
+                    )
                 except Exception:
                     pass
 
@@ -888,7 +915,8 @@ def logs(request: HttpRequest, tool: str = "all") -> HttpResponse:
                         "create_datetime_timestamp": int(timestamp_or_zero(x.create_datetime)),
                         "create_datetime": x.create_datetime.strftime("%Y-%m-%d %H:%M:%S.%f"),
                         "is_match": getattr(x, "is_match", True),
-                    } for x in display_logs
+                    }
+                    for x in display_logs
                 ],
                 "has_previous": log_lines_paginated.has_previous(),
                 "has_next": log_lines_paginated.has_next(),
@@ -935,14 +963,18 @@ def crawler(request: HttpRequest) -> HttpResponse:
         if "downloaders" not in current_settings.config or not isinstance(current_settings.config["downloaders"], dict):
             current_settings.config["downloaders"] = {}
 
-        current_settings.replace_metadata = ("replace_metadata" in p)
+        current_settings.replace_metadata = "replace_metadata" in p
         current_settings.config["allowed"]["replace_metadata"] = current_settings.replace_metadata
 
-        current_settings.non_current_links_as_deleted = ("skip-non-current" in p)
-        current_settings.config["allowed"]["non_current_links_as_deleted"] = current_settings.non_current_links_as_deleted
+        current_settings.non_current_links_as_deleted = "skip-non-current" in p
+        current_settings.config["allowed"]["non_current_links_as_deleted"] = (
+            current_settings.non_current_links_as_deleted
+        )
         if "general" in current_settings.config and isinstance(current_settings.config["general"], dict):
             if "non_current_links_as_deleted" in current_settings.config["general"]:
-                current_settings.config["general"]["non_current_links_as_deleted"] = current_settings.non_current_links_as_deleted
+                current_settings.config["general"]["non_current_links_as_deleted"] = (
+                    current_settings.non_current_links_as_deleted
+                )
 
         for k, v in p.items():
             if isinstance(v, str):
@@ -982,8 +1014,8 @@ def crawler(request: HttpRequest) -> HttpResponse:
         if "gallery_only" in p:
             job_settings.allow_type_downloaders_only("info")
 
-        job_settings.non_current_links_as_deleted = ("skip-non-current" in p)
-        job_settings.replace_metadata = ("replace_metadata" in p)
+        job_settings.non_current_links_as_deleted = "skip-non-current" in p
+        job_settings.replace_metadata = "replace_metadata" in p
 
         if "ignore_global_filters" in p or "ignore-global-filters" in p:
             job_settings.ignore_global_filters = True
@@ -1161,7 +1193,9 @@ def database_maintenance(request: HttpRequest) -> HttpResponse:
                     event_action="DATABASE_PRUNE",
                 )
                 mode_str = " (dry-run)" if dry_run else ""
-                msg = f"Enqueued background task #{task.pk} to prune {entity}{mode_str}. Worker will process it shortly."
+                msg = (
+                    f"Enqueued background task #{task.pk} to prune {entity}{mode_str}. Worker will process it shortly."
+                )
                 messages.success(request, msg)
                 if request.headers.get("x-requested-with") == "XMLHttpRequest" or request.POST.get("json"):
                     return JsonResponse({"success": True, "task_id": task.pk, "message": msg})
@@ -1178,9 +1212,9 @@ def database_maintenance(request: HttpRequest) -> HttpResponse:
     entity_metrics = get_retention_counts(crawler_settings)
     retention_cfg = getattr(crawler_settings, "retention", None)
     scheduler_state = SchedulerState.objects.filter(name="timed_database_pruner").first()
-    recent_tasks = TaskQueue.objects.filter(
-        task_type__in=["database_prune", "prune_database"]
-    ).order_by("-created_at")[:10]
+    recent_tasks = TaskQueue.objects.filter(task_type__in=["database_prune", "prune_database"]).order_by("-created_at")[
+        :10
+    ]
 
     total_prunable = sum(m["prunable_count"] for m in entity_metrics)
     total_rows = sum(m["total_count"] for m in entity_metrics)
@@ -1196,4 +1230,3 @@ def database_maintenance(request: HttpRequest) -> HttpResponse:
     }
 
     return render(request, "viewer/database_maintenance.html", d)
-

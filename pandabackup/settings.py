@@ -41,7 +41,7 @@ DEBUG = crawler_settings.django_debug_mode
 
 # Might want to limit it here.
 # ALLOWED_HOSTS = ["*"]
-ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS","*").split(",")
+ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "*").split(",")
 
 DEFAULT_AUTO_FIELD = "django.db.models.AutoField"
 
@@ -61,7 +61,7 @@ LOGGING: dict[str, Any] = {
     "version": 1,
     "disable_existing_loggers": False,
     "formatters": {
-        "verbose": {"format": "%(levelname)s %(asctime)-.19s %(module)s " "%(process)d %(thread)d %(message)s[0m"},
+        "verbose": {"format": "%(levelname)s %(asctime)-.19s %(module)s %(process)d %(thread)d %(message)s[0m"},
         "simple": {"format": "%(levelname)s %(message)s[0m"},
         "console": {"format": "%(asctime)-.19s %(levelname)s [%(name)s] %(message)s"},
         "standard": {
@@ -85,7 +85,7 @@ LOGGING: dict[str, Any] = {
 }
 
 if MAIN_LOGGER:
-    LOGGING['handlers']['viewer'] = {
+    LOGGING["handlers"]["viewer"] = {
         "level": "DEBUG",
         "class": "logging.handlers.RotatingFileHandler",
         "filename": MAIN_LOGGER,
@@ -94,7 +94,7 @@ if MAIN_LOGGER:
         "encoding": "utf8",
         "formatter": "standard",
     }
-    LOGGING['loggers'] = {
+    LOGGING["loggers"] = {
         "viewer": {"handlers": ["viewer", "console"], "level": log_level},
         "workers": {"handlers": ["viewer", "console"], "level": log_level},
         "core": {"handlers": ["viewer", "console"], "level": log_level},
@@ -105,7 +105,7 @@ if MAIN_LOGGER:
         },
     }
 else:
-    LOGGING['loggers'] = {
+    LOGGING["loggers"] = {
         "viewer": {"handlers": ["console"], "level": log_level},
         "workers": {"handlers": ["console"], "level": log_level},
         "core": {"handlers": ["console"], "level": log_level},
@@ -130,14 +130,11 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django.contrib.postgres",
     "django_vite",
-    "django_db_logger"
+    "django_db_logger",
 ]
 
 if not crawler_settings.disable_sql_log:
-    LOGGING["handlers"]["db_log"] = {
-        "level": "DEBUG",
-        "class": "django_db_logger.db_log_handler.DatabaseLogHandler"
-    }
+    LOGGING["handlers"]["db_log"] = {"level": "DEBUG", "class": "django_db_logger.db_log_handler.DatabaseLogHandler"}
     LOGGING["loggers"]["viewer"]["handlers"].append("db_log")
     LOGGING["loggers"]["workers"]["handlers"].append("db_log")
     LOGGING["loggers"]["core"]["handlers"].append("db_log")
@@ -167,7 +164,12 @@ if module_exists("compressor"):
 if module_exists("django_unused_media"):
     INSTALLED_APPS += ["django_unused_media"]
 
-TESTING = sys.argv[1:2] == ["test"] or "pytest" in sys.modules or os.environ.get("TESTING") == "true" or any("test" in arg for arg in sys.argv)
+TESTING = (
+    sys.argv[1:2] == ["test"]
+    or "pytest" in sys.modules
+    or os.environ.get("TESTING") == "true"
+    or any("test" in arg for arg in sys.argv)
+)
 
 if TESTING:
     PASSWORD_HASHERS = [
@@ -231,7 +233,7 @@ if module_exists("compressor"):
         "css": ["compressor.filters.css_default.CssAbsoluteFilter", "compressor.filters.cssmin.rCSSMinFilter"],
         "js": ["compressor.filters.jsmin.JSMinFilter"],
     }
-    COMPRESS_ENABLED = not DEBUG
+    COMPRESS_ENABLED = not DEBUG and not TESTING
     COMPRESS_OFFLINE = True
 
 ROOT_URLCONF = "pandabackup.urls"
@@ -253,6 +255,7 @@ if DEBUG and not TESTING and module_exists("debug_toolbar"):
 if (CORS_ALLOW_ALL_ORIGINS or CORS_ALLOWED_ORIGINS) and module_exists("corsheaders"):
     MIDDLEWARE = ["corsheaders.middleware.CorsMiddleware"] + MIDDLEWARE
 
+
 def get_database_config(settings_obj: Any = None) -> dict[str, Any]:
     """Build the DATABASES configuration dictionary from crawler Settings,
 
@@ -263,9 +266,7 @@ def get_database_config(settings_obj: Any = None) -> dict[str, Any]:
 
     engine = getattr(settings_obj, "db_engine", "postgresql")
     if engine != "postgresql":
-        raise ValueError(
-            f"Unsupported database engine '{engine}'. PostgreSQL is the only supported database backend."
-        )
+        raise ValueError(f"Unsupported database engine '{engine}'. PostgreSQL is the only supported database backend.")
 
     db_dict = getattr(settings_obj, "database", {}) or {}
 

@@ -26,7 +26,11 @@ KNOWN_TASK_TYPES: list[tuple[str, str, str]] = [
     ("fileinfo_worker", "File Info", "Recalculates archive CRC32, file list, and sizes"),
     ("thumbnails_worker", "Thumbnails", "Regenerates cover and page thumbnails"),
     ("extract_worker", "Archive Extraction", "Extracts archive images and generates page thumbnails"),
-    ("publish_worker", "Archive Publishing", "Verifies zip integrity, generates thumbnails/SHA1s, and publishes archives"),
+    (
+        "publish_worker",
+        "Archive Publishing",
+        "Verifies zip integrity, generates thumbnails/SHA1s, and publishes archives",
+    ),
     ("match_unmatched_worker", "Local Matcher", "Matches unmatched archives to galleries locally"),
     ("web_search_worker", "Wanted Provider Search", "Searches wanted galleries against external providers"),
     ("wanted_local_search_worker", "Wanted Local Search", "Searches wanted galleries against local database"),
@@ -515,7 +519,9 @@ def get_workers_dashboard_snapshot(
                 "speed": spd,
                 "speed_formatted": f"{format_bytes(spd)}/s",
                 "is_transferring": spd > 0 or (dl.status == DownloadEvent.Status.IN_PROGRESS and dl_progress >= 100),
-                "status": "in_progress (transferring)" if (dl.status == DownloadEvent.Status.IN_PROGRESS and dl_progress >= 100) else dl.status,
+                "status": "in_progress (transferring)"
+                if (dl.status == DownloadEvent.Status.IN_PROGRESS and dl_progress >= 100)
+                else dl.status,
                 "worker_pid": dl.worker_pid or (matched_cd.get("worker_pid") if matched_cd else None),
                 "created_at": dl.create_date.isoformat() if dl.create_date else None,
             }
@@ -754,9 +760,7 @@ def workers_action_api(request: HttpRequest) -> HttpResponse:
             timer_arg = str(payload.get("timer", ""))
             SchedulerState.request_command(name, "start", timer_arg)
             logger.info("Admin %s requested 'start' for scheduler '%s'", request.user, name)
-            return JsonResponse(
-                {"success": True, "message": f"Requested start command for scheduler '{name}'."}
-            )
+            return JsonResponse({"success": True, "message": f"Requested start command for scheduler '{name}'."})
 
         elif action == "scheduler_stop":
             name = target or payload.get("name", "")
@@ -764,9 +768,7 @@ def workers_action_api(request: HttpRequest) -> HttpResponse:
                 return JsonResponse({"error": "Scheduler name is required."}, status=400)
             SchedulerState.request_command(name, "stop")
             logger.info("Admin %s requested 'stop' for scheduler '%s'", request.user, name)
-            return JsonResponse(
-                {"success": True, "message": f"Requested stop command for scheduler '{name}'."}
-            )
+            return JsonResponse({"success": True, "message": f"Requested stop command for scheduler '{name}'."})
 
         elif action == "scheduler_force_run":
             name = target or payload.get("name", "")
@@ -774,9 +776,7 @@ def workers_action_api(request: HttpRequest) -> HttpResponse:
                 return JsonResponse({"error": "Scheduler name is required."}, status=400)
             SchedulerState.request_command(name, "force_run")
             logger.info("Admin %s requested 'force_run' for scheduler '%s'", request.user, name)
-            return JsonResponse(
-                {"success": True, "message": f"Requested immediate run for scheduler '{name}'."}
-            )
+            return JsonResponse({"success": True, "message": f"Requested immediate run for scheduler '{name}'."})
 
         # --- Task Queue actions ---
         elif action == "task_cancel":
@@ -808,9 +808,19 @@ def workers_action_api(request: HttpRequest) -> HttpResponse:
                 status=TaskQueue.Status.PENDING,
             )
             logger.info("Admin %s retried Task #%d as new Task #%d", request.user, task_id, new_task.pk)
-            return JsonResponse(
-                {"success": True, "message": f"Task #{task_id} re-queued as Task #{new_task.pk}."}
+            return JsonResponse({"success": True, "message": f"Task #{task_id} re-queued as Task #{new_task.pk}."})
+
+        elif action in ("clear_pending_tasks", "purge_pending_tasks"):
+            task_type = str(target or payload.get("task_type", "")).strip()
+            mode = str(payload.get("mode", "delete")).strip().lower()
+            deleted = worker_client.clear_pending_tasks(
+                task_type=task_type if task_type and task_type != "all" else None,
+                mode=mode,
             )
+            type_str = f" for '{task_type}'" if (task_type and task_type != "all") else ""
+            verb = "Cancelled" if mode == "cancel" else "Cleared"
+            logger.info("Admin %s %s %d pending task(s)%s", request.user, verb.lower(), deleted, type_str)
+            return JsonResponse({"success": True, "message": f"{verb} {deleted} pending task(s){type_str}."})
 
         # --- Maintenance actions ---
         elif action == "worker_delete":
@@ -833,6 +843,7 @@ def workers_action_api(request: HttpRequest) -> HttpResponse:
             )
             from django.db.models import F
             from django.db.models.functions import Greatest
+
             DownloadEvent.objects.filter(
                 worker_pid=pid,
                 completed=False,
@@ -852,9 +863,8 @@ def workers_action_api(request: HttpRequest) -> HttpResponse:
             WorkerProcess.cleanup_dead_workers(threshold_seconds=60)
             cutoff = django_tz.now() - timedelta(seconds=30)
             from django.db.models import Q
-            qs = WorkerProcess.objects.filter(
-                Q(status="stopped") | Q(last_heartbeat__lt=cutoff)
-            )
+
+            qs = WorkerProcess.objects.filter(Q(status="stopped") | Q(last_heartbeat__lt=cutoff))
             if days is not None and str(days).isdigit():
                 days_cutoff = django_tz.now() - timedelta(days=int(days))
                 qs = qs.filter(last_heartbeat__lt=days_cutoff)
@@ -867,6 +877,7 @@ def workers_action_api(request: HttpRequest) -> HttpResponse:
                 )
                 from django.db.models import F
                 from django.db.models.functions import Greatest
+
                 DownloadEvent.objects.filter(
                     worker_pid__in=dead_pids,
                     completed=False,
@@ -887,9 +898,7 @@ def workers_action_api(request: HttpRequest) -> HttpResponse:
         elif action == "cleanup_workers":
             cleaned = WorkerProcess.cleanup_dead_workers(threshold_seconds=60)
             logger.info("Admin %s triggered cleanup_dead_workers (cleaned %d)", request.user, cleaned)
-            return JsonResponse(
-                {"success": True, "message": f"Cleaned up {cleaned} dead worker process(es)."}
-            )
+            return JsonResponse({"success": True, "message": f"Cleaned up {cleaned} dead worker process(es)."})
 
         elif action == "purge_completed_tasks":
             days = int(payload.get("days", 7))
