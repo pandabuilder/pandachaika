@@ -118,6 +118,7 @@ Detailed endpoint references and request/response examples are organized into th
 | **[archives.md](archives.md)** | Archives, Images & Downloads | `archive`, `archives`, `at`, `ah`, `aof`, `aid`, `sha1`, `qa`, `q`, `as`, `archive-wanted-image` |
 | **[wanted_galleries.md](wanted_galleries.md)** | Wanted Galleries & Tracking | `wanted-gallery`, `wanted-galleries`, `wanted-galleries-search`, `wanted-tags` |
 | **[archive_groups.md](archive_groups.md)** | Archive Groups & Collections | `archive-group`, `archive-group-entry`, `archive-group-entry-archive` |
+| **[json_parser.md](json_parser.md)** | Internal Operations API *(Legacy / WIP)* | `webcrawler`, `archive_request`, `force_queue_archives`, `queue_archives`, `queue_galleries`, `links`, `match_archive`, `match_archive_internally`, `?gc=` |
 
 ---
 
