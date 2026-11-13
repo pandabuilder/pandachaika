@@ -10,7 +10,6 @@ from django.conf import settings
 from simple_history.admin import SimpleHistoryAdmin
 
 
-from viewer.utils.actions import event_log
 from viewer.models import (
     Archive,
     ArchiveGroup,
@@ -51,7 +50,6 @@ from django.contrib import admin
 from django.contrib.admin.helpers import ActionForm
 from django import forms
 
-from core.base.setup import Settings
 from viewer.utils.types import AuthenticatedHttpRequest
 from workers import client
 
@@ -210,19 +208,10 @@ class TagAdmin(admin.ModelAdmin):
     def recall_api_gallery(self, request: HttpRequest, queryset: TagQuerySet) -> None:
         galleries = Gallery.objects.filter(tags__in=queryset)
         for gallery in galleries:
-            current_settings = Settings(load_from_config=crawler_settings.config)
-
             if gallery.provider:
-                current_settings.set_update_metadata_options(providers=(gallery.provider,))
-                current_settings.archive_user = request.user
-                current_settings.event_action = "UPDATE_METADATA"
-
-                client.enqueue(
-                    args=[gallery.get_link()],
-                    task_type="web_crawler",
-                    override_options=current_settings,
+                client.enqueue_gallery_update(
+                    [gallery.get_link()],
                     user=request.user,
-                    event_action="UPDATE_METADATA",
                 )
 
         self.message_user(request, "%s galleries pulled new metadata." % galleries.count())
@@ -824,16 +813,17 @@ class EventLogAdmin(admin.ModelAdmin):
 class UserLongLivedTokenAdmin(admin.ModelAdmin):
 
     raw_id_fields = ["user"]
-    list_display = ["user", "name", "create_date", "expire_date"]
-    list_filter = ["create_date", "expire_date"]
-    search_fields = ["user__username", "user__email"]
+    list_display = ["user", "name", "scopes", "create_date", "expire_date", "last_used_date"]
+    list_filter = ["create_date", "expire_date", "last_used_date"]
+    search_fields = ["user__username", "user__email", "name"]
+    readonly_fields = ["key", "create_date", "last_used_date"]
 
 
 class ProcessedLinksAdmin(admin.ModelAdmin):
 
     raw_id_fields = ["monitored_link"]
-    list_filter = ["link_date", "create_date", "provider", "monitored_link"]
-    list_display = ["source_id", "url", "title", "provider", "monitored_link", "link_date", "create_date"]
+    list_filter = ["status", "link_date", "create_date", "provider", "monitored_link"]
+    list_display = ["source_id", "url", "title", "provider", "monitored_link", "status", "link_date", "create_date"]
     search_fields = ["url", "source_id"]
 
 
@@ -895,8 +885,8 @@ class ArchiveOptionAdmin(admin.ModelAdmin):
 class MonitoredLinkAdmin(admin.ModelAdmin):
 
     raw_id_fields = ["limited_wanted_galleries"]
-    list_filter = ["enabled", "auto_start", "priority", "provider", "stop_on_seen_link", "already_seen_links_mode"]
-    list_display = ["name", "provider", "priority", "stop_on_seen_link", "already_seen_links_mode", "enabled", "auto_start", "create_date"]
+    list_filter = ["enabled", "auto_start", "priority", "provider", "stop_on_seen_link", "already_seen_links_mode", "separate_frequencies"]
+    list_display = ["name", "provider", "priority", "stop_on_seen_link", "already_seen_links_mode", "separate_frequencies", "enabled", "auto_start", "create_date"]
     search_fields = ["name", "url"]
     actions = ["start_running", "stop_running", "force_run"]
 

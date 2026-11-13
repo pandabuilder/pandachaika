@@ -1,4 +1,3 @@
-import datetime
 from datetime import timedelta
 import logging
 import os
@@ -12,7 +11,11 @@ import traceback
 import django.utils.timezone as django_tz
 from django import db
 from django.db import transaction
+from django.db.models import F
+from django.db.models.functions import Greatest
 
+from core.base.cancellation import TaskCancelledError, clear_task_hooks, set_task_hooks
+from core.base.errors import ProviderBannedError
 from core.base.setup import Settings
 from core.base.utilities import get_part_filepath
 from core.web.crawler import WebCrawler
@@ -23,9 +26,7 @@ from workers.serialization import deserialize_settings_options
 logger = logging.getLogger(__name__)
 
 
-class TaskCancelledError(Exception):
-    """Raised when an active task is cancelled while running."""
-    pass
+__all__ = ["TaskCancelledError", "WorkerRunner"]
 
 
 def _safe_close_old_connections() -> None:
@@ -159,7 +160,13 @@ class WorkerRunner:
                             if (now_wall - mtime) < min(stall_timeout, 60.0):
                                 with self._jobs_lock:
                                     for pk, j in self.active_jobs.items():
-                                        if j.task_type in ("web_crawler", "webcrawler"):
+                                        if j.task_type in (
+                                            "web_crawler",
+                                            "webcrawler",
+                                            "gallery_creator",
+                                            "gallery_worker",
+                                            "create_galleries",
+                                        ):
                                             self.active_job_activity[pk] = now_mono
                                 break
                         except OSError:
@@ -175,6 +182,10 @@ class WorkerRunner:
                     self.active_jobs.pop(pk, None)
                     self.active_threads.pop(pk, None)
                     self.active_job_activity.pop(pk, None)
+                    # The thread can't be killed. Make it stop at its next cancellation check.
+                    cancel_ev = self.active_cancel_events.get(pk)
+                    if cancel_ev:
+                        cancel_ev.set()
                     timed_out_jobs.append(job)
             if timed_out_jobs:
                 self.current_job = next(iter(self.active_jobs.values()), None)
@@ -240,7 +251,7 @@ class WorkerRunner:
                 next_run = (last_run + timedelta(seconds=s.timer)) if (last_run and is_running) else None
                 extra_data = {}
                 if (
-                    s.thread_name in ("timed_downloader", "post_downloader", "archive_download_queue")
+                    s.thread_name in ("download_progress_checker", "archive_download_queue")
                     and hasattr(s, "current_download")
                 ):
                     try:
@@ -325,8 +336,6 @@ class WorkerRunner:
             schedulers_by_name = {
                 s.thread_name: s for s in self.settings.workers.get_active_initialized_workers()
             }
-            if "post_downloader" in schedulers_by_name:
-                schedulers_by_name["timed_downloader"] = schedulers_by_name["post_downloader"]
 
             for state in pending_commands:
                 cmd = state.command_requested
@@ -462,8 +471,25 @@ class WorkerRunner:
             except Exception:
                 pass
 
+    def warn_on_pid_collision(self) -> None:
+        """Workers are identified by PID only, so two hosts/containers sharing a PID would overwrite each other."""
+        other = WorkerProcess.objects.filter(
+            pid=self.pid,
+            status="running",
+            last_heartbeat__gte=django_tz.now() - timedelta(seconds=60),
+        ).exclude(hostname=self.hostname)
+        for row in other:
+            logger.critical(
+                "Another live worker on host %r uses the same PID (%d). Workers are tracked by PID, so their tasks "
+                "and heartbeats will get mixed up. Run workers with distinct PIDs (e.g. `pid: host`/different "
+                "PID namespaces).",
+                row.hostname,
+                self.pid,
+            )
+
     def register_start(self) -> None:
         _safe_close_old_connections()
+        self.warn_on_pid_collision()
         WorkerProcess.objects.update_or_create(
             pid=self.pid,
             defaults={
@@ -480,10 +506,17 @@ class WorkerRunner:
         stale_qs = TaskQueue.objects.filter(status=TaskQueue.Status.PROCESSING).exclude(
             worker_pid__in=other_running_pids
         )
-        stale_qs.update(status=TaskQueue.Status.PENDING, worker_pid=None)
+        requeued, failed = TaskQueue.release_interrupted(
+            stale_qs, reason="Worker stopped unexpectedly while running this task too many times."
+        )
+        if requeued or failed:
+            logger.warning(
+                "Found %d task(s) interrupted by a worker crash: %d re-queued, %d failed (too many attempts).",
+                requeued + failed,
+                requeued,
+                failed,
+            )
         try:
-            from django.db.models import F
-            from django.db.models.functions import Greatest
             from viewer.models import DownloadEvent
 
             stale_dl_qs = (
@@ -523,10 +556,22 @@ class WorkerRunner:
         except Exception as e:
             logger.warning("Failed to mark worker process as stopped: %s", e)
 
+    TASK_CLAIM_LOCK_ID = 7_283_104_551
+
+    def _lock_task_claims(self) -> None:
+        """Take a transaction-scoped lock that serializes task claims across all workers."""
+        if db.connection.vendor != "postgresql":
+            return
+        with db.connection.cursor() as cursor:
+            cursor.execute("SELECT pg_advisory_xact_lock(%s)", [self.TASK_CLAIM_LOCK_ID])
+
     def claim_next_job(self) -> TaskQueue | None:
         try:
             self.prune_inactive_jobs()
             with transaction.atomic():
+                # Only one worker at a time may decide which task types are busy and claim a task, otherwise two
+                # workers can both see "not busy" and start two tasks of the same type.
+                self._lock_task_claims()
                 processing_types = set(
                     TaskQueue.objects.filter(status=TaskQueue.Status.PROCESSING).values_list("task_type", flat=True)
                 )
@@ -534,7 +579,7 @@ class WorkerRunner:
                     processing_types.update(j.task_type for j in self.active_jobs.values())
                 busy_types = expand_task_type_aliases(processing_types)
 
-                qs = TaskQueue.objects.select_for_update(skip_locked=True).filter(status=TaskQueue.Status.PENDING)
+                qs = TaskQueue.startable().select_for_update(skip_locked=True)
                 if busy_types:
                     qs = qs.exclude(task_type__in=busy_types)
 
@@ -543,7 +588,8 @@ class WorkerRunner:
                     job.status = TaskQueue.Status.PROCESSING
                     job.started_at = django_tz.now()
                     job.worker_pid = self.pid
-                    job.save(update_fields=["status", "started_at", "worker_pid"])
+                    job.attempts += 1
+                    job.save(update_fields=["status", "started_at", "worker_pid", "attempts"])
                     return job
         except Exception:
             logger.critical("Error while claiming next job:\n%s", traceback.format_exc())
@@ -605,12 +651,17 @@ class WorkerRunner:
             cancel_ev = self.active_cancel_events[job.pk]
             self.current_job = job
         start_time = time.time()
+        set_task_hooks(lambda: self.touch_job_activity(job.pk), lambda: cancel_ev is not None and cancel_ev.is_set())
 
         try:
             current_settings = deserialize_settings_options(self.settings, job.options)
             current_settings.activity_callback = lambda: self.touch_job_activity(job.pk)
             current_settings.cancel_event = cancel_ev
             current_settings.is_cancelled = lambda: (cancel_ev is not None and cancel_ev.is_set())
+            current_settings.is_worker_process = True
+            current_settings.current_task_type = job.task_type
+            current_settings.current_task_id = job.pk
+            current_settings.current_task_priority = job.priority
             if job.user:
                 current_settings.archive_user = job.user
             if job.reason:
@@ -621,21 +672,31 @@ class WorkerRunner:
             if job.task_type in ("web_crawler", "webcrawler"):
                 crawler = WebCrawler(current_settings)
                 crawler.start_crawling(job.args)
+            elif job.task_type in ("gallery_creator", "gallery_worker", "create_galleries"):
+                self.execute_gallery_creator(job, current_settings)
+            elif job.task_type in ("gallery_updater", "update_galleries"):
+                from core.web.gallery_updater import GalleryMetadataUpdater
+
+                GalleryMetadataUpdater(current_settings).update(job.args)
             elif job.task_type in ("folder_crawler", "foldercrawler"):
                 from core.local.foldercrawler import FolderCrawler
                 folder_crawler = FolderCrawler(current_settings)
                 folder_crawler.start_crawling(job.args)
-            elif job.task_type in ("fileinfo_worker", "recalc_all_file_info", "calculate_missing_info"):
+            elif job.task_type in ("fileinfo_worker", "recalc_all_file_info", "calculate_missing_info", "recalc_info"):
                 from core.workers.archive_work import ArchiveWorker
                 from viewer.models import Archive
                 if job.args:
                     archives = Archive.objects.filter(pk__in=job.args)
                 elif job.task_type == "calculate_missing_info":
                     archives = Archive.objects.filter_by_missing_file_info()
-                else:
+                elif self.runs_on_all_archives(job, "recalc_all_file_info"):
                     archives = Archive.objects.all()
+                else:
+                    logger.warning("Task #%d (%s) has no archives and is not an 'all' task, nothing to do.", job.pk, job.task_type)
+                    archives = Archive.objects.none()
                 archive_worker = ArchiveWorker(current_settings, 4)
-                archive_worker.recalc_all_file_info(archives, force_local=True)
+                full = bool(job.options.get("full", False)) if isinstance(job.options, dict) else False
+                archive_worker.recalc_all_file_info(archives, force_local=True, full=full)
             elif job.task_type in ("thumbnails_worker", "regenerate_all_thumbs", "generate_missing_thumbs"):
                 from core.workers.archive_work import ArchiveWorker
                 from viewer.models import Archive
@@ -643,8 +704,11 @@ class WorkerRunner:
                     archives = Archive.objects.filter(pk__in=job.args)
                 elif job.task_type == "generate_missing_thumbs":
                     archives = Archive.objects.filter(thumbnail="")
-                else:
+                elif self.runs_on_all_archives(job, "regenerate_all_thumbs"):
                     archives = Archive.objects.all()
+                else:
+                    logger.warning("Task #%d (%s) has no archives and is not an 'all' task, nothing to do.", job.pk, job.task_type)
+                    archives = Archive.objects.none()
                 archive_worker = ArchiveWorker(current_settings, 4)
                 archive_worker.regenerate_all_thumbs(archives, force_local=True)
             elif job.task_type in ("extract_worker", "extract_archives"):
@@ -654,6 +718,77 @@ class WorkerRunner:
                 resized = bool(job.options.get("resized", False)) if isinstance(job.options, dict) else False
                 archive_worker = ArchiveWorker(current_settings, 4)
                 archive_worker.extract_archives(extract_archives_qs, resized=resized, user=job.user, force_local=True)
+            elif job.task_type in ("reduce_worker", "reduce_archives", "reduce_archive"):
+                from core.workers.archive_work import ArchiveWorker
+                from viewer.models import Archive
+                reduce_archives_qs = Archive.objects.filter(pk__in=job.args) if job.args else Archive.objects.none()
+                archive_worker = ArchiveWorker(current_settings, 4)
+                archive_worker.reduce_archives(reduce_archives_qs, user=job.user, force_local=True)
+            elif job.task_type in ("calculate_sha1_worker", "calculate_images_sha1"):
+                from core.workers.archive_work import ArchiveWorker
+                from viewer.models import Archive
+                sha1_archives_qs = Archive.objects.filter(pk__in=job.args) if job.args else Archive.objects.none()
+                archive_worker = ArchiveWorker(current_settings, 4)
+                archive_worker.calculate_images_sha1(sha1_archives_qs, user=job.user, force_local=True)
+            elif job.task_type in ("convert_archive_worker", "check_and_convert_filetype", "convert_archive"):
+                from core.workers.archive_work import ArchiveWorker
+                from viewer.models import Archive
+                convert_archives_qs = Archive.objects.filter(pk__in=job.args) if job.args else Archive.objects.none()
+                archive_worker = ArchiveWorker(current_settings, 4)
+                archive_worker.check_and_convert_filetype(convert_archives_qs, user=job.user, force_local=True)
+            elif job.task_type in ("clone_archive_worker", "clone_plus", "clone_archive"):
+                from core.workers.archive_work import ArchiveWorker
+                opts = job.options if isinstance(job.options, dict) else {}
+                archive_id = self.required_archive_id(job)
+                archive_worker = ArchiveWorker(current_settings, 4)
+                archive_worker.clone_archive(
+                    archive_id=archive_id,
+                    sha1_list=opts.get("sha1_list"),
+                    run_image_tool=bool(opts.get("run_image_tool", False)),
+                    bin_original=bool(opts.get("bin_original", False)),
+                    user_reason=opts.get("user_reason", "") or job.reason or "",
+                    user=job.user,
+                    force_local=True,
+                )
+            elif job.task_type in ("split_archive_worker", "split_archive", "split_archives"):
+                from core.workers.archive_work import ArchiveWorker
+                opts = job.options if isinstance(job.options, dict) else {}
+                archive_id = self.required_archive_id(job)
+                archive_worker = ArchiveWorker(current_settings, 4)
+                archive_worker.split_archive(
+                    archive_id=archive_id,
+                    cleaned_data=opts.get("cleaned_data"),
+                    split_nested=bool(opts.get("split_nested", False)),
+                    bin_original=bool(opts.get("bin_original", False)),
+                    user_reason=opts.get("user_reason", "") or job.reason or "",
+                    user=job.user,
+                    force_local=True,
+                )
+            elif job.task_type in ("mark_similar_worker", "mark_similar_archives", "mark_similar"):
+                from core.workers.archive_work import ArchiveWorker
+                from viewer.models import Archive
+                opts = job.options if isinstance(job.options, dict) else {}
+                use_recycled = bool(opts.get("use_recycled", False))
+                archives_qs = Archive.objects.filter(pk__in=job.args) if job.args else Archive.objects.none()
+                archive_worker = ArchiveWorker(current_settings, 4)
+                archive_worker.mark_similar_archives(archives_qs, use_recycled=use_recycled, user=job.user, force_local=True)
+            elif job.task_type in ("delete_archive_worker", "delete_archive", "delete_archives"):
+                from core.workers.archive_work import ArchiveWorker
+                opts = job.options if isinstance(job.options, dict) else {}
+                archive_id = self.required_archive_id(job)
+                archive_worker = ArchiveWorker(current_settings, 4)
+                archive_worker.delete_archive(
+                    archive_id=archive_id,
+                    delete_zipped=bool(opts.get("delete_zipped", False)),
+                    delete_archive=bool(opts.get("delete_archive", False)),
+                    delete_file=bool(opts.get("delete_file", False)),
+                    delete_gallery=bool(opts.get("delete_gallery", False)),
+                    mark_gallery_deleted=bool(opts.get("mark_gallery_deleted", False)),
+                    mark_gallery_denied=bool(opts.get("mark_gallery_denied", False)),
+                    user_reason=opts.get("user_reason", "") or job.reason or "",
+                    user=job.user,
+                    force_local=True,
+                )
             elif job.task_type in ("publish_worker", "publish_archives", "set_all_hidden_as_public"):
                 from core.workers.archive_work import ArchiveWorker
                 from viewer.models import Archive
@@ -670,12 +805,45 @@ class WorkerRunner:
                     user=job.user,
                     force_local=True,
                 )
-            elif job.task_type in ("match_unmatched_worker", "web_match_worker", "generate_possible_matches_internally"):
-                from viewer.utils.matching import generate_possible_matches_for_archives
+            elif job.task_type in ("contextual_extractor_worker", "extract_contextual_info"):
+                from core.workers.archive_work import ArchiveWorker
                 from viewer.models import Archive
-                match_archives = Archive.objects.filter(pk__in=job.args) if job.args else None
-                kwargs = job.options.get("matching_kwargs", {})
-                generate_possible_matches_for_archives(match_archives, **kwargs)
+                ctx_archives_qs = Archive.objects.filter(pk__in=job.args) if job.args else Archive.objects.none()
+                archive_worker = ArchiveWorker(current_settings, 4)
+                archive_worker.extract_contextual_info(
+                    ctx_archives_qs,
+                    reason=job.reason or "",
+                    user=job.user,
+                    force_local=True,
+                )
+                if current_settings.is_cancelled():
+                    raise TaskCancelledError("Contextual extraction task cancelled")
+            elif job.task_type in ("match_unmatched_worker", "web_match_worker", "generate_possible_matches_internally", "generate_matches"):
+                opts = job.options if isinstance(job.options, dict) else {}
+                if "cutoff" in opts or "max_matches" in opts or "clear_title" in opts or "provider_filter" in opts:
+                    from core.workers.archive_work import ArchiveWorker
+                    from viewer.models import Archive
+                    match_archives = Archive.objects.filter(pk__in=job.args) if job.args else Archive.objects.none()
+                    archive_worker = ArchiveWorker(current_settings, 4)
+                    archive_worker.generate_matches(
+                        archives=match_archives,
+                        clear_title=bool(opts.get("clear_title", False)),
+                        provider_filter=opts.get("provider_filter", ""),
+                        cutoff=float(opts.get("cutoff", 0.4)),
+                        max_matches=int(opts.get("max_matches", 10)),
+                        user=job.user,
+                        force_local=True,
+                        auto_link=bool(opts.get("auto_link", False)),
+                        auto_link_cutoff=(
+                            float(opts["auto_link_cutoff"]) if opts.get("auto_link_cutoff") is not None else None
+                        ),
+                    )
+                else:
+                    from viewer.utils.matching import generate_possible_matches_for_archives
+                    from viewer.models import Archive
+                    legacy_archives = Archive.objects.filter(pk__in=job.args) if job.args else None
+                    kwargs = opts.get("matching_kwargs", {})
+                    generate_possible_matches_for_archives(legacy_archives, **kwargs)
             elif job.task_type in ("web_search_worker", "search_wanted_galleries_provider_titles"):
                 from viewer.utils.matching import create_matches_wanted_galleries_from_providers
                 from viewer.models import WantedGallery
@@ -711,10 +879,19 @@ class WorkerRunner:
                     user=job.user,
                 )
                 logger.info("Task #%d pruned database: %s", job.pk, res)
+            elif job.task_type in ("archive_file_check",):
+                from viewer.services.archive_file_check import run_file_check
+                options = job.options if isinstance(job.options, dict) else {}
+                check_id = options.get("check_id") or (job.args[0] if job.args else None)
+                if not check_id:
+                    raise ValueError("archive_file_check task has no check id")
+                run_file_check(
+                    int(check_id),
+                    activity_cb=current_settings.activity_callback,
+                    is_cancelled=current_settings.is_cancelled,
+                )
             else:
-                logger.warning("Unknown task_type: %s. Falling back to WebCrawler.", job.task_type)
-                crawler = WebCrawler(current_settings)
-                crawler.start_crawling(job.args)
+                raise ValueError(f"Unknown task_type: {job.task_type!r}")
 
             job.refresh_from_db()
             if job.status == TaskQueue.Status.PROCESSING:
@@ -727,6 +904,8 @@ class WorkerRunner:
         except TaskCancelledError as e:
             duration = time.time() - start_time
             logger.info("Task #%d stopped promptly due to cancellation (%.2fs): %s", job.pk, duration, e)
+        except ProviderBannedError as e:
+            self.delay_banned_job(job, e)
         except Exception as e:
             duration = time.time() - start_time
             logger.critical("Error executing Task #%d:\n%s", job.pk, traceback.format_exc())
@@ -741,11 +920,116 @@ class WorkerRunner:
             except Exception:
                 logger.critical("Failed to save error state for Task #%d", job.pk)
         finally:
+            clear_task_hooks()
             with self._jobs_lock:
                 self.active_jobs.pop(job.pk, None)
                 self.active_job_activity.pop(job.pk, None)
                 self.active_cancel_events.pop(job.pk, None)
                 self.current_job = next(iter(self.active_jobs.values()), None)
+
+    def delay_banned_job(self, job: TaskQueue, error: ProviderBannedError) -> None:
+        """Put a task that hit a long provider ban back in the queue, to start after the ban.
+
+        Waiting for the ban isn't the task's fault, so it doesn't use up one of its attempts.
+        """
+        not_before = django_tz.now() + timedelta(seconds=error.retry_after)
+        logger.warning("Task #%d (%s) delayed until %s: %s", job.pk, job.task_type, not_before.isoformat(), error)
+        try:
+            TaskQueue.objects.filter(pk=job.pk, status=TaskQueue.Status.PROCESSING).update(
+                status=TaskQueue.Status.PENDING,
+                worker_pid=None,
+                not_before=not_before,
+                error_message=str(error),
+                attempts=Greatest(F("attempts") - 1, 0),
+            )
+        except Exception:
+            logger.critical("Failed to delay banned Task #%d", job.pk, exc_info=True)
+
+    @staticmethod
+    def runs_on_all_archives(job: TaskQueue, all_task_type: str) -> bool:
+        """An archive task without archive ids only means "every archive" if it says so explicitly."""
+        opts = job.options if isinstance(job.options, dict) else {}
+        return bool(opts.get("all")) or job.task_type == all_task_type
+
+    @staticmethod
+    def required_archive_id(job: TaskQueue) -> int:
+        if not job.args:
+            raise ValueError(f"Task {job.task_type!r} requires an archive id in its arguments")
+        return int(job.args[0])
+
+    def execute_gallery_creator(self, job: TaskQueue, current_settings: Settings) -> None:
+        from collections import defaultdict
+        from core.base.types import GalleryData
+        from viewer.models import WantedGallery
+
+        current_settings.is_worker_process = True
+        current_settings.current_task_type = "gallery_creator"
+        current_settings.current_task_id = job.pk
+        current_settings.dispatch_gallery_creation = False
+
+        provider_name = job.options.get("provider", "panda") if isinstance(job.options, dict) else "panda"
+        force_provider = bool(job.options.get("force_provider", False)) if isinstance(job.options, dict) else False
+        raw_galleries = job.options.get("galleries_data", []) if isinstance(job.options, dict) else []
+        raw_wanted = job.options.get("gallery_wanted_lists", {}) if isinstance(job.options, dict) else {}
+
+        gallery_data_list = [GalleryData.from_dict(d) for d in raw_galleries]
+
+        all_wanted_ids = {wg_id for id_list in raw_wanted.values() for wg_id in id_list if isinstance(wg_id, int)}
+        wanted_map = {}
+        if all_wanted_ids:
+            wanted_map = {wg.pk: wg for wg in WantedGallery.objects.filter(pk__in=all_wanted_ids)}
+
+        gallery_wanted_lists: dict[str, list[WantedGallery]] = defaultdict(list)
+        for gid, id_list in raw_wanted.items():
+            gallery_wanted_lists[gid] = [wanted_map[wg_id] for wg_id in id_list if wg_id in wanted_map]
+
+        parsers = current_settings.provider_context.get_parsers(current_settings, filter_names=[provider_name])
+        if not parsers:
+            all_parsers = current_settings.provider_context.get_parsers(current_settings)
+            parsers = [p for p in all_parsers if p.name == provider_name]
+
+        if not parsers:
+            raise ValueError(f"No parser found for provider '{provider_name}' in gallery_creator task #{job.pk}")
+
+        parser = parsers[0]
+
+        if gallery_data_list:
+            valid_galleries = []
+            for g in gallery_data_list:
+                discarded = False
+                if hasattr(parser, "discard_gallery_by_internal_checks"):
+                    try:
+                        discard_approved, discard_message = parser.discard_gallery_by_internal_checks(
+                            gallery_id=g.gid, link=g.link or ""
+                        )
+                        if isinstance(discard_approved, bool) and discard_approved:
+                            logger.info("gallery_creator Task #%d: %s", job.pk, discard_message)
+                            discarded = True
+                    except Exception as e:
+                        logger.warning("Error checking discard status for gallery %s (GID: %s): %s", g.title, g.gid, e)
+                if not discarded:
+                    valid_galleries.append(g)
+
+            if not valid_galleries:
+                logger.info(
+                    "gallery_creator Task #%d: All %d galleries already exist or were discarded, skipping execution.",
+                    job.pk,
+                    len(gallery_data_list),
+                )
+                return
+            gallery_data_list = valid_galleries
+
+        logger.info(
+            "Executing gallery_creator for %d galleries (provider: %s) in Task #%d",
+            len(gallery_data_list),
+            provider_name,
+            job.pk,
+        )
+        parser.pass_gallery_data_to_downloaders(
+            gallery_data_list,
+            gallery_wanted_lists,
+            force_provider=force_provider,
+        )
 
     def start_schedulers_if_enabled(self) -> None:
         if not self.enable_schedulers:
@@ -784,6 +1068,21 @@ class WorkerRunner:
         except Exception:
             pass
 
+    def revert_interrupted_jobs(self, jobs: list[TaskQueue]) -> None:
+        """Hand back tasks that were still running at a clean shutdown. This doesn't count as an attempt."""
+        for active_job in jobs:
+            try:
+                _safe_close_old_connections()
+                reverted = TaskQueue.objects.filter(pk=active_job.pk, status=TaskQueue.Status.PROCESSING).update(
+                    status=TaskQueue.Status.PENDING,
+                    worker_pid=None,
+                    attempts=Greatest(F("attempts") - 1, 0),
+                )
+                if reverted:
+                    logger.info("Reverted interrupted Task #%d back to PENDING", active_job.pk)
+            except Exception:
+                logger.warning("Could not revert interrupted Task #%s", active_job.pk, exc_info=True)
+
     def run(self) -> None:
         self.setup_signals()
         self.register_start()
@@ -816,16 +1115,7 @@ class WorkerRunner:
                 interrupted_jobs = list(self.active_jobs.values())
             if self.current_job and all(j.pk != self.current_job.pk for j in interrupted_jobs):
                 interrupted_jobs.append(self.current_job)
-            for active_job in interrupted_jobs:
-                try:
-                    _safe_close_old_connections()
-                    active_job.refresh_from_db()
-                    if active_job.status == TaskQueue.Status.PROCESSING:
-                        active_job.status = TaskQueue.Status.PENDING
-                        active_job.save(update_fields=["status"])
-                        logger.info("Reverted interrupted Task #%d back to PENDING", active_job.pk)
-                except Exception:
-                    pass
+            self.revert_interrupted_jobs(interrupted_jobs)
 
             if self.enable_schedulers:
                 self.stop_schedulers_if_enabled()

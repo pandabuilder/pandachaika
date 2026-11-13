@@ -1,5 +1,3 @@
-import typing
-from django.contrib.auth.decorators import permission_required
 from django.core.paginator import Paginator, Page, EmptyPage, InvalidPage
 from django.http import HttpRequest, HttpResponse, Http404
 from django.shortcuts import render
@@ -28,6 +26,14 @@ def change_log(request: HttpRequest, pk: int) -> HttpResponse:
         results: Page | None = paginator.page(page)
     except (InvalidPage, EmptyPage):
         results = paginator.page(paginator.num_pages)
+
+    if results is not None:
+        history_list = list(results.object_list)
+        for i in range(len(history_list) - 1):
+            history_list[i].cached_prev_record = history_list[i + 1]
+        if history_list:
+            history_list[-1].cached_prev_record = history_list[-1].prev_record
+        results.object_list = history_list
 
     d = {"gallery": gallery, "results": results}
 

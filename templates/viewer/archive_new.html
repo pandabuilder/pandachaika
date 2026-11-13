@@ -30,61 +30,13 @@
   {% endfor %}
 {% endif %}
 
-<!-- Header Card: Title & Status Badges (Always First) -->
+<!-- Header Card: Title (Always First) -->
 <div class="card bg-dark border-secondary mb-3 shadow-sm header-card">
   <div class="card-body p-3">
     <div class="header-title-area">
       <h2 class="h4 fw-bold text-white header-main-title {{ archive|archive_title_class }}{% if not archive.title_jpn %} header-main-title-multiline{% else %} text-truncate{% endif %}" title="{{ archive.best_title }}">{{ archive.best_title }}</h2>
       {% if archive.title_jpn %}
         <div class="header-sub-title text-truncate" title="{{ archive.title_jpn }}">{{ archive.title_jpn }}</div>
-      {% endif %}
-    </div>
-
-    <!-- Status Badges Row -->
-    <div class="d-flex flex-wrap align-items-center gap-1 mt-2 header-badges-row">
-      <span class="badge bg-secondary py-1 px-2">#{{ archive.id }}</span>
-      {% if not archive.crc32 %}
-        <span class="badge bg-warning text-dark py-1 px-2">
-          <i class="fas fa-hourglass-half me-1"></i>Incomplete
-        </span>
-      {% endif %}
-
-      {% if archive.source_type %}
-        <a href="{% url 'viewer:archive-search' %}?source_type={{ archive.source_type }}" class="badge bg-secondary text-decoration-none py-1 px-2">
-          <i class="fas fa-code-branch me-1"></i>{{ archive.source_type }}
-        </a>
-      {% endif %}
-
-      {% if archive.is_recycled %}
-        <span class="badge bg-danger text-white py-1 px-2">
-          <i class="fas fa-trash-alt me-1"></i>Recycled
-        </span>
-      {% endif %}
-
-      {% if user.is_authenticated %}
-        {% if archive.reason %}
-          <a href="{% url 'viewer:archive-search' %}?reason={{ archive.reason }}" class="badge bg-info text-dark text-decoration-none py-1 px-2">
-            {{ archive.reason }}
-          </a>
-        {% endif %}
-
-        {% if archive.extracted %}
-          <span class="badge bg-primary py-1 px-2"><i class="fas fa-folder-open me-1"></i>Extracted</span>
-        {% elif is_extracting %}
-          <span class="badge bg-warning text-dark py-1 px-2"><i class="fas fa-spinner fa-spin me-1"></i>Extracting...</span>
-        {% else %}
-          <span class="badge bg-secondary py-1 px-2"><i class="fas fa-file-archive me-1"></i>Archived</span>
-        {% endif %}
-
-        {% if is_publishing %}
-          <span class="badge bg-warning text-dark py-1 px-2"><i class="fas fa-spinner fa-spin me-1"></i>Publishing...</span>
-        {% else %}
-          {{ archive.public|boolean_badge:"Published,Private" }}
-        {% endif %}
-
-        {% if archive.is_file_deleted %}
-          {{ archive.is_file_deleted|boolean_badge:"File Deleted,Exists,danger" }}
-        {% endif %}
       {% endif %}
     </div>
   </div>
@@ -100,9 +52,15 @@
           <a class="btn btn-info btn-sm" href="{% url 'viewer:new-image-viewer' archive.pk '1' %}" id="view-online">
             <i class="fas fa-eye me-1"></i>View online
           </a>
-          <a class="btn btn-outline-light btn-sm" href="{% url 'viewer:archive-reduce' archive.pk %}" id="btn-reduce-archive">
-            <i class="fas fa-compress-alt me-1"></i>Reduce archive
-          </a>
+          {% if is_reducing %}
+            <button class="btn btn-outline-warning btn-sm" type="button" disabled id="btn-reducing-archive">
+              <i class="fas fa-spinner fa-spin me-1"></i>Reducing...
+            </button>
+          {% else %}
+            <a class="btn btn-outline-light btn-sm" href="{% url 'viewer:archive-reduce' archive.pk %}" id="btn-reduce-archive">
+              <i class="fas fa-compress-alt me-1"></i>Reduce archive
+            </a>
+          {% endif %}
         {% elif is_extracting %}
           <button class="btn btn-outline-warning btn-sm" type="button" disabled id="btn-extracting-archive">
             <i class="fas fa-spinner fa-spin me-1"></i>Extracting...
@@ -233,6 +191,39 @@
           <i class="fas fa-calculator me-1"></i>Recalc
         </button>
       </form>
+    {% endif %}
+
+    {% if manga_extractor_enabled %}
+      {% if user.is_staff or perms.viewer.extract_contextual_info %}
+        {% if is_extracting_context %}
+          <button class="btn btn-sm btn-outline-warning" type="button" disabled id="btn-extracting-context">
+            <i class="fas fa-spinner fa-spin me-1"></i>Extracting Context...
+          </button>
+        {% else %}
+          <form method="POST" action="{% url 'viewer:archive-extract-context' archive.pk %}" class="d-inline">
+            {% csrf_token %}
+            <div class="btn-group btn-group-sm">
+              <button type="submit" class="btn btn-outline-info" id="btn-extract-context">
+                <i class="fas fa-microscope me-1"></i>Extract Context
+              </button>
+              {% if manga_extractor_profiles %}
+                <button type="button" class="btn btn-outline-info dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false">
+                  <span class="visually-hidden">Toggle Extract Profiles</span>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end bg-dark border-secondary">
+                  {% for p_key, p_label in manga_extractor_profiles.items %}
+                    <li>
+                      <button type="submit" name="profile" value="{{ p_key }}" class="dropdown-item text-light small{% if p_key == manga_extractor_default_profile %} active{% endif %}">
+                        <i class="fas fa-sliders-h me-2 text-info"></i>{{ p_label }}{% if p_key == manga_extractor_default_profile %} <span class="badge bg-secondary ms-1">default</span>{% endif %}
+                      </button>
+                    </li>
+                  {% endfor %}
+                </ul>
+              {% endif %}
+            </div>
+          </form>
+        {% endif %}
+      {% endif %}
     {% endif %}
 
     {% if perms.viewer.mark_similar_archive %}
@@ -720,7 +711,7 @@
 
         <!-- Provider Extra Metadata (if present) -->
         {% if gallery_provider_data %}
-        <div class="col-xxl-2 col-xl-3 col-lg-3 col-md-6 col-12">
+        <div class="col-xxl-2 col-xl-3 col-lg-3 col-md-6 col-12{% if user.is_authenticated and archive_contextual_properties %} unified-border-end-md{% endif %}">
           <div class="unified-panel-header">
             <span class="card-field-title"><i class="fas fa-server me-1"></i>Provider Extra Metadata</span>
           </div>
@@ -731,6 +722,27 @@
                 <tr>
                   <th>{{ provider_data.name|capfirst }}</th>
                   <td>{{ provider_data.value|urlize_all_rel }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {% endif %}
+
+        {% if user.is_authenticated and archive_contextual_properties %}
+        <!-- Contextual Metrics (manga-extractor, if present) -->
+        <div class="col-xxl-2 col-xl-3 col-lg-3 col-md-6 col-12">
+          <div class="unified-panel-header">
+            <span class="card-field-title"><i class="fas fa-microscope me-1"></i>Contextual Metrics</span>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table data-table-compact">
+              <tbody>
+                {% for prop in archive_contextual_properties %}
+                <tr>
+                  <th>{{ prop.name }}</th>
+                  <td class="text-break">{{ prop.value }}</td>
                 </tr>
                 {% endfor %}
               </tbody>

@@ -25,10 +25,10 @@ class TimedDatabasePruner(BaseScheduler):
                 return
 
             retention_cfg = getattr(self.settings, "retention", None)
-            if retention_cfg and retention_cfg.enabled:
-                logger.info("Starting scheduled database pruning run.")
-                close_old_connections()
-                try:
+            try:
+                if retention_cfg and retention_cfg.enabled:
+                    logger.info("Starting scheduled database pruning run.")
+                    close_old_connections()
                     from viewer.services.retention import prune_database
 
                     res = prune_database(
@@ -37,13 +37,15 @@ class TimedDatabasePruner(BaseScheduler):
                         dry_run=False,
                     )
                     logger.info("Scheduled database pruning finished: %s", res)
-                except Exception as e:
-                    logger.critical("Error during scheduled database pruning: %s", e)
-                finally:
-                    self.update_last_run(django_tz.now())
-                    try:
-                        from django.db import connections
+            except Exception as e:
+                logger.critical("Error during scheduled database pruning: %s", e)
+            finally:
+                # Always record the run, even when pruning is disabled or failed. Without it the scheduler would
+                # find itself overdue immediately and spin.
+                self.update_last_run(django_tz.now())
+                try:
+                    from django.db import connections
 
-                        connections.close_all()
-                    except Exception:
-                        pass
+                    connections.close_all()
+                except Exception:
+                    pass

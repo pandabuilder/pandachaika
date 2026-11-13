@@ -1723,7 +1723,6 @@ class PostOnlyEndpointsTestCase(TestCase):
 
     def test_admin_tools_actions_require_post(self):
         mutating_tools = [
-            "transfer_missing_downloads",
             "retry_failed",
             "generate_missing_thumbs",
             "calculate_missing_info",
@@ -1731,14 +1730,9 @@ class PostOnlyEndpointsTestCase(TestCase):
             "set_all_hidden_as_public",
             "regenerate_all_thumbs",
             "clear_all_archive_possible_matches",
+            "restart_viewer",
             "restart_workers",
             "reload_settings",
-            "start_download_progress_checker",
-            "start_archive_download_queue",
-            "start_timed_dl",
-            "start_timed_auto_wanted",
-            "start_web_queue",
-            "start_timed_updater",
         ]
 
         for tool in mutating_tools:

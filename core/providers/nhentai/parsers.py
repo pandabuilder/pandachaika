@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
 import re
-import time
 import typing
 from collections import defaultdict
 
@@ -11,7 +10,7 @@ from bs4 import BeautifulSoup
 from django.db.models import QuerySet
 
 from core.base.parsers import BaseParser
-from core.base.utilities import translate_tag, request_with_retries, construct_request_dict
+from core.base.utilities import translate_tag, construct_request_dict
 from core.base.types import GalleryData
 from . import constants
 
@@ -29,7 +28,7 @@ class Parser(BaseParser):
 
         request_dict = construct_request_dict(self.settings, self.own_settings)
 
-        response = request_with_retries(
+        response = self.web_request(
             link,
             request_dict,
             post=False,
@@ -96,13 +95,10 @@ class Parser(BaseParser):
         return gallery
 
     # Even if we just call the single method, it allows to upgrade this easily in case group calls are supported
-    # afterwards. Also, we can add a wait_timer here.
+    # afterwards. Requests are paced by the provider's rate limit.
     def get_values_from_gallery_link_list(self, links: list[str]) -> list[GalleryData]:
         response = []
         for i, element in enumerate(links):
-            if i > 0:
-                time.sleep(self.own_settings.wait_timer)
-
             logger.info("Calling API ({}). " "Gallery: {}, total galleries: {}".format(self.name, i + 1, len(links)))
 
             values = self.fetch_gallery_data(element)
@@ -151,6 +147,7 @@ class Parser(BaseParser):
                 continue
             unique_urls.add(url)
 
+        discarded_count = 0
         for gallery in unique_urls:
             gid = self.id_from_url(gallery)
             if not gid:
@@ -159,17 +156,35 @@ class Parser(BaseParser):
             discard_approved, discard_message = self.discard_gallery_by_internal_checks(gid, link=gallery)
 
             if discard_approved:
+                discarded_count += 1
                 if not self.settings.silent_processing:
                     logger.info(discard_message)
                 continue
 
             fetch_format_galleries.append(gallery)
 
+        self.log_database_check_summary(
+            total=len(unique_urls),
+            existing=discarded_count,
+            discarded=discarded_count,
+            to_update=0,
+        )
+
         if len(fetch_format_galleries) == 0:
             logger.info("No galleries need downloading, returning.")
             return
 
+        logger.info(
+            "Queued %d galleries to fetch metadata (out of %d total).",
+            len(fetch_format_galleries),
+            len(unique_urls),
+        )
+
         galleries_data = self.fetch_multiple_gallery_data(fetch_format_galleries)
+
+        banned_count = 0
+        unmatched_wanted_count = 0
+        matched_wanted_count = 0
 
         for internal_gallery_data in galleries_data:
 
@@ -181,6 +196,7 @@ class Parser(BaseParser):
             )
 
             if banned_result:
+                banned_count += 1
                 if self.gallery_callback:
                     self.gallery_callback(None, internal_gallery_data.link, "banned_data")
 
@@ -197,9 +213,24 @@ class Parser(BaseParser):
                     internal_gallery_data, internal_gallery_data.link, wanted_filters, gallery_wanted_lists
                 )
                 if wanted_only and not gallery_wanted_lists[internal_gallery_data.gid]:
+                    unmatched_wanted_count += 1
                     continue
 
+            if len(gallery_wanted_lists.get(internal_gallery_data.gid, [])) > 0:
+                matched_wanted_count += 1
+
             gallery_data_list.append(internal_gallery_data)
+
+        self.log_metadata_evaluation_summary(
+            total_evaluated=len(fetch_format_galleries),
+            accepted=len(gallery_data_list),
+            matched_wanted=matched_wanted_count,
+            unmatched_wanted=unmatched_wanted_count,
+            banned=banned_count,
+            errors=0,
+            wanted_filters=bool(wanted_filters),
+            wanted_only=wanted_only,
+        )
 
         self.pass_gallery_data_to_downloaders(gallery_data_list, gallery_wanted_lists)
 

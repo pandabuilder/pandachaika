@@ -1,4 +1,3 @@
-from datetime import datetime, timezone
 import factory
 from django.contrib.auth import get_user_model
 from viewer.models import Archive, Gallery, Provider, Tag, WantedGallery

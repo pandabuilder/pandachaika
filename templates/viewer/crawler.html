@@ -73,10 +73,18 @@
   <div class="page-header">
     <h2>Crawler web interface, one command per line</h2>
   </div>
-  <form action="{% url 'viewer:crawler' %}" method="POST">{% csrf_token %}
-    <div class="mb-2">
-      <label for="urls"></label>
+  <form action="{% url 'viewer:crawler' %}" method="POST" enctype="multipart/form-data">{% csrf_token %}
+    <div class="mb-3">
+      <label for="urls" class="form-label fw-semibold">Links / Commands to process (one per line):</label>
       <textarea name="urls" class="form-control" id="urls" rows="5"></textarea>
+      <div class="crawler-help-text">Enter URLs or commands directly, one per line.</div>
+    </div>
+    <div class="mb-3">
+      <label for="urls_file" class="form-label fw-semibold">Or upload a text file with links / commands:</label>
+      <input type="file" class="form-control" id="urls_file" name="urls_file" accept=".txt,.text,.list,.log,text/plain">
+      <div class="crawler-help-text">
+        Upload a text file (e.g. <code>.txt</code>) containing links or commands, one per line. You can submit links via the text area, by uploading a file, or both.
+      </div>
     </div>
   <div class="mb-2 d-flex gap-2">
     <button type="button" class="btn btn-info" data-bs-toggle="collapse" data-bs-target="#priorities">Change default priorities</button>
@@ -107,6 +115,16 @@
         </div>
         <div class="col-sm-6 col-md-8 crawler-help-text">
           Priority in worker queue: 1 (highest) to 10 (lowest). Default is 10.
+        </div>
+      </div>
+
+      <div class="mb-3 row align-items-center">
+        <label class="col-sm-3 col-md-2 col-form-label" for="crawler_split_size">Split into groups</label>
+        <div class="col-sm-3 col-md-2">
+          <input type="number" id="crawler_split_size" class="form-control" name="split_size" min="1" placeholder="e.g. 50">
+        </div>
+        <div class="col-sm-6 col-md-8 crawler-help-text">
+          Splits queued links into separate background worker tasks in groups of X to decrease args sent to each worker (leave blank or 0 to queue all links in a single task).
         </div>
       </div>
 
@@ -165,6 +183,16 @@
         </div>
       </div>
 
+      <div class="form-check mb-2">
+        <input id="checkbox-silent-processing" type="checkbox" class="form-check-input" name="silent_processing" value="1" {% if settings.silent_processing %}checked{% endif %}>
+        <label class="form-check-label fw-semibold" for="checkbox-silent-processing">
+          Fast bulk mode (silent processing)
+        </label>
+        <div class="crawler-help-text">
+          Suppresses per-URL/per-gallery log entries to maximize processing speed for large URL batches.
+        </div>
+      </div>
+
       <div class="crawler-storage-box">
         <div class="d-flex flex-wrap align-items-center gap-2">
           <button type="button" class="btn btn-sm btn-pg" id="btn-save-local-settings">
@@ -176,7 +204,7 @@
           <span id="local-settings-status" class="small ms-2" style="display: none;"></span>
         </div>
         <div class="crawler-help-text mt-2">
-          Saves current form options (Priority, Only add if matches WantedGallery, Only add as Gallery, Add non-current as deleted, Reason) to your browser's local storage to persist between visits.
+          Saves current form options (Priority, Split into groups, Only add if matches WantedGallery, Only add as Gallery, Add non-current as deleted, Reason) to your browser's local storage to persist between visits.
         </div>
       </div>
     </div>
@@ -198,9 +226,11 @@
 document.addEventListener("DOMContentLoaded", function() {
   const LOCAL_STORAGE_KEY = "pandagallery_webcrawler_saved_settings";
   const priorityInput = document.getElementById("crawler_priority");
+  const splitSizeInput = document.getElementById("crawler_split_size");
   const wantedOnlyInput = document.getElementById("checkbox6");
   const galleryOnlyInput = document.getElementById("checkbox4");
   const skipNonCurrentInput = document.getElementById("checkbox5");
+  const silentProcessingInput = document.getElementById("checkbox-silent-processing");
   const reasonInput = document.getElementById("crawler_reason");
   const statusEl = document.getElementById("local-settings-status");
   const saveBtn = document.getElementById("btn-save-local-settings");
@@ -224,6 +254,9 @@ document.addEventListener("DOMContentLoaded", function() {
       if (data.priority !== undefined && priorityInput) {
         priorityInput.value = data.priority;
       }
+      if (data.split_size !== undefined && splitSizeInput) {
+        splitSizeInput.value = data.split_size;
+      }
       if (data.wanted_only !== undefined && wantedOnlyInput) {
         wantedOnlyInput.checked = Boolean(data.wanted_only);
       }
@@ -232,6 +265,9 @@ document.addEventListener("DOMContentLoaded", function() {
       }
       if (data.skip_non_current !== undefined && skipNonCurrentInput) {
         skipNonCurrentInput.checked = Boolean(data.skip_non_current);
+      }
+      if (data.silent_processing !== undefined && silentProcessingInput) {
+        silentProcessingInput.checked = Boolean(data.silent_processing);
       }
       if (data.reason !== undefined && reasonInput) {
         reasonInput.value = data.reason;
@@ -248,9 +284,11 @@ document.addEventListener("DOMContentLoaded", function() {
       try {
         const data = {
           priority: priorityInput ? priorityInput.value : "10",
+          split_size: splitSizeInput ? splitSizeInput.value : "",
           wanted_only: wantedOnlyInput ? wantedOnlyInput.checked : false,
           gallery_only: galleryOnlyInput ? galleryOnlyInput.checked : false,
           skip_non_current: skipNonCurrentInput ? skipNonCurrentInput.checked : false,
+          silent_processing: silentProcessingInput ? silentProcessingInput.checked : false,
           reason: reasonInput ? reasonInput.value : ""
         };
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
@@ -267,9 +305,11 @@ document.addEventListener("DOMContentLoaded", function() {
       try {
         localStorage.removeItem(LOCAL_STORAGE_KEY);
         if (priorityInput) priorityInput.value = "10";
+        if (splitSizeInput) splitSizeInput.value = "";
         if (wantedOnlyInput) wantedOnlyInput.checked = false;
         if (galleryOnlyInput) galleryOnlyInput.checked = false;
         if (skipNonCurrentInput) skipNonCurrentInput.checked = skipNonCurrentInput.defaultChecked;
+        if (silentProcessingInput) silentProcessingInput.checked = false;
         if (reasonInput) reasonInput.value = "";
         showStatus("Saved settings removed from browser storage.", true);
       } catch (err) {

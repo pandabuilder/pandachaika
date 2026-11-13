@@ -51,7 +51,7 @@
       <table class="table table-bordered table-sm generic-table">
         <thead>
         <tr>
-          <th style="width:4%">#</th><th style="width:7%">Archive Position</th><th>File Name</th><th style="width:7%">File Size</th><th style="width:7%">SHA1</th><th style="width:4%">Height</th><th style="width:4%">Width</th><th style="width:4%">Format</th><th style="width:4%">Mode</th>{% if user.is_authenticated %}<th style="width:7%">Download</th>{% endif %}
+          <th style="width:4%">#</th><th style="width:7%">Archive Position</th><th>File Name</th><th style="width:7%">File Size</th><th style="width:7%">SHA1</th><th style="width:4%">Height</th><th style="width:4%">Width</th><th style="width:4%">Format</th><th style="width:4%">Mode</th>{% if user.is_authenticated and has_contextual_props %}<th>Contextual Info</th>{% endif %}{% if user.is_authenticated %}<th style="width:7%">Download</th>{% endif %}
         </tr>
         </thead>
         <tbody>
@@ -88,6 +88,36 @@
             <td>
               {{ image.image_mode }}
             </td>
+            {% if user.is_authenticated and has_contextual_props %}
+              <td class="small">
+                {% if image.contextual_properties %}
+                  {% for prop in image.contextual_properties %}
+                    {% if prop.name == 'bubble_transcripts' %}
+                      {% with bubble_items=prop.value|json_list %}
+                        <div class="mt-1">
+                          <strong>bubble_transcripts ({{ bubble_items|length|default:"0" }}):</strong>
+                          {% if bubble_items %}
+                            <ol class="mb-1 border rounded ps-4 py-1 pe-2" style="max-height: 200px; overflow-y: auto;">
+                              {% for bubble in bubble_items %}
+                                <li class="text-break" style="white-space: pre-line;">{% if bubble %}{{ bubble }}{% else %}<span class="text-muted fst-italic">[empty]</span>{% endif %}</li>
+                              {% endfor %}
+                            </ol>
+                          {% elif bubble_items is not None %}
+                            <span class="text-muted fst-italic">[]</span>
+                          {% else %}
+                            <span class="text-break">{{ prop.value }}</span>
+                          {% endif %}
+                        </div>
+                      {% endwith %}
+                    {% elif prop.name == 'transcript' %}
+                      <div class="mt-1"><strong>transcript:</strong> <span class="text-break" style="white-space: pre-line;">{{ prop.value }}</span></div>
+                    {% else %}
+                      <div><strong>{{ prop.name }}:</strong> <span class="text-break">{{ prop.value }}</span></div>
+                    {% endif %}
+                  {% endfor %}
+                {% endif %}
+              </td>
+            {% endif %}
             {% if user.is_authenticated %}
               <td class="text-center">
                 <a class="btn btn-outline-primary btn-sm" href="{% url 'viewer:image-download' image.pk %}">Download</a>

@@ -5,7 +5,6 @@ import logging
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import EmptyPage, InvalidPage, Page, Paginator
-from django.db.models import Prefetch
 from django.http import Http404, HttpResponseRedirect, HttpRequest, HttpResponse
 from django.shortcuts import render
 from django.urls import reverse
@@ -15,7 +14,6 @@ from core.base.setup import Settings
 from viewer.forms import WantedGalleryCreateOrEditForm
 from viewer.models import Gallery, WantedGallery, FoundGallery, GalleryMatch, Archive
 from viewer.utils.general import clean_up_referer
-from viewer.utils.tags import sort_tags
 from viewer.utils.actions import event_log
 from workers import client
 

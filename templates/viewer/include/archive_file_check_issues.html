@@ -1,0 +1,159 @@
+<div id="issues-container" data-issue-count="{{ check.issue_count }}">
+  <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2 py-2 px-3">
+    <span class="text-light"><i class="fas fa-exclamation-triangle me-2"></i>Issues found in check #{{ check.pk }}</span>
+    <div class="btn-group btn-group-sm" role="group" aria-label="Filter by issue">
+      <a href="?check={{ check.pk }}" class="btn {% if not kind and not zip_test %}btn-info{% else %}btn-outline-info{% endif %}">
+        All <span class="badge bg-dark ms-1">{{ check.issue_count }}</span>
+      </a>
+      {% for value, label, count in kind_choices %}
+        <a href="?check={{ check.pk }}&kind={{ value }}" class="btn {% if kind == value %}btn-info{% else %}btn-outline-info{% endif %}">
+          {{ label }} <span class="badge bg-dark ms-1">{{ count }}</span>
+        </a>
+      {% endfor %}
+    </div>
+    {% if zip_test_choices %}
+      <div class="btn-group btn-group-sm" role="group" aria-label="Filter CRC32 mismatches by zip test">
+        {% for value, label, count in zip_test_choices %}
+          <a href="?check={{ check.pk }}&kind=crc32_mismatch&zip_test={{ value }}"
+             class="btn {% if zip_test == value %}btn-info{% else %}btn-outline-info{% endif %}"
+             title="CRC32 mismatches whose zip test result is: {{ label }}">
+            {{ label }} <span class="badge bg-dark ms-1">{{ count }}</span>
+          </a>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+
+  {% if issues and issues.paginator.count %}
+    <form method="post" action="{% url 'viewer:archive-file-check' %}" id="issues-form">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="issues">
+      <input type="hidden" name="check" value="{{ check.pk }}">
+      <input type="hidden" name="kind" value="{{ kind }}">
+      <input type="hidden" name="zip_test" value="{{ zip_test }}">
+
+      <div class="d-flex flex-wrap align-items-center gap-2 px-3 py-2 border-bottom border-secondary">
+        <select name="issue_action" class="form-select form-select-sm w-auto" required>
+          <option value="">Action for selected…</option>
+          <option value="recheck">Re-check files</option>
+          <option value="recalc_info">Recalculate file info (accept file as it is now)</option>
+          {% if perms.viewer.download_gallery %}
+            <option value="download">Force queue gallery download</option>
+          {% endif %}
+          <option value="clear_crc32">Clear CRC32 (to force a redownload)</option>
+          <option value="mark_deleted">Mark archives as deleted</option>
+          <option value="dismiss">Dismiss issues</option>
+          <option value="delete">Delete archives (WARNING!)</option>
+        </select>
+        <div class="form-check form-check-inline mb-0 small">
+          <input class="form-check-input" type="checkbox" name="apply_to_all_filtered" value="1" id="apply-all-filtered">
+          <label class="form-check-label text-light" for="apply-all-filtered">
+            Apply to all {{ issues.paginator.count }} issue(s) in this filter, not only the selected
+          </label>
+        </div>
+        <button type="submit" class="btn btn-sm btn-warning" id="issues-apply">
+          <i class="fas fa-play me-1"></i>Apply
+        </button>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-dm table-hover mb-0">
+          <thead>
+            <tr>
+              <th style="width: 2rem;"><input type="checkbox" class="form-check-input" id="issues-toggle-all" title="Select all on this page"></th>
+              <th>Archive</th>
+              <th>Issue</th>
+              <th>Expected</th>
+              <th>Found</th>
+              <th>Gallery</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for issue in issues %}
+              {% with archive=issue.archive %}
+              <tr>
+                <td><input type="checkbox" class="form-check-input issue-checkbox" name="issue" value="{{ issue.pk }}"></td>
+                <td class="fc-archive-cell">
+                  <a href="{{ archive.get_absolute_url }}" class="text-info fw-semibold">#{{ archive.pk }}</a>
+                  <span class="text-light">{{ archive.title|default:"(no title)" }}</span>
+                  {% if archive.binned %}<span class="badge bg-secondary ms-1">Binned</span>{% endif %}
+                  {% if archive.file_deleted %}<span class="badge bg-secondary ms-1">Marked deleted</span>{% endif %}
+                  <div class="small text-muted text-break"><code>{{ archive.zipped.name|default:"(no file path)" }}</code></div>
+                  <div class="small text-muted">{{ archive.source_type|default:"" }}{% if archive.source_type %} · {% endif %}created {{ archive.create_date|date:"Y-m-d" }}</div>
+                </td>
+                <td>
+                  {% if issue.kind == "missing" %}
+                    <span class="badge bg-danger">{{ issue.get_kind_display }}</span>
+                  {% elif issue.kind == "crc32_mismatch" %}
+                    <span class="badge bg-warning text-dark">{{ issue.get_kind_display }}</span>
+                    {% if issue.zip_test == "passed" %}<span class="badge bg-success">{{ issue.get_zip_test_display }}</span>
+                    {% elif issue.zip_test %}<span class="badge bg-danger">{{ issue.get_zip_test_display }}</span>{% endif %}
+                  {% elif issue.kind == "size_mismatch" %}
+                    <span class="badge bg-warning text-dark">{{ issue.get_kind_display }}</span>
+                  {% else %}
+                    <span class="badge bg-secondary">{{ issue.get_kind_display }}</span>
+                  {% endif %}
+                  {% if issue.message %}<div class="small text-muted">{{ issue.message }}</div>{% endif %}
+                </td>
+                <td class="small font-monospace">
+                  {% if issue.kind == "crc32_mismatch" %}
+                    {{ issue.expected_crc32 }}
+                  {% elif issue.kind == "size_mismatch" %}
+                    {{ issue.expected_size|filesizeformat }}<div class="text-muted">{{ issue.expected_size }} B of images</div>
+                  {% else %}
+                    {{ archive.filesize|filesizeformat }}{% if archive.crc32 %}<div class="text-muted">{{ archive.crc32 }}</div>{% endif %}
+                  {% endif %}
+                </td>
+                <td class="small font-monospace">
+                  {% if issue.kind == "crc32_mismatch" %}
+                    <span class="text-warning">{{ issue.actual_crc32 }}</span>
+                  {% elif issue.kind == "size_mismatch" %}
+                    <span class="text-warning">{{ issue.actual_size|filesizeformat }}</span><div class="text-muted">{{ issue.actual_size }} B of images</div>
+                  {% else %}
+                    <span class="text-muted">-</span>
+                  {% endif %}
+                </td>
+                <td class="small">
+                  {% if archive.gallery %}
+                    <a href="{{ archive.gallery.get_absolute_url }}" class="text-info">{{ archive.gallery.provider }} {{ archive.gallery.gid }}</a>
+                  {% else %}
+                    <span class="text-muted">None</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endwith %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </form>
+
+    {% if issues.paginator.num_pages > 1 %}
+      <nav aria-label="Issues pages" class="py-2">
+        <ul class="pagination pagination-sm justify-content-center my-0">
+          <li class="page-item{% if issues.number == 1 %} disabled{% endif %}">
+            <a class="page-link" href="?{{ page_query }}&page=1" aria-label="First">&laquo;</a>
+          </li>
+          <li class="page-item{% if not issues.has_previous %} disabled{% endif %}">
+            <a class="page-link" href="{% if issues.has_previous %}?{{ page_query }}&page={{ issues.previous_page_number }}{% else %}#{% endif %}">Previous</a>
+          </li>
+          <li class="page-item"><div class="mid-item">Page {{ issues.number }} of {{ issues.paginator.num_pages }}</div></li>
+          <li class="page-item{% if not issues.has_next %} disabled{% endif %}">
+            <a class="page-link" href="{% if issues.has_next %}?{{ page_query }}&page={{ issues.next_page_number }}{% else %}#{% endif %}">Next</a>
+          </li>
+          <li class="page-item{% if issues.number == issues.paginator.num_pages %} disabled{% endif %}">
+            <a class="page-link" href="?{{ page_query }}&page={{ issues.paginator.num_pages }}" aria-label="Last">&raquo;</a>
+          </li>
+        </ul>
+      </nav>
+    {% endif %}
+  {% else %}
+    <div class="text-center text-muted py-4">
+      {% if check.is_finished %}
+        {% if kind or zip_test %}No issues of this kind.{% else %}No issues found. <i class="fas fa-check-circle text-success ms-1"></i>{% endif %}
+      {% else %}
+        No issues found so far. They show up here while the check runs.
+      {% endif %}
+    </div>
+  {% endif %}
+</div>

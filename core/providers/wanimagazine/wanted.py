@@ -1,5 +1,4 @@
 import logging
-import time
 import typing
 import urllib.parse
 
@@ -7,7 +6,7 @@ import feedparser
 from bs4 import BeautifulSoup
 
 from core.base.types import DataDict
-from core.base.utilities import request_with_retries, format_title_to_wanted_search, construct_request_dict
+from core.base.utilities import provider_web_request, format_title_to_wanted_search, construct_request_dict
 from viewer.models import WantedGallery, Provider, Artist, ProcessedLinks
 from . import constants, utilities
 from .utilities import get_on_sale_date_from_soup, PRODUCT_ID_MATCHER, parse_product_page
@@ -38,17 +37,10 @@ def wanted_generator(settings: "Settings", attrs: "AttributeManager"):
         slug=constants.provider_name, defaults={"name": constants.provider_name}
     )
 
-    rounds = 0
-
     # Values that can be set:
     # subpath: RSS Feed subpath to search. (product-category/comic/feed/, product-category/comic/)
     # url_html_type: If it's RSS feed or products list page.
     for query_name, query_values in queries.items():
-
-        rounds += 1
-
-        if rounds > 1:
-            time.sleep(own_settings.wait_timer)
 
         logger.info(
             "Querying {} for auto wanted galleries, query name: {}, options: {}".format(
@@ -86,7 +78,7 @@ def process_feed_page(attrs, own_settings, provider, query_name, request_dict, s
 
     link = urllib.parse.urljoin(constants.main_url, full_url)
 
-    response = request_with_retries(
+    response = provider_web_request(constants.provider_name, own_settings.wait_timer)(
         link,
         request_dict,
         post=False,
@@ -175,10 +167,7 @@ def process_feed_page(attrs, own_settings, provider, query_name, request_dict, s
             )
             continue
 
-        if gallery_index > 1:
-            time.sleep(own_settings.wait_timer)
-
-        response = request_with_retries(
+        response = provider_web_request(constants.provider_name, own_settings.wait_timer)(
             gallery_data["link"],
             request_dict,
             post=False,
@@ -248,10 +237,7 @@ def process_products_page(attrs, own_settings, provider, query_name, request_dic
 
         link = urllib.parse.urljoin(constants.main_url, full_url)
 
-        if current_page > 1:
-            time.sleep(own_settings.wait_timer)
-
-        response = request_with_retries(
+        response = provider_web_request(constants.provider_name, own_settings.wait_timer)(
             link,
             request_dict,
             post=False,
@@ -323,10 +309,7 @@ def process_products_page(attrs, own_settings, provider, query_name, request_dic
         if gallery_data["uid"] in total_used_ids and not force_process.value:
             continue
 
-        if gallery_index > 1:
-            time.sleep(own_settings.wait_timer)
-
-        response = request_with_retries(
+        response = provider_web_request(constants.provider_name, own_settings.wait_timer)(
             gallery_data["link"],
             request_dict,
             post=False,

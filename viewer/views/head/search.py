@@ -1,25 +1,20 @@
 import json
 import logging
+from urllib.parse import quote
 import operator
 import re
 from functools import reduce
 from random import randint
-import typing
 from typing import Any
 
-from django.conf import settings
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required
 from django.core.paginator import EmptyPage, InvalidPage, Paginator
-from django.db.models import Avg, Count, F, Max, Min, Prefetch, Q, QuerySet, Sum
+from django.db.models import Avg, Count, F, Max, Min, Q, QuerySet, Sum
 from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
 from django.http.request import QueryDict
 from django.shortcuts import redirect, render
-from django.templatetags.static import static
 from django.urls import reverse
-from django.utils.html import linebreaks, urlize
 
-from core.base.setup import Settings
 from core.base.types import DataDict
 from viewer.forms import ArchiveSearchForm, ArchiveSearchSimpleForm, DivErrorList
 from viewer.models import (
@@ -32,11 +27,9 @@ from viewer.models import (
     WantedGallery,
 )
 from viewer.models.archive import ArchiveQuerySet
-from viewer.utils.actions import event_log
 from viewer.utils.functions import archive_search_result_to_json
 from viewer.utils.general import valid_sha1_string
-from viewer.utils.tags import sort_tags
-from viewer.views.head.auth import render_error, render_message
+from viewer.views.head.auth import render_error
 from viewer.views.head.common import (
     archive_filter_keys,
     archive_order_fields,
@@ -44,7 +37,6 @@ from viewer.views.head.common import (
     archive_public_sort_by_fields,
     archive_sort_by_fields,
     crawler_settings,
-    wanted_gallery_filter_keys,
     wanted_gallery_order_fields,
 )
 
@@ -63,7 +55,7 @@ def image_url(request: HttpRequest, pk: int) -> HttpResponse:
         # response["Content-Disposition"] = 'attachment; filename="{0}"'.format(
         #         archive.pretty_name)
         response["Content-Type"] = ""
-        response["X-Accel-Redirect"] = "/image/{0}".format(image.image.name)
+        response["X-Accel-Redirect"] = "/image/{0}".format(quote(image.image.name or ""))
         return response
     else:
         return HttpResponseRedirect(image.image.url)
@@ -236,6 +228,9 @@ def filter_archives(
 
     results = results.filter(binned=False)
 
+    session_filters = {"sort": "posted", "asc_desc": "desc"} | dict(session_filters)
+    request_filters = {k: "" for k in archive_filter_keys} | dict(request_filters)
+
     # sort and filter results by parameters
     order = "posted"
     sorting_field = order
@@ -287,6 +282,7 @@ def filter_archives(
         results = results.filter(gallery__category__icontains=request_filters["category"])
 
     if request_filters["tags"]:
+        has_positive_tag_filter = False
         tags = request_filters["tags"].split(",")
         for tag in tags:
             tag = tag.strip().replace(" ", "_")
@@ -317,6 +313,7 @@ def filter_archives(
 
                 results = results.exclude(tag_query)
             elif tag.startswith("^"):
+                has_positive_tag_filter = True
                 if tag_name != "" and tag_scope != "":
                     tag_query = Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope)
                 elif tag_name != "":
@@ -326,6 +323,7 @@ def filter_archives(
 
                 results = results.filter(tag_query)
             else:
+                has_positive_tag_filter = True
                 if tag_name != "" and tag_scope != "":
                     tag_query = Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)
                 elif tag_name != "":
@@ -337,7 +335,8 @@ def filter_archives(
 
         # Examples where distinct is needed:
         # Same name for a tag with 2 different scopes: artist:syukurin, group:syukurin
-        results = results.distinct()
+        if has_positive_tag_filter:
+            results = results.distinct()
 
     if (
         "only_favorites" in request_filters
@@ -366,17 +365,11 @@ def filter_archives(
     if "public" in request_filters and request_filters["public"]:
         results = results.filter(public=True)
 
-    if session_filters["view"] == "list":
-        if sorting_field in ("rating", "posted", "last_modified"):
-            results = results.select_related("gallery")
-    elif session_filters["view"] == "cover":
-        pass
-    elif session_filters["view"] == "extended":
-        results = (
-            results.select_related("gallery")
-            .prefetch_related("archivetag_set__tag")
-            .defer("gallery__comment", "gallery__provider_metadata")
-        )
+    results = results.select_related("gallery").prefetch_related("tags").defer(
+        "gallery__comment", "gallery__provider_metadata"
+    )
+    if session_filters.get("view") == "extended":
+        results = results.prefetch_related("archivetag_set__tag")
 
     results = results.defer("details", "origin")
 
@@ -595,6 +588,7 @@ def filter_archives_simple(params: dict[str, Any], authenticated=False, show_bin
     """Filter results through parameters
     and return a result list.
     """
+    params = {k: "" for k in archive_filter_keys} | dict(params)
     if "sort_by" in params and params["sort_by"]:
         if authenticated:
             to_use_order_fields = archive_sort_by_fields
@@ -624,7 +618,7 @@ def filter_archives_simple(params: dict[str, Any], authenticated=False, show_bin
             to_use_order_fields = archive_public_order_fields
         # sort and filter results by parameters
         order = "posted"
-        if params["sort"] and params["sort"] in to_use_order_fields:
+        if params.get("sort") and params["sort"] in to_use_order_fields:
             order = params["sort"]
         if order == "rating":
             order = "gallery__" + order
@@ -633,7 +627,7 @@ def filter_archives_simple(params: dict[str, Any], authenticated=False, show_bin
         elif order == "category":
             order = "gallery__" + order
 
-        if params["asc_desc"] == "desc":
+        if params.get("asc_desc") == "desc":
             # order = '-' + order
             order_argument = F(order).desc(nulls_last=True)
         else:
@@ -716,6 +710,7 @@ def filter_archives_simple(params: dict[str, Any], authenticated=False, show_bin
 
     if params["tags"]:
         tags = params["tags"].split(",")
+        has_positive_tag_filter = False
         for tag in tags:
             tag = tag.strip().replace(" ", "_")
             tag_clean = re.sub("^[-|^]", "", tag)
@@ -745,6 +740,7 @@ def filter_archives_simple(params: dict[str, Any], authenticated=False, show_bin
 
                 results = results.exclude(tag_query)
             elif tag.startswith("^"):
+                has_positive_tag_filter = True
                 if tag_name != "" and tag_scope != "":
                     tag_query = Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope)
                 elif tag_name != "":
@@ -754,6 +750,7 @@ def filter_archives_simple(params: dict[str, Any], authenticated=False, show_bin
 
                 results = results.filter(tag_query)
             else:
+                has_positive_tag_filter = True
                 if tag_name != "" and tag_scope != "":
                     tag_query = Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)
                 elif tag_name != "":
@@ -763,7 +760,8 @@ def filter_archives_simple(params: dict[str, Any], authenticated=False, show_bin
 
                 results = results.filter(tag_query)
 
-        results = results.distinct()
+        if has_positive_tag_filter:
+            results = results.distinct()
 
     if "non_public" in params and params["non_public"]:
         results = results.filter(public=False)
@@ -778,12 +776,9 @@ def filter_archives_simple(params: dict[str, Any], authenticated=False, show_bin
         results = results.filter(binned=False)
 
     if "view" in params:
-        if params["view"] == "list":
-            results = results.select_related("gallery")
-        elif params["view"] == "cover":
-            pass
-        elif params["view"] == "extended":
-            results = results.select_related("gallery").prefetch_related("tags")
+        results = results.select_related("gallery").prefetch_related("tags").defer(
+            "gallery__comment", "gallery__provider_metadata"
+        )
 
     return results
 

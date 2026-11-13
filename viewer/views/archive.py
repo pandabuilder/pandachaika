@@ -3,19 +3,18 @@ import logging
 import mimetypes
 import os
 import re
-import time
-import zipfile
 from os.path import basename
 from urllib.parse import quote, urlparse, unquote
 import typing
-import warnings
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib.auth.views import redirect_to_login
+from django.contrib.contenttypes.models import ContentType
 from django.core.paginator import Paginator, InvalidPage, EmptyPage, Page
 from django.urls import reverse
 from django.db import transaction
+from django.db.models import Sum
 from django.http import Http404, HttpRequest
 from django.http import HttpResponseRedirect, HttpResponse, FileResponse, StreamingHttpResponse, HttpResponseBase
 from django.utils.http import content_disposition_header
@@ -24,7 +23,6 @@ from django.views.decorators.http import require_POST
 from django.shortcuts import render
 from django.conf import settings
 
-from core.base.setup import Settings
 from workers import client
 from viewer.utils.actions import event_log
 from viewer.forms import ArchiveModForm, ImageFormSet, ArchiveEditForm, ArchiveManageEditFormSet, SplitArchiveFormSet
@@ -33,6 +31,7 @@ from viewer.models import (
     Tag,
     Gallery,
     Image,
+    ItemProperties,
     UserArchivePrefs,
     ArchiveManageEntry,
     ArchiveRecycleEntry,
@@ -42,6 +41,7 @@ from viewer.models import (
     ArchiveTag,
     ArchiveOption,
     ArchiveStatistics,
+    UserLongLivedToken,
 )
 from viewer.utils.general import clean_up_referer, should_use_refined_views
 from viewer.utils.requests import double_check_auth, authenticate_by_token
@@ -62,7 +62,7 @@ def archive_details(request: HttpRequest, pk: int, mode: str = "view") -> HttpRe
     """Archive listing."""
 
     try:
-        archive = Archive.objects.get(pk=pk)
+        archive = Archive.objects.select_related("gallery").get(pk=pk)
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
     if not archive.public and not request.user.is_authenticated:
@@ -146,11 +146,24 @@ def archive_details(request: HttpRequest, pk: int, mode: str = "view") -> HttpRe
             archive=archive,
             defaults={"user_id": request.user.pk, "archive": archive, "favorite_group": 0},
         )
+        manga_extractor = getattr(crawler_settings, "manga_extractor", None)
+        me_enabled = bool(manga_extractor and manga_extractor.enable)
+        me_profiles = {}
+        default_profile_name = "default"
+        if me_enabled and manga_extractor:
+            me_profiles = manga_extractor.get_profile_choices()
+            default_profile_name = manga_extractor.default_profile
+
         d.update(
             {
                 "user_archive_preferences": current_user_archive_preferences,
                 "is_extracting": (not archive.extracted) and client.is_archive_extracting(archive.pk),
+                "is_reducing": archive.extracted and client.is_archive_reducing(archive.pk),
                 "is_publishing": (not archive.public) and client.is_archive_publishing(archive.pk),
+                "is_extracting_context": client.is_archive_extracting_context(archive.pk),
+                "manga_extractor_enabled": me_enabled,
+                "manga_extractor_profiles": me_profiles,
+                "manga_extractor_default_profile": default_profile_name,
             }
         )
 
@@ -256,11 +269,16 @@ def archive_details(request: HttpRequest, pk: int, mode: str = "view") -> HttpRe
         )
         d.update({"manage_entries": manage_entries})
 
+    archive_tags = list(archive.archivetag_set.all())
+    tag_count = sum(1 for at in archive_tags if at.origin != ArchiveTag.ORIGIN_USER)
+    custom_tag_count = len(archive_tags) - tag_count
+    file_entry_total = archive.archivefileentry_set.aggregate(total=Sum("file_size"))["total"] or 0
+
     d.update(
         {
-            "tag_count": archive.tags.exclude(archivetag__origin=ArchiveTag.ORIGIN_USER).count(),
-            "custom_tag_count": archive.tags.filter(archivetag__origin=ArchiveTag.ORIGIN_USER).count(),
-            "file_entry_total": sum([x.file_size for x in archive.archivefileentry_set.all()]),
+            "tag_count": tag_count,
+            "custom_tag_count": custom_tag_count,
+            "file_entry_total": file_entry_total,
             # 'public_mark_reasons': crawler_settings.urls.public_mark_reasons
         }
     )
@@ -269,7 +287,15 @@ def archive_details(request: HttpRequest, pk: int, mode: str = "view") -> HttpRe
         gallery_provider_data = GalleryProviderData.objects.filter(gallery=archive.gallery)
         d.update({"gallery_provider_data": gallery_provider_data})
 
-    d.update({"archive_statistics": ArchiveStatistics.objects.filter(archive=archive).first()})
+    archive_ct = ContentType.objects.get_for_model(Archive)
+    d.update(
+        {
+            "archive_statistics": ArchiveStatistics.objects.filter(archive=archive).first(),
+            "archive_contextual_properties": ItemProperties.objects.filter(
+                content_type=archive_ct, object_id=archive.pk, tag="manga-extractor"
+            ).order_by("name"),
+        }
+    )
 
     template = (
         "viewer/archive_new.html"
@@ -510,7 +536,7 @@ def archive_download(request: HttpRequest, pk: int) -> HttpResponse:
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
 
-    token_valid, token_user = authenticate_by_token(request)
+    token_valid, token_user = authenticate_by_token(request, UserLongLivedToken.SCOPE_READ)
 
     user_is_authenticated = request.user.is_authenticated or token_valid
     
@@ -585,7 +611,7 @@ def archive_thumb(request: HttpRequest, pk: int) -> HttpResponse:
         response["Content-Type"] = "image/jpeg"
         # response["Content-Disposition"] = 'attachment; filename*=UTF-8\'\'{0}'.format(
         #         archive.pretty_name)
-        response["X-Accel-Redirect"] = "/image/{0}".format(thumb.name)
+        response["X-Accel-Redirect"] = "/image/{0}".format(quote(thumb.name or ""))
         return response
     else:
         try:
@@ -615,7 +641,26 @@ def image_data_list(request: HttpRequest, pk: int) -> HttpResponse:
     except (InvalidPage, EmptyPage):
         results = paginator.page(paginator.num_pages)
 
-    d = {"archive": archive, "results": results}
+    has_contextual_props = False
+    if results and results.object_list:
+        image_ct = ContentType.objects.get_for_model(Image)
+        image_pks = [img.pk for img in results.object_list if img.pk]
+        props_by_img: dict[int, list[ItemProperties]] = {}
+        for prop in ItemProperties.objects.filter(
+            content_type=image_ct, object_id__in=image_pks, tag="manga-extractor"
+        ).order_by("name"):
+            if prop.name == "bubble_transcripts":
+                parsed = prop.parsed_json
+                if isinstance(parsed, list):
+                    setattr(prop, "bubble_list", parsed)
+            props_by_img.setdefault(prop.object_id, []).append(prop)
+        for img in results.object_list:
+            img_props = props_by_img.get(img.pk, [])
+            setattr(img, "contextual_properties", img_props)
+            if img_props:
+                has_contextual_props = True
+
+    d = {"archive": archive, "results": results, "has_contextual_props": has_contextual_props}
 
     return render(request, "viewer/archive_image_data_list.html", d)
 
@@ -642,6 +687,14 @@ def change_log(request: HttpRequest, pk: int) -> HttpResponse:
     except (InvalidPage, EmptyPage):
         results = paginator.page(paginator.num_pages)
 
+    if results is not None:
+        history_list = list(results.object_list)
+        for i in range(len(history_list) - 1):
+            history_list[i].cached_prev_record = history_list[i + 1]
+        if history_list:
+            history_list[-1].cached_prev_record = history_list[-1].prev_record
+        results.object_list = history_list
+
     d = {"archive": archive, "results": results}
 
     return render(request, "viewer/archive_change_log.html", d)
@@ -652,7 +705,7 @@ def image_live_thumb(request: HttpRequest, archive_pk: int, position: int) -> Ht
         image = Image.objects.get(archive=archive_pk, position=position)
     except Image.DoesNotExist:
         raise Http404("Archive does not exist")
-    if not double_check_auth(request)[0]:
+    if not double_check_auth(request, UserLongLivedToken.SCOPE_READ)[0]:
         raise Http404("Archive does not exist")
 
     full_image = bool(request.GET.get("full", ""))
@@ -674,7 +727,7 @@ def image_live_thumb(request: HttpRequest, archive_pk: int, position: int) -> Ht
 
 def _serve_image(request: HttpRequest, pk: int, as_attachment: bool = True) -> HttpResponseBase:
     """Serve an individual image in its original resolution (only for authenticated users)."""
-    is_auth, auth_user = double_check_auth(request)
+    is_auth, auth_user = double_check_auth(request, UserLongLivedToken.SCOPE_READ)
     if not is_auth:
         return redirect_to_login(request.get_full_path())
 
@@ -705,7 +758,7 @@ def _serve_image(request: HttpRequest, pk: int, as_attachment: bool = True) -> H
             disposition = content_disposition_header(as_attachment, filename)
             if disposition:
                 forwarded_response["Content-Disposition"] = disposition
-            forwarded_response["X-Accel-Redirect"] = f"/image/{img_name}"
+            forwarded_response["X-Accel-Redirect"] = f"/image/{quote(img_name)}"
             return forwarded_response
         else:
             file_response = FileResponse(open(image.image.path, "rb"), as_attachment=as_attachment, filename=filename)
@@ -767,33 +820,6 @@ def archive_image_view(request: HttpRequest, archive_pk: int, position: int) -> 
 
 
 @login_required
-def extract_toggle(request: HttpRequest, pk: int) -> HttpResponse:
-    """Extract archive toggle (deprecated: use explicit extract or reduce to avoid race conditions)."""
-    warnings.warn(
-        "extract_toggle view is deprecated and subject to race conditions. Use extract or reduce instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    if not request.user.has_perm("viewer.expand_archive"):
-        return render_error(request, "You don't have the permission to expand an Archive.")
-    try:
-        with transaction.atomic():
-            archive = Archive.objects.select_for_update().get(pk=pk)
-            target_url = clean_up_referer(request.META.get("HTTP_REFERER", archive.get_absolute_url()))
-            logger.info("Toggling images for archive: {}".format(archive.get_absolute_url()))
-            archive.extract_toggle()
-            if archive.extracted:
-                action = "EXPAND_ARCHIVE"
-            else:
-                action = "REDUCE_ARCHIVE"
-            event_log(request.user, action, content_object=archive, result="success")
-    except Archive.DoesNotExist:
-        raise Http404("Archive does not exist")
-
-    return HttpResponseRedirect(target_url)
-
-
-@login_required
 def extract(request: HttpRequest, pk: int) -> HttpResponse:
     """Extract archive (idempotent, queued to background worker)."""
 
@@ -838,7 +864,7 @@ def extract(request: HttpRequest, pk: int) -> HttpResponse:
 
 @login_required
 def reduce(request: HttpRequest, pk: int) -> HttpResponse:
-    """Reduce archive (idempotent)."""
+    """Reduce archive (idempotent, queued to background worker)."""
 
     if not request.user.has_perm("viewer.expand_archive"):
         return render_error(request, "You don't have the permission to expand an Archive.")
@@ -850,11 +876,20 @@ def reduce(request: HttpRequest, pk: int) -> HttpResponse:
                 logger.info("Archive %s is already reduced.", archive.pk)
                 return HttpResponseRedirect(target_url)
 
-            logger.info("Reducing images for archive: {}".format(archive.get_absolute_url()))
+            if client.is_archive_reducing(archive.pk):
+                logger.info("Archive %s reduction is already queued or in progress.", archive.pk)
+                messages.info(request, "Archive reduction is already queued or in progress.")
+                return HttpResponseRedirect(target_url)
 
-            archive.reduce()
-            action = "REDUCE_ARCHIVE"
-            event_log(request.user, action, content_object=archive, result="success")
+            logger.info("Queueing image reduction for archive: {}".format(archive.get_absolute_url()))
+
+            client.enqueue(
+                args=[archive.pk],
+                task_type="reduce_worker",
+                user=request.user,
+                event_action="REDUCE_ARCHIVE",
+            )
+            messages.success(request, "Queued archive reduction.")
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
 
@@ -863,42 +898,36 @@ def reduce(request: HttpRequest, pk: int) -> HttpResponse:
 
 @login_required
 def check_and_convert_filetype(request: HttpRequest, pk: int) -> HttpResponse:
-    """Check and convert archive filetype."""
+    """Check and convert archive filetype (queued to background worker)."""
 
     if not request.user.is_staff:
         return render_error(request, "You need to be an admin to run this tool.")
     try:
         with transaction.atomic():
             archive = Archive.objects.select_for_update().get(pk=pk)
+            target_url = clean_up_referer(request.META.get("HTTP_REFERER", archive.get_absolute_url()))
 
-            logger.info("Checking if archive: {} needs conversion to ZIP.".format(archive.get_absolute_url()))
+            if client.is_archive_task_active(archive.pk, "convert_archive_worker"):
+                messages.info(request, "Archive filetype conversion is already queued or in progress.")
+                return HttpResponseRedirect(target_url)
 
-            extension, result = archive.check_and_convert_to_zip()
-
-            # Leave up to the user to rename or not, same with recalc
-            # if extension in ['rar', '7z'] and result == 2:
-            #     base_name, current_extension = splitext(archive.zipped.path)
-            #     archive.rename_zipped_pathname(base_name + ".zip")
-
-            if result == 2:
-                result_message = "success"
-            elif result == 0:
-                result_message = "skipped"
-            elif result == 1:
-                result_message = "failed"
-            else:
-                result_message = "unknown"
-
-            event_log(request.user, "CONVERT_TO_ZIP", content_object=archive, result=result_message, data=extension)
+            logger.info("Queueing filetype check and conversion to ZIP for archive: {}".format(archive.get_absolute_url()))
+            client.enqueue(
+                args=[archive.pk],
+                task_type="convert_archive_worker",
+                user=request.user,
+                event_action="CONVERT_TO_ZIP",
+            )
+            messages.success(request, "Queued archive filetype check and conversion.")
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
 
-    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+    return HttpResponseRedirect(target_url)
 
 
 @login_required
 def clone_plus(request: HttpRequest, pk: int) -> HttpResponse:
-    """CLone and apply other tools (reorder by sha1 list, etc)."""
+    """Clone and apply other tools (reorder by sha1 list, etc, queued to background worker)."""
 
     if not request.user.has_perm("viewer.modify_archive_tools"):
         return render_error(request, "You don't have the permission to modify the underlying file.")
@@ -913,106 +942,48 @@ def clone_plus(request: HttpRequest, pk: int) -> HttpResponse:
         run_image_tool = p.get("run-image-tool", "")
         bin_original = p.get("bin-original", "")
 
-        tools_used = []
-
         if run_image_tool and not crawler_settings.cloning_image_tool.enable:
             messages.error(request, "Clone image tool is not setup.")
-            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+            return HttpResponseRedirect(clean_up_referer(request.META.get("HTTP_REFERER", reverse("viewer:archive", args=[pk]))))
 
         if reorder_by_sha1:
             sha1_text = p.get("sha1s", "")
             sha1_list = sha1_text.splitlines()
-            tools_used.append("Reordering based on SHA1 list")
         else:
             sha1_list = None
-
-        if run_image_tool:
-            tools_used.append("Running Image Tool")
 
         user_reason = p.get("reason", "")
 
         try:
             with transaction.atomic():
                 archive = Archive.objects.select_for_update().get(pk=pk)
+                target_url = clean_up_referer(request.META.get("HTTP_REFERER", archive.get_absolute_url()))
 
-                original_archive_url = request.build_absolute_uri(archive.get_absolute_url())
+                if client.is_archive_task_active(archive.pk, "clone_archive_worker"):
+                    messages.info(request, "Archive cloning is already queued or in progress.")
+                    return HttpResponseRedirect(target_url)
 
-                logger.info("Cloning Archive: {} and {}.".format(archive.get_absolute_url(), tools_used))
+                logger.info("Queueing clone for Archive: {}".format(archive.get_absolute_url()))
 
-                if run_image_tool:
-
-                    image_tool = (
-                        crawler_settings.cloning_image_tool if crawler_settings.cloning_image_tool.enable else None
-                    )
-
-                    new_archive, error_message = archive.clone_archive_plus(sha1_list, image_tool)
-                elif sha1_list:
-                    new_archive, error_message = archive.create_new_archive_ordered_by_sha1(sha1_list)
-                else:
-                    new_archive, error_message = archive.clone_archive_plus(sha1_list)
-
-                if new_archive:
-                    result_message = "success"
-                    event_log(
-                        request.user,
-                        "CLONE_ARCHIVE",
-                        reason=user_reason,
-                        content_object=new_archive,
-                        result=result_message,
-                        data=original_archive_url,
-                    )
-
-                    old_archive = Archive.objects.select_for_update().get(pk=pk)
-
-                    if bin_original and not old_archive.is_recycled():
-                        r = ArchiveRecycleEntry(
-                            archive=old_archive,
-                            reason=user_reason,
-                            user=request.user,
-                            origin=ArchiveRecycleEntry.ORIGIN_USER,
-                        )
-
-                        r.save()
-                        old_archive.binned = True
-                        old_archive.simple_save()
-                        event_log(
-                            request.user,
-                            "MOVE_TO_RECYCLE_BIN",
-                            content_object=old_archive,
-                            result="recycled",
-                            reason=user_reason,
-                        )
-                        if old_archive.public:
-                            old_archive.set_private()
-                            event_log(
-                                request.user, "UNPUBLISH_ARCHIVE", content_object=old_archive, result="unpublished"
-                            )
-
-                    messages.success(
-                        request,
-                        "Cloned new Archive: {}".format(request.build_absolute_uri(new_archive.get_absolute_url())),
-                    )
-                else:
-                    result_message = "failed"
-                    event_log(
-                        request.user,
-                        "CLONE_ARCHIVE",
-                        reason=user_reason,
-                        content_object=archive,
-                        result=result_message,
-                        data=error_message,
-                    )
-                    messages.error(
-                        request,
-                        "Could not clone Archive: {}, error: {}.".format(
-                            request.build_absolute_uri(archive.get_absolute_url()), error_message
-                        ),
-                    )
-
+                options = {
+                    "sha1_list": sha1_list,
+                    "run_image_tool": bool(run_image_tool),
+                    "bin_original": bool(bin_original),
+                    "user_reason": user_reason,
+                }
+                client.enqueue(
+                    args=[archive.pk],
+                    task_type="clone_archive_worker",
+                    override_options=options,
+                    user=request.user,
+                    reason=user_reason,
+                    event_action="CLONE_ARCHIVE",
+                )
+                messages.success(request, "Queued archive clone operation.")
         except Archive.DoesNotExist:
             raise Http404("Archive does not exist")
 
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+        return HttpResponseRedirect(target_url)
     else:
 
         try:
@@ -1035,11 +1006,16 @@ def clone_plus(request: HttpRequest, pk: int) -> HttpResponse:
 
 @login_required
 def split(request: HttpRequest, pk: int) -> HttpResponse:
-    """Split an Archive into several others."""
+    """Split an Archive into several others (queued to background worker)."""
 
     if not request.user.has_perm("viewer.modify_archive_tools"):
         return render_error(request, "You don't have the permission to modify the underlying file.")
     if not request.user.is_authenticated:
+        raise Http404("Archive does not exist")
+
+    try:
+        archive = Archive.objects.get(pk=pk)
+    except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
 
     p = request.POST
@@ -1047,188 +1023,63 @@ def split(request: HttpRequest, pk: int) -> HttpResponse:
     if p and "submit" in p:
 
         bin_original = p.get("bin-original", "")
-
         user_reason = p.get("reason", "")
-
         split_nested = p.get("split-nested", "")
 
-        try:
-            with transaction.atomic():
-                archive = Archive.objects.select_for_update().get(pk=pk)
+        target_url = clean_up_referer(request.META.get("HTTP_REFERER", archive.get_absolute_url()))
 
-                original_archive_url = request.build_absolute_uri(archive.get_absolute_url())
+        if client.is_archive_task_active(archive.pk, "split_archive_worker"):
+            messages.info(request, "Archive split is already queued or in progress.")
+            return HttpResponseRedirect(target_url)
 
-                if split_nested:
-                    logger.info("Splitting Archive: {}, if it is nested.".format(archive.get_absolute_url()))
-
-                    new_archives, error_message = archive.split_archive([], split_from_nested=True)
-
-                    if new_archives:
-                        result_message = "success"
-
-                        for new_archive in new_archives:
-                            event_log(
-                                request.user,
-                                "SPLIT_ARCHIVE",
-                                reason=user_reason,
-                                content_object=new_archive,
-                                result=result_message,
-                                data=original_archive_url,
-                            )
-
-                            messages.success(
-                                request,
-                                "Split new Archive: {}".format(
-                                    request.build_absolute_uri(new_archive.get_absolute_url())
-                                ),
-                            )
-
-                        old_archive = Archive.objects.select_for_update().get(pk=pk)
-
-                        if bin_original and not old_archive.is_recycled():
-                            r = ArchiveRecycleEntry(
-                                archive=old_archive,
-                                reason=user_reason,
-                                user=request.user,
-                                origin=ArchiveRecycleEntry.ORIGIN_USER,
-                            )
-
-                            r.save()
-                            old_archive.binned = True
-                            old_archive.simple_save()
-                            event_log(
-                                request.user,
-                                "MOVE_TO_RECYCLE_BIN",
-                                content_object=old_archive,
-                                result="recycled",
-                                reason=user_reason,
-                            )
-                            if old_archive.public:
-                                old_archive.set_private()
-                                event_log(
-                                    request.user, "UNPUBLISH_ARCHIVE", content_object=old_archive, result="unpublished"
-                                )
-
-                        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
-                    else:
-                        result_message = "failed"
-                        event_log(
-                            request.user,
-                            "SPLIT_ARCHIVE",
-                            reason=user_reason,
-                            content_object=archive,
-                            result=result_message,
-                            data=error_message,
-                        )
-                        messages.error(
-                            request,
-                            "Could not split Archive: {}, error: {}.".format(
-                                request.build_absolute_uri(archive.get_absolute_url()), error_message
-                            ),
-                        )
-                else:
-                    logger.info("Splitting Archive: {}, using provided positions.".format(archive.get_absolute_url()))
-
-                    split_form = SplitArchiveFormSet(
-                        p, queryset=Archive.objects.none(), prefix="archives", filecount=archive.filecount
-                    )
-                    if split_form.is_valid():
-                        cleaned_data = [
-                            (x["starting_position"], x["ending_position"], x["new_file_name"], False)
-                            for x in split_form.cleaned_data
-                            if x
-                        ]
-
-                        new_archives, error_message = archive.split_archive(cleaned_data)
-
-                        if new_archives:
-                            result_message = "success"
-
-                            for new_archive in new_archives:
-                                event_log(
-                                    request.user,
-                                    "SPLIT_ARCHIVE",
-                                    reason=user_reason,
-                                    content_object=new_archive,
-                                    result=result_message,
-                                    data=original_archive_url,
-                                )
-
-                                messages.success(
-                                    request,
-                                    "Split new Archive: {}".format(
-                                        request.build_absolute_uri(new_archive.get_absolute_url())
-                                    ),
-                                )
-
-                            old_archive = Archive.objects.select_for_update().get(pk=pk)
-
-                            if bin_original and not old_archive.is_recycled():
-                                r = ArchiveRecycleEntry(
-                                    archive=old_archive,
-                                    reason=user_reason,
-                                    user=request.user,
-                                    origin=ArchiveRecycleEntry.ORIGIN_USER,
-                                )
-
-                                r.save()
-                                old_archive.binned = True
-                                old_archive.simple_save()
-                                event_log(
-                                    request.user,
-                                    "MOVE_TO_RECYCLE_BIN",
-                                    content_object=old_archive,
-                                    result="recycled",
-                                    reason=user_reason,
-                                )
-                                if old_archive.public:
-                                    old_archive.set_private()
-                                    event_log(
-                                        request.user,
-                                        "UNPUBLISH_ARCHIVE",
-                                        content_object=old_archive,
-                                        result="unpublished",
-                                    )
-
-                            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
-                        else:
-                            result_message = "failed"
-                            event_log(
-                                request.user,
-                                "SPLIT_ARCHIVE",
-                                reason=user_reason,
-                                content_object=archive,
-                                result=result_message,
-                                data=error_message,
-                            )
-                            messages.error(
-                                request,
-                                "Could not split Archive: {}, error: {}.".format(
-                                    request.build_absolute_uri(archive.get_absolute_url()), error_message
-                                ),
-                            )
-                    else:
-                        error_message = "The provided data is not valid"
-                        result_message = "failed"
-                        event_log(
-                            request.user,
-                            "SPLIT_ARCHIVE",
-                            reason=user_reason,
-                            content_object=archive,
-                            result=result_message,
-                            data=error_message,
-                        )
-                        messages.error(request, error_message, extra_tags="danger")
-
-        except Archive.DoesNotExist:
-            raise Http404("Archive does not exist")
+        if split_nested:
+            logger.info("Queueing split (nested) for Archive: {}".format(archive.get_absolute_url()))
+            options = {
+                "cleaned_data": [],
+                "split_nested": True,
+                "bin_original": bool(bin_original),
+                "user_reason": user_reason,
+            }
+            client.enqueue(
+                args=[archive.pk],
+                task_type="split_archive_worker",
+                override_options=options,
+                user=request.user,
+                reason=user_reason,
+                event_action="SPLIT_ARCHIVE",
+            )
+            messages.success(request, "Queued archive split operation (nested).")
+            return HttpResponseRedirect(target_url)
+        else:
+            split_form = SplitArchiveFormSet(
+                p, queryset=Archive.objects.none(), prefix="archives", filecount=archive.filecount
+            )
+            if split_form.is_valid():
+                cleaned_data = [
+                    (x["starting_position"], x["ending_position"], x["new_file_name"], False)
+                    for x in split_form.cleaned_data
+                    if x
+                ]
+                logger.info("Queueing split for Archive: {}".format(archive.get_absolute_url()))
+                options = {
+                    "cleaned_data": cleaned_data,
+                    "split_nested": False,
+                    "bin_original": bool(bin_original),
+                    "user_reason": user_reason,
+                }
+                client.enqueue(
+                    args=[archive.pk],
+                    task_type="split_archive_worker",
+                    override_options=options,
+                    user=request.user,
+                    reason=user_reason,
+                    event_action="SPLIT_ARCHIVE",
+                )
+                messages.success(request, "Queued archive split operation.")
+                return HttpResponseRedirect(target_url)
+            else:
+                messages.error(request, "The provided data is not valid", extra_tags="danger")
     else:
-
-        try:
-            archive = Archive.objects.get(pk=pk)
-        except Archive.DoesNotExist:
-            raise Http404("Archive does not exist")
-
         split_form = SplitArchiveFormSet(
             queryset=Archive.objects.none(), prefix="archives", filecount=archive.filecount
         )
@@ -1305,79 +1156,134 @@ def private(request: HttpRequest, pk: int) -> HttpResponse:
 @login_required
 @require_POST
 def calculate_images_sha1(request: HttpRequest, pk: int) -> HttpResponse:
-    """Calculate archive's images SHA1."""
+    """Calculate archive's images SHA1 (queued to background worker)."""
 
     if not request.user.has_perm("viewer.publish_archive"):
         return render_error(request, "You don't have the permission to calculate SHA1.")
 
     try:
-        archive: Archive = Archive.objects.get(pk=pk)
+        with transaction.atomic():
+            archive = Archive.objects.select_for_update().get(pk=pk)
+            target_url = clean_up_referer(request.META.get("HTTP_REFERER", archive.get_absolute_url()))
+
+            if client.is_archive_task_active(archive.pk, "calculate_sha1_worker"):
+                messages.info(request, "Archive images SHA1 calculation is already queued or in progress.")
+                return HttpResponseRedirect(target_url)
+
+            logger.info("Queueing images SHA1 calculation for Archive: {}".format(archive.get_absolute_url()))
+            client.enqueue(
+                args=[archive.pk],
+                task_type="calculate_sha1_worker",
+                user=request.user,
+                event_action="CALCULATE_IMAGES_SHA1",
+            )
+            messages.success(request, "Queued images SHA1 calculation.")
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
 
-    logger.info("Calculating images SHA1 for Archive: {}".format(archive.get_absolute_url()))
-
-    start_time = time.perf_counter()
-
-    archive.calculate_sha1_and_data_for_images()
-
-    end_time = time.perf_counter()
-
-    logger.info("Calculated images SHA1 for Archive: {}. Time taken: {:.2f} seconds".format(archive.get_absolute_url(), end_time - start_time))
-
-    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+    return HttpResponseRedirect(target_url)
 
 
 @login_required
 @require_POST
 def recalc_info(request: HttpRequest, pk: int) -> HttpResponse:
-    """Recalculate archive info."""
+    """Recalculate archive info (queued to background worker)."""
 
     if not request.user.is_staff:
         return render_error(request, "You need to be an admin to recalculate file info.")
 
     try:
-        archive = Archive.objects.get(pk=pk)
+        with transaction.atomic():
+            archive = Archive.objects.select_for_update().get(pk=pk)
+            target_url = clean_up_referer(request.META.get("HTTP_REFERER", archive.get_absolute_url()))
+
+            if client.is_archive_task_active(archive.pk, "fileinfo_worker"):
+                messages.info(request, "Archive file info recalculation is already queued or in progress.")
+                return HttpResponseRedirect(target_url)
+
+            logger.info("Queueing file info recalculation for Archive: {}".format(archive.get_absolute_url()))
+            client.enqueue(
+                args=[archive.pk],
+                task_type="fileinfo_worker",
+                override_options={"full": True},
+                user=request.user,
+                event_action="RECALCULATE_FILEINFO",
+            )
+            messages.success(request, "Queued archive file info recalculation.")
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
 
-    logger.info("Recalculating file info for Archive: {}".format(archive.get_absolute_url()))
-    archive.recalc_fileinfo()
-    try:
-        archive.test_zip_file()
-    except (FileNotFoundError, zipfile.BadZipFile) as e:
-        message = "For Archive: {}, {}".format(archive.get_absolute_url(), str(e))
-        logger.error(message)
-        messages.error(request, message)
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
-    archive.generate_image_set(force=False, skip_zip_check=True)
-    archive.fix_image_positions()
-    archive.generate_thumbnails(skip_zip_check=True)
+    return HttpResponseRedirect(target_url)
 
-    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+
+@login_required
+@require_POST
+def extract_context(request: HttpRequest, pk: int) -> HttpResponse:
+    """Enqueue contextual extraction via manga-extractor for a single archive."""
+    if not (request.user.is_staff or request.user.has_perm("viewer.extract_contextual_info")):
+        return render_error(request, "You don't have the permission to extract contextual information.")
+
+    manga_extractor = getattr(crawler_settings, "manga_extractor", None)
+    if not manga_extractor or not manga_extractor.enable:
+        return render_error(request, "Manga extractor is not enabled in settings.")
+
+    profile_name = request.POST.get("profile") or manga_extractor.default_profile
+
+    try:
+        with transaction.atomic():
+            archive = Archive.objects.select_for_update().get(pk=pk)
+            target_url = clean_up_referer(request.META.get("HTTP_REFERER", archive.get_absolute_url()))
+
+            if client.is_archive_extracting_context(archive.pk):
+                logger.info("Archive %s contextual extraction is already queued or in progress.", archive.pk)
+                messages.info(request, "Contextual extraction is already queued or in progress.")
+                return HttpResponseRedirect(target_url)
+
+            logger.info("Queueing contextual extraction for Archive: %s (profile: %s)", archive.get_absolute_url(), profile_name)
+            client.enqueue_contextual_extraction(
+                [archive.pk],
+                user=request.user,
+                event_action="EXTRACT_CONTEXTUAL_INFO",
+                profile=profile_name,
+            )
+            messages.success(request, f"Queued contextual extraction ({profile_name}).")
+    except Archive.DoesNotExist:
+        raise Http404("Archive does not exist")
+
+    return HttpResponseRedirect(target_url)
 
 
 @login_required
 def mark_similar_archives(request: HttpRequest, pk: int) -> HttpResponse:
-    """Create similar info as marks for archive."""
+    """Create similar info as marks for archive (queued to background worker)."""
 
     if not request.user.has_perm("viewer.mark_similar_archive"):
         return render_error(request, "You don't have the permission to mark similar archives.")
 
     try:
-        archive = Archive.objects.get(pk=pk)
+        with transaction.atomic():
+            archive = Archive.objects.select_for_update().get(pk=pk)
+            target_url = clean_up_referer(request.META.get("HTTP_REFERER", archive.get_absolute_url()))
+
+            if client.is_archive_task_active(archive.pk, "mark_similar_worker"):
+                messages.info(request, "Archive similarity check is already queued or in progress.")
+                return HttpResponseRedirect(target_url)
+
+            use_recycled_archives = bool(request.GET.get("use-recycled", ""))
+
+            logger.info("Queueing mark similar archives for Archive: {}, use recycled archives: {}".format(archive.get_absolute_url(), use_recycled_archives))
+            client.enqueue(
+                args=[archive.pk],
+                task_type="mark_similar_worker",
+                override_options={"use_recycled": use_recycled_archives},
+                user=request.user,
+                event_action="MARK_SIMILAR",
+            )
+            messages.success(request, "Queued archive similarity check.")
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
 
-    use_recycled_archives = bool(request.GET.get("use-recycled", ""))
-
-    logger.info("Creating similar info as marks for Archive: {}, use recycled archives: {}".format(archive.get_absolute_url(), use_recycled_archives))
-    archive.create_marks_for_similar_archives(use_recycled_archives=use_recycled_archives)
-
-    if "HTTP_REFERER" in request.META:
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
-    else:
-        return HttpResponseRedirect(reverse("viewer:archive", args=[str(pk)]))
+    return HttpResponseRedirect(target_url)
 
 
 @login_required
@@ -1398,19 +1304,10 @@ def recall_api(request: HttpRequest, pk: int) -> HttpResponse:
 
     gallery = Gallery.objects.get(pk=archive.gallery_id)
 
-    current_settings = Settings(load_from_config=crawler_settings.config)
-
     if gallery.provider:
-        current_settings.archive_user = request.user
-        current_settings.event_action = "UPDATE_METADATA"
-        current_settings.set_update_metadata_options(providers=(gallery.provider,))
-
-        client.enqueue(
-            args=[gallery.get_link()],
-            task_type="web_crawler",
-            override_options=current_settings,
+        client.enqueue_gallery_update(
+            [gallery.get_link()],
             user=request.user,
-            event_action="UPDATE_METADATA",
         )
 
         logger.info("Updating gallery API data for gallery: {} and related archives".format(gallery.get_absolute_url()))
@@ -1420,39 +1317,55 @@ def recall_api(request: HttpRequest, pk: int) -> HttpResponse:
 
 @login_required
 def generate_matches(request: HttpRequest, pk: int) -> HttpResponse:
-    """Generate matches for non-match."""
+    """Generate matches for non-match (queued to background worker)."""
 
     if not request.user.is_staff:
         return render_error(request, "You need to be an admin to generate matches.")
 
     try:
-        archive = Archive.objects.get(pk=pk)
+        with transaction.atomic():
+            archive = Archive.objects.select_for_update().get(pk=pk)
+            target_url = clean_up_referer(request.META.get("HTTP_REFERER", archive.get_absolute_url()))
+
+            if archive.gallery:
+                return render_error(request, "Archive is already matched.")
+
+            if client.is_archive_task_active(archive.pk, "match_unmatched_worker"):
+                messages.info(request, "Archive match generation is already queued or in progress.")
+                return HttpResponseRedirect(target_url)
+
+            clear_title = True if "clear" in request.GET else False
+
+            provider_filter = request.GET.get("provider", "")
+            try:
+                cutoff = float(request.GET.get("cutoff", "0.4"))
+            except ValueError:
+                cutoff = 0.4
+            try:
+                max_matches = int(request.GET.get("max-matches", "10"))
+            except ValueError:
+                max_matches = 10
+
+            logger.info("Queueing generate matches for Archive: {}".format(archive.get_absolute_url()))
+            options = {
+                "clear_title": clear_title,
+                "provider_filter": provider_filter,
+                "cutoff": cutoff,
+                "max_matches": max_matches,
+                "auto_link": "auto_link" in request.GET,
+            }
+            client.enqueue(
+                args=[archive.pk],
+                task_type="match_unmatched_worker",
+                override_options=options,
+                user=request.user,
+                event_action="GENERATE_MATCHES",
+            )
+            messages.success(request, "Queued match generation for archive.")
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
 
-    if archive.gallery:
-        return render_error(request, "Archive is already matched.")
-
-    clear_title = True if "clear" in request.GET else False
-
-    provider_filter = request.GET.get("provider", "")
-    try:
-        cutoff = float(request.GET.get("cutoff", "0.4"))
-    except ValueError:
-        cutoff = 0.4
-    try:
-        max_matches = int(request.GET.get("max-matches", "10"))
-    except ValueError:
-        max_matches = 10
-
-    archive.generate_possible_matches(
-        clear_title=clear_title, provider_filter=provider_filter, cutoff=cutoff, max_matches=max_matches
-    )
-    archive.save()
-
-    logger.info("Generated matches for {}, found {}".format(archive.zipped.path, archive.possible_matches.count()))
-
-    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+    return HttpResponseRedirect(target_url)
 
 
 @login_required
@@ -1485,7 +1398,7 @@ def rematch_archive(request: HttpRequest, pk: int) -> HttpResponse:
 
 @login_required
 def delete_archive(request: HttpRequest, pk: int) -> HttpResponse:
-    """Delete archive and gallery data if there is any."""
+    """Delete archive and gallery data if there is any (queued to background worker)."""
 
     if not request.user.is_staff:
         return render_error(request, "You need to be an admin to delete an archive.")
@@ -1513,105 +1426,29 @@ def delete_archive(request: HttpRequest, pk: int) -> HttpResponse:
             if "delete-gallery" in p:
                 message_list.append("associated gallery")
 
-            message = "For archive: {}, deleting: {}".format(archive.title, ", ".join(message_list))
+            message = "For archive: {}, queued deletion of: {}".format(archive.title, ", ".join(message_list))
 
             logger.info("User {}: {}".format(request.user.username, message))
             messages.success(request, message)
 
-            gallery = archive.gallery
-            archive_report = archive.delete_text_report()
-            old_gallery_link = None
+            options = {
+                "delete_zipped": "delete-zipped" in p,
+                "delete_archive": "delete-archive" in p,
+                "delete_file": "delete-file" in p,
+                "delete_gallery": "delete-gallery" in p,
+                "mark_gallery_deleted": "mark-gallery-deleted" in p,
+                "mark_gallery_denied": "mark-gallery-denied" in p,
+                "user_reason": p.get("reason", ""),
+            }
 
-            user_reason = p.get("reason", "")
-
-            # Mark deleted takes priority over delete
-            if "mark-gallery-deleted" in p and archive.gallery:
-                archive.gallery.mark_as_deleted()
-                if "delete-zipped" not in p:
-                    archive.gallery = None
-
-                event_log(
-                    request.user,
-                    "MARK_DELETE_GALLERY",
-                    reason=user_reason,
-                    data=archive_report,
-                    content_object=gallery,
-                    result="success",
-                )
-            elif "mark-gallery-denied" in p and archive.gallery:
-                archive.gallery.mark_as_denied()
-                if "delete-zipped" not in p:
-                    archive.gallery = None
-
-                event_log(
-                    request.user,
-                    "DENY_GALLERY",
-                    reason=user_reason,
-                    data=archive_report,
-                    content_object=gallery,
-                    result="success",
-                )
-            elif "delete-gallery" in p and archive.gallery:
-                old_gallery_link = archive.gallery.get_link()
-                archive.gallery.delete()
-                archive.gallery = None
-                event_log(
-                    request.user,
-                    "DELETE_GALLERY",
-                    reason=user_reason,
-                    data=old_gallery_link,
-                    result="deleted",
-                )
-
-            actual_action: None | str = None
-
-            if "delete-zipped" in p:
-                actual_action = "DELETE_ZIPPED_PRESERVE_IMAGE_DATA"
-                archive.delete_all_files(create_mark=True, preserve_image_data=True)
-                if not archive.is_recycled():
-                    with transaction.atomic():
-                        r = ArchiveRecycleEntry(
-                            archive=archive,
-                            reason=user_reason,
-                            user=request.user,
-                            origin=ArchiveRecycleEntry.ORIGIN_USER,
-                        )
-
-                        r.save()
-                        archive.binned = True
-                        archive.simple_save()
-                        event_log(
-                            request.user,
-                            "MOVE_TO_RECYCLE_BIN",
-                            content_object=archive,
-                            result="recycled",
-                            reason=user_reason,
-                        )
-                        if archive.public:
-                            archive.set_private()
-                            event_log(request.user, "UNPUBLISH_ARCHIVE", content_object=archive, result="unpublished")
-            else:
-                if "delete-file" in p:
-                    create_delete_mark = False if "delete-archive" in p else True
-                    archive.delete_all_files(create_mark=create_delete_mark)
-                    actual_action = "DELETE_ZIPPED"
-                if "delete-archive" in p:
-                    archive.delete_files_but_archive()
-                    archive.delete()
-                    actual_action = "DELETE_ARCHIVE"
-
-            if actual_action is not None:
-                if old_gallery_link:
-                    event_log(request.user, actual_action, reason=user_reason, result="deleted", data=archive_report)
-                else:
-                    event_log(
-                        request.user,
-                        actual_action,
-                        reason=user_reason,
-                        content_object=gallery,
-                        result="deleted",
-                        data=archive_report,
-                    )
+            client.enqueue(
+                args=[archive.pk],
+                task_type="delete_archive_worker",
+                override_options=options,
+                user=request.user,
+                reason=p.get("reason", ""),
+                event_action="DELETE_ARCHIVE",
+            )
 
             return HttpResponseRedirect(reverse("viewer:main-page"))
 

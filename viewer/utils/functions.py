@@ -6,11 +6,9 @@ from django.core.mail import get_connection, EmailMultiAlternatives
 from django.http import HttpRequest
 from django.urls import reverse
 
-from core.base.setup import Settings
 from core.base.utilities import timestamp_or_zero, timestamp_or_null
 
 from viewer.models import Gallery, Archive, Image, ArchiveGroupEntry, WantedGallery, FoundGallery
-from viewer.utils.actions import event_log
 from workers import client
 
 
@@ -196,18 +194,10 @@ def gallery_search_dict_to_json(request: HttpRequest, galleries: dict[Gallery, l
 
 
 def galleries_update_metadata(gallery_links, gallery_providers, user, reason, cs):
-    current_settings = Settings(load_from_config=cs.config)
-    current_settings.set_update_metadata_options(providers=gallery_providers)
-    current_settings.archive_user = user
-    current_settings.event_action = "UPDATE_METADATA"
-
-    client.enqueue(
-        args=gallery_links,
-        task_type="web_crawler",
-        override_options=current_settings,
+    client.enqueue_gallery_update(
+        gallery_links,
         user=user,
         reason=reason,
-        event_action="UPDATE_METADATA",
     )
 
 

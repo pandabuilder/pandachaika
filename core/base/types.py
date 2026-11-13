@@ -1,8 +1,9 @@
+import importlib
 import statistics
 from dataclasses import dataclass, field
 from datetime import datetime
 import typing
-from typing import Any
+from typing import Any, ClassVar
 
 if typing.TYPE_CHECKING:
     from core.base.setup import Settings
@@ -10,6 +11,12 @@ if typing.TYPE_CHECKING:
 
 # gid and provider are mandatory, since they are a unique constraint on the database.
 class GalleryData:
+    _subclasses: ClassVar[dict[str, type["GalleryData"]]] = {}
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        GalleryData._subclasses[f"{cls.__module__}.{cls.__qualname__}"] = cls
+
     def __init__(
         self,
         gid: str,
@@ -105,6 +112,52 @@ class GalleryData:
         if not isinstance(other, GalleryData):
             return False
         return self.__dict__ == other.__dict__
+
+    def to_dict(self) -> dict[str, Any]:
+        data = dict(self.__dict__)
+        if isinstance(data.get("posted"), datetime):
+            data["posted"] = data["posted"].isoformat()
+        if type(self) is not GalleryData:
+            data["_gallery_data_class"] = f"{type(self).__module__}.{type(self).__qualname__}"
+        return data
+
+    @classmethod
+    def _resolve_subclass(cls, class_path: str) -> type["GalleryData"] | None:
+        if class_path in cls._subclasses:
+            return cls._subclasses[class_path]
+        if class_path.startswith("core.") and "." in class_path:
+            module_name, _, attr_name = class_path.rpartition(".")
+            try:
+                module = importlib.import_module(module_name)
+                candidate = getattr(module, attr_name, None)
+                if isinstance(candidate, type) and issubclass(candidate, cls):
+                    cls._subclasses[class_path] = candidate
+                    return candidate
+            except Exception:
+                return None
+        return None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "GalleryData":
+        data_copy = dict(data)
+        class_path = data_copy.pop("_gallery_data_class", None)
+        target_cls: type[GalleryData] = cls
+        if cls is GalleryData:
+            if isinstance(class_path, str):
+                target_cls = cls._resolve_subclass(class_path) or cls
+            elif "temp_archive" in data_copy or "archives" in data_copy:
+                target_cls = cls._resolve_subclass("core.providers.chaika.utilities.ChaikaGalleryData") or cls
+        posted_val = data_copy.get("posted")
+        if isinstance(posted_val, str):
+            try:
+                data_copy["posted"] = datetime.fromisoformat(posted_val)
+            except ValueError:
+                pass
+        extra_data = data_copy.pop("extra_data", {})
+        instance = target_cls(**data_copy)
+        if isinstance(extra_data, dict):
+            instance.extra_data.update(extra_data)
+        return instance
 
 
 type DataDict = dict[str, Any]
@@ -224,8 +277,12 @@ class TorrentClient:
     def add_url(self, torrent_data: str, download_dir: str | None = None) -> tuple[bool, str | None]:
         return False, None
 
-    def get_download_progress[TorrentKey](self, download_list: list[tuple[str, TorrentKey]]) -> list[tuple[TorrentKey, float]]:
-        return []
+    def get_download_progress[TorrentKey](
+        self, download_list: list[tuple[str, TorrentKey]]
+    ) -> list[tuple[TorrentKey, float]] | None:
+        """Progress (0-100) of the torrents the client knows about. Torrents missing from the client are
+        left out of the result. Returns None when the client could not be queried."""
+        return None
 
     def connect(self) -> bool:
         return False

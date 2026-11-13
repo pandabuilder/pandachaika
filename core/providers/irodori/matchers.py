@@ -1,5 +1,4 @@
 import logging
-import os
 import re
 from urllib.parse import urljoin, urlparse
 
@@ -7,12 +6,15 @@ import bs4
 from bs4 import BeautifulSoup
 
 from core.base.matchers import Matcher
-from core.base.types import DataDict
-from core.base.utilities import request_with_retries, construct_request_dict, file_matches_any_filter, get_zip_fileinfo
+from core.base.utilities import construct_request_dict
+from core.matching.types import SearchResult
 from . import constants
 from .utilities import clean_title
 
 logger = logging.getLogger(__name__)
+
+# Spanish/French releases are discarded.
+DISCARD_TITLE_PREFIXES = ("(SPANISH)", "(FRENCH)")
 
 
 class TitleMatcher(Matcher):
@@ -20,82 +22,40 @@ class TitleMatcher(Matcher):
     name = "title"
     provider = constants.provider_name
     type = "title"
-    time_to_wait_after_compare = 0
     default_cutoff = 0.6
 
-    def format_to_search_title(self, file_name: str) -> str:
-        if file_matches_any_filter(file_name, self.settings.filename_filter):
-            return clean_title(self.get_title_from_path(file_name))
-        else:
-            return clean_title(file_name)
+    def clean_search_title(self, title: str) -> str:
+        return clean_title(title)
 
-    def format_to_compare_title(self, file_name: str) -> str:
-        if file_matches_any_filter(file_name, self.settings.filename_filter):
-            return clean_title(self.get_title_from_path(file_name))
-        else:
-            return clean_title(file_name)
+    def clean_compare_title(self, title: str) -> str:
+        return clean_title(title)
 
-    def search_method(self, title_to_search: str) -> bool:
-        return self.compare_by_title(title_to_search)
-
-    def format_match_values(self) -> DataDict | None:
-
-        if not self.match_values:
-            return None
-        self.match_gid = self.match_values.gid
-        filesize, filecount, _ = get_zip_fileinfo(os.path.join(self.settings.MEDIA_ROOT, self.file_path))
-        values = {
-            "title": self.match_title,
-            "title_jpn": "",
-            "zipped": self.file_path,
-            "crc32": self.crc32,
-            "match_type": self.found_by,
-            "filesize": filesize,
-            "filecount": filecount,
-            "source_type": self.provider,
-        }
-
-        return values
-
-    def compare_by_title(self, title: str) -> bool:
-
+    def search(self, query: str) -> SearchResult:
         request_dict = construct_request_dict(self.settings, self.own_settings)
+        request_dict["params"] = {"q": query}
 
-        request_dict["params"] = {"q": title}
+        response = self.request(urljoin(constants.main_url, "search/"), request_dict)
 
-        r = request_with_retries(
-            urljoin(constants.main_url, "search/"),
-            request_dict,
-        )
+        if not response:
+            logger.info("Matcher {}: got no response from server".format(self))
+            return SearchResult()
 
-        if not r:
-            logger.info("Got no response from server")
-            return False
-
-        r.encoding = "utf-8"
-        soup_1 = BeautifulSoup(r.text, "html.parser")
+        response.encoding = "utf-8"
+        soup = BeautifulSoup(response.text, "html.parser")
 
         matches_links = set()
 
-        discard_titles = ["(SPANISH)", "(FRENCH)"]
-
-        for link_container in soup_1.find_all("a", class_=re.compile("product-card")):
-            # Discard Spanish/French releases
+        for link_container in soup.find_all("a", class_=re.compile("product-card")):
             if isinstance(link_container, bs4.element.Tag):
                 title_container = link_container.find("div", class_="product-card__name")
                 if isinstance(title_container, bs4.element.Tag):
-                    if any(x for x in discard_titles if title_container.get_text().startswith(x)):
+                    if title_container.get_text().startswith(DISCARD_TITLE_PREFIXES):
                         continue
                     found_href = link_container["href"]
                     if isinstance(found_href, str):
                         matches_links.add(urljoin(constants.main_url, urljoin(found_href, urlparse(found_href).path)))
 
-        self.gallery_links = list(matches_links)
-        if len(self.gallery_links) > 0:
-            self.found_by = self.name
-            return True
-        else:
-            return False
+        return SearchResult(links=sorted(matches_links))
 
 
 API = (TitleMatcher,)

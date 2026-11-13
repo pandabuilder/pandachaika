@@ -2,20 +2,27 @@
 import json
 import logging
 import re
-import time
 import typing
+from typing import Any
 import urllib.parse
 from collections import defaultdict
 from collections.abc import Iterable
 from datetime import timedelta
 
+import requests
 import feedparser
 import bs4
 from bs4 import BeautifulSoup
 from django.db.models import QuerySet
 
 from core.base.parsers import BaseParser
-from core.base.utilities import chunks, request_with_retries, construct_request_dict, request_by_provider
+from core.base.utilities import (
+    chunks,
+    construct_request_dict,
+    request_by_provider,
+    parse_panda_ban_duration,
+    set_provider_cooldown,
+)
 from core.base.types import GalleryData, DataDict
 from viewer.models import Gallery
 from .utilities import (
@@ -29,15 +36,21 @@ from . import constants
 from . import utilities
 
 if typing.TYPE_CHECKING:
-    from viewer.models import WantedGallery
+    from viewer.models import Provider, WantedGallery
     from core.base.setup import Settings
 
 logger = logging.getLogger(__name__)
+
+RE_PANDA_GALLERY = re.compile(r"(.+)/g/(\d+)/(\w+)")
+
+# Captured links that fail to be processed this many times are marked as failed, instead of being retried forever.
+MAX_LINK_PROCESS_ATTEMPTS = 5
 
 
 class Parser(BaseParser):
     name = constants.provider_name
     accepted_urls = [constants.ex_page_short, constants.ge_page_short, constants.rss_url]
+    supports_link_capture = True
 
     def __init__(self, settings: "Settings"):
 
@@ -46,6 +59,29 @@ class Parser(BaseParser):
         self.api_request_function = request_by_provider(
             self.name, self.own_settings.api_concurrent_limit, self.own_settings.api_wait_limit
         )
+        # Captured links being processed in this run (source id -> ProcessedLinks pk), and the ones already resolved.
+        self._pending_links: dict[str, int] = {}
+        self._resolved_links: set[str] = set()
+
+    def _parse_api_response_json(
+        self, response: requests.models.Response | None, url: str = ""
+    ) -> dict[str, Any] | None:
+        if not response:
+            return None
+        try:
+            return response.json()
+        except (ValueError, KeyError):
+            ban_duration = parse_panda_ban_duration(getattr(response, "text", ""))
+            if ban_duration is not None:
+                cooldown_wait = ban_duration + 5.0
+                set_provider_cooldown(self.name, cooldown_wait, url=url)
+                logger.warning(
+                    "Panda API temporary ban detected ({}s). Dynamic rate limit cooldown updated to {}s.".format(
+                        ban_duration, cooldown_wait
+                    )
+                )
+            logger.error("Could not parse response to JSON: {}".format(response.text))
+            return None
 
     # Panda only methods
     def get_galleries_from_page_links(self, page_links: Iterable[str], page_links_results: list[DataDict]) -> None:
@@ -77,12 +113,8 @@ class Parser(BaseParser):
                 post=True,
             )
 
-            if not response:
-                continue
-            try:
-                response_data = response.json()
-            except (ValueError, KeyError):
-                logger.error("Could not parse response to JSON: {}".format(response.text))
+            response_data = self._parse_api_response_json(response, constants.ge_api_url)
+            if not response_data:
                 continue
 
             for gid_token_pair in response_data["tokenlist"]:
@@ -142,14 +174,12 @@ class Parser(BaseParser):
                 or getattr(self.settings, "stop_on_seen_link", False)
             )
 
-        try:
-            from viewer.models import ProcessedLinks, Provider
-            from viewer.models.events import MonitoredLink as MLModel
-            from django.utils import timezone
+        capture_only = bool(getattr(self.settings, "capture_links_only", False))
 
-            provider = Provider.objects.filter(slug=self.name).first()
-            if not provider:
-                provider, _ = Provider.objects.get_or_create(slug=self.name, defaults={"name": self.name.capitalize()})
+        try:
+            from viewer.models import ProcessedLinks
+
+            provider = self._get_provider()
         except Exception as e:
             logger.warning("Could not access Provider or ProcessedLinks: %s", e)
             for gallery_url in gallery_urls:
@@ -196,6 +226,8 @@ class Parser(BaseParser):
                         monitored_link=monitored_link,
                         source_id=s_id,
                         url=g_url,
+                        # Captured links wait for the process run, otherwise they are processed in this run.
+                        status=ProcessedLinks.Status.PENDING if capture_only else ProcessedLinks.Status.PROCESSED,
                     )
                 )
                 seen_source_ids.add(s_id)
@@ -206,40 +238,118 @@ class Parser(BaseParser):
             except Exception as e:
                 logger.warning("Could not bulk create ProcessedLinks: %s", e)
 
-        if should_stop:
-            already_seen_mode = (
-                getattr(monitored_link, "already_seen_links_mode", None)
-                or getattr(self.own_settings, "already_seen_links_mode", None)
-                or getattr(self.settings, "already_seen_links_mode", None)
-                or "dont_use"
-            )
-            if already_seen_mode in (MLModel.AlreadySeenLinksMode.USE_BEFORE_NOW, "use_before_now", "use_x_time_before"):
-                window_duration = (
-                    getattr(monitored_link, "how_long_after_already_seen", None)
-                    or getattr(self.own_settings, "how_long_after_already_seen", None)
-                    or getattr(self.settings, "how_long_after_already_seen", None)
-                )
-                if isinstance(window_duration, (int, float)):
-                    window_duration = timedelta(seconds=window_duration)
-                if window_duration and window_duration.total_seconds() > 0:
-                    cutoff = timezone.now() - window_duration
-                    recent_seen_qs = ProcessedLinks.objects.filter(
-                        provider=provider,
-                        monitored_link=monitored_link,
-                        create_date__gte=cutoff,
-                    )
-                    recent_urls = list(recent_seen_qs.values_list("url", flat=True))
-                    logger.info(
-                        "Encountered seen link; adding %d links seen within the last %s for monitored link %s.",
-                        len(recent_urls),
-                        window_duration,
-                        getattr(monitored_link, "name", monitored_link),
-                    )
-                    for r_url in recent_urls:
-                        if r_url:
-                            unique_urls.add(r_url)
+        # In capture mode the recent links are added by the process run instead.
+        if should_stop and not capture_only:
+            unique_urls.update(self._recent_seen_urls(monitored_link, provider))
 
         return should_stop
+
+    def _get_provider(self) -> "Provider":
+        from viewer.models import Provider
+
+        provider = Provider.objects.filter(slug=self.name).first()
+        if not provider:
+            provider, _ = Provider.objects.get_or_create(slug=self.name, defaults={"name": self.name.capitalize()})
+        return provider
+
+    def _recent_seen_urls(self, monitored_link: Any, provider: "Provider") -> set[str]:
+        """Links seen within the monitored link's "how long after already seen" window, if configured to use them."""
+        from django.utils import timezone
+        from viewer.models import ProcessedLinks
+        from viewer.models.events import MonitoredLink as MLModel
+
+        already_seen_mode = (
+            getattr(monitored_link, "already_seen_links_mode", None)
+            or getattr(self.own_settings, "already_seen_links_mode", None)
+            or getattr(self.settings, "already_seen_links_mode", None)
+            or "dont_use"
+        )
+        if already_seen_mode not in (MLModel.AlreadySeenLinksMode.USE_BEFORE_NOW, "use_before_now", "use_x_time_before"):
+            return set()
+        window_duration = (
+            getattr(monitored_link, "how_long_after_already_seen", None)
+            or getattr(self.own_settings, "how_long_after_already_seen", None)
+            or getattr(self.settings, "how_long_after_already_seen", None)
+        )
+        if isinstance(window_duration, (int, float)):
+            window_duration = timedelta(seconds=window_duration)
+        if not window_duration or window_duration.total_seconds() <= 0:
+            return set()
+        cutoff = timezone.now() - window_duration
+        recent_urls = {
+            r_url
+            for r_url in ProcessedLinks.objects.filter(
+                provider=provider,
+                monitored_link=monitored_link,
+                create_date__gte=cutoff,
+            ).values_list("url", flat=True)
+            if r_url
+        }
+        logger.info(
+            "Adding %d links seen within the last %s for monitored link %s.",
+            len(recent_urls),
+            window_duration,
+            getattr(monitored_link, "name", monitored_link),
+        )
+        return recent_urls
+
+    def _load_pending_links(self, unique_urls: set[str]) -> None:
+        """Add the links captured but not yet processed for the current monitored link to the URLs to process."""
+        monitored_link = getattr(self.own_settings, "monitored_link", None) or getattr(self.settings, "monitored_link", None)
+        if monitored_link is None or getattr(self.settings, "capture_links_only", False):
+            return
+        try:
+            from viewer.models import ProcessedLinks
+
+            provider = self._get_provider()
+            pending = list(
+                ProcessedLinks.objects.filter(
+                    provider=provider, monitored_link=monitored_link, status=ProcessedLinks.Status.PENDING
+                ).values_list("pk", "source_id", "url")
+            )
+            if getattr(self.settings, "skip_link_capture", False):
+                # Separate frequencies: the window of recent links is applied here, since the capture run
+                # doesn't call the API and can't tell which links are worth checking again.
+                unique_urls.update(self._recent_seen_urls(monitored_link, provider))
+        except Exception as e:
+            logger.warning("Could not load the pending links: %s", e)
+            return
+        for pk, source_id, url in pending:
+            self._pending_links[source_id] = pk
+            unique_urls.add(url)
+        if pending:
+            logger.info(
+                "Processing %d captured links for monitored link '%s'.", len(pending), getattr(monitored_link, "name", "")
+            )
+
+    def _finish_pending_links(self) -> None:
+        """Mark the captured links as processed once their metadata was fetched and checked.
+        The ones that couldn't be, stay pending to be retried by the next run, up to MAX_LINK_PROCESS_ATTEMPTS."""
+        if not self._pending_links:
+            return
+        from django.db.models import F
+        from django.utils import timezone
+        from viewer.models import ProcessedLinks
+
+        done = [pk for source_id, pk in self._pending_links.items() if source_id in self._resolved_links]
+        failed = [pk for source_id, pk in self._pending_links.items() if source_id not in self._resolved_links]
+        self._pending_links = {}
+        self._resolved_links = set()
+        try:
+            now = timezone.now()
+            for group in chunks(done, 900):
+                ProcessedLinks.objects.filter(pk__in=group).update(
+                    status=ProcessedLinks.Status.PROCESSED, processed_date=now
+                )
+            for group in chunks(failed, 900):
+                ProcessedLinks.objects.filter(pk__in=group).update(process_attempts=F("process_attempts") + 1)
+                ProcessedLinks.objects.filter(
+                    pk__in=group, process_attempts__gte=MAX_LINK_PROCESS_ATTEMPTS, status=ProcessedLinks.Status.PENDING
+                ).update(status=ProcessedLinks.Status.FAILED)
+            if failed:
+                logger.warning("%d captured links could not be processed and will be retried.", len(failed))
+        except Exception as e:
+            logger.warning("Could not update the status of the captured links: %s", e)
 
     def get_galleries_from_main_page_link(self, url: str) -> set[str]:
 
@@ -250,7 +360,7 @@ class Parser(BaseParser):
 
             request_dict = construct_request_dict(self.settings, self.own_settings)
 
-            response = request_with_retries(
+            response = self.web_request(
                 url,
                 request_dict,
                 post=False,
@@ -305,7 +415,6 @@ class Parser(BaseParser):
                 query["next"] = [last_gid]
                 new_query = urllib.parse.urlencode(query, doseq=True)
                 url = urllib.parse.urlunparse(list(parsed[0:4]) + [new_query] + list(parsed[5:]))
-                time.sleep(self.own_settings.wait_timer)
 
         return unique_urls
 
@@ -317,7 +426,7 @@ class Parser(BaseParser):
         while True:
             request_dict = construct_request_dict(self.settings, self.own_settings)
 
-            response = request_with_retries(
+            response = self.web_request(
                 url,
                 request_dict,
                 post=False,
@@ -381,7 +490,6 @@ class Parser(BaseParser):
                 query["next"] = [last_gid]
                 new_query = urllib.parse.urlencode(query, doseq=True)
                 url = urllib.parse.urlunparse(list(parsed[0:4]) + [new_query] + list(parsed[5:]))
-                time.sleep(self.own_settings.wait_timer)
 
         return unique_urls
 
@@ -420,13 +528,8 @@ class Parser(BaseParser):
                 post=True,
             )
 
-            if not response:
-                continue
-
-            try:
-                response_data = response.json()
-            except (ValueError, KeyError):
-                logger.error("Could not parse response to JSON: {}".format(response.text))
+            response_data = self._parse_api_response_json(response, api_page)
+            if not response_data:
                 continue
 
             for gallery_data in response_data["gmetadata"]:
@@ -477,12 +580,8 @@ class Parser(BaseParser):
             post=True,
         )
 
-        if not response:
-            return None
-        try:
-            response_data = response.json()
-        except (ValueError, KeyError):
-            logger.error("Could not parse response to JSON: {}".format(response.text))
+        response_data = self._parse_api_response_json(response, api_page)
+        if not response_data:
             return None
         for gallery_data in response_data["gmetadata"]:
             if "error" in gallery_data:
@@ -572,7 +671,7 @@ class Parser(BaseParser):
 
         request_dict = construct_request_dict(self.settings, self.own_settings)
 
-        response = request_with_retries(
+        response = self.web_request(
             feed_url,
             request_dict,
             post=False,
@@ -600,6 +699,29 @@ class Parser(BaseParser):
     def fetch_multiple_gallery_data(self, url_list: list[str]) -> list[GalleryData]:
         return self.get_values_from_gallery_link_list(url_list)
 
+    def filter_update_urls(self, urls: Iterable[str]) -> list[str]:
+        return [x for x in super().filter_update_urls(urls) if RE_PANDA_GALLERY.search(x)]
+
+    def fetch_gallery_data_for_update(self, url_list: list[str]) -> list[GalleryData]:
+        galleries_data = self.get_values_from_gallery_link_list(url_list)
+
+        if not (self.own_settings.use_ex_for_fjord and self.own_settings.cookies):
+            return galleries_data
+
+        # Same as crawl_urls: galleries with fjord tags need to be fetched again from the ex API.
+        regular_galleries: list[GalleryData] = []
+        fjord_links: list[str] = []
+        for gallery_data in galleries_data:
+            if gallery_data.token and re.search(constants.default_fjord_tags, ",".join(gallery_data.tags or [])):
+                fjord_links.append(link_from_gid_token_fjord(gallery_data.gid, gallery_data.token, True))
+            else:
+                regular_galleries.append(gallery_data)
+
+        if fjord_links:
+            regular_galleries.extend(self.get_values_from_gallery_link_list(fjord_links, True))
+
+        return regular_galleries
+
     @staticmethod
     def id_from_url(url: str) -> str | None:
         m = re.search(r"(.+)/g/(\d+)/(\w+)", url)
@@ -623,8 +745,24 @@ class Parser(BaseParser):
         wanted_only: bool = False,
         preselected_wanted_matches: dict[str, list["WantedGallery"]] | None = None,
     ) -> None:
+        self._pending_links = {}
+        self._resolved_links = set()
+        try:
+            self._crawl_urls(urls, wanted_filters, wanted_only, preselected_wanted_matches)
+        finally:
+            self._finish_pending_links()
 
-        unique_urls = set()
+    def _crawl_urls(
+        self,
+        urls: list[str],
+        wanted_filters: QuerySet | None = None,
+        wanted_only: bool = False,
+        preselected_wanted_matches: dict[str, list["WantedGallery"]] | None = None,
+    ) -> None:
+
+        capture_only = bool(getattr(self.settings, "capture_links_only", False))
+        skip_capture = bool(getattr(self.settings, "skip_link_capture", False))
+        unique_urls: set[str] = set()
         gallery_data_list = []
         fetch_format_galleries: list[DataDict] = []
         unique_page_urls = set()
@@ -634,10 +772,20 @@ class Parser(BaseParser):
             logger.warning("No downloaders enabled, returning.")
             return
 
+        is_bulk = len(urls) > 50 or self.settings.silent_processing
+        if is_bulk and not self.settings.silent_processing:
+            logger.info("Classifying %d URLs for provider %s...", len(urls), self.name)
+
+        skipped_invalid = 0
         for url in urls:
 
             if constants.rss_url in url:
+                if skip_capture:
+                    continue
                 feed_links = self.crawl_feed(url)
+                if capture_only:
+                    self._record_and_check_processed_links(feed_links, unique_urls)
+                    continue
                 unique_urls.update(feed_links)
                 logger.info(
                     "Provided RSS URL for provider ({}), adding {} found links".format(self.name, len(feed_links))
@@ -645,17 +793,23 @@ class Parser(BaseParser):
                 continue
 
             if constants.ex_page_short not in url and constants.ge_page_short not in url:
-                logger.warning("Invalid URL, skipping: {}".format(url))
+                skipped_invalid += 1
+                if not is_bulk:
+                    logger.warning("Invalid URL, skipping: {}".format(url))
+                continue
+
+            if capture_only and ("/g/" in url or "/s/" in url):
+                # Only index pages have links to capture, single galleries are handled by the process run.
                 continue
 
             if "/g/" in url:
-                if not self.settings.silent_processing:
+                if not is_bulk and not self.settings.silent_processing:
                     logger.info("Provided URL {} is a gallery link, adding".format(url))
                 unique_urls.add(url)
                 continue
 
             if "/s/" in url:
-                if not self.settings.silent_processing:
+                if not is_bulk and not self.settings.silent_processing:
                     logger.info("Provided URL {} is a page link, adding".format(url))
                 unique_page_urls.add(url)
                 continue
@@ -664,8 +818,12 @@ class Parser(BaseParser):
             if len(self.downloaders) == 1 and self.downloaders[0][0].type == "submit":
                 continue
 
+            # The index pages were already crawled by the capture run, only the stored links are processed.
+            if skip_capture:
+                continue
+
             if "/lofi/" in url:
-                if not self.settings.silent_processing:
+                if not is_bulk and not self.settings.silent_processing:
                     logger.info("Provided URL {} is a lofi page link, adding".format(url))
                 unique_urls.update(self.get_galleries_from_lofi_page_link(url))
                 continue
@@ -673,38 +831,82 @@ class Parser(BaseParser):
             # assuming main page URLs
             unique_urls.update(self.get_galleries_from_main_page_link(url))
 
+        if capture_only:
+            logger.info("Link capture done for provider %s, %d links found.", self.name, len(unique_urls))
+            return
+
+        self._load_pending_links(unique_urls)
+
+        monitored_link = getattr(self.own_settings, "monitored_link", None) or getattr(self.settings, "monitored_link", None)
+        ml_suffix = f" for monitored link '{monitored_link.name}'" if monitored_link and hasattr(monitored_link, "name") else ""
+        if (len(unique_urls) > 0 or len(unique_page_urls) > 0 or skipped_invalid > 0) and (
+            is_bulk or len(urls) > 1 or len(unique_urls) > 1
+        ):
+            logger.info(
+                "Extracted %d unique gallery links (%d page links%s) from %d URLs for provider %s%s.",
+                len(unique_urls),
+                len(unique_page_urls),
+                f", {skipped_invalid} invalid skipped" if skipped_invalid else "",
+                len(urls),
+                self.name,
+                ml_suffix,
+            )
+
         gallery_ids = []
         found_galleries = set()
         total_galleries_filtered = []
         for gallery_url in unique_urls:
 
-            m = re.search(r"(.+)/g/(\d+)/(\w+)", gallery_url)
+            m = RE_PANDA_GALLERY.search(gallery_url)
             if m:
                 gallery_ids.append(m.group(2))
                 total_galleries_filtered.append((gallery_url, m.group(1), m.group(2), m.group(3)))
 
+        is_bulk_db = len(gallery_ids) > 50 or self.settings.silent_processing
+        discarded_count = 0
+        existing_galleries_in_db = set()
+
         for galleries_gid_group in list(chunks(gallery_ids, 900)):
-            for found_gallery in Gallery.objects.filter(gid__in=galleries_gid_group):
+            for found_gallery in Gallery.objects.filter(gid__in=galleries_gid_group).prefetch_related("archive_set"):
+                existing_galleries_in_db.add(found_gallery.gid)
                 discard_approved, discard_message = self.discard_gallery_by_internal_checks(
                     gallery=found_gallery, link=found_gallery.get_link()
                 )
 
                 if discard_approved:
-                    if not self.settings.silent_processing:
+                    discarded_count += 1
+                    if not is_bulk_db and not self.settings.silent_processing:
                         logger.info(discard_message)
                     found_galleries.add(found_gallery.gid)
 
+        self._resolved_links.update(found_galleries)
+
+        self.log_database_check_summary(
+            total=len(gallery_ids),
+            existing=len(existing_galleries_in_db),
+            discarded=discarded_count,
+            to_update=len(existing_galleries_in_db) - discarded_count,
+        )
+
+        is_bulk_filtered = len(total_galleries_filtered) > 50 or self.settings.silent_processing
         for gallery_tuple in total_galleries_filtered:
 
             if gallery_tuple[2] not in found_galleries:
                 fetch_format_galleries.append(
                     {"data": (gallery_tuple[2], gallery_tuple[3]), "root": gallery_tuple[1], "link": gallery_tuple[0]}
                 )
-                if not self.settings.silent_processing:
+                if not is_bulk_filtered and not self.settings.silent_processing:
                     logger.info(
                         "Gallery {} will be processed. "
                         "Total galleries: {}".format(gallery_tuple[0], len(fetch_format_galleries))
                     )
+
+        if len(fetch_format_galleries) > 0:
+            logger.info(
+                "Queued %d galleries to fetch metadata (out of %d total filtered).",
+                len(fetch_format_galleries),
+                len(total_galleries_filtered),
+            )
 
         if len(unique_page_urls) > 0:
             logger.info("Getting gallery links from page links...")
@@ -718,14 +920,20 @@ class Parser(BaseParser):
 
         fetch_format_galleries_chunks = list(chunks(fetch_format_galleries, 25))
         fjord_galleries: list[str] = []
+        total_chunks = len(fetch_format_galleries_chunks)
+        banned_count = 0
+        api_error_count = 0
+        unmatched_wanted_count = 0
+        matched_wanted_count = 0
         for i, group in enumerate(fetch_format_galleries_chunks):
             if not self.settings.silent_processing:
-                logger.info(
-                    "Calling non-fjord API ({}). "
-                    "Gallery group: {}, galleries in group: {}, total groups: {}".format(
-                        self.name, i + 1, len(group), len(fetch_format_galleries_chunks)
+                if total_chunks <= 50 or (i + 1) == 1 or (i + 1) == total_chunks or (i + 1) % 50 == 0:
+                    logger.info(
+                        "Calling non-fjord API ({}). "
+                        "Gallery group: {}/{}, galleries in group: {}".format(
+                            self.name, i + 1, total_chunks, len(group)
+                        )
                     )
-                )
 
             data = utilities.request_data_from_gid_token_iterable([x["data"] for x in group])
 
@@ -741,21 +949,19 @@ class Parser(BaseParser):
                 post=True,
             )
 
-            if not response:
+            response_data = self._parse_api_response_json(response, constants.ge_api_url)
+            if not response_data:
+                api_error_count += len(group)
                 continue
 
-            try:
-                response_data = response.json()
-            except (ValueError, KeyError):
-                logger.error("Could not parse response to JSON: {}".format(response.text))
-                continue
-
-            for gallery_data in response_data["gmetadata"]:
+            for gallery_data in response_data.get("gmetadata", []):
                 if "error" in gallery_data:
+                    api_error_count += 1
                     logger.error(
                         "Adding gallery {}: " "failed with error: {}".format(gallery_data["gid"], gallery_data["error"])
                     )
                     continue
+                self._resolved_links.add(str(gallery_data["gid"]))
                 internal_gallery_data = map_external_gallery_data_to_internal(gallery_data)
                 link = link_from_gid_token_fjord(gallery_data["gid"], gallery_data["token"], False)
                 internal_gallery_data.link = link
@@ -765,6 +971,7 @@ class Parser(BaseParser):
                 )
 
                 if banned_result:
+                    banned_count += 1
                     if self.gallery_callback:
                         self.gallery_callback(None, internal_gallery_data.link, "banned_data")
 
@@ -777,7 +984,11 @@ class Parser(BaseParser):
                         internal_gallery_data, link, wanted_filters, gallery_wanted_lists
                     )
                     if wanted_only and not gallery_wanted_lists[internal_gallery_data.gid]:
+                        unmatched_wanted_count += 1
                         continue
+
+                if len(gallery_wanted_lists.get(internal_gallery_data.gid, [])) > 0:
+                    matched_wanted_count += 1
 
                 if self.own_settings.use_ex_for_fjord:
                     m = re.search(constants.default_fjord_tags, ",".join(internal_gallery_data.tags))
@@ -797,6 +1008,17 @@ class Parser(BaseParser):
             if fjord_galleries_data:
                 gallery_data_list.extend(fjord_galleries_data)
 
+        self.log_metadata_evaluation_summary(
+            total_evaluated=len(fetch_format_galleries),
+            accepted=len(gallery_data_list),
+            matched_wanted=matched_wanted_count,
+            unmatched_wanted=unmatched_wanted_count,
+            banned=banned_count,
+            errors=api_error_count,
+            wanted_filters=bool(wanted_filters),
+            wanted_only=wanted_only,
+        )
+
         self.pass_gallery_data_to_downloaders(gallery_data_list, gallery_wanted_lists)
 
     def post_gallery_processing(self, gallery_entry: "Gallery", gallery_data: "GalleryData"):
@@ -804,7 +1026,6 @@ class Parser(BaseParser):
         extra_gal_data = gallery_data.extra_data
 
         galleries_to_add: dict[str, list[str]] = defaultdict(list)
-        gallery_model = getattr(self.settings, "gallery_model", None) or Gallery
         entry_needs_save = False
 
         if self.own_settings.auto_process_newer:
@@ -815,11 +1036,9 @@ class Parser(BaseParser):
                 is_self = current_gid == str(gallery_entry.gid)
 
                 if not is_self and not is_caller:
-                    existing_current = None
-                    if gallery_model and hasattr(gallery_model, "objects"):
-                        existing_current = gallery_model.objects.filter(
-                            gid=current_gid, provider=self.name
-                        ).first()
+                    existing_current = Gallery.objects.filter(
+                        gid=current_gid, provider=self.name
+                    ).first()
 
                     if existing_current:
                         logger.info(
@@ -841,11 +1060,9 @@ class Parser(BaseParser):
             if "first_gid" in extra_gal_data and "first_key" in extra_gal_data:
                 first_gid = str(extra_gal_data["first_gid"])
                 if first_gid != str(gallery_entry.gid):
-                    existing_first = None
-                    if gallery_model and hasattr(gallery_model, "objects"):
-                        existing_first = gallery_model.objects.filter(
-                            gid=first_gid, provider=self.name
-                        ).first()
+                    existing_first = Gallery.objects.filter(
+                        gid=first_gid, provider=self.name
+                    ).first()
 
                     if existing_first:
                         if hasattr(gallery_entry, "first_gallery_id") and not gallery_entry.first_gallery_id:
@@ -868,11 +1085,9 @@ class Parser(BaseParser):
             if "parent_gid" in extra_gal_data and "parent_key" in extra_gal_data:
                 parent_gid = str(extra_gal_data["parent_gid"])
                 if parent_gid != str(gallery_entry.gid):
-                    existing_parent = None
-                    if gallery_model and hasattr(gallery_model, "objects"):
-                        existing_parent = gallery_model.objects.filter(
-                            gid=parent_gid, provider=self.name
-                        ).first()
+                    existing_parent = Gallery.objects.filter(
+                        gid=parent_gid, provider=self.name
+                    ).first()
 
                     if existing_parent:
                         if hasattr(gallery_entry, "parent_gallery_id") and not gallery_entry.parent_gallery_id:

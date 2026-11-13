@@ -7,12 +7,13 @@ from django.contrib.contenttypes.models import ContentType
 
 from viewer.models import ItemProperties, Image
 from viewer.services import CompareObjectsService
+from viewer.models import UserLongLivedToken
 from viewer.utils.requests import double_check_auth
 
 logger = logging.getLogger(__name__)
 
 def image_search(request: HttpRequest) -> HttpResponse:
-    authenticated, actual_user = double_check_auth(request)
+    authenticated, actual_user = double_check_auth(request, UserLongLivedToken.SCOPE_READ)
 
     context: dict[str, Any] = {}
     

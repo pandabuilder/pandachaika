@@ -33,7 +33,7 @@ Unlike the public `/api/` endpoints (which allow unauthenticated access to publi
      ```http
      Authorization: Bearer YOUR_API_TOKEN
      ```
-     Validated against active, non-expired tokens in `UserLongLivedToken`.
+     Validated against active, non-expired tokens in `UserLongLivedToken` that have the `remote` scope.
 
 2. **Required Permission**:
    - The authenticated user must hold the `viewer.use_remote_api` Django permission (`user.has_perm("viewer.use_remote_api")`).
@@ -428,7 +428,7 @@ curl -X POST "https://example.chaika.moe/jsonapi/" \
 
 ## 7. Web Archive Matcher (`operation: "match_archive"`)
 
-Triggers asynchronous matching of a local archive against external web provider galleries using `generate_possible_matches_for_archives`.
+Matches a local archive against external web provider galleries (online mode) using `generate_possible_matches_for_archives`. Requests go through the shared database rate limiter, and providers in a long ban/cooldown are skipped (and logged).
 
 - **Method**: `POST`
 - **Operation**: `"match_archive"`
@@ -437,7 +437,8 @@ Triggers asynchronous matching of a local archive against external web provider 
 | Field | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
 | `archive` | `integer` | Yes | Primary key (`id`) of the archive. |
-| `match_filter` | `str` | Yes | Matcher filter string. |
+| `match_filter` | `str` | Yes | Matcher filter string (for example `chaika` or `chaika_hash`). Empty uses the enabled matchers. |
+| `auto_link` | `bool` | No | Link the archive to the best match when it's good enough, instead of only storing possible matches. |
 
 ### Example Request
 ```bash
@@ -464,7 +465,7 @@ curl -X POST "https://example.chaika.moe/jsonapi/" \
 
 ## 8. Internal Archive Matcher (`operation: "match_archive_internally"`)
 
-Triggers local database similarity matching between an archive's title and existing `Gallery` records.
+Matches an archive against the `Gallery` records already in the local database (offline mode): file name similarity, file size, CRC32 of other matched archives, gid, and stored image hashes.
 
 - **Method**: `POST`
 - **Operation**: `"match_archive_internally"`
@@ -473,8 +474,9 @@ Triggers local database similarity matching between an archive's title and exist
 | Field | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
 | `archive` | `integer` | Yes | Primary key (`id`) of the archive. |
-| `clear` | `any` | No | If present, clears existing matches before matching. |
+| `clear` | `any` | No | If present, also removes groups, artists and other bracketed text from the file name before comparing. |
 | `provider` | `str` | No | Restricts matches to a specific provider. |
+| `auto_link` | `bool` | No | Link the archive to the best match when it's good enough, instead of only storing possible matches. |
 
 - **Optional Query String Parameters**:
   - `cutoff` (`float`, default `0.4`): String similarity threshold.

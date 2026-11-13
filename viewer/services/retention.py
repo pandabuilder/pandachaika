@@ -3,10 +3,9 @@ import logging
 import time
 from typing import Any
 
-from django.apps import apps
 from django.conf import settings
-from django.db import connection, transaction
-from django.db.models import Model, Q, QuerySet
+from django.db import connection
+from django.db.models import Max, Q, QuerySet
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -90,6 +89,12 @@ def get_database_info() -> dict[str, Any]:
         "pooling": pooling,
         "conn_max_age": conn_max_age,
     }
+
+
+def _prunable_history(model: Any, cutoff: datetime.datetime) -> QuerySet:
+    """Old history rows, except the newest revision of every object (so unchanged objects keep their snapshot)."""
+    newest_per_object = model.objects.values("id").annotate(newest=Max("history_id")).values("newest")
+    return model.objects.filter(history_date__lt=cutoff).exclude(history_id__in=newest_per_object)
 
 
 def get_entity_definitions() -> list[dict[str, Any]]:
@@ -178,7 +183,9 @@ def get_entity_definitions() -> list[dict[str, Any]]:
             "fallback_date_field": "link_date",
             "config_field": "processed_links_days",
             "policy": "Processed link entries older than retention period",
-            "build_prunable_qs": lambda cutoff: ProcessedLinks.objects.filter(create_date__lt=cutoff),
+            "build_prunable_qs": lambda cutoff: ProcessedLinks.objects.filter(create_date__lt=cutoff).exclude(
+                status=ProcessedLinks.Status.PENDING
+            ),
             "get_active_count": None,
         },
         {
@@ -215,8 +222,8 @@ def get_entity_definitions() -> list[dict[str, Any]]:
                 "date_field": "history_date",
                 "fallback_date_field": None,
                 "config_field": "history_days",
-                "policy": "Revision records older than retention period",
-                "build_prunable_qs": (lambda m=model: lambda cutoff: m.objects.filter(history_date__lt=cutoff))(),
+                "policy": "Revision records older than retention period (the newest revision of each object is kept)",
+                "build_prunable_qs": (lambda m=model: lambda cutoff: _prunable_history(m, cutoff))(),
                 "get_active_count": None,
             }
         )

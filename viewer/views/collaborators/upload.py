@@ -1,85 +1,32 @@
-import json
 import logging
-import re
-from collections import defaultdict
-from itertools import groupby
-from typing import Any
 
 from django.conf import settings
 from django.contrib import messages
-from django.contrib.auth.decorators import permission_required, login_required
-from django.contrib.contenttypes.models import ContentType
-from django.core import management
+from django.contrib.auth.decorators import permission_required
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
-from django.db.models import Prefetch, Count, Case, When, QuerySet, Q, F
-from django.http import HttpRequest, HttpResponse, HttpResponseRedirect, Http404, QueryDict
+from django.db.models import Count, Case, When, QuerySet, Q
+from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
-from django.urls import reverse
-from django.utils.crypto import get_random_string
 
 from core.base.setup import Settings
-from core.base.utilities import thread_exists_in_db, clamp, get_schedulers_status
-from viewer.management.commands import update_provider_wanted
-from viewer.utils.functions import (
-    archive_manage_results_to_json,
-    galleries_update_metadata,
-    gallery_search_results_to_json,
-)
 from viewer.utils.general import clean_up_referer
 from viewer.utils.actions import event_log
 from workers import client
 from viewer.forms import (
     GallerySearchForm,
-    ArchiveSearchForm,
-    WantedGalleryCreateOrEditForm,
     ArchiveCreateForm,
-    ArchiveGroupSelectForm,
     GalleryCreateForm,
-    ArchiveManageEntrySimpleForm,
-    WantedGalleryColSearchForm,
-    ArchiveManageSearchSimpleForm,
-    AllGalleriesSearchForm,
-    EventSearchForm,
-    GallerySearchSimpleForm,
-    ArchiveExtraFileSimpleForm,
-    WantedGalleryCommand,
-    GallerySearchFields,
-    DownloadHistoryForm,
-    MonitoredLinkCreateOrEditForm,
-    MonitoredLinkSearchForm,
 )
 from viewer.models import (
     Archive,
     Gallery,
-    EventLog,
-    ArchiveMatches,
     Tag,
-    WantedGallery,
-    ArchiveGroup,
-    ArchiveGroupEntry,
-    GallerySubmitEntry,
-    MonitoredLink,
-    ArchiveRecycleEntry,
-    ArchiveTag,
-    UserLongLivedToken,
-    DownloadEvent,
-    Category,
-    Provider,
-    GalleryMatchGroup,
-    GalleryMatchGroupEntry,
-    GalleryGroupPossibleMatches, ArchiveManageEntry, FoundGallery
+    GallerySubmitEntry
 )
-from viewer.utils.requests import double_check_auth
 from viewer.utils.types import AuthenticatedHttpRequest
 from viewer.views.head import (
     gallery_filter_keys,
     filter_galleries_simple,
-    archive_filter_keys,
-    filter_archives_simple,
-    render_error,
-    wanted_gallery_filter_keys,
-    filter_wanted_galleries_simple,
-    gallery_list_filters_keys,
 )
 
 crawler_settings = settings.CRAWLER_SETTINGS

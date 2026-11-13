@@ -58,7 +58,8 @@ class Transmission(TorrentClient):
                     self.expected_torrent_name = name_split[0]
                     self.expected_torrent_extension = name_split[1]
 
-            return True, str(torr.id)
+            # The info hash is stable across client restarts, unlike the session-scoped numeric id.
+            return True, torr.hashString or str(torr.id)
 
         except transmission_rpc.TransmissionError as e:
             self.error = e.message
@@ -91,18 +92,21 @@ class Transmission(TorrentClient):
 
     def get_download_progress[TorrentKey](
         self, download_list: list[tuple[str, TorrentKey]]
-    ) -> list[tuple[TorrentKey, float]]:
+    ) -> list[tuple[TorrentKey, float]] | None:
 
         if not self.trans:
-            return []
+            return None
 
-        torrent_id_map: dict[int, TorrentKey] = {}
+        # Accept info hashes, and numeric ids from events created before hashes were stored.
+        torrent_id_map: dict[int | str, TorrentKey] = {}
         for dl_id_str, key in download_list:
-            try:
-                int_id = int(dl_id_str)
-                torrent_id_map[int_id] = key
-            except (ValueError, TypeError):
+            if not dl_id_str or not isinstance(dl_id_str, str):
                 continue
+            cleaned = dl_id_str.strip().lower()
+            if cleaned.isdigit():
+                torrent_id_map[int(cleaned)] = key
+            elif len(cleaned) == 40 and all(c in "0123456789abcdef" for c in cleaned):
+                torrent_id_map[cleaned] = key
 
         if not torrent_id_map:
             return []
@@ -111,11 +115,13 @@ class Transmission(TorrentClient):
             torrents = self.trans.get_torrents(list(torrent_id_map.keys()), timeout=25)
         except Exception as e:
             logger.warning(f"Failed to get torrent progress from Transmission: {e}")
-            return []
+            return None
 
         results: list[tuple[TorrentKey, float]] = []
         for torr in torrents:
-            if torr.id in torrent_id_map:
-                results.append((torrent_id_map[torr.id], torr.progress))
+            for torrent_id in (torr.id, (torr.hashString or "").lower()):
+                if torrent_id in torrent_id_map:
+                    results.append((torrent_id_map[torrent_id], torr.progress))
+                    break
 
         return results

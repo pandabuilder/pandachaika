@@ -1,22 +1,23 @@
 import json
 import logging
-import typing
-from typing import Any
 
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
-from django.http import BadHeaderError, Http404, HttpRequest, HttpResponse, HttpResponseRedirect
-from django.http.request import QueryDict
+from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect, render
 from django.urls import reverse
-from django.conf import settings
 from django.utils.http import url_has_allowed_host_and_scheme
 
-from viewer.forms import BootstrapPasswordChangeForm, DivErrorList, ProfileChangeForm, UserChangeForm
+from viewer.forms import (
+    BootstrapPasswordChangeForm,
+    DivErrorList,
+    ProfileChangeForm,
+    UserChangeForm,
+    UserTokenCreateForm,
+)
 from viewer.models import Archive, Profile, UserArchivePrefs
-from viewer.utils.actions import event_log
 from viewer.utils.general import clean_up_referer
 from viewer.utils.types import AuthenticatedHttpRequest
 
@@ -113,7 +114,13 @@ def change_profile(request: AuthenticatedHttpRequest) -> HttpResponse:
     else:
         user_form = UserChangeForm(instance=request.user, error_class=DivErrorList)
         profile_form = ProfileChangeForm(instance=request.user.profile, error_class=DivErrorList)
-    return render(request, "viewer/accounts/user_profile.html", {"profile_form": profile_form, "user_form": user_form})
+    context = {
+        "profile_form": profile_form,
+        "user_form": user_form,
+        "token_form": UserTokenCreateForm(user=request.user),
+        "tokens": request.user.long_lived_tokens.order_by("-create_date"),
+    }
+    return render(request, "viewer/accounts/user_profile.html", context)
 
 
 def session_settings(request: HttpRequest) -> HttpResponse:

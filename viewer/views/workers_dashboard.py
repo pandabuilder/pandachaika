@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import datetime
 from datetime import timedelta
 import json
 import logging
@@ -22,6 +21,12 @@ logger = logging.getLogger(__name__)
 
 KNOWN_TASK_TYPES: list[tuple[str, str, str]] = [
     ("web_crawler", "Web Crawler", "Crawls URLs and downloads galleries/archives"),
+    ("gallery_creator", "Gallery Creator", "Creates galleries in database and handles downloads"),
+    (
+        "gallery_updater",
+        "Gallery Updater",
+        "Refreshes the metadata of known galleries and their related archives",
+    ),
     ("folder_crawler", "Folder Crawler", "Scans local filesystem folders for new archives"),
     ("fileinfo_worker", "File Info", "Recalculates archive CRC32, file list, and sizes"),
     ("thumbnails_worker", "Thumbnails", "Regenerates cover and page thumbnails"),
@@ -30,6 +35,11 @@ KNOWN_TASK_TYPES: list[tuple[str, str, str]] = [
         "publish_worker",
         "Archive Publishing",
         "Verifies zip integrity, generates thumbnails/SHA1s, and publishes archives",
+    ),
+    (
+        "contextual_extractor_worker",
+        "Contextual Extractor",
+        "Extracts contextual page and archive metrics via manga-extractor",
     ),
     ("match_unmatched_worker", "Local Matcher", "Matches unmatched archives to galleries locally"),
     ("web_search_worker", "Wanted Provider Search", "Searches wanted galleries against external providers"),
@@ -453,7 +463,7 @@ def get_workers_dashboard_snapshot(
         )
         downloads_events.extend((dl_type, dl) for dl in type_qs)
 
-    # Gather active downloads from schedulers (e.g. archive_download_queue, post_downloader)
+    # Gather active downloads from schedulers (e.g. archive_download_queue, download_progress_checker)
     scheduler_downloads_map: dict[str, dict[str, Any]] = {}
     for s in schedulers_list:
         for cd in s.get("current_downloads", []):
@@ -613,7 +623,7 @@ def get_workers_dashboard_snapshot(
                 "is_active": int(q["total_active"]) > 0,
             }
             for q in queues_summary
-            if int(q["total_active"]) > 0 or q["task_type"] in ("web_crawler", "fileinfo_worker", "thumbnails_worker")
+            if int(q["total_active"]) > 0 or q["task_type"] in ("web_crawler", "gallery_creator", "fileinfo_worker", "thumbnails_worker")
         ],
         "workers": [
             {

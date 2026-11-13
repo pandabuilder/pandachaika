@@ -436,8 +436,8 @@
 
       <form method="POST" action="{% url 'viewer:tools-id' 'restart_viewer' %}" class="d-inline">
         {% csrf_token %}
-        <button type="submit" class="btn btn-sm btn-outline-secondary" title="Restart web server for code changes">
-          <i class="fas fa-redo"></i> Restart Viewer
+        <button type="submit" class="btn btn-sm btn-outline-secondary" title="Restart the gunicorn workers to pick up view and template changes">
+          <i class="fas fa-redo"></i> Restart Web Server
         </button>
       </form>
     </div>
@@ -1221,13 +1221,13 @@
         </tbody>
       </table>
 
-      <h3>Post downloader</h3>
+      <h3>Torrent and H@H transfers</h3>
       <table class="table table-striped">
         <thead>
           <tr><th>File</th><th>Size</th><th>Downloaded</th><th>Speed</th><th>Files to download</th></tr>
         </thead>
         <tbody>
-        {% for item in stats.post_downloader.current_download %}
+        {% for item in stats.download_transfers.current_download %}
           <tr>
             <td>{{ item.filename }}</td>
             <td>{{ item.filesize|filesizeformat }}</td>

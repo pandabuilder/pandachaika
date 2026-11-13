@@ -68,6 +68,7 @@ class ArchiveIngestionService:
             archive.crc32 = ArchiveHashingService.calculate_archive_crc32(archive, use_pool=True)
 
         image_set_present = archive.image_set.exists()
+        was_new_archive = False
         # large thumbnail and image set
         if not archive.thumbnail or not image_set_present:
             my_zip = None
@@ -125,6 +126,7 @@ class ArchiveIngestionService:
                         for count, _ in enumerate(filtered_files, start=1)
                     ]
                 )
+                was_new_archive = True
 
             should_hash_images = bool(settings.CRAWLER_SETTINGS.auto_hash_images and not archive.thumbnail)
 
@@ -202,4 +204,25 @@ class ArchiveIngestionService:
 
         if save:
             archive.save(force_update=True)
+
+        if (
+            was_new_archive
+            and archive.pk
+            and getattr(settings.CRAWLER_SETTINGS, "manga_extractor", None)
+            and settings.CRAWLER_SETTINGS.manga_extractor.enable
+            and settings.CRAWLER_SETTINGS.manga_extractor.run_on_new_archive
+        ):
+            try:
+                from workers.client import enqueue_contextual_extraction
+
+                bg_profile = getattr(settings.CRAWLER_SETTINGS.manga_extractor, "background_profile", "default")
+                enqueue_contextual_extraction(
+                    [archive.pk],
+                    reason=archive.reason or "auto_new_archive",
+                    event_action="EXTRACT_CONTEXTUAL_INFO",
+                    profile=bg_profile,
+                )
+            except Exception as e:
+                logger.warning("Failed to auto-enqueue contextual extraction for archive %s: %s", archive.pk, e)
+
         return True

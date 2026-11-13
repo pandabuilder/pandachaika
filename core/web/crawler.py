@@ -11,7 +11,6 @@ from typing import NoReturn, Any
 import requests
 from django.db.models import QuerySet, Q
 
-from core.downloaders.postdownload import PostDownloader
 from core.base.parsers import InternalParser
 from viewer.models import Gallery, WantedGallery, Archive
 
@@ -85,14 +84,6 @@ class WebCrawler(object):
             required=False,
             action="store",
             help="Update metadata for galleries with missing thumbnails, limiting by older ones",
-        )
-
-        parser.add_argument(
-            "-tmd",
-            "--transfer-missing-downloads",
-            required=False,
-            action="store_true",
-            help="Transfer completed downloads",
         )
 
         parser.add_argument(
@@ -210,6 +201,24 @@ class WebCrawler(object):
         )
 
         parser.add_argument(
+            "--capture-links-only",
+            required=False,
+            action="store_true",
+            default=False,
+            help="Monitored link mode: only crawl the index/feed pages and store the new links as pending, "
+            "without calling the API or comparing them. Meant to be paired with --skip-link-capture.",
+        )
+
+        parser.add_argument(
+            "--skip-link-capture",
+            required=False,
+            action="store_true",
+            default=False,
+            help="Monitored link mode: don't crawl the index/feed pages, only process the links "
+            "previously stored as pending (API calls, comparison, downloads).",
+        )
+
+        parser.add_argument(
             "-pwm",
             "--preselect-wanted-match",
             required=False,
@@ -243,6 +252,24 @@ class WebCrawler(object):
             required=False,
             action="store_false",
             help="Download archives synchronously inline instead of queueing to the background queue.",
+        )
+
+        parser.add_argument(
+            "-dgc",
+            "--dispatch-gallery-creation",
+            dest="dispatch_gallery_creation",
+            required=False,
+            action="store_true",
+            default=None,
+            help="Dispatch gallery creation to the separate gallery_creator task queue.",
+        )
+        parser.add_argument(
+            "-ndgc",
+            "--no-dispatch-gallery-creation",
+            dest="dispatch_gallery_creation",
+            required=False,
+            action="store_false",
+            help="Create galleries inline in the web_crawler task instead of dispatching to gallery_creator.",
         )
 
         parser.add_argument(
@@ -353,6 +380,9 @@ class WebCrawler(object):
         if getattr(args, "queue_archive_downloads", None) is not None:
             current_settings.queue_archive_downloads = bool(args.queue_archive_downloads)
 
+        if getattr(args, "dispatch_gallery_creation", None) is not None:
+            current_settings.dispatch_gallery_creation = bool(args.dispatch_gallery_creation)
+
         if args.retry_failed:
             current_settings.retry_failed = True
             current_settings.replace_metadata = True
@@ -385,10 +415,6 @@ class WebCrawler(object):
 
             self.update_galleries_missing_thumbnails(args, current_settings)
 
-        if args.transfer_missing_downloads:
-            post_downloader = PostDownloader(current_settings)
-            post_downloader.transfer_all_missing()
-
         if args.set_reason:
             current_settings.archive_reason = args.set_reason
             current_settings.gallery_reason = args.set_reason
@@ -408,6 +434,9 @@ class WebCrawler(object):
             current_settings.link_newer = args.link_newer
         else:
             current_settings.link_newer = None
+
+        current_settings.capture_links_only = bool(args.capture_links_only)
+        current_settings.skip_link_capture = bool(args.skip_link_capture)
 
         preselected_wanted_matches: dict[str, list["WantedGallery"]] | None = None
 
@@ -473,9 +502,23 @@ class WebCrawler(object):
         provider_threads = []
 
         for parser in parsers:
-            urls = parser.filter_accepted_urls(list(to_use_urls))
+            urls = parser.filter_accepted_urls(to_use_urls)
+            if urls and not parser.supports_link_capture:
+                if current_settings.skip_link_capture:
+                    logger.info(
+                        "Provider {} can't capture links separately, nothing to process apart from its "
+                        "capture run, skipping.".format(parser.name)
+                    )
+                    to_use_urls.difference_update(urls)
+                    continue
+                if current_settings.capture_links_only:
+                    logger.warning(
+                        "Provider {} can't capture links separately, crawling and processing in a single run.".format(
+                            parser.name
+                        )
+                    )
             if urls:
-                to_use_urls = to_use_urls.difference(set(urls))
+                to_use_urls.difference_update(urls)
                 logger.info(
                     "Crawling {} links from provider {}. Wanted galleries to check: {}".format(
                         len(urls), parser.name, wanted_filters.count() if wanted_filters else 0
@@ -551,9 +594,9 @@ class WebCrawler(object):
         provider_threads = []
 
         for parser in parsers:
-            urls = parser.filter_accepted_urls(list(to_use_urls))
+            urls = parser.filter_accepted_urls(to_use_urls)
             if urls:
-                to_use_urls = to_use_urls.difference(set(urls))
+                to_use_urls.difference_update(urls)
                 logger.info("Crawling {} links from provider {}.".format(len(urls), parser.name))
                 provider_thread = threading.Thread(
                     name="provider_{}_thread".format(parser.name),
@@ -621,7 +664,7 @@ class WebCrawler(object):
                 if galleries_data:
                     for gallery_data in galleries_data:
 
-                        gallery = self.settings.gallery_model.objects.update_or_create_from_values(gallery_data)
+                        gallery = Gallery.objects.update_or_create_from_values(gallery_data)
 
                         for archive in gallery.archive_set.all():
                             archive.set_titles_from_gallery(archive.gallery)

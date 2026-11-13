@@ -2,6 +2,7 @@ import logging
 import os
 import threading
 import time
+import uuid
 from typing import Any
 import zipfile
 
@@ -12,7 +13,7 @@ from django.db.models import F, Q
 from django.db.models.functions import Greatest
 
 from core.base.setup import Settings
-from core.base.utilities import calc_crc32, get_part_filepath, request_by_provider
+from core.base.utilities import get_part_filepath, request_by_provider
 from core.downloaders.postdownload import CurrentDownload, PostDownloader
 from core.workers.schedulers import BaseScheduler
 from viewer.models import DownloadEvent
@@ -27,6 +28,10 @@ STALL_MIN_SPEED_BPS = 512.0
 def _safe_close_old_connections() -> None:
     if threading.current_thread() is not threading.main_thread() and not connection.in_atomic_block:
         close_old_connections()
+
+
+class DownloadedFileRejected(ValueError):
+    """The downloaded file was removed because its contents are unusable, so downloading it again makes sense."""
 
 
 class ArchiveDownloadQueue(BaseScheduler):
@@ -48,6 +53,9 @@ class ArchiveDownloadQueue(BaseScheduler):
         self._download_activity: dict[int, float] = {}
         self._download_cancel_events: dict[int, threading.Event] = {}
         self._download_responses: dict[int, requests.models.Response] = {}
+        self._download_part_files: dict[int, str] = {}
+        # Serializes process_queue(), which can be called from the scheduler thread and from force_run().
+        self._process_lock = threading.Lock()
 
     @staticmethod
     def timer_to_seconds(timer: float) -> float:
@@ -180,17 +188,16 @@ class ArchiveDownloadQueue(BaseScheduler):
 
         return claimed_ids
 
-    def _abort_stalled_event(self, event_id: int, stall_timeout: float) -> None:
+    def _abort_stalled_event(self, event_id: int, stall_timeout: float, part_path: str | None = None) -> None:
         """Update database and clean up partial files for an event aborted due to stall timeout."""
         try:
             event = DownloadEvent.objects.filter(pk=event_id).first()
             if not event:
                 return
-            if event.download_id:
-                part_path = get_part_filepath(event.download_id)
-                if os.path.exists(part_path):
+            for candidate in (part_path, get_part_filepath(event.download_id) if event.download_id else None):
+                if candidate and os.path.exists(candidate):
                     try:
-                        os.remove(part_path)
+                        os.remove(candidate)
                     except Exception:
                         pass
             if event.status == DownloadEvent.Status.IN_PROGRESS and not event.completed:
@@ -213,7 +220,7 @@ class ArchiveDownloadQueue(BaseScheduler):
             return []
 
         now_mono = time.monotonic()
-        stalled_items: list[tuple[int, requests.models.Response | None]] = []
+        stalled_items: list[tuple[int, requests.models.Response | None, str | None]] = []
 
         with self._lock:
             for eid, th in list(self._active_threads.items()):
@@ -228,10 +235,10 @@ class ArchiveDownloadQueue(BaseScheduler):
                     self._active_threads.pop(eid, None)
                     self._active_downloads.pop(eid, None)
                     self._download_activity.pop(eid, None)
-                    stalled_items.append((eid, resp))
+                    stalled_items.append((eid, resp, self._download_part_files.pop(eid, None)))
 
         stalled_ids: list[int] = []
-        for eid, resp in stalled_items:
+        for eid, resp, part_path in stalled_items:
             stalled_ids.append(eid)
             logger.warning(
                 "Download event #%s stalled (no activity for >%.1fs); aborting and releasing queue slot",
@@ -243,7 +250,7 @@ class ArchiveDownloadQueue(BaseScheduler):
                     resp.close()
                 except Exception:
                     pass
-            self._abort_stalled_event(eid, stall_timeout)
+            self._abort_stalled_event(eid, stall_timeout, part_path)
 
         return stalled_ids
 
@@ -275,7 +282,15 @@ class ArchiveDownloadQueue(BaseScheduler):
             return 0
 
     def process_queue(self) -> None:
-        """Scan active threads, clean up finished/stalled ones, reconcile orphans, and dispatch free download slots."""
+        """Scan active threads, clean up finished/stalled ones, reconcile orphans, and dispatch free download slots.
+
+        Serialized, because it can run from the scheduler thread and from ``force_run``. Without the lock,
+        ``reconcile_orphaned_events`` could re-queue events that another call just claimed but has not registered yet.
+        """
+        with self._process_lock:
+            self._process_queue_locked()
+
+    def _process_queue_locked(self) -> None:
         with self._lock:
             finished = [eid for eid, th in self._active_threads.items() if not th.is_alive()]
             for eid in finished:
@@ -283,6 +298,7 @@ class ArchiveDownloadQueue(BaseScheduler):
                 self._download_activity.pop(eid, None)
                 self._download_cancel_events.pop(eid, None)
                 self._download_responses.pop(eid, None)
+                self._download_part_files.pop(eid, None)
 
         self.check_stalled_downloads()
         self.reconcile_orphaned_events()
@@ -323,6 +339,10 @@ class ArchiveDownloadQueue(BaseScheduler):
         part_filepath: str = ""
         filepath: str = ""
         response: requests.models.Response | None = None
+        cur_dl: CurrentDownload | None = None
+        claim_started = None
+        file_in_place = False
+        post_process_error = ""
 
         if cancel_event is None:
             with self._lock:
@@ -339,6 +359,8 @@ class ArchiveDownloadQueue(BaseScheduler):
             except DownloadEvent.DoesNotExist:
                 return
 
+            # Identifies this claim. A new claim of the same event (after a stall abort) gets a different value.
+            claim_started = event.started_date
             filepath = event.download_id
             if not filepath:
                 logger.error("DownloadEvent #%s has no filepath (download_id)", event_id)
@@ -376,7 +398,10 @@ class ArchiveDownloadQueue(BaseScheduler):
                 self._download_activity[event_id] = time.monotonic()
 
             os.makedirs(os.path.dirname(filepath), exist_ok=True)
-            part_filepath = get_part_filepath(filepath)
+            # Unique per attempt, so an aborted (stalled) thread can't write to or delete the file of its replacement.
+            part_filepath = get_part_filepath(filepath, token=uuid.uuid4().hex[:8])
+            with self._lock:
+                self._download_part_files[event_id] = part_filepath
 
             logger.info(
                 "Starting download for event #%s (archive %s, provider %s) from %s",
@@ -474,10 +499,12 @@ class ArchiveDownloadQueue(BaseScheduler):
                 if event.total_size != content_length:
                     event.total_size = content_length
                     event.save(update_fields=["total_size"])
+            elif cur_dl.filesize <= 0 and event.total_size > 0:
+                cur_dl.filesize = event.total_size
 
             downloaded = 0
             start_time = time.time()
-            last_progress_save = time.time()
+            last_progress_save = 0.0
             window_start_mono = time.monotonic()
             window_bytes = 0
 
@@ -528,7 +555,7 @@ class ArchiveDownloadQueue(BaseScheduler):
                             window_start_mono = now_mono
                             window_bytes = 0
 
-                        if now - last_progress_save >= 2.0 and cur_dl.filesize > 0:
+                        if (now - last_progress_save >= 1.0 or last_progress_save == 0.0) and cur_dl.filesize > 0:
                             last_progress_save = now
                             progress = min(99.0, (downloaded / cur_dl.filesize) * 100.0)
                             event.progress = round(progress, 1)
@@ -549,6 +576,15 @@ class ArchiveDownloadQueue(BaseScheduler):
             if not os.path.exists(part_filepath) or os.path.getsize(part_filepath) == 0:
                 raise ValueError(f"Downloaded file for event #{event_id} is empty or missing")
 
+            if (
+                content_length > 0
+                and not response.headers.get("Content-Encoding")
+                and downloaded != content_length
+            ):
+                raise ValueError(
+                    f"Incomplete download for event #{event_id}: received {downloaded} of {content_length} bytes"
+                )
+
             # Validate zip archive integrity before moving into place
             if filepath.lower().endswith((".zip", ".cbz")):
                 if not zipfile.is_zipfile(part_filepath):
@@ -566,86 +602,34 @@ class ArchiveDownloadQueue(BaseScheduler):
                         f"Downloaded file for event #{event_id} is not a valid zip archive{error_detail}"
                     )
 
-            if os.path.exists(filepath):
-                os.remove(filepath)
+            if not self._is_current_claim(event_id, claim_started):
+                raise TimeoutError(f"Download event #{event_id} was taken over by a newer attempt")
             os.replace(part_filepath, filepath)
+            file_in_place = True
             self.touch_activity(event_id)
 
-            # Update archive metadata and calculate CRC32
+            # From here on the file is downloaded. Failures below are post-processing failures and must not
+            # trigger another download of the same file (which can cost GP on some providers).
             archive = event.archive
             if archive:
-                archive.refresh_from_db()
-                self.touch_activity(event_id)
-                archive.recalc_fileinfo()
-                archive.refresh_from_db()
-                if archive.filesize is not None and archive.filesize < 0:
-                    if os.path.exists(filepath):
-                        try:
-                            os.remove(filepath)
-                        except Exception:
-                            pass
-                    raise ValueError(
-                        f"Downloaded archive for event #{event_id} contains no valid files or failed fileinfo extraction"
+                try:
+                    post_process_error = self._post_process_archive(event, archive, filepath, req_opts)
+                except DownloadedFileRejected:
+                    file_in_place = False
+                    raise
+                except Exception as post_err:
+                    logger.exception(
+                        "Post-processing failed for downloaded event #%s (archive %s)", event_id, archive.pk
                     )
-                archive.ingest()
-                if not archive.thumbnail:
-                    try:
-                        self.touch_activity(event_id)
-                        archive.generate_thumbnails(skip_zip_check=True)
-                    except Exception as e:
-                        logger.warning("Failed to generate thumbnails for archive #%s: %s", archive.pk, e)
-                if req_opts.get("mark_similar_new_archives"):
-                    try:
-                        self.touch_activity(event_id)
-                        archive.create_marks_for_similar_archives()
-                    except Exception as e:
-                        logger.warning("Failed to create marks for similar archives for #%s: %s", archive.pk, e)
-
-                if req_opts.get("preserve_extracted") and not archive.extracted and archive.crc32:
-                    try:
-                        self.touch_activity(event_id)
-                        archive.extract()
-                    except Exception as e:
-                        logger.warning("Failed to extract archive #%s: %s", archive.pk, e)
-
-                user_id = req_opts.get("archive_user_id")
-                if user_id:
-                    try:
-                        from django.contrib.auth import get_user_model
-                        from viewer.utils.actions import event_log
-
-                        user_cls = get_user_model()
-                        user = user_cls.objects.filter(pk=user_id).first()
-                        if user:
-                            action = req_opts.get("event_action") or "DOWNLOAD_ARCHIVE"
-                            reason = req_opts.get("archive_reason") or None
-                            event_log(
-                                user,
-                                action,
-                                reason=reason,
-                                content_object=archive,
-                                result=1,
-                                data=event.download_url,
-                            )
-                    except Exception as e:
-                        logger.warning("Failed to log download action for archive #%s: %s", archive.pk, e)
-
-                panda_settings = self.settings.providers.get("panda") if hasattr(self.settings, "providers") else None
-                if (
-                    panda_settings
-                    and getattr(panda_settings, "confirm_files_after_download", False)
-                    and archive.match_type
-                    and ("chaika" in archive.match_type or archive.match_type == "panda_chaika")
-                ):
-                    self.touch_activity(event_id)
-                    post_downloader = PostDownloader(self.settings, web_queue=self.web_queue)
-                    success = post_downloader.process_downloaded_archive(archive)
-                    if not success:
-                        event.set_as_failed(error_message="SHA1 mismatch on downloaded zipfile")
-                        event.save()
-                        return
+                    post_process_error = f"Downloaded, but post-processing failed: {post_err}"
+                if post_process_error == self._SHA1_MISMATCH:
+                    event.set_as_failed(error_message="SHA1 mismatch on downloaded zipfile")
+                    event.save()
+                    return
 
             event.finish_download()
+            if post_process_error:
+                event.error_message = post_process_error
             event.save()
             logger.info("Successfully downloaded queued archive for event #%s -> %s", event_id, filepath)
 
@@ -663,34 +647,19 @@ class ArchiveDownloadQueue(BaseScheduler):
                 except Exception:
                     pass
 
-            if filepath and os.path.exists(filepath):
+            current_claim = self._is_current_claim(event_id, claim_started)
+
+            if current_claim and filepath and os.path.exists(filepath) and not file_in_place:
                 try:
                     if filepath.lower().endswith((".zip", ".cbz")) and not zipfile.is_zipfile(filepath):
                         os.remove(filepath)
                 except Exception:
                     pass
 
-            if event and not self.stop.is_set():
-                try:
-                    event.refresh_from_db()
-                    if event.status == DownloadEvent.Status.IN_PROGRESS and not event.completed:
-                        is_server_processing = "still being processed" in str(e).lower()
-                        if is_server_processing:
-                            event.status = DownloadEvent.Status.QUEUED
-                            event.error_message = str(e)
-                            event.worker_pid = None
-                            event.attempts = max(0, event.attempts - 1)
-                            event.save(update_fields=["status", "error_message", "worker_pid", "attempts"])
-                        elif event.attempts >= event.max_attempts:
-                            event.set_as_failed(error_message=str(e))
-                            event.save()
-                        else:
-                            event.status = DownloadEvent.Status.QUEUED
-                            event.error_message = str(e)
-                            event.worker_pid = None
-                            event.save(update_fields=["status", "error_message", "worker_pid"])
-                except Exception as save_err:
-                    logger.error("Failed to update status for failed event #%s: %s", event_id, save_err)
+            if event and not self.stop.is_set() and current_claim:
+                self._record_download_failure(event, event_id, e)
+            elif event and not current_claim:
+                logger.info("Download event #%s was taken over by a newer attempt; leaving its state untouched.", event_id)
 
         finally:
             if response is not None:
@@ -699,10 +668,15 @@ class ArchiveDownloadQueue(BaseScheduler):
                 except Exception:
                     pass
             with self._lock:
-                self._active_downloads.pop(event_id, None)
-                self._download_activity.pop(event_id, None)
-                self._download_cancel_events.pop(event_id, None)
-                self._download_responses.pop(event_id, None)
+                # Only clean up the bookkeeping that belongs to this thread, a newer attempt may have replaced it.
+                if self._download_cancel_events.get(event_id) is cancel_event:
+                    self._download_cancel_events.pop(event_id, None)
+                    self._download_activity.pop(event_id, None)
+                    self._download_part_files.pop(event_id, None)
+                if cur_dl is not None and self._active_downloads.get(event_id) is cur_dl:
+                    self._active_downloads.pop(event_id, None)
+                if response is not None and self._download_responses.get(event_id) is response:
+                    self._download_responses.pop(event_id, None)
                 remaining_dls = [
                     {
                         "filename": getattr(d, "filename", ""),
@@ -733,6 +707,116 @@ class ArchiveDownloadQueue(BaseScheduler):
                     connections.close_all()
             except Exception:
                 pass
+
+    _SHA1_MISMATCH = "sha1-mismatch"
+
+    @staticmethod
+    def _is_current_claim(event_id: int, claim_started: Any) -> bool:
+        """Whether the event is still in progress under the claim identified by ``claim_started``."""
+        return DownloadEvent.objects.filter(
+            pk=event_id, status=DownloadEvent.Status.IN_PROGRESS, started_date=claim_started, completed=False
+        ).exists()
+
+    def _record_download_failure(self, event: DownloadEvent, event_id: int, error: Exception) -> None:
+        try:
+            event.refresh_from_db()
+            if event.status == DownloadEvent.Status.IN_PROGRESS and not event.completed:
+                is_server_processing = "still being processed" in str(error).lower()
+                if is_server_processing:
+                    event.status = DownloadEvent.Status.QUEUED
+                    event.error_message = str(error)
+                    event.worker_pid = None
+                    event.attempts = max(0, event.attempts - 1)
+                    event.save(update_fields=["status", "error_message", "worker_pid", "attempts"])
+                elif event.attempts >= event.max_attempts:
+                    event.set_as_failed(error_message=str(error))
+                    event.save()
+                else:
+                    event.status = DownloadEvent.Status.QUEUED
+                    event.error_message = str(error)
+                    event.worker_pid = None
+                    event.save(update_fields=["status", "error_message", "worker_pid"])
+        except Exception as save_err:
+            logger.error("Failed to update status for failed event #%s: %s", event_id, save_err)
+
+    def _post_process_archive(
+        self, event: DownloadEvent, archive: Any, filepath: str, req_opts: dict[str, Any]
+    ) -> str:
+        """Update the archive after its file is in place.
+
+        Returns "" on success, ``_SHA1_MISMATCH`` if the post downloader rejected the file, or a message for
+        non-fatal problems. Raises ``DownloadedFileRejected`` if the file is unusable and was removed.
+        """
+        event_id = event.pk
+        archive.refresh_from_db()
+        self.touch_activity(event_id)
+        archive.recalc_fileinfo()
+        archive.refresh_from_db()
+        if archive.filesize is not None and archive.filesize < 0:
+            if os.path.exists(filepath):
+                try:
+                    os.remove(filepath)
+                except Exception:
+                    pass
+            raise DownloadedFileRejected(
+                f"Downloaded archive for event #{event_id} contains no valid files or failed fileinfo extraction"
+            )
+        archive.ingest()
+        if not archive.thumbnail:
+            try:
+                self.touch_activity(event_id)
+                archive.generate_thumbnails(skip_zip_check=True)
+            except Exception as e:
+                logger.warning("Failed to generate thumbnails for archive #%s: %s", archive.pk, e)
+        if req_opts.get("mark_similar_new_archives"):
+            try:
+                self.touch_activity(event_id)
+                archive.create_marks_for_similar_archives()
+            except Exception as e:
+                logger.warning("Failed to create marks for similar archives for #%s: %s", archive.pk, e)
+
+        if req_opts.get("preserve_extracted") and not archive.extracted and archive.crc32:
+            try:
+                self.touch_activity(event_id)
+                archive.extract()
+            except Exception as e:
+                logger.warning("Failed to extract archive #%s: %s", archive.pk, e)
+
+        user_id = req_opts.get("archive_user_id")
+        if user_id:
+            try:
+                from django.contrib.auth import get_user_model
+                from viewer.utils.actions import event_log
+
+                user_cls = get_user_model()
+                user = user_cls.objects.filter(pk=user_id).first()
+                if user:
+                    action = req_opts.get("event_action") or "DOWNLOAD_ARCHIVE"
+                    reason = req_opts.get("archive_reason") or None
+                    event_log(
+                        user,
+                        action,
+                        reason=reason,
+                        content_object=archive,
+                        result=1,
+                        data=event.download_url,
+                    )
+            except Exception as e:
+                logger.warning("Failed to log download action for archive #%s: %s", archive.pk, e)
+
+        panda_settings = self.settings.providers.get("panda") if hasattr(self.settings, "providers") else None
+        if (
+            panda_settings
+            and getattr(panda_settings, "confirm_files_after_download", False)
+            and archive.match_type
+            and ("chaika" in archive.match_type or archive.match_type == "panda_chaika")
+        ):
+            self.touch_activity(event_id)
+            post_downloader = PostDownloader(self.settings, web_queue=self.web_queue)
+            success = post_downloader.process_downloaded_archive(archive)
+            if not success:
+                return self._SHA1_MISMATCH
+        return ""
 
     def job(self) -> None:
         """Main scheduler loop."""

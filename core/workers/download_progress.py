@@ -1,12 +1,15 @@
 import logging
 import os
-from itertools import groupby
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
+from enum import StrEnum
 
 import django.utils.timezone as django_tz
-from django.db import close_old_connections
+from django.db import close_old_connections, connection
 
 from core.base.setup import Settings
-from core.downloaders.postdownload import PostDownloader
+from core.downloaders.postdownload import CurrentDownload, PostDownloader, TransferResult, download_kind
 from core.downloaders.torrent import get_torrent_client
 from core.workers.schedulers import BaseScheduler
 from viewer.models import DownloadEvent
@@ -29,48 +32,42 @@ def mark_completed_and_failed_for_indirect_downloads(download_events, fail_missi
         download_event.save()
 
 
+class TransferReason(StrEnum):
+    FINISHED = "finished"  # The external program reports the download as finished.
+    REMOVED_FROM_CLIENT = "removed_from_client"  # The torrent disappeared from the client before we saw it finish.
+
+
 class DownloadProgressChecker(BaseScheduler):
+    """Follows every in-progress DownloadEvent until it is completed or failed.
+
+    Torrent and H@H downloads are written by external programs. For those, this checker reads their progress
+    (torrent client API, size of the H@H folder) and, once finished, transfers the files into media storage in a
+    background pool (``parallel_post_downloaders`` transfers at a time) and validates them.
+    A torrent that disappears from the client before being seen as finished is looked up in the download folder:
+    whatever is there is transferred and validated, and if nothing is there the download is marked as failed.
+    """
 
     thread_name = "download_progress_checker"
     TORRENT_METHODS = ["torrent", "torrent_api"]
     HATH_METHODS = ["hath"]
     ARCHIVE_METHODS = ["archive", "archive_js", "gallerydl"]
+    # Wait before retrying a transfer that errored (connection problems) or found nothing yet.
+    TRANSFER_RETRY_DELAY = timedelta(minutes=5)
 
-    def __init__(self, settings: Settings, web_queue=None, timer=1, pk=None):
+    def __init__(self, settings: Settings, web_queue=None, timer=1, pk=None, parallel_transfers: int | None = None):
         super().__init__(settings, web_queue, timer, pk)
+        if parallel_transfers is None:
+            parallel_transfers = getattr(settings, "parallel_post_downloaders", 4)
+        self.parallel_transfers = max(1, int(parallel_transfers or 1))
+        self._executor: ThreadPoolExecutor | None = None
+        self._lock = threading.Lock()
+        # Event pk -> PostDownloader doing its transfer. Also used to report the files being transferred.
+        self._transfers: dict[int, PostDownloader] = {}
+        self._retry_after: dict[int, datetime] = {}
 
     @staticmethod
     def timer_to_seconds(timer: float) -> float:
         return timer
-
-    def check_hath_progress(
-        self, download_event: DownloadEvent, download_progress: float | None = None
-    ) -> None:
-        if download_progress is not None:
-            download_event.progress = download_progress * 100
-
-        archive_entry = None
-        archive_completed = False
-        try:
-            archive_entry = download_event.archive
-        except Exception:
-            archive_entry = None
-
-        if archive_entry:
-            try:
-                archive_entry.refresh_from_db(fields=["crc32"])
-            except Exception:
-                pass
-            archive_completed = bool(archive_entry.crc32)
-
-        if archive_entry is None:
-            is_completed = (download_event.progress >= 100)
-        else:
-            is_completed = archive_completed
-
-        if is_completed:
-            download_event.finish_download()
-        download_event.save()
 
     def check_torrent_progress(
         self, download_event: DownloadEvent, download_progress: float | None = None
@@ -99,7 +96,8 @@ class DownloadProgressChecker(BaseScheduler):
 
         if is_completed:
             download_event.finish_download()
-        elif self.settings.max_torrent_lifespan > 0 and not archive_completed:
+        elif self.settings.max_torrent_lifespan > 0 and not archive_completed and download_event.progress < 100:
+            # A finished torrent is only waiting for its transfer, so it can't be dead.
             if not self.settings.max_torrent_lifespan_type:
                 self.settings.max_torrent_lifespan_type = "days"
             lifespan_type = str(self.settings.max_torrent_lifespan_type).strip().lower()
@@ -240,82 +238,250 @@ class DownloadProgressChecker(BaseScheduler):
         download_event.save()
 
     def job(self) -> None:
-        while not self.stop.is_set():
+        try:
+            while not self.stop.is_set():
 
-            seconds_to_wait = self.wait_until_next_run()
-            if self.stop.wait(timeout=seconds_to_wait):
+                seconds_to_wait = self.wait_until_next_run()
+                if self.stop.wait(timeout=seconds_to_wait):
+                    return
+
+                close_old_connections()
+
+                try:
+                    self.check_downloads()
+                except Exception as e:
+                    logger.error(f"Error in DownloadProgressChecker job cycle: {e}")
+
+                self.update_last_run(django_tz.now())
+                try:
+                    close_old_connections()
+                except Exception:
+                    pass
+        finally:
+            # Running transfers finish on their own; queued ones are dropped and picked up again on the next start.
+            with self._lock:
+                executor, self._executor = self._executor, None
+            if executor:
+                executor.shutdown(wait=False, cancel_futures=True)
+
+    def check_downloads(self) -> None:
+        torrent_events: list[DownloadEvent] = []
+        hath_events: list[DownloadEvent] = []
+        archive_events: list[DownloadEvent] = []
+        for download_event in DownloadEvent.objects.in_progress().select_related(
+            "archive", "archive__gallery", "gallery"
+        ).order_by("method", "download_id"):
+            if download_event.method in self.TORRENT_METHODS:
+                torrent_events.append(download_event)
+            elif download_event.method in self.HATH_METHODS:
+                hath_events.append(download_event)
+            elif download_event.method in self.ARCHIVE_METHODS:
+                archive_events.append(download_event)
+
+        if torrent_events:
+            self.check_torrent_downloads(torrent_events)
+        if hath_events:
+            self.check_hath_downloads(hath_events)
+        if archive_events:
+            self.check_archive_downloads(archive_events)
+
+    def check_torrent_downloads(self, download_events: list[DownloadEvent]) -> None:
+        fail_missing = self.settings.max_torrent_lifespan <= 0
+        mark_completed_and_failed_for_indirect_downloads(download_events, fail_missing_archive=fail_missing)
+        pending = [x for x in download_events if not x.completed and not self._is_transferring(x)]
+        if not pending:
+            return
+
+        progress_by_event = self._query_torrent_client(pending)
+
+        for download_event in pending:
+            try:
+                if progress_by_event is None:
+                    # Client unreachable: nothing is known about the torrent, only enforce its lifespan.
+                    self.check_torrent_progress(download_event, None)
+                elif download_event.pk in progress_by_event:
+                    self.check_torrent_progress(download_event, progress_by_event[download_event.pk])
+                    if not download_event.completed and download_event.progress >= 100 and download_event.archive_id:
+                        self._start_transfer(download_event, TransferReason.FINISHED)
+                elif download_event.archive_id:
+                    self._start_transfer(download_event, TransferReason.REMOVED_FROM_CLIENT)
+                else:
+                    self.check_torrent_progress(download_event, None)
+            except Exception as e:
+                logger.error(f"Error checking torrent download {download_event.name}: {e}")
+
+    def _query_torrent_client(self, download_events: list[DownloadEvent]) -> dict[int, float] | None:
+        """Progress per event pk for the torrents present in the client, or None if the client can't be queried."""
+        client = get_torrent_client(self.settings.torrent)
+        if not client:
+            return None
+        try:
+            if not client.connect():
+                return None
+            results = client.get_download_progress([(x.download_id, x) for x in download_events])
+        except Exception as e:
+            logger.error(f"Error querying torrent client for progress: {e}")
+            return None
+        if results is None:
+            return None
+        return {download_event.pk: progress for download_event, progress in results}
+
+    def check_hath_downloads(self, download_events: list[DownloadEvent]) -> None:
+        mark_completed_and_failed_for_indirect_downloads(download_events)
+        pending = [x for x in download_events if not x.completed and x.archive and not self._is_transferring(x)]
+        if not pending:
+            return
+
+        try:
+            progress_by_archive = PostDownloader(self.settings).hath_progress([x.archive for x in pending if x.archive])
+        except Exception as e:
+            logger.error(f"Could not check the H@H download folder: {e}")
+            return
+
+        for download_event in pending:
+            ratio = progress_by_archive.get(download_event.archive_id or 0)
+            if ratio is None:
+                continue
+            new_progress = min(ratio, 1.0) * 100
+            if new_progress != download_event.progress:
+                download_event.progress = new_progress
+                download_event.save(update_fields=["progress"])
+            if ratio >= 1:
+                self._start_transfer(download_event, TransferReason.FINISHED)
+
+    def check_archive_downloads(self, download_events: list[DownloadEvent]) -> None:
+        for download_event in download_events:
+            if download_event.status == DownloadEvent.Status.QUEUED:
+                continue
+            if download_event.status == DownloadEvent.Status.IN_PROGRESS and download_event.download_url:
+                continue
+            if download_event.archive and download_event.archive.crc32:
+                download_event.finish_download()
+                download_event.save()
+            elif (
+                download_event.total_size > 0
+                and download_event.download_id
+                and os.path.isfile(download_event.download_id)
+            ):
+                file_stats = os.stat(download_event.download_id)
+                filesize = file_stats.st_size
+                download_progress = 100 * filesize / download_event.total_size
+                download_event.progress = download_progress
+                if download_progress >= 100:
+                    download_event.finish_download()
+                download_event.save()
+
+    # Transfers
+
+    def _is_transferring(self, download_event: DownloadEvent) -> bool:
+        with self._lock:
+            if download_event.pk in self._transfers:
+                return True
+            retry_after = self._retry_after.get(download_event.pk)
+            return retry_after is not None and django_tz.now() < retry_after
+
+    def _start_transfer(self, download_event: DownloadEvent, reason: TransferReason) -> None:
+        with self._lock:
+            if download_event.pk in self._transfers:
+                return
+            if self._executor is None:
+                self._executor = ThreadPoolExecutor(
+                    max_workers=self.parallel_transfers, thread_name_prefix=f"{self.thread_name}-transfer"
+                )
+            post_downloader = PostDownloader(self.settings, web_queue=self.web_queue)
+            self._transfers[download_event.pk] = post_downloader
+            self._retry_after.pop(download_event.pk, None)
+            self._executor.submit(self.run_transfer, download_event.pk, reason, post_downloader)
+
+    def run_transfer(
+        self, event_pk: int, reason: TransferReason, post_downloader: PostDownloader | None = None
+    ) -> None:
+        post_downloader = post_downloader or PostDownloader(self.settings, web_queue=self.web_queue)
+        try:
+            download_event = (
+                DownloadEvent.objects.select_related("archive", "archive__gallery", "gallery").filter(pk=event_pk).first()
+            )
+            if not download_event or download_event.completed or not download_event.archive:
+                return
+            archive = download_event.archive
+            try:
+                result = post_downloader.transfer_archive(archive)
+            except Exception as e:
+                logger.error(
+                    f"Transfer for download {download_event.name} (archive {archive.pk}) failed, "
+                    f"retrying in {self.TRANSFER_RETRY_DELAY}: {e}"
+                )
+                self._retry_later(event_pk)
                 return
 
-            close_old_connections()
+            download_event.refresh_from_db()
+            if download_event.completed:
+                # process_downloaded_archive already settled it.
+                return
 
+            if result == TransferResult.PROCESSED:
+                archive.refresh_from_db(fields=["crc32"])
+                if archive.crc32:
+                    download_event.finish_download()
+                else:
+                    download_event.set_as_failed("Downloaded file failed validation")
+                download_event.save()
+            elif result == TransferResult.NOT_FOUND and reason == TransferReason.REMOVED_FROM_CLIENT:
+                self._fail_removed_torrent(download_event)
+            else:
+                kind = download_kind(download_event.method) or download_event.method
+                logger.warning(
+                    f"Download {download_event.name} is finished, but its files were not found complete "
+                    f"in the {kind} download folder ({result}), retrying in {self.TRANSFER_RETRY_DELAY}."
+                )
+                self._retry_later(event_pk)
+        except Exception as e:
+            logger.error(f"Error transferring download event {event_pk}: {e}")
+            self._retry_later(event_pk)
+        finally:
+            with self._lock:
+                self._transfers.pop(event_pk, None)
             try:
-                download_events_all = DownloadEvent.objects.in_progress().select_related("archive")
-
-                for download_method, download_events_iter in groupby(
-                    download_events_all.order_by("method", "download_id"), lambda x: x.method
-                ):
-                    download_events = list(download_events_iter)
-                    if download_method in self.TORRENT_METHODS:
-                        fail_missing = (self.settings.max_torrent_lifespan <= 0)
-                        mark_completed_and_failed_for_indirect_downloads(
-                            download_events, fail_missing_archive=fail_missing
-                        )
-                        events_to_check = [(x.download_id, x) for x in download_events if not x.completed]
-                        if events_to_check:
-                            client = get_torrent_client(self.settings.torrent)
-                            checked_events = set()
-                            if client:
-                                try:
-                                    if client.connect():
-                                        download_progresses = client.get_download_progress(events_to_check)
-                                        for download_event, download_progress in download_progresses:
-                                            checked_events.add(download_event.pk)
-                                            self.check_torrent_progress(download_event, download_progress)
-                                except Exception as e:
-                                    logger.error(f"Error querying torrent client for progress: {e}")
-
-                            # For any events not returned by the client (e.g. client offline, torrent removed from client, etc.),
-                            # check lifespan so expired/dead torrents are purged and requeued!
-                            for _, download_event in events_to_check:
-                                if download_event.pk not in checked_events and not download_event.completed:
-                                    try:
-                                        self.check_torrent_progress(download_event, None)
-                                    except Exception as e:
-                                        logger.error(f"Error checking torrent lifespan for {download_event.name}: {e}")
-                    elif download_method in self.HATH_METHODS:
-                        mark_completed_and_failed_for_indirect_downloads(download_events)
-                        archives_to_check = [(x.archive, x) for x in download_events if x.archive and not x.completed]
-                        if archives_to_check:
-                            post_downloader = PostDownloader(self.settings)
-                            post_download_progresses = post_downloader.check_download_progress_archives(archives_to_check)
-                            for download_event, download_progress in post_download_progresses.items():
-                                self.check_hath_progress(download_event, download_progress)
-                    elif download_method in self.ARCHIVE_METHODS:
-                        for download_event in download_events:
-                            if download_event.status == DownloadEvent.Status.QUEUED:
-                                continue
-                            if download_event.status == DownloadEvent.Status.IN_PROGRESS and download_event.download_url:
-                                continue
-                            if download_event.archive and download_event.archive.crc32:
-                                download_event.finish_download()
-                                download_event.save()
-                            elif (
-                                download_event.total_size > 0
-                                and download_event.download_id
-                                and os.path.isfile(download_event.download_id)
-                            ):
-                                file_stats = os.stat(download_event.download_id)
-                                filesize = file_stats.st_size
-                                download_progress = 100 * filesize / download_event.total_size
-                                download_event.progress = download_progress
-                                if download_progress >= 100:
-                                    download_event.finish_download()
-                                download_event.save()
-            except Exception as e:
-                logger.error(f"Error in DownloadProgressChecker job cycle: {e}")
-
-            self.update_last_run(django_tz.now())
-            try:
-                close_old_connections()
+                if not connection.in_atomic_block:
+                    connection.close()
             except Exception:
                 pass
+
+    def _fail_removed_torrent(self, download_event: DownloadEvent) -> None:
+        # An expired torrent goes through the lifespan handling, which also requeues it with another method.
+        self.check_torrent_progress(download_event, None)
+        if download_event.completed:
+            return
+        logger.info(f"Torrent {download_event.name} was removed from the client before finishing, marking as failed.")
+        download_event.set_as_failed(
+            "Torrent was removed from the client before finishing, and no files were found in the download folder"
+        )
+        download_event.save()
+
+    def _retry_later(self, event_pk: int) -> None:
+        with self._lock:
+            self._retry_after[event_pk] = django_tz.now() + self.TRANSFER_RETRY_DELAY
+
+    def current_download(self) -> list[CurrentDownload]:
+        if self.is_running_locally():
+            with self._lock:
+                return [x.current_download for x in self._transfers.values()]
+        try:
+            from workers.models import SchedulerState
+
+            state = SchedulerState.objects.filter(name=self.thread_name).first()
+            if not state or not state.is_running or not state.extra_data:
+                return []
+            return [
+                CurrentDownload(
+                    filename=item.get("filename", ""),
+                    speed=float(item.get("speed", 0.0)),
+                    index=int(item.get("index", 0)),
+                    total=int(item.get("total", 0)),
+                    downloaded=int(item.get("downloaded", 0)),
+                    filesize=int(item.get("filesize", 0)),
+                )
+                for item in state.extra_data.get("current_download", [])
+            ]
+        except Exception:
+            return []

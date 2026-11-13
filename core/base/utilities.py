@@ -21,6 +21,8 @@ from typing import Any
 
 from ratelimit import limits, RateLimitException
 
+from core.base.cancellation import TaskCancelledError, interruptible_sleep
+from core.base.errors import ProviderBannedError
 from core.base.types import GalleryData, ArchiveGenericFile
 
 import rarfile
@@ -29,7 +31,6 @@ import py7zr
 import requests
 
 if typing.TYPE_CHECKING:
-    from core.workers.schedulers import BaseScheduler
     from core.base.types import ProviderSettings
     from core.base import setup
 
@@ -112,6 +113,23 @@ def to_full_width(title: str) -> str:
     for c in REPLACE_CHARS:
         title = title.replace(c[0], c[1])
     return title
+
+
+CRC32_HEX_REGEX = re.compile(r"^[0-9A-Fa-f]{1,8}$")
+
+
+def normalize_crc32(value: str | None) -> str:
+    """CRC32 in the stored format: 8 uppercase hex digits (as ``calc_crc32`` returns it).
+
+    Older versions stored it with "%X", without leading zeros (33AC069 for 033AC069). Values that aren't a CRC32
+    (e.g. empty) are returned unchanged.
+    """
+    if value is None:
+        return ""
+    stripped = value.strip()
+    if CRC32_HEX_REGEX.match(stripped):
+        return stripped.upper().zfill(8)
+    return value
 
 
 def calc_crc32(filename: str, use_pool: bool = False) -> str:
@@ -499,10 +517,14 @@ def _is_filename_reserved_in_db(candidate_full: str) -> bool:
         return False
 
 
-def get_part_filepath(filepath: str) -> str:
-    """Return the temporary .part filepath for a given filepath, ensuring the filename does not exceed 255 bytes."""
+def get_part_filepath(filepath: str, token: str | None = None) -> str:
+    """Return the temporary .part filepath for a given filepath, ensuring the filename does not exceed 255 bytes.
+
+    ``token`` makes the name unique per download attempt (``name.<token>.part``), so a stale thread from an aborted
+    attempt can never write to, or delete, the file of the attempt that replaced it.
+    """
     file_head, file_tail = os.path.split(filepath)
-    ext = ".part"
+    ext = f".{token}.part" if token else ".part"
     max_bytes = 255
     part_bytes = ext.encode("utf-8")
     tail_bytes = file_tail.encode("utf-8")
@@ -998,7 +1020,85 @@ def request_with_retries(
 REQUESTER_BY_PROVIDER: dict[
     str, typing.Callable[..., requests.models.Response | None]
 ] = {}
+# Longest ban or cooldown a running task waits out. Longer ones raise ProviderBannedError, so the task is put back
+# in the queue instead of occupying a worker (and its task type) for hours.
+MAX_INLINE_BAN_WAIT = 900.0
+
 PROVIDER_RATE_LIMIT_CONFIG: dict[str, tuple[int, float]] = {}
+PROVIDER_COOLDOWN_UNTIL: dict[str, float] = {}
+
+
+def parse_panda_ban_duration(text: str) -> float | None:
+    """Parse temporary rate-limit ban duration in seconds from Panda/E-Hentai response text.
+
+    Example messages:
+    - 'This IP address has been temporarily banned due to an excessive request rate. ... The ban expires in 4 minutes and 51 seconds'
+    - 'Your IP address has been temporarily banned for excessive pageloads. ... The ban expires in 1 days'
+    """
+    if not text or not isinstance(text, str):
+        return None
+    lowered = text.lower()
+    if "temporarily banned" not in lowered and "the ban expires in" not in lowered:
+        return None
+    match = re.search(r"The ban expires in\s+([^.\n]+)", text, re.IGNORECASE)
+    if not match:
+        return None
+    raw_time_str = re.sub(r"<[^>]+>", " ", match.group(1))
+
+    days = re.search(r"(\d+)\s*days?", raw_time_str, re.IGNORECASE)
+    hours = re.search(r"(\d+)\s*hours?", raw_time_str, re.IGNORECASE)
+    minutes = re.search(r"(\d+)\s*minutes?", raw_time_str, re.IGNORECASE)
+    seconds = re.search(r"(\d+)\s*seconds?", raw_time_str, re.IGNORECASE)
+
+    total_seconds = 0.0
+    found = False
+    if days:
+        total_seconds += int(days.group(1)) * 86400
+        found = True
+    if hours:
+        total_seconds += int(hours.group(1)) * 3600
+        found = True
+    if minutes:
+        total_seconds += int(minutes.group(1)) * 60
+        found = True
+    if seconds:
+        total_seconds += int(seconds.group(1))
+        found = True
+
+    return total_seconds if found else None
+
+
+def set_provider_cooldown(
+    provider_name: str,
+    cooldown_seconds: float,
+    url: str = "",
+) -> float:
+    """Set dynamic cooldown/ban timestamp for provider across database and in-memory rate limiters."""
+    now = time.time()
+    cooldown_until = now + max(0.0, float(cooldown_seconds))
+
+    targets = [provider_name]
+    if "panda" in provider_name:
+        targets = list(set([provider_name, "panda", "panda_web"]))
+
+    for target in targets:
+        PROVIDER_COOLDOWN_UNTIL[target] = max(PROVIDER_COOLDOWN_UNTIL.get(target, 0.0), cooldown_until)
+
+    try:
+        from django.db import transaction
+        from workers.models import ProviderRateLimit
+
+        with transaction.atomic():
+            for target in targets:
+                ProviderRateLimit.objects.get_or_create(name=target)
+                rl_obj = ProviderRateLimit.objects.select_for_update().get(name=target)
+                if hasattr(rl_obj, "cooldown_until"):
+                    rl_obj.cooldown_until = max(getattr(rl_obj, "cooldown_until", 0.0) or 0.0, cooldown_until)
+                    rl_obj.save(update_fields=["cooldown_until", "updated_at"])
+    except Exception as e:
+        logger.debug("Could not persist provider cooldown to database: {}".format(e))
+
+    return cooldown_until
 
 
 # Modified ratelimit function
@@ -1048,26 +1148,60 @@ def acquire_provider_rate_limit_slot(
                 )
                 rl_obj = ProviderRateLimit.objects.select_for_update().get(name=provider_name)
                 now = time.time()
-                raw_ts = rl_obj.call_timestamps if isinstance(rl_obj.call_timestamps, list) else []
-                valid_ts = [float(ts) for ts in raw_ts if 0.0 <= (now - float(ts)) < period]
-                if len(valid_ts) < clamped_calls:
-                    valid_ts.append(now)
-                    rl_obj.call_timestamps = valid_ts
-                    rl_obj.calls = clamped_calls
-                    rl_obj.period = period
-                    rl_obj.save(update_fields=["call_timestamps", "calls", "period", "updated_at"])
-                    return True
+                cooldown_until = getattr(rl_obj, "cooldown_until", 0.0) or 0.0
+                mem_cooldown = PROVIDER_COOLDOWN_UNTIL.get(provider_name, 0.0)
+                effective_cooldown = max(cooldown_until, mem_cooldown)
+
+                if effective_cooldown > now:
+                    wait_time = max(0.01, effective_cooldown - now)
+                    if wait_time > MAX_INLINE_BAN_WAIT:
+                        raise ProviderBannedError(provider_name, wait_time, url)
                 else:
-                    oldest = min(valid_ts)
-                    wait_time = min(period, max(0.01, period - (now - oldest)))
-                    if len(valid_ts) != len(raw_ts):
+                    raw_ts = rl_obj.call_timestamps if isinstance(rl_obj.call_timestamps, list) else []
+                    valid_ts = [float(ts) for ts in raw_ts if 0.0 <= (now - float(ts)) < period]
+                    if len(valid_ts) < clamped_calls:
+                        valid_ts.append(now)
                         rl_obj.call_timestamps = valid_ts
-                        rl_obj.save(update_fields=["call_timestamps", "updated_at"])
+                        rl_obj.calls = clamped_calls
+                        rl_obj.period = period
+                        update_fields = ["call_timestamps", "calls", "period", "updated_at"]
+                        if hasattr(rl_obj, "cooldown_until") and rl_obj.cooldown_until != 0.0:
+                            rl_obj.cooldown_until = 0.0
+                            update_fields.append("cooldown_until")
+                        rl_obj.save(update_fields=update_fields)
+                        return True
+                    else:
+                        oldest = min(valid_ts)
+                        wait_time = min(period, max(0.01, period - (now - oldest)))
+                        if len(valid_ts) != len(raw_ts):
+                            rl_obj.call_timestamps = valid_ts
+                            rl_obj.save(update_fields=["call_timestamps", "updated_at"])
 
             logger.info("Request limited for URL: {}, sleeping for {} seconds".format(url, wait_time))
-            time.sleep(wait_time)
+            interruptible_sleep(wait_time)
+    except (ProviderBannedError, TaskCancelledError):
+        raise
     except Exception:
         return False
+
+
+# Ban pages are small. Don't decode big bodies (images, archives) as text just to look for one.
+BAN_PAGE_MAX_BYTES = 256 * 1024
+
+
+def _may_contain_ban_page(response: Any) -> bool:
+    """Whether a (non streaming) response is worth searching for a provider ban message."""
+    headers = getattr(response, "headers", None)
+    if headers is not None:
+        content_type = headers.get("Content-Type")
+        if isinstance(content_type, str) and content_type:
+            lowered = content_type.lower()
+            if not any(kind in lowered for kind in ("text/", "json", "html", "xml")):
+                return False
+        content_length = headers.get("Content-Length")
+        if isinstance(content_length, str) and content_length.isdigit() and int(content_length) > BAN_PAGE_MAX_BYTES:
+            return False
+    return isinstance(getattr(response, "text", None), str)
 
 
 def request_by_provider(provider_name: str, provider_calls: int, provider_limit: float):
@@ -1085,15 +1219,67 @@ def request_by_provider(provider_name: str, provider_calls: int, provider_limit:
                     provider_name, (int(provider_calls), float(provider_limit))
                 )
                 url = str(args[0]) if args else str(kwargs.get("url", ""))
-                if acquire_provider_rate_limit_slot(provider_name, calls, limit, url=url):
-                    return request_with_retries(*args, **kwargs)
-                return fallback_in_memory(*args, **kwargs)
+
+                max_ban_retries = 1
+                for attempt in range(max_ban_retries + 1):
+                    # Check in-memory cooldown before proceeding (especially if fallback is used)
+                    now = time.time()
+                    mem_cooldown = PROVIDER_COOLDOWN_UNTIL.get(provider_name, 0.0)
+                    if mem_cooldown > now:
+                        wait_time = max(0.01, mem_cooldown - now)
+                        if wait_time > MAX_INLINE_BAN_WAIT:
+                            raise ProviderBannedError(provider_name, wait_time, url)
+                        logger.info("Request limited for URL: {}, sleeping for {} seconds".format(url, wait_time))
+                        interruptible_sleep(wait_time)
+
+                    if acquire_provider_rate_limit_slot(provider_name, calls, limit, url=url):
+                        response = request_with_retries(*args, **kwargs)
+                    else:
+                        response = fallback_in_memory(*args, **kwargs)
+
+                    req_dict = args[1] if len(args) > 1 and isinstance(args[1], dict) else kwargs
+                    is_stream = bool(
+                        req_dict.get("stream")
+                        or (isinstance(kwargs.get("request_dict"), dict) and kwargs["request_dict"].get("stream"))
+                    )
+
+                    if not is_stream and response is not None and _may_contain_ban_page(response):
+                        ban_duration = parse_panda_ban_duration(response.text)
+                        if ban_duration is not None:
+                            cooldown_wait = ban_duration + 5.0
+                            logger.warning(
+                                "Temporary IP rate limit ban detected from {} (URL: {}). "
+                                "The ban expires in {:.1f}s. Adjusting dynamic rate limit/cooldown to {} seconds.".format(
+                                    provider_name, url, ban_duration, cooldown_wait
+                                )
+                            )
+                            set_provider_cooldown(provider_name, cooldown_wait, url=url)
+                            if attempt < max_ban_retries and ban_duration <= MAX_INLINE_BAN_WAIT:
+                                logger.info(
+                                    "Sleeping for {} seconds before retrying request for URL: {}".format(
+                                        cooldown_wait, url
+                                    )
+                                )
+                                interruptible_sleep(cooldown_wait)
+                                continue
+                            # Don't hand the ban page to the caller as if it was the content it asked for.
+                            raise ProviderBannedError(provider_name, cooldown_wait, url)
+
+                    return response
 
             return inner_function
 
         REQUESTER_BY_PROVIDER[provider_name] = call_requests()
 
     return REQUESTER_BY_PROVIDER[provider_name]
+
+
+def provider_web_request(provider_name: str, wait_timer: float):
+    """Requester for a provider's website, rate limited in the shared "<provider>_web" bucket.
+
+    Parsers, matchers, wanted generators and downloaders of the same provider use this bucket, so their
+    requests to the same site are paced together."""
+    return request_by_provider("{}_web".format(provider_name), 1, float(wait_timer))
 
 
 def get_filename_from_cd(cd: str | None = None):

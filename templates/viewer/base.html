@@ -53,7 +53,6 @@
             <li class="nav-item"><a class="nav-link" href="{% url 'viewer:archive-search' %}">Archives</a></li>
             <li class="nav-item"><a class="nav-link" href="{% url 'viewer:gallery-list' %}">Galleries</a></li>
             {% if not user.is_staff %}
-            <li class="nav-item"><a class="nav-link" href="/ripper/">Rips folder</a></li>
             <li class="nav-item"><a class="nav-link" href="/explorer/">Explorer</a></li>
             <li class="nav-item dropdown">
               <a href="#" class="nav-link dropdown-toggle" id="navbarDropdown" data-bs-toggle="dropdown" role="button"
@@ -164,7 +163,7 @@
                 <li><a class="dropdown-item" href="{% url 'viewer:gallery-match-groups' %}">Gallery Match Groups Listing</a></li>
                 <li><a class="dropdown-item" href="{% url 'viewer:gallery-match-groups-batch' %}">Gallery Match Groups Batch</a></li>
                 <li><a class="dropdown-item" href="{% url 'viewer:archive-filesize-different' %}">Archives not matching gallery filesize</a></li>
-                <li><a class="dropdown-item" href="{% url 'viewer:archive-not-present' %}">Archives with file not present in filesystem</a></li>
+                <li><a class="dropdown-item" href="{% url 'viewer:archive-file-check' %}">Archive file check (missing / corrupted)</a></li>
                 <li><a class="dropdown-item" href="{% url 'viewer:archives-not-matched' %}">Archives without gallery matches</a></li>
                 <li><hr class="dropdown-divider"></li>
                 <li><h6 class="dropdown-header">Search &amp; Exploration</h6></li>

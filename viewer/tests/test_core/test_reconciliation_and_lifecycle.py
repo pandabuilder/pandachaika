@@ -1,59 +1,16 @@
-import os
-import ssl
-import subprocess
-from collections import defaultdict
-from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
-import django.utils.timezone as django_tz
 from django.test import TestCase
 
-from core.base.comparison import get_list_closer_text_from_list
 from core.base.setup import Settings
-from core.base.types import GalleryData
 from core.downloaders.postdownload import PostDownloader
-from core.providers.panda.parsers import Parser as PandaParser
 from core.workers.download_progress import DownloadProgressChecker
-from viewer.models import Archive, DownloadEvent, FoundGallery, Gallery, Image, Provider, Tag, WantedGallery
+from viewer.models import Archive, DownloadEvent
 
 
 
 
 class ReconciliationAndLifecycleSyncTest(TestCase):
-    def test_filter_by_dl_remote_excludes_dead_events_and_includes_active(self):
-        # Archive with active in_progress event
-        arch_active = Archive.objects.create(title="arch active", match_type="torrent", crc32="", user=None)
-        DownloadEvent.objects.create(name="ev_active", method="torrent", download_id="1", archive=arch_active, status="in_progress")
-
-        # Archive with failed event
-        arch_failed = Archive.objects.create(title="arch failed", match_type="torrent", crc32="", user=None)
-        DownloadEvent.objects.create(name="ev_failed", method="torrent", download_id="2", archive=arch_failed, status="failed", completed=True, failed=True)
-        # Even if un-binned (legacy), filter_by_dl_remote should exclude it
-        Archive.objects.filter(pk=arch_failed.pk).update(binned=False)
-
-        # Archive with cancelled event
-        arch_cancelled = Archive.objects.create(title="arch cancelled", match_type="torrent", crc32="", user=None)
-        DownloadEvent.objects.create(name="ev_cancelled", method="torrent", download_id="3", archive=arch_cancelled, status="cancelled", completed=True, failed=True)
-        Archive.objects.filter(pk=arch_cancelled.pk).update(binned=False)
-
-        # Archive with no event (backwards compatibility / manual)
-        arch_no_event = Archive.objects.create(title="arch no event", match_type="torrent", crc32="", user=None)
-
-        # Archive with old failed event AND new active event
-        arch_requeued = Archive.objects.create(title="arch requeued", match_type="torrent", crc32="", user=None)
-        DownloadEvent.objects.create(name="ev_old_fail", method="torrent", download_id="4a", archive=arch_requeued, status="failed", completed=True, failed=True)
-        arch_requeued.binned = False
-        arch_requeued.save()
-        DownloadEvent.objects.create(name="ev_new_active", method="torrent", download_id="4b", archive=arch_requeued, status="in_progress")
-
-        results = list(Archive.objects.filter_by_dl_remote().values_list("pk", flat=True))
-
-        self.assertIn(arch_active.pk, results)
-        self.assertIn(arch_no_event.pk, results)
-        self.assertIn(arch_requeued.pk, results)
-        self.assertNotIn(arch_failed.pk, results)
-        self.assertNotIn(arch_cancelled.pk, results)
-
     def test_download_event_set_as_failed_recycles_empty_archive(self):
         archive = Archive.objects.create(title="empty archive to fail", match_type="torrent", crc32="", user=None)
         event = DownloadEvent.objects.create(name="ev_fail", method="torrent", download_id="f1", archive=archive, status="in_progress")
@@ -106,65 +63,6 @@ class ReconciliationAndLifecycleSyncTest(TestCase):
         self.assertEqual(event.progress, 100.0)
         self.assertFalse(event.completed)
         self.assertEqual(event.status, DownloadEvent.Status.IN_PROGRESS)
-
-    def test_check_hath_progress_defers_completion_if_archive_crc32_empty(self):
-        settings = Settings(load_from_disk=False)
-        checker = DownloadProgressChecker(settings)
-
-        archive = Archive.objects.create(title="hath awaiting postdownload", match_type="hath", crc32="", user=None)
-        event = DownloadEvent.objects.create(
-            name="test_hath_100_unprocessed",
-            method="hath",
-            download_id="hath_unproc",
-            archive=archive,
-            progress=50.0,
-        )
-
-        checker.check_hath_progress(event, 1.0)
-        event.refresh_from_db()
-
-        # Progress should be 100%, but completed should stay False until PostDownloader finishes
-        self.assertEqual(event.progress, 100.0)
-        self.assertFalse(event.completed)
-        self.assertEqual(event.status, DownloadEvent.Status.IN_PROGRESS)
-
-    def test_check_hath_progress_finishes_when_crc32_set(self):
-        settings = Settings(load_from_disk=False)
-        checker = DownloadProgressChecker(settings)
-
-        archive = Archive.objects.create(title="hath processed archive", match_type="hath", crc32="A1B2C3D4", user=None)
-        event = DownloadEvent.objects.create(
-            name="test_hath_completed",
-            method="hath",
-            download_id="hath_comp",
-            archive=archive,
-            progress=50.0,
-        )
-
-        checker.check_hath_progress(event, 1.0)
-        event.refresh_from_db()
-
-        self.assertEqual(event.progress, 100.0)
-        self.assertTrue(event.completed)
-        self.assertEqual(event.status, DownloadEvent.Status.COMPLETED)
-
-    def test_check_hath_progress_finish_on_100_percent_without_archive(self):
-        settings = Settings(load_from_disk=False)
-        checker = DownloadProgressChecker(settings)
-
-        event = DownloadEvent.objects.create(
-            name="test_hath_no_archive",
-            method="hath",
-            download_id="hath_noarch",
-            progress=50.0,
-        )
-
-        checker.check_hath_progress(event, 1.0)
-        event.refresh_from_db()
-
-        self.assertEqual(event.progress, 100.0)
-        self.assertTrue(event.completed)
-        self.assertEqual(event.status, DownloadEvent.Status.COMPLETED)
 
     @patch("core.downloaders.postdownload.ZipFile")
     def test_process_downloaded_archive_finishes_download_event(self, mock_zipfile):

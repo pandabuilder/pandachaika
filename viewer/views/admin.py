@@ -19,12 +19,13 @@ from django_db_logger.models import StatusLog
 from viewer.utils.actions import event_log
 
 from core.base.setup import Settings
-from core.base.setup_utilities import get_thread_status, get_thread_status_bool
+from core.base.setup_utilities import get_thread_status
 from core.base.utilities import thread_exists_in_db, get_schedulers_status, timestamp_or_zero
 from core.workers.archive_work import ArchiveWorker
 
 from viewer.models import Archive, Tag, Gallery, ArchiveMatches, WantedGallery, FoundGallery, DownloadEvent
 from viewer.utils.general import clean_up_referer
+from viewer.utils.webserver import WebServerRestartError, restart_web_server
 from django.conf import settings
 from viewer.views.head import render_error
 from workers import client
@@ -86,7 +87,7 @@ def stats_workers(request: HttpRequest) -> HttpResponse:
         "current_settings": crawler_settings,
         "thread_status": get_thread_status(),
         "web_queue": crawler_settings.workers.web_queue,
-        "post_downloader": crawler_settings.workers.timed_downloader,
+        "download_transfers": crawler_settings.workers.download_progress_checker,
         "archive_download_queue": crawler_settings.workers.archive_download_queue,
         "download_progress_checker": DownloadEvent.objects.in_progress().select_related("archive", "gallery"),
         "schedulers": get_schedulers_status(crawler_settings.workers.get_active_initialized_workers_from_db()),
@@ -111,7 +112,9 @@ def stats_collection(request: HttpRequest) -> HttpResponse:
     stats_dict = {
         "n_archives": Archive.objects.count(),
         "n_expanded_archives": Archive.objects.filter(extracted=True).count(),
-        "n_to_download_archives": Archive.objects.filter_by_dl_remote().count(),
+        "n_to_download_archives": DownloadEvent.objects.in_progress(
+            method__in=["torrent", "torrent_api", "hath"]
+        ).count(),
         "n_galleries": Gallery.objects.count(),
         "archive": Archive.objects.filter(filesize__gt=0).aggregate(
             Avg("filesize"), Max("filesize"), Min("filesize"), Sum("filesize"), Avg("filecount"), Sum("filecount")
@@ -327,10 +330,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
     if tool not in ("main", "modify_settings", "modify_settings_editor"):
         if request.method != "POST":
             return HttpResponseNotAllowed(["POST"])
-    if tool == "transfer_missing_downloads":
-        client.enqueue(args=["-tmd"], task_type="web_crawler", override_options=crawler_settings, user=request.user)
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
-    elif tool == "reconcile_downloads":
+    if tool == "reconcile_downloads":
         from viewer.utils.downloads import reconcile_downloads
 
         stats = reconcile_downloads(settings=crawler_settings)
@@ -498,6 +498,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
                 "filters": (provider,),
                 "match_local": True,
                 "match_web": False,
+                "auto_link": bool(p.get("auto_link")),
             },
             user=request.user,
         )
@@ -567,10 +568,11 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         )
         return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "restart_viewer":
-        if hasattr(signal, "SIGUSR2"):
-            os.kill(os.getpid(), signal.SIGUSR2)
-        else:
-            return render_error(request, "This OS does not support signal SIGUSR2.")
+        try:
+            message = restart_web_server(request)
+        except WebServerRestartError as e:
+            return render_error(request, str(e))
+        messages.success(request, message)
         return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
     elif tool == "restart_workers":
         import socket
@@ -607,112 +609,8 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         logger.info("Reloaded settings file for Panda Backup")
         messages.success(request, "Reloaded settings file for Panda Backup")
         return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
-    elif tool == "start_timed_dl":
-        if crawler_settings.workers.timed_downloader:
-            crawler_settings.workers.timed_downloader.start_running(timer=crawler_settings.timed_downloader_cycle_timer)
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
-    elif tool == "stop_timed_dl":
-        if crawler_settings.workers.timed_downloader:
-            crawler_settings.workers.timed_downloader.stop_running()
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
-    elif tool == "force_run_timed_dl":
-        if crawler_settings.workers.timed_downloader:
-            crawler_settings.workers.timed_downloader.force_run()
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
-    elif tool == "start_archive_download_queue":
-        if crawler_settings.workers.archive_download_queue:
-            crawler_settings.workers.archive_download_queue.start_running(
-                timer=crawler_settings.archive_download_queue_cycle_timer
-            )
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
-    elif tool == "stop_archive_download_queue":
-        if crawler_settings.workers.archive_download_queue:
-            crawler_settings.workers.archive_download_queue.stop_running()
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
-    elif tool == "force_archive_download_queue":
-        if crawler_settings.workers.archive_download_queue:
-            crawler_settings.workers.archive_download_queue.force_run()
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
-    elif tool == "start_download_progress_checker":
-        if crawler_settings.workers.download_progress_checker:
-            crawler_settings.workers.download_progress_checker.start_running(
-                timer=crawler_settings.download_progress_checker_cycle_timer
-            )
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
-    elif tool == "stop_download_progress_checker":
-        if crawler_settings.workers.download_progress_checker:
-            crawler_settings.workers.download_progress_checker.stop_running()
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
-    elif tool == "force_download_progress_checker":
-        if crawler_settings.workers.download_progress_checker:
-            crawler_settings.workers.download_progress_checker.force_run()
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
-    elif tool == "start_timed_updater":
-        if tool_arg:
-            for provider_auto_updater in crawler_settings.workers.timed_auto_updaters:
-                if provider_auto_updater.provider_name == tool_arg:
-                    provider_auto_updater.start_running(
-                        timer=crawler_settings.providers[provider_auto_updater.provider_name].autoupdater_timer
-                    )
-                    break
-        else:
-            for provider_auto_updater in crawler_settings.workers.timed_auto_updaters:
-                provider_auto_updater.start_running(
-                    timer=crawler_settings.providers[provider_auto_updater.provider_name].autoupdater_timer
-                )
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
-    elif tool == "stop_timed_updater":
-        if tool_arg:
-            for provider_auto_updater in crawler_settings.workers.timed_auto_updaters:
-                if provider_auto_updater.provider_name == tool_arg:
-                    provider_auto_updater.stop_running()
-                    break
-        else:
-            for provider_auto_updater in crawler_settings.workers.timed_auto_updaters:
-                provider_auto_updater.stop_running()
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
-    elif tool == "force_run_timed_updater":
-        if tool_arg:
-            for provider_auto_updater in crawler_settings.workers.timed_auto_updaters:
-                if provider_auto_updater.provider_name == tool_arg:
-                    provider_auto_updater.force_run()
-                    break
-        else:
-            for provider_auto_updater in crawler_settings.workers.timed_auto_updaters:
-                provider_auto_updater.force_run()
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
-    elif tool == "start_timed_auto_wanted":
-        if crawler_settings.workers.timed_auto_wanted:
-            crawler_settings.workers.timed_auto_wanted.start_running(timer=crawler_settings.auto_wanted.cycle_timer)
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
-    elif tool == "stop_timed_auto_wanted":
-        if crawler_settings.workers.timed_auto_wanted:
-            crawler_settings.workers.timed_auto_wanted.stop_running()
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
-    elif tool == "force_run_timed_auto_wanted":
-        if crawler_settings.workers.timed_auto_wanted:
-            crawler_settings.workers.timed_auto_wanted.force_run()
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
-    elif tool == "start_web_queue":
-        if crawler_settings.workers.web_queue:
-            crawler_settings.workers.web_queue.start_running()
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
-    threads_status = get_thread_status_bool()
-
-    autoupdater_providers = (
-        (provider_name, threads_status["auto_updater_" + provider_name])
-        for provider_name in crawler_settings.autoupdater.providers
-        if "auto_updater_" + provider_name in threads_status
-    )
-
-    d = {
-        "tool": tool,
-        "threads_status": threads_status,
-        "autoupdater_providers": autoupdater_providers,
-    }
-
-    return render(request, "viewer/tools.html", d)
+    return render(request, "viewer/tools.html", {"tool": tool})
 
 
 @login_required
@@ -950,12 +848,12 @@ def crawler(request: HttpRequest) -> HttpResponse:
 
     p = request.POST
 
-    if p:
+    if p or request.FILES:
         if "keep_this_settings" in p:
             current_settings = crawler_settings
         else:
             current_settings = Settings(load_from_config=crawler_settings.config)
-        url_set = set()
+        url_dict = {}
 
         # Update transferable options (allowed section)
         if "allowed" not in current_settings.config or not isinstance(current_settings.config["allowed"], dict):
@@ -991,8 +889,25 @@ def crawler(request: HttpRequest) -> HttpResponse:
                     for item in url_list:
                         cleaned = item.rstrip("\r").strip()
                         if cleaned:
-                            url_set.add(cleaned)
-        urls = list(url_set)
+                            url_dict[cleaned] = True
+
+        for file_key in ("urls_file", "file"):
+            if file_key in request.FILES:
+                for uploaded_file in request.FILES.getlist(file_key):
+                    try:
+                        content = uploaded_file.read().decode("utf-8-sig", errors="replace")
+                        for line in content.splitlines():
+                            cleaned = line.strip()
+                            if cleaned:
+                                url_dict[cleaned] = True
+                    except Exception as e:
+                        logger.warning(
+                            "Error reading uploaded URLs file %s: %s",
+                            getattr(uploaded_file, "name", file_key),
+                            e,
+                        )
+
+        urls = list(url_dict.keys())
 
         if "keep_this_settings" in p:
             current_settings.write()
@@ -1016,13 +931,20 @@ def crawler(request: HttpRequest) -> HttpResponse:
 
         job_settings.non_current_links_as_deleted = "skip-non-current" in p
         job_settings.replace_metadata = "replace_metadata" in p
+        if "silent_processing" in p:
+            job_settings.silent_processing = True
 
+        raw_links = [u for u in urls if not u.startswith("-")]
+        flag_args = [u for u in urls if u.startswith("-")]
+
+        extra_prefix = []
+        extra_suffix = []
         if "ignore_global_filters" in p or "ignore-global-filters" in p:
             job_settings.ignore_global_filters = True
-            urls.append("--ignore-global-filters")
+            extra_suffix.append("--ignore-global-filters")
 
         if "wanted_only" in p:
-            urls.insert(0, "--wanted-only")
+            extra_prefix.append("--wanted-only")
 
         # Parse task queue priority (1 to 10, default: 10) with backward compatibility for run_separate
         priority = 10
@@ -1036,14 +958,49 @@ def crawler(request: HttpRequest) -> HttpResponse:
         elif "run_separate" in p:
             priority = 5
 
-        client.enqueue(
-            args=urls,
-            task_type="web_crawler",
-            override_options=job_settings,
-            user=request.user,
-            priority=priority,
-        )
-        messages.success(request, "Starting Crawler, check the logs for a report.")
+        # Parse split/group size (e.g. groups of X links to decrease args per worker)
+        split_size = None
+        for split_key in ("split_size", "group_size", "batch_size"):
+            if split_key in p and p[split_key]:
+                try:
+                    val = int(p[split_key])
+                    if val > 0:
+                        split_size = val
+                        break
+                except (ValueError, TypeError):
+                    pass
+
+        if split_size and raw_links:
+            link_chunks = [raw_links[i : i + split_size] for i in range(0, len(raw_links), split_size)]
+        else:
+            link_chunks = [raw_links]
+
+        chunks = []
+        for chunk in link_chunks:
+            chunk_args = (
+                extra_prefix
+                + [f for f in flag_args if f not in extra_prefix]
+                + chunk
+                + [f for f in extra_suffix if f not in flag_args]
+            )
+            chunks.append(chunk_args)
+
+        for chunk_args in chunks:
+            client.enqueue(
+                args=chunk_args,
+                task_type="web_crawler",
+                override_options=job_settings,
+                user=request.user,
+                priority=priority,
+            )
+
+        if len(chunks) > 1:
+            messages.success(
+                request,
+                f"Starting Crawler: queued {len(chunks)} tasks (split into groups of {split_size}), check the logs for a report.",
+            )
+        else:
+            messages.success(request, "Starting Crawler, check the logs for a report.")
         # Not really optimal when there's many commands being queued
         # for command in url_list:
         #     messages.success(request, command)

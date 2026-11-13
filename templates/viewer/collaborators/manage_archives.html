@@ -352,6 +352,11 @@
                 {% if perms.viewer.recalc_fileinfo %}
                 <button name="recalc_fileinfo" class="btn btn-primary">Recalc file info</button>
                 {% endif %}
+                {% if manga_extractor_enabled %}
+                {% if user.is_staff or perms.viewer.extract_contextual_info %}
+                <button name="extract_contextual_info" class="btn btn-primary">Extract contextual info</button>
+                {% endif %}
+                {% endif %}
                 {% if perms.viewer.mark_similar_archive %}
                 <button name="mark_similar" class="btn btn-primary">Mark similar</button>
                 {% endif %}

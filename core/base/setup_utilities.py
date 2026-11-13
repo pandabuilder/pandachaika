@@ -100,8 +100,6 @@ def get_thread_status() -> list[tuple[tuple[str, str, str], bool]]:
         pass
 
     alias_map = {
-        "post_downloader": "timed_downloader",
-        "timed_downloader": "post_downloader",
         "foldercrawler": "folder_crawler",
         "folder_crawler": "foldercrawler",
         "webcrawler": "web_crawler",
@@ -155,8 +153,6 @@ def get_thread_status_bool() -> dict[str, bool]:
         pass
 
     alias_map = {
-        "post_downloader": "timed_downloader",
-        "timed_downloader": "post_downloader",
         "foldercrawler": "folder_crawler",
         "folder_crawler": "foldercrawler",
         "webcrawler": "web_crawler",
@@ -182,9 +178,6 @@ def get_thread_status_bool() -> dict[str, bool]:
             or (tname in active_tasks)
             or (alias in active_tasks)
         )
-
-    if "post_downloader" in info_dict:
-        info_dict["timed_downloader"] = info_dict["post_downloader"]
 
     return info_dict
 

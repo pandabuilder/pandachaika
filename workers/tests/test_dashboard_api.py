@@ -1,20 +1,11 @@
 # -*- coding: utf-8 -*-
 import json
-import uuid
 from datetime import timedelta
 
 import django.utils.timezone as django_tz
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from core.base.parsers import BaseParser
-from core.base.setup import Settings
-from core.workers.webqueue import WebQueue
-from viewer.models import Archive, EventLog, Gallery, GallerySubmitEntry, UserArchivePrefs
-from workers import client
-from workers.models import TaskQueue, WorkerProcess
-from workers.runner import WorkerRunner
-from workers.serialization import deserialize_settings_options, serialize_settings_options
 
 User = get_user_model()
 

@@ -20,9 +20,9 @@ from django.views.decorators.http import require_POST
 
 from core.base.setup import Settings
 from core.base.utilities import timestamp_or_zero
-from viewer.models import Archive, Gallery, UserArchivePrefs
+from viewer.models import Archive, Gallery, UserArchivePrefs, UserLongLivedToken
 from viewer.utils.matching import generate_possible_matches_for_archives
-from viewer.utils.requests import authenticate_by_token, double_check_auth
+from viewer.utils.requests import authenticate_by_token, double_check_auth, scope_for_method
 from viewer.views.head import gallery_filter_keys
 from workers import client
 from viewer.views.api.dispatch import (
@@ -75,7 +75,7 @@ def api_logout(request: HttpRequest) -> HttpResponse:
 @csrf_exempt
 def json_api(request: HttpRequest) -> HttpResponse:
 
-    token_valid, token_user = authenticate_by_token(request)
+    token_valid, token_user = authenticate_by_token(request, scope_for_method(request))
 
     user_is_authenticated = request.user.is_authenticated or token_valid
 
@@ -141,7 +141,7 @@ def _find_existing_archives_count(parsers: list[Any], links: list[str]) -> int:
 def json_parser(request: HttpRequest) -> HttpResponse:
     response = {}
 
-    authenticated, actual_user = double_check_auth(request)
+    authenticated, actual_user = double_check_auth(request, UserLongLivedToken.SCOPE_REMOTE)
 
     if not authenticated or not actual_user or not actual_user.has_perm("viewer.use_remote_api"):
         response["error"] = "Not authorized"
@@ -480,6 +480,7 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                         filters=(args["match_filter"],),
                         match_local=False,
                         match_web=True,
+                        auto_link=bool(args.get("auto_link")),
                     )
                 return HttpResponse(
                     json.dumps({"message": "web matcher done, check the logs for results"}),
@@ -500,9 +501,12 @@ def json_parser(request: HttpRequest) -> HttpResponse:
                         max_matches = 10
 
                     archive.generate_possible_matches(
-                        clear_title=clear_title, provider_filter=provider_filter, cutoff=cutoff, max_matches=max_matches
+                        clear_title=clear_title,
+                        provider_filter=provider_filter,
+                        cutoff=cutoff,
+                        max_matches=max_matches,
+                        auto_link=bool(args.get("auto_link")),
                     )
-                    archive.save()
                 return HttpResponse(
                     json.dumps({"message": "internal matcher done, check the archive for results"}),
                     content_type="application/json; charset=utf-8",

@@ -1,20 +1,11 @@
 # -*- coding: utf-8 -*-
-import json
-import uuid
-from datetime import timedelta
 
-import django.utils.timezone as django_tz
+import os
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from core.base.parsers import BaseParser
 from core.base.setup import Settings
-from core.workers.webqueue import WebQueue
-from viewer.models import Archive, EventLog, Gallery, GallerySubmitEntry, UserArchivePrefs
-from workers import client
-from workers.models import TaskQueue, WorkerProcess
-from workers.runner import WorkerRunner
-from workers.serialization import deserialize_settings_options, serialize_settings_options
 
 User = get_user_model()
 
@@ -197,7 +188,7 @@ class ArchiveDownloadQueueTests(TestCase):
             download_id=target_path,
             download_url="http://example.com/archive.zip",
             archive=archive,
-            status=DownloadEvent.Status.QUEUED,
+            status=DownloadEvent.Status.IN_PROGRESS,
             request_options={"rate_limit_name": "chaika_web", "rate_limit_calls": 1, "rate_limit_period": 0.01},
         )
 
@@ -387,7 +378,7 @@ class ArchiveDownloadQueueTests(TestCase):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         # Headers say binary/octet-stream, but body is HTML
-        mock_resp.headers = {"Content-Type": "application/octet-stream", "Content-Length": "35"}
+        mock_resp.headers = {"Content-Type": "application/octet-stream", "Content-Length": "34"}
         mock_resp.iter_content.return_value = [b"<!DOCTYPE html><html>error</html>\n"]
 
         adq = ArchiveDownloadQueue(self.settings)
@@ -467,7 +458,7 @@ class ArchiveDownloadQueueTests(TestCase):
             download_id=target_path,
             download_url="http://example.com/long_archive.zip",
             archive=archive,
-            status=DownloadEvent.Status.QUEUED,
+            status=DownloadEvent.Status.IN_PROGRESS,
             request_options={"rate_limit_name": "panda_web"},
         )
 
@@ -577,7 +568,7 @@ class ArchiveDownloadQueueTests(TestCase):
     def test_postdownloader_handles_overlong_legacy_hath_archive(self):
         import os
         from unittest.mock import patch
-        from core.downloaders.postdownload import PostDownloader
+        from core.downloaders.postdownload import PostDownloader, TransferResult
         from core.providers.panda.settings import OwnSettings as PandaSettings
         from viewer.models import Archive, Gallery
 
@@ -621,13 +612,15 @@ class ArchiveDownloadQueueTests(TestCase):
             user=self.user,
         )
 
+        self.settings.download_handler = "local_copy"
         post_downloader = PostDownloader(self.settings)
 
         from django.test import override_settings
         with override_settings(MEDIA_ROOT=self.temp_dir):
             with patch.object(post_downloader, "process_downloaded_archive", return_value=True) as mock_process:
-                post_downloader.copy_all_missing("local_copy", archives=[archive])
+                result = post_downloader.transfer_hath(archive)
                 mock_process.assert_called_once()
+            self.assertEqual(result, TransferResult.PROCESSED)
 
             archive.refresh_from_db()
             # Zipped basename must not exceed 245 bytes
@@ -661,7 +654,7 @@ class ArchiveDownloadQueueTests(TestCase):
     def test_postdownloader_handles_bare_gid_hath_folder(self):
         import os
         from unittest.mock import patch
-        from core.downloaders.postdownload import PostDownloader
+        from core.downloaders.postdownload import PostDownloader, TransferResult
         from core.providers.panda.settings import OwnSettings as PandaSettings
         from viewer.models import Archive, Gallery
 
@@ -699,13 +692,15 @@ class ArchiveDownloadQueueTests(TestCase):
             user=self.user,
         )
 
+        self.settings.download_handler = "local_copy"
         post_downloader = PostDownloader(self.settings)
 
         from django.test import override_settings
         with override_settings(MEDIA_ROOT=self.temp_dir):
             with patch.object(post_downloader, "process_downloaded_archive", return_value=True) as mock_process:
-                post_downloader.copy_all_missing("local_copy", archives=[archive])
+                result = post_downloader.transfer_hath(archive)
                 mock_process.assert_called_once()
+            self.assertEqual(result, TransferResult.PROCESSED)
 
             archive.refresh_from_db()
             self.assertTrue(os.path.isfile(archive.zipped.path))
@@ -925,4 +920,324 @@ class ArchiveDownloadQueueTests(TestCase):
         args_default = crawler.get_args(["https://example.com"])
         self.assertIsNone(args_default.queue_archive_downloads)
 
+    def test_request_by_provider_preserves_streaming_response(self):
+        """Verify request_by_provider does not access response.text or consume stream=True responses."""
+        from unittest.mock import MagicMock, PropertyMock, patch
+        from core.base.utilities import request_by_provider
 
+        mock_resp = MagicMock()
+        mock_resp.headers = {
+            "Content-Type": "application/vnd.comicbook+zip",
+            "Content-Length": "1000",
+        }
+        # If response.text is evaluated, this property will be called
+        type(mock_resp).text = PropertyMock(side_effect=AssertionError("response.text accessed on streaming binary response!"))
+
+        with patch("core.base.utilities.request_with_retries", return_value=mock_resp), \
+             patch("core.base.utilities.acquire_provider_rate_limit_slot", return_value=True):
+            req_func = request_by_provider("test_stream_prov", 1, 0.01)
+            # Streaming request
+            resp = req_func("http://example.com/archive.zip", {"stream": True})
+            self.assertIs(resp, mock_resp)
+
+    def test_archive_download_worker_saves_progress_during_download(self):
+        """Verify archive download worker records and saves progress during intermediate chunks."""
+        import io
+        import zipfile
+        import uuid
+        import os
+        from unittest.mock import MagicMock, patch
+        from PIL import Image
+        from core.workers.archive_download_queue import ArchiveDownloadQueue
+        from viewer.models import Archive, DownloadEvent
+
+        img = Image.new("RGB", (50, 50), color="blue")
+        img_buf = io.BytesIO()
+        img.save(img_buf, format="JPEG")
+
+        zip_buf = io.BytesIO()
+        with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("001.jpg", img_buf.getvalue())
+        zip_bytes = zip_buf.getvalue()
+
+        zip_name = f"test_prog_{uuid.uuid4().hex[:8]}.zip"
+        archive = Archive.objects.create(
+            title="Test Prog Gallery",
+            zipped=zip_name,
+            crc32="",
+            user=self.user,
+        )
+        target_path = archive.zipped.path
+
+        event = DownloadEvent.objects.create(
+            name="Test Prog Event",
+            method="archive",
+            provider="chaika",
+            download_id=target_path,
+            download_url="http://example.com/prog.zip",
+            archive=archive,
+            status=DownloadEvent.Status.IN_PROGRESS,
+            total_size=len(zip_bytes),
+            progress=0.0,
+            request_options={"rate_limit_name": "chaika_web", "rate_limit_calls": 1, "rate_limit_period": 0.01},
+        )
+
+        chunk1 = zip_bytes[:len(zip_bytes) // 2]
+        chunk2 = zip_bytes[len(zip_bytes) // 2:]
+
+        recorded_progresses = []
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.headers = {"Content-Length": str(len(zip_bytes))}
+
+        def chunk_generator():
+            yield chunk1
+            event.refresh_from_db()
+            recorded_progresses.append(event.progress)
+            yield chunk2
+
+        mock_resp.iter_content.return_value = chunk_generator()
+
+        adq = ArchiveDownloadQueue(self.settings)
+
+        with patch("core.workers.archive_download_queue.request_by_provider") as mock_req_prov:
+            mock_web_request = MagicMock(return_value=mock_resp)
+            mock_req_prov.return_value = mock_web_request
+
+            adq._download_worker(event.id)
+
+        # After chunk 1, progress should have been saved to DB (> 0% and < 100%)
+        self.assertTrue(len(recorded_progresses) > 0)
+        self.assertGreater(recorded_progresses[0], 0.0)
+        self.assertLess(recorded_progresses[0], 100.0)
+
+        event.refresh_from_db()
+        self.assertEqual(event.status, DownloadEvent.Status.COMPLETED)
+        self.assertEqual(event.progress, 100.0)
+
+        if os.path.exists(target_path):
+            os.remove(target_path)
+
+
+
+    def test_stalled_download_thread_does_not_clobber_requeued_attempt(self):
+        """A stalled thread that is aborted and replaced by a new attempt must not touch the new attempt."""
+        import os
+        import threading
+        import time
+        from unittest.mock import MagicMock, patch
+        from core.workers.archive_download_queue import ArchiveDownloadQueue
+        from viewer.models import DownloadEvent
+
+        target_path = os.path.join(self.temp_dir, "zombie.zip")
+        self.settings.archive_download_stall_timeout = 5.0
+        event = DownloadEvent.objects.create(
+            name="Zombie Event",
+            method="archive",
+            provider="chaika",
+            download_id=target_path,
+            download_url="http://example.com/zombie.zip",
+            status=DownloadEvent.Status.QUEUED,
+            max_attempts=5,
+            request_options={"rate_limit_name": "chaika_web"},
+        )
+        adq = ArchiveDownloadQueue(self.settings)
+        keep_alive = threading.Event()
+        fake_thread = threading.Thread(target=keep_alive.wait, daemon=True)
+        fake_thread.start()
+        new_cancel_event = threading.Event()
+        state: dict = {}
+
+        # Claim the first attempt like process_queue() does.
+        self.assertEqual(adq.claim_next_events(1), [event.id])
+        first_cancel_event = threading.Event()
+        adq._download_cancel_events[event.id] = first_cancel_event
+        adq._active_threads[event.id] = fake_thread
+        adq._download_activity[event.id] = time.monotonic()
+
+        def chunks():
+            yield b"PK-first-chunk"
+            # The watchdog fires: the event is re-queued and then claimed again by a new attempt.
+            adq._download_activity[event.id] = time.monotonic() - 1000
+            self.assertEqual(adq.check_stalled_downloads(), [event.id])
+            self.assertTrue(first_cancel_event.is_set())
+            self.assertEqual(adq.claim_next_events(1), [event.id])
+            adq._download_cancel_events[event.id] = new_cancel_event
+            adq._download_activity[event.id] = time.monotonic()
+            state["new_part"] = os.path.join(self.temp_dir, "new-attempt.part")
+            with open(state["new_part"], "wb") as f:
+                f.write(b"new attempt data")
+            yield b"PK-second-chunk"
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.headers = {"Content-Length": "1000"}
+        mock_resp.iter_content.return_value = chunks()
+
+        with patch("core.workers.archive_download_queue.request_by_provider") as mock_req_prov:
+            mock_req_prov.return_value = MagicMock(return_value=mock_resp)
+            adq._download_worker(event.id, first_cancel_event)
+
+        keep_alive.set()
+        event.refresh_from_db()
+        # The second attempt is still the owner of the event.
+        self.assertEqual(event.status, DownloadEvent.Status.IN_PROGRESS)
+        self.assertEqual(event.attempts, 2)
+        self.assertFalse(event.failed)
+        # And of its bookkeeping.
+        self.assertIs(adq._download_cancel_events.get(event.id), new_cancel_event)
+        self.assertTrue(os.path.exists(state["new_part"]))
+
+    def test_part_filepath_is_unique_per_token_and_within_limits(self):
+        from core.base.utilities import get_part_filepath
+
+        base = os.path.join(self.temp_dir, "a" * 250 + ".zip")
+        one = get_part_filepath(base, token="abc12345")
+        two = get_part_filepath(base, token="def67890")
+        self.assertNotEqual(one, two)
+        self.assertLessEqual(len(os.path.basename(one).encode("utf-8")), 255)
+        self.assertEqual(get_part_filepath("/x/y.zip"), "/x/y.zip.part")
+        self.assertEqual(get_part_filepath("/x/y.zip", token="t1"), "/x/y.zip.t1.part")
+
+    def _make_zip_bytes(self):
+        import io
+        import zipfile
+        from PIL import Image
+
+        img = Image.new("RGB", (10, 10), color="red")
+        img_buf = io.BytesIO()
+        img.save(img_buf, format="JPEG")
+        zip_buf = io.BytesIO()
+        with zipfile.ZipFile(zip_buf, "w") as zf:
+            zf.writestr("001.jpg", img_buf.getvalue())
+        return zip_buf.getvalue()
+
+    def _make_archive_event(self, name, **event_kwargs):
+        import uuid
+        from viewer.models import Archive, DownloadEvent
+
+        archive = Archive.objects.create(
+            title=name, zipped=f"{name}_{uuid.uuid4().hex[:8]}.zip", crc32="", user=self.user
+        )
+        event = DownloadEvent.objects.create(
+            name=name,
+            method="archive",
+            provider="chaika",
+            download_id=archive.zipped.path,
+            download_url="http://example.com/archive.zip",
+            archive=archive,
+            status=DownloadEvent.Status.IN_PROGRESS,
+            attempts=1,
+            request_options={"rate_limit_name": "chaika_web", "rate_limit_calls": 1, "rate_limit_period": 0.01},
+            **event_kwargs,
+        )
+        return archive, event
+
+    def test_post_processing_failure_does_not_redownload(self):
+        """A failure after the file is in place must not re-queue the event (re-downloading can cost GP)."""
+        from unittest.mock import MagicMock, patch
+        from core.workers.archive_download_queue import ArchiveDownloadQueue
+        from viewer.models import Archive, DownloadEvent
+
+        zip_bytes = self._make_zip_bytes()
+        archive, event = self._make_archive_event("postfail")
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.headers = {"Content-Length": str(len(zip_bytes))}
+        mock_resp.iter_content.return_value = [zip_bytes]
+
+        adq = ArchiveDownloadQueue(self.settings)
+        with (
+            patch("core.workers.archive_download_queue.request_by_provider") as mock_req_prov,
+            patch.object(Archive, "ingest", side_effect=RuntimeError("boom in ingest")),
+        ):
+            mock_req_prov.return_value = MagicMock(return_value=mock_resp)
+            adq._download_worker(event.id)
+
+        event.refresh_from_db()
+        self.assertEqual(event.status, DownloadEvent.Status.COMPLETED)
+        self.assertFalse(event.failed)
+        self.assertIn("post-processing failed", event.error_message)
+        self.assertIn("boom in ingest", event.error_message)
+        self.assertTrue(os.path.exists(archive.zipped.path))
+        os.remove(archive.zipped.path)
+
+    def test_unusable_downloaded_file_is_removed_and_retried(self):
+        """If fileinfo extraction rejects the file it is deleted, and the download is retried."""
+        from unittest.mock import MagicMock, patch
+        from core.workers.archive_download_queue import ArchiveDownloadQueue
+        from viewer.models import Archive, DownloadEvent
+
+        zip_bytes = self._make_zip_bytes()
+        archive, event = self._make_archive_event("rejected", max_attempts=3)
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.headers = {"Content-Length": str(len(zip_bytes))}
+        mock_resp.iter_content.return_value = [zip_bytes]
+
+        def fake_recalc(self_archive, *args, **kwargs):
+            Archive.objects.filter(pk=self_archive.pk).update(filesize=-1)
+
+        adq = ArchiveDownloadQueue(self.settings)
+        with (
+            patch("core.workers.archive_download_queue.request_by_provider") as mock_req_prov,
+            patch.object(Archive, "recalc_fileinfo", fake_recalc),
+        ):
+            mock_req_prov.return_value = MagicMock(return_value=mock_resp)
+            adq._download_worker(event.id)
+
+        event.refresh_from_db()
+        self.assertEqual(event.status, DownloadEvent.Status.QUEUED)
+        self.assertFalse(os.path.exists(archive.zipped.path))
+
+    def test_incomplete_download_is_rejected(self):
+        from unittest.mock import MagicMock, patch
+        from core.workers.archive_download_queue import ArchiveDownloadQueue
+        from viewer.models import DownloadEvent
+
+        zip_bytes = self._make_zip_bytes()
+        archive, event = self._make_archive_event("short", max_attempts=3)
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.headers = {"Content-Length": str(len(zip_bytes) + 100)}
+        mock_resp.iter_content.return_value = [zip_bytes]
+
+        adq = ArchiveDownloadQueue(self.settings)
+        with patch("core.workers.archive_download_queue.request_by_provider") as mock_req_prov:
+            mock_req_prov.return_value = MagicMock(return_value=mock_resp)
+            adq._download_worker(event.id)
+
+        event.refresh_from_db()
+        self.assertEqual(event.status, DownloadEvent.Status.QUEUED)
+        self.assertIn("Incomplete download", event.error_message)
+        self.assertFalse(os.path.exists(archive.zipped.path))
+
+    def test_process_queue_is_serialized(self):
+        """force_run() and the scheduler thread must not run process_queue() at the same time."""
+        import threading
+        import time
+        from unittest.mock import patch
+        from core.workers.archive_download_queue import ArchiveDownloadQueue
+
+        adq = ArchiveDownloadQueue(self.settings)
+        active = 0
+        max_active = 0
+        guard = threading.Lock()
+
+        def slow_locked():
+            nonlocal active, max_active
+            with guard:
+                active += 1
+                max_active = max(max_active, active)
+            time.sleep(0.05)
+            with guard:
+                active -= 1
+
+        with patch.object(adq, "_process_queue_locked", side_effect=slow_locked):
+            threads = [threading.Thread(target=adq.process_queue) for _ in range(4)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+        self.assertEqual(max_active, 1)

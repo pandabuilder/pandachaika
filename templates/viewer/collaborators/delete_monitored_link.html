@@ -13,7 +13,12 @@
                 <div class="alert alert-secondary">
                     <p class="mb-1"><strong>Name:</strong> {{ link.name }}</p>
                     <p class="mb-1"><strong>URL:</strong> {{ link.url }}</p>
+                    {% if link.uses_separate_frequencies %}
+                    <p class="mb-1"><strong>Capture frequency:</strong> {{ link.capture_frequency }}</p>
+                    <p class="mb-1"><strong>Process frequency:</strong> {{ link.frequency }}</p>
+                    {% else %}
                     <p class="mb-1"><strong>Frequency:</strong> {{ link.frequency }}</p>
+                    {% endif %}
                     <p class="mb-0"><strong>Enabled:</strong> {{ link.enabled|yesno }}</p>
                 </div>
                 <p class="text-muted small">

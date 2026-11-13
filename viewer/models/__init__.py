@@ -90,7 +90,11 @@ from viewer.models.events import (
     MonitoredLink,
 )
 
+from viewer.models.file_check import ArchiveFileCheck, ArchiveFileCheckIssue
+
 __all__ = [
+    "ArchiveFileCheck",
+    "ArchiveFileCheckIssue",
     # Common
     "EMPTY_TITLE",
     "IMAGE_PHASH_BLACK",

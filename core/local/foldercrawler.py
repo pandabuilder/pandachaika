@@ -10,12 +10,13 @@ from typing import NoReturn
 from zipfile import BadZipFile
 from zipfile import ZipFile
 
-from core.base.comparison import get_closer_gallery_title_from_list
 from core.base.setup import Settings
 from core.base.types import DataDict
 from core.base.utilities import calc_crc32, get_zip_fileinfo, replace_illegal_name
+from core.matching.engine import MatchingEngine, MatchingOptions
+from core.matching.types import MatchingMode, MatchTarget
 
-from viewer.models import Archive, Gallery
+from viewer.models import Archive
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +136,7 @@ class FolderCrawler(object):
             metavar="cutoff",
             help=(
                 "Try to match archives marked as non-matches with"
-                " the local galleries database, based on the title. "
+                " the local galleries database, based on the file name. "
                 "Needs a cutoff value to discard likeness. "
                 "This will only display the matches, not apply them"
             ),
@@ -150,8 +151,20 @@ class FolderCrawler(object):
             metavar="cutoff",
             help=(
                 "Try to match archives marked as non-matches "
-                "with the local galleries database, based on the title. "
+                "with the local galleries database, based on the file name. "
                 "Needs a cutoff value to discard likeness. This will apply the changes"
+            ),
+        )
+
+        parser.add_argument(
+            "-mm",
+            "--match-mode",
+            required=False,
+            choices=[mode.value for mode in MatchingMode],
+            default=MatchingMode.ONLINE.value,
+            help=(
+                "How files are matched. online (default): search the providers with the enabled matchers. "
+                "offline: compare with the galleries already in the local database"
             ),
         )
 
@@ -307,88 +320,37 @@ class FolderCrawler(object):
                             Archive.objects.add_or_update_from_values(values, pk=archive.pk)
             return
 
-        elif args.rematch_from_internal_gallery_titles:
+        elif args.rematch_from_internal_gallery_titles or args.display_match_from_internal_gallery_titles:
+            apply_matches = bool(args.rematch_from_internal_gallery_titles)
+            cutoff = float(args.rematch_from_internal_gallery_titles or args.display_match_from_internal_gallery_titles)
 
-            non_matched_archives = Archive.objects.filter(match_type="non-match")
-
-            if non_matched_archives:
-
-                archives_title_gid, galleries_title_gid = self.get_archive_and_gallery_titles()
-
-                logger.info(
-                    "Matching against archive and gallery database, {} archives with no match".format(
-                        non_matched_archives.count()
-                    )
+            non_matched_archives = Archive.objects.filter(match_type="non-match", gallery__isnull=True)
+            logger.info(
+                "Matching against the local gallery database, {} archives with no match".format(
+                    non_matched_archives.count()
                 )
-                for archive in non_matched_archives:
-                    adjusted_title = replace_illegal_name(os.path.basename(archive.zipped.path)).replace(".zip", "")
-
-                    galleries_id_token = get_closer_gallery_title_from_list(
-                        adjusted_title, galleries_title_gid, args.rematch_from_internal_gallery_titles
-                    )
-                    if galleries_id_token is not None:
-                        logger.info("Path: {}\nGal title: {}".format(adjusted_title, galleries_id_token[0]))
-                        values = {
-                            "title": Gallery.objects.filter(id=galleries_id_token[1])[0].title,
-                            "title_jpn": Gallery.objects.filter(id=galleries_id_token[1])[0].title_jpn,
-                            "zipped": archive.zipped.path,
-                            "crc32": archive.crc32,
-                            "match_type": "gallery_database",
-                            "filesize": archive.filesize,
-                            "filecount": archive.filecount,
-                            "gallery_id": galleries_id_token[1],
-                        }
-                        Archive.objects.add_or_update_from_values(values, pk=archive.pk)
-                        Gallery.objects.update_by_dl_type(
-                            {"dl_type": "folder:filename"}, galleries_id_token[1], "failed"
-                        )
-                    else:
-                        galleries_id_token = get_closer_gallery_title_from_list(
-                            adjusted_title, archives_title_gid, args.rematch_from_internal_gallery_titles
-                        )
-                        if galleries_id_token is not None:
-                            logger.info("Path: {}\nMatch title: {}".format(adjusted_title, galleries_id_token[0]))
-                            values = {
-                                "title": Gallery.objects.filter(id=galleries_id_token[1])[0].title,
-                                "title_jpn": Gallery.objects.filter(id=galleries_id_token[1])[0].title_jpn,
-                                "zipped": archive.zipped.path,
-                                "crc32": archive.crc32,
-                                "match_type": archive.match_type,
-                                "filesize": archive.filesize,
-                                "filecount": archive.filecount,
-                                "gallery_id": galleries_id_token[1],
-                            }
-                            Archive.objects.add_or_update_from_values(values, pk=archive.pk)
-
-            return
-
-        elif args.display_match_from_internal_gallery_titles:
-
-            non_matched_archives = Archive.objects.filter(match_type="non-match")
-
-            if non_matched_archives:
-
-                archives_title_gid, galleries_title_gid = self.get_archive_and_gallery_titles()
-
-                logger.info(
-                    "Matching against archive and gallery database, {} archives with no match".format(
-                        non_matched_archives.count()
-                    )
-                )
-                for archive in non_matched_archives:
-                    adjusted_title = replace_illegal_name(os.path.basename(archive.zipped.path)).replace(".zip", "")
-                    galleries_id_token = get_closer_gallery_title_from_list(
-                        adjusted_title, galleries_title_gid, args.display_match_from_internal_gallery_titles
-                    )
-                    if galleries_id_token is not None:
-                        logger.info("Path: {}\nGal title: {}".format(adjusted_title, galleries_id_token[0]))
-                    else:
-                        galleries_id_token = get_closer_gallery_title_from_list(
-                            adjusted_title, archives_title_gid, args.display_match_from_internal_gallery_titles
-                        )
-                        if galleries_id_token is not None:
-                            logger.info("Path: {}\nMatch title: {}".format(adjusted_title, galleries_id_token[0]))
-
+            )
+            engine = MatchingEngine(
+                self.settings,
+                MatchingOptions(
+                    mode=MatchingMode.OFFLINE,
+                    methods=("title",),
+                    cutoff=cutoff,
+                    max_matches=1,
+                    auto_link=True,
+                    auto_link_cutoff=cutoff,
+                ),
+            )
+            for archive in non_matched_archives:
+                if not archive.zipped.name:
+                    continue
+                outcome = engine.process(MatchTarget.from_archive(archive, use_title=False))
+                if outcome.best is None:
+                    continue
+                logger.info("Path: {}\nGal title: {}".format(archive.zipped.name, outcome.best.title))
+                if apply_matches:
+                    engine.link_archive(archive, outcome.best)
+            logger.info("Local gallery matching ended: {}".format(engine.report.summary()))
             return
         else:
             for folder in args.folder:
@@ -443,9 +405,14 @@ class FolderCrawler(object):
         else:
             logger.info("Starting checks for {} archives".format(len(files)))
 
-            matchers_list = self.settings.provider_context.get_matchers(self.settings)
-            for matcher in matchers_list:
-                logger.info("Using matcher {} with a priority of {}".format(matcher[0].name, matcher[1]))
+            match_mode = MatchingMode(args.match_mode)
+            engine = MatchingEngine(
+                self.settings,
+                MatchingOptions(mode=match_mode, auto_link=True, cutoff=0.4),
+            )
+            logger.info("Matching files with {}".format(engine))
+            # Possible matches for the files that couldn't be matched. Offline mode already has them.
+            internal_engine: MatchingEngine | None = None
 
             for cnt, filepath in enumerate(files):
 
@@ -556,31 +523,23 @@ class FolderCrawler(object):
                         else:
                             logger.info("Matching independently and ignoring previous match")
 
-                match_result = False
-
                 start_time = time.perf_counter()
 
-                match_type = ""
-                match_title = ""
-                match_link = ""
-                match_count = 0
-
-                for i, matcher in enumerate(matchers_list):
-                    if i > 0:
-                        current_provider = matchers_list[i][0].provider
-                        # wait always in current_provider, independently of last used provider
-                        if current_provider in self.settings.providers:
-                            time.sleep(self.settings.providers[current_provider].wait_timer)
-                        else:
-                            time.sleep(self.settings.wait_timer)
-                    logger.info("Matching with: {}".format(matcher[0]))
-                    if matcher[0].start_match(filepath, crc32):
-                        match_type = matcher[0].found_by
-                        match_title = matcher[0].match_title or ""
-                        match_link = matcher[0].match_link or ""
-                        match_count = matcher[0].match_count
-                        match_result = True
-                        break
+                target_filesize: int | None = None
+                if match_mode == MatchingMode.OFFLINE:
+                    target_filesize = get_zip_fileinfo(os.path.join(self.settings.MEDIA_ROOT, filepath))[0]
+                target = MatchTarget(
+                    file_path=filepath,
+                    crc32=crc32,
+                    filesize=target_filesize,
+                    # archive_to_process may be another archive with the same CRC32 at this point.
+                    archive_id=Archive.objects.filter(zipped=filepath).values_list("pk", flat=True).first(),
+                )
+                outcome = engine.process(target)
+                match_result = False
+                best = outcome.best
+                if best is not None:
+                    match_result = engine.link_file(filepath, crc32, best) is not None
 
                 end_time = time.perf_counter()
 
@@ -618,40 +577,32 @@ class FolderCrawler(object):
 
                     if self.settings.internal_matches_for_non_matches:
                         logger.info("Generating possible internal matches.")
-
-                        archive.generate_possible_matches(cutoff=0.4, clear_title=True)
+                        if match_mode == MatchingMode.OFFLINE:
+                            engine.save_possible_matches(archive, outcome.candidates)
+                        else:
+                            if internal_engine is None:
+                                internal_engine = MatchingEngine(
+                                    self.settings,
+                                    MatchingOptions(mode=MatchingMode.OFFLINE, cutoff=0.4, clean_title=True),
+                                )
+                            internal_engine.match_archive(archive)
                         logger.info(
                             "Generated matches for {}, found {}".format(
                                 archive.zipped.path, archive.possible_matches.count()
                             )
                         )
-                elif match_result:
+                elif match_result and best is not None:
                     result_message = (
                         "Matched title: {}\n"
                         "Matched link: {}\n"
                         "Matched type: {}\n"
-                        "Match count: {}\n".format(match_title, match_link, match_type, match_count)
+                        "Matcher: {}\n"
+                        "Match count: {}\n".format(
+                            best.title, best.link, best.found_by, best.matcher, len(outcome.candidates)
+                        )
                     )
                     logger.info(result_message)
 
-        logger.info("Folder crawler done.")
+            logger.info("Folder crawler matching ({}): {}".format(match_mode, engine.report.summary()))
 
-    @staticmethod
-    def get_archive_and_gallery_titles() -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
-        found_galleries = Gallery.objects.eligible_for_use().exclude(title="")
-        found_archives = (
-            Archive.objects.exclude(match_type__in=("", "non-match")).exclude(title="").exclude(gallery__isnull=True)
-        )
-        archives_title_gid = []
-        galleries_title_gid = []
-        for archive in found_archives:
-            if not archive.title or not archive.gallery:
-                continue
-            archives_title_gid.append((replace_illegal_name(archive.title), str(archive.gallery.id)))
-        for gallery in found_galleries:
-            if not gallery.title:
-                continue
-            if "replaced" in gallery.tag_list():
-                continue
-            galleries_title_gid.append((replace_illegal_name(gallery.title), str(gallery.id)))
-        return archives_title_gid, galleries_title_gid
+        logger.info("Folder crawler done.")

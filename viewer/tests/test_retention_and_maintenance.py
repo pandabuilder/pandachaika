@@ -1,7 +1,6 @@
 import datetime
 from io import StringIO
-import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
@@ -13,7 +12,7 @@ from django_db_logger.models import StatusLog
 from core.base.config_models import RetentionSettings, PandaGalleryConfig
 from core.base.setup import Settings
 from core.workers.retention import TimedDatabasePruner
-from viewer.models import Archive, DownloadEvent, EventLog, Gallery, ProcessedLinks
+from viewer.models import DownloadEvent, EventLog, ProcessedLinks
 from viewer.services.retention import (
     get_database_info,
     get_retention_counts,
@@ -401,3 +400,28 @@ class BackgroundWorkerExecutionTests(TestCase):
             mock_prune.assert_called_once()
             task.refresh_from_db()
             self.assertEqual(task.status, TaskQueue.Status.COMPLETED)
+
+
+class HistoryRetentionKeepsLatestSnapshotTests(TestCase):
+    def test_prune_keeps_the_newest_revision_of_each_object(self):
+        from viewer.models import Gallery
+
+        unchanged = Gallery.objects.create(gid="h1", provider="panda", title="unchanged")
+        changed = Gallery.objects.create(gid="h2", provider="panda", title="v1")
+        changed.title = "v2"
+        changed.save()
+
+        history_model = Gallery.history.model
+        old = timezone.now() - datetime.timedelta(days=400)
+        history_model.objects.all().update(history_date=old)
+        self.assertEqual(history_model.objects.filter(id=changed.id).count(), 2)
+
+        settings = Settings(load_from_disk=False)
+        settings.retention.history_days = 90
+        result = prune_database(settings_obj=settings, entity="history_gallery")
+
+        self.assertTrue(result)
+        remaining = history_model.objects.all()
+        self.assertEqual(remaining.filter(id=unchanged.id).count(), 1)
+        self.assertEqual(remaining.filter(id=changed.id).count(), 1)
+        self.assertEqual(remaining.get(id=changed.id).title, "v2")

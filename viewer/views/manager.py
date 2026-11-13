@@ -9,7 +9,6 @@ from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.conf import settings
 
-from core.base.setup import Settings
 from core.base.utilities import thread_exists_in_db, clamp
 from viewer.forms import (
     GallerySearchForm,
@@ -326,137 +325,6 @@ def public_missing_archives_for_galleries(request: HttpRequest) -> HttpResponse:
 
 
 @staff_member_required(login_url="viewer:login")
-def archives_not_present_in_filesystem(request: HttpRequest) -> HttpResponse:
-    p = request.POST
-    get = request.GET
-
-    title = get.get("title", "")
-    tags = get.get("tags", "")
-
-    try:
-        page = int(get.get("page", "1"))
-    except ValueError:
-        page = 1
-
-    if "clear" in get:
-        form = ArchiveSearchForm()
-    else:
-        form = ArchiveSearchForm(initial={"title": title, "tags": tags})
-
-    if p:
-        if "download_galleries" in p and request.user.has_perm("viewer.download_gallery"):
-
-            pks = []
-            for k, v in p.items():
-                if k.startswith("del-") and isinstance(v, str):
-                    # k, pk = k.split('-')
-                    # results[pk][k] = v
-                    pks.append(v)
-            results_archive = Archive.objects.filter(id__in=pks, gallery__isnull=False).select_related("gallery").order_by("-pk")
-
-            for archive in results_archive:
-                if archive.gallery is None:
-                    continue
-                message = "Queueing gallery: {}, link: {}".format(archive.gallery.title, archive.gallery.get_link())
-                logger.info(message)
-                messages.success(request, message)
-
-                # Force replace_metadata when queueing from this list, since it's mostly used to download non-used.
-                current_settings = Settings(load_from_config=crawler_settings.config)
-
-                current_settings.replace_metadata = True
-                current_settings.retry_failed = True
-                current_settings.redownload = True
-
-                if archive.reason:
-                    current_settings.archive_reason = archive.reason
-
-                reason = archive.reason
-
-                current_settings.archive_user = request.user
-                current_settings.event_action = "DOWNLOAD"
-
-                client.enqueue(
-                    args=[archive.gallery.get_link()],
-                    task_type="web_crawler",
-                    override_options=current_settings,
-                    user=request.user,
-                    reason=reason,
-                    event_action="DOWNLOAD",
-                )
-        if "delete_archives" in p:
-            pks = []
-            for k, v in p.items():
-                if k.startswith("del-") and isinstance(v, str):
-                    # k, pk = k.split('-')
-                    # results[pk][k] = v
-                    pks.append(v)
-            results_archive = Archive.objects.filter(id__in=pks).order_by("-pk")
-
-            for archive in results_archive:
-                message = "Removing archive missing in filesystem: {}, path: {}".format(archive.title, archive.zipped.path)
-                logger.info(message)
-                messages.success(request, message)
-                archive.delete()
-        elif "clear_crc32" in p:
-            pks = []
-            for k, v in p.items():
-                if k.startswith("del-") and isinstance(v, str):
-                    # k, pk = k.split('-')
-                    # results[pk][k] = v
-                    pks.append(v)
-            results_archive = Archive.objects.filter(id__in=pks).order_by("-pk")
-
-            for archive in results_archive:
-                message = "Clearing CRC32 to force redownload: {}, path: {}".format(archive.title, archive.zipped.path)
-                logger.info(message)
-                messages.success(request, message)
-                archive.crc32 = ""
-                archive.save()
-        elif "mark_deleted" in p:
-            pks = []
-            for k, v in p.items():
-                if k.startswith("del-") and isinstance(v, str):
-                    # k, pk = k.split('-')
-                    # results[pk][k] = v
-                    pks.append(v)
-            results_archive = Archive.objects.filter(id__in=pks).order_by("-pk")
-
-            message = "Marking Archives as deleted: {}".format(len(pks))
-
-            logger.info(message)
-            messages.success(request, message)
-
-            results_archive.update(file_deleted=True)
-
-    params = {
-        "sort": "create_date",
-        "asc_desc": "desc",
-    }
-
-    for k, v in get.items():
-        if isinstance(v, str):
-            params[k] = v
-
-    for k in archive_filter_keys:
-        if k not in params:
-            params[k] = ""
-
-    results = filter_archives_simple(params, authenticated=True, show_binned=True)
-
-    results_list = results.filter_non_existent(crawler_settings.MEDIA_ROOT)
-
-    paginator = Paginator(results_list, 50)
-    try:
-        results_page = paginator.page(page)
-    except (InvalidPage, EmptyPage):
-        results_page = paginator.page(paginator.num_pages)
-
-    d = {"results": results_page, "form": form}
-    return render(request, "viewer/archives_not_present.html", d)
-
-
-@staff_member_required(login_url="viewer:login")
 def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
     p = request.POST
     get = request.GET
@@ -536,6 +404,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                     "filters": (matcher_filter,),
                     "match_local": False,
                     "match_web": True,
+                    "auto_link": "auto_link" in p,
                 },
                 user=request.user,
             )
@@ -567,6 +436,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                     "filters": (provider,),
                     "match_local": True,
                     "match_web": False,
+                    "auto_link": "auto_link" in p,
                 },
                 user=request.user,
             )

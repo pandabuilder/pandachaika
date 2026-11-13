@@ -202,11 +202,17 @@
     </div>
     </div>
       <div class="col-md-auto">
-        <select id="matcher_type" name="matcher_type" class="form-control" title="Matcher type to use" aria-label="matcher_type">
+        <select id="matcher_type" name="matcher_type" class="form-control" title="Matching method to use" aria-label="matcher_type">
           {% for matcher_type in matcher_types %}
             <option value="{{ matcher_type }}" {% if request.POST.matcher_type == matcher_type %} selected{% endif %}>{{ matcher_type }}</option>
           {% endfor %}
         </select>
+      </div>
+      <div class="col-md-auto">
+        <div class="form-check mt-2">
+          <input class="form-check-input" type="checkbox" name="auto_link" id="auto_link" title="Link each archive to its best match when it's good enough, instead of only storing possible matches" {% if request.POST.auto_link %}checked{% endif %}>
+          <label class="form-check-label" for="auto_link">Auto-link best match</label>
+        </div>
       </div>
     <div class="col-md-auto">
     <button type="submit" name="clear_possible_matches" class="btn btn-light" value="">Clear possible matches</button>

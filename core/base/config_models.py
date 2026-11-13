@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -163,17 +164,12 @@ class GeneralSettings(BaseConfigModel):
         default=25,
         description="HTTP request timeout (in seconds) for outgoing provider web requests.",
     )
-    timed_downloader_startup: bool = Field(
-        default=False,
-        description="Automatically start the timed downloader background worker when the runner launches.",
-    )
-    timed_downloader_cycle_timer: float = Field(
-        default=5.0,
-        description="Cycle interval (in seconds) for the timed downloader background worker loop.",
-    )
     parallel_post_downloaders: int = Field(
         default=4,
-        description="Number of parallel post-downloader workers (each opens an independent FTP/FTPS connection).",
+        description=(
+            "Maximum number of torrent/H@H downloads transferred into media storage at the same time by the "
+            "download progress checker (each remote transfer opens its own FTP/FTPS connection)."
+        ),
     )
     parallel_archive_downloaders: int = Field(
         default=1,
@@ -1032,16 +1028,307 @@ class RetentionSettings(BaseConfigModel):
     )
     processed_links_days: int = Field(
         default=180,
-        description="Retention in days for crawler processed links history (0 to disable).",
+        description=(
+            "Retention in days for crawler processed links history (0 to disable). Links older than this are "
+            "crawled again, so 'stop on seen links' and 'already seen links' modes no longer recognise them."
+        ),
     )
     history_days: int = Field(
         default=90,
-        description="Retention in days for django-simple-history records (0 to disable).",
+        description=(
+            "Retention in days for django-simple-history records (0 to disable). "
+            "The newest revision of each object is always kept."
+        ),
     )
     chunk_size: int = Field(
         default=5000,
         description="Batch size for batch deletions to prevent database locking.",
     )
+
+
+DEFAULT_MANGA_EXTRACTOR_ARCHIVE_FIELDS: list[str] = [
+    "total_pages",
+    "spread_pages_count",
+    "color_pages_count",
+    "total_panels",
+    "total_bubbles",
+    "total_words",
+    "total_characters",
+    "average_bubbles_per_page",
+    "average_dialogue_density",
+    "estimated_reading_time_minutes",
+]
+
+DEFAULT_MANGA_EXTRACTOR_IMAGE_FIELDS: list[str] = [
+    "is_spread",
+    "spread_confidence",
+    "color_type",
+    "visual_density",
+    "panel_count",
+    "panel_layout",
+    "bubble_count",
+    "dialogue_density",
+    "word_count",
+    "char_count",
+    "transcript",
+    "bubble_transcripts",
+    "japanese_metrics.kanji_count",
+    "japanese_metrics.hiragana_count",
+    "japanese_metrics.katakana_count",
+    "japanese_metrics.kanji_ratio",
+    "japanese_metrics.estimated_jlpt_level",
+]
+
+
+class MangaExtractorRequestConfig(BaseConfigModel):
+    """Parameters sent to the external manga-extractor REST API when submitting jobs."""
+
+    preset: str = Field(
+        default="full",
+        description="Extraction preset ('quick', 'layout', 'stats', 'full').",
+    )
+    features: list[str] = Field(
+        default_factory=list,
+        description="Optional explicit feature list overriding preset (e.g. ['page_metadata', 'panel_detection', 'ocr_text_metrics']).",
+    )
+    language_hint: str = Field(
+        default="auto",
+        description="Language hint for OCR ('auto' derives from archive language tags and falls back to 'ja', or explicit 'ja', 'en', 'zh', 'ko').",
+    )
+    detector_backend: str = Field(
+        default="default",
+        description="Bubble/text detector backend ('default' or 'comic_text_detector').",
+    )
+    ocr_max_dimension: int | None = Field(
+        default=None,
+        description="Optional maximum image dimension for OCR downscaling (null uses service default).",
+    )
+    ocr_space_threshold: float | None = Field(
+        default=None,
+        description="Optional CTC word-space probability threshold (0.01-0.50, default 0.04) for compressed horizontal text in vertical manga bubbles.",
+    )
+    use_cache: bool = Field(
+        default=True,
+        description="Allow manga-extractor to use its SHA-256 disk result cache.",
+    )
+
+
+class MangaExtractorStorageConfig(BaseConfigModel):
+    """Controls which extracted properties are persisted to ItemProperties(tag='manga-extractor')."""
+
+    save_archive_summary: bool = Field(
+        default=True,
+        alias="store_archive_summary",
+        description="Save gallery/archive-level summary metrics on the Archive record.",
+    )
+    archive_fields: list[str] = Field(
+        default_factory=lambda: list(DEFAULT_MANGA_EXTRACTOR_ARCHIVE_FIELDS),
+        description="Archive summary fields to store as ItemProperties(tag='manga-extractor'). Use ['*'] to store all returned summary fields.",
+    )
+    save_image_results: bool = Field(
+        default=True,
+        alias="store_image_results",
+        description="Save per-page extraction metrics on each Image record.",
+    )
+    image_fields: list[str] = Field(
+        default_factory=lambda: list(DEFAULT_MANGA_EXTRACTOR_IMAGE_FIELDS),
+        description="Image result fields to store as ItemProperties(tag='manga-extractor'). Supports dot-paths (e.g. 'japanese_metrics.difficulty') or ['*'] for all scalar fields.",
+    )
+    prune_removed_fields: bool = Field(
+        default=True,
+        description="Remove previously stored 'manga-extractor' ItemProperties on the archive/images that are no longer in archive_fields or image_fields when re-extracting.",
+    )
+    max_value_length: int = Field(
+        default=0,
+        ge=0,
+        description="Optional maximum character length for stored ItemProperties values (0 = unlimited).",
+    )
+
+    @property
+    def store_archive_summary(self) -> bool:
+        return self.save_archive_summary
+
+    @store_archive_summary.setter
+    def store_archive_summary(self, value: bool) -> None:
+        self.save_archive_summary = bool(value)
+
+    @property
+    def store_image_results(self) -> bool:
+        return self.save_image_results
+
+    @store_image_results.setter
+    def store_image_results(self, value: bool) -> None:
+        self.save_image_results = bool(value)
+
+    def update_from_dict(self, data: dict[str, Any]) -> None:
+        super().update_from_dict(data)
+        if "store_archive_summary" in data:
+            self.save_archive_summary = bool(data["store_archive_summary"])
+        if "store_image_results" in data:
+            self.save_image_results = bool(data["store_image_results"])
+
+
+class MangaExtractorProfile(BaseConfigModel):
+    """Configuration profile containing request and storage parameters for manga-extractor."""
+
+    name: str = Field(
+        default="",
+        description="Optional human-readable label for this profile shown in the UI (falls back to dictionary key if omitted).",
+    )
+    description: str = Field(
+        default="",
+        description="Optional description explaining when this profile should be used.",
+    )
+    request_config: MangaExtractorRequestConfig = Field(
+        default_factory=MangaExtractorRequestConfig,
+        description="Request parameters sent to manga-extractor when submitting jobs.",
+    )
+    storage_config: MangaExtractorStorageConfig = Field(
+        default_factory=MangaExtractorStorageConfig,
+        description="Storage rules controlling which returned metrics are saved to ItemProperties.",
+    )
+
+    def get_label(self, fallback_key: str = "") -> str:
+        """Return the display label for this profile."""
+        if self.name and self.name.strip():
+            return self.name.strip()
+        return fallback_key or "default"
+
+
+class MangaExtractorSettings(BaseConfigModel):
+    """External manga-extractor service integration for contextual archive and page analysis."""
+
+    enable: bool = Field(
+        default=False,
+        description="Enable integration with the external manga-extractor REST service.",
+    )
+    url: str = Field(
+        default="http://localhost:8000",
+        description="Base URL of the manga-extractor HTTP server.",
+    )
+    auth_token: str = Field(
+        default="",
+        description="Optional authentication token/password for the manga-extractor service (sent as 'Authorization: Bearer <token>').",
+    )
+    run_on_new_archive: bool = Field(
+        default=False,
+        description="Automatically enqueue contextual extraction on the background worker when a new archive is ingested.",
+    )
+    timeout: float = Field(
+        default=600.0,
+        description="Maximum time (in seconds) to wait for a manga-extractor job to complete.",
+    )
+    poll_interval: float = Field(
+        default=2.0,
+        description="Polling interval (in seconds) when waiting for a manga-extractor job.",
+    )
+    default_profile: str = Field(
+        default="default",
+        description="Name of the default profile triggered by the main Extract Context button.",
+    )
+    background_profile: str = Field(
+        default="default",
+        description="Name of the profile to use when running in the background (e.g. run_on_new_archive).",
+    )
+    profiles: dict[str, MangaExtractorProfile] = Field(
+        default_factory=dict,
+        description="Named configuration profiles for manga-extractor extraction and storage options.",
+    )
+    request_config: MangaExtractorRequestConfig = Field(
+        default_factory=MangaExtractorRequestConfig,
+        description="Default request parameters (used if no profile is selected or for backward compatibility).",
+    )
+    storage_config: MangaExtractorStorageConfig = Field(
+        default_factory=MangaExtractorStorageConfig,
+        description="Default storage rules (used if no profile is selected or for backward compatibility).",
+    )
+
+    def model_post_init(self, __context: Any) -> None:
+        super().model_post_init(__context)
+        if not self.profiles:
+            self.profiles["default"] = MangaExtractorProfile(
+                name="default",
+                request_config=self.request_config,
+                storage_config=self.storage_config,
+            )
+
+    def get_profile(self, name: str | None = None) -> MangaExtractorProfile:
+        """Resolve a profile by name, falling back to default_profile or default profile."""
+        target = (name or "").strip()
+        if target and target in self.profiles:
+            return self.profiles[target]
+        if self.default_profile and self.default_profile in self.profiles:
+            return self.profiles[self.default_profile]
+        if "default" in self.profiles:
+            return self.profiles["default"]
+        if self.profiles:
+            return next(iter(self.profiles.values()))
+        return MangaExtractorProfile(
+            name="default",
+            request_config=self.request_config,
+            storage_config=self.storage_config,
+        )
+
+    def get_background_profile(self) -> MangaExtractorProfile:
+        """Resolve the profile configured for background tasks."""
+        return self.get_profile(self.background_profile or self.default_profile)
+
+    def get_profile_choices(self) -> dict[str, str]:
+        """Return a mapping of profile_key -> display_label."""
+        if not self.profiles:
+            return {"default": "Default"}
+        return {key: prof.get_label(key) for key, prof in self.profiles.items()}
+
+    def get_auth_token(self) -> str:
+        """Resolve the authentication token from config or standard environment variables."""
+        if self.auth_token and self.auth_token.strip():
+            return self.auth_token.strip()
+        for env_var in ("MANGA_EXTRACTOR_AUTH_TOKEN", "AUTH_TOKEN", "MANGA_EXTRACTOR_TOKEN", "API_TOKEN"):
+            val = os.environ.get(env_var, "").strip()
+            if val:
+                return val
+        return ""
+
+    def get_headers(self) -> dict[str, str]:
+        """Return HTTP headers for requests to manga-extractor."""
+        token = self.get_auth_token()
+        if token:
+            return {"Authorization": f"Bearer {token}"}
+        return {}
+
+    def update_from_dict(self, data: dict[str, Any]) -> None:
+        if not isinstance(data, dict):
+            return
+        super().update_from_dict(data)
+        if "token" in data and not self.auth_token and data["token"]:
+            self.auth_token = str(data["token"]).strip()
+        if "profiles" in data and isinstance(data["profiles"], dict):
+            parsed_profiles: dict[str, MangaExtractorProfile] = {}
+            for p_key, p_val in data["profiles"].items():
+                if isinstance(p_val, MangaExtractorProfile):
+                    parsed_profiles[p_key] = p_val
+                elif isinstance(p_val, dict):
+                    profile_obj = MangaExtractorProfile()
+                    profile_obj.update_from_dict(p_val)
+                    if not profile_obj.name:
+                        profile_obj.name = p_key
+                    parsed_profiles[p_key] = profile_obj
+            self.profiles = parsed_profiles
+
+        if not self.profiles:
+            self.profiles["default"] = MangaExtractorProfile(
+                name="default",
+                request_config=self.request_config,
+                storage_config=self.storage_config,
+            )
+
+        def_prof = self.get_profile(self.default_profile)
+        if "request_config" not in data and "storage_config" not in data:
+            self.request_config = def_prof.request_config
+            self.storage_config = def_prof.storage_config
+        else:
+            def_prof.request_config = self.request_config
+            def_prof.storage_config = self.storage_config
 
 
 # ============================================================================
@@ -1413,6 +1700,10 @@ class PandaGalleryConfig(BaseConfigModel):
         default_factory=RetentionSettings,
         description="Database retention and automated pruning configuration.",
     )
+    manga_extractor: MangaExtractorSettings = Field(
+        default_factory=MangaExtractorSettings,
+        description="External manga-extractor service integration for contextual archive and page analysis.",
+    )
     experimental: dict[str, Any] = Field(
         default_factory=dict,
         description="Experimental features and developer settings.",
@@ -1518,15 +1809,8 @@ general:
   # Default: 25
   timeout_timer: 25
 
-  # Start the timed downloader background worker thread automatically on startup.
-  # Default: false
-  timed_downloader_startup: false
-
-  # Cycle interval (in seconds) for the timed downloader background worker.
-  # Default: 5.0
-  timed_downloader_cycle_timer: 5.0
-
-  # Number of parallel post-downloader workers (each handling an independent FTP connection).
+  # Maximum number of torrent/H@H downloads transferred into media storage at the same time
+  # by the download progress checker (each remote transfer opens its own FTP connection).
   # Default: 4
   parallel_post_downloaders: 4
 
@@ -2292,6 +2576,128 @@ monitored_links:
   # Enable the monitored links polling worker.
   # Default: false
   enable: false
+
+# ------------------------------------------------------------------------------
+# Contextual Extractor (manga-extractor Integration)
+# External REST API integration for extracting page and archive metrics
+# (panels, speech bubbles, dialogue density, OCR transcripts, spreads, color).
+# ------------------------------------------------------------------------------
+manga_extractor:
+  # Enable integration with the external manga-extractor service.
+  # Default: false
+  enable: false
+
+  # Base URL of the manga-extractor HTTP server.
+  # Default: 'http://localhost:8000'
+  url: "http://localhost:8000"
+
+  # Optional authentication token / password required by the manga-extractor service.
+  # When configured, requests will include 'Authorization: Bearer <auth_token>'.
+  # Default: ''
+  auth_token: ""
+
+  # Automatically enqueue contextual extraction when a new archive is ingested.
+  # Default: false
+  run_on_new_archive: false
+
+  # Maximum time (in seconds) to wait for a manga-extractor job to finish.
+  # Default: 600.0
+  timeout: 600.0
+
+  # Polling interval (in seconds) when checking job status.
+  # Default: 2.0
+  poll_interval: 2.0
+
+  # Default profile name triggered by the main "Extract Context" button.
+  # Default: default
+  default_profile: default
+
+  # Profile name to use when extraction runs automatically in the background (e.g. on new archive ingestion).
+  # Default: default
+  background_profile: default
+
+  # Named configuration profiles for request parameters and storage rules.
+  # Define one or more profiles. The default profile is triggered by the main button,
+  # and all configured profiles appear as options in the dropdown next to the button.
+  profiles:
+    default:
+      name: "Default (Full)"
+      description: "Full contextual extraction including speech bubbles, panel layout, and OCR transcript."
+      request_config:
+        # Extraction preset ('quick', 'layout', 'stats', 'full').
+        # Default: full
+        preset: full
+
+        # Optional explicit feature list overriding preset (leave empty to use preset).
+        # Default: []
+        features: []
+
+        # Language hint for OCR ('auto' derives from archive language tags, or 'ja', 'en', 'zh', 'ko').
+        # Default: auto
+        language_hint: auto
+
+        # Detector backend ('default' or 'comic_text_detector').
+        # Default: default
+        detector_backend: default
+
+        # Optional max image dimension for OCR downscaling (null uses service default).
+        # Default: null
+        ocr_max_dimension: null
+
+        # Optional CTC word-space probability threshold (0.01-0.50, default 0.04) for compressed horizontal text in vertical manga bubbles.
+        # Default: null
+        ocr_space_threshold: null
+
+        # Allow manga-extractor to use its SHA-256 disk result cache.
+        # Default: true
+        use_cache: true
+
+      # Controls which returned metrics are stored in ItemProperties(tag='manga-extractor').
+      storage_config:
+        # Store gallery/archive-level summary metrics on the Archive record.
+        # Default: true
+        save_archive_summary: true
+
+        # Archive summary fields to store (use ['*'] to store all returned summary fields).
+        archive_fields:
+          - total_pages
+          - spread_pages_count
+          - color_pages_count
+          - total_panels
+          - total_bubbles
+          - total_words
+          - total_characters
+          - average_bubbles_per_page
+          - average_dialogue_density
+          - estimated_reading_time_minutes
+
+        # Store per-page extraction metrics on each Image record.
+        # Default: true
+        save_image_results: true
+
+        # Image result fields to store (supports dot-paths or ['*'] for all fields).
+        image_fields:
+          - is_spread
+          - spread_confidence
+          - color_type
+          - visual_density
+          - panel_count
+          - panel_layout
+          - bubble_count
+          - dialogue_density
+          - word_count
+          - char_count
+          - transcript
+          - bubble_transcripts
+          - japanese_metrics.kanji_count
+          - japanese_metrics.hiragana_count
+          - japanese_metrics.katakana_count
+          - japanese_metrics.kanji_ratio
+          - japanese_metrics.estimated_jlpt_level
+
+        # Prune previously stored 'manga-extractor' fields removed from the above lists on re-extraction.
+        # Default: true
+        prune_removed_fields: true
 
 # ------------------------------------------------------------------------------
 # Per-Provider Settings

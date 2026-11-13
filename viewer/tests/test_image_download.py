@@ -2,16 +2,14 @@ import io
 import os
 import tempfile
 import zipfile
-from unittest.mock import patch
 
-from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.files import File
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from PIL import Image as PImage
 
-from viewer.models import Archive, Image
+from viewer.models import Archive
 from viewer.services.archive_extraction import ArchiveExtractionService
 
 
@@ -307,3 +305,28 @@ class ImageDownloadTests(TestCase):
         finally:
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)
+
+
+class XAccelRedirectQuotingTests(TestCase):
+    def test_thumbnail_x_accel_path_is_percent_encoded(self):
+        from django.contrib.auth import get_user_model
+        from viewer.models import Archive
+
+        from django.conf import settings
+
+        name = "images/thumbs/archive_xaccel/my cover é#1.jpg"
+        path = os.path.join(settings.MEDIA_ROOT, name)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        PImage.new("RGB", (4, 4)).save(path, "JPEG")
+        self.addCleanup(lambda: os.path.exists(path) and os.unlink(path))
+
+        user = get_user_model().objects.create_user(username="xaccel", password="pw")
+        archive = Archive.objects.create(title="thumb", public=True, user=user)
+        Archive.objects.filter(pk=archive.pk).update(thumbnail=name)
+
+        response = self.client.get(reverse("viewer:archive-thumb", args=[archive.pk]), HTTP_X_FORWARDED_HOST="example.com")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.headers["X-Accel-Redirect"], "/image/images/thumbs/archive_xaccel/my%20cover%20%C3%A9%231.jpg"
+        )

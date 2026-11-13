@@ -19,7 +19,7 @@ from django.views.decorators.csrf import csrf_exempt
 
 from core.base.types import DataDict
 from core.base.utilities import timestamp_or_zero, str_to_int
-from viewer.models import Archive, Image, UserArchivePrefs
+from viewer.models import Archive, Image, UserArchivePrefs, UserLongLivedToken
 from viewer.utils.actions import event_log
 from viewer.utils.requests import double_check_auth
 from viewer.views.head import archive_filter_keys, filter_archives
@@ -154,7 +154,7 @@ def get_archive_data(data: QueryDict) -> "QuerySet[Archive]":
     return results
 
 
-STATE_MODIFYING_ACTIONS = {"extract_toggle", "extract_archive", "reduce_archive"}
+STATE_MODIFYING_ACTIONS = {"extract_archive", "reduce_archive"}
 
 
 @csrf_exempt
@@ -162,7 +162,10 @@ def api(
     request: HttpRequest, model: str | None = None, obj_id: str | None = None, action: str | None = None
 ) -> HttpResponse:
 
-    authenticated, actual_user = double_check_auth(request)
+    authenticated, actual_user = double_check_auth(
+        request,
+        UserLongLivedToken.SCOPE_WRITE if action in STATE_MODIFYING_ACTIONS else UserLongLivedToken.SCOPE_READ,
+    )
 
     if model == "archive" and obj_id is not None:
         try:
@@ -208,39 +211,7 @@ def api(
                     content_type="application/json; charset=utf-8",
                 )
 
-            if action == "extract_toggle":
-                try:
-                    if actual_user and actual_user.has_perm("viewer.expand_archive"):
-                        with transaction.atomic():
-                            archive = Archive.objects.select_for_update().get(pk=archive_id)
-                            archive.extract_toggle()
-                            event_action = "EXPAND_ARCHIVE" if archive.extracted else "REDUCE_ARCHIVE"
-                            event_log(actual_user, event_action, content_object=archive, result="success")
-                    else:
-                        return HttpResponse(
-                            json.dumps({"result": "Admin only action."}), content_type="application/json; charset=utf-8"
-                        )
-                except Archive.DoesNotExist:
-                    return HttpResponseNotFound(
-                        json.dumps({"result": "Archive does not exist."}),
-                        content_type="application/json; charset=utf-8",
-                    )
-
-                response = json.dumps(
-                    {
-                        "result": "ok",
-                        "change": {
-                            "field": "extracted",
-                            "value": archive.extracted,
-                        },
-                    }
-                )
-                http_response = HttpResponse(response, content_type="application/json; charset=utf-8")
-                http_response["Warning"] = '299 - "extract_toggle is deprecated due to race conditions. Use extract_archive or reduce_archive instead."'
-                http_response["Deprecation"] = "true"
-                return http_response
-
-            elif action == "extract_archive":
+            if action == "extract_archive":
                 try:
                     if actual_user and actual_user.has_perm("viewer.expand_archive"):
                         with transaction.atomic():

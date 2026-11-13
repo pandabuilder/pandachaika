@@ -1,74 +1,47 @@
 import base64
 import io
-import itertools
 import json
 import logging
-import multiprocessing
 import os
-import re
 import shutil
-import subprocess
-import time
 import typing
 import uuid
-import warnings
 import zipfile
 import zlib
-from collections import Counter, defaultdict
-from concurrent.futures import ProcessPoolExecutor
-from datetime import date, datetime, timedelta, timezone
+from collections import Counter
+from datetime import timezone
 from operator import itemgetter
-from os.path import basename, join as pjoin
-from tempfile import NamedTemporaryFile, mkdtemp
-from urllib.parse import quote, urlparse
+from os.path import join as pjoin
+from urllib.parse import quote
 
 import elasticsearch
 from PIL import Image as PImage
-from PIL import ImageFile, ImageOps
-import requests
+from PIL import ImageFile
 from django.conf import settings
 from django.contrib.auth.models import User
-from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.postgres.indexes import GinIndex
-from django.core.exceptions import ValidationError
-from django.core.files import File
-from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models, transaction
-from django.db.models import CharField, Count, F, Q, QuerySet, Value
-from django.db.models.functions import Concat, Replace
-from django.db.models.signals import post_delete
-from django.dispatch import receiver
+from django.db.models import Count, F, Q, QuerySet
 from django.http import HttpRequest
-from django.templatetags.static import static
 from django.urls import reverse
 import django.utils.timezone as django_tz
 from django.utils.translation import gettext_lazy as _
 from simple_history.models import HistoricalRecords
 
-from core.base.comparison import get_list_closer_text_from_list
-from core.base.image_ops import img_to_thumbnail
 from core.base.tag_logic import ArchiveTagsComparer
-from core.base.types import ArchiveGenericFile, ArchiveStatisticsCalculator, DataDict, GalleryData
+from core.base.types import ArchiveGenericFile, DataDict
 from core.base.utilities import (
-    available_filename,
     calc_crc32,
     check_and_convert_to_zip,
-    clean_title,
-    file_matches_any_filter,
-    get_dict_allowed_fields,
     get_images_from_zip,
-    get_title_from_path,
     get_zip_fileinfo,
     get_zip_filesize,
     hamming_distance,
     replace_illegal_name,
-    request_with_retries,
-    sha1_from_file_object,
 )
-from viewer.models.common import EMPTY_TITLE, IMAGE_PHASH_BLACK, IMAGE_PHASH_WHITE, ItemProperties, SpacedSearch, fs
+from viewer.models.common import EMPTY_TITLE, IMAGE_PHASH_BLACK, IMAGE_PHASH_WHITE, ItemProperties, fs
 from viewer.models.gallery import Gallery
-from viewer.models.matching import ArchiveMatches
 from viewer.models.tag import SortedTagList, Tag
 from viewer.services import CompareObjectsService
 from viewer.utils import image_processing
@@ -76,7 +49,7 @@ from viewer.utils.tags import sort_tags, sort_tags_str
 
 if typing.TYPE_CHECKING:
     from core.base.setup import CloningImageToolSettings
-    from viewer.models.wanted import FoundWantedImageOnArchive, WantedImage
+    from viewer.models.wanted import WantedImage
 
 logger = logging.getLogger(__name__)
 
@@ -147,26 +120,6 @@ class ArchiveManager(models.Manager["Archive"]):
 
     def filter_non_existent(self, root: str, **kwargs: typing.Any) -> list["Archive"]:
         return self.get_queryset().filter_non_existent(root, **kwargs)
-
-    def filter_by_dl_remote(self) -> ArchiveQuerySet:
-        from .events import DownloadEvent
-
-        qs = self.get_queryset().filter(
-            Q(crc32="") & (Q(match_type__startswith="torrent") | Q(match_type__startswith="hath")) & Q(binned=False)
-        )
-        dead_archive_ids = (
-            DownloadEvent.objects.filter(
-                Q(status__in=[DownloadEvent.Status.FAILED, DownloadEvent.Status.CANCELLED]) | Q(failed=True),
-                archive__isnull=False,
-            )
-            .exclude(
-                archive__in=DownloadEvent.objects.filter(completed=False)
-                .exclude(status__in=[DownloadEvent.Status.FAILED, DownloadEvent.Status.CANCELLED])
-                .values("archive_id")
-            )
-            .values_list("archive_id", flat=True)
-        )
-        return qs.exclude(id__in=dead_archive_ids)
 
     def filter_by_missing_file_info(self) -> ArchiveQuerySet:
         return self.get_queryset().filter(crc32="")
@@ -381,6 +334,7 @@ class Archive(models.Model):
             ("mark_similar_archive", "Can run the similar Archives process"),
             ("read_archive_change_log", "Can read the Archive change log"),
             ("modify_archive_tools", "Can use tools that modify the underlying file"),
+            ("extract_contextual_info", "Can extract contextual information"),
         )
 
         indexes = [
@@ -398,6 +352,20 @@ class Archive(models.Model):
                 "binned",
                 name="archive_pub2_binned",
             ),
+            models.Index(
+                "binned",
+                "public",
+                F("public_date").desc(nulls_last=True),
+                name="archive_binned_pub_date_idx",
+            ),
+            models.Index(
+                "binned",
+                "public",
+                F("create_date").desc(nulls_last=True),
+                name="archive_binned_create_idx",
+            ),
+            models.Index(fields=["source_type"], name="archive_source_type_idx"),
+            models.Index(fields=["reason"], name="archive_reason_idx"),
             GinIndex(
                 fields=["title"],
                 name="archive_title_trgm_gin",
@@ -764,18 +732,6 @@ class Archive(models.Model):
 
         ArchiveExtractionService.extract_delete(self)
 
-    def extract_toggle(self, resized=True):
-        """Deprecated: Use explicit extract() or reduce() to avoid race conditions."""
-        warnings.warn(
-            "Archive.extract_toggle is deprecated due to race conditions. Use explicit extract() or reduce() instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        if self.extracted:
-            return self.reduce()
-        else:
-            return self.extract(resized=resized)
-
     def reduce(self) -> bool:
         from viewer.services.archive_extraction import ArchiveExtractionService
 
@@ -785,6 +741,15 @@ class Archive(models.Model):
         from viewer.services.archive_extraction import ArchiveExtractionService
 
         return ArchiveExtractionService.extract(self, resized=resized, skip_zip_check=skip_zip_check)
+
+    def extract_contextual_info(self, settings_override: typing.Any = None, profile: str | None = None) -> bool:
+        from viewer.services.archive_contextual_extractor import ArchiveContextualExtractorService
+
+        return ArchiveContextualExtractorService.extract_for_archive(
+            self,
+            settings_override=settings_override,
+            profile=profile,
+        )
 
     def generate_image_set(self, force: bool = False, ignore_files: bool = False, skip_zip_check: bool = False) -> bool:
 
@@ -1017,62 +982,42 @@ class Archive(models.Model):
         return True
 
     def generate_possible_matches(
-        self, cutoff: float = 0.4, max_matches: int = 20, clear_title: bool = False, provider_filter: str = ""
+        self,
+        cutoff: float = 0.4,
+        max_matches: int = 20,
+        clear_title: bool = False,
+        provider_filter: str = "",
+        auto_link: bool = False,
+        auto_link_cutoff: float | None = None,
     ) -> None:
+        """Offline matching against the local galleries.
+
+        Stores the candidates as possible matches (replacing the previous ones), or with auto_link, links the archive
+        to the best candidate when one is good enough.
+        """
         if not self.match_type == "non-match":
             return
 
         if not self.zipped.name:
             return
 
-        galleries_title_id = []
+        from core.matching.engine import MatchingEngine, MatchingOptions
+        from core.matching.types import MatchingMode
 
-        if provider_filter:
-            galleries = Gallery.objects.eligible_for_use(provider__contains=provider_filter)
-        else:
-            galleries = Gallery.objects.eligible_for_use()
-        for title, title_jpn, pk in galleries.values_list("title", "title_jpn", "pk").iterator(chunk_size=5000):
-            if title:
-                galleries_title_id.append((replace_illegal_name(title), pk))
-            if title_jpn:
-                galleries_title_id.append((replace_illegal_name(title_jpn), pk))
-
-        if provider_filter:
-            matchers = settings.PROVIDER_CONTEXT.get_matchers(
-                settings.CRAWLER_SETTINGS, filter_name="{}_title".format(provider_filter), force=True
-            )
-            if matchers:
-                adj_title = matchers[0][0].format_to_compare_title(self.zipped.name)
-            else:
-                adj_title = get_title_from_path(self.zipped.name)
-        else:
-            adj_title = get_title_from_path(self.zipped.name)
-
-        if clear_title:
-            adj_title = clean_title(adj_title)
-
-        similar_list = get_list_closer_text_from_list(adj_title, galleries_title_id, cutoff, max_matches)
-
-        if similar_list is not None:
-
-            self.possible_matches.clear()
-
-            for similar in similar_list:
-                gallery = Gallery.objects.get(pk=similar[1])
-
-                ArchiveMatches.objects.create(
-                    archive=self, gallery=gallery, match_type="title", match_accuracy=similar[2]
-                )
-
-        if self.filesize is None or self.filesize <= 0:
-            return
-        galleries_same_size = Gallery.objects.filter(filesize=self.filesize)
-        if galleries_same_size.exists():
-
-            for similar_gallery in galleries_same_size:
-                gallery = Gallery.objects.get(pk=similar_gallery.pk)
-
-                ArchiveMatches.objects.create(archive=self, gallery=gallery, match_type="size", match_accuracy=1)
+        engine = MatchingEngine(
+            settings.CRAWLER_SETTINGS,
+            MatchingOptions(
+                mode=MatchingMode.OFFLINE,
+                filters=(provider_filter,),
+                cutoff=cutoff,
+                max_matches=max_matches,
+                clean_title=clear_title,
+                clear_previous=True,
+                auto_link=auto_link,
+                auto_link_cutoff=auto_link_cutoff,
+            ),
+        )
+        engine.match_archive(self)
 
     def create_marks_for_similar_archives(self, excluded_archives: list[int] | None = None, use_recycled_archives: bool = False) -> None:
         if self.crc32:
@@ -1767,6 +1712,9 @@ class ArchiveTag(models.Model):
     class Meta:
         verbose_name_plural = "Archive Tags"
         ordering = ["-origin"]
+        indexes = [
+            models.Index(fields=["tag", "archive"], name="archivetag_tag_arch_idx"),
+        ]
 
 
 

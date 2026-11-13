@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
 import re
-import time
 import typing
 from collections import defaultdict
 from collections.abc import Iterable
@@ -10,7 +9,7 @@ from django.db.models import QuerySet
 
 from core.base.parsers import BaseParser
 from core.base.types import GalleryData
-from core.base.utilities import chunks, request_with_retries, construct_request_dict
+from core.base.utilities import chunks, construct_request_dict
 from core.providers.mugimugi.utilities import convert_api_response_text_to_gallery_dicts
 from . import constants
 
@@ -41,15 +40,11 @@ class Parser(BaseParser):
                 )
             )
 
-            # API doesn't say anything about needing to wait between requests, but we wait just in case.
-            if i > 0:
-                time.sleep(self.own_settings.wait_timer)
-
             link = constants.main_page + "/api/" + self.own_settings.api_key + "/?S=getID&ID=" + ",".join(galleries_ids)
 
             request_dict = construct_request_dict(self.settings, self.own_settings)
 
-            response = request_with_retries(
+            response = self.web_request(
                 link,
                 request_dict,
                 post=False,

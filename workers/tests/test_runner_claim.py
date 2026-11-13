@@ -1,20 +1,16 @@
 # -*- coding: utf-8 -*-
-import json
-import uuid
-from datetime import timedelta
 
-import django.utils.timezone as django_tz
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from core.base.parsers import BaseParser
 from core.base.setup import Settings
 from core.workers.webqueue import WebQueue
-from viewer.models import Archive, EventLog, Gallery, GallerySubmitEntry, UserArchivePrefs
+from viewer.models import Archive, Gallery
 from workers import client
-from workers.models import TaskQueue, WorkerProcess
+from workers.models import TaskQueue
 from workers.runner import WorkerRunner
-from workers.serialization import deserialize_settings_options, serialize_settings_options
 
 User = get_user_model()
 
@@ -24,6 +20,12 @@ User = get_user_model()
 class WorkerRunnerClaimTests(TestCase):
 
     def setUp(self):
+        # Job threads log through DatabaseLogHandler on their own autocommit DB connection, so the
+        # StatusLog rows would be committed outside the test transaction and leak into later tests.
+        emit_patcher = patch("django_db_logger.db_log_handler.DatabaseLogHandler.emit")
+        emit_patcher.start()
+        self.addCleanup(emit_patcher.stop)
+        self.user = User.objects.create_user(username="testrunneruser", password="password123")
         self.settings = Settings(load_from_disk=False)
         self.runner = WorkerRunner(self.settings, enable_schedulers=False)
 
@@ -328,5 +330,305 @@ class WorkerRunnerClaimTests(TestCase):
         item = web_queue.queue[0]
         self.assertIn("-wanted", item.args)
         self.assertIn("tag:cat", item.args)
+
+    def test_gallery_data_to_and_from_dict(self):
+        from core.base.types import GalleryData
+        from datetime import datetime, timezone
+
+        posted_time = datetime(2026, 5, 10, 12, 0, 0, tzinfo=timezone.utc)
+        g = GalleryData(
+            gid="99901",
+            provider="panda",
+            token="abc999",
+            link="https://e-hentai.org/g/99901/abc999/",
+            tags=["artist:test", "language:english"],
+            title="Test Serialization",
+            posted=posted_time,
+            filecount=30,
+            filesize=1048576,
+        )
+        g.extra_data["sample_key"] = "sample_value"
+
+        d = g.to_dict()
+        self.assertEqual(d["gid"], "99901")
+        self.assertEqual(d["posted"], posted_time.isoformat())
+
+        reconstructed = GalleryData.from_dict(d)
+        self.assertEqual(reconstructed.gid, g.gid)
+        self.assertEqual(reconstructed.provider, g.provider)
+        self.assertEqual(reconstructed.tags, g.tags)
+        self.assertEqual(reconstructed.title, g.title)
+        self.assertEqual(reconstructed.posted, posted_time)
+        self.assertEqual(reconstructed.extra_data.get("sample_key"), "sample_value")
+
+    def test_pass_gallery_data_dispatches_gallery_creator_in_worker_crawler(self):
+        from core.base.parsers import BaseParser
+        from core.base.types import GalleryData
+        from unittest.mock import patch
+
+        settings = Settings(load_from_disk=False)
+        settings.is_worker_process = True
+        settings.current_task_type = "web_crawler"
+        settings.current_task_priority = 5
+
+        parser = BaseParser(settings)
+        parser.name = "panda"
+
+        g1 = GalleryData(gid="1001", provider="panda", link="https://e-hentai.org/g/1001/tok1/", title="G1")
+        g2 = GalleryData(gid="1002", provider="panda", link="https://e-hentai.org/g/1002/tok2/", title="G2")
+
+        with patch.object(parser, "work_gallery_data") as mock_work:
+            parser.pass_gallery_data_to_downloaders([g1, g2], {})
+            # Should have dispatched to queue and NOT run work_gallery_data inline
+            mock_work.assert_not_called()
+
+        # A new task of type gallery_creator should be pending
+        pending = list(TaskQueue.objects.filter(status=TaskQueue.Status.PENDING, task_type="gallery_creator"))
+        self.assertEqual(len(pending), 1)
+        created_task = pending[0]
+        self.assertEqual(created_task.priority, 5)
+        self.assertEqual(created_task.args, [g1.link, g2.link])
+        self.assertEqual(created_task.options["provider"], "panda")
+        self.assertEqual(len(created_task.options["galleries_data"]), 2)
+
+    def test_gallery_creator_executes_inline_without_redispatching(self):
+        from core.base.types import GalleryData
+        from unittest.mock import patch, MagicMock
+
+        settings = Settings(load_from_disk=True)
+        g = GalleryData(gid="2001", provider="panda", link="https://e-hentai.org/g/2001/tok/", title="G2001")
+        task = client.enqueue(
+            args=[g.link],
+            task_type="gallery_creator",
+            override_options={"provider": "panda", "galleries_data": [g.to_dict()]},
+            priority=5,
+        )
+
+        mock_parser = MagicMock()
+        mock_parser.name = "panda"
+
+        with (
+            patch.object(settings.provider_context, "get_parsers", return_value=[mock_parser]),
+            patch.object(TaskQueue, "refresh_from_db"),
+            patch.object(TaskQueue, "save"),
+        ):
+            self.runner.execute_job(task)
+            # pass_gallery_data_to_downloaders should have been called on mock_parser
+            mock_parser.pass_gallery_data_to_downloaders.assert_called_once()
+            called_galleries = mock_parser.pass_gallery_data_to_downloaders.call_args[0][0]
+            self.assertEqual(len(called_galleries), 1)
+            self.assertEqual(called_galleries[0].gid, "2001")
+
+    def test_gallery_creator_does_not_block_subsequent_web_crawler_tasks(self):
+        # 1. Enqueue gallery_creator and a web_crawler task
+        creator_task = client.enqueue(args=["https://example.com/g/1/"], task_type="gallery_creator", priority=10)
+        web_task = client.enqueue(args=["https://example.com/check_wanted/"], task_type="web_crawler", priority=10)
+
+        # 2. Claim gallery_creator task -> it becomes PROCESSING
+        claimed_creator = self.runner.claim_next_job()
+        self.assertEqual(claimed_creator.pk, creator_task.pk)
+        self.assertEqual(claimed_creator.task_type, "gallery_creator")
+
+        # 3. While gallery_creator is PROCESSING, runner CAN immediately claim web_crawler task!
+        claimed_web = self.runner.claim_next_job()
+        self.assertIsNotNone(claimed_web)
+        self.assertEqual(claimed_web.pk, web_task.pk)
+        self.assertEqual(claimed_web.task_type, "web_crawler")
+
+    def test_gallery_creator_discards_already_created_galleries(self):
+        from core.base.types import GalleryData
+        from unittest.mock import patch, MagicMock
+
+        gal = Gallery.objects.create(gid="3001", provider="panda", title="Existing Gallery")
+        Archive.objects.create(gallery=gal, title="Existing Gallery", zipped="galleries/archive_dls/existing.zip", user=self.user)
+
+        settings = Settings(load_from_disk=False)
+        settings.redownload = False
+
+        g = GalleryData(gid="3001", provider="panda", link="https://e-hentai.org/g/3001/tok/", title="Existing Gallery")
+        task = client.enqueue(
+            args=[g.link],
+            task_type="gallery_creator",
+            override_options={"provider": "panda", "galleries_data": [g.to_dict()]},
+            priority=5,
+        )
+
+        mock_parser = MagicMock()
+        mock_parser.name = "panda"
+        mock_parser.discard_gallery_by_internal_checks.side_effect = lambda gallery_id, link: (True, "already added, has archive")
+
+        with (
+            patch.object(settings.provider_context, "get_parsers", return_value=[mock_parser]),
+            patch.object(TaskQueue, "refresh_from_db"),
+            patch.object(TaskQueue, "save"),
+        ):
+            self.runner.execute_job(task)
+            # pass_gallery_data_to_downloaders should NOT be called since all galleries were discarded
+            mock_parser.pass_gallery_data_to_downloaders.assert_not_called()
+
+    def test_gallery_creator_filters_duplicate_keeps_new_gallery(self):
+        from core.base.types import GalleryData
+        from unittest.mock import patch, MagicMock
+
+        settings = Settings(load_from_disk=False)
+        g_existing = GalleryData(gid="3001", provider="panda", link="https://e-hentai.org/g/3001/tok/", title="Existing")
+        g_new = GalleryData(gid="3002", provider="panda", link="https://e-hentai.org/g/3002/tok/", title="New")
+
+        task = client.enqueue(
+            args=[g_existing.link, g_new.link],
+            task_type="gallery_creator",
+            override_options={"provider": "panda", "galleries_data": [g_existing.to_dict(), g_new.to_dict()]},
+            priority=5,
+        )
+
+        mock_parser = MagicMock()
+        mock_parser.name = "panda"
+        mock_parser.discard_gallery_by_internal_checks.side_effect = lambda gallery_id, link: (
+            (True, "already added") if gallery_id == "3001" else (False, "new gallery")
+        )
+
+        with (
+            patch.object(settings.provider_context, "get_parsers", return_value=[mock_parser]),
+            patch.object(TaskQueue, "refresh_from_db"),
+            patch.object(TaskQueue, "save"),
+        ):
+            self.runner.execute_job(task)
+            # pass_gallery_data_to_downloaders should be called ONLY with g_new
+            mock_parser.pass_gallery_data_to_downloaders.assert_called_once()
+            called_galleries = mock_parser.pass_gallery_data_to_downloaders.call_args[0][0]
+            self.assertEqual(len(called_galleries), 1)
+            self.assertEqual(called_galleries[0].gid, "3002")
+
+    def test_chaika_gallery_data_to_and_from_dict(self):
+        from core.base.types import GalleryData
+        from core.providers.chaika.utilities import ChaikaGalleryData
+        from datetime import datetime, timezone
+
+        posted_time = datetime(2026, 5, 10, 12, 0, 0, tzinfo=timezone.utc)
+        archive_entry = {
+            "link": "https://panda.chaika.moe/archive/22814/download/",
+            "source": "fuck_sub",
+            "reason": "fuck_sub",
+        }
+        g = ChaikaGalleryData(
+            gid="hentai/test-chaika",
+            provider="fakku",
+            link="https://www.fakku.net/hentai/test-chaika",
+            title="Test Chaika",
+            posted=posted_time,
+            archives=[archive_entry],
+            temp_archive=archive_entry,
+        )
+
+        d = g.to_dict()
+        self.assertEqual(d["temp_archive"], archive_entry)
+        self.assertEqual(d["archives"], [archive_entry])
+        self.assertEqual(d["_gallery_data_class"], "core.providers.chaika.utilities.ChaikaGalleryData")
+
+        reconstructed = GalleryData.from_dict(d)
+        self.assertIsInstance(reconstructed, ChaikaGalleryData)
+        self.assertEqual(reconstructed.temp_archive, archive_entry)
+        self.assertEqual(reconstructed.archives, [archive_entry])
+        self.assertEqual(reconstructed, g)
+
+        # Backwards compatibility: dicts serialized without _gallery_data_class still reconstruct ChaikaGalleryData
+        legacy_dict = dict(d)
+        legacy_dict.pop("_gallery_data_class")
+        reconstructed_legacy = GalleryData.from_dict(legacy_dict)
+        self.assertIsInstance(reconstructed_legacy, ChaikaGalleryData)
+        self.assertEqual(reconstructed_legacy.temp_archive, archive_entry)
+
+    def test_chaika_crawl_and_gallery_creator_preserves_temp_archive_and_queues_download(self):
+        import tempfile
+        from core.providers.chaika.parsers import Parser as ChaikaParser
+        from core.providers.chaika.downloaders import PandaBackupHttpFileDownloader
+        from core.base.setup_utilities import GeneralUtils
+        from viewer.models import DownloadEvent
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings = Settings(load_from_disk=True)
+            settings.MEDIA_ROOT = tmpdir
+            settings.archive_user = self.user
+            settings.is_worker_process = True
+            settings.current_task_type = "web_crawler"
+            settings.current_task_priority = 5
+            settings.dispatch_gallery_creation = True
+            settings.queue_archive_downloads = True
+
+            parser = ChaikaParser(settings)
+            parser.general_utils = GeneralUtils(settings)
+            parser.downloaders = [(PandaBackupHttpFileDownloader(settings, parser.general_utils), 1)]
+
+            api_payload = [
+                {
+                    "gid": "90001",
+                    "provider": "chaika",
+                    "link": "https://panda.chaika.moe/gallery/90001/",
+                    "title": "Chaika Multi-Archive Test",
+                    "title_jpn": "",
+                    "category": "Manga",
+                    "tags": ["language:english"],
+                    "posted": 1700000000,
+                    "filecount": 10,
+                    "filesize": 12345,
+                    "thumbnail": "",
+                    "thumbnail_url": "",
+                    "archives": [
+                        {
+                            "link": "https://panda.chaika.moe/archive/90001/download/",
+                            "source": "chaika_src",
+                            "reason": "chaika_reason_1",
+                        },
+                        {
+                            "link": "https://panda.chaika.moe/archive/90002/download/",
+                            "source": "chaika_src",
+                            "reason": "chaika_reason_2",
+                        },
+                    ],
+                }
+            ]
+
+            with patch.object(parser, "fetch_gallery_dicts_from_link", return_value=api_payload):
+                parser.crawl_urls(["https://panda.chaika.moe/gallery/90001/"])
+
+            pending = list(TaskQueue.objects.filter(status=TaskQueue.Status.PENDING, task_type="gallery_creator"))
+            self.assertEqual(len(pending), 1)
+            creator_task = pending[0]
+            self.assertEqual(len(creator_task.options["galleries_data"]), 2)
+            self.assertEqual(
+                creator_task.options["galleries_data"][0]["temp_archive"]["link"],
+                "https://panda.chaika.moe/archive/90001/download/",
+            )
+            self.assertEqual(
+                creator_task.options["galleries_data"][1]["temp_archive"]["link"],
+                "https://panda.chaika.moe/archive/90002/download/",
+            )
+
+            # Now execute the dispatched gallery_creator task via WorkerRunner
+            exec_settings = Settings(load_from_disk=True)
+            exec_settings.MEDIA_ROOT = tmpdir
+            exec_settings.archive_user = self.user
+            exec_settings.queue_archive_downloads = True
+            runner = WorkerRunner(exec_settings, enable_schedulers=False)
+
+            with (
+                patch.object(TaskQueue, "refresh_from_db"),
+                patch.object(TaskQueue, "save"),
+            ):
+                runner.execute_job(creator_task)
+
+            archives = list(Archive.objects.filter(gallery__gid="90001").order_by("reason"))
+            self.assertEqual(len(archives), 2)
+            self.assertEqual(archives[0].reason, "chaika_reason_1")
+            self.assertEqual(archives[1].reason, "chaika_reason_2")
+            self.assertNotEqual(archives[0].zipped.name, archives[1].zipped.name)
+
+            events = list(DownloadEvent.objects.filter(archive__in=archives).order_by("download_url"))
+            self.assertEqual(len(events), 2)
+            self.assertEqual(events[0].status, DownloadEvent.Status.QUEUED)
+            self.assertEqual(events[0].download_url, "https://panda.chaika.moe/archive/90001/download/")
+            self.assertEqual(events[1].status, DownloadEvent.Status.QUEUED)
+            self.assertEqual(events[1].download_url, "https://panda.chaika.moe/archive/90002/download/")
+
 
 

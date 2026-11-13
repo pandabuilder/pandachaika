@@ -3,7 +3,6 @@ import json
 import re
 from json import JSONDecodeError
 from typing import Any
-from collections.abc import ItemsView
 
 from django import template
 from django.template import RequestContext
@@ -350,7 +349,10 @@ ARCHIVE_INCLUDED_FIELDS = (
 
 @register.filter
 def changes_archive_delta(new_record):
-    prev_record = new_record.prev_record
+    if hasattr(new_record, "cached_prev_record"):
+        prev_record = new_record.cached_prev_record
+    else:
+        prev_record = new_record.prev_record
     if prev_record is None:
         return []
     delta = new_record.diff_against(prev_record, included_fields=ARCHIVE_INCLUDED_FIELDS)
@@ -396,7 +398,10 @@ GALLERY_PUBLIC_INCLUDED_FIELDS = (
 
 @register.filter
 def changes_gallery_delta(new_record, is_authenticated=False):
-    prev_record = new_record.prev_record
+    if hasattr(new_record, "cached_prev_record"):
+        prev_record = new_record.cached_prev_record
+    else:
+        prev_record = new_record.prev_record
     if prev_record is None:
         return []
     delta = new_record.diff_against(
@@ -452,6 +457,23 @@ def format_json(maybe_json: str | None) -> str:
 @register.filter
 def escape_colon(word: str):
     return word.replace(":", "%3A")
+
+
+@register.filter
+def json_list(value: Any) -> list[Any] | None:
+    """Parse JSON string into a list, or return value if already a list."""
+    if isinstance(value, list):
+        return value
+    if not value or not isinstance(value, str):
+        return None
+    val_str = value.strip()
+    if not val_str.startswith("["):
+        return None
+    try:
+        data = json.loads(val_str)
+        return data if isinstance(data, list) else None
+    except (ValueError, TypeError, JSONDecodeError):
+        return None
 
 
 @register.filter

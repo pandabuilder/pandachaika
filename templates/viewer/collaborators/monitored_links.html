@@ -89,6 +89,16 @@
                         {% if edit_form.frequency.errors %}<div class="text-danger small">{{ edit_form.frequency.errors }}</div>{% endif %}
                     </div>
                     <div class="col-md-3">
+                        <div class="form-check">
+                            {{ edit_form.separate_frequencies }}
+                            <label class="form-check-label" for="id_separate_frequencies" title="{{ edit_form.separate_frequencies.help_text }}"><strong>Separate frequencies</strong></label>
+                        </div>
+                        <label class="form-label" for="id_capture_frequency"><strong>Capture frequency</strong> (e.g. 01:00:00)</label>
+                        {{ edit_form.capture_frequency }}
+                        {% if edit_form.capture_frequency.errors %}<div class="text-danger small">{{ edit_form.capture_frequency.errors }}</div>{% endif %}
+                        <div class="form-text text-muted">Frequency above then only processes the captured links.</div>
+                    </div>
+                    <div class="col-md-3">
                         <label class="form-label" for="id_priority"><strong>Priority</strong> (default 10)</label>
                         {{ edit_form.priority }}
                         {% if edit_form.priority.errors %}<div class="text-danger small">{{ edit_form.priority.errors }}</div>{% endif %}
@@ -269,7 +279,12 @@
               {{ monitored_link.provider.slug|default:"-" }}
             </td>
             <td>
-              <code>{{ monitored_link.frequency }}</code>
+              {% if monitored_link.uses_separate_frequencies %}
+                  <div title="Interval to capture new links from the pages/feeds">Capture: <code>{{ monitored_link.capture_frequency }}</code></div>
+                  <div title="Interval to process the captured links (API, comparison, downloads)">Process: <code>{{ monitored_link.frequency }}</code></div>
+              {% else %}
+                  <code>{{ monitored_link.frequency }}</code>
+              {% endif %}
             </td>
             <td>
               <span class="badge bg-secondary">{{ monitored_link.priority }}</span>

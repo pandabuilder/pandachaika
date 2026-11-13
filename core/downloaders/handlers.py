@@ -7,6 +7,8 @@ import typing
 from tempfile import mkdtemp
 from typing import Any
 
+from core.base.cancellation import ping_activity
+from core.base.gallery_sync import sync_gallery_db_entry
 from core.base.setup_utilities import GeneralUtils
 from core.base.utilities import (
     replace_illegal_name,
@@ -16,10 +18,10 @@ from core.base.utilities import (
     calc_crc32,
 )
 from core.base.types import GalleryData, TorrentClient, DataDict, ProviderSettings
+from viewer.models import Gallery, Archive, WantedGallery, DownloadEvent
 
 if typing.TYPE_CHECKING:
     from core.base.setup import Settings
-    from viewer.models import Gallery, Archive, WantedGallery, DownloadEvent
 
 logger = logging.getLogger(__name__)
 
@@ -73,107 +75,15 @@ class BaseDownloader[T_ProviderSettings: ProviderSettings](metaclass=Meta):
         pass
 
     def update_gallery_db(self) -> None:
-        if not self.original_gallery or not self.settings.gallery_model:
+        if not self.original_gallery:
             return
-        gallery_model = self.settings.gallery_model
-        if self.settings.keep_dl_type and self.original_gallery.dl_type is not None:
-            self.original_gallery.dl_type = None
-        if self.type == "submit":
-            self.original_gallery.origin = gallery_model.OriginChoices.ORIGIN_SUBMITTED
-        if self.no_metadata:
-            self.original_gallery.status = gallery_model.StatusChoices.NO_METADATA
-        if self.settings.gallery_reason:
-            self.original_gallery.reason = self.settings.gallery_reason
-        self.gallery_db_entry = gallery_model.objects.update_or_create_from_values(self.original_gallery)
-        if self.gallery_db_entry:
-            self.gallery_db_entry.schedule_index_update()
-
-            if self.settings.link_child is not None:
-                child_gallery = gallery_model.objects.filter(
-                    gid=self.settings.link_child, provider=self.gallery_db_entry.provider
-                ).first()
-                if child_gallery:
-                    child_gallery.parent_gallery = self.gallery_db_entry
-                    child_gallery.save()
-
-            if self.settings.link_newer is not None:
-                newer_gallery = gallery_model.objects.filter(
-                    gid=self.settings.link_newer, provider=self.gallery_db_entry.provider
-                ).first()
-                if newer_gallery:
-                    newer_gallery.first_gallery = self.gallery_db_entry
-                    newer_gallery.save()
-
-            # If we are updating a gallery's metadata, and we get a new tag that would have been rejected,
-            # mark the archive. Do the same for a wanted match.
-            wanted_invalidated: list["WantedGallery"] = []
-            if self.settings.update_metadata_mode:
-                banned_result, banned_reasons = self.general_utils.discard_by_gallery_data(
-                    self.gallery_db_entry.tag_list(), force_check=True
-                )
-                if self.settings.recheck_wanted_on_update and self.settings.wanted_gallery_model:
-                    wanted_found = self.settings.wanted_gallery_model.objects.filter(
-                        foundgallery__gallery=self.gallery_db_entry
-                    )
-
-                    rematch_wanted = self.gallery_db_entry.match_against_wanted_galleries(
-                        wanted_filters=wanted_found, skip_already_found=False
-                    )
-
-                    for single_wanted_found in wanted_found:
-                        if single_wanted_found not in rematch_wanted:
-                            wanted_invalidated.append(single_wanted_found)
-
-            else:
-                banned_result, banned_reasons = False, []
-            for archive in self.gallery_db_entry.archive_set.all():
-                if archive.gallery:
-                    archive.set_titles_from_gallery(archive.gallery)
-
-                    if self.settings.recheck_wanted_on_update and self.settings.archive_manage_entry_model:
-
-                        for single_wanted_invalidated in wanted_invalidated:
-                            mark_comment = (
-                                "The refreshed Gallery metadata invalidates the "
-                                "previously accepted WantedGallery: (special-link):({})({})"
-                            ).format(single_wanted_invalidated.title, single_wanted_invalidated.get_absolute_url())
-
-                            if not self.settings.archive_manage_entry_model.objects.filter(
-                                archive=archive, mark_reason="invalidated_wanted", mark_comment=mark_comment
-                            ).exists():
-                                manager_entry, _ = self.settings.archive_manage_entry_model.objects.update_or_create(
-                                    archive=archive,
-                                    mark_reason="invalidated_wanted",
-                                    mark_comment=mark_comment,
-                                    defaults={
-                                        "mark_priority": 5.0,
-                                        "mark_check": True,
-                                        "origin": self.settings.archive_manage_entry_model.ORIGIN_SYSTEM,
-                                    },
-                                )
-
-                    archive_banned_result: bool = False
-
-                    if banned_result:
-                        archive_banned_result, archive_banned_reasons = self.general_utils.discard_by_gallery_data(
-                            archive.tag_list(), force_check=True
-                        )
-
-                    archive.set_tags_from_gallery(archive.gallery)
-
-                    if banned_result and not archive_banned_result and self.settings.archive_manage_entry_model:
-                        mark_comment = "The refreshed Gallery has added banned data:\n{}".format(banned_reasons)
-
-                        manager_entry, _ = self.settings.archive_manage_entry_model.objects.update_or_create(
-                            archive=archive,
-                            mark_reason="banned_data",
-                            defaults={
-                                "mark_comment": mark_comment,
-                                "mark_priority": 5.0,
-                                "mark_check": True,
-                                "origin": self.settings.archive_manage_entry_model.ORIGIN_SYSTEM,
-                            },
-                        )
+        self.gallery_db_entry = sync_gallery_db_entry(
+            self.settings,
+            self.general_utils,
+            self.original_gallery,
+            downloader_type=self.type,
+            no_metadata=self.no_metadata,
+        )
 
     def should_queue_archive_download(self, provider_settings: Any | None = None) -> bool:
         target_settings = provider_settings or self.own_settings
@@ -244,8 +154,6 @@ class BaseDownloader[T_ProviderSettings: ProviderSettings](metaclass=Meta):
         download_url: str = "",
         request_options: dict[str, Any] | None = None,
     ) -> "DownloadEvent | None":
-        if not self.settings.download_event_model:
-            return None
         if not total_size and archive and archive.filesize:
             total_size = archive.filesize
 
@@ -266,7 +174,7 @@ class BaseDownloader[T_ProviderSettings: ProviderSettings](metaclass=Meta):
         if request_options is not None:
             kwargs["request_options"] = request_options
 
-        download_event = self.settings.download_event_model(**kwargs)
+        download_event = DownloadEvent(**kwargs)
 
         download_event.save()
 
@@ -289,17 +197,9 @@ class BaseDownloader[T_ProviderSettings: ProviderSettings](metaclass=Meta):
 
         self.original_gallery.dl_type = self.type
         activity_cb = getattr(self.settings, "activity_callback", None)
-        if callable(activity_cb):
-            try:
-                activity_cb()
-            except Exception:
-                pass
+        ping_activity(activity_cb)
         self.start_download()
-        if callable(activity_cb):
-            try:
-                activity_cb()
-            except Exception:
-                pass
+        ping_activity(activity_cb)
 
         if self.return_code == 0:
             return
@@ -398,7 +298,8 @@ class BaseInfoDownloader(BaseDownloader):
 
     def start_download(self) -> None:
 
-        logger.info("Adding {} gallery, without downloading an archive".format(self.provider))
+        if not self.settings.silent_processing:
+            logger.info("Adding {} gallery, without downloading an archive".format(self.provider))
 
         self.return_code = 1
 
@@ -419,7 +320,7 @@ class BaseFakeDownloader(BaseDownloader):
 
     def update_archive_db(self, default_values: DataDict) -> "Archive | None":
 
-        if not self.gallery or not self.settings.archive_model:
+        if not self.gallery:
             return None
 
         values: DataDict = {
@@ -435,7 +336,7 @@ class BaseFakeDownloader(BaseDownloader):
         if self.gallery.filecount is not None:
             values["filecount"] = self.gallery.filecount
         default_values.update(values)
-        return self.settings.archive_model.objects.create_by_values_and_gid(
+        return Archive.objects.create_by_values_and_gid(
             default_values,
             (self.gallery.gid, self.gallery.provider),
         )
@@ -603,7 +504,7 @@ class BaseGalleryDLDownloader(BaseDownloader):
 
     def update_archive_db(self, default_values: DataDict) -> "Archive | None":
 
-        if not self.gallery or not self.settings.archive_model:
+        if not self.gallery:
             return None
 
         values = {
@@ -615,6 +516,6 @@ class BaseGalleryDLDownloader(BaseDownloader):
             "filecount": self.gallery.filecount,
         }
         default_values.update(values)
-        return self.settings.archive_model.objects.update_or_create_by_values_and_gid(
+        return Archive.objects.update_or_create_by_values_and_gid(
             default_values, (self.gallery.gid, self.gallery.provider), zipped=self.gallery.filename
         )

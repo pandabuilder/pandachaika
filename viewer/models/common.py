@@ -1,3 +1,4 @@
+import json
 import typing
 from PIL import Image as PImage
 from PIL import ImageFile
@@ -67,7 +68,20 @@ class ItemProperties(models.Model):
     content_object = GenericForeignKey("content_type", "object_id")
     name = models.CharField(max_length=50)
     tag = models.SlugField()
-    value = models.CharField(max_length=100)
+    value = models.TextField(default="", blank=True)
+
+    @property
+    def parsed_json(self) -> typing.Any:
+        """Attempt to decode JSON value if string starts with '[' or '{'."""
+        if not self.value or not isinstance(self.value, str):
+            return None
+        val_str = self.value.strip()
+        if not (val_str.startswith("[") or val_str.startswith("{")):
+            return None
+        try:
+            return json.loads(val_str)
+        except (ValueError, TypeError):
+            return None
 
 
 

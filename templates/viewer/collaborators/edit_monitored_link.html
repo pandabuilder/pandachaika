@@ -64,6 +64,23 @@
 
                     <div class="row mb-3">
                         <div class="col-md-4">
+                            <div class="form-check">
+                                {{ edit_form.separate_frequencies }}
+                                <label class="form-check-label" for="id_separate_frequencies"><strong>Separate frequencies</strong></label>
+                            </div>
+                            {% if edit_form.separate_frequencies.errors %}<div class="text-danger small">{{ edit_form.separate_frequencies.errors }}</div>{% endif %}
+                            <div class="form-text text-muted">{{ edit_form.separate_frequencies.help_text }}</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="id_capture_frequency"><strong>Capture frequency</strong> (Duration format)</label>
+                            {{ edit_form.capture_frequency }}
+                            {% if edit_form.capture_frequency.errors %}<div class="text-danger small">{{ edit_form.capture_frequency.errors }}</div>{% endif %}
+                            <div class="form-text text-muted">{{ edit_form.capture_frequency.help_text }}</div>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-4">
                             <label class="form-label" for="id_proxy"><strong>Proxy</strong></label>
                             {{ edit_form.proxy }}
                             {% if edit_form.proxy.errors %}<div class="text-danger small">{{ edit_form.proxy.errors }}</div>{% endif %}

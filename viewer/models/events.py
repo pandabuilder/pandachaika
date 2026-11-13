@@ -10,7 +10,6 @@ from django.db.models import QuerySet
 import django.utils.timezone as django_tz
 from django.utils.translation import gettext_lazy as _
 
-from core.base.types import DataDict
 
 
 class EventLog(models.Model):
@@ -93,7 +92,25 @@ class MonitoredLink(models.Model):
     )
     enabled = models.BooleanField(default=False)
     auto_start = models.BooleanField(default=False)
-    frequency = models.DurationField()
+    # When separate_frequencies is off, `frequency` drives the whole pipeline in one go (capture links from the
+    # index/feed pages, then call the API, compare and process). When it is on, `capture_frequency` only drives
+    # the capture of new links (stored as pending ProcessedLinks), and `frequency` drives the processing of the
+    # pending links (API calls, wanted/global filters, downloads).
+    frequency = models.DurationField(
+        help_text=_("Crawl interval. With separate frequencies enabled, this is the interval to process captured links."),
+    )
+    separate_frequencies = models.BooleanField(
+        default=False,
+        help_text=_("Capture new links from the pages/feeds and process them (API, comparison) on separate timers."),
+    )
+    capture_frequency = models.DurationField(
+        blank=True,
+        null=True,
+        default=None,
+        help_text=_("Interval to capture new links from the pages/feeds. Only used with separate frequencies."),
+    )
+    last_capture_run = models.DateTimeField(blank=True, null=True, editable=False)
+    last_process_run = models.DateTimeField(blank=True, null=True, editable=False)
 
     use_limited_wanted_galleries = models.BooleanField(default=False)
     limited_wanted_galleries = models.ManyToManyField("viewer.WantedGallery", blank=True)
@@ -159,6 +176,17 @@ class MonitoredLink(models.Model):
         self.how_long_after_already_seen = value
 
     @property
+    def uses_separate_frequencies(self) -> bool:
+        return bool(self.separate_frequencies and self.capture_frequency)
+
+    @property
+    def shortest_interval(self) -> timedelta:
+        """How often the scheduler needs to wake up for this link."""
+        if self.capture_frequency is not None and self.uses_separate_frequencies:
+            return min(self.frequency, self.capture_frequency)
+        return self.frequency
+
+    @property
     def scheduler_name(self) -> str:
         return f"link_monitor_{self.pk}"
 
@@ -187,10 +215,10 @@ class MonitoredLink(models.Model):
             if workers:
                 for lm in getattr(workers, "timed_link_monitors", []):
                     if lm.monitored_link.pk == self.pk:
-                        lm.start_running(timer=self.frequency.total_seconds(), force_local=True)
+                        lm.start_running(timer=self.shortest_interval.total_seconds(), force_local=True)
                         return
         from workers.models import SchedulerState
-        SchedulerState.request_command(self.scheduler_name, "start", str(self.frequency.total_seconds()))
+        SchedulerState.request_command(self.scheduler_name, "start", str(self.shortest_interval.total_seconds()))
 
     def force_run(self) -> None:
         """Force an immediate execution of this monitored link."""
@@ -230,7 +258,7 @@ class MonitoredLink(models.Model):
             defaults={
                 "display_name": f"MonitoredLink: {self.name}",
                 "schedule_type": "scheduler",
-                "cycle_timer": self.frequency.total_seconds(),
+                "cycle_timer": self.shortest_interval.total_seconds(),
             },
         )
 
@@ -259,9 +287,9 @@ class MonitoredLink(models.Model):
         else:
             if self.enabled:
                 if is_new and self.auto_start:
-                    SchedulerState.request_command(self.scheduler_name, "start", str(self.frequency.total_seconds()))
+                    SchedulerState.request_command(self.scheduler_name, "start", str(self.shortest_interval.total_seconds()))
                 else:
-                    SchedulerState.request_command(self.scheduler_name, "reload", str(self.frequency.total_seconds()))
+                    SchedulerState.request_command(self.scheduler_name, "reload", str(self.shortest_interval.total_seconds()))
             else:
                 SchedulerState.request_command(self.scheduler_name, "stop")
 

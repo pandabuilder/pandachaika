@@ -1,30 +1,5 @@
-import difflib
-
 from core.base.utilities import get_scored_matches
 from core.base.types import GalleryData
-
-
-def get_closer_gallery_title_from_list(
-    original: str, titles: list[tuple[str, str]], cutoff: float
-) -> tuple[str, str] | None:
-
-    compare_titles = []
-    compare_ids = []
-
-    for title in titles:
-        compare_titles.append(title[0])
-        compare_ids.append((title[0], title[1]))
-
-    matches = difflib.get_close_matches(original, list(compare_titles), 1, cutoff)
-    if len(matches) == 0:
-        return None
-    match_title = matches[0]
-
-    for i, compare_title in enumerate(compare_titles):
-        if compare_title == match_title:
-            return compare_ids[i][0], compare_ids[i][1]
-
-    return None
 
 
 def get_list_closer_text_from_list[T](
@@ -78,37 +53,3 @@ def get_list_closer_gallery_titles_from_dict(
                 break
 
     return results
-
-
-class ResultContainer:
-    def __init__(self) -> None:
-        self.match_title: str | None = ""
-        self.match_link: str | None = ""
-        self.match_values: GalleryData | None = None
-
-
-def get_gallery_closer_title_from_gallery_values(
-    original: str, gallery_datas: list[GalleryData], cutoff: float
-) -> ResultContainer:
-
-    result = ResultContainer()
-    compare_titles = []
-    original_index = {}
-
-    for i, gallery_dict in enumerate(gallery_datas):
-        if gallery_dict.title:
-            compare_titles.append(gallery_dict.title)
-            original_index[len(compare_titles) - 1] = i
-
-    matches = difflib.get_close_matches(original, compare_titles, 1, cutoff)
-    if len(matches) == 0:
-        return result
-    result.match_title = str(matches[0])
-
-    for i, compare_title in enumerate(compare_titles):
-        if compare_title == result.match_title:
-            result.match_values = gallery_datas[original_index[i]]
-            result.match_link = gallery_datas[original_index[i]].link
-            gallery_datas[original_index[i]].link = None
-
-    return result

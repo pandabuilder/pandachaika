@@ -1,20 +1,13 @@
-import os
-import ssl
-import subprocess
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch
+from datetime import datetime, timezone
+from unittest.mock import patch
 
-import django.utils.timezone as django_tz
 from django.test import TestCase
 
-from core.base.comparison import get_list_closer_text_from_list
 from core.base.setup import Settings
 from core.base.types import GalleryData
-from core.downloaders.postdownload import PostDownloader
 from core.providers.panda.parsers import Parser as PandaParser
-from core.workers.download_progress import DownloadProgressChecker
-from viewer.models import Archive, DownloadEvent, FoundGallery, Gallery, Image, Provider, Tag, WantedGallery
+from viewer.models import FoundGallery, Gallery, Provider, Tag, WantedGallery
 
 
 
@@ -300,5 +293,65 @@ class WantedGalleryTest(TestCase):
                 wanted_invalidated.append(single_wanted_found)
 
         self.assertEqual(len(wanted_invalidated), 0)
+
+    def test_compare_gallery_with_wanted_filters_batch_logging(self):
+        settings = Settings(load_from_disk=True)
+
+        parser = PandaParser(settings)
+        wanted_galleries = WantedGallery.objects.filter(id=self.test_wanted_gallery1.id)
+
+        gallery_wanted_lists = defaultdict(list)
+        with patch("core.base.parsers.logger") as mock_logger:
+            for i in range(1, 60):
+                g = GalleryData(
+                    title="test wanted gallery",
+                    gid=f"gid_{i}",
+                    provider="panda",
+                    link=f"https://e-hentai.org/g/{i}/token{i}",
+                    tags=["language:english", "artist:suzunomoku"],
+                )
+                parser.compare_gallery_with_wanted_filters(
+                    g, g.link, wanted_galleries, gallery_wanted_lists
+                )
+
+            # First 50 should be logged individually
+            info_messages = [str(call.args[0]) for call in mock_logger.info.call_args_list if call.args]
+            match_logs = [msg for msg in info_messages if "matched filters:" in msg]
+            self.assertEqual(len(match_logs), 50)
+
+            # Message 51 should be suppression notice
+            self.assertTrue(any("Suppressing further per-match log entries" in msg for msg in info_messages))
+
+            # Calling pass_gallery_data_to_downloaders should log summary
+            parser.pass_gallery_data_to_downloaders([], gallery_wanted_lists)
+            summary_messages = [
+                (c.args[0] % c.args[1:] if len(c.args) > 1 else c.args[0])
+                for c in mock_logger.info.call_args_list
+                if c.args
+            ]
+            self.assertTrue(any("WantedGallery matching complete:" in str(msg) for msg in summary_messages))
+
+    def test_compare_gallery_with_wanted_filters_silent_processing(self):
+        settings = Settings(load_from_disk=True)
+        settings.silent_processing = True
+
+        parser = PandaParser(settings)
+        wanted_galleries = WantedGallery.objects.filter(id=self.test_wanted_gallery1.id)
+
+        gallery_wanted_lists = defaultdict(list)
+        with patch("core.base.parsers.logger") as mock_logger:
+            g = GalleryData(
+                title="test wanted gallery",
+                gid="gid_silent",
+                provider="panda",
+                link="https://e-hentai.org/g/123/token123",
+                tags=["language:english", "artist:suzunomoku"],
+            )
+            parser.compare_gallery_with_wanted_filters(
+                g, g.link, wanted_galleries, gallery_wanted_lists
+            )
+            info_messages = [str(call.args[0]) for call in mock_logger.info.call_args_list if call.args]
+            self.assertFalse(any("matched filters:" in msg for msg in info_messages))
+
 
 

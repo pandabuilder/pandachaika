@@ -26,17 +26,6 @@ class ExpApiTests(TestCase):
 
         self.anon_client = Client()
 
-    def test_get_on_extract_toggle_is_deprecated_and_rejected(self):
-        response = self.admin_client.get(f"/r-api/archive/{self.archive.pk}/extract_toggle/")
-        self.assertEqual(response.status_code, 405)
-        self.assertEqual(response["Allow"], "POST")
-        self.assertEqual(response["Deprecation"], "true")
-        self.assertIn("deprecated", response["Warning"])
-
-        data = json.loads(response.content)
-        self.assertEqual(data["result"], "error")
-        self.assertIn("deprecated", data["message"])
-
     def test_get_on_extract_archive_is_deprecated_and_rejected(self):
         response = self.admin_client.get(f"/r-api/archive/{self.archive.pk}/extract_archive/")
         self.assertEqual(response.status_code, 405)
@@ -57,22 +46,6 @@ class ExpApiTests(TestCase):
         data = json.loads(response.content)
         self.assertEqual(data["result"], "error")
         self.assertIn("deprecated", data["message"])
-
-    @patch.object(Archive, "extract_toggle")
-    def test_post_extract_toggle_success(self, mock_toggle):
-        def fake_toggle(self_archive):
-            self_archive.extracted = True
-
-        mock_toggle.side_effect = lambda: fake_toggle(self.archive)
-
-        response = self.admin_client.post(f"/r-api/archive/{self.archive.pk}/extract_toggle/")
-        self.assertEqual(response.status_code, 200)
-        data = json.loads(response.content)
-        self.assertEqual(data["result"], "ok")
-        self.assertEqual(data["change"]["field"], "extracted")
-        self.assertEqual(response["Deprecation"], "true")
-        self.assertIn("deprecated", response["Warning"])
-        mock_toggle.assert_called_once()
 
     @patch.object(Archive, "extract")
     def test_post_extract_archive_success(self, mock_extract):
@@ -128,10 +101,6 @@ class ExpApiTests(TestCase):
         self.assertIn("already reduced", data["message"])
 
     def test_modifying_actions_permission_denied_for_regular_user(self):
-        response = self.regular_client.post(f"/r-api/archive/{self.archive.pk}/extract_toggle/")
-        data = json.loads(response.content)
-        self.assertEqual(data["result"], "Admin only action.")
-
         response = self.regular_client.post(f"/r-api/archive/{self.archive.pk}/extract_archive/")
         data = json.loads(response.content)
         self.assertEqual(data["result"], "error")
@@ -226,20 +195,23 @@ class ExpApiTests(TestCase):
         self.assertEqual(task.args, [self.archive.pk])
         self.assertEqual(task.options.get("resized"), True)
 
-    @patch.object(Archive, "reduce")
-    def test_view_reduce_idempotent(self, mock_reduce):
+    def test_view_reduce_idempotent(self):
+        from workers.models import TaskQueue
+
         self.archive.extracted = True
         self.archive.save()
         response = self.admin_client.get(f"/archive/{self.archive.pk}/reduce/", HTTP_REFERER="/archive/")
         self.assertEqual(response.status_code, 302)
-        mock_reduce.assert_called_once()
+        tasks = TaskQueue.objects.filter(task_type="reduce_worker")
+        self.assertEqual(tasks.count(), 1)
+        self.assertEqual(tasks.first().args, [self.archive.pk])
 
         self.archive.extracted = False
         self.archive.save()
-        mock_reduce.reset_mock()
+        tasks.delete()
         response = self.admin_client.get(f"/archive/{self.archive.pk}/reduce/", HTTP_REFERER="/archive/")
         self.assertEqual(response.status_code, 302)
-        mock_reduce.assert_not_called()
+        self.assertEqual(TaskQueue.objects.filter(task_type="reduce_worker").count(), 0)
 
     @patch.object(Archive, "set_public")
     def test_view_public_idempotent(self, mock_set_public):

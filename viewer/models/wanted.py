@@ -1,42 +1,26 @@
-import io
-import itertools
 import logging
 import os
-import shutil
 import typing
 import uuid
 from collections import Counter, defaultdict
 from datetime import date, datetime
 from os.path import join as pjoin
-from tempfile import NamedTemporaryFile
-from urllib.parse import quote
 
-import elasticsearch
 from PIL import Image as PImage
-from PIL import ImageFile, ImageOps
-import requests
 from django.conf import settings
 from django.contrib.postgres.indexes import GinIndex
-from django.core.files import File
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models import Q, QuerySet
 from django.urls import reverse
 import django.utils.timezone as django_tz
 
-from core.base.comparison import get_list_closer_text_from_list
 from core.base.image_ops import img_to_thumbnail
 from core.base.types import GalleryData
 from core.base.utilities import (
-    clean_title,
-    file_matches_any_filter,
-    hamming_distance,
-    request_with_retries,
     sha1_from_file_object,
 )
-from viewer.models.common import IMAGE_PHASH_BLACK, IMAGE_PHASH_WHITE, fs
-from viewer.models.tag import SortedTagList, Tag
-from viewer.utils import image_processing
+from viewer.models.tag import SortedTagList
 from viewer.utils.elasticsearch import (
     add_gallery_data_to_match_index,
     match_expression_to_wanted_index,

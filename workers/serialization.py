@@ -29,21 +29,17 @@ EXCLUDED_SETTINGS_ATTRIBUTES = {
     "disable_sql_log",
     # Runtime & worker process control
     "is_worker_process",
+    "current_task_type",
+    "current_task_id",
+    "current_task_priority",
     "fatal",
     "cherrypy_auto_restart",
-    "timed_downloader_startup",
     "download_progress_checker_startup",
     "archive_download_queue_startup",
     "webserver",
     # Class attributes / internal contexts
     "provider_context",
     "workers",
-    "gallery_model",
-    "archive_model",
-    "found_gallery_model",
-    "wanted_gallery_model",
-    "archive_manage_entry_model",
-    "download_event_model",
     "activity_callback",
     "cancel_event",
     "is_cancelled",
@@ -292,11 +288,15 @@ def deserialize_settings_options(base_settings: Settings | None, options: dict[s
             v = timedelta(seconds=v)
 
         target_obj = getattr(new_settings, k, None)
-        if target_obj is not None and (hasattr(target_obj, "__slots__") or hasattr(target_obj, "__dict__")) and isinstance(v, dict):
-            for sub_k, sub_v in v.items():
-                if hasattr(target_obj, sub_k):
-                    setattr(target_obj, sub_k, sub_v)
-            continue
+        if target_obj is not None and isinstance(v, dict):
+            if hasattr(target_obj, "update_from_dict") and callable(target_obj.update_from_dict):
+                target_obj.update_from_dict(v)
+                continue
+            if hasattr(target_obj, "__slots__") or hasattr(target_obj, "__dict__"):
+                for sub_k, sub_v in v.items():
+                    if hasattr(target_obj, sub_k):
+                        setattr(target_obj, sub_k, sub_v)
+                continue
 
         if isinstance(v, list):
             setattr(new_settings, k, list(v))

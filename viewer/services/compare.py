@@ -1,6 +1,4 @@
-import io
 import typing
-import zipfile
 
 from PIL import Image as PImage
 from PIL import UnidentifiedImageError

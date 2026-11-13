@@ -9,16 +9,17 @@ import typing
 
 from core.base.types import ProviderSettings
 from core.base.setup_utilities import GeneralUtils
-from core.base.matchers import Matcher
-from core.base.parsers import BaseParser
-from core.downloaders.handlers import BaseDownloader
 
 if typing.TYPE_CHECKING:
     from viewer import models
     from core.base import setup
+    from core.base.matchers import Matcher
+    from core.base.parsers import BaseParser
+    from core.downloaders.handlers import BaseDownloader
 
-
-type AcceptableModules = type[BaseParser] | type[Matcher] | type[BaseDownloader]
+    type AcceptableModules = type[BaseParser] | type[Matcher] | type[BaseDownloader]
+else:
+    type AcceptableModules = typing.Any
 logger = logging.getLogger(__name__)
 
 
@@ -82,6 +83,10 @@ class ProviderContext:
             self.register_provider(module_name)
 
     def register_provider(self, module_name: str) -> None:
+        from core.base.matchers import Matcher
+        from core.base.parsers import BaseParser
+        from core.downloaders.handlers import BaseDownloader
+
         # We just split the module and get their last part
         # Only used by resolver since the others define their provider internally
         provider_name = module_name.split(".")[-1]

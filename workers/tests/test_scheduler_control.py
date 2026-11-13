@@ -1,20 +1,13 @@
 # -*- coding: utf-8 -*-
-import json
-import uuid
 from datetime import timedelta
 
 import django.utils.timezone as django_tz
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from core.base.parsers import BaseParser
 from core.base.setup import Settings
-from core.workers.webqueue import WebQueue
-from viewer.models import Archive, EventLog, Gallery, GallerySubmitEntry, UserArchivePrefs
 from workers import client
-from workers.models import TaskQueue, WorkerProcess
 from workers.runner import WorkerRunner
-from workers.serialization import deserialize_settings_options, serialize_settings_options
 
 User = get_user_model()
 
@@ -103,7 +96,9 @@ class SchedulerStateAndControlTests(TestCase):
 
         runner = WorkerRunner(self.settings, enable_schedulers=True)
         mock_sched = MockScheduler(self.settings)
-        runner.settings.workers.timed_downloader = mock_sched  # Inject into active workers
+        original_checker = runner.settings.workers.download_progress_checker
+        runner.settings.workers.download_progress_checker = mock_sched  # Inject into active workers
+        self.addCleanup(setattr, runner.settings.workers, "download_progress_checker", original_checker)
 
         # Request start
         SchedulerState.request_command("mock_sched", "start", "10")
@@ -127,18 +122,18 @@ class SchedulerStateAndControlTests(TestCase):
         from core.base.setup_utilities import get_thread_status_bool
         from workers.models import SchedulerState
 
-        # Timed downloader not running
+        # Download progress checker not running
         statuses = get_thread_status_bool()
-        self.assertFalse(statuses.get("timed_downloader", False))
+        self.assertFalse(statuses.get("download_progress_checker", False))
 
-        # Mark timed downloader as running in SchedulerState
+        # Mark download progress checker as running in SchedulerState
         SchedulerState.objects.update_or_create(
-            name="timed_downloader",
+            name="download_progress_checker",
             defaults={"is_running": True, "last_heartbeat": django_tz.now()},
         )
 
         statuses_updated = get_thread_status_bool()
-        self.assertTrue(statuses_updated.get("timed_downloader", False))
+        self.assertTrue(statuses_updated.get("download_progress_checker", False))
 
     def test_stats_workers_view_with_processing_task(self):
         from django.test import Client
@@ -180,7 +175,7 @@ class SchedulerStateAndControlTests(TestCase):
 
         # Create SchedulerState with custom cycle timer and worker PID
         SchedulerState.objects.update_or_create(
-            name="post_downloader",
+            name="download_progress_checker",
             defaults={
                 "cycle_timer": 1800.0,
                 "worker_pid": 42424,
@@ -211,7 +206,7 @@ class SchedulerStateAndControlTests(TestCase):
 
         # Create SchedulerState with custom cycle timer and worker PID
         state, _ = SchedulerState.objects.update_or_create(
-            name="post_downloader",
+            name="download_progress_checker",
             defaults={
                 "cycle_timer": 3600.0,
                 "worker_pid": 1337,
@@ -221,18 +216,18 @@ class SchedulerStateAndControlTests(TestCase):
         )
 
         db_workers = self.settings.workers.get_active_initialized_workers_from_db()
-        # Ensure we got SchedulerState instance for post_downloader
-        post_dl = next((w for w in db_workers if getattr(w, "name", "") == "post_downloader" or getattr(w, "thread_name", "") == "post_downloader"), None)
-        self.assertIsNotNone(post_dl)
-        self.assertEqual(getattr(post_dl, "cycle_timer", getattr(post_dl, "timer", 0.0)), 3600.0)
+        # Ensure we got SchedulerState instance for download_progress_checker
+        progress_checker = next((w for w in db_workers if getattr(w, "name", "") == "download_progress_checker" or getattr(w, "thread_name", "") == "download_progress_checker"), None)
+        self.assertIsNotNone(progress_checker)
+        self.assertEqual(getattr(progress_checker, "cycle_timer", getattr(progress_checker, "timer", 0.0)), 3600.0)
 
         # Check get_schedulers_status output
         statuses = get_schedulers_status(db_workers)
-        post_dl_status = next((s for s in statuses if s.name == "post_downloader"), None)
-        self.assertIsNotNone(post_dl_status)
-        self.assertEqual(post_dl_status.worker_pid, 1337)
-        self.assertTrue(post_dl_status.is_running)
-        self.assertIn("3600", post_dl_status.cycle_timer)
+        progress_checker_status = next((s for s in statuses if s.name == "download_progress_checker"), None)
+        self.assertIsNotNone(progress_checker_status)
+        self.assertEqual(progress_checker_status.worker_pid, 1337)
+        self.assertTrue(progress_checker_status.is_running)
+        self.assertIn("3600", progress_checker_status.cycle_timer)
 
         # Ensure in-memory get_active_initialized_workers used by worker runner still returns in-memory workers
         in_memory = self.settings.workers.get_active_initialized_workers()

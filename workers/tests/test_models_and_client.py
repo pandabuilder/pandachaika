@@ -1,19 +1,14 @@
 # -*- coding: utf-8 -*-
-import json
-import uuid
 from datetime import timedelta
 
 import django.utils.timezone as django_tz
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from core.base.parsers import BaseParser
 from core.base.setup import Settings
 from core.workers.webqueue import WebQueue
-from viewer.models import Archive, EventLog, Gallery, GallerySubmitEntry, UserArchivePrefs
 from workers import client
 from workers.models import TaskQueue, WorkerProcess
-from workers.runner import WorkerRunner
 from workers.serialization import deserialize_settings_options, serialize_settings_options
 
 User = get_user_model()
@@ -279,6 +274,71 @@ class WorkersModelAndClientTests(TestCase):
         self.assertTrue(hydrated.non_current_links_as_deleted)
         self.assertEqual(hydrated.downloaders["panda_info"], 10)
         self.assertEqual(getattr(hydrated, "custom_flag"), "test_value")
+
+    def test_enqueue_deduplication(self):
+        """Verify client.enqueue deduplicates active tasks with identical args."""
+        task1 = client.enqueue(
+            args=["https://example.com/dedup_test", "--wanted"],
+            task_type="web_crawler",
+            priority=10,
+        )
+        self.assertEqual(task1.status, TaskQueue.Status.PENDING)
+
+        # Enqueue identical task with higher priority (lower number) -> returns same task and elevates priority
+        task2 = client.enqueue(
+            args=["https://example.com/dedup_test", "--wanted"],
+            task_type="web_crawler",
+            priority=5,
+        )
+        self.assertEqual(task2.pk, task1.pk)
+        task1.refresh_from_db()
+        self.assertEqual(task1.priority, 5)
+
+        # Alias task_type ("webcrawler" vs "web_crawler") should also deduplicate
+        task_alias = client.enqueue(
+            args=["https://example.com/dedup_test", "--wanted"],
+            task_type="webcrawler",
+            priority=8,
+        )
+        self.assertEqual(task_alias.pk, task1.pk)
+
+        # Should still deduplicate when task is PROCESSING
+        task1.status = TaskQueue.Status.PROCESSING
+        task1.save()
+        task3 = client.enqueue(
+            args=["https://example.com/dedup_test", "--wanted"],
+            task_type="web_crawler",
+            priority=3,
+        )
+        self.assertEqual(task3.pk, task1.pk)
+
+        # When deduplicate=False, a new task is created even if active identical task exists
+        task_forced = client.enqueue(
+            args=["https://example.com/dedup_test", "--wanted"],
+            task_type="web_crawler",
+            priority=10,
+            deduplicate=False,
+        )
+        self.assertNotEqual(task_forced.pk, task1.pk)
+        task_forced.delete()
+
+        # When task is COMPLETED, identical args can be enqueued as a new task
+        task1.status = TaskQueue.Status.COMPLETED
+        task1.save()
+        task4 = client.enqueue(
+            args=["https://example.com/dedup_test", "--wanted"],
+            task_type="web_crawler",
+            priority=10,
+        )
+        self.assertNotEqual(task4.pk, task1.pk)
+
+        # Tasks with different args are NOT deduplicated
+        task_diff = client.enqueue(
+            args=["https://example.com/different_url"],
+            task_type="web_crawler",
+            priority=10,
+        )
+        self.assertNotEqual(task_diff.pk, task4.pk)
 
 
 

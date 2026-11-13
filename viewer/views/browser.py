@@ -24,4 +24,7 @@ def directory_parser(request: HttpRequest) -> HttpResponse:
         files = fs.files(directory)
     else:
         files = fs.files(os.path.dirname(directory))
+    if p.get("dirs_only"):
+        # Only folders, for folder pickers.
+        files = [(name, is_dir) for name, is_dir in files if is_dir]
     return HttpResponse(json.dumps((fs.relativepath(directory), files)), content_type="application/json; charset=utf-8")

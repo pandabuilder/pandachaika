@@ -1,45 +1,38 @@
 from functools import reduce
 import json
+from urllib.parse import quote
 import logging
 import operator
 from random import randint
 import re
-import typing
 from typing import Any
 
-from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import EmptyPage, InvalidPage, Paginator
-from django.db.models import Avg, Count, F, Max, Min, Prefetch, Q, QuerySet, Sum
+from django.db.models import Count, F, Prefetch, Q, QuerySet
 from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
 from django.http.request import QueryDict
 from django.shortcuts import redirect, render
 from django.templatetags.static import static
-from django.urls import reverse
 
 from core.base.setup import Settings
-from core.base.types import DataDict
-from viewer.forms import DivErrorList, GallerySearchForm
+from viewer.forms import GallerySearchForm
 from viewer.models import (
     Archive,
-    ArchiveGroup,
     Gallery,
     GalleryMatchGroup,
     GalleryProviderData,
     GalleryQuerySet,
-    Tag,
 )
 from viewer.utils.actions import event_log
 from viewer.utils.functions import gallery_search_results_to_json
 from viewer.utils.general import clean_up_referer, should_use_refined_views
 from viewer.utils.tags import sort_tags
-from viewer.views.head.auth import render_error, render_message
 from viewer.views.head.common import (
     crawler_settings,
     gallery_filter_keys,
     gallery_list_filters_keys,
-    gallery_order_fields,
 )
 from workers import client
 
@@ -108,20 +101,11 @@ def process_gallery_page(request: HttpRequest, gallery: Gallery, tool: str | Non
 
     if request.user.has_perm("viewer.update_metadata") and tool == "recall-api":
 
-        current_settings = Settings(load_from_config=crawler_settings.config)
-
         if gallery.provider:
 
-            current_settings.archive_user = request.user
-            current_settings.event_action = "UPDATE_METADATA"
-            current_settings.set_update_metadata_options(providers=(gallery.provider,))
-
-            client.enqueue(
-                args=[gallery.get_link()],
-                task_type="web_crawler",
-                override_options=current_settings,
+            client.enqueue_gallery_update(
+                [gallery.get_link()],
                 user=request.user,
-                event_action="UPDATE_METADATA",
             )
 
             logger.info(
@@ -191,10 +175,13 @@ def process_gallery_page(request: HttpRequest, gallery: Gallery, tool: str | Non
 def gallery_details_gid_provider(request: HttpRequest, tool: str | None = None) -> HttpResponse:
     if "gid" in request.GET:
         gallery_gid = request.GET["gid"]
+        qs = Gallery.objects.select_related("first_gallery", "parent_gallery", "magazine").prefetch_related(
+            "tags", "archive_set", "alternative_sources"
+        )
         if "provider" in request.GET:
-            possible_gallery = Gallery.objects.filter_first(gid=gallery_gid, provider=request.GET["provider"])
+            possible_gallery = qs.filter(gid=gallery_gid, provider=request.GET["provider"]).first()
         else:
-            possible_gallery = Gallery.objects.filter_first(gid=gallery_gid)
+            possible_gallery = qs.filter(gid=gallery_gid).first()
         if not possible_gallery:
             raise Http404("Gallery does not exist")
         else:
@@ -209,7 +196,11 @@ def gallery_details_gid_provider(request: HttpRequest, tool: str | None = None) 
 
 def gallery_details(request: HttpRequest, pk: int, tool: str | None = None) -> HttpResponse:
     try:
-        gallery = Gallery.objects.get(pk=pk)
+        gallery = (
+            Gallery.objects.select_related("first_gallery", "parent_gallery", "magazine")
+            .prefetch_related("tags", "archive_set", "alternative_sources")
+            .get(pk=pk)
+        )
     except Gallery.DoesNotExist:
         raise Http404("Gallery does not exist")
     if not (gallery.public or request.user.is_authenticated):
@@ -326,23 +317,13 @@ def gallery_enter_reason(request: HttpRequest, pk: int, tool: str | None = None)
 
             if request.user.has_perm("viewer.update_metadata") and tool == "recall-api":
 
-                current_settings = Settings(load_from_config=crawler_settings.config)
-
                 if gallery.provider:
 
-                    current_settings.archive_user = request.user
-                    current_settings.event_action = "UPDATE_METADATA"
-                    current_settings.archive_reason = user_reason
-                    current_settings.gallery_reason = user_reason
-                    current_settings.set_update_metadata_options(providers=(gallery.provider,))
-
-                    client.enqueue(
-                        args=[gallery.get_link()],
-                        task_type="web_crawler",
-                        override_options=current_settings,
+                    client.enqueue_gallery_update(
+                        [gallery.get_link()],
                         user=request.user,
                         reason=user_reason,
-                        event_action="UPDATE_METADATA",
+                        override_options={"gallery_reason": user_reason},
                     )
 
                     logger.info(
@@ -408,7 +389,7 @@ def gallery_thumb(request: HttpRequest, pk: int) -> HttpResponse:
         response["Content-Type"] = "image/jpeg"
         # response["Content-Disposition"] = 'attachment; filename*=UTF-8\'\'{0}'.format(
         #         archive.pretty_name)
-        response["X-Accel-Redirect"] = "/image/{0}".format(thumb.name)
+        response["X-Accel-Redirect"] = "/image/{0}".format(quote(thumb.name or ""))
         return response
     else:
         try:
@@ -670,6 +651,7 @@ def filter_galleries(
     if request_filters["tags"]:
         tags = request_filters["tags"].split(",")
 
+        has_positive_tag_filter = False
         q_objects = Q()
         if request_filters["tags_or"]:
             tags_or = True
@@ -711,6 +693,7 @@ def filter_galleries(
                 else:
                     results = results.exclude(tag_query)
             elif tag.startswith("^"):
+                has_positive_tag_filter = True
                 if tag_name != "" and tag_scope != "":
                     tag_query = Q(Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope))
                 elif tag_name != "":
@@ -723,6 +706,7 @@ def filter_galleries(
                 else:
                     results = results.filter(tag_query)
             else:
+                has_positive_tag_filter = True
                 if tag_name != "" and tag_scope != "":
                     tag_query = Q(Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope))
                 elif tag_name != "":
@@ -737,7 +721,9 @@ def filter_galleries(
 
         if tags_or:
             results = results.filter(q_objects)
-        results = results.distinct()
+            has_positive_tag_filter = True
+        if has_positive_tag_filter:
+            results = results.distinct()
 
     if session_filters["view"] == "extended":
         results = (

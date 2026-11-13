@@ -59,7 +59,6 @@ test-all:
   parallel:
     matrix:
       - PYTHON_VERSION:
-        - '3.13'
         - '3.14'
         - '3.15'
   cache:

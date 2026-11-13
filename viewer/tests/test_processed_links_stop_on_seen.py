@@ -9,9 +9,8 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "pandabackup.settings")
 django.setup()
 
 from core.base.setup import Settings
-from core.base.types import ProviderSettings
 from core.providers.panda.parsers import Parser
-from viewer.models import MonitoredLink, ProcessedLinks, Provider, WantedGallery
+from viewer.models import MonitoredLink, Provider
 from workers.serialization import deserialize_settings_options, serialize_settings_options
 
 
@@ -370,8 +369,7 @@ class ProcessedLinksStopOnSeenUnitTests(unittest.TestCase):
                 self.assertTrue(hydrated.providers["panda"].stop_on_seen_links)
                 self.assertEqual(hydrated.providers["panda"].how_long_after_already_seen, timedelta(hours=5))
 
-    @patch("core.providers.panda.parsers.request_with_retries")
-    def test_get_galleries_from_main_page_link_stops_early(self, mock_request):
+    def test_get_galleries_from_main_page_link_stops_early(self):
         """get_galleries_from_main_page_link stops pagination when _record_and_check_processed_links returns True."""
         mock_response = MagicMock()
         mock_response.text = (
@@ -380,15 +378,15 @@ class ProcessedLinksStopOnSeenUnitTests(unittest.TestCase):
             '<a href="https://e-hentai.org/g/3002/tok2/">Link 2</a>'
             '</body></html>'
         )
-        mock_request.return_value = mock_response
-
-        with patch.object(self.parser, "_record_and_check_processed_links", return_value=True) as mock_record:
+        with (
+            patch.object(self.parser, "web_request", return_value=mock_response) as mock_request,
+            patch.object(self.parser, "_record_and_check_processed_links", return_value=True) as mock_record,
+        ):
             res = self.parser.get_galleries_from_main_page_link("https://e-hentai.org/")
             mock_record.assert_called_once()
             self.assertEqual(mock_request.call_count, 1)
 
-    @patch("core.providers.panda.parsers.request_with_retries")
-    def test_get_galleries_from_lofi_page_link_stops_early(self, mock_request):
+    def test_get_galleries_from_lofi_page_link_stops_early(self):
         """get_galleries_from_lofi_page_link stops pagination when _record_and_check_processed_links returns True."""
         mock_response = MagicMock()
         mock_response.text = (
@@ -396,9 +394,10 @@ class ProcessedLinksStopOnSeenUnitTests(unittest.TestCase):
             '<table><tr><td class="ii"><a href="https://e-hentai.org/lofi/g/4001/tok1/">Lofi 1</a></td></tr></table>'
             '</body></html>'
         )
-        mock_request.return_value = mock_response
-
-        with patch.object(self.parser, "_record_and_check_processed_links", return_value=True) as mock_record:
+        with (
+            patch.object(self.parser, "web_request", return_value=mock_response) as mock_request,
+            patch.object(self.parser, "_record_and_check_processed_links", return_value=True) as mock_record,
+        ):
             res = self.parser.get_galleries_from_lofi_page_link("https://e-hentai.org/lofi/")
             mock_record.assert_called_once()
             self.assertEqual(mock_request.call_count, 1)

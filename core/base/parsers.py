@@ -1,5 +1,6 @@
 import copy
 import json
+import sys
 import typing
 from datetime import datetime, timezone
 import time
@@ -17,14 +18,17 @@ from django.db.models import QuerySet, Q, Value, CharField, F
 from django.db.models.functions import Concat, Replace
 
 from core.base import setup_utilities
-from core.base.utilities import send_pushover_notification, chunks
+from core.base.cancellation import TaskCancelledError, ping_activity
+from core.base.utilities import send_pushover_notification, chunks, provider_web_request
 from core.base.types import GalleryData, ProviderSettings
 from viewer.signals import wanted_gallery_found
+from viewer.models import Gallery, WantedGallery, FoundGallery
 
 if typing.TYPE_CHECKING:
+    import requests
     from core.downloaders.handlers import BaseDownloader
-    from core.base.setup import Settings, ProvidersDict
-    from viewer.models import Gallery, WantedGallery, Archive
+    from core.base.setup import Settings
+    from viewer.models import Archive
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +48,9 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
     ignore = False
     accepted_urls: list[str] = []
     empty_list: list[str] = []
+    # Whether the parser can store the links found on index/feed pages for later (see MonitoredLink's separate
+    # frequencies). Parsers without it always crawl and process in a single run.
+    supports_link_capture: bool = False
 
     __SKIP_WAIT_TIME_DOWNLOADER_TYPES = ("info", "submit")
 
@@ -60,8 +67,17 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
         )
         self.last_used_downloader: "BaseDownloader" | None = None
         self.time_taken_wanted: float = 0
+        self.wanted_matches_count: int = 0
         self.archive_callback: Callable[["Archive" | None, str | None, str], None] | None = None
         self.gallery_callback: Callable[["Gallery" | None, str | None, str], None] | None = None
+
+    def web_request(
+        self, url: str, request_dict: dict[str, typing.Any], post: bool = False
+    ) -> "requests.models.Response | None":
+        """Request to the provider's website, rate limited in the shared "<provider>_web" bucket.
+
+        Raises ProviderBannedError if the provider is in a long cooldown."""
+        return provider_web_request(self.name, self.own_settings.wait_timer)(url, request_dict, post=post)
 
     def notify_archive(self, archive: "Archive | None", crawled_url: str | None, result: str) -> None:
         if archive:
@@ -157,6 +173,30 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
     def filter_accepted_urls(self, urls: Iterable[str]) -> list[str]:
         return [x for x in urls if any(word in x for word in self.accepted_urls)]
 
+    # Hooks for core.web.gallery_updater.GalleryMetadataUpdater, which refreshes the metadata of already known
+    # galleries by link, without going through crawl_urls (no feeds, wanted filters or downloaders involved).
+
+    # How many links are fetched before the results are written to the database.
+    update_fetch_chunk_size: int = 25
+
+    def supports_gallery_update(self) -> bool:
+        return (
+            type(self).fetch_multiple_gallery_data is not BaseParser.fetch_multiple_gallery_data
+            or type(self).fetch_gallery_data_for_update is not BaseParser.fetch_gallery_data_for_update
+        )
+
+    def filter_update_urls(self, urls: Iterable[str]) -> list[str]:
+        """Links that this parser can refresh. Providers should restrict this to single gallery links."""
+        return self.filter_accepted_urls(urls)
+
+    def fetch_gallery_data_for_update(self, url_list: list[str]) -> list[GalleryData]:
+        """Fetch fresh metadata for the given gallery links. This is the only step that does network requests."""
+        return self.fetch_multiple_gallery_data(url_list) or []
+
+    def after_gallery_update(self, gallery: "Gallery", gallery_data: GalleryData) -> None:
+        """Provider specific work to do after the Gallery was updated in the database."""
+        return None
+
     # The idea here is: if it failed and 'retry_failed is not set, don't process
     # If it has at least 1 archive, to force redownload, 'redownload' must be set
     # If it has no archives, to force processing, 'replace_metadata' must be set
@@ -175,8 +215,8 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
             return False, "Gallery link {ext_link} running in update metadata mode, processing.".format(
                 ext_link=link,
             )
-        if not gallery and (gallery_id and self.settings.gallery_model):
-            gallery = self.settings.gallery_model.objects.filter_first(gid=gallery_id, provider=self.name)
+        if not gallery and gallery_id:
+            gallery = Gallery.objects.filter_first(gid=gallery_id, provider=self.name)
         if not gallery:
             return False, "Gallery link {ext_link} has not been added, processing.".format(
                 ext_link=link,
@@ -246,14 +286,6 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
         wanted_filters: QuerySet,
         gallery_wanted_lists: dict[str, list["WantedGallery"]],
     ) -> None:
-
-        if not self.settings.found_gallery_model:
-            logger.error("FoundGallery model has not been initiated.")
-            return
-
-        if not self.settings.wanted_gallery_model:
-            logger.error("WantedGallery model has not been initiated.")
-            return
 
         if gallery.title or gallery.title_jpn:
             q_objects = Q()
@@ -351,7 +383,7 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
             "unwanted_tags",
         )
 
-        already_founds = self.settings.found_gallery_model.objects.filter(
+        already_founds = FoundGallery.objects.filter(
             wanted_gallery__in=filtered_wanted, gallery__gid=gallery.gid, gallery__provider=self.name
         ).select_related("gallery", "wanted_gallery")
 
@@ -409,15 +441,25 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
             gallery_wanted_lists[gallery.gid].append(wanted_filter)
 
         if len(gallery_wanted_lists[gallery.gid]) > 0:
-            self.settings.wanted_gallery_model.objects.filter(
+            WantedGallery.objects.filter(
                 id__in=[x.pk for x in gallery_wanted_lists[gallery.gid]]
             ).update(found=True, date_found=django_tz.now())
 
-            logger.info(
-                "Gallery link: {}, title: {}, matched filters: {}.".format(
-                    link, gallery.title, ", ".join([x.get_absolute_url() for x in gallery_wanted_lists[gallery.gid]])
-                )
-            )
+            self.wanted_matches_count = getattr(self, "wanted_matches_count", 0) + 1
+
+            if not self.settings.silent_processing:
+                if self.wanted_matches_count <= 50:
+                    logger.info(
+                        "Gallery link: {}, title: {}, matched filters: {}.".format(
+                            link,
+                            gallery.title,
+                            ", ".join([x.get_absolute_url() for x in gallery_wanted_lists[gallery.gid]]),
+                        )
+                    )
+                elif self.wanted_matches_count == 51:
+                    logger.info(
+                        "Matched 50 WantedGallery filters so far. Suppressing further per-match log entries for this batch (summary will be logged upon completion)."
+                    )
 
             notify_wanted_filters = [
                 "({}, {})".format((x.title or "not set"), (x.reason or "not set"))
@@ -476,6 +518,7 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
         wanted_only: bool = False,
         preselected_wanted_matches: dict[str, list["WantedGallery"]] | None = None,
     ):
+        self.wanted_matches_count = 0
         try:
             self.crawl_urls(
                 urls,
@@ -502,6 +545,79 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
     def is_current_link_non_current(self, gallery_data: "GalleryData") -> bool:
         return False
 
+    def log_database_check_summary(
+        self,
+        total: int,
+        existing: int,
+        discarded: int,
+        to_update: int = 0,
+        logger_override: logging.Logger | None = None,
+    ) -> None:
+        if total == 0:
+            return
+        log = logger_override or getattr(sys.modules.get(self.__module__), "logger", None) or logging.getLogger(self.__module__)
+        new_count = total - existing
+        if existing > 0:
+            log.info(
+                "Database check for %d galleries: %d existing (%d discarded, %d to update), %d new.",
+                total,
+                existing,
+                discarded,
+                to_update,
+                new_count,
+            )
+        else:
+            log.info(
+                "Database check for %d galleries: 0 existing in database (all %d new).",
+                total,
+                total,
+            )
+
+    def log_metadata_evaluation_summary(
+        self,
+        total_evaluated: int,
+        accepted: int,
+        matched_wanted: int = 0,
+        unmatched_wanted: int = 0,
+        banned: int = 0,
+        errors: int = 0,
+        wanted_filters: bool = False,
+        wanted_only: bool = False,
+        logger_override: logging.Logger | None = None,
+    ) -> None:
+        if total_evaluated == 0:
+            return
+        log = logger_override or getattr(sys.modules.get(self.__module__), "logger", None) or logging.getLogger(self.__module__)
+        extra_banned = f", {banned} discarded (banned data)" if banned else ""
+        extra_errors = f", {errors} API/network errors" if errors else ""
+        if wanted_filters:
+            if wanted_only:
+                log.info(
+                    "Metadata check for %d galleries: %d matched wanted filters, %d skipped as non-matching (wanted-only mode)%s%s.",
+                    total_evaluated,
+                    matched_wanted,
+                    unmatched_wanted,
+                    extra_banned,
+                    extra_errors,
+                )
+            else:
+                log.info(
+                    "Metadata check for %d galleries: %d to process (%d matched wanted filters)%s%s.",
+                    total_evaluated,
+                    accepted,
+                    matched_wanted,
+                    extra_banned,
+                    extra_errors,
+                )
+        else:
+            log.info(
+                "Metadata check for %d galleries: %d to process%s%s.",
+                total_evaluated,
+                accepted,
+                extra_banned,
+                extra_errors,
+            )
+
     def pass_gallery_data_to_downloaders(
         self,
         gallery_data_list: list[GalleryData],
@@ -509,6 +625,15 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
         force_provider: bool = False,
     ):
         gallery_count = len(gallery_data_list)
+
+        total_matched_galleries = len(gallery_wanted_lists)
+        if total_matched_galleries > 0:
+            total_filter_matches = sum(len(flist) for flist in gallery_wanted_lists.values())
+            logger.info(
+                "WantedGallery matching complete: %d galleries matched (%d total filter matches).",
+                total_matched_galleries,
+                total_filter_matches,
+            )
 
         if self.time_taken_wanted:
             logger.info(
@@ -521,6 +646,43 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
         else:
             logger.info("{} galleries for downloaders to work with.".format(gallery_count))
 
+        should_dispatch = (
+            getattr(self.settings, "is_worker_process", False)
+            and getattr(self.settings, "current_task_type", "") in ("web_crawler", "webcrawler")
+            and getattr(self.settings, "dispatch_gallery_creation", True)
+            and gallery_count > 0
+        )
+
+        if should_dispatch:
+            from workers import client as worker_client
+            from workers.serialization import serialize_settings_options
+
+            links = [g.link for g in gallery_data_list if g.link] or [f"{g.provider}:{g.gid}" for g in gallery_data_list]
+            task_options = serialize_settings_options(self.settings)
+            task_options["provider"] = self.name
+            task_options["force_provider"] = force_provider
+            task_options["galleries_data"] = [g.to_dict() for g in gallery_data_list]
+            task_options["gallery_wanted_lists"] = {
+                gid: [wg.pk for wg in wg_list if hasattr(wg, "pk")]
+                for gid, wg_list in gallery_wanted_lists.items()
+            }
+
+            task = worker_client.enqueue(
+                args=links,
+                task_type="gallery_creator",
+                override_options=task_options,
+                user=getattr(self.settings, "archive_user", None),
+                reason=getattr(self.settings, "archive_reason", "") or "",
+                event_action=getattr(self.settings, "event_action", "") or "CRAWL",
+                priority=getattr(self.settings, "current_task_priority", 10),
+            )
+            logger.info(
+                "Dispatched %d galleries to 'gallery_creator' task #%d to unlock web_crawler queue.",
+                gallery_count,
+                task.pk,
+            )
+            return
+
         if not self.settings.update_metadata_mode:
             downloaders_msg = "Downloaders (name, priority):"
 
@@ -528,7 +690,15 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
                 downloaders_msg += " ({}, {})".format(downloader[0], downloader[1])
             logger.info(downloaders_msg)
 
+        activity_cb = getattr(self.settings, "activity_callback", None)
+        is_cancelled = getattr(self.settings, "is_cancelled", None)
+        is_bulk = gallery_count > 50 or self.settings.silent_processing
+
         for i, gallery in enumerate(gallery_data_list, start=1):
+            if callable(is_cancelled) and is_cancelled():
+                raise TaskCancelledError(f"Task cancelled while processing gallery {i} of {gallery_count}")
+            ping_activity(activity_cb)
+
             if (
                 self.last_used_downloader is not None
                 and self.last_used_downloader.type not in self.__SKIP_WAIT_TIME_DOWNLOADER_TYPES
@@ -543,23 +713,35 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
                     time.sleep(self.own_settings.wait_timer)
                 else:
                     time.sleep(self.settings.wait_timer)
-            logger.info("Working with gallery {} of {}".format(i, gallery_count))
+
+            if not self.settings.silent_processing:
+                if not is_bulk or i <= 50:
+                    logger.info("Working with gallery {} of {}".format(i, gallery_count))
+                elif i == 51:
+                    logger.info(
+                        "Processed 50 galleries so far. Suppressing further per-gallery logs for this batch (milestones will be logged)."
+                    )
+                elif i % 500 == 0 or i == gallery_count:
+                    logger.info("Processing gallery %d of %d (%.1f%%)", i, gallery_count, (i / gallery_count) * 100)
+            elif i % 500 == 0 or i == gallery_count:
+                logger.info("Processing gallery %d of %d (%.1f%%)", i, gallery_count, (i / gallery_count) * 100)
+
             if self.settings.add_as_public:
                 gallery.public = True
             self.work_gallery_data(gallery, gallery_wanted_lists, force_provider)
+
+        if is_bulk and not self.settings.silent_processing and gallery_count > 50:
+            logger.info("Finished processing all %d galleries for provider %s.", gallery_count, self.name)
 
     def work_gallery_data(
         self, gallery: GalleryData, gallery_wanted_lists: dict[str, list["WantedGallery"]], force_provider: bool = False
     ) -> None:
 
-        if not self.settings.found_gallery_model:
-            logger.error("FoundGallery model has not been initiated.")
-            return
-
-        if gallery.title is not None:
-            logger.info("Title: {}. Link: {}".format(gallery.title, gallery.link))
-        else:
-            logger.info("Link: {}".format(gallery.link))
+        if not self.settings.silent_processing:
+            if gallery.title is not None:
+                logger.info("Title: {}. Link: {}".format(gallery.title, gallery.link))
+            else:
+                logger.info("Link: {}".format(gallery.link))
 
         # If there's a WG match, and we are processing submitted galleries, revert the downloaders to default.
         if (
@@ -610,13 +792,13 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
                 self.last_used_downloader = downloader[0]
                 if not downloader[0].archive_only:
                     for wanted_gallery in gallery_wanted_lists[gallery.gid]:
-                        self.settings.found_gallery_model.objects.get_or_create(
+                        FoundGallery.objects.get_or_create(
                             wanted_gallery=wanted_gallery, gallery=downloader[0].gallery_db_entry
                         )
 
                     if len(gallery_wanted_lists[gallery.gid]) > 0:
                         wanted_gallery_found.send(
-                            sender=self.settings.gallery_model,
+                            sender=Gallery,
                             gallery=downloader[0].gallery_db_entry,
                             archive=downloader[0].archive_db_entry,
                             wanted_gallery_list=gallery_wanted_lists[gallery.gid],
@@ -641,11 +823,12 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
                         )
                         self.notify_archive(downloader[0].archive_db_entry, gallery.link, "success")
                 elif downloader[0].gallery_db_entry:
-                    logger.info(
-                        "Download completed successfully (gallery only), using downloader: {}. Gallery link: {}".format(
-                            downloader[0], downloader[0].gallery_db_entry.get_absolute_url()
+                    if not self.settings.silent_processing:
+                        logger.info(
+                            "Download completed successfully (gallery only), using downloader: {}. Gallery link: {}".format(
+                                downloader[0], downloader[0].gallery_db_entry.get_absolute_url()
+                            )
                         )
-                    )
                     self.notify_gallery(downloader[0].gallery_db_entry, gallery.link, "success")
 
                     # Process possible nested galleries (contained, magazine)
@@ -661,16 +844,15 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
                         not self.settings.stop_nested
                         and self.settings.auto_download_nested
                         and self.settings.workers.web_queue
-                        and self.settings.gallery_model
                         and self.downloaders[0][0].type != "submit"
                     ):
                         if gallery.gallery_contains_gids:
-                            existing_gids = self.settings.gallery_model.objects.filter(
+                            existing_gids = Gallery.objects.filter(
                                 gid__in=gallery.gallery_contains_gids, provider=gallery.provider
                             ).values_list("gid", flat=True)
 
                             gallery_urls = [
-                                self.settings.gallery_model(gid=x, provider=gallery.provider).get_link()
+                                Gallery(gid=x, provider=gallery.provider).get_link()
                                 for x in gallery.gallery_contains_gids
                                 if x not in existing_gids
                             ]
@@ -685,12 +867,12 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
                             self.settings.workers.web_queue.enqueue_args_list(gallery_urls, override_options=self.settings)
 
                         if gallery.magazine_chapters_gids:
-                            existing_gids = self.settings.gallery_model.objects.filter(
+                            existing_gids = Gallery.objects.filter(
                                 gid__in=gallery.magazine_chapters_gids, provider=gallery.provider
                             ).values_list("gid", flat=True)
 
                             gallery_urls = [
-                                self.settings.gallery_model(gid=x, provider=gallery.provider).get_link()
+                                Gallery(gid=x, provider=gallery.provider).get_link()
                                 for x in gallery.magazine_chapters_gids
                                 if x not in existing_gids
                             ]
@@ -707,10 +889,10 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
 
                                 self.settings.workers.web_queue.enqueue_args_list(gallery_urls, override_options=self.settings)
 
-                        if gallery.magazine_gid and not self.settings.gallery_model.objects.filter(
+                        if gallery.magazine_gid and not Gallery.objects.filter(
                             gid=gallery.magazine_gid, provider=gallery.provider
                         ):
-                            gallery_url = self.settings.gallery_model(
+                            gallery_url = Gallery(
                                 gid=gallery.magazine_gid, provider=gallery.provider
                             ).get_link()
                             logger.info(
@@ -720,10 +902,10 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
                             )
                             self.settings.workers.web_queue.enqueue_args_list([gallery_url, "--stop-nested"], override_options=self.settings)
 
-                        if gallery.gallery_container_gid and not self.settings.gallery_model.objects.filter(
+                        if gallery.gallery_container_gid and not Gallery.objects.filter(
                             gid=gallery.gallery_container_gid, provider=gallery.provider
                         ):
-                            gallery_url = self.settings.gallery_model(
+                            gallery_url = Gallery(
                                 gid=gallery.gallery_container_gid, provider=gallery.provider
                             ).get_link()
                             logger.info(
@@ -756,7 +938,7 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
                         )
                         self.notify_gallery(downloader[0].gallery_db_entry, gallery.link, "failed")
                         for wanted_gallery in gallery_wanted_lists[gallery.gid]:
-                            self.settings.found_gallery_model.objects.get_or_create(
+                            FoundGallery.objects.get_or_create(
                                 wanted_gallery=wanted_gallery, gallery=downloader[0].gallery_db_entry
                             )
 
@@ -794,9 +976,6 @@ class InternalParser(BaseParser):
         self, json_string: str, wanted_filters: QuerySet | None = None, wanted_only: bool = False
     ) -> None:
 
-        if not self.settings.gallery_model:
-            return
-
         dict_list = []
         json_decoded = json.loads(json_string)
 
@@ -816,15 +995,31 @@ class InternalParser(BaseParser):
             gallery_data = GalleryData(**gallery)
             total_galleries_filtered.append(gallery_data)
 
+        existing_galleries_in_db = set()
+        discarded_count = 0
         for galleries_gid_group in list(chunks(galleries_gids, 900)):
-            for found_gallery in self.settings.gallery_model.objects.filter(gid__in=galleries_gid_group):
+            for found_gallery in Gallery.objects.filter(gid__in=galleries_gid_group):
+                existing_galleries_in_db.add(found_gallery.gid)
                 discard_approved, discard_message = self.discard_gallery_by_internal_checks(
                     gallery=found_gallery, link=found_gallery.get_link()
                 )
 
                 if discard_approved:
+                    discarded_count += 1
                     logger.info(discard_message)
                     found_galleries.add(found_gallery.gid)
+
+        self.log_database_check_summary(
+            total=len(galleries_gids),
+            existing=len(existing_galleries_in_db),
+            discarded=discarded_count,
+            to_update=len(existing_galleries_in_db) - discarded_count,
+        )
+
+        banned_count = 0
+        unmatched_wanted_count = 0
+        matched_wanted_count = 0
+        processed_count = 0
 
         for count, gallery_data in enumerate(total_galleries_filtered):
 
@@ -836,6 +1031,7 @@ class InternalParser(BaseParser):
             )
 
             if banned_result:
+                banned_count += 1
                 self.notify_gallery(None, gallery_data.link, "banned_data")
                 logger.info(
                     "Gallery {} of {}: Skipping gallery link {}, discarded reasons: {}".format(
@@ -849,8 +1045,13 @@ class InternalParser(BaseParser):
                     gallery_data, gallery_data.link, wanted_filters, gallery_wanted_lists
                 )
                 if wanted_only and not gallery_wanted_lists[gallery_data.gid]:
+                    unmatched_wanted_count += 1
                     continue
 
+            if len(gallery_wanted_lists.get(gallery_data.gid, [])) > 0:
+                matched_wanted_count += 1
+
+            processed_count += 1
             logger.info(
                 "Gallery {} of {}:  Gallery {} will be processed.".format(
                     count, len(total_galleries_filtered), gallery_data.title
@@ -862,10 +1063,21 @@ class InternalParser(BaseParser):
 
                 gallery_data.thumbnail_url = gallery_data.thumbnail
 
-                gallery_instance = self.settings.gallery_model.objects.update_or_create_from_values(gallery_data)
+                gallery_instance = Gallery.objects.update_or_create_from_values(gallery_data)
 
                 gallery_instance.thumbnail_url = original_thumbnail_url
 
                 gallery_instance.save()
             else:
-                self.settings.gallery_model.objects.update_or_create_from_values(gallery_data)
+                Gallery.objects.update_or_create_from_values(gallery_data)
+
+        self.log_metadata_evaluation_summary(
+            total_evaluated=len(total_galleries_filtered) - len(found_galleries),
+            accepted=processed_count,
+            matched_wanted=matched_wanted_count,
+            unmatched_wanted=unmatched_wanted_count,
+            banned=banned_count,
+            errors=0,
+            wanted_filters=bool(wanted_filters),
+            wanted_only=wanted_only,
+        )

@@ -1,86 +1,36 @@
-import json
 import logging
-import re
-from collections import defaultdict
-from itertools import groupby
 from typing import Any
 
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import permission_required, login_required
-from django.contrib.contenttypes.models import ContentType
 from django.core import management
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
-from django.db.models import Prefetch, Count, Case, When, QuerySet, Q, F
-from django.http import HttpRequest, HttpResponse, HttpResponseRedirect, Http404, QueryDict
+from django.http import HttpRequest, HttpResponse, HttpResponseRedirect, Http404
 from django.shortcuts import render
 from django.urls import reverse
-from django.utils.crypto import get_random_string
+from django.views.decorators.http import require_POST
 
-from core.base.setup import Settings
-from core.base.utilities import thread_exists_in_db, clamp, get_schedulers_status
+from core.base.utilities import get_schedulers_status
 from viewer.management.commands import update_provider_wanted
-from viewer.utils.functions import (
-    archive_manage_results_to_json,
-    galleries_update_metadata,
-    gallery_search_results_to_json,
-)
 from viewer.utils.general import clean_up_referer
 from viewer.utils.actions import event_log
-from workers import client
 from viewer.forms import (
-    GallerySearchForm,
-    ArchiveSearchForm,
     WantedGalleryCreateOrEditForm,
-    ArchiveCreateForm,
-    ArchiveGroupSelectForm,
-    GalleryCreateForm,
-    ArchiveManageEntrySimpleForm,
-    WantedGalleryColSearchForm,
-    ArchiveManageSearchSimpleForm,
-    AllGalleriesSearchForm,
-    EventSearchForm,
-    GallerySearchSimpleForm,
-    ArchiveExtraFileSimpleForm,
     WantedGalleryCommand,
-    GallerySearchFields,
-    DownloadHistoryForm,
     MonitoredLinkCreateOrEditForm,
     MonitoredLinkSearchForm,
+    UserTokenCreateForm,
 )
 from viewer.models import (
-    Archive,
     Gallery,
-    EventLog,
-    ArchiveMatches,
-    Tag,
     WantedGallery,
-    ArchiveGroup,
-    ArchiveGroupEntry,
-    GallerySubmitEntry,
     MonitoredLink,
-    ArchiveRecycleEntry,
-    ArchiveTag,
     UserLongLivedToken,
-    DownloadEvent,
     Category,
-    Provider,
-    GalleryMatchGroup,
-    GalleryMatchGroupEntry,
-    GalleryGroupPossibleMatches, ArchiveManageEntry, FoundGallery
+    Provider
 )
-from viewer.utils.requests import double_check_auth
 from viewer.utils.types import AuthenticatedHttpRequest
-from viewer.views.head import (
-    gallery_filter_keys,
-    filter_galleries_simple,
-    archive_filter_keys,
-    filter_archives_simple,
-    render_error,
-    wanted_gallery_filter_keys,
-    filter_wanted_galleries_simple,
-    gallery_list_filters_keys,
-)
 
 crawler_settings = settings.CRAWLER_SETTINGS
 logger = logging.getLogger(__name__)
@@ -284,7 +234,7 @@ def monitored_links(request: HttpRequest) -> HttpResponse:
                 defaults={
                     "display_name": f"MonitoredLink: {ml.name}",
                     "schedule_type": "scheduler",
-                    "cycle_timer": ml.frequency.total_seconds(),
+                    "cycle_timer": ml.shortest_interval.total_seconds(),
                     "is_running": False,
                 },
             )
@@ -304,7 +254,7 @@ def monitored_links(request: HttpRequest) -> HttpResponse:
                 task_time = past_task.finished_at or past_task.started_at or past_task.created_at
                 if task_time:
                     state.last_run = task_time
-                    timer = state.cycle_timer or ml.frequency.total_seconds()
+                    timer = state.cycle_timer or ml.shortest_interval.total_seconds()
                     state.next_run = task_time + timedelta(seconds=timer)
                     SchedulerState.objects.filter(name=sched_name).update(
                         last_run=state.last_run,
@@ -464,54 +414,55 @@ def monitored_link_action(request: HttpRequest, pk: int, action: str) -> HttpRes
 
 
 @login_required
+@require_POST
 def user_token(request: AuthenticatedHttpRequest, operation: str) -> HttpResponse:
+    """Create or revoke one of the user's own API tokens. POST only, since both change state."""
+    profile_url = reverse("viewer:change-profile")
 
     if operation == "create":
+        form = UserTokenCreateForm(request.POST, user=request.user)
 
-        token_name = request.GET.get("token-name", None)
+        if not form.is_valid():
+            for field, errors in form.errors.items():
+                for error in errors:
+                    messages.error(request, f"Cannot create token ({field}): {error}")
+            return HttpResponseRedirect(profile_url)
 
-        if not token_name:
-            messages.error(request, "Missing parameter 'token-name'.")
-            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
-
-        token_exists = request.user.long_lived_tokens.filter(name=token_name)
-        if len(token_exists) > 0:
-            messages.error(request, "Cannot create token with name: {}. Already exists.".format(token_name))
-            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
-        else:
-            secret_key = get_random_string(UserLongLivedToken.TOKEN_LENGTH, UserLongLivedToken.VALID_CHARS)
-
-            salted_key = UserLongLivedToken.create_salted_key_from_key(secret_key)
-
-            UserLongLivedToken.objects.create(
-                key=salted_key,
-                user=request.user,
-                name=token_name,
-            )
-            messages.success(
-                request,
-                "Token with name: {} created successfully. Write down the token itself it will be only shown here (everything inside <>): <{}>.".format(
-                    token_name, secret_key
-                ),
-            )
+        token, secret_key = UserLongLivedToken.create_for_user(
+            request.user,
+            form.cleaned_data["name"],
+            expire_date=form.expire_date(),
+            scopes=form.cleaned_data["scopes"],
+        )
+        event_log(
+            request.user,
+            "CREATE_USER_TOKEN",
+            data=f"scopes: {','.join(token.scopes)}; expires: {token.expire_date or 'never'}",
+            result=f"created {token.name}",
+            content_object=token,
+        )
+        messages.success(
+            request,
+            "Token with name: {} created successfully. Write down the token itself it will be only shown here (everything inside <>): <{}>.".format(
+                token.name, secret_key
+            ),
+        )
     elif operation == "delete":
+        token_id = request.POST.get("id", "")
 
-        token_id = request.GET.get("id", None)
-
-        if token_id is None:
-            messages.error(request, "Missing parameter 'id'.")
-            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
-
-        token_exists = request.user.long_lived_tokens.filter(pk=token_id)
-        if len(token_exists) < 1:
+        token_to_revoke = request.user.long_lived_tokens.filter(pk=token_id).first() if token_id.isdigit() else None
+        if token_to_revoke is None:
             messages.error(
                 request,
-                "Cannot delete token with ID: {}. It does not exist or does not belong to you.".format(token_id),
+                "Cannot revoke token with ID: {}. It does not exist or does not belong to you.".format(token_id),
             )
-            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
-        else:
-            token_exists.delete()
-            messages.success(request, "Token with ID: {} deleted successfully.".format(token_id))
+            return HttpResponseRedirect(profile_url)
 
-    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+        token_name = token_to_revoke.name
+        token_to_revoke.delete()
+        event_log(request.user, "REVOKE_USER_TOKEN", result=f"revoked {token_name}")
+        messages.success(request, "Token '{}' revoked successfully.".format(token_name))
+    else:
+        raise Http404("Unknown token operation")
 
+    return HttpResponseRedirect(profile_url)

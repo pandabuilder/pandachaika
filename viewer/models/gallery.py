@@ -1,18 +1,13 @@
 import itertools
-import json
 import logging
 import os
-import re
 import shutil
-import subprocess
-import time
 import typing
 import uuid
 from collections import defaultdict
-from datetime import date, datetime, timedelta, timezone
-from os.path import basename, join as pjoin
+from datetime import datetime, timedelta, timezone
+from os.path import join as pjoin
 from tempfile import NamedTemporaryFile
-from urllib.parse import urlparse
 
 import elasticsearch
 from PIL import Image as PImage
@@ -37,16 +32,14 @@ from simple_history.models import HistoricalRecords
 
 from core.base.image_ops import img_to_thumbnail
 from core.base.types import DataDict, GalleryData
-from core.base.utilities import available_filename, clean_title, get_dict_allowed_fields, request_with_retries
-from viewer.models.common import EMPTY_TITLE, ItemProperties, SpacedSearch, fs
+from core.base.utilities import get_dict_allowed_fields, request_with_retries
+from viewer.models.common import EMPTY_TITLE, ItemProperties
 from viewer.models.tag import Tag
 from viewer.services import CompareObjectsService
-from viewer.utils.elasticsearch import add_gallery_data_to_match_index, remove_gallery_from_match_index
 from viewer.utils.tags import sort_tags, sort_tags_str
 
 if typing.TYPE_CHECKING:
-    from viewer.models.archive import Archive
-    from viewer.models.wanted import FoundGallery, GalleryMatch, WantedGallery
+    from viewer.models.wanted import WantedGallery
 
 logger = logging.getLogger(__name__)
 
@@ -672,6 +665,18 @@ class Gallery(models.Model):
                 F("public").asc(nulls_last=True),
                 "status",
                 name="gallery_pub_norm_pub_date",
+            ),
+            models.Index(
+                "status",
+                "public",
+                F("posted").desc(nulls_last=True),
+                name="gallery_stat_pub_posted_idx",
+            ),
+            models.Index(
+                "status",
+                "public",
+                F("create_date").desc(nulls_last=True),
+                name="gallery_stat_pub_create_idx",
             ),
             GinIndex(
                 fields=["title"],
@@ -1512,6 +1517,17 @@ class Artist(models.Model):
 
 
 class ProcessedLinks(models.Model):
+    class Status(models.TextChoices):
+        # Captured from an index/feed page, still waiting for the API call, comparison and processing.
+        PENDING = "pending", "Pending"
+        PROCESSED = "processed", "Processed"
+        # Gave up after too many failed processing attempts.
+        FAILED = "failed", "Failed"
+
+    # Rows created before link capture and processing were separable were always processed in the same run.
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PROCESSED, db_index=True)
+    process_attempts = models.PositiveSmallIntegerField(default=0)
+    processed_date = models.DateTimeField("Processed date", blank=True, null=True)
     provider = models.ForeignKey("viewer.Provider", on_delete=models.SET_NULL, null=True, blank=True)
     monitored_link = models.ForeignKey("viewer.MonitoredLink", on_delete=models.CASCADE, null=True, blank=True, related_name="processed_links")
     source_id = models.CharField("Source Id", max_length=200, db_index=True)
@@ -1533,6 +1549,9 @@ class ProcessedLinks(models.Model):
                 condition=models.Q(monitored_link__isnull=True),
                 name="unique_provider_source_global",
             ),
+        ]
+        indexes = [
+            models.Index(fields=["monitored_link", "status"], name="processedlinks_ml_status_idx"),
         ]
 
 

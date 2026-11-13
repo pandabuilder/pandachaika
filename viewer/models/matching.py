@@ -3,12 +3,10 @@ import json
 import typing
 
 from django.db import models
-from django.db.models import QuerySet
 from django.urls import reverse
 from django.utils.text import slugify
 
 if typing.TYPE_CHECKING:
-    from viewer.models.archive import Archive
     from viewer.models.gallery import Gallery
 
 

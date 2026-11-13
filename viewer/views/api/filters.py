@@ -6,8 +6,9 @@ from typing import Any
 from django.db.models import Q, QuerySet
 from django.http.request import QueryDict
 
+from core.base.utilities import normalize_crc32
 from viewer.models import Archive, Gallery
-from viewer.views.head import gallery_filter_keys, gallery_order_fields
+from viewer.views.head import gallery_order_fields
 
 def simple_archive_filter(args: str, public: bool = True) -> "QuerySet[Archive]":
     """Simple filtering of archives."""
@@ -146,7 +147,8 @@ def filter_galleries_no_request(filter_args: dict[str, Any] | QueryDict) -> "Que
     if reason and isinstance(reason, str):
         results = results.filter(reason__icontains=reason)
     if filter_args["crc32"]:
-        results = results.filter(archive__crc32=filter_args["crc32"])
+        crc32 = filter_args["crc32"]
+        results = results.filter(archive__crc32=normalize_crc32(crc32) if isinstance(crc32, str) else crc32)
 
     # Only return galleries with associated archives.
     if filter_args["used"]:
@@ -160,6 +162,7 @@ def filter_galleries_no_request(filter_args: dict[str, Any] | QueryDict) -> "Que
 
     if filters_tags and isinstance(filters_tags, str):
         tags = filters_tags.split(",")
+        has_positive_tag_filter = False
         for tag in tags:
             tag = tag.strip().replace(" ", "_")
             tag_clean = re.sub("^[-|^]", "", tag)
@@ -189,6 +192,7 @@ def filter_galleries_no_request(filter_args: dict[str, Any] | QueryDict) -> "Que
 
                 results = results.exclude(tag_query)
             elif tag.startswith("^"):
+                has_positive_tag_filter = True
                 if tag_name != "" and tag_scope != "":
                     tag_query = Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope)
                 elif tag_name != "":
@@ -198,6 +202,7 @@ def filter_galleries_no_request(filter_args: dict[str, Any] | QueryDict) -> "Que
 
                 results = results.filter(tag_query)
             else:
+                has_positive_tag_filter = True
                 if tag_name != "" and tag_scope != "":
                     tag_query = Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)
                 elif tag_name != "":
@@ -207,6 +212,7 @@ def filter_galleries_no_request(filter_args: dict[str, Any] | QueryDict) -> "Que
 
                 results = results.filter(tag_query)
 
-        results = results.distinct()
+        if has_positive_tag_filter:
+            results = results.distinct()
 
     return results

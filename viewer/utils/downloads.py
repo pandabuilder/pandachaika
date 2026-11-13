@@ -112,7 +112,7 @@ def reconcile_downloads(
             if os.path.isdir(gid_folder) and os.listdir(gid_folder):
                 if post_downloader and not dry_run:
                     try:
-                        post_downloader.transfer_all_missing((archive,))
+                        post_downloader.transfer_archive(archive)
                         archive.refresh_from_db(fields=["crc32"])
                         if archive.crc32:
                             stats["rescued_from_staging"] += 1

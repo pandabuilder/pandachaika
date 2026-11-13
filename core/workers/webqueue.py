@@ -4,7 +4,6 @@ from collections.abc import Callable, Iterable
 from typing import Any
 
 from core.base.setup import Settings
-from core.base.types import QueueItem
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +68,7 @@ class WebQueue(object):
         reason: str | None = None,
         event_action: str | None = None,
         priority: int = 10,
+        deduplicate: bool = True,
     ) -> None:
         """Enqueue crawler task to the database task queue for processing by the worker process.
 
@@ -96,6 +96,7 @@ class WebQueue(object):
             reason=task_reason,
             event_action=task_action,
             priority=priority,
+            deduplicate=deduplicate,
         )
 
     def start_running(self) -> None:

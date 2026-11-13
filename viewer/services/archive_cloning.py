@@ -15,7 +15,7 @@ from core.base.utilities import available_filename, file_matches_any_filter, get
 
 if typing.TYPE_CHECKING:
     from core.base.setup import CloningImageToolSettings
-    from viewer.models import Archive, Image
+    from viewer.models import Archive
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +98,6 @@ class ArchiveCloningService:
         new_zipfile.close()
         my_zip.close()
 
-        from viewer.models import Archive
 
         new_archive = archive
         possible_matches = archive.possible_matches.all()

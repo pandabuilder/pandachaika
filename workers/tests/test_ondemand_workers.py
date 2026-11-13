@@ -1,20 +1,13 @@
 # -*- coding: utf-8 -*-
-import json
-import uuid
-from datetime import timedelta
 
-import django.utils.timezone as django_tz
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from core.base.parsers import BaseParser
 from core.base.setup import Settings
-from core.workers.webqueue import WebQueue
-from viewer.models import Archive, EventLog, Gallery, GallerySubmitEntry, UserArchivePrefs
+from viewer.models import Archive
 from workers import client
-from workers.models import TaskQueue, WorkerProcess
+from workers.models import TaskQueue
 from workers.runner import WorkerRunner
-from workers.serialization import deserialize_settings_options, serialize_settings_options
 
 User = get_user_model()
 
@@ -24,7 +17,6 @@ User = get_user_model()
 class OnDemandWorkerTests(TestCase):
 
     def setUp(self):
-        from unittest.mock import patch
         self.user = User.objects.create_user(username="ondemanduser", password="password123")
         self.settings = Settings(load_from_disk=False)
         self.settings.is_worker_process = False  # Simulates web process
@@ -364,13 +356,7 @@ class OnDemandWorkerTests(TestCase):
 
     def test_enqueue_matching_task_helper(self):
         from unittest.mock import patch
-        from viewer.models import Archive, WantedGallery, GalleryMatchGroup
-        from viewer.utils.matching import (
-            generate_possible_matches_for_archives,
-            create_matches_wanted_galleries_from_providers,
-            create_matches_wanted_galleries_from_providers_internal,
-            generate_possible_matches_for_gallery_match_groups,
-        )
+        from viewer.models import Archive, WantedGallery
 
         a1 = Archive.objects.create(title="Match Test 1", crc32="99999991", user=self.user)
         a2 = Archive.objects.create(title="Match Test 2", crc32="99999992", user=self.user)

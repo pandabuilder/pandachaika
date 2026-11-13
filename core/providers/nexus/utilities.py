@@ -13,9 +13,9 @@ def resolve_url(gallery: "Gallery") -> str:
 
 def clean_title(title: str) -> str:
     # Add missing space
-    title = re.sub(r"](\w)", "] \1", title)
+    title = re.sub(r"](\w)", r"] \1", title)
     # Remove non characters, keep spaces
-    title = " ".join(str(re.sub(r"\W", "", word) for word in title.split()))
+    title = " ".join(re.sub(r"\W", "", word) for word in title.split())
     # Remove extra whitespace
     title = re.sub(r" +", " ", title)
     # Remove starting whitespace

@@ -55,7 +55,6 @@
               </div>
           </div>
         </form>
-        <form action="{% url 'viewer:tools-id' 'transfer_missing_downloads' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Transfer missing downloads</button></form>
         <form action="{% url 'viewer:tools-id' 'retry_failed' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Retry failed downloads</button></form>
         <form action="{% url 'viewer:tools-id' 'reconcile_downloads' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Reconcile downloads and archives (sync missing CRC32)</button></form>
         <form action="{% url 'viewer:tools-id' 'update_newer_than' %}" method="POST" role="form">
@@ -108,6 +107,12 @@
                         <input title="Max matches" size="10" type="number" step="1" class="form-control" name="max-matches" value="10" placeholder="Max Matches"/>
                     </div>
                     <div class="col-md-auto">
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" name="auto_link" id="tools_auto_link" title="Link each archive to its best local match when it's good enough, instead of only storing possible matches">
+                            <label class="form-check-label" for="tools_auto_link">Auto-link</label>
+                        </div>
+                    </div>
+                    <div class="col-md-auto">
                         <button type="submit" class="btn btn-light">Generate possible matches for non-matches (filter providers)</button>
                     </div>
                 </div>
@@ -123,27 +128,10 @@
       </div>
       {% endif %}
       <div class="list-group col-lg-3 col-md-4 col-sm-6 col-xs-12">
-        <div class="list-group-item active">Workers</div>
-        {% if not threads_status.download_progress_checker %}<form action="{% url 'viewer:tools-id' 'start_download_progress_checker' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Start Download progress checker</button></form>{% else %}<form action="{% url 'viewer:tools-id' 'stop_download_progress_checker' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Stop Download progress checker</button></form>{% endif %}
-        <form action="{% url 'viewer:tools-id' 'force_download_progress_checker' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Force run Download progress checker</button></form>
-        {% if not threads_status.archive_download_queue %}<form action="{% url 'viewer:tools-id' 'start_archive_download_queue' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Start Archive download queue</button></form>{% else %}<form action="{% url 'viewer:tools-id' 'stop_archive_download_queue' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Stop Archive download queue</button></form>{% endif %}
-        <form action="{% url 'viewer:tools-id' 'force_archive_download_queue' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Force run Archive download queue</button></form>
-        {% if not threads_status.post_downloader %}<form action="{% url 'viewer:tools-id' 'start_timed_dl' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Start Post downloader</button></form>{% else %}<form action="{% url 'viewer:tools-id' 'stop_timed_dl' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Stop Post downloader</button></form>{% endif %}
-        <form action="{% url 'viewer:tools-id' 'force_run_timed_dl' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Force run Post downloader</button></form>
-        {% if not threads_status.auto_wanted %}<form action="{% url 'viewer:tools-id' 'start_timed_auto_wanted' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Start Auto wanted</button></form>{% else %}<form action="{% url 'viewer:tools-id' 'stop_timed_auto_wanted' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Stop Auto Wanted</button></form>{% endif %}
-        <form action="{% url 'viewer:tools-id' 'force_run_timed_auto_wanted' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Force run Auto wanted</button></form>
-        {% if not threads_status.web_queue %}<form action="{% url 'viewer:tools-id' 'start_web_queue' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Start Web queue</button></form>{% else %}<a class=" list-group-item" href="#">Stop Web queue</a>{% endif %}
-        {% if not threads_status.auto_updater %}<form action="{% url 'viewer:tools-id' 'start_timed_updater' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Start Auto updater (all)</button></form>{% else %}<form action="{% url 'viewer:tools-id' 'stop_timed_updater' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Stop Auto updater (all)</button></form>{% endif %}
-        <form action="{% url 'viewer:tools-id' 'force_run_timed_updater' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Force run Auto updater (all)</button></form>
-        {% for provider_name, provider_thread_status in autoupdater_providers %}
-          {% if not provider_thread_status %}<form action="{% url 'viewer:tools-id-arg' 'start_timed_updater' provider_name %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Start Auto updater ({{ provider_name }})</button></form>{% else %}<form action="{% url 'viewer:tools-id-arg' 'stop_timed_updater' provider_name %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Stop Auto updater ({{ provider_name }})</button></form>{% endif %}
-          <form action="{% url 'viewer:tools-id-arg' 'force_run_timed_updater' provider_name %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Force run Auto updater ({{ provider_name }})</button></form>
-        {% endfor %}
-      </div>
-      <div class="list-group col-lg-3 col-md-4 col-sm-6 col-xs-12">
         <div class="list-group-item active">Misc</div>
         <a class="list-group-item" href="{% static 'js/panda.user.js' %}">Install JS userscript</a>
-        <form action="{% url 'viewer:tools-id' 'restart_viewer' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Restart Viewer (for code changes)</button></form>
+        <a class="list-group-item" href="{% url 'viewer:stats-workers' %}">Workers dashboard (start, stop and force run schedulers)</a>
+        <form action="{% url 'viewer:tools-id' 'restart_viewer' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Restart Web Server (gunicorn, reloads views and templates)</button></form>
         <form action="{% url 'viewer:tools-id' 'restart_workers' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Restart Workers (apply settings / code changes)</button></form>
       </div>
 

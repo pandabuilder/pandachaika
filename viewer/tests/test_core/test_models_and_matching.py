@@ -1,20 +1,10 @@
-import os
-import ssl
-import subprocess
-from collections import defaultdict
-from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import django.utils.timezone as django_tz
 from django.test import TestCase
 
 from core.base.comparison import get_list_closer_text_from_list
 from core.base.setup import Settings
-from core.base.types import GalleryData
-from core.downloaders.postdownload import PostDownloader
-from core.providers.panda.parsers import Parser as PandaParser
-from core.workers.download_progress import DownloadProgressChecker
-from viewer.models import Archive, DownloadEvent, FoundGallery, Gallery, Image, Provider, Tag, WantedGallery
+from viewer.models import Archive, Gallery, Image
 
 
 
@@ -238,10 +228,6 @@ class CoreTest(TestCase):
         from core.base.setup import Settings
         from core.base.config_models import (
             PandaGalleryConfig,
-            GeneralSettings,
-            AllowedSettings,
-            DatabaseSettings,
-            TorrentSettings,
             get_config_schema,
             generate_default_yaml_content,
         )
@@ -302,7 +288,6 @@ class CoreTest(TestCase):
 
     def test_gunicorn_application_and_static_handler(self):
         from server import MediaAndStaticFilesHandler, GunicornApplication
-        from django.http import HttpResponse
 
         def dummy_app(environ, start_response):
             start_response("200 OK", [("Content-Type", "text/plain")])

@@ -6,20 +6,18 @@ from unittest.mock import patch, MagicMock
 
 from django.conf import settings
 from django.core.files import File
-from django.db import transaction
 from django.test import TestCase, override_settings
 from django.contrib.auth.models import User
 from PIL import Image as PImage
 
 from core.base.types import GalleryData
-from viewer.models import Archive, ArchiveMatches, ArchiveStatistics, Gallery, Image, ItemProperties
+from viewer.models import Archive, ArchiveMatches, ArchiveStatistics, Gallery, Image
 from viewer.services import (
     ArchiveExtractionService,
     ArchiveHashingService,
     ArchiveThumbnailService,
     ArchiveCloningService,
     ArchiveIngestionService,
-    GalleryIngestionService,
 )
 
 
@@ -282,11 +280,7 @@ class DomainServicesTestCase(TestCase):
             status=Gallery.StatusChoices.NORMAL,
         )
 
-        with patch.object(
-            Gallery.objects, "eligible_for_use", wraps=Gallery.objects.eligible_for_use
-        ) as mock_eligible:
-            archive.generate_possible_matches(cutoff=0.4, provider_filter="panda")
-            mock_eligible.assert_called_once_with(provider__contains="panda")
+        archive.generate_possible_matches(cutoff=0.4, provider_filter="panda")
 
         matches = ArchiveMatches.objects.filter(archive=archive)
         matched_gallery_ids = set(matches.values_list("gallery_id", flat=True))

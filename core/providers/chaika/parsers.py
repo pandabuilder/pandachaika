@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
+import copy
 import logging
-import time
 import typing
 import urllib
 from collections import defaultdict
@@ -10,8 +10,9 @@ import re
 from urllib.parse import urljoin
 
 from core.base.parsers import BaseParser
+from core.base.types import GalleryData
 from viewer.models import Gallery
-from core.base.utilities import chunks, request_with_retries, request_by_provider, construct_request_dict
+from core.base.utilities import chunks, request_by_provider, construct_request_dict
 
 from .utilities import ChaikaGalleryData
 from . import constants
@@ -34,6 +35,8 @@ class Parser(BaseParser):
         self.web_request_function = request_by_provider(
             self.name + "_web", 1, self.own_settings.wait_timer
         )
+        # gid -> (chaika thumbnail url, original thumbnail url), used by the metadata updater.
+        self.pending_thumbnails: dict[str, tuple[str, str | None]] = {}
 
     def filter_accepted_urls(self, urls: Iterable[str]) -> list[str]:
         return [x for x in urls if any(word in x for word in self.accepted_urls) and self.own_settings.url in x]
@@ -158,7 +161,6 @@ class Parser(BaseParser):
             query.update(params)
             new_query = urllib.parse.urlencode(query, doseq=True)
             feed_url = urllib.parse.urlunparse(list(parsed[0:4]) + [new_query] + list(parsed[5:]))
-            time.sleep(self.own_settings.wait_timer)
 
         total_galleries_filtered: list[ChaikaGalleryData] = list(unique_urls.values())
 
@@ -205,6 +207,137 @@ class Parser(BaseParser):
 
         return total_galleries_filtered
 
+    def fetch_gallery_dicts_from_link(
+        self, url: str, request_dict: dict[str, typing.Any] | None = None
+    ) -> list[dict[str, typing.Any]] | None:
+        """Get the gallery data, as returned by the API, for a single /archive/<pk>/ or /gallery/<pk>/ link.
+
+        Returns None if the request failed, or an empty list if the link does not point to a gallery.
+        """
+        if request_dict is None:
+            request_dict = construct_request_dict(self.settings, self.own_settings)
+
+        dict_list: list[dict[str, typing.Any]] = []
+        api_url = urljoin(self.own_settings.url, constants.api_path)
+
+        if "/archive/" in url:
+            match_archive_pk = re.search(r"/archive/(\d+)/", url)
+            if match_archive_pk:
+                request_dict["params"] = {"archive": match_archive_pk.group(1)}
+                archive_response = self.web_request_function(
+                    api_url,
+                    request_dict,
+                    post=False,
+                )
+                if not archive_response:
+                    logger.error("Did not get a response from URL: {}".format(api_url))
+                    return None
+                try:
+                    json_decoded = archive_response.json()
+                except (ValueError, KeyError):
+                    logger.error("Could not parse response to JSON: {}".format(archive_response.text))
+                    return None
+                if json_decoded["gallery"]:
+                    request_dict["params"] = {"gd": json_decoded["gallery"]}
+                    gallery_response = self.web_request_function(
+                        api_url,
+                        request_dict,
+                        post=False,
+                    )
+                    if not gallery_response:
+                        logger.error("Did not get a response from URL: {}".format(api_url))
+                        return None
+                    try:
+                        json_decoded = gallery_response.json()
+                        dict_list.append(json_decoded)
+                    except (ValueError, KeyError):
+                        logger.error("Could not parse response to JSON: {}".format(gallery_response.text))
+                        return None
+                else:
+                    logger.error("Archive: {} does not have an associated Gallery".format(url))
+                    return None
+        elif "/gallery/" in url:
+            match_gallery_pk = re.search(r"/gallery/(\d+)/", url)
+            if match_gallery_pk:
+                request_dict["params"] = {"gd": match_gallery_pk.group(1)}
+                gallery_response = self.web_request_function(
+                    api_url,
+                    request_dict,
+                    post=False,
+                )
+                if not gallery_response:
+                    logger.error("Did not get a response from URL: {}".format(api_url))
+                    return None
+                try:
+                    json_decoded = gallery_response.json()
+                    dict_list.append(json_decoded)
+                except (ValueError, KeyError):
+                    logger.error("Could not parse response to JSON: {}".format(gallery_response.text))
+                    return None
+
+        return dict_list
+
+    # Support for core.web.gallery_updater.GalleryMetadataUpdater
+    update_fetch_chunk_size = 10
+
+    def filter_update_urls(self, urls: Iterable[str]) -> list[str]:
+        return [
+            x
+            for x in super().filter_update_urls(urls)
+            if re.search(r"/(gallery|archive)/\d+/", x)
+        ]
+
+    def fetch_gallery_data_for_update(self, url_list: list[str]) -> list[GalleryData]:
+        galleries_data: list[GalleryData] = []
+        request_dict = construct_request_dict(self.settings, self.own_settings)
+
+        for url in url_list:
+            api_dicts = self.fetch_gallery_dicts_from_link(url, dict(request_dict))
+            if not api_dicts:
+                continue
+            for gallery in api_dicts:
+                if "result" in gallery:
+                    continue
+                gallery["posted"] = datetime.fromtimestamp(int(gallery["posted"]), timezone.utc)
+                gallery_data = ChaikaGalleryData(**gallery)
+                # Chaika serves its own copy of the thumbnail. As in crawl_urls, don't store its local path/URL
+                # in the Gallery, the thumbnail is downloaded from there in after_gallery_update.
+                if gallery_data.thumbnail:
+                    self.pending_thumbnails[gallery_data.gid] = (str(gallery_data.thumbnail), gallery_data.thumbnail_url)
+                    gallery_data.thumbnail = ""
+                    gallery_data.thumbnail_url = ""
+                galleries_data.append(gallery_data)
+
+        return galleries_data
+
+    def after_gallery_update(self, gallery: "Gallery", gallery_data: GalleryData) -> None:
+        pending = self.pending_thumbnails.pop(gallery_data.gid, None)
+        if not pending:
+            return
+        chaika_thumbnail_url, original_thumbnail_url = pending
+
+        gallery.thumbnail_url = chaika_thumbnail_url
+        gallery.fetch_thumbnail(force_provider=self.name)
+        gallery.thumbnail_url = original_thumbnail_url or ""
+        gallery.save()
+
+    def do_get_gallery_discard_reason(
+        self, gallery_id: str | None = None, link: str = "", gallery: "Gallery | None" = None
+    ) -> tuple[bool, str]:
+        if (
+            not gallery
+            and gallery_id
+            and getattr(self.settings, "current_task_type", "")
+            in ("gallery_creator", "gallery_worker", "create_galleries")
+        ):
+            gallery = Gallery.objects.filter_first(gid=gallery_id, provider=self.name)
+            if gallery and not gallery.archive_set.all() and not self.settings.replace_metadata:
+                return False, "Gallery {title}, {ext_link} pre-created by chaika crawl without archives, processing.".format(
+                    ext_link=gallery.get_link(),
+                    title=gallery.title,
+                )
+        return super().do_get_gallery_discard_reason(gallery_id=gallery_id, link=link, gallery=gallery)
+
     def crawl_urls(
         self,
         urls: list[str],
@@ -226,62 +359,11 @@ class Parser(BaseParser):
             request_dict = construct_request_dict(self.settings, self.own_settings)
             total_galleries_filtered: list[ChaikaGalleryData] = []
 
-            if "/archive/" in url:
-                match_archive_pk = re.search(r"/archive/(\d+)/", url)
-                if match_archive_pk:
-                    api_url = urljoin(self.own_settings.url, constants.api_path)
-                    request_dict["params"] = {"archive": match_archive_pk.group(1)}
-                    archive_response = self.web_request_function(
-                        api_url,
-                        request_dict,
-                        post=False,
-                    )
-                    if not archive_response:
-                        logger.error("Did not get a response from URL: {}".format(api_url))
-                        continue
-                    try:
-                        json_decoded = archive_response.json()
-                    except (ValueError, KeyError):
-                        logger.error("Could not parse response to JSON: {}".format(archive_response.text))
-                        continue
-                    if json_decoded["gallery"]:
-                        request_dict["params"] = {"gd": json_decoded["gallery"]}
-                        gallery_response = self.web_request_function(
-                            api_url,
-                            request_dict,
-                            post=False,
-                        )
-                        if not gallery_response:
-                            logger.error("Did not get a response from URL: {}".format(api_url))
-                            continue
-                        try:
-                            json_decoded = gallery_response.json()
-                            dict_list.append(json_decoded)
-                        except (ValueError, KeyError):
-                            logger.error("Could not parse response to JSON: {}".format(gallery_response.text))
-                            continue
-                    else:
-                        logger.error("Archive: {} does not have an associated Gallery".format(url))
-                        continue
-            elif "/gallery/" in url:
-                match_gallery_pk = re.search(r"/gallery/(\d+)/", url)
-                if match_gallery_pk:
-                    api_url = urljoin(self.own_settings.url, constants.api_path)
-                    request_dict["params"] = {"gd": match_gallery_pk.group(1)}
-                    gallery_response = self.web_request_function(
-                        api_url,
-                        request_dict,
-                        post=False,
-                    )
-                    if not gallery_response:
-                        logger.error("Did not get a response from URL: {}".format(api_url))
-                        continue
-                    try:
-                        json_decoded = gallery_response.json()
-                        dict_list.append(json_decoded)
-                    except (ValueError, KeyError):
-                        logger.error("Could not parse response to JSON: {}".format(gallery_response.text))
-                        continue
+            if "/archive/" in url or "/gallery/" in url:
+                api_dicts = self.fetch_gallery_dicts_from_link(url, request_dict)
+                if api_dicts is None:
+                    continue
+                dict_list.extend(api_dicts)
             elif "/es-gallery-json/" in url:
                 parse_results = self.crawl_elastic_json_paginated(url)
                 if parse_results:
@@ -321,12 +403,12 @@ class Parser(BaseParser):
             found_galleries = set()
             gallery_wanted_lists: dict[str, list["WantedGallery"]] = preselected_wanted_matches or defaultdict(list)
 
-            for gallery in dict_list:
-                if "result" in gallery:
+            for gal_dict in dict_list:
+                if "result" in gal_dict:
                     continue
-                galleries_gids.append(gallery["gid"])
-                gallery["posted"] = datetime.fromtimestamp(int(gallery["posted"]), timezone.utc)
-                gallery_data = ChaikaGalleryData(**gallery)
+                galleries_gids.append(gal_dict["gid"])
+                gal_dict["posted"] = datetime.fromtimestamp(int(gal_dict["posted"]), timezone.utc)
+                gallery_data = ChaikaGalleryData(**gal_dict)
                 total_galleries_filtered.append(gallery_data)
 
             for galleries_gid_group in list(chunks(galleries_gids, 900)):
@@ -405,9 +487,12 @@ class Parser(BaseParser):
                 else:
                     # we don't force providers if the link already has an own archive to download
                     if gallery.archives:
+                        archive_galleries: list[GalleryData] = []
                         for archive in gallery.archives:
-                            gallery.temp_archive = archive
-                            self.pass_gallery_data_to_downloaders([gallery], gallery_wanted_lists)
+                            archive_gallery = copy.copy(gallery)
+                            archive_gallery.temp_archive = archive
+                            archive_galleries.append(archive_gallery)
+                        self.pass_gallery_data_to_downloaders(archive_galleries, gallery_wanted_lists)
 
             if wanted_only:
 

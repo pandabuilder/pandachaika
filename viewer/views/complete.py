@@ -943,3 +943,37 @@ class WantedGallerySelectAutocomplete(autocomplete.AlightQuerySetView):
 
         return qs[0 : self.limit_choices]
 
+
+
+class ArchiveFieldJSONAutocompleteMixin(GalleryFieldJSONAutocompleteMixin):
+    """JSON (Select2 format) version of the archive field autocompletes, for the admin widgets. Drops empty values."""
+
+    def get_results(self, context):
+        return [result for result in super().get_results(context) if result["id"]]
+
+
+class SourceJSONAutocomplete(ArchiveFieldJSONAutocompleteMixin, SourceAutocomplete):
+    pass
+
+
+class ReasonJSONAutocomplete(ArchiveFieldJSONAutocompleteMixin, ReasonAutocomplete):
+    pass
+
+
+class ProviderJSONAutocomplete(ArchiveFieldJSONAutocompleteMixin, ProviderAutocomplete):
+    pass
+
+
+class CategoryJSONAutocomplete(ArchiveFieldJSONAutocompleteMixin, CategoryAutocomplete):
+    pass
+
+
+class ArchiveManageEntryMarkReasonJSONAutocomplete(
+    ArchiveFieldJSONAutocompleteMixin, ArchiveManageEntryMarkReasonAutocomplete
+):
+    def choices_for_request(self) -> "Iterable[str | None]":
+        # Marks are only shown to staff and users that can view them.
+        user = self.request.user
+        if not (user.is_staff or user.has_perm("viewer.view_marks")):
+            return []
+        return super().choices_for_request()

@@ -16,7 +16,6 @@ from core.base.process_pool import (
     get_process_pool,
     map_in_pool,
     recalc_archive_fileinfo_in_pool,
-    resize_image_in_pool,
     run_in_pool,
     shutdown_process_pool,
     worker_calc_crc32,

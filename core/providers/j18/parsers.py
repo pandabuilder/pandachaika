@@ -1,19 +1,14 @@
 # -*- coding: utf-8 -*-
 import logging
-import re
-import time
 import typing
 from collections import defaultdict
-from datetime import datetime
 from urllib.parse import urljoin
 
-import bs4
-from bs4 import BeautifulSoup
 from dateutil import parser
 from django.db.models import QuerySet
 
 from core.base.parsers import BaseParser
-from core.base.utilities import request_with_retries, construct_request_dict
+from core.base.utilities import construct_request_dict
 from core.base.types import GalleryData
 from core.base.utilities import translate_tag
 from . import constants
@@ -39,7 +34,7 @@ class Parser(BaseParser):
         if len(id_slug_parts) < 2:
             return None
 
-        response = request_with_retries(
+        response = self.web_request(
             urljoin(constants.main_url, "{}/{}".format(constants.gallery_data_path, id_slug_parts[0])),
             request_dict,
             post=False,
@@ -78,13 +73,10 @@ class Parser(BaseParser):
         return gallery
 
     # Even if we just call the single method, it allows to upgrade this easily in case group calls are supported
-    # afterward. Also, we can add a wait_timer here.
+    # afterward. Requests are paced by the provider's rate limit.
     def get_values_from_gallery_link_list(self, links: list[str]) -> list[GalleryData]:
         response = []
         for i, element in enumerate(links):
-            if i > 0:
-                time.sleep(self.own_settings.wait_timer)
-
             logger.info("Calling API ({}). " "Gallery: {}, total galleries: {}".format(self.name, i + 1, len(links)))
 
             values = self.fetch_gallery_data(element)

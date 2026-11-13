@@ -1,10 +1,15 @@
 # -*- coding: utf-8 -*-
 from datetime import timedelta, datetime
+import logging
+import time
 from typing import Any
 
 import django.utils.timezone as django_tz
 from django.conf import settings
 from django.db import models
+from django.db.models import F, Q, QuerySet
+
+logger = logging.getLogger(__name__)
 
 
 class TaskQueue(models.Model):
@@ -42,6 +47,19 @@ class TaskQueue(models.Model):
     error_message = models.TextField(blank=True, default="")
     traceback = models.TextField(blank=True, default="")
     worker_pid = models.IntegerField(null=True, blank=True)
+    attempts = models.PositiveIntegerField(
+        default=0,
+        help_text="Times a worker started this task. Reverting a task on a clean shutdown does not count.",
+    )
+    max_attempts = models.PositiveIntegerField(
+        default=3,
+        help_text="Maximum starts before an interrupted task is failed instead of being re-queued.",
+    )
+    not_before = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Do not start the task before this time (used to delay a task, e.g. during a provider ban).",
+    )
 
     class Meta:
         ordering = ["priority", "created_at", "id"]
@@ -51,6 +69,31 @@ class TaskQueue(models.Model):
 
     def __str__(self) -> str:
         return f"TaskQueue #{self.pk} ({self.task_type}) - {self.status}"
+
+    @classmethod
+    def startable(cls, now: datetime | None = None) -> QuerySet["TaskQueue"]:
+        """Pending tasks whose ``not_before`` time (if any) has passed."""
+        now = now or django_tz.now()
+        return cls.objects.filter(status=cls.Status.PENDING).filter(Q(not_before__isnull=True) | Q(not_before__lte=now))
+
+    @classmethod
+    def release_interrupted(cls, queryset: QuerySet["TaskQueue"], reason: str) -> tuple[int, int]:
+        """Release PROCESSING tasks whose worker died, without it being a clean shutdown.
+
+        Each of these counts as a started attempt. Tasks that used up their attempts are failed instead of being
+        re-queued, so a task that crashes the worker (out of memory, segfault) can't crash it on every restart.
+
+        :return: (re-queued count, failed count)
+        """
+        processing = queryset.filter(status=cls.Status.PROCESSING)
+        failed = processing.filter(attempts__gte=F("max_attempts")).update(
+            status=cls.Status.FAILED,
+            finished_at=django_tz.now(),
+            worker_pid=None,
+            error_message=reason,
+        )
+        requeued = queryset.filter(status=cls.Status.PROCESSING).update(status=cls.Status.PENDING, worker_pid=None)
+        return requeued, failed
 
     @property
     def wanted(self) -> list[str]:
@@ -99,12 +142,13 @@ class WorkerProcess(models.Model):
         SchedulerState.objects.filter(is_running=True, worker_pid__isnull=False).exclude(
             worker_pid__in=active_pids
         ).update(is_running=False)
-        TaskQueue.objects.filter(
-            status=TaskQueue.Status.PROCESSING,
-            worker_pid__isnull=False,
-        ).exclude(worker_pid__in=active_pids).update(status=TaskQueue.Status.PENDING, worker_pid=None)
+        TaskQueue.release_interrupted(
+            TaskQueue.objects.filter(status=TaskQueue.Status.PROCESSING, worker_pid__isnull=False).exclude(
+                worker_pid__in=active_pids
+            ),
+            reason="Worker stopped unexpectedly while running this task too many times.",
+        )
         try:
-            from django.db.models import F
             from django.db.models.functions import Greatest
             from viewer.models import DownloadEvent
 
@@ -119,7 +163,7 @@ class WorkerProcess(models.Model):
                 attempts=Greatest(F("attempts") - 1, 0),
             )
         except Exception:
-            pass
+            logger.warning("Could not release the downloads of dead workers", exc_info=True)
         return stopped_count
 
 
@@ -207,11 +251,15 @@ class ProviderRateLimit(models.Model):
     calls = models.IntegerField(default=1)
     period = models.FloatField(default=1.0)
     call_timestamps = models.JSONField(default=list, blank=True)
+    cooldown_until = models.FloatField(default=0.0)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["name"]
 
     def __str__(self) -> str:
+        if self.cooldown_until and self.cooldown_until > time.time():
+            remaining = self.cooldown_until - time.time()
+            return f"ProviderRateLimit {self.name} ({self.calls} calls / {self.period}s) [cooldown: {remaining:.1f}s]"
         return f"ProviderRateLimit {self.name} ({self.calls} calls / {self.period}s)"
 

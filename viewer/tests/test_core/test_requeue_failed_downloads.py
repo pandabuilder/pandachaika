@@ -1,20 +1,15 @@
 import os
-import ssl
 import subprocess
-from collections import defaultdict
-from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import django.utils.timezone as django_tz
 from django.test import TestCase
 
-from core.base.comparison import get_list_closer_text_from_list
 from core.base.setup import Settings
 from core.base.types import GalleryData
 from core.downloaders.postdownload import PostDownloader
 from core.providers.panda.parsers import Parser as PandaParser
-from core.workers.download_progress import DownloadProgressChecker
-from viewer.models import Archive, DownloadEvent, FoundGallery, Gallery, Image, Provider, Tag, WantedGallery
+from viewer.models import Archive, DownloadEvent, Gallery, Image
 
 
 
@@ -489,7 +484,10 @@ class RequeueFailedDownloadTest(TestCase):
         get_user_model().objects.get_or_create(id=1, defaults={"username": "test_user"})
 
         mock_web_queue = MagicMock()
-        settings.workers.web_queue = mock_web_queue
+        # settings.workers is shared by every Settings instance; restore web_queue after the test.
+        web_queue_patcher = patch.object(settings.workers, "web_queue", mock_web_queue)
+        web_queue_patcher.start()
+        self.addCleanup(web_queue_patcher.stop)
 
         Gallery.objects.create(gid="999", title="Test Gallery 999", provider="panda", filesize=100)
         gallery_data = GalleryData(gid="999", title="Test Gallery 999", provider="panda")
@@ -562,7 +560,7 @@ class RequeueFailedDownloadTest(TestCase):
 
         mock_resp = MagicMock()
         mock_resp.status_code = 200
-        mock_resp.headers = {"Content-Length": "50"}
+        mock_resp.headers = {"Content-Length": "5"}
         mock_resp.iter_content.return_value = [b"dummy"]
         mock_req_prov.return_value = lambda url, d: mock_resp
 

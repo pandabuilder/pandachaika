@@ -989,16 +989,16 @@ autocomplete-light[loading] input {
 /* Fixed height header card on desktop so toolbar locations are stable */
 @media (min-width: 768px) {
   .header-card {
-    height: 120px;
-    min-height: 120px;
-    max-height: 120px;
+    height: 86px;
+    min-height: 86px;
+    max-height: 86px;
   }
 
   .header-card .card-body {
     height: 100%;
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
+    justify-content: center;
   }
 
   .header-title-area {

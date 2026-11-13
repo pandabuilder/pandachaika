@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timedelta
 from typing import Any, cast
 
 from django import forms
@@ -20,6 +21,7 @@ from django.utils.html import format_html
 from django.utils.encoding import force_str
 from django.forms.utils import flatatt
 from django.conf import settings
+from django.utils import timezone as django_tz
 
 
 from dal import autocomplete
@@ -31,6 +33,7 @@ from viewer.models import (
     Image,
     Gallery,
     Profile,
+    UserLongLivedToken,
     WantedGallery,
     ArchiveGroup,
     ArchiveGroupEntry,
@@ -1230,6 +1233,39 @@ class UserChangeForm(forms.ModelForm):
         }
 
 
+class UserTokenCreateForm(forms.Form):
+    """Create a long-lived API token. `expiry_days` of 0 means the token never expires."""
+
+    EXPIRY_CHOICES = (
+        ("30", "30 days"),
+        ("90", "90 days"),
+        ("365", "1 year"),
+        ("0", "Never expires"),
+    )
+
+    name = forms.CharField(max_length=100, strip=True)
+    expiry_days = forms.TypedChoiceField(choices=EXPIRY_CHOICES, coerce=int, initial="365")
+    scopes = forms.MultipleChoiceField(
+        choices=UserLongLivedToken.SCOPE_CHOICES,
+        widget=forms.CheckboxSelectMultiple,
+        initial=list(UserLongLivedToken.ALL_SCOPES),
+    )
+
+    def __init__(self, *args: Any, user: User, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.user = user
+
+    def clean_name(self) -> str:
+        name = self.cleaned_data["name"]
+        if self.user.long_lived_tokens.filter(name=name).exists():
+            raise ValidationError("A token with this name already exists.")
+        return name
+
+    def expire_date(self) -> datetime | None:
+        days = self.cleaned_data["expiry_days"]
+        return django_tz.now() + timedelta(days=days) if days else None
+
+
 class ProfileChangeForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
@@ -1626,6 +1662,17 @@ class MonitoredLinkCreateOrEditForm(ModelForm):
             return 10
         return priority
 
+    def clean(self) -> dict[str, Any]:
+        cleaned_data = super().clean() or {}
+        if cleaned_data.get("separate_frequencies"):
+            capture_frequency = cleaned_data.get("capture_frequency")
+            if capture_frequency is None:
+                if "capture_frequency" not in self.errors:
+                    self.add_error("capture_frequency", "Required when using separate frequencies.")
+            elif capture_frequency.total_seconds() <= 0:
+                self.add_error("capture_frequency", "Must be greater than zero.")
+        return cleaned_data
+
     def clean_stop_on_seen_link(self) -> str:
         return self.cleaned_data.get("stop_on_seen_link") or MonitoredLink.StopOnSeenChoices.FOLLOW_GLOBAL
 
@@ -1648,6 +1695,8 @@ class MonitoredLinkCreateOrEditForm(ModelForm):
             "enabled",
             "auto_start",
             "frequency",
+            "separate_frequencies",
+            "capture_frequency",
             "use_limited_wanted_galleries",
             "limited_wanted_galleries",
         ]
@@ -1665,6 +1714,8 @@ class MonitoredLinkCreateOrEditForm(ModelForm):
             "enabled": "Whether periodic monitoring is currently enabled",
             "auto_start": "Automatically start this monitor when workers start",
             "frequency": "Crawl interval in Duration format (e.g. 01:00:00 for 1h, 00:30:00 for 30m, 1 00:00:00 for 1d)",
+            "separate_frequencies": "Capture the new links from the pages/feeds on their own timer (reducing the load on the index pages), and process them (API calls, wanted galleries and global filters) on the Frequency above. Off: everything runs in sequence on the Frequency. Only Panda links can be captured separately.",
+            "capture_frequency": "Interval to capture new links, in Duration format (e.g. 01:00:00 for 1h). Only used with separate frequencies; Frequency then becomes the interval to process the captured links (e.g. 00:05:00).",
             "use_limited_wanted_galleries": "Restrict matches to selected WantedGalleries only",
             "limited_wanted_galleries": "Select WantedGalleries to restrict matching against",
         }
@@ -1682,6 +1733,8 @@ class MonitoredLinkCreateOrEditForm(ModelForm):
             "enabled": forms.widgets.CheckboxInput(attrs={"class": "form-check-input"}),
             "auto_start": forms.widgets.CheckboxInput(attrs={"class": "form-check-input"}),
             "frequency": forms.widgets.TextInput(attrs={"class": "form-control", "placeholder": "01:00:00"}),
+            "separate_frequencies": forms.widgets.CheckboxInput(attrs={"class": "form-check-input"}),
+            "capture_frequency": forms.widgets.TextInput(attrs={"class": "form-control", "placeholder": "01:00:00"}),
             "use_limited_wanted_galleries": forms.widgets.CheckboxInput(attrs={"class": "form-check-input"}),
             "limited_wanted_galleries": autocomplete.ModelAlightMultiple(
                 url="wanted-gallery-select-autocomplete",

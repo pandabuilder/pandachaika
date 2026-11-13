@@ -1,25 +1,18 @@
-import json
 import logging
-import re
 import uuid
-import typing
-from typing import Any
 
 from django.conf import settings
 from django.contrib import messages
-from django.core.paginator import EmptyPage, InvalidPage, Paginator
-from django.db.models import Count, Q, QuerySet
-from django.http import BadHeaderError, Http404, HttpRequest, HttpResponse, HttpResponseRedirect
-from django.shortcuts import redirect, render
+from django.db.models import Q
+from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
+from django.shortcuts import render
 from django.urls import reverse
 from django.utils.html import linebreaks, urlize
 
 from core.base.setup import Settings
-from core.base.types import DataDict
 from viewer.models import Gallery, GallerySubmitEntry, users_with_perm
-from viewer.utils.actions import event_log
 from viewer.utils.functions import send_mass_html_mail
-from viewer.views.head.auth import render_error, render_message
+from viewer.views.head.auth import render_error
 from workers import client
 
 logger = logging.getLogger(__name__)
@@ -248,7 +241,7 @@ def url_submit(request: HttpRequest) -> HttpResponse:
                 ]
             )
             send_mass_html_mail(datatuples, fail_silently=True)
-        except BadHeaderError:
+        except ValueError:
             logger.error("Failed sending emails: Invalid header found.")
 
         logger.info("{}\n{}".format(admin_subject, "\n".join(admin_messages)))

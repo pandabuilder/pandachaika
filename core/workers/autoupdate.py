@@ -7,12 +7,12 @@ from django.db import close_old_connections
 from core.base.setup import Settings
 from core.workers.schedulers import BaseScheduler
 from viewer.models import Gallery
+from workers.client import enqueue_gallery_update
 
 logger = logging.getLogger(__name__)
 
 
-# We could call fetch_multiple_gallery_data directly, but we want to go through the queue so we don't go over limits
-# with the providers
+# The update itself runs in the gallery_updater queue of the workers, which uses the rate limited provider requests.
 class ProviderTimedAutoUpdater(BaseScheduler):
 
     thread_name = "auto_updater"
@@ -34,11 +34,6 @@ class ProviderTimedAutoUpdater(BaseScheduler):
                 return
 
             if self.settings.providers[self.provider_name].autoupdater_enable:
-                current_settings = Settings(load_from_config=self.settings.config)
-                current_settings.keep_dl_type = True
-                current_settings.silent_processing = True
-                current_settings.config["allowed"]["replace_metadata"] = "yes"
-
                 close_old_connections()
 
                 start_date = (
@@ -61,14 +56,6 @@ class ProviderTimedAutoUpdater(BaseScheduler):
                         )
                     )
                 else:
-                    # Leave only info downloaders, then leave only enabled auto updated providers
-                    downloaders = current_settings.provider_context.get_downloaders_name_priority(
-                        current_settings, filter_type="info"
-                    )
-                    downloaders_names = [x[0] for x in downloaders if x[0].replace("_info", "") == self.provider_name]
-
-                    current_settings.allow_downloaders_only(downloaders_names, True, True, True)
-
                     url_list = [x.get_link() for x in galleries]
 
                     logger.info(
@@ -78,9 +65,7 @@ class ProviderTimedAutoUpdater(BaseScheduler):
                         )
                     )
 
-                    url_list.append("--update-mode")
-
-                    self.web_queue.enqueue_args_list(url_list, override_options=current_settings)
+                    enqueue_gallery_update(url_list)
 
             self.update_last_run(django_tz.now())
             try:

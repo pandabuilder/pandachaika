@@ -4,7 +4,6 @@ from typing import Any
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
-from django.db import transaction
 from django.db.models import Q, Prefetch, F, Case, When
 from django.http import HttpRequest, HttpResponse, Http404, HttpResponseRedirect
 from django.shortcuts import render

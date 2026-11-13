@@ -4,7 +4,6 @@ import shutil
 import threading
 import typing
 from copy import deepcopy
-from dataclasses import asdict, dataclass, field
 
 import yaml
 
@@ -21,7 +20,6 @@ from core.base.types import DataDict
 from core.workers.holder import WorkerContext
 
 if typing.TYPE_CHECKING:
-    from viewer.models import Gallery, Archive, WantedGallery, FoundGallery, ArchiveManageEntry, DownloadEvent
     from django.contrib.auth.models import User, AnonymousUser
     from core.base.types import ProviderSettings
 
@@ -84,11 +82,15 @@ class GlobalInfo:
         ("fileinfo_worker", "Generates file information for every gallery", "processor"),
         ("extract_worker", "Extracts images from archives in the background", "processor"),
         ("publish_worker", "Publishes archives in the background", "processor"),
+        ("contextual_extractor_worker", "Extracts contextual metrics from archives via manga-extractor", "processor"),
         ("web_queue", "Queue that processes gallery links, one at a time", "queue"),
         ("webcrawler", "Processes gallery links, can coexist with web_queue", "processor"),
         ("foldercrawler", "Processes galleries on the filesystem", "processor"),
-        ("download_progress_checker", "Checks for progress on downloads", "processor"),
-        ("post_downloader", "Transfers archives downloaded with other programs (torrent, hath)", "scheduler"),
+        (
+            "download_progress_checker",
+            "Follows download progress, and transfers archives downloaded with other programs (torrent, hath)",
+            "processor",
+        ),
         ("archive_download_queue", "Downloads queued archives in background", "scheduler"),
         ("auto_wanted", "Parses providers for new galleries to create wanted galleries entries", "scheduler"),
     ]
@@ -100,12 +102,9 @@ class ConfigFileError(Exception):
 
 from core.base.config_models import (
     AllowedSettings,
-    ArchiveDownloadQueueSettings,
     AutoUpdaterSettings,
     AutoWantedSettings,
     BacklogSearchSettings,
-    BaseConfigModel,
-    BaseConfigSection,
     CloningImageToolSettings,
     DatabaseSettings,
     ElasticSearchSettings,
@@ -114,6 +113,7 @@ from core.base.config_models import (
     GeneralSettings,
     LocationsSettings,
     MailSettings,
+    MangaExtractorSettings,
     MatchParamsSettings,
     MonitoredLinksSettings,
     PandaGalleryConfig,
@@ -124,9 +124,7 @@ from core.base.config_models import (
     UrlSettings,
     WebServerSettings,
     _parse_bool,
-    generate_default_yaml_content,
     get_config_schema,
-    save_default_yaml_file,
 )
 
 
@@ -135,12 +133,6 @@ class Settings:
     # We are storing the context here, but it should be somewhere else, available globally.
     provider_context = ProviderContext()
     workers = WorkerContext()
-    gallery_model: "type[Gallery] | None" = None
-    archive_model: "type[Archive] | None" = None
-    found_gallery_model: "type[FoundGallery] | None" = None
-    wanted_gallery_model: "type[WantedGallery] | None" = None
-    archive_manage_entry_model: "type[ArchiveManageEntry] | None" = None
-    download_event_model: "type[DownloadEvent] | None" = None
 
     def __init__(
         self,
@@ -153,6 +145,9 @@ class Settings:
         self.stop_nested = False
         self.link_child: str | None = None
         self.link_newer: str | None = None
+        # Monitored link phases: only store the new links as pending / only process the stored ones.
+        self.capture_links_only: bool = False
+        self.skip_link_capture: bool = False
         self.stop_nested = False
         # Used by autoupdater to not overwrite original value, since it would be replaced by provider_info
         self.keep_dl_type = False
@@ -168,6 +163,10 @@ class Settings:
         self.silent_processing = False
         self.update_metadata_mode = False
         self.is_worker_process: bool = False
+        self.current_task_type: str = ""
+        self.current_task_id: int | None = None
+        self.current_task_priority: int = 10
+        self.dispatch_gallery_creation: bool = True
         self.activity_callback: typing.Callable[[], None] | None = None
         self.cancel_event: threading.Event | None = None
         self.is_cancelled: typing.Callable[[], bool] | None = None
@@ -220,13 +219,12 @@ class Settings:
         self.monitored_links = MonitoredLinksSettings()
 
         self.retention = RetentionSettings()
+        self.manga_extractor = MangaExtractorSettings()
 
         self.filename_filter = ["*.zip"]
 
         self.retry_failed = False
         self.internal_matches_for_non_matches = False
-        self.timed_downloader_startup = False
-        self.timed_downloader_cycle_timer: float = 5
         self.parallel_post_downloaders = 4
         self.cherrypy_auto_restart = False
         self.add_as_public = False
@@ -458,6 +456,32 @@ class Settings:
             except ValueError:
                 pass
 
+        if 'MANGA_EXTRACTOR_ENABLE' in os.environ and os.environ['MANGA_EXTRACTOR_ENABLE'] != '':
+            self.manga_extractor.enable = os.environ['MANGA_EXTRACTOR_ENABLE'].lower() in ('true', '1', 't', 'yes')
+
+        if 'MANGA_EXTRACTOR_URL' in os.environ and os.environ['MANGA_EXTRACTOR_URL']:
+            self.manga_extractor.url = os.environ['MANGA_EXTRACTOR_URL']
+
+        for token_var in ('MANGA_EXTRACTOR_AUTH_TOKEN', 'AUTH_TOKEN', 'MANGA_EXTRACTOR_TOKEN', 'API_TOKEN'):
+            if token_var in os.environ and os.environ[token_var].strip():
+                self.manga_extractor.auth_token = os.environ[token_var].strip()
+                break
+
+        if 'MANGA_EXTRACTOR_RUN_ON_NEW_ARCHIVE' in os.environ and os.environ['MANGA_EXTRACTOR_RUN_ON_NEW_ARCHIVE'] != '':
+            self.manga_extractor.run_on_new_archive = os.environ['MANGA_EXTRACTOR_RUN_ON_NEW_ARCHIVE'].lower() in ('true', '1', 't', 'yes')
+
+        if 'MANGA_EXTRACTOR_TIMEOUT' in os.environ and os.environ['MANGA_EXTRACTOR_TIMEOUT']:
+            try:
+                self.manga_extractor.timeout = float(os.environ['MANGA_EXTRACTOR_TIMEOUT'])
+            except ValueError:
+                pass
+
+        if 'MANGA_EXTRACTOR_DEFAULT_PROFILE' in os.environ and os.environ['MANGA_EXTRACTOR_DEFAULT_PROFILE']:
+            self.manga_extractor.default_profile = os.environ['MANGA_EXTRACTOR_DEFAULT_PROFILE'].strip()
+
+        if 'MANGA_EXTRACTOR_BACKGROUND_PROFILE' in os.environ and os.environ['MANGA_EXTRACTOR_BACKGROUND_PROFILE']:
+            self.manga_extractor.background_profile = os.environ['MANGA_EXTRACTOR_BACKGROUND_PROFILE'].strip()
+
     def load_config_from_file(self, default_dir: str | None = None) -> None:
         if default_dir:
             self.default_dir = default_dir
@@ -633,23 +657,6 @@ class Settings:
         self.retry_failed = True
         self.silent_processing = True
 
-    @classmethod
-    def set_models(
-        cls,
-        gallery_model: "type[Gallery]",
-        archive_model: "type[Archive]",
-        found_gallery_model: "type[FoundGallery]",
-        wanted_gallery_model: "type[WantedGallery]",
-        archive_manage_entry_model: "type[ArchiveManageEntry]",
-        download_event_model: "type[DownloadEvent]",
-    ):
-        cls.gallery_model = gallery_model
-        cls.archive_model = archive_model
-        cls.found_gallery_model = found_gallery_model
-        cls.wanted_gallery_model = wanted_gallery_model
-        cls.archive_manage_entry_model = archive_manage_entry_model
-        cls.download_event_model = download_event_model
-
     def to_pydantic(self) -> PandaGalleryConfig:
         """Convert current runtime Settings into a fully validated PandaGalleryConfig model,
 
@@ -701,8 +708,6 @@ class Settings:
             self.temp_directory_path = self.general_model.temp_directory_path
             self.wait_timer = self.general_model.wait_timer
             self.timeout_timer = self.general_model.timeout_timer
-            self.timed_downloader_startup = self.general_model.timed_downloader_startup
-            self.timed_downloader_cycle_timer = self.general_model.timed_downloader_cycle_timer
             self.parallel_post_downloaders = self.general_model.parallel_post_downloaders
             self.parallel_archive_downloaders = self.general_model.parallel_archive_downloaders
             self.queue_archive_downloads = self.general_model.queue_archive_downloads
@@ -796,6 +801,8 @@ class Settings:
             self.gallery_dl.update_from_dict(config["gallery_dl"])
         if "autoupdater" in config and isinstance(config["autoupdater"], dict):
             self.autoupdater.update_from_dict(config["autoupdater"])
+        if "manga_extractor" in config and isinstance(config["manga_extractor"], dict):
+            self.manga_extractor.update_from_dict(config["manga_extractor"])
         if "match_params" in config and isinstance(config["match_params"], dict):
             self.match_params_model.update_from_dict(config["match_params"])
             self.rematch_file = self.match_params_model.rematch_file

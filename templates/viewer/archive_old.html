@@ -249,6 +249,19 @@
       </div>
       {% endif %}
 
+      {% if user.is_authenticated and archive_contextual_properties %}
+      <div class="col-sm-3">
+        <table>
+          <caption class="">Contextual Metrics</caption>
+          {% for prop in archive_contextual_properties %}
+          <tr>
+            <th>{{ prop.name }}</th>
+            <td>{{ prop.value }}</td>
+          </tr>
+          {% endfor %}
+        </table>
+      </div>
+      {% endif %}
     </div>
   </li>
   {% if tag_count %}
@@ -293,7 +306,11 @@
       online</a>
 
 
+    {% if is_reducing %}
+    <button class="btn btn-warning" type="button" disabled id="btn-reducing-archive"><i class="fas fa-spinner fa-spin me-1"></i>Reducing...</button>
+    {% else %}
     <a class="btn btn-light" href="{% url 'viewer:archive-reduce' archive.pk %}" id="btn-reduce-archive">Reduce archive</a>
+    {% endif %}
     {% elif is_extracting %}
     <button class="btn btn-warning" type="button" disabled id="btn-extracting-archive"><i class="fas fa-spinner fa-spin me-1"></i>Extracting...</button>
     {% else %}
@@ -335,7 +352,11 @@
     {% if archive.extracted %}
     <a class="btn btn-info" href="{% url 'viewer:new-image-viewer' archive.pk '1' %}" id="view-online">View
       online</a>
+    {% if is_reducing %}
+    <button class="btn btn-warning" type="button" disabled id="btn-reducing-archive"><i class="fas fa-spinner fa-spin me-1"></i>Reducing...</button>
+    {% else %}
     <a class="btn btn-light" href="{% url 'viewer:archive-reduce' archive.pk %}" id="btn-reduce-archive">Reduce archive</a>
+    {% endif %}
     {% elif is_extracting %}
     <button class="btn btn-warning" type="button" disabled id="btn-extracting-archive"><i class="fas fa-spinner fa-spin me-1"></i>Extracting...</button>
     {% else %}
@@ -422,6 +443,34 @@
       {% csrf_token %}
       <button type="submit" class="btn shrink-btn">recalc</button>
     </form>
+    {% endif %}
+    {% if manga_extractor_enabled %}
+    {% if user.is_staff or perms.viewer.extract_contextual_info %}
+    {% if is_extracting_context %}
+    <button class="btn shrink-btn btn-warning" type="button" disabled id="btn-extracting-context"><i class="fas fa-spinner fa-spin me-1"></i>extracting context...</button>
+    {% else %}
+    <form method="POST" action="{% url 'viewer:archive-extract-context' archive.pk %}" class="d-inline">
+      {% csrf_token %}
+      <div class="btn-group">
+        <button type="submit" class="btn shrink-btn" id="btn-extract-context">extract context</button>
+        {% if manga_extractor_profiles %}
+        <button type="button" class="btn shrink-btn dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false">
+          <span class="visually-hidden">Toggle Extract Profiles</span>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end bg-dark border-secondary">
+          {% for p_key, p_label in manga_extractor_profiles.items %}
+          <li>
+            <button type="submit" name="profile" value="{{ p_key }}" class="dropdown-item text-light small{% if p_key == manga_extractor_default_profile %} active{% endif %}">
+              {{ p_label }}{% if p_key == manga_extractor_default_profile %} (default){% endif %}
+            </button>
+          </li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      </div>
+    </form>
+    {% endif %}
+    {% endif %}
     {% endif %}
     {% if perms.viewer.mark_similar_archive %}
     <a class="btn shrink-btn" href="{% url 'viewer:archive-mark-similar' archive.pk %}">mark similar</a>

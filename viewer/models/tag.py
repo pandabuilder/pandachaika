@@ -1,9 +1,7 @@
 import typing
 from django.db import models
 from django.db.models import QuerySet
-from django.urls import reverse
 
-from viewer.models.common import SpacedSearch
 
 
 type SortedTagList = list[tuple[str, list["Tag"]]]
@@ -43,6 +41,9 @@ class Tag(models.Model):
     class Meta:
         ordering = ["-id"]
         constraints = [models.UniqueConstraint(fields=["scope", "name"], name="unique_scope_name")]
+        indexes = [
+            models.Index(fields=["name"], name="tag_name_idx"),
+        ]
 
     def natural_key(self):
         return self.scope, self.name

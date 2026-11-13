@@ -13,6 +13,7 @@ from core.base.utilities import thread_exists_in_db
 from core.workers.archive_work import ArchiveWorker
 
 from viewer.models import Archive, ArchiveMatches, WantedGallery
+from viewer.utils.webserver import WebServerRestartError, restart_web_server
 from workers import client
 
 
@@ -176,10 +177,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         if request.method != "POST":
             response["error"] = "POST required"
             return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status=405)
-    if tool == "transfer_missing_downloads":
-        client.enqueue(args=["-tmd"], task_type="web_crawler", override_options=crawler_settings, user=request.user)
-        return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
-    elif tool == "reconcile_downloads":
+    if tool == "reconcile_downloads":
         from viewer.utils.downloads import reconcile_downloads
 
         stats = reconcile_downloads(settings=crawler_settings)
@@ -329,6 +327,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
                 "filters": (provider,),
                 "match_local": True,
                 "match_web": False,
+                "auto_link": bool(p.get("auto_link")),
             },
             user=request.user,
         )
@@ -398,10 +397,10 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         )
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
     elif tool == "restart_viewer":
-        if hasattr(signal, "SIGUSR2"):
-            os.kill(os.getpid(), signal.SIGUSR2)
-        else:
-            response["error"] = "This OS does not support signal SIGUSR2"
+        try:
+            response["message"] = restart_web_server(request)
+        except WebServerRestartError as e:
+            response["error"] = str(e)
             return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status=401)
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
     elif tool == "restart_workers":
@@ -506,96 +505,6 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         from core.base.config_models import generate_default_yaml_content
 
         return HttpResponse(generate_default_yaml_content(), content_type="text/yaml; charset=utf-8")
-    elif tool == "start_timed_dl":
-        if crawler_settings.workers.timed_downloader:
-            crawler_settings.workers.timed_downloader.start_running(timer=crawler_settings.timed_downloader_cycle_timer)
-        return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
-    elif tool == "stop_timed_dl":
-        if crawler_settings.workers.timed_downloader:
-            crawler_settings.workers.timed_downloader.stop_running()
-        return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
-    elif tool == "force_run_timed_dl":
-        if crawler_settings.workers.timed_downloader:
-            crawler_settings.workers.timed_downloader.force_run()
-        return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
-    elif tool == "start_archive_download_queue":
-        if crawler_settings.workers.archive_download_queue:
-            crawler_settings.workers.archive_download_queue.start_running(
-                timer=crawler_settings.archive_download_queue_cycle_timer
-            )
-        return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
-    elif tool == "stop_archive_download_queue":
-        if crawler_settings.workers.archive_download_queue:
-            crawler_settings.workers.archive_download_queue.stop_running()
-        return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
-    elif tool == "force_archive_download_queue":
-        if crawler_settings.workers.archive_download_queue:
-            crawler_settings.workers.archive_download_queue.force_run()
-        return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
-    elif tool == "start_download_progress_checker":
-        if crawler_settings.workers.download_progress_checker:
-            crawler_settings.workers.download_progress_checker.start_running(
-                timer=crawler_settings.download_progress_checker_cycle_timer
-            )
-        return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
-    elif tool == "stop_download_progress_checker":
-        if crawler_settings.workers.download_progress_checker:
-            crawler_settings.workers.download_progress_checker.stop_running()
-        return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
-    elif tool == "force_download_progress_checker":
-        if crawler_settings.workers.download_progress_checker:
-            crawler_settings.workers.download_progress_checker.force_run()
-        return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
-    elif tool == "start_timed_updater":
-        if tool_arg:
-            for provider_auto_updater in crawler_settings.workers.timed_auto_updaters:
-                if provider_auto_updater.provider_name == tool_arg:
-                    provider_auto_updater.start_running(
-                        timer=crawler_settings.providers[provider_auto_updater.provider_name].autoupdater_timer
-                    )
-                    break
-        else:
-            for provider_auto_updater in crawler_settings.workers.timed_auto_updaters:
-                provider_auto_updater.start_running(
-                    timer=crawler_settings.providers[provider_auto_updater.provider_name].autoupdater_timer
-                )
-        return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
-    elif tool == "stop_timed_updater":
-        if tool_arg:
-            for provider_auto_updater in crawler_settings.workers.timed_auto_updaters:
-                if provider_auto_updater.provider_name == tool_arg:
-                    provider_auto_updater.stop_running()
-                    break
-        else:
-            for provider_auto_updater in crawler_settings.workers.timed_auto_updaters:
-                provider_auto_updater.stop_running()
-        return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
-    elif tool == "force_run_timed_updater":
-        if tool_arg:
-            for provider_auto_updater in crawler_settings.workers.timed_auto_updaters:
-                if provider_auto_updater.provider_name == tool_arg:
-                    provider_auto_updater.force_run()
-                    break
-        else:
-            for provider_auto_updater in crawler_settings.workers.timed_auto_updaters:
-                provider_auto_updater.force_run()
-        return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
-    elif tool == "start_timed_auto_wanted":
-        if crawler_settings.workers.timed_auto_wanted:
-            crawler_settings.workers.timed_auto_wanted.start_running(timer=crawler_settings.auto_wanted.cycle_timer)
-        return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
-    elif tool == "stop_timed_auto_wanted":
-        if crawler_settings.workers.timed_auto_wanted:
-            crawler_settings.workers.timed_auto_wanted.stop_running()
-        return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
-    elif tool == "force_run_timed_auto_wanted":
-        if crawler_settings.workers.timed_auto_wanted:
-            crawler_settings.workers.timed_auto_wanted.force_run()
-        return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
-    elif tool == "start_web_queue":
-        if crawler_settings.workers.web_queue:
-            crawler_settings.workers.web_queue.start_running()
-        return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
     elif tool == "threads_status":
         threads_status = get_thread_status_bool()
         return HttpResponse(json.dumps({"data": threads_status}), content_type="application/json; charset=utf-8")

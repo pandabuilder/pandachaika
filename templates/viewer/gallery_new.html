@@ -28,47 +28,13 @@
   {% endfor %}
 {% endif %}
 
-<!-- Header Card: Title & Status Badges (Always First) -->
+<!-- Header Card: Title (Always First) -->
 <div class="card bg-dark border-secondary mb-3 shadow-sm header-card">
   <div class="card-body p-3">
     <div class="header-title-area">
       <h2 class="h4 fw-bold text-white header-main-title{% if not gallery.title_jpn %} header-main-title-multiline{% else %} text-truncate{% endif %}" title="{{ gallery.best_title }}">{{ gallery.best_title }}</h2>
       {% if gallery.title_jpn %}
         <div class="header-sub-title text-truncate" title="{{ gallery.title_jpn }}">{{ gallery.title_jpn }}</div>
-      {% endif %}
-    </div>
-
-    <!-- Badges Row -->
-    <div class="d-flex flex-wrap align-items-center gap-1 mt-2 header-badges-row">
-      <span class="badge bg-secondary py-1 px-2">#{{ gallery.id }}</span>
-      {% if gallery.category %}
-        <a href="{% url 'viewer:archive-search' %}?category={{ gallery.category }}" class="badge bg-primary text-decoration-none py-1 px-2">
-          {{ gallery.category }}
-        </a>
-      {% endif %}
-      <span class="badge bg-dark border border-secondary text-light py-1 px-2">{{ gallery.provider }}</span>
-      {% if gallery.rating %}
-        <span class="badge bg-warning text-dark py-1 px-2">
-          <i class="fas fa-star me-1"></i>{{ gallery.rating }}
-        </span>
-      {% endif %}
-      {% if user.is_authenticated %}
-        <span class="badge {% if gallery.is_normal %}bg-success{% elif gallery.is_deleted %}bg-danger{% else %}bg-secondary{% endif %} py-1 px-2">
-          {{ gallery.get_status_display }}
-        </span>
-        {{ gallery.public|boolean_badge:"Public,Private" }}
-      {% endif %}
-      {% if gallery.disowned %}
-        {{ gallery.disowned|boolean_badge:"Disowned,Owned,warning" }}
-      {% endif %}
-      {% if gallery.expunged %}
-        {{ gallery.expunged|boolean_badge:"Expunged,Active,danger" }}
-      {% endif %}
-      {% if gallery.fjord %}
-        {{ gallery.fjord|boolean_badge:"Fjord,No,info" }}
-      {% endif %}
-      {% if user.is_authenticated and gallery.hidden %}
-        {{ gallery.hidden|boolean_badge:"Hidden,Visible,warning" }}
       {% endif %}
     </div>
   </div>

@@ -1,20 +1,7 @@
-import os
-import ssl
-import subprocess
-from collections import defaultdict
-from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch
 
-import django.utils.timezone as django_tz
 from django.test import TestCase
 
-from core.base.comparison import get_list_closer_text_from_list
-from core.base.setup import Settings
-from core.base.types import GalleryData
-from core.downloaders.postdownload import PostDownloader
-from core.providers.panda.parsers import Parser as PandaParser
-from core.workers.download_progress import DownloadProgressChecker
-from viewer.models import Archive, DownloadEvent, FoundGallery, Gallery, Image, Provider, Tag, WantedGallery
+from viewer.models import DownloadEvent
 
 
 

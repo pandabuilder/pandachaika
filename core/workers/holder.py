@@ -5,7 +5,6 @@ from core.base import setup
 from core.base.setup_utilities import check_for_running_threads
 
 if typing.TYPE_CHECKING:
-    from core.downloaders.postdownload import TimedPostDownloader
     from core.workers.download_progress import DownloadProgressChecker
     from core.workers.archive_download_queue import ArchiveDownloadQueue
     from core.workers.retention import TimedDatabasePruner
@@ -16,7 +15,6 @@ if typing.TYPE_CHECKING:
     from core.workers.archive_work import ArchiveWorker
     from core.local.foldercrawlerthread import FolderCrawlerThread
     from viewer.models import MonitoredLink
-    from workers.models import SchedulerState
 
 
 class WorkerContext:
@@ -25,7 +23,6 @@ class WorkerContext:
     archive_worker: "ArchiveWorker | None" = None
     folder_crawler: "FolderCrawlerThread | None" = None
     timed_auto_wanted: "TimedAutoWanted | None" = None
-    timed_downloader: "TimedPostDownloader | None" = None
     download_progress_checker: "DownloadProgressChecker | None" = None
     archive_download_queue: "ArchiveDownloadQueue | None" = None
     timed_database_pruner: "TimedDatabasePruner | None" = None
@@ -36,8 +33,6 @@ class WorkerContext:
         workers = []
         if self.timed_auto_wanted:
             workers.append(self.timed_auto_wanted)
-        if self.timed_downloader:
-            workers.append(self.timed_downloader)
         if self.download_progress_checker:
             workers.append(self.download_progress_checker)
         if self.archive_download_queue:
@@ -56,16 +51,12 @@ class WorkerContext:
             from workers.models import SchedulerState
             states_by_name = {s.name: s for s in SchedulerState.objects.all()}
             if states_by_name:
-                alias_map = {
-                    "post_downloader": "timed_downloader",
-                    "timed_downloader": "post_downloader",
-                }
                 workers = []
                 initialized = self.get_active_initialized_workers()
                 seen_names = set()
                 for w in initialized:
                     tname = getattr(w, "thread_name", "")
-                    s = states_by_name.get(tname) or states_by_name.get(alias_map.get(tname, ""))
+                    s = states_by_name.get(tname)
                     if s:
                         workers.append(s)
                         seen_names.add(s.name)
@@ -73,7 +64,7 @@ class WorkerContext:
                         workers.append(w)
                     seen_names.add(tname)
                 for name, s in states_by_name.items():
-                    if name not in seen_names and alias_map.get(name) not in seen_names:
+                    if name not in seen_names:
                         workers.append(s)
                         seen_names.add(name)
                 return workers
@@ -139,7 +130,6 @@ class WorkerContext:
 
         self.crawler_settings = crawler_settings
 
-        from core.downloaders.postdownload import TimedPostDownloader
         from core.workers.autoupdate import ProviderTimedAutoUpdater
         from core.workers.download_progress import DownloadProgressChecker
         from core.workers.auto_wanted import TimedAutoWanted
@@ -153,13 +143,6 @@ class WorkerContext:
         self.web_queue = WebQueue(crawler_settings)
         self.archive_worker = ArchiveWorker(crawler_settings, 4)
         self.folder_crawler = FolderCrawlerThread(crawler_settings, [])
-        self.timed_downloader = TimedPostDownloader(
-            crawler_settings,
-            web_queue=self.web_queue,
-            timer=5,
-            parallel_post_downloaders=crawler_settings.parallel_post_downloaders,
-        )
-
         self.timed_auto_wanted = TimedAutoWanted(crawler_settings, timer=crawler_settings.auto_wanted.cycle_timer)
 
         for provider_name in crawler_settings.autoupdater.providers:
@@ -179,15 +162,6 @@ class WorkerContext:
                 timer=crawler_settings.providers[provider_name].autoupdater_timer,
             )
             self.timed_auto_updaters.append(provider_auto_updater)
-
-        obj, _ = SchedulerState.objects.get_or_create(
-            name=self.timed_downloader.thread_name,
-            defaults={"schedule_type": "scheduler"},
-        )
-        self.timed_downloader.last_run = obj.last_run
-        self.timed_downloader.pk = obj.name
-        if start_threads and crawler_settings.timed_downloader_startup:
-            self.timed_downloader.start_running(timer=crawler_settings.timed_downloader_cycle_timer)
 
         if crawler_settings.monitored_links.enable:
             monitored_links = MonitoredLink.objects.all()
@@ -239,7 +213,12 @@ class WorkerContext:
             if start_threads and link_monitor.monitored_link.auto_start and link_monitor.monitored_link.enabled:
                 link_monitor.start_running(timer=link_monitor.original_timer)
 
-        self.download_progress_checker = DownloadProgressChecker(crawler_settings, web_queue=self.web_queue, timer=10)
+        self.download_progress_checker = DownloadProgressChecker(
+            crawler_settings,
+            web_queue=self.web_queue,
+            timer=crawler_settings.download_progress_checker_cycle_timer,
+            parallel_transfers=crawler_settings.parallel_post_downloaders,
+        )
 
         obj, _ = SchedulerState.objects.get_or_create(
             name=self.download_progress_checker.thread_name,
@@ -297,8 +276,6 @@ class WorkerContext:
         if not (force_local or self.is_worker_process):
             return
 
-        if self.timed_downloader:
-            self.timed_downloader.stop_running(force_local=True)
         if self.download_progress_checker:
             self.download_progress_checker.stop_running(force_local=True)
         if self.archive_download_queue:

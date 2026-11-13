@@ -1,12 +1,11 @@
 # Re-export all collaborator views for full backward compatibility
 from viewer.views.manager import wanted_galleries
 from viewer.views.wanted import wanted_gallery
+from viewer.services.archive_selection import filter_by_extra_files, filter_by_marks
 from viewer.views.collaborators.archive_manager import (
     archive_manager,
     archives_not_matched_with_gallery,
     archives_similar_by_fields,
-    filter_by_extra_files,
-    filter_by_marks,
     manage_archives,
 )
 from viewer.views.collaborators.batch_operations import (

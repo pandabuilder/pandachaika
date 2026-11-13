@@ -6,7 +6,7 @@ import urllib.parse
 import django.utils.timezone as django_tz
 
 from core.base.types import DataDict
-from core.base.utilities import request_with_retries, format_title_to_wanted_search, construct_request_dict
+from core.base.utilities import provider_web_request, format_title_to_wanted_search, construct_request_dict
 from core.providers.mugimugi.utilities import convert_api_response_text_to_gallery_dicts
 from viewer.models import Gallery, WantedGallery, Provider, Artist
 from . import constants
@@ -166,7 +166,7 @@ def wanted_generator(settings: "Settings", attrs: "AttributeManager"):
 
             request_dict = construct_request_dict(settings, own_settings)
 
-            response = request_with_retries(
+            response = provider_web_request(constants.provider_name, own_settings.wait_timer)(
                 link,
                 request_dict,
                 post=False,

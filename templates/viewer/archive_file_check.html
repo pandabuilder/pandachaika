@@ -1,0 +1,609 @@
+{% extends "viewer/base.html" %}
+{% block title %}Archive File Check | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+
+{% block extra_head %}
+{% load django_vite %}
+{% vite_asset 'src/main.tsx' app="admin_widgets" %}
+<style>
+  :root {
+    --pg-bg-darkest: #001122;
+    --pg-bg-card: #001a4c;
+    --pg-bg-card-header: #002855;
+    --pg-border: #17428b;
+    --pg-border-subtle: #123066;
+    --pg-text-primary: #e6edf3;
+    --pg-text-secondary: #8ba4be;
+    --pg-accent-blue: #36b0f9;
+    --pg-accent-green: #28a745;
+  }
+  .dm-card {
+    border-radius: 8px;
+    border: 1px solid var(--pg-border);
+    background: var(--pg-bg-card);
+    color: var(--pg-text-primary);
+    box-shadow: 0 4px 12px rgba(0, 17, 34, 0.4);
+    margin-bottom: 1.5rem;
+  }
+  .dm-card .card-header {
+    background: var(--pg-bg-card-header);
+    border-bottom: 1px solid var(--pg-border);
+    font-weight: 600;
+  }
+  .dm-val {
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1.1;
+  }
+  .dm-lbl {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--pg-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .fc-stat {
+    background: #00234a;
+    border: 1px solid var(--pg-border-subtle);
+    border-radius: 6px;
+    padding: 0.5rem 0.65rem;
+    height: 100%;
+  }
+  .fc-progress {
+    height: 1.35rem;
+    background: var(--pg-bg-darkest);
+    border: 1px solid var(--pg-border-subtle);
+  }
+  .fc-current {
+    font-size: 0.8rem;
+    color: var(--pg-text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .dm-card .form-control, .dm-card .form-select {
+    background-color: var(--pg-bg-darkest);
+    color: var(--pg-text-primary);
+    border-color: var(--pg-border);
+  }
+  .dm-card .form-control::placeholder { color: #5f7a96; }
+  .dm-card .form-text { color: var(--pg-text-secondary); }
+  .scope-panel { display: none; }
+  .scope-panel.active { display: block; }
+  .table-dm {
+    --bs-table-color: var(--pg-text-primary);
+    --bs-table-bg: var(--pg-bg-card);
+    --bs-table-hover-color: var(--pg-text-primary);
+    --bs-table-hover-bg: #0c3268;
+    color: var(--pg-text-primary);
+    border-color: var(--pg-border-subtle);
+  }
+  .table-dm th {
+    background: var(--pg-bg-card-header);
+    color: var(--pg-text-secondary);
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    border-color: var(--pg-border);
+  }
+  .table-dm td {
+    background: var(--pg-bg-card);
+    color: var(--pg-text-primary);
+    border-color: var(--pg-border-subtle);
+    vertical-align: middle;
+  }
+  .table-dm.table-hover > tbody > tr:hover > * {
+    background-color: #0c3268 !important;
+    color: var(--pg-text-primary) !important;
+  }
+  .table-dm code {
+    color: #90caf9;
+    background-color: #001122;
+    padding: 1px 5px;
+    border-radius: 4px;
+    border: 1px solid var(--pg-border-subtle);
+  }
+  .table-dm tr.selected-check > td { background-color: #002d60 !important; }
+  .fc-archive-cell { max-width: 38rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% else %}alert-info{% endif %} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  <!-- Header -->
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4 pb-2 border-bottom border-secondary">
+    <div>
+      <h2 class="h3 text-light mb-1">
+        <i class="fas fa-file-medical text-info me-2"></i>Archive File Check
+      </h2>
+      <p class="text-muted mb-0 small">
+        Check that archive files are present in the media folder, and optionally that their CRC32 still matches,
+        to find missing or corrupted files. Checks run in the background workers.
+      </p>
+    </div>
+    <div>
+      <a href="{% url 'viewer:stats-workers' %}" class="btn btn-outline-info btn-sm me-2">
+        <i class="fas fa-tasks me-1"></i>Workers Dashboard
+      </a>
+      <a href="{% url 'viewer:logs' %}" class="btn btn-outline-secondary btn-sm">
+        <i class="fas fa-file-alt me-1"></i>Server Logs
+      </a>
+    </div>
+  </div>
+
+  <div id="worker-warning" class="alert alert-warning{% if worker_running %} d-none{% endif %}" role="alert">
+    <i class="fas fa-exclamation-circle me-1"></i>
+    No worker process is running. Queued checks start once <code>run_workers</code> is up.
+  </div>
+
+  <div class="row g-3">
+    <!-- New check -->
+    <div class="col-lg-5">
+      <div class="dm-card h-100">
+        <div class="card-header py-2 px-3 text-light"><i class="fas fa-play-circle me-2"></i>New check</div>
+        <form method="post" action="{% url 'viewer:archive-file-check' %}" class="p-3" id="start-form">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="start">
+
+          <div class="dm-lbl mb-2">What to check</div>
+          <div class="mb-2">
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="scope" id="scope-all" value="all"{% if not prefill_archive_ids %} checked{% endif %}>
+              <label class="form-check-label text-light" for="scope-all">
+                All archives <span class="text-muted small">({{ collection_count }} archives, {{ collection_size|filesizeformat }})</span>
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="scope" id="scope-folders" value="folders">
+              <label class="form-check-label text-light" for="scope-folders">Archives in media subfolders</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="scope" id="scope-archives" value="archives"{% if prefill_archive_ids %} checked{% endif %}>
+              <label class="form-check-label text-light" for="scope-archives">Specific archives <span class="text-muted small">(search, pick or filter)</span></label>
+            </div>
+          </div>
+
+          <div class="scope-panel mb-3" data-scope="folders">
+            <div data-chaika-widget="media-folder-picker"
+                 data-input-name="folders"
+                 data-api-url="{% url 'viewer:directory-parser' %}"
+                 data-media-root="{{ media_root }}"></div>
+            <noscript>
+              <label class="form-label text-light small mb-1" for="folders-input">Folders, one per line</label>
+              <textarea name="folders" id="folders-input" class="form-control form-control-sm font-monospace" rows="3"
+                        placeholder="galleries/2024"></textarea>
+            </noscript>
+            <div class="form-text">Archives in the chosen folders and their subfolders, inside the media folder <code>{{ media_root }}</code>.</div>
+          </div>
+
+          <div class="scope-panel mb-3" data-scope="archives">
+            <div data-chaika-widget="archive-picker"
+                 id="archive-picker"
+                 data-input-name="archive_selection"
+                 data-api-url="{% url 'viewer:api-archive-picker' %}"
+                 data-allow-filter="true"
+                 data-initial-ids="{{ prefill_archive_ids|join:',' }}"></div>
+            <noscript>
+              <label class="form-label text-light small mb-1" for="archive-ids-input">Archive ids</label>
+              <textarea name="archive_ids" id="archive-ids-input" class="form-control form-control-sm font-monospace" rows="3"
+                        placeholder="12, 15 100-200">{{ prefill_archive_ids|join:', ' }}</textarea>
+            </noscript>
+            <div class="form-text">Selected archives are always checked, even if binned or marked as deleted. With a filter, the filter is applied again when the check starts.</div>
+          </div>
+
+          <div class="dm-lbl mb-2">Options</div>
+          <div class="form-check mb-1">
+            <input class="form-check-input" type="checkbox" name="check_crc32" value="1" id="check-crc32">
+            <label class="form-check-label text-light" for="check-crc32">
+              Verify CRC32 <span class="text-muted small">(reads every file, finds corrupted data)</span>
+            </label>
+          </div>
+          <div class="form-check mb-1 ms-4" id="test-zip-row">
+            <input class="form-check-input" type="checkbox" name="test_zip" value="1" id="test-zip" checked>
+            <label class="form-check-label text-light" for="test-zip">
+              If the CRC32 doesn't match, test the zip <span class="text-muted small">(checks each file in it, tells corruption apart from a wrong stored CRC32)</span>
+            </label>
+          </div>
+          <div class="form-check mb-3" id="include-binned-row">
+            <input class="form-check-input" type="checkbox" name="include_binned" value="1" id="include-binned">
+            <label class="form-check-label text-light" for="include-binned">Include binned archives</label>
+          </div>
+          <div class="small text-muted mb-3">
+            Without CRC32, a check opens each zip's file list and compares the size of its images (uncompressed) with the
+            stored one, which is fast. With CRC32, the whole file is read and compared instead.
+            Archives marked as deleted are skipped, except when chosen by id.
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-play me-1"></i>Queue check</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Current check -->
+    <div class="col-lg-7">
+      <div class="dm-card h-100">
+        {% if check %}
+          <div class="card-header d-flex justify-content-between align-items-center py-2 px-3">
+            <span class="text-light"><i class="fas fa-heartbeat me-2"></i>Check #{{ check.pk }}</span>
+            <span id="fc-status-badge" class="badge bg-secondary">{{ check.get_status_display }}</span>
+          </div>
+          <div class="p-3" id="progress-panel" data-check-id="{{ check.pk }}" data-finished="{% if check.is_finished %}1{% else %}0{% endif %}"
+               data-status-url="{% url 'viewer:api-archive-file-check-status' check.pk %}">
+            <div class="small mb-2">
+              <div><strong class="text-light">Scope:</strong> <span class="text-break">{{ check.scope_description }}</span>{% if check.include_binned %} <span class="badge bg-secondary">+ binned</span>{% endif %}</div>
+              <div>
+                <strong class="text-light">Mode:</strong>
+                {% if check.check_crc32 %}<span class="badge bg-info text-dark">Presence + CRC32{% if check.test_zip %} + zip test{% endif %}</span>{% else %}<span class="badge bg-secondary">Presence + size</span>{% endif %}
+                <span class="ms-2"><strong class="text-light">By:</strong> {{ check.user.username|default:"System" }}</span>
+                {% if check.task_id %}<span class="ms-2"><strong class="text-light">Task:</strong> <code>#{{ check.task_id }}</code></span>{% endif %}
+              </div>
+              <div class="text-muted">
+                Created {{ check.created_at|date:"Y-m-d H:i:s" }}
+                · <span id="fc-elapsed"></span>
+                <span id="fc-eta"></span>
+              </div>
+              {% if queued_ahead > 1 %}<div class="text-warning" id="fc-queued-note">{{ queued_ahead }} file checks are queued, they run one at a time.</div>{% endif %}
+            </div>
+
+            <div class="progress fc-progress mb-1">
+              <div id="fc-progress-bar" class="progress-bar progress-bar-striped" role="progressbar" style="width: 0%;"
+                   aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+            </div>
+            <div class="d-flex justify-content-between small text-muted mb-1">
+              <span id="fc-checked-label"></span>
+              <span id="fc-bytes-label"></span>
+            </div>
+            <div class="fc-current mb-3" id="fc-current" title=""></div>
+
+            <div class="row g-2 mb-3">
+              <div class="col-6 col-md-4"><div class="fc-stat"><div class="dm-lbl">OK</div><div class="dm-val text-success" id="fc-ok">{{ check.ok_count }}</div></div></div>
+              <div class="col-6 col-md-4"><div class="fc-stat"><div class="dm-lbl">Missing</div><div class="dm-val text-danger" id="fc-missing">{{ check.missing_count }}</div></div></div>
+              <div class="col-6 col-md-4"><div class="fc-stat"><div class="dm-lbl" title="The uncompressed size of the images in the zip differs from the stored one.">Image size mismatch</div><div class="dm-val text-warning" id="fc-size">{{ check.size_mismatch_count }}</div></div></div>
+              <div class="col-6 col-md-4"><div class="fc-stat"><div class="dm-lbl">CRC32 mismatch</div><div class="dm-val text-warning" id="fc-crc">{{ check.crc32_mismatch_count }}</div></div></div>
+              <div class="col-6 col-md-4"><div class="fc-stat"><div class="dm-lbl">Read errors</div><div class="dm-val text-secondary" id="fc-errors">{{ check.error_count }}</div></div></div>
+              <div class="col-6 col-md-4"><div class="fc-stat" title="Archives without a stored CRC32; only presence and size could be checked."><div class="dm-lbl">No stored CRC32</div><div class="dm-val text-muted" id="fc-nocrc">{{ check.no_crc32_count }}</div></div></div>
+            </div>
+
+            <div id="fc-error" class="alert alert-danger small py-2{% if not check.error_message %} d-none{% endif %}">{{ check.error_message }}</div>
+
+            <div class="d-flex flex-wrap gap-2">
+              <form method="post" action="{% url 'viewer:archive-file-check' %}" class="d-inline" id="cancel-form"{% if check.is_finished %} hidden{% endif %}>
+                {% csrf_token %}
+                <input type="hidden" name="action" value="cancel">
+                <input type="hidden" name="check" value="{{ check.pk }}">
+                <button type="submit" class="btn btn-sm btn-outline-danger"><i class="fas fa-stop me-1"></i>Cancel</button>
+              </form>
+              <form method="post" action="{% url 'viewer:archive-file-check' %}" class="d-inline" id="rerun-form"{% if not check.is_finished %} hidden{% endif %}>
+                {% csrf_token %}
+                <input type="hidden" name="action" value="rerun">
+                <input type="hidden" name="check" value="{{ check.pk }}">
+                <button type="submit" class="btn btn-sm btn-outline-info"><i class="fas fa-redo me-1"></i>Run again</button>
+              </form>
+              <form method="post" action="{% url 'viewer:archive-file-check' %}" class="d-inline" id="delete-check-form"{% if not check.is_finished %} hidden{% endif %}
+                    onsubmit="return confirm('Delete check #{{ check.pk }} and its results? The archives are not changed.');">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="delete_check">
+                <input type="hidden" name="check" value="{{ check.pk }}">
+                <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="fas fa-trash-alt me-1"></i>Delete check</button>
+              </form>
+            </div>
+          </div>
+        {% else %}
+          <div class="card-header py-2 px-3 text-light"><i class="fas fa-heartbeat me-2"></i>No checks yet</div>
+          <div class="p-4 text-center text-muted">Queue a check to see its progress and results here.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% if check %}
+    <div class="dm-card">
+      <div id="issues-wrapper">
+        {% include "viewer/include/archive_file_check_issues.html" %}
+      </div>
+      <div id="issues-stale" class="alert alert-info small m-3 py-2 d-none">
+        New issues were found. <a href="#" id="issues-reload" class="alert-link">Refresh the list</a> (your selection will be lost).
+      </div>
+    </div>
+  {% endif %}
+
+  <!-- Recent checks -->
+  <div class="dm-card">
+    <div class="card-header d-flex justify-content-between align-items-center py-2 px-3">
+      <span class="text-light"><i class="fas fa-history me-2"></i>Recent checks</span>
+      <span class="small text-muted">Click a row to see its results</span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-dm table-hover mb-0">
+        <thead>
+          <tr>
+            <th>Check #</th>
+            <th>Status</th>
+            <th>Scope</th>
+            <th>Mode</th>
+            <th class="text-end">Checked</th>
+            <th class="text-end">Issues</th>
+            <th>By</th>
+            <th>Created</th>
+            <th>Finished</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for recent in recent_checks %}
+            <tr class="{% if check and recent.pk == check.pk %}selected-check{% endif %}" style="cursor: pointer;"
+                onclick="window.location='?check={{ recent.pk }}'">
+              <td><a href="?check={{ recent.pk }}"><code>#{{ recent.pk }}</code></a></td>
+              <td>
+                {% if recent.status == "completed" %}<span class="badge bg-success">Completed</span>
+                {% elif recent.status == "running" %}<span class="badge bg-warning text-dark">Running</span>
+                {% elif recent.status == "failed" %}<span class="badge bg-danger">Failed</span>
+                {% elif recent.status == "cancelled" %}<span class="badge bg-secondary">Cancelled</span>
+                {% else %}<span class="badge bg-light text-dark">Queued</span>{% endif %}
+              </td>
+              <td class="small text-break">{{ recent.scope_description|truncatechars:70 }}</td>
+              <td class="small">{% if recent.check_crc32 %}CRC32{% else %}Presence{% endif %}</td>
+              <td class="text-end font-monospace small">{{ recent.checked }} / {{ recent.total }}</td>
+              <td class="text-end">
+                {% if recent.issue_count %}<span class="badge bg-danger">{{ recent.issue_count }}</span>{% else %}<span class="badge bg-secondary">0</span>{% endif %}
+              </td>
+              <td class="small">{{ recent.user.username|default:"System" }}</td>
+              <td class="small text-muted">{{ recent.created_at|date:"Y-m-d H:i" }}</td>
+              <td class="small text-muted">{{ recent.finished_at|date:"Y-m-d H:i"|default:"-" }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="9" class="text-center text-muted py-3">No file checks yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block afterJQ %}
+<script>
+(function() {
+  // --- New check form: show the input for the chosen scope ---
+  const scopeRadios = document.querySelectorAll('input[name="scope"]');
+  function updateScope() {
+    const scope = document.querySelector('input[name="scope"]:checked')?.value || 'all';
+    document.querySelectorAll('.scope-panel').forEach(p => p.classList.toggle('active', p.dataset.scope === scope));
+    const binnedRow = document.getElementById('include-binned-row');
+    if (binnedRow) binnedRow.style.display = scope === 'archives' ? 'none' : '';
+  }
+  scopeRadios.forEach(r => r.addEventListener('change', () => {
+    updateScope();
+    // Open the archive search when choosing "Specific archives" and nothing is selected yet.
+    const picker = document.getElementById('archive-picker');
+    if (r.value === 'archives' && r.checked && picker && !picker.dataset.hasSelection) {
+      picker.dispatchEvent(new CustomEvent('chaika:open'));
+    }
+  }));
+  updateScope();
+  // The zip test only runs after a CRC32 mismatch.
+  const crcBox = document.getElementById('check-crc32');
+  const zipRow = document.getElementById('test-zip-row');
+  function updateZipTest() {
+    if (!crcBox || !zipRow) return;
+    zipRow.style.display = crcBox.checked ? '' : 'none';
+  }
+  if (crcBox) crcBox.addEventListener('change', updateZipTest);
+  updateZipTest();
+  const pickerEl = document.getElementById('archive-picker');
+  if (pickerEl) {
+    pickerEl.addEventListener('chaika:change', e => {
+      if (e.detail && e.detail.count) pickerEl.dataset.hasSelection = '1'; else delete pickerEl.dataset.hasSelection;
+    });
+  }
+
+  // --- Issues list: select all, confirm destructive actions ---
+  function bindIssues() {
+    const toggle = document.getElementById('issues-toggle-all');
+    if (toggle) {
+      toggle.addEventListener('change', () => {
+        document.querySelectorAll('.issue-checkbox').forEach(cb => { cb.checked = toggle.checked; });
+      });
+    }
+    const form = document.getElementById('issues-form');
+    if (form) {
+      form.addEventListener('submit', e => {
+        const action = form.querySelector('[name="issue_action"]').value;
+        const all = form.querySelector('[name="apply_to_all_filtered"]').checked;
+        const selected = form.querySelectorAll('.issue-checkbox:checked').length;
+        if (!all && selected === 0) {
+          e.preventDefault();
+          alert('Select at least one issue, or apply to all issues in this filter.');
+          return;
+        }
+        const target = all ? 'ALL issues in this filter' : `${selected} selected issue(s)`;
+        if (action === 'delete' && !confirm(`Delete the archives of ${target} from the database? This can't be undone.`)) {
+          e.preventDefault();
+        } else if (action === 'mark_deleted' && !confirm(`Mark the archives of ${target} as deleted?`)) {
+          e.preventDefault();
+        } else if (all && action !== 'delete' && action !== 'mark_deleted' && !confirm(`Apply to ${target}?`)) {
+          e.preventDefault();
+        }
+      });
+    }
+  }
+  bindIssues();
+
+  // --- Progress polling ---
+  const panel = document.getElementById('progress-panel');
+  if (!panel) return;
+
+  const statusUrl = panel.dataset.statusUrl;
+  const pollIntervalMs = 2000;
+  let pollTimer = null;
+  let lastIssueCount = parseInt(document.getElementById('issues-container')?.dataset.issueCount || '0', 10);
+  let rateSamples = [];
+
+  const STATUS_BADGES = {
+    queued: 'bg-light text-dark',
+    running: 'bg-warning text-dark',
+    completed: 'bg-success',
+    failed: 'bg-danger',
+    cancelled: 'bg-secondary',
+  };
+
+  function formatBytes(bytes) {
+    if (!bytes) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let i = 0;
+    let value = bytes;
+    while (value >= 1024 && i < units.length - 1) { value /= 1024; i++; }
+    return `${value.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+  }
+
+  function formatDuration(seconds) {
+    if (seconds === null || seconds === undefined || !isFinite(seconds)) return '';
+    seconds = Math.max(0, Math.round(seconds));
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    if (h) return `${h}h ${m}m`;
+    if (m) return `${m}m ${s}s`;
+    return `${s}s`;
+  }
+
+  function setText(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+  }
+
+  function estimateRemaining(data) {
+    // Rate over the last ~30s of samples, in the unit the progress bar uses.
+    const useBytes = data.check_crc32 && data.bytes_total > 0;
+    const done = useBytes ? data.bytes_done : data.checked;
+    const total = useBytes ? data.bytes_total : data.total;
+    const now = Date.now() / 1000;
+    rateSamples.push([now, done]);
+    rateSamples = rateSamples.filter(([t]) => now - t <= 30);
+    if (rateSamples.length < 2) return null;
+    const [t0, d0] = rateSamples[0];
+    const rate = (done - d0) / (now - t0);
+    if (rate <= 0) return null;
+    return { seconds: (total - done) / rate, rate, useBytes };
+  }
+
+  function render(data) {
+    const badge = document.getElementById('fc-status-badge');
+    if (badge) {
+      badge.className = 'badge ' + (STATUS_BADGES[data.status] || 'bg-secondary');
+      badge.textContent = data.status_display;
+    }
+    const bar = document.getElementById('fc-progress-bar');
+    const pct = data.percent || 0;
+    bar.style.width = pct + '%';
+    bar.setAttribute('aria-valuenow', pct);
+    bar.textContent = pct.toFixed(1) + '%';
+    bar.classList.toggle('progress-bar-animated', data.status === 'running');
+    bar.classList.toggle('bg-success', data.status === 'completed');
+    bar.classList.toggle('bg-danger', data.status === 'failed');
+    bar.classList.toggle('bg-secondary', data.status === 'cancelled' || data.status === 'queued');
+
+    setText('fc-checked-label', data.status === 'queued' ? 'Waiting for a worker…' : `${data.checked} / ${data.total} archives checked`);
+    setText('fc-bytes-label', data.check_crc32 && data.bytes_total ? `~${formatBytes(data.bytes_done)} / ~${formatBytes(data.bytes_total)} read` : '');
+    const current = document.getElementById('fc-current');
+    if (current) {
+      current.textContent = data.current_item ? 'Checking ' + data.current_item : '';
+      current.title = data.current_item || '';
+    }
+    setText('fc-ok', data.ok_count);
+    setText('fc-missing', data.missing_count);
+    setText('fc-size', data.size_mismatch_count);
+    setText('fc-crc', data.crc32_mismatch_count);
+    setText('fc-errors', data.error_count);
+    setText('fc-nocrc', data.no_crc32_count);
+    setText('fc-elapsed', data.elapsed_seconds !== null ? 'elapsed ' + formatDuration(data.elapsed_seconds) : 'not started');
+
+    let etaText = '';
+    if (data.status === 'running') {
+      const eta = estimateRemaining(data);
+      if (eta) {
+        const rateText = eta.useBytes ? `${formatBytes(eta.rate)}/s` : `${eta.rate.toFixed(1)} archives/s`;
+        etaText = `· ~${formatDuration(eta.seconds)} left (${rateText})`;
+      }
+    }
+    setText('fc-eta', etaText);
+
+    const errorEl = document.getElementById('fc-error');
+    if (errorEl) {
+      errorEl.textContent = data.error_message || '';
+      errorEl.classList.toggle('d-none', !data.error_message);
+    }
+    const warning = document.getElementById('worker-warning');
+    if (warning) warning.classList.toggle('d-none', !!data.worker_running || data.is_finished);
+
+    document.getElementById('cancel-form').hidden = data.is_finished;
+    document.getElementById('rerun-form').hidden = !data.is_finished;
+    document.getElementById('delete-check-form').hidden = !data.is_finished;
+  }
+
+  async function refreshIssues() {
+    const url = new URL(window.location.href);
+    url.searchParams.set('check', panel.dataset.checkId);
+    url.searchParams.set('partial', 'issues');
+    try {
+      const res = await fetch(url.toString(), { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+      if (!res.ok) return;
+      document.getElementById('issues-wrapper').innerHTML = await res.text();
+      document.getElementById('issues-stale').classList.add('d-none');
+      bindIssues();
+    } catch (e) {
+      console.warn('Could not refresh issues:', e);
+    }
+  }
+
+  const reloadLink = document.getElementById('issues-reload');
+  if (reloadLink) reloadLink.addEventListener('click', e => { e.preventDefault(); refreshIssues(); });
+
+  function hasSelection() {
+    return document.querySelectorAll('.issue-checkbox:checked').length > 0 ||
+      document.getElementById('apply-all-filtered')?.checked;
+  }
+
+  async function poll() {
+    try {
+      const res = await fetch(statusUrl, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      render(data);
+      if (data.issue_count !== lastIssueCount || (data.is_finished && panel.dataset.finished === '0')) {
+        const changed = data.issue_count !== lastIssueCount;
+        lastIssueCount = data.issue_count;
+        if (!hasSelection()) {
+          await refreshIssues();
+        } else if (changed) {
+          document.getElementById('issues-stale').classList.remove('d-none');
+        }
+      }
+      if (data.is_finished) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+        if (panel.dataset.finished === '0') {
+          // Refresh the recent checks table once the run ends.
+          panel.dataset.finished = '1';
+          if (!hasSelection()) setTimeout(() => window.location.reload(), 800);
+        }
+      }
+    } catch (e) {
+      console.warn('File check status fetch failed:', e);
+    }
+  }
+
+  poll();
+  if (panel.dataset.finished === '0') {
+    pollTimer = setInterval(poll, pollIntervalMs);
+  }
+})();
+</script>
+{% endblock %}

@@ -1,13 +1,11 @@
 import logging
-import re
-import time
 import typing
 import urllib.parse
 
 from bs4 import BeautifulSoup
 
 from core.base.types import DataDict
-from core.base.utilities import request_with_retries, format_title_to_wanted_search, construct_request_dict
+from core.base.utilities import provider_web_request, format_title_to_wanted_search, construct_request_dict
 from viewer.models import Gallery, WantedGallery, Provider, Artist
 from . import constants
 
@@ -39,8 +37,6 @@ def wanted_generator(settings: "Settings", attrs: "AttributeManager"):
 
     parser = settings.provider_context.get_parsers(settings, filter_name=constants.provider_name)[0]
 
-    rounds = 0
-
     # Values that can be set:
     # subpath: subpath to search. (books, tags/doujin)
     # container_tag: Tag for the main container for each individual link. (div, span)
@@ -50,11 +46,6 @@ def wanted_generator(settings: "Settings", attrs: "AttributeManager"):
     for query_name, query_values in queries.items():
 
         while True:
-
-            rounds += 1
-
-            if rounds > 1:
-                time.sleep(own_settings.wait_timer)
 
             logger.info(
                 "Querying {} for auto wanted galleries, query name: {}, options: {}".format(
@@ -91,7 +82,7 @@ def wanted_generator(settings: "Settings", attrs: "AttributeManager"):
 
             request_dict = construct_request_dict(settings, own_settings)
 
-            response = request_with_retries(
+            response = provider_web_request(constants.provider_name, own_settings.wait_timer)(
                 link,
                 request_dict,
                 post=False,

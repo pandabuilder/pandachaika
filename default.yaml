@@ -77,15 +77,8 @@ general:
   # Default: 25
   timeout_timer: 25
 
-  # Start the timed downloader background worker thread automatically on startup.
-  # Default: false
-  timed_downloader_startup: false
-
-  # Cycle interval (in seconds) for the timed downloader background worker.
-  # Default: 5.0
-  timed_downloader_cycle_timer: 5.0
-
-  # Number of parallel post-downloader workers (each handling an independent FTP connection).
+  # Maximum number of torrent/H@H downloads transferred into media storage at the same time
+  # by the download progress checker (each remote transfer opens its own FTP connection).
   # Default: 4
   parallel_post_downloaders: 4
 
@@ -892,6 +885,128 @@ retention:
   # Maximum rows deleted per batch transaction to avoid database locks.
   # Default: 5000
   chunk_size: 5000
+
+# ------------------------------------------------------------------------------
+# Contextual Extractor (manga-extractor Integration)
+# External REST API integration for extracting page and archive metrics
+# (panels, speech bubbles, dialogue density, OCR transcripts, spreads, color).
+# ------------------------------------------------------------------------------
+manga_extractor:
+  # Enable integration with the external manga-extractor service.
+  # Default: false
+  enable: false
+
+  # Base URL of the manga-extractor HTTP server.
+  # Default: 'http://localhost:8000'
+  url: "http://localhost:8000"
+
+  # Optional authentication token / password required by the manga-extractor service.
+  # When configured, requests will include 'Authorization: Bearer <auth_token>'.
+  # Default: ''
+  auth_token: ""
+
+  # Automatically enqueue contextual extraction when a new archive is ingested.
+  # Default: false
+  run_on_new_archive: false
+
+  # Maximum time (in seconds) to wait for a manga-extractor job to finish.
+  # Default: 600.0
+  timeout: 600.0
+
+  # Polling interval (in seconds) when checking job status.
+  # Default: 2.0
+  poll_interval: 2.0
+
+  # Default profile name triggered by the main "Extract Context" button.
+  # Default: default
+  default_profile: default
+
+  # Profile name to use when extraction runs automatically in the background (e.g. on new archive ingestion).
+  # Default: default
+  background_profile: default
+
+  # Named configuration profiles for request parameters and storage rules.
+  # Define one or more profiles. The default profile is triggered by the main button,
+  # and all configured profiles appear as options in the dropdown next to the button.
+  profiles:
+    default:
+      name: "Default (Full)"
+      description: "Full contextual extraction including speech bubbles, panel layout, and OCR transcript."
+      request_config:
+        # Extraction preset ('quick', 'layout', 'stats', 'full').
+        # Default: full
+        preset: full
+
+        # Optional explicit feature list overriding preset (leave empty to use preset).
+        # Default: []
+        features: []
+
+        # Language hint for OCR ('auto' derives from archive language tags, or 'ja', 'en', 'zh', 'ko').
+        # Default: auto
+        language_hint: auto
+
+        # Detector backend ('default' or 'comic_text_detector').
+        # Default: default
+        detector_backend: default
+
+        # Optional max image dimension for OCR downscaling (null uses service default).
+        # Default: null
+        ocr_max_dimension: null
+
+        # Optional CTC word-space probability threshold (0.01-0.50, default 0.04) for compressed horizontal text in vertical manga bubbles.
+        # Default: null
+        ocr_space_threshold: null
+
+        # Allow manga-extractor to use its SHA-256 disk result cache.
+        # Default: true
+        use_cache: true
+
+      # Controls which returned metrics are stored in ItemProperties(tag='manga-extractor').
+      storage_config:
+        # Store gallery/archive-level summary metrics on the Archive record.
+        # Default: true
+        save_archive_summary: true
+
+        # Archive summary fields to store (use ['*'] to store all returned summary fields).
+        archive_fields:
+          - total_pages
+          - spread_pages_count
+          - color_pages_count
+          - total_panels
+          - total_bubbles
+          - total_words
+          - total_characters
+          - average_bubbles_per_page
+          - average_dialogue_density
+          - estimated_reading_time_minutes
+
+        # Store per-page extraction metrics on each Image record.
+        # Default: true
+        save_image_results: true
+
+        # Image result fields to store (supports dot-paths or ['*'] for all fields).
+        image_fields:
+          - is_spread
+          - spread_confidence
+          - color_type
+          - visual_density
+          - panel_count
+          - panel_layout
+          - bubble_count
+          - dialogue_density
+          - word_count
+          - char_count
+          - transcript
+          - bubble_transcripts
+          - japanese_metrics.kanji_count
+          - japanese_metrics.hiragana_count
+          - japanese_metrics.katakana_count
+          - japanese_metrics.kanji_ratio
+          - japanese_metrics.estimated_jlpt_level
+
+        # Prune previously stored 'manga-extractor' fields removed from the above lists on re-extraction.
+        # Default: true
+        prune_removed_fields: true
 
 # ------------------------------------------------------------------------------
 # Per-Provider Settings

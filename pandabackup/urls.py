@@ -37,6 +37,11 @@ from viewer.views.complete import (
     GalleryCategoryJSONAutocomplete,
     GalleryProviderJSONAutocomplete,
     GalleryMatchGroupAutocomplete,
+    SourceJSONAutocomplete,
+    ReasonJSONAutocomplete,
+    ProviderJSONAutocomplete,
+    CategoryJSONAutocomplete,
+    ArchiveManageEntryMarkReasonJSONAutocomplete,
 )
 
 admin.autodiscover()
@@ -196,6 +201,31 @@ urlpatterns += [
         r"^" + settings.MAIN_URL + r"gallery-provider-json-autocomplete/$",
         GalleryProviderJSONAutocomplete.as_view(),
         name="gallery-provider-json-autocomplete",
+    ),
+    re_path(
+        r"^" + settings.MAIN_URL + r"source-json-autocomplete/$",
+        SourceJSONAutocomplete.as_view(),
+        name="source-json-autocomplete",
+    ),
+    re_path(
+        r"^" + settings.MAIN_URL + r"reason-json-autocomplete/$",
+        ReasonJSONAutocomplete.as_view(),
+        name="reason-json-autocomplete",
+    ),
+    re_path(
+        r"^" + settings.MAIN_URL + r"provider-json-autocomplete/$",
+        ProviderJSONAutocomplete.as_view(),
+        name="provider-json-autocomplete",
+    ),
+    re_path(
+        r"^" + settings.MAIN_URL + r"category-json-autocomplete/$",
+        CategoryJSONAutocomplete.as_view(),
+        name="category-json-autocomplete",
+    ),
+    re_path(
+        r"^" + settings.MAIN_URL + r"archive-manager-reason-json-autocomplete/$",
+        ArchiveManageEntryMarkReasonJSONAutocomplete.as_view(),
+        name="archive-manager-reason-json-autocomplete",
     ),
     # Other
     re_path(

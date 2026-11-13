@@ -14,6 +14,13 @@ The recommended way to run the stack is using Docker Compose, using the provided
 It is preferred to copy `docker-compose.yml` to a new file `docker-compose.local.yml`, for example, and edit it there.
 Use [docker-compose.build.yml](../docker-compose.build.yml) instead for building images locally from source.
 
+### Image tags
+
+Images are published to `ghcr.io/pandabuilder/pandachaika` on every push to `master`:
+
+- `latest` / `master`: always the most recent build of `master`.
+- `X.Y.Z` (e.g. `1.2.0`): the first build after that version was released in the [CHANGELOG](../CHANGELOG.md). These tags are not overwritten afterwards, so pin to one if you don't want to follow `master`.
+
 Remember to replace `DJANGO_SECRET_KEY`. The output from this command works:
 ```bash
 python -c "import secrets; print(secrets.token_urlsafe())"

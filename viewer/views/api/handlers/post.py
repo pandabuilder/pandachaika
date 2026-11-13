@@ -13,15 +13,12 @@ from viewer.models import (
     ArchiveGroup,
     ArchiveGroupEntry,
     WantedGallery,
-    Category,
-    Provider,
 )
 from viewer.utils.functions import archive_group_entry_to_json
 from viewer.views.api.common import (
     _get_int,
     apply_wanted_gallery_fields,
     apply_wanted_gallery_m2m_fields,
-    get_tag_objects_from_tag_list,
 )
 
 logger = logging.getLogger(__name__)

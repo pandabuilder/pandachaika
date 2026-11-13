@@ -1,4 +1,3 @@
-import os
 import typing
 
 from core.base.types import ProviderSettings

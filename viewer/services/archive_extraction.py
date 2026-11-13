@@ -3,7 +3,6 @@ import mimetypes
 import os
 import shutil
 import typing
-import uuid
 import zipfile
 import zlib
 from os.path import join as pjoin

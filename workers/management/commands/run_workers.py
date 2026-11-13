@@ -27,7 +27,7 @@ class Command(BaseCommand):
             "--schedulers",
             type=str,
             default=None,
-            help="Comma-separated list of specific schedulers to start on startup (e.g. 'timed_downloader,auto_wanted').",
+            help="Comma-separated list of specific schedulers to start on startup (e.g. 'download_progress_checker,auto_wanted').",
         )
         parser.add_argument(
             "--no-scheduler",

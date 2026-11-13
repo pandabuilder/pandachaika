@@ -3,18 +3,26 @@ import typing
 from urllib.parse import urljoin
 
 from django.conf import settings
-from django.core.mail import BadHeaderError
 from django.db.models import Q
+from django.db.models.signals import pre_save
 from django.dispatch import receiver
 from django.urls import reverse
 from django.utils.html import urlize, linebreaks
 
 from viewer.models import Gallery, Archive, users_with_perm, WantedGallery, ArchiveGroupEntry
+from core.base.utilities import normalize_crc32
 from viewer.signals import wanted_gallery_found
 from viewer.utils.functions import send_mass_html_mail
 
 logger = logging.getLogger(__name__)
 crawler_settings = settings.CRAWLER_SETTINGS
+
+
+@receiver(pre_save, sender=Archive)
+def normalize_archive_crc32(sender: type[Archive], instance: Archive, **kwargs: typing.Any) -> None:
+    """Always store the CRC32 with 8 digits, whatever path saves the archive (forms, API imports, workers)."""
+    if instance.crc32:
+        instance.crc32 = normalize_crc32(instance.crc32)
 
 
 # This handler is handling email notifications and ArchiveGroup, maybe it should be separated in 2 signals.
@@ -82,5 +90,5 @@ def wanted_gallery_found_handler(sender: typing.Any, **kwargs: typing.Any) -> No
             ]
         )
         send_mass_html_mail(datatuples, fail_silently=True)
-    except BadHeaderError:
+    except ValueError:
         logger.error("Failed sending emails: Invalid header found.")

@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.urls import path, register_converter, re_path
+from django.views.generic import RedirectView
 
 from viewer.views import (
     head,
@@ -20,6 +21,8 @@ from viewer.views import (
     stats,
     image_search,
     workers_dashboard,
+    file_check,
+    archive_picker,
 )
 
 from viewer.feeds import LatestArchivesFeed
@@ -81,7 +84,6 @@ urlpatterns = [
     path("admin-api/", api.json_parser, name="json-parser"),
     path("archive/<int:pk>/", archive.archive_details, name="archive"),
     path("archive/<int:pk>/<edit_mode:mode>/", archive.archive_details, name="archive-edit"),
-    path("archive/<int:pk>/extract-toggle/", archive.extract_toggle, name="archive-extract-toggle"),
     path("archive/<int:pk>/extract/", archive.extract, name="archive-extract"),
     path("archive/<int:pk>/reduce/", archive.reduce, name="archive-reduce"),
     path("archive/<int:pk>/public/", archive.public, name="archive-public"),
@@ -91,6 +93,7 @@ urlpatterns = [
     path("archive/<int:pk>/clone-plus/", archive.clone_plus, name="archive-clone-plus"),
     path("archive/<int:pk>/split/", archive.split, name="archive-split"),
     path("archive/<int:pk>/recalc-info/", archive.recalc_info, name="archive-recalc-info"),
+    path("archive/<int:pk>/extract-context/", archive.extract_context, name="archive-extract-context"),
     path("archive/<int:pk>/mark-similar-archives/", archive.mark_similar_archives, name="archive-mark-similar"),
     path("archive/<int:pk>/recall-api/", archive.recall_api, name="archive-recall-api"),
     path("archive/<int:pk>/generate-matches/", archive.generate_matches, name="archive-generate-matches"),
@@ -201,7 +204,12 @@ urlpatterns += [
         name="archive-filesize-different",
     ),
     path("missing-archives/", manager.public_missing_archives_for_galleries, name="public-missing-archives"),
-    path("archive-not-present/", manager.archives_not_present_in_filesystem, name="archive-not-present"),
+    path(
+        "archive-not-present/",
+        RedirectView.as_view(pattern_name="viewer:archive-file-check", query_string=True),
+        name="archive-not-present",
+    ),
+    path("archive-file-check/", file_check.archive_file_check, name="archive-file-check"),
     path("archives-not-matched/", manager.archives_not_matched_with_gallery, name="archives-not-matched"),
     path("wanted-galleries/", manager.wanted_galleries, name="wanted-galleries"),
     path("found-galleries/", manager.found_galleries, name="found-galleries"),
@@ -234,6 +242,12 @@ urlpatterns += [
     path("api/stats/", stats.stats_api, name="api-stats"),
     path("api/workers/status/", workers_dashboard.workers_status_api, name="api-workers-status"),
     path("api/workers/action/", workers_dashboard.workers_action_api, name="api-workers-action"),
+    path("api/archive-picker/", archive_picker.archive_picker_api, name="api-archive-picker"),
+    path(
+        "api/archive-file-check/<int:pk>/",
+        file_check.archive_file_check_status_api,
+        name="api-archive-file-check-status",
+    ),
 ]
 
 # Collaborators.

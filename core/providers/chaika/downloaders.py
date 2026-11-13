@@ -1,6 +1,5 @@
 import logging
 import os
-import requests
 from typing import Any
 
 from core.base.types import DataDict
@@ -9,7 +8,6 @@ from core.base.utilities import (
     calc_crc32,
     get_zip_fileinfo_for_gallery,
     construct_request_dict,
-    request_with_retries,
     request_by_provider,
     get_base_filename_string_from_gallery_data,
     replace_illegal_name,

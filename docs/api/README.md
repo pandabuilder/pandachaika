@@ -49,7 +49,20 @@ Authentication is accepted via:
   ```http
   Authorization: Bearer YOUR_API_TOKEN
   ```
-  Tokens are verified against user tokens in the database with expiry checking.
+  Tokens are verified against user tokens in the database with expiry checking. A token that is expired, revoked, or
+  missing the scope an endpoint needs is treated as unauthenticated.
+
+  Create, list and revoke your tokens from the profile page (**Long-lived Access Tokens**), or with
+  `manage.py user-management -un <user> -ct <name> [--token-expiry-days N] [--token-scopes read,write]`.
+  Each token has:
+
+  | Property | Description |
+  |----------|-------------|
+  | Expiry | A chosen number of days, or **no expiry** (`--token-expiry-days 0`). Tokens created before expiry became optional keep their original date. |
+  | Scopes | `read`: GET requests, images, downloads. `write`: POST/PUT/DELETE on `/api/`, `/r-api/` state-changing actions and archive management. `remote`: the `/admin-api/` remote operations (also requires the `viewer.use_remote_api` permission). Existing tokens have all scopes. |
+  | Last used | Updated when the token authenticates, at most once a minute. |
+
+  Scopes only restrict a token; they never give it more than its user is allowed to do. Session logins are not limited by scopes.
 - **Session Cookie**: Standard Django session authentication (e.g. active web session or via API login).
 
 ### 3. Login and Logout Endpoints

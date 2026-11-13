@@ -26,7 +26,7 @@ class SchedulerStateAdmin(admin.ModelAdmin):
 
 @admin.register(ProviderRateLimit)
 class ProviderRateLimitAdmin(admin.ModelAdmin):
-    list_display = ("name", "calls", "period", "updated_at")
+    list_display = ("name", "calls", "period", "cooldown_until", "updated_at")
     search_fields = ("name",)
 
 

@@ -1,8 +1,9 @@
 
 from django.contrib.auth.models import User
-from django.utils.timezone import now
 
 from viewer.models import UserLongLivedToken
+
+SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
 
 
 def get_long_token(request) -> str | None:
@@ -15,28 +16,46 @@ def get_long_token(request) -> str | None:
     return cleaned_header_value
 
 
-def authenticate_by_token(request) -> tuple[bool, User | None]:
-    try:
+def scope_for_method(request) -> str:
+    """Token scope needed for a request: read for safe methods, write for everything else."""
+    if request.method in SAFE_METHODS:
+        return UserLongLivedToken.SCOPE_READ
+    return UserLongLivedToken.SCOPE_WRITE
 
-        long_token = get_long_token(request)
 
-        if long_token is None:
-            return False, None
+def authenticate_by_token(request, scope: str) -> tuple[bool, User | None]:
+    """Authenticate with a bearer token that is not expired and grants `scope`.
 
-        token = UserLongLivedToken.objects.get(
-            key=UserLongLivedToken.create_salted_key_from_key(long_token), expire_date__gt=now()
-        )
-        return True, token.user
-    except UserLongLivedToken.DoesNotExist:
+    A valid token without the requested scope is treated like an invalid one. Usage is recorded on the token.
+    """
+    long_token = get_long_token(request)
+
+    if long_token is None:
         return False, None
 
+    token = (
+        UserLongLivedToken.active()
+        .select_related("user")
+        .filter(key=UserLongLivedToken.create_salted_key_from_key(long_token))
+        .first()
+    )
 
-def double_check_auth(request) -> tuple[bool, User | None]:
+    if token is None or not token.has_scope(scope):
+        return False, None
 
+    token.mark_used()
+    return True, token.user
+
+
+def double_check_auth(request, scope: str | None = None) -> tuple[bool, User | None]:
+    """Session authentication, falling back to a bearer token. Sessions are not limited by scopes.
+
+    `scope` defaults to what the request method implies (read for GET, write otherwise).
+    """
     if request.user.is_authenticated:
         return True, request.user
 
-    token_valid, token_user = authenticate_by_token(request)
+    token_valid, token_user = authenticate_by_token(request, scope or scope_for_method(request))
 
     if token_valid:
         return True, token_user

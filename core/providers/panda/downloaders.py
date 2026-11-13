@@ -18,7 +18,6 @@ from core.base.utilities import (
     get_zip_fileinfo_for_gallery,
     construct_request_dict,
     request_by_provider,
-    request_with_retries,
 )
 from core.downloaders.handlers import BaseDownloader, BaseInfoDownloader, BaseFakeDownloader, BaseTorrentDownloader
 from core.downloaders.torrent import get_torrent_client
@@ -701,7 +700,7 @@ class HathDownloader(BaseDownloader):
             if r and r.status_code == 200:
                 r.encoding = "utf-8"
                 soup = BeautifulSoup(r.content, "html.parser")
-                container = soup.find(text=re.compile("An original resolution download has been queued for client"))
+                container = soup.find(string=re.compile("An original resolution download has been queued for client"))
                 if container:
                     break
                 logger.warning(

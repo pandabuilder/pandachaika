@@ -7,181 +7,50 @@ from typing import Any
 
 from django.conf import settings
 from django.contrib import messages
-from django.contrib.auth.decorators import permission_required, login_required
-from django.contrib.contenttypes.models import ContentType
-from django.core import management
+from django.contrib.auth.decorators import permission_required
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
-from django.db.models import Prefetch, Count, Case, When, QuerySet, Q, F
-from django.http import HttpRequest, HttpResponse, HttpResponseRedirect, Http404, QueryDict
+from django.db.models import Prefetch, Count, Case, When, QuerySet, Q
+from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.urls import reverse
-from django.utils.crypto import get_random_string
 
-from core.base.setup import Settings
-from core.base.utilities import thread_exists_in_db, clamp, get_schedulers_status
-from viewer.management.commands import update_provider_wanted
+from core.base.utilities import thread_exists_in_db, clamp
+from core.matching.engine import available_offline_methods
 from viewer.utils.functions import (
     archive_manage_results_to_json,
-    galleries_update_metadata,
-    gallery_search_results_to_json,
 )
 from viewer.utils.general import clean_up_referer
 from viewer.utils.actions import event_log
 from workers import client
 from viewer.forms import (
-    GallerySearchForm,
     ArchiveSearchForm,
-    WantedGalleryCreateOrEditForm,
-    ArchiveCreateForm,
     ArchiveGroupSelectForm,
-    GalleryCreateForm,
     ArchiveManageEntrySimpleForm,
-    WantedGalleryColSearchForm,
     ArchiveManageSearchSimpleForm,
-    AllGalleriesSearchForm,
-    EventSearchForm,
-    GallerySearchSimpleForm,
     ArchiveExtraFileSimpleForm,
-    WantedGalleryCommand,
-    GallerySearchFields,
-    DownloadHistoryForm,
-    MonitoredLinkCreateOrEditForm,
-    MonitoredLinkSearchForm,
 )
 from viewer.models import (
     Archive,
     Gallery,
-    EventLog,
     ArchiveMatches,
     Tag,
-    WantedGallery,
     ArchiveGroup,
     ArchiveGroupEntry,
-    GallerySubmitEntry,
-    MonitoredLink,
     ArchiveRecycleEntry,
     ArchiveTag,
-    UserLongLivedToken,
-    DownloadEvent,
-    Category,
-    Provider,
-    GalleryMatchGroup,
-    GalleryMatchGroupEntry,
-    GalleryGroupPossibleMatches, ArchiveManageEntry, FoundGallery
+    ArchiveManageEntry
 )
 from viewer.utils.requests import double_check_auth
-from viewer.utils.types import AuthenticatedHttpRequest
+from viewer.services.archive_selection import filter_archives, filter_by_marks
 from viewer.views.head import (
-    gallery_filter_keys,
-    filter_galleries_simple,
     archive_filter_keys,
     filter_archives_simple,
     render_error,
-    wanted_gallery_filter_keys,
-    filter_wanted_galleries_simple,
-    gallery_list_filters_keys,
 )
 
 crawler_settings = settings.CRAWLER_SETTINGS
 logger = logging.getLogger(__name__)
 
-
-
-def filter_by_marks(archives: QuerySet[Archive], params: QueryDict) -> tuple[QuerySet[Archive], bool]:
-    mark_filters = False
-
-    if "and-mark-conditions" in params and params["and-mark-conditions"]:
-
-        q_objects = Q()
-
-        if "marked" in params and params["marked"]:
-            q_objects.add(Q(manage_entries__mark_check=True, manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL), Q.AND)
-            mark_filters = True
-        if "mark_reason" in params and params["mark_reason"]:
-            q_objects.add(Q(manage_entries__mark_reason__contains=str(params["mark_reason"]), manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL), Q.AND)
-            mark_filters = True
-        if "mark_comment" in params and params["mark_comment"]:
-            q_objects.add(Q(manage_entries__mark_comment__contains=str(params["mark_comment"]), manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL), Q.AND)
-            mark_filters = True
-        if "mark_extra" in params and params["mark_extra"]:
-            q_objects.add(Q(manage_entries__mark_extra__contains=str(params["mark_extra"]), manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL), Q.AND)
-            mark_filters = True
-        if "origin" in params and params["origin"]:
-            q_objects.add(Q(manage_entries__origin=str(params["origin"]), manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL), Q.AND)
-            mark_filters = True
-        priority_to = params.get("priority_to", None)
-        if priority_to is not None and priority_to != "":
-            q_objects.add(Q(manage_entries__mark_priority__lte=float(priority_to), manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL), Q.AND)
-            mark_filters = True
-        priority_from = params.get("priority_from", None)
-        if priority_from is not None and priority_from != "":
-            q_objects.add(Q(manage_entries__mark_priority__gte=float(priority_from), manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL), Q.AND)
-            mark_filters = True
-        elif mark_filters:
-            # By default, don't filter marks with less than 1 priority (low level priorities)
-            archives = archives.annotate(
-                num_manage_total=Count("manage_entries", filter=Q(manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL)),
-                num_manage_below_1=Count("manage_entries", filter=Q(manage_entries__mark_priority__lt=1, manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL)),
-            )
-            q_objects.add(~Q(num_manage_below_1=F("num_manage_total")), Q.AND)
-        archives = archives.filter(q_objects)
-    else:
-        if "marked" in params and params["marked"]:
-            archives = archives.filter(manage_entries__mark_check=True, manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL)
-            mark_filters = True
-        if "mark_reason" in params and params["mark_reason"]:
-            archives = archives.filter(manage_entries__mark_reason__contains=str(params["mark_reason"]), manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL)
-            mark_filters = True
-        if "mark_comment" in params and params["mark_comment"]:
-            archives = archives.filter(manage_entries__mark_comment__contains=str(params["mark_comment"]), manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL)
-            mark_filters = True
-        if "mark_extra" in params and params["mark_extra"]:
-            archives = archives.filter(manage_entries__mark_extra__contains=str(params["mark_extra"]), manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL)
-            mark_filters = True
-        if "origin" in params and params["origin"]:
-            archives = archives.filter(manage_entries__origin=str(params["origin"]), manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL)
-            mark_filters = True
-        priority_to = params.get("priority_to", None)
-        if priority_to is not None and priority_to != "":
-            archives = archives.filter(manage_entries__mark_priority__lte=float(priority_to), manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL)
-            mark_filters = True
-        priority_from = params.get("priority_from", None)
-        if priority_from is not None and priority_from != "":
-            archives = archives.filter(manage_entries__mark_priority__gte=float(priority_from), manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL)
-            mark_filters = True
-        elif mark_filters:
-            # By default, don't filter marks with less than 1 priority (low level priorities)
-            archives = archives.annotate(
-                num_manage_total=Count("manage_entries", filter=Q(manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL)),
-                num_manage_below_1=Count("manage_entries", filter=Q(manage_entries__mark_priority__lt=1, manage_entries__status=ArchiveManageEntry.StatusChoices.NORMAL)),
-            ).exclude(num_manage_below_1=F("num_manage_total"))
-
-    archives = archives.distinct()
-
-    return archives, mark_filters
-
-
-def filter_by_extra_files(archives: QuerySet[Archive], params: QueryDict) -> tuple[QuerySet[Archive], bool]:
-    extra_file_filters = False
-
-    if "extra_file_name" in params and params["extra_file_name"]:
-        archives = archives.filter(archivefileentry__file_name__icontains=str(params["extra_file_name"]))
-        extra_file_filters = True
-    if "extra_file_type" in params and params["extra_file_type"]:
-        archives = archives.filter(archivefileentry__file_type__icontains=str(params["extra_file_type"]))
-        extra_file_filters = True
-    extra_file_size_to = params.get("extra_file_size_to", None)
-    if extra_file_size_to is not None and extra_file_size_to != "":
-        archives = archives.filter(archivefileentry__file_size__lte=float(extra_file_size_to))
-        extra_file_filters = True
-    extra_file_size_from = params.get("extra_file_size_from", None)
-    if extra_file_size_from is not None and extra_file_size_from != "":
-        archives = archives.filter(archivefileentry__file_size__gte=float(extra_file_size_from))
-        extra_file_filters = True
-
-    archives = archives.distinct()
-
-    return archives, extra_file_filters
 
 
 def manage_archives(request: HttpRequest) -> HttpResponse:
@@ -422,21 +291,12 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
             if not json_request:
                 messages.success(request, message)
 
-            current_settings = Settings(load_from_config=crawler_settings.config)
-
-            current_settings.set_update_metadata_options(providers=providers_filtered)
-            current_settings.archive_user = actual_user
-            current_settings.event_action = "UPDATE_METADATA"
-
             gallery_links = [x.get_link() for x in galleries_from_archives]
 
-            client.enqueue(
-                args=gallery_links,
-                task_type="web_crawler",
-                override_options=current_settings,
+            client.enqueue_gallery_update(
+                gallery_links,
                 user=actual_user,
                 reason=user_reason,
-                event_action="UPDATE_METADATA",
             )
 
         elif "recalc_fileinfo" in p and actual_user.has_perm("viewer.recalc_fileinfo"):
@@ -547,6 +407,33 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                     messages.success(request, message)
 
                 archive.create_marks_for_similar_archives()
+        elif (
+            "extract_contextual_info" in p
+            and actual_user.is_authenticated
+            and (actual_user.is_staff or actual_user.has_perm("viewer.extract_contextual_info"))
+        ):
+            if not getattr(crawler_settings, "manga_extractor", None) or not crawler_settings.manga_extractor.enable:
+                if not json_request:
+                    messages.error(request, "Manga extractor is not enabled in settings.", extra_tags="danger")
+            else:
+                profile_name = p.get("profile") or getattr(
+                    crawler_settings.manga_extractor, "background_profile", "default"
+                )
+                tasks = client.enqueue_contextual_extraction(
+                    archives,
+                    user=actual_user,
+                    reason=user_reason,
+                    event_action="EXTRACT_CONTEXTUAL_INFO",
+                    profile=profile_name,
+                )
+                message = "Queued contextual extraction for {} archive(s) ({} task(s) created)".format(
+                    archives.count(), len(tasks)
+                )
+                if "reason" in p and p["reason"] != "":
+                    message += ", reason: {}".format(p["reason"])
+                logger.info("User {}: {}".format(actual_user.username, message))
+                if not json_request:
+                    messages.success(request, message)
 
         if json_request:
             return HttpResponse("", content_type="application/json; charset=utf-8")
@@ -567,49 +454,14 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
     if "sort_by" in get:
         params["sort_by"] = get.get("sort_by", "")
 
-    results: QuerySet[Archive] = filter_archives_simple(params, authenticated, show_binned=True)
-
-    results, mark_filters = filter_by_marks(results, request.GET)
-
-    results, extra_file_filters = filter_by_extra_files(results, request.GET)
-
-    if "diff-filesize" in get:
-        results = (
-            results.exclude(gallery__filesize__isnull=True)
-            .exclude(filesize=0)
-            .filter(gallery__filesize__gt=0)
-            .exclude(filesize=F("gallery__filesize"))
-        )
-
-    if "recycled" in get and actual_user is not None and actual_user.has_perm("viewer.recycle_archive"):
-        results = results.filter(binned=True)
-    else:
-        results = results.filter(binned=False)
-
-    if "file_deleted" in get and actual_user is not None and actual_user.has_perm("viewer.recycle_archive"):
-        results = results.filter(file_deleted=True)
-    else:
-        results = results.filter(file_deleted=False)
-
-    if "downloading" in get:
-        results = results.filter(crc32="")
-
-    if "no-custom-tags" in get:
-        results = results.annotate(
-            num_custom_tags=Count("tags", filter=Q(archivetag__origin=ArchiveTag.ORIGIN_USER))
-        ).filter(num_custom_tags=0)
-
-    if "with-custom-tags" in get:
-        results = results.annotate(
-            num_custom_tags=Count("tags", filter=Q(archivetag__origin=ArchiveTag.ORIGIN_USER))
-        ).filter(num_custom_tags__gt=0)
-
-    if "with-scopeless-tags" in get:
-        results = results.annotate(
-            num_scopeless_tags=Count(
-                "tags", filter=Q(~Q(archivetag__origin=ArchiveTag.ORIGIN_USER) & Q(archivetag__tag__scope=""))
-            )
-        ).filter(num_scopeless_tags__gt=0)
+    filter_flags: dict[str, bool] = {}
+    results: QuerySet[Archive] = filter_archives(
+        params,
+        can_view_recycled=actual_user is not None and actual_user.has_perm("viewer.recycle_archive"),
+        flags=filter_flags,
+    )
+    mark_filters = filter_flags["mark_filters"]
+    extra_file_filters = filter_flags["extra_file_filters"]
 
     results = results.select_related("gallery", "user")
 
@@ -671,6 +523,9 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
         "mark_form_simple": mark_form_simple,
         "extra_file_form_simple": extra_file_form_simple,
         "search_form": search_form,
+        "manga_extractor_enabled": bool(
+            getattr(crawler_settings, "manga_extractor", None) and crawler_settings.manga_extractor.enable
+        ),
     }
 
     if actual_user.has_perm("viewer.change_archivegroup"):
@@ -711,6 +566,7 @@ def archive_manager(request: HttpRequest) -> HttpResponse:
                         "expand_archive": actual_user.has_perm("viewer.expand_archive"),
                         "update_metadata": actual_user.has_perm("viewer.update_metadata"),
                         "recalc_fileinfo": actual_user.has_perm("viewer.recalc_fileinfo"),
+                        "extract_contextual_info": actual_user.has_perm("viewer.extract_contextual_info"),
                         "mark_similar_archive": actual_user.has_perm("viewer.mark_similar_archive"),
                         "change_archivegroup": actual_user.has_perm("viewer.change_archivegroup"),
                         "match_archive": actual_user.has_perm("viewer.match_archive"),
@@ -773,7 +629,8 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
             if thread_exists_in_db("match_unmatched_worker"):
                 return render_error(request, "Local matching worker is already running.")
             provider = p["create_possible_matches"]
-            method = p.get("matcher_type", "title")
+            method = p.get("matcher_type", "all")
+            auto_link = "auto_link" in p
             try:
                 cutoff = clamp(float(p.get("cutoff", "0.4")), 0.0, 1.0)
             except ValueError:
@@ -799,7 +656,8 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                     "filters": (provider,),
                     "match_local": True,
                     "match_web": False,
-                    "method_filter": method,
+                    "methods": () if method == "all" else (method,),
+                    "auto_link": auto_link,
                 },
                 user=request.user,
             )
@@ -888,9 +746,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
 
     available_providers = Gallery.objects.all().values_list("provider", flat=True).distinct()
 
-    matchers = crawler_settings.provider_context.get_matchers(crawler_settings, force=True)
-
-    matcher_types = list(dict.fromkeys([x[0].type for x in matchers]))
+    matcher_types = ["all", *available_offline_methods()]
 
     d = {
         "results": results_page,

@@ -1,8 +1,5 @@
 import logging
-import typing
-from typing import Any
 from django.conf import settings
-from core.base.types import DataDict
 
 logger = logging.getLogger(__name__)
 crawler_settings = settings.CRAWLER_SETTINGS

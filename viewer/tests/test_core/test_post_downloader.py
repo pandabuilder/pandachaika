@@ -1,20 +1,16 @@
 import os
 import ssl
-import subprocess
-from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+import tempfile
+from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 import django.utils.timezone as django_tz
 from django.test import TestCase
 
-from core.base.comparison import get_list_closer_text_from_list
 from core.base.setup import Settings
-from core.base.types import GalleryData
 from core.downloaders.postdownload import PostDownloader
-from core.providers.panda.parsers import Parser as PandaParser
 from core.workers.download_progress import DownloadProgressChecker
-from viewer.models import Archive, DownloadEvent, FoundGallery, Gallery, Image, Provider, Tag, WantedGallery
+from viewer.models import Archive, DownloadEvent, Gallery
 
 
 
@@ -93,15 +89,28 @@ class PostDownloaderFTPTest(TestCase):
         self.assertEqual(self.downloader.ftp_datas["hath"].ftps, mock_instance)
         mock_instance.prot_p.assert_called_once()
 
-    @patch.object(PostDownloader, "download_all_missing")
-    def test_do_transfer_by_method_catches_connection_errors(self, mock_download):
-        mock_download.side_effect = ConnectionRefusedError("Connection refused")
-        with self.assertLogs("core.downloaders.postdownload", level="WARNING") as cm:
-            # Should not raise exception
-            self.downloader.do_transfer_by_method("remote", archives=[])
-        self.assertEqual(mock_download.call_count, 3)
-        log_output = "\n".join(cm.output)
-        self.assertIn("Download failed, restarting connection", log_output)
+    @patch("core.downloaders.postdownload.FTP_TLS")
+    def test_ftp_source_raises_when_connection_fails(self, mock_ftp_cls):
+        from core.downloaders.postdownload import FTPSource
+
+        mock_ftp_cls.side_effect = ConnectionRefusedError("Connection refused")
+        with self.assertLogs("core.downloaders.postdownload", level="ERROR"):
+            with self.assertRaises(ConnectionError):
+                FTPSource(self.downloader, "hath", "/remote")
+
+    @patch("core.downloaders.postdownload.FTP_TLS")
+    def test_ftp_source_reconnects_on_transfer_error(self, mock_ftp_cls):
+        from core.downloaders.postdownload import FTPSource
+
+        source = FTPSource(self.downloader, "hath", "/remote")
+        dest = os.path.join(tempfile.mkdtemp(), "001.jpg")
+        with patch.object(
+            self.downloader, "write_file_update_progress", side_effect=[ConnectionResetError("reset"), "226"]
+        ) as mock_write:
+            with self.assertLogs("core.downloaders.postdownload", level="WARNING"):
+                source.fetch("Title [1]/001.jpg", dest, 10)
+        self.assertEqual(mock_write.call_count, 2)
+        self.assertEqual(mock_ftp_cls.call_count, 2)
 
     def test_torrent_lifespan_settings_defaults(self):
         settings = Settings(load_from_disk=False)
@@ -418,7 +427,9 @@ class PostDownloaderFTPTest(TestCase):
         checker = DownloadProgressChecker(settings, web_queue=mock_web_queue)
 
         gallery = Gallery.objects.create(title="gallery missing in client", gid="666", provider="panda")
-        archive = Archive.objects.create(title="job archive missing", crc32="", gallery=gallery, user=None)
+        archive = Archive.objects.create(
+            title="job archive missing", crc32="", gallery=gallery, user=None, match_type="torrent"
+        )
         event = DownloadEvent.objects.create(
             name="test_missing_torrent",
             method="torrent",
@@ -437,10 +448,15 @@ class PostDownloaderFTPTest(TestCase):
         # Torrent client returns nothing (torrent removed or ID not found)
         mock_client.get_download_progress.return_value = []
         mock_get_torrent_client.return_value = mock_client
+        settings.torrent["download_dir"] = tempfile.mkdtemp()
 
         checker.force_run_once = True
+        # Nothing in the download folder, and the lifespan expired: purged and requeued.
         with patch.object(checker.stop, "wait", side_effect=[False, True]), \
-             patch.object(checker.stop, "is_set", side_effect=[False, True]):
+             patch.object(checker.stop, "is_set", side_effect=[False, True]), \
+             patch.object(
+                 checker, "_start_transfer", side_effect=lambda ev, reason: checker.run_transfer(ev.pk, reason)
+             ):
             checker.job()
 
         event.refresh_from_db()

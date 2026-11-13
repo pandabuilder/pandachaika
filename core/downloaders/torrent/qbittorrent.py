@@ -278,10 +278,10 @@ class qBittorrent(TorrentClient):
 
     def get_download_progress[TorrentKey](
         self, download_list: list[tuple[str, TorrentKey]]
-    ) -> list[tuple[TorrentKey, float]]:
+    ) -> list[tuple[TorrentKey, float]] | None:
         if not self.session:
             if not self.connect():
-                return []
+                return None
 
         hash_map: dict[str, TorrentKey] = {}
         for dl_id_str, key in download_list:
@@ -301,11 +301,11 @@ class qBittorrent(TorrentClient):
             resp = self.session.get(info_url, params=params, timeout=25)
             if resp.status_code != 200:
                 logger.warning(f"Failed to get torrent progress from qBittorrent: HTTP {resp.status_code}")
-                return []
+                return None
             torrents = resp.json()
         except Exception as e:
             logger.warning(f"Failed to get torrent progress from qBittorrent: {e}")
-            return []
+            return None
 
         results: list[tuple[TorrentKey, float]] = []
         if isinstance(torrents, list):

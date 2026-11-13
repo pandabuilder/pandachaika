@@ -1,7 +1,6 @@
 import typing
 from collections.abc import Iterable
 
-from django.db.models import QuerySet
 
 if typing.TYPE_CHECKING:
     from viewer.models import Tag
