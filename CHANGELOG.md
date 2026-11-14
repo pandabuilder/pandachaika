@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Torrent Download Transfers**: Finished torrents are now found from the contents of their `<download dir>/<gid>` folder instead of a match on the expected torrent name, which could differ from the real name (e.g. the e-hentai API torrent name) and left finished downloads retrying forever. A single archive is transferred, a single subfolder (the torrent root) is followed into, and loose files are zipped; partially written files (`.!qB`, `.part`, `.incomplete`) are reported as incomplete, and ambiguous contents (several subfolders or archives) are logged and skipped. `.cbr` / `.cb7` files are now converted to zip like `.rar` / `.7z`.
+
 ## [1.2.0] - 2026-11-13
 
 ### Added

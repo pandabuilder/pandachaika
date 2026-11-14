@@ -177,6 +177,89 @@ class DownloadTransferTest(TestCase):
         client.trans.get_torrents.side_effect = Exception("down")
         self.assertIsNone(client.get_download_progress([("3", "old")]))
 
+    # Torrent folder contents: whatever is inside <download dir>/<gid> is used, regardless of names
+
+    def write_torrent_images(self, *parts, names=("001.jpg", "002.jpg")):
+        folder = os.path.join(self.torrent_dir, *parts)
+        os.makedirs(folder, exist_ok=True)
+        for name in names:
+            with open(os.path.join(folder, name), "wb") as f:
+                f.write(b"image " + name.encode())
+
+    def transfer_torrent(self, archive):
+        with patch.object(PostDownloader, "process_downloaded_archive", return_value=True) as mock_process:
+            result = PostDownloader(self.settings).transfer_torrent(archive)
+        return result, mock_process
+
+    def assert_zip_contents(self, archive, names):
+        archive.refresh_from_db()
+        with ZipFile(archive.zipped.path) as zf:
+            self.assertEqual(sorted(zf.namelist()), sorted(names))
+
+    def test_transfer_torrent_archive_named_unlike_archive(self):
+        archive, _ = self.create_download("torrent")
+        self.write_torrent_file(name="(C87) [Some Circle (Some Artist)] Different Name [English].zip")
+
+        result, mock_process = self.transfer_torrent(archive)
+
+        self.assertEqual(result, TransferResult.PROCESSED)
+        mock_process.assert_called_once()
+        self.assert_zip_contents(archive, ["001.jpg"])
+
+    def test_transfer_torrent_root_folder_is_zipped(self):
+        archive, _ = self.create_download("torrent")
+        self.write_torrent_images("123", "Some Unrelated Folder Name")
+
+        result, _ = self.transfer_torrent(archive)
+
+        self.assertEqual(result, TransferResult.PROCESSED)
+        self.assert_zip_contents(archive, ["001.jpg", "002.jpg"])
+
+    def test_transfer_torrent_loose_images_are_zipped(self):
+        archive, _ = self.create_download("torrent")
+        self.write_torrent_images("123")
+
+        result, _ = self.transfer_torrent(archive)
+
+        self.assertEqual(result, TransferResult.PROCESSED)
+        self.assert_zip_contents(archive, ["001.jpg", "002.jpg"])
+
+    def test_transfer_torrent_archive_inside_root_folder(self):
+        archive, _ = self.create_download("torrent")
+        os.makedirs(os.path.join(self.torrent_dir, "123", "Folder"))
+        self.write_torrent_file(gid=os.path.join("123", "Folder"), name="Other.cbz")
+
+        result, _ = self.transfer_torrent(archive)
+
+        self.assertEqual(result, TransferResult.PROCESSED)
+        self.assert_zip_contents(archive, ["001.jpg"])
+
+    def test_transfer_torrent_partial_files_are_incomplete(self):
+        archive, _ = self.create_download("torrent")
+        self.write_torrent_images("123", names=("001.jpg", "002.jpg.!qB"))
+
+        result, mock_process = self.transfer_torrent(archive)
+
+        self.assertEqual(result, TransferResult.INCOMPLETE)
+        mock_process.assert_not_called()
+
+    def test_transfer_torrent_ambiguous_contents_are_not_used(self):
+        archive, _ = self.create_download("torrent")
+        self.write_torrent_images("123", "First")
+        self.write_torrent_images("123", "Second")
+        self.assertEqual(self.transfer_torrent(archive)[0], TransferResult.NOT_FOUND)
+
+        shutil.rmtree(os.path.join(self.torrent_dir, "123"))
+        self.write_torrent_file(name="One.zip")
+        self.write_torrent_file(name="Two.zip")
+        self.assertEqual(self.transfer_torrent(archive)[0], TransferResult.NOT_FOUND)
+
+    def test_transfer_torrent_missing_or_empty_folder_is_not_found(self):
+        archive, _ = self.create_download("torrent")
+        self.assertEqual(self.transfer_torrent(archive)[0], TransferResult.NOT_FOUND)
+        os.makedirs(os.path.join(self.torrent_dir, "123"))
+        self.assertEqual(self.transfer_torrent(archive)[0], TransferResult.NOT_FOUND)
+
     # H@H
 
     def test_hath_partial_folder_updates_progress(self):

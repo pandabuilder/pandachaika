@@ -24,7 +24,6 @@ import re
 from core.base.setup import Settings
 from core.base.utilities import (
     convert_rar_to_zip,
-    replace_illegal_name,
     convert_7z_to_zip,
     ensure_archive_filename_within_limits,
     find_hath_directory,
@@ -627,39 +626,35 @@ class PostDownloader(object):
         return TransferResult.PROCESSED
 
     def transfer_torrent(self, archive: Archive) -> TransferResult:
-        """Torrents are saved to <download dir>/<gid>/<torrent name>, either a single file or a folder of images."""
+        """Torrents are queued with <download dir>/<gid> as save path, so whatever is inside that folder is the
+        download: a single archive file, a folder (the torrent's root folder) or the files themselves."""
         if not (archive.gallery and archive.gallery.gid):
             return TransferResult.NOT_FOUND
         gid = str(archive.gallery.gid)
-        expected_name = os.path.splitext(os.path.basename(archive.zipped.path))[0].replace(" [" + gid + "]", "")
         with self.open_source(TORRENT) as source:
             try:
-                entries = source.entries(gid)
+                content = find_torrent_content(source, gid)
             except FileNotFoundError:
                 return TransferResult.NOT_FOUND
-            match = next(
-                (x for x in entries if replace_illegal_name(os.path.splitext(x.name)[0]) == expected_name), None
-            )
-            if match is None:
-                logger.debug("For archive: {}, no entry named like '{}' in torrent folder {}".format(archive, expected_name, gid))
-                return TransferResult.NOT_FOUND
-            remote_path = posixpath.join(gid, match.name)
-            if match.is_dir:
-                files = [x for x in source.entries(remote_path) if not x.is_dir]
-                logger.info("For archive: {}, creating zip for folder: {}, {} files".format(archive, remote_path, len(files)))
-                self._zip_from_source(source, archive, remote_path, files)
+            if isinstance(content, TransferResult):
+                logger.debug("For archive: {}, torrent folder {}: {}".format(archive, gid, content.value))
+                return content
+            path, entry, files = content
+            if entry is None:
+                logger.info("For archive: {}, creating zip for folder: {}, {} files".format(archive, path, len(files)))
+                self._zip_from_source(source, archive, path, files)
             else:
                 target_path = ensure_archive_filename_within_limits(archive, self.settings.MEDIA_ROOT)
-                logger.info("For archive: {}, transferring file: {} to: {}".format(archive, remote_path, target_path))
+                logger.info("For archive: {}, transferring file: {} to: {}".format(archive, path, target_path))
                 self.current_download.index, self.current_download.total = 1, 1
                 try:
-                    source.fetch(remote_path, target_path, match.size, final=True)
+                    source.fetch(path, target_path, entry.size, final=True)
                 finally:
                     self.current_download = CurrentDownload()
-                extension = os.path.splitext(match.name)[1].lower()
-                if self.settings.convert_others_to_zip and extension in (".rar", ".7z"):
+                extension = os.path.splitext(entry.name)[1].lower()
+                converter = ARCHIVE_CONVERTERS.get(extension)
+                if self.settings.convert_others_to_zip and converter:
                     logger.info("For archive: {}, converting {}: {} to zip".format(archive, extension, target_path))
-                    converter = convert_rar_to_zip if extension == ".rar" else convert_7z_to_zip
                     converter(target_path, temp_path=self.settings.temp_directory_path)
         self.process_downloaded_archive(archive)
         return TransferResult.PROCESSED
@@ -714,6 +709,54 @@ class SourceEntry:
 
 def _hath_images(entries: list[SourceEntry]) -> list[SourceEntry]:
     return [x for x in entries if not x.is_dir and x.name != "galleryinfo.txt"]
+
+
+ARCHIVE_EXTENSIONS = (".zip", ".cbz", ".rar", ".cbr", ".7z", ".cb7")
+ARCHIVE_CONVERTERS: dict[str, Callable[..., int]] = {
+    ".rar": convert_rar_to_zip,
+    ".cbr": convert_rar_to_zip,
+    ".7z": convert_7z_to_zip,
+    ".cb7": convert_7z_to_zip,
+}
+# Suffixes torrent clients give to files still being written (qBittorrent, Transmission, generic).
+PARTIAL_DOWNLOAD_SUFFIXES = (".!qb", ".part", ".incomplete")
+
+
+def find_torrent_content(
+    source: "TransferSource", folder: str
+) -> "tuple[str, SourceEntry | None, list[SourceEntry]] | TransferResult":
+    """Decide what to transfer from a torrent's save folder, without relying on file names.
+
+    Returns (path, entry, []) for a single archive file at ``path``, (path, None, files) for a folder whose files
+    must be zipped, or a TransferResult when there is nothing usable. A folder holding only one subfolder (the
+    torrent's root folder) is followed into. Raises FileNotFoundError when ``folder`` doesn't exist.
+    """
+    entries = source.entries(folder)
+    files = [x for x in entries if not x.is_dir]
+    dirs = [x for x in entries if x.is_dir]
+    if any(x.name.lower().endswith(PARTIAL_DOWNLOAD_SUFFIXES) for x in files):
+        return TransferResult.INCOMPLETE
+    if not files:
+        if len(dirs) == 1:
+            return find_torrent_content(source, posixpath.join(folder, dirs[0].name))
+        if dirs:
+            logger.warning(
+                "Torrent folder {} has several subfolders ({}), can't tell which one is the download".format(
+                    folder, ", ".join(x.name for x in dirs)
+                )
+            )
+        return TransferResult.NOT_FOUND
+    archives = [x for x in files if os.path.splitext(x.name)[1].lower() in ARCHIVE_EXTENSIONS]
+    if len(files) == 1 and archives:
+        return posixpath.join(folder, archives[0].name), archives[0], []
+    if archives:
+        logger.warning(
+            "Torrent folder {} has archives mixed with other files ({}), can't tell which one is the download".format(
+                folder, ", ".join(x.name for x in files)
+            )
+        )
+        return TransferResult.NOT_FOUND
+    return folder, None, files
 
 
 class TransferSource:
