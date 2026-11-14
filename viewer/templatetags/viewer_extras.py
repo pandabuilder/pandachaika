@@ -189,7 +189,7 @@ def _is_sensitive_setting_key(key: Any) -> bool:
     if not isinstance(key, str):
         return False
     lowered = key.lower()
-    if lowered == "config":
+    if lowered in ("config", "pass", "pass_"):
         return True
     return any(part in lowered for part in _SENSITIVE_SETTING_SUBSTRINGS)
 
@@ -206,6 +206,9 @@ def _redact_setting_value(key: Any, val: Any) -> Any:
 def format_setting_value(value: Any) -> Any:
     if isinstance(value, dict):
         return [(k, _redact_setting_value(k, v)) for k, v in value.items()]
+    elif hasattr(value, "attribute_items"):
+        # Settings: include the attributes stored on its config section models.
+        return [(k, _redact_setting_value(k, v)) for k, v in value.attribute_items()]
     elif hasattr(value, "__dict__"):
         return [(k, _redact_setting_value(k, v)) for k, v in vars(value).items()]
     elif hasattr(value, "__slots__"):

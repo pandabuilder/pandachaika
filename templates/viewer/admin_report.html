@@ -1,0 +1,631 @@
+{% extends "viewer/base.html" %}
+{% load tz %}
+{% block title %}Admin Report | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+
+{% block extra_head %}
+<style>
+  :root {
+    --ar-bg-card: #001a4c;
+    --ar-bg-card-header: #002855;
+    --ar-border: #17428b;
+    --ar-border-subtle: #123066;
+    --ar-text-primary: #e6edf3;
+    --ar-text-secondary: #8ba4be;
+  }
+  .ar-card {
+    border-radius: 8px;
+    border: 1px solid var(--ar-border);
+    background: var(--ar-bg-card);
+    color: var(--ar-text-primary);
+    margin-bottom: 1.25rem;
+  }
+  .ar-card > .card-header {
+    background: var(--ar-bg-card-header);
+    border-bottom: 1px solid var(--ar-border);
+    font-weight: 600;
+  }
+  .ar-val { font-size: 1.6rem; font-weight: 700; line-height: 1.1; }
+  .ar-lbl {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--ar-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .ar-stat { min-width: 9rem; }
+  .table-ar {
+    --bs-table-color: var(--ar-text-primary);
+    --bs-table-bg: var(--ar-bg-card);
+    color: var(--ar-text-primary);
+    border-color: var(--ar-border-subtle);
+    margin-bottom: 0;
+  }
+  .table-ar th {
+    background: var(--ar-bg-card-header);
+    color: var(--ar-text-secondary);
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+  }
+  .table-ar td { vertical-align: middle; word-break: break-word; }
+  .ar-subtitle { color: var(--ar-text-secondary); font-size: 0.85rem; font-weight: 600; margin: 0.75rem 0 0.35rem; }
+  .ar-chip {
+    display: inline-block;
+    border: 1px solid var(--ar-border);
+    border-radius: 999px;
+    padding: 0.1rem 0.6rem;
+    margin: 0 0.3rem 0.3rem 0;
+    font-size: 0.85rem;
+  }
+  .ar-chip strong { margin-left: 0.25rem; }
+  .ar-attention li { margin-bottom: 0.3rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% else %}alert-info{% endif %} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 pb-2 border-bottom border-secondary gap-2">
+    <div>
+      <h2 class="h3 text-light mb-1"><i class="fas fa-clipboard-list text-info me-2"></i>Admin Report</h2>
+      <p class="text-muted mb-0 small">
+        Activity from <strong>{{ report.since|date:"Y-m-d H:i" }}</strong> to <strong>{{ report.until|date:"Y-m-d H:i" }}</strong>.
+        Queue, health, storage and pending submissions show the current state.
+        Generated {{ report.generated_at|date:"Y-m-d H:i:s T" }}.
+      </p>
+    </div>
+    <div>
+      <a href="?{{ json_query }}" class="btn btn-outline-secondary btn-sm" title="Same report as JSON. Scripts can use a bearer token with the read scope.">
+        <i class="fas fa-code me-1"></i>JSON
+      </a>
+    </div>
+  </div>
+
+  <!-- Options -->
+  <form method="get" class="ar-card p-3">
+    <div class="row g-3 align-items-end">
+      <div class="col-sm-6 col-lg-2">
+        <label for="ar-window" class="form-label ar-lbl">Window</label>
+        <select id="ar-window" name="window" class="form-select form-select-sm">
+          {% for key, label in window_presets %}
+            <option value="{{ key }}" {% if form_values.window == key %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+          <option value="custom" {% if form_values.window == "custom" %}selected{% endif %}>Custom</option>
+        </select>
+      </div>
+      <div class="col-sm-6 col-lg-2">
+        <label for="ar-since" class="form-label ar-lbl">Since (custom)</label>
+        <input id="ar-since" type="datetime-local" name="since" value="{{ form_values.since }}" class="form-control form-control-sm">
+      </div>
+      <div class="col-sm-6 col-lg-2">
+        <label for="ar-until" class="form-label ar-lbl">Until (custom)</label>
+        <input id="ar-until" type="datetime-local" name="until" value="{{ form_values.until }}" class="form-control form-control-sm">
+      </div>
+      <div class="col-sm-3 col-lg-2">
+        <label for="ar-level" class="form-label ar-lbl">Min. log level</label>
+        <select id="ar-level" name="log_level" class="form-select form-select-sm">
+          {% for name in log_level_choices %}
+            <option value="{{ name }}" {% if form_values.log_level == name %}selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-sm-3 col-lg-1">
+        <label for="ar-limit" class="form-label ar-lbl">Top N</label>
+        <input id="ar-limit" type="number" min="1" max="{{ max_limit }}" name="limit" value="{{ form_values.limit }}" class="form-control form-control-sm">
+      </div>
+      <div class="col-lg-3">
+        <button type="submit" class="btn btn-sm btn-info"><i class="fas fa-sync-alt me-1"></i>Update</button>
+      </div>
+    </div>
+    <div class="mt-3">
+      <span class="ar-lbl me-2">Sections</span>
+      {% for key, label in section_choices %}
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="checkbox" name="sections" value="{{ key }}" id="ar-section-{{ key }}"
+            {% if key in form_values.sections %}checked{% endif %}>
+          <label class="form-check-label small" for="ar-section-{{ key }}">{{ label }}</label>
+        </div>
+      {% endfor %}
+    </div>
+  </form>
+
+  <!-- Report email settings (per user) -->
+  {% with f=subscription_form %}
+  <div class="ar-card" id="report-email">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <a class="link-light text-decoration-none" data-bs-toggle="collapse" href="#report-email-body" role="button"
+        aria-expanded="{% if subscription_open %}true{% else %}false{% endif %}" aria-controls="report-email-body">
+        <i class="fas fa-envelope me-1"></i>My report email
+        {% if subscription.enabled %}
+          <span class="badge bg-success ms-2">{{ subscription.get_frequency_display }}</span>
+        {% else %}
+          <span class="badge bg-secondary ms-2">Off</span>
+        {% endif %}
+      </a>
+      {% if subscription.enabled %}
+        <span class="small text-muted">
+          Next: {% if subscription.next_send_at %}{{ subscription.next_send_at|timezone:subscription.time_zone|date:"Y-m-d H:i" }} ({{ subscription.time_zone }}){% else %}not scheduled{% endif %}
+          {% if subscription.last_result %} · Last run {{ subscription.last_run_at|timezone:subscription.time_zone|date:"Y-m-d H:i" }}: {{ subscription.last_result }}{% endif %}
+        </span>
+      {% endif %}
+    </div>
+    <div class="collapse{% if subscription_open %} show{% endif %}" id="report-email-body">
+      <div class="card-body">
+        {% if mail_problem %}
+          <div class="alert alert-warning py-2 small">Emails can't be sent: {{ mail_problem }}.</div>
+        {% endif %}
+        {% if not scheduler_enabled %}
+          <div class="alert alert-warning py-2 small">The admin report scheduler is disabled: set <code>admin_report.enable: true</code> in the settings for reports to be sent.</div>
+        {% elif not scheduler_running %}
+          <div class="alert alert-warning py-2 small">The admin report scheduler is not running right now (see the <a href="{% url 'viewer:stats-workers' %}" class="alert-link">workers dashboard</a>).</div>
+        {% endif %}
+        {% if not user.email %}
+          <div class="alert alert-warning py-2 small">Your account has no email address: set one in your <a href="{% url 'viewer:change-profile' %}" class="alert-link">profile</a>.</div>
+        {% endif %}
+        {% if f.non_field_errors %}<div class="alert alert-danger py-2 small">{{ f.non_field_errors }}</div>{% endif %}
+
+        <form method="post" action="{% url 'viewer:admin-report-subscription' %}">
+          {% csrf_token %}
+          <div class="row g-3 align-items-end">
+            <div class="col-12">
+              <div class="form-check form-switch">
+                {{ f.enabled }} <label class="form-check-label" for="{{ f.enabled.id_for_label }}">{{ f.enabled.label }}</label>
+              </div>
+            </div>
+            <div class="col-sm-6 col-lg-2">
+              <label class="form-label ar-lbl" for="{{ f.frequency.id_for_label }}">{{ f.frequency.label }}</label>
+              {{ f.frequency }} {{ f.frequency.errors }}
+            </div>
+            <div class="col-sm-6 col-lg-2" data-frequency="hourly">
+              <label class="form-label ar-lbl" for="{{ f.interval_hours.id_for_label }}">{{ f.interval_hours.label }}</label>
+              {{ f.interval_hours }} {{ f.interval_hours.errors }}
+            </div>
+            <div class="col-sm-6 col-lg-2" data-frequency="daily weekly">
+              <label class="form-label ar-lbl" for="{{ f.send_time.id_for_label }}">{{ f.send_time.label }}</label>
+              {{ f.send_time }} {{ f.send_time.errors }}
+            </div>
+            <div class="col-sm-6 col-lg-2" data-frequency="weekly">
+              <label class="form-label ar-lbl" for="{{ f.weekday.id_for_label }}">{{ f.weekday.label }}</label>
+              {{ f.weekday }} {{ f.weekday.errors }}
+            </div>
+            <div class="col-sm-6 col-lg-3">
+              <label class="form-label ar-lbl" for="{{ f.time_zone.id_for_label }}">{{ f.time_zone.label }}</label>
+              {{ f.time_zone }} {{ f.time_zone.errors }}
+              <datalist id="admin-report-time-zones">{% for zone in time_zones %}<option value="{{ zone }}">{% endfor %}</datalist>
+            </div>
+            <div class="col-sm-6 col-lg-2">
+              <label class="form-label ar-lbl" for="{{ f.min_log_level.id_for_label }}">{{ f.min_log_level.label }}</label>
+              {{ f.min_log_level }} {{ f.min_log_level.errors }}
+            </div>
+            <div class="col-sm-6 col-lg-1">
+              <label class="form-label ar-lbl" for="{{ f.top_n.id_for_label }}">{{ f.top_n.label }}</label>
+              {{ f.top_n }} {{ f.top_n.errors }}
+            </div>
+            <div class="col-12">
+              <span class="ar-lbl me-2">Sections</span>
+              {% for checkbox in f.sections %}
+                <div class="form-check form-check-inline">
+                  {{ checkbox.tag }}<label class="form-check-label small" for="{{ checkbox.id_for_label }}">{{ checkbox.choice_label }}</label>
+                </div>
+              {% endfor %}
+              <div class="form-text">{{ f.sections.help_text }}</div>
+              {{ f.sections.errors }}
+            </div>
+            <div class="col-12">
+              <div class="form-check">
+                {{ f.skip_if_quiet }} <label class="form-check-label" for="{{ f.skip_if_quiet.id_for_label }}">{{ f.skip_if_quiet.label }}</label>
+                <div class="form-text">{{ f.skip_if_quiet.help_text }}</div>
+              </div>
+            </div>
+            <div class="col-12 small text-muted">
+              Each email covers the time since your last report email (the first one covers one period).
+            </div>
+            <div class="col-12 d-flex gap-2">
+              <button type="submit" class="btn btn-sm btn-info"><i class="fas fa-save me-1"></i>Save</button>
+              {% if subscription.enabled %}
+                <button type="submit" name="action" value="send_now" class="btn btn-sm btn-outline-light" formnovalidate>
+                  <i class="fas fa-paper-plane me-1"></i>Send my report now
+                </button>
+              {% endif %}
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endwith %}
+
+  <!-- Attention -->
+  <div class="ar-card">
+    <div class="card-header"><i class="fas fa-exclamation-triangle me-1 text-warning"></i>Needs attention</div>
+    <div class="card-body">
+      {% if report.attention %}
+        <ul class="list-unstyled mb-0 ar-attention">
+          {% for item in report.attention %}
+            <li>
+              {% if item.severity == "error" %}<span class="badge bg-danger me-2">Error</span>
+              {% elif item.severity == "warning" %}<span class="badge bg-warning text-dark me-2">Warning</span>
+              {% else %}<span class="badge bg-info text-dark me-2">Info</span>{% endif %}
+              <a href="#section-{{ item.section }}" class="link-light">{{ item.message }}</a>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <span class="text-success"><i class="fas fa-check-circle me-1"></i>Nothing needs attention.</span>
+      {% endif %}
+    </div>
+  </div>
+
+  {% with s=report.sections %}
+
+  {% if s.content %}
+  <div class="ar-card" id="section-content">
+    <div class="card-header"><i class="fas fa-archive me-1"></i>Content</div>
+    <div class="card-body">
+      {% if s.content.error %}<div class="text-danger">{{ s.content.error }}</div>{% else %}
+      <div class="d-flex flex-wrap gap-4">
+        <div class="ar-stat"><div class="ar-lbl">Archives added</div><div class="ar-val text-info">{{ s.content.archives_added }}</div>
+          <div class="small text-muted">{{ s.content.archives_added_size|filesizeformat }}, {{ s.content.archives_added_files }} images, {{ s.content.archives_added_public }} public</div></div>
+        <div class="ar-stat"><div class="ar-lbl">Galleries added</div><div class="ar-val text-info">{{ s.content.galleries_added }}</div>
+          <div class="small text-muted">+{{ s.content.galleries_added_no_metadata }} without metadata</div></div>
+        <div class="ar-stat"><div class="ar-lbl">Archives recycled</div><div class="ar-val">{{ s.content.archives_recycled }}</div></div>
+        <div class="ar-stat"><div class="ar-lbl">Event log entries</div><div class="ar-val">{{ s.content.activity_total }}</div></div>
+      </div>
+      {% if s.content.archives_by_origin %}
+        <div class="ar-subtitle">Archives by origin</div>
+        {% for row in s.content.archives_by_origin %}<span class="ar-chip">{{ row.key }}<strong>{{ row.count }}</strong></span>{% endfor %}
+      {% endif %}
+      {% if s.content.galleries_by_provider %}
+        <div class="ar-subtitle">Galleries by provider</div>
+        {% for row in s.content.galleries_by_provider %}<span class="ar-chip">{{ row.key }}<strong>{{ row.count }}</strong></span>{% endfor %}
+      {% endif %}
+      {% if s.content.galleries_by_status %}
+        <div class="ar-subtitle">Galleries by status</div>
+        {% for row in s.content.galleries_by_status %}<span class="ar-chip">{{ row.key }}<strong>{{ row.count }}</strong></span>{% endfor %}
+      {% endif %}
+      {% if s.content.activity_by_action %}
+        <div class="ar-subtitle">Event log by action (<a href="{% url 'viewer:activity-event-log' %}" class="link-info">activity log</a>)</div>
+        {% for row in s.content.activity_by_action %}<span class="ar-chip">{{ row.key }}<strong>{{ row.count }}</strong></span>{% endfor %}
+      {% endif %}
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if s.logs %}
+  <div class="ar-card" id="section-logs">
+    <div class="card-header d-flex justify-content-between">
+      <span><i class="fas fa-file-alt me-1"></i>Server logs ({{ s.logs.min_level }} and above)</span>
+      <a href="{% url 'viewer:logs' %}?log-level={{ s.logs.min_level }}" class="link-info small">Server logs</a>
+    </div>
+    <div class="card-body">
+      {% if s.logs.error %}<div class="text-danger">{{ s.logs.error }}</div>{% else %}
+      {% if not s.logs.enabled %}<div class="alert alert-secondary py-2 small">Database logging is disabled (<code>disable_sql_log</code>), so there are no logs to report.</div>{% endif %}
+      {% if s.logs.window_partially_pruned %}<div class="alert alert-secondary py-2 small">The oldest log kept is from {{ s.logs.oldest_log|date:"Y-m-d H:i" }}, so this window may be missing older entries (pruned by retention).</div>{% endif %}
+      <div class="d-flex flex-wrap gap-4 mb-2">
+        <div class="ar-stat"><div class="ar-lbl">Total</div><div class="ar-val">{{ s.logs.total }}</div></div>
+        {% for level, count in s.logs.by_level.items %}
+          <div class="ar-stat"><div class="ar-lbl">{{ level }}</div><div class="ar-val {% if level == 'WARNING' %}text-warning{% else %}text-danger{% endif %}">{{ count }}</div></div>
+        {% endfor %}
+      </div>
+      {% if s.logs.groups %}
+        <div class="ar-subtitle">Most frequent ({{ s.logs.groups|length }} of {{ s.logs.groups_total }} groups{% if s.logs.groups_truncated %}, more not scanned{% endif %}). Numbers and ids are ignored when grouping.</div>
+        <div class="table-responsive">
+          <table class="table table-sm table-ar">
+            <thead><tr><th>Level</th><th>Logger</th><th>Message</th><th class="text-end">Count</th><th>Last seen</th></tr></thead>
+            <tbody>
+              {% for group in s.logs.groups %}
+                <tr>
+                  <td><span class="badge {% if group.level == 'WARNING' %}bg-warning text-dark{% else %}bg-danger{% endif %}">{{ group.level }}</span></td>
+                  <td><code>{{ group.logger_name }}</code></td>
+                  <td>{{ group.message }}{% if group.variants > 1 %} <span class="text-muted small">({{ group.variants }} variants)</span>{% endif %}</td>
+                  <td class="text-end">{{ group.count }}</td>
+                  <td class="text-nowrap small">{{ group.last_seen|date:"Y-m-d H:i" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if s.downloads %}
+  <div class="ar-card" id="section-downloads">
+    <div class="card-header d-flex justify-content-between">
+      <span><i class="fas fa-download me-1"></i>Downloads</span>
+      <a href="{% url 'viewer:stats-workers' %}" class="link-info small">Workers dashboard</a>
+    </div>
+    <div class="card-body">
+      {% if s.downloads.error %}<div class="text-danger">{{ s.downloads.error }}</div>{% else %}
+      <div class="d-flex flex-wrap gap-4">
+        <div class="ar-stat"><div class="ar-lbl">Created</div><div class="ar-val">{{ s.downloads.created }}</div></div>
+        <div class="ar-stat"><div class="ar-lbl">Completed</div><div class="ar-val text-success">{{ s.downloads.completed }}</div>
+          <div class="small text-muted">{{ s.downloads.completed_size|filesizeformat }}</div></div>
+        <div class="ar-stat"><div class="ar-lbl">Failed</div><div class="ar-val {% if s.downloads.failed %}text-danger{% endif %}">{{ s.downloads.failed }}</div>
+          <div class="small text-muted">{{ s.downloads.cancelled }} cancelled</div></div>
+        <div class="ar-stat"><div class="ar-lbl">Queued now</div><div class="ar-val">{{ s.downloads.queued_now }}</div>
+          <div class="small text-muted">{% if s.downloads.oldest_queued %}oldest {{ s.downloads.oldest_queued|timesince }} ago{% else %}&nbsp;{% endif %}</div></div>
+        <div class="ar-stat"><div class="ar-lbl">Downloading now</div><div class="ar-val">{{ s.downloads.downloading_now }}</div></div>
+      </div>
+      {% if s.downloads.failed_by_provider %}
+        <div class="ar-subtitle">Failures by provider</div>
+        {% for row in s.downloads.failed_by_provider %}<span class="ar-chip">{{ row.key|default:"(none)" }}<strong>{{ row.count }}</strong></span>{% endfor %}
+      {% endif %}
+      {% if s.downloads.failed_by_method %}
+        <div class="ar-subtitle">Failures by method</div>
+        {% for row in s.downloads.failed_by_method %}<span class="ar-chip">{{ row.key|default:"(none)" }}<strong>{{ row.count }}</strong></span>{% endfor %}
+      {% endif %}
+      {% if s.downloads.recent_failures %}
+        <div class="ar-subtitle">Latest failures</div>
+        <div class="table-responsive">
+          <table class="table table-sm table-ar">
+            <thead><tr><th>Name</th><th>Provider</th><th>Method</th><th>Error</th><th>Date</th></tr></thead>
+            <tbody>
+              {% for event in s.downloads.recent_failures %}
+                <tr>
+                  <td>{{ event.name|truncatechars:80 }}</td>
+                  <td>{{ event.provider }}</td>
+                  <td>{{ event.method }}</td>
+                  <td class="small">{{ event.error }}</td>
+                  <td class="text-nowrap small">{{ event.date|date:"Y-m-d H:i" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if s.tasks %}
+  <div class="ar-card" id="section-tasks">
+    <div class="card-header d-flex justify-content-between">
+      <span><i class="fas fa-tasks me-1"></i>Tasks and monitored links</span>
+      <a href="{% url 'viewer:stats-workers' %}" class="link-info small">Workers dashboard</a>
+    </div>
+    <div class="card-body">
+      {% if s.tasks.error %}<div class="text-danger">{{ s.tasks.error }}</div>{% else %}
+      <div class="d-flex flex-wrap gap-4">
+        <div class="ar-stat"><div class="ar-lbl">Tasks completed</div><div class="ar-val text-success">{{ s.tasks.completed }}</div></div>
+        <div class="ar-stat"><div class="ar-lbl">Tasks failed</div><div class="ar-val {% if s.tasks.failed %}text-danger{% endif %}">{{ s.tasks.failed }}</div></div>
+        <div class="ar-stat"><div class="ar-lbl">Pending now</div><div class="ar-val">{{ s.tasks.pending_now }}</div>
+          <div class="small text-muted">{{ s.tasks.processing_now }} processing</div></div>
+        <div class="ar-stat"><div class="ar-lbl">Links pending</div><div class="ar-val">{{ s.tasks.links_pending_now }}</div>
+          <div class="small text-muted">{% if s.tasks.links_oldest_pending %}oldest {{ s.tasks.links_oldest_pending|timesince }} ago{% else %}&nbsp;{% endif %}</div></div>
+        <div class="ar-stat"><div class="ar-lbl">Links failed (total)</div><div class="ar-val">{{ s.tasks.links_failed_total }}</div></div>
+      </div>
+      {% if s.tasks.failed_by_type %}
+        <div class="ar-subtitle">Failures by task type</div>
+        {% for row in s.tasks.failed_by_type %}<span class="ar-chip">{{ row.key }}<strong>{{ row.count }}</strong></span>{% endfor %}
+      {% endif %}
+      {% if s.tasks.recent_failures %}
+        <div class="ar-subtitle">Latest failures</div>
+        <div class="table-responsive">
+          <table class="table table-sm table-ar">
+            <thead><tr><th>Type</th><th>Reason</th><th>Error</th><th class="text-end">Attempts</th><th>Date</th></tr></thead>
+            <tbody>
+              {% for task in s.tasks.recent_failures %}
+                <tr>
+                  <td><code>{{ task.task_type }}</code></td>
+                  <td>{{ task.reason|truncatechars:60 }}</td>
+                  <td class="small">{{ task.error }}</td>
+                  <td class="text-end">{{ task.attempts }}</td>
+                  <td class="text-nowrap small">{{ task.date|date:"Y-m-d H:i" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if s.health %}
+  <div class="ar-card" id="section-health">
+    <div class="card-header d-flex justify-content-between">
+      <span><i class="fas fa-heartbeat me-1"></i>Workers and schedulers (now)</span>
+      <a href="{% url 'viewer:stats-workers' %}" class="link-info small">Workers dashboard</a>
+    </div>
+    <div class="card-body">
+      {% if s.health.error %}<div class="text-danger">{{ s.health.error }}</div>{% else %}
+      <div class="d-flex flex-wrap gap-4">
+        <div class="ar-stat"><div class="ar-lbl">Worker processes</div><div class="ar-val {% if not s.health.workers_alive %}text-danger{% else %}text-success{% endif %}">{{ s.health.workers_alive }}</div></div>
+        <div class="ar-stat"><div class="ar-lbl">Schedulers OK</div><div class="ar-val text-success">{{ s.health.schedulers_running }}</div></div>
+        <div class="ar-stat"><div class="ar-lbl">With problems</div><div class="ar-val {% if s.health.scheduler_problems %}text-danger{% endif %}">{{ s.health.scheduler_problems|length }}</div></div>
+        <div class="ar-stat"><div class="ar-lbl">Stopped</div><div class="ar-val">{{ s.health.schedulers_stopped }}</div></div>
+      </div>
+      {% if s.health.scheduler_problems %}
+        <div class="ar-subtitle">Schedulers with problems</div>
+        <div class="table-responsive">
+          <table class="table table-sm table-ar">
+            <thead><tr><th>Scheduler</th><th>Problem</th><th>Last run</th><th>Last heartbeat</th></tr></thead>
+            <tbody>
+              {% for scheduler in s.health.scheduler_problems %}
+                <tr>
+                  <td>{{ scheduler.display_name }}</td>
+                  <td><span class="badge {% if scheduler.problem == 'unresponsive' %}bg-danger{% else %}bg-warning text-dark{% endif %}">{{ scheduler.problem }}</span></td>
+                  <td class="small">{{ scheduler.last_run|date:"Y-m-d H:i"|default:"Never" }}</td>
+                  <td class="small">{{ scheduler.last_heartbeat|date:"Y-m-d H:i"|default:"Never" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+      {% if s.health.stale_workers %}
+        <div class="ar-subtitle">Worker processes that stopped responding</div>
+        {% for worker in s.health.stale_workers %}<span class="ar-chip">PID {{ worker.pid }} on {{ worker.hostname }}<strong>{{ worker.last_heartbeat|timesince }} ago</strong></span>{% endfor %}
+      {% endif %}
+      {% if s.health.rate_limit_cooldowns %}
+        <div class="ar-subtitle">Providers in rate limit cooldown</div>
+        {% for cooldown in s.health.rate_limit_cooldowns %}<span class="ar-chip">{{ cooldown.provider }}<strong>{{ cooldown.seconds_left }}s</strong></span>{% endfor %}
+      {% endif %}
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if s.wanted %}
+  <div class="ar-card" id="section-wanted">
+    <div class="card-header d-flex justify-content-between">
+      <span><i class="fas fa-search me-1"></i>Wanted galleries</span>
+      <a href="{% url 'viewer:found-galleries' %}" class="link-info small">Found galleries</a>
+    </div>
+    <div class="card-body">
+      {% if s.wanted.error %}<div class="text-danger">{{ s.wanted.error }}</div>{% else %}
+      <div class="d-flex flex-wrap gap-4">
+        <div class="ar-stat"><div class="ar-lbl">Matches found</div><div class="ar-val text-info">{{ s.wanted.found }}</div>
+          <div class="small text-muted">for {{ s.wanted.wanted_galleries_found }} wanted galleries</div></div>
+        <div class="ar-stat"><div class="ar-lbl">Wanted created</div><div class="ar-val">{{ s.wanted.wanted_created }}</div></div>
+        <div class="ar-stat"><div class="ar-lbl">Still searching</div><div class="ar-val">{{ s.wanted.wanted_searching }}</div></div>
+      </div>
+      {% if s.wanted.recent_found %}
+        <div class="ar-subtitle">Latest matches</div>
+        <div class="table-responsive">
+          <table class="table table-sm table-ar">
+            <thead><tr><th>Wanted gallery</th><th>Gallery</th><th>Provider</th><th>Date</th></tr></thead>
+            <tbody>
+              {% for found in s.wanted.recent_found %}
+                <tr>
+                  <td><a href="{% url 'viewer:wanted-gallery' found.wanted_gallery_id %}" class="link-info">{{ found.wanted_gallery|truncatechars:70 }}</a></td>
+                  <td><a href="{% url 'viewer:gallery' found.gallery_id %}" class="link-info">{{ found.gallery|truncatechars:90 }}</a></td>
+                  <td>{{ found.provider }}</td>
+                  <td class="text-nowrap small">{{ found.date|date:"Y-m-d H:i" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="row">
+    {% if s.moderation %}
+    <div class="col-lg-4" id="section-moderation">
+      <div class="ar-card h-100">
+        <div class="card-header d-flex justify-content-between">
+          <span><i class="fas fa-inbox me-1"></i>Submissions</span>
+          <a href="{% url 'viewer:submit-queue' %}" class="link-info small">Submit queue</a>
+        </div>
+        <div class="card-body">
+          {% if s.moderation.error %}<div class="text-danger">{{ s.moderation.error }}</div>{% else %}
+          <div class="d-flex flex-wrap gap-4">
+            <div class="ar-stat"><div class="ar-lbl">Submitted</div><div class="ar-val">{{ s.moderation.submitted }}</div></div>
+            <div class="ar-stat"><div class="ar-lbl">Pending now</div><div class="ar-val {% if s.moderation.pending_now %}text-warning{% endif %}">{{ s.moderation.pending_now }}</div>
+              <div class="small text-muted">{% if s.moderation.oldest_pending %}oldest {{ s.moderation.oldest_pending|timesince }} ago{% else %}&nbsp;{% endif %}</div></div>
+          </div>
+          {% if s.moderation.resolved_by_status %}
+            <div class="ar-subtitle">Resolved</div>
+            {% for row in s.moderation.resolved_by_status %}<span class="ar-chip">{{ row.key }}<strong>{{ row.count }}</strong></span>{% endfor %}
+          {% endif %}
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if s.integrity %}
+    <div class="col-lg-4" id="section-integrity">
+      <div class="ar-card h-100">
+        <div class="card-header d-flex justify-content-between">
+          <span><i class="fas fa-check-double me-1"></i>Archive file checks</span>
+          <a href="{% url 'viewer:archive-file-check' %}" class="link-info small">File checks</a>
+        </div>
+        <div class="card-body">
+          {% if s.integrity.error %}<div class="text-danger">{{ s.integrity.error }}</div>{% else %}
+          <div class="d-flex flex-wrap gap-4">
+            <div class="ar-stat"><div class="ar-lbl">New issues</div><div class="ar-val {% if s.integrity.issues %}text-warning{% endif %}">{{ s.integrity.issues }}</div>
+              <div class="small text-muted">in {{ s.integrity.archives_with_issues }} archives</div></div>
+          </div>
+          {% if s.integrity.issues_by_kind %}
+            <div class="ar-subtitle">By kind</div>
+            {% for row in s.integrity.issues_by_kind %}<span class="ar-chip">{{ row.key }}<strong>{{ row.count }}</strong></span>{% endfor %}
+          {% endif %}
+          {% if s.integrity.last_check %}
+            <div class="ar-subtitle">Last check</div>
+            <a href="{% url 'viewer:archive-file-check' %}?check={{ s.integrity.last_check.id }}" class="link-info">#{{ s.integrity.last_check.id }}</a>
+            <span class="small">{{ s.integrity.last_check.status }}{% if s.integrity.last_check.finished_at %}, finished {{ s.integrity.last_check.finished_at|date:"Y-m-d H:i" }}{% endif %}</span>
+          {% endif %}
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if s.storage %}
+    <div class="col-lg-4" id="section-storage">
+      <div class="ar-card h-100">
+        <div class="card-header d-flex justify-content-between">
+          <span><i class="fas fa-hdd me-1"></i>Storage (now)</span>
+          <a href="{% url 'viewer:database-maintenance' %}" class="link-info small">Database maintenance</a>
+        </div>
+        <div class="card-body">
+          {% if s.storage.error %}<div class="text-danger">{{ s.storage.error }}</div>{% else %}
+          {% for disk in s.storage.disks %}
+            <div class="mb-2">
+              <div class="d-flex justify-content-between small">
+                <span>{{ disk.label }} <code>{{ disk.path }}</code></span>
+                {% if not disk.error %}<span>{{ disk.free|filesizeformat }} free of {{ disk.total|filesizeformat }}</span>{% endif %}
+              </div>
+              {% if disk.error %}
+                <div class="small text-danger">{{ disk.error }}</div>
+              {% else %}
+                <div class="progress" style="height: 0.6rem;" role="progressbar" aria-label="{{ disk.label }} usage" aria-valuenow="{{ disk.used_percent }}" aria-valuemin="0" aria-valuemax="100">
+                  <div class="progress-bar {% if disk.warning %}bg-danger{% else %}bg-info{% endif %}" style="width: {{ disk.used_percent|stringformat:'s' }}%"></div>
+                </div>
+              {% endif %}
+            </div>
+          {% empty %}
+            <div class="small text-muted">No media root configured.</div>
+          {% endfor %}
+          <div class="small mt-2">
+            <div><strong>Archives:</strong> {{ s.storage.archives_total }} ({{ s.storage.archives_total_size|filesizeformat }}, binned excluded)</div>
+            <div><strong>Galleries:</strong> {{ s.storage.galleries_total }}</div>
+            <div><strong>Database pruner last run:</strong> {{ s.storage.database_pruner_last_run|date:"Y-m-d H:i"|default:"Never" }}</div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  {% endwith %}
+</div>
+{% endblock %}
+
+{% block afterJQ %}
+<script>
+  // Only show the schedule fields that apply to the selected frequency.
+  (function () {
+    const frequency = document.getElementById("{{ subscription_form.frequency.id_for_label }}");
+    if (!frequency) return;
+    const update = () => {
+      document.querySelectorAll("[data-frequency]").forEach((element) => {
+        element.hidden = !element.dataset.frequency.split(" ").includes(frequency.value);
+      });
+    };
+    frequency.addEventListener("change", update);
+    update();
+  })();
+</script>
+{% endblock %}

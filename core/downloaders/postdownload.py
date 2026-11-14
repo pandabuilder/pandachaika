@@ -1,8 +1,10 @@
+import errno
 import os
 import posixpath
 import shutil
 import socket
 import ssl
+import stat
 import time
 import zlib
 from collections.abc import Iterable, Callable
@@ -16,6 +18,7 @@ from zipfile import ZipFile, BadZipFile
 import ftplib
 
 import django.utils.timezone as django_tz
+import paramiko
 
 import logging
 from django.template.defaultfilters import filesizeformat
@@ -412,17 +415,34 @@ class PostDownloader(object):
                 conn.unwrap()
         return ftp_data.ftps.voidresp()
 
-    def start_connection(self, ftp_config_name: str) -> bool:
-        if ftp_config_name not in self.settings.ftp_configs:
+    def connection_config(self, config_name: str) -> dict[str, Any] | None:
+        config = self.settings.ftp_configs.get(config_name)
+        if config is None:
             logger.error(
                 "FTP configuration '%s' not found. Available configurations: %s",
-                ftp_config_name,
+                config_name,
                 list(self.settings.ftp_configs.keys()),
             )
+        return config
+
+    def connection_protocol(self, config_name: str) -> str:
+        """'ftps' or 'sftp', from the 'protocol' key of the named connection config (default 'ftps')."""
+        config = self.settings.ftp_configs.get(config_name) or {}
+        protocol = str(config.get("protocol") or "ftps").strip().lower()
+        if protocol not in REMOTE_PROTOCOLS:
+            raise ValueError(
+                "Unsupported protocol '{}' in FTP configuration '{}', use one of: {}".format(
+                    protocol, config_name, ", ".join(REMOTE_PROTOCOLS)
+                )
+            )
+        return protocol
+
+    def start_connection(self, ftp_config_name: str) -> bool:
+        ftp_config = self.connection_config(ftp_config_name)
+        if ftp_config is None:
             self.ftp_datas[ftp_config_name] = FTPData()
             return False
 
-        ftp_config = self.settings.ftp_configs[ftp_config_name]
         no_cert_check = ftp_config.get("no_certificate_check", False)
         if no_cert_check:
             context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
@@ -431,33 +451,9 @@ class PostDownloader(object):
         else:
             context = ssl.create_default_context()
 
-        if "bind_host" in ftp_config and ftp_config["bind_host"]:
-            if ftp_config.get("bind_port") is None:
-                bind_port = 0
-            else:
-                bind_port = ftp_config["bind_port"]
-            source_address = (ftp_config["bind_host"], bind_port)
-        else:
-            source_address = None
-
+        source_address = bind_address(ftp_config)
         ftp_data = FTPData()
-        raw_address = ftp_config.get("address", "<unknown>")
-        host = raw_address
-        port = 21
-
-        # Handle host:port formatting if present in address
-        if ":" in host and not host.startswith("["):
-            host_part, _, port_part = host.partition(":")
-            if port_part.isdigit():
-                host = host_part
-                port = int(port_part)
-
-        # Explicit port in ftp_config overrides default or parsed port
-        if "port" in ftp_config and ftp_config["port"] is not None:
-            try:
-                port = int(ftp_config["port"])
-            except (ValueError, TypeError):
-                pass
+        host, port = parse_address(ftp_config, 21)
 
         timeout = self.settings.timeout_timer
         source_addr_str = f", source_address={source_address}" if source_address else ""
@@ -502,26 +498,18 @@ class PostDownloader(object):
                     "(e.g. it is plain unencrypted FTP instead of FTPS), a TLS version or cipher mismatch occurred, "
                     "or a firewall/proxy dropped the TLS handshake."
                 )
-            elif isinstance(e, ConnectionRefusedError):
-                hint = (
-                    f" Connection was refused by {host}:{port}. "
-                    "Please verify that the FTP service is running on the remote host and port, "
-                    "and that firewall rules allow the connection."
-                )
             elif isinstance(e, (ssl.SSLCertVerificationError, ssl.CertificateError)):
                 hint = (
                     f" SSL certificate verification failed for {host}:{port}. "
                     f"If the server uses a self-signed certificate, consider setting "
                     f"'no_certificate_check: true' in the '{ftp_config_name}' FTP configuration."
                 )
-            elif isinstance(e, (socket.gaierror, socket.herror)):
-                hint = f" Hostname resolution failed for '{host}'. Please verify the hostname and DNS configuration."
-            elif isinstance(e, (socket.timeout, TimeoutError)):
-                hint = f" Connection to {host}:{port} timed out after {timeout} seconds. Check network connectivity."
             elif isinstance(e, ftplib.error_perm):
                 hint = f" FTP authentication or permission error received from {host}:{port}. Please verify credentials."
-            elif isinstance(e, ftplib.all_errors):
-                hint = f" FTP protocol error received from {host}:{port}."
+            else:
+                hint = network_error_hint(e, host, port, timeout)
+                if not hint and isinstance(e, ftplib.all_errors):
+                    hint = f" FTP protocol error received from {host}:{port}."
 
             logger.error(
                 "Failed to connect via FTPS to '%s:%s' (config: '%s', no_certificate_check: %s, "
@@ -558,7 +546,11 @@ class PostDownloader(object):
     # ------------------------------------------------------------------
 
     def handler_for(self, kind: str) -> str:
-        """Transfer handler ('local', 'local_copy', 'local_move', 'local_hardlink' or 'remote') for a download kind."""
+        """Transfer handler ('local', 'local_copy', 'local_move', 'local_hardlink' or 'remote') for a download kind.
+
+        'remote' fetches from the connection config named by download_ftp_torrent / download_ftp_hath, over FTPS or
+        SFTP depending on that config's 'protocol'.
+        """
         specific = self.settings.download_handler_torrent if kind == TORRENT else self.settings.download_handler_hath
         return specific or self.settings.download_handler
 
@@ -570,8 +562,12 @@ class PostDownloader(object):
                 return LocalSource(self.settings.torrent["download_dir"], handler)
             return LocalSource(self.settings.providers["panda"].local_hath_folder, handler)
         if kind == TORRENT:
-            return FTPSource(self, self.ftp_key_torrent, self.settings.ftps["remote_torrent_dir"])
-        return FTPSource(self, self.ftp_key_hath, self.settings.providers["panda"].remote_hath_dir)
+            config_key, root = self.ftp_key_torrent, self.settings.ftps["remote_torrent_dir"]
+        else:
+            config_key, root = self.ftp_key_hath, self.settings.providers["panda"].remote_hath_dir
+        if self.connection_protocol(config_key) == "sftp":
+            return SFTPSource(self, config_key, root)
+        return FTPSource(self, config_key, root)
 
     def hath_progress(self, archives: Iterable[Archive]) -> dict[int, float]:
         """Fraction of each archive's expected size already present in the H@H download folder, keyed by archive pk.
@@ -681,6 +677,45 @@ class PostDownloader(object):
 
 TORRENT = "torrent"
 HATH = "hath"
+REMOTE_PROTOCOLS = ("ftps", "sftp")
+
+
+def parse_address(config: dict[str, Any], default_port: int) -> tuple[str, int]:
+    """Host and port of a connection config: 'address' may be 'host:port', an explicit 'port' key wins."""
+    host = config.get("address", "<unknown>")
+    port = default_port
+    if ":" in host and not host.startswith("["):
+        host_part, _, port_part = host.partition(":")
+        if port_part.isdigit():
+            host = host_part
+            port = int(port_part)
+    if config.get("port") is not None:
+        try:
+            port = int(config["port"])
+        except (ValueError, TypeError):
+            pass
+    return host, port
+
+
+def bind_address(config: dict[str, Any]) -> tuple[str, int] | None:
+    """Local (host, port) to bind outgoing connections to, from 'bind_host' / 'bind_port'."""
+    if not config.get("bind_host"):
+        return None
+    return config["bind_host"], int(config.get("bind_port") or 0)
+
+
+def network_error_hint(e: BaseException, host: str, port: int, timeout: float) -> str:
+    if isinstance(e, ConnectionRefusedError):
+        return (
+            f" Connection was refused by {host}:{port}. "
+            "Please verify that the service is running on the remote host and port, "
+            "and that firewall rules allow the connection."
+        )
+    if isinstance(e, (socket.gaierror, socket.herror)):
+        return f" Hostname resolution failed for '{host}'. Please verify the hostname and DNS configuration."
+    if isinstance(e, (socket.timeout, TimeoutError)):
+        return f" Connection to {host}:{port} timed out after {timeout} seconds. Check network connectivity."
+    return ""
 
 
 def download_kind(method_or_match_type: str | None) -> str | None:
@@ -875,3 +910,170 @@ class FTPSource(TransferSource):
             except Exception:
                 pass
             ftp_data.ftps = None
+
+
+class _AcceptHostKeyPolicy(paramiko.MissingHostKeyPolicy):
+    """Accept unknown host keys without saving them (no_certificate_check)."""
+
+    def missing_host_key(self, client: paramiko.SSHClient, hostname: str, key: paramiko.PKey) -> None:
+        logger.debug("Accepting unverified %s host key for %s", key.get_name(), hostname)
+
+
+class SFTPSource(TransferSource):
+    fetch_retries = 10
+
+    def __init__(self, post_downloader: PostDownloader, config_key: str, root: str) -> None:
+        self.post_downloader = post_downloader
+        self.config_key = config_key
+        self.root = root
+        self.ssh: paramiko.SSHClient | None = None
+        self.sftp: paramiko.SFTPClient | None = None
+        self._connect()
+
+    def __str__(self) -> str:
+        return "SFTP config '{}' folder {}".format(self.config_key, self.root)
+
+    def _connect(self) -> None:
+        config = self.post_downloader.connection_config(self.config_key)
+        if config is None:
+            raise ConnectionError("Could not connect to SFTP config '{}'".format(self.config_key))
+        host, port = parse_address(config, 22)
+        timeout = self.post_downloader.settings.timeout_timer
+        no_host_key_check = bool(config.get("no_certificate_check", False))
+        key_filename = config.get("key_filename") or None
+        password = config.get("passwd") or None
+
+        ssh = paramiko.SSHClient()
+        try:
+            ssh.load_system_host_keys()
+            if config.get("known_hosts_file"):
+                ssh.load_host_keys(os.path.expanduser(config["known_hosts_file"]))
+            ssh.set_missing_host_key_policy(
+                _AcceptHostKeyPolicy() if no_host_key_check else paramiko.RejectPolicy()
+            )
+            sock = socket.create_connection((host, port), timeout=timeout, source_address=bind_address(config))
+            ssh.connect(
+                host,
+                port=port,
+                username=config.get("user") or None,
+                password=password,
+                key_filename=os.path.expanduser(key_filename) if key_filename else None,
+                passphrase=config.get("key_passphrase") or None,
+                sock=sock,
+                timeout=timeout,
+                banner_timeout=timeout,
+                auth_timeout=timeout,
+                # With no password or key configured, fall back to the agent and ~/.ssh keys.
+                allow_agent=not (password or key_filename),
+                look_for_keys=not (password or key_filename),
+            )
+            sftp = ssh.open_sftp()
+            channel = sftp.get_channel()
+            if channel is not None:
+                channel.settimeout(timeout)
+        except Exception as e:
+            ssh.close()
+            if isinstance(e, paramiko.BadHostKeyException):
+                hint = (
+                    f" The host key of {host}:{port} does not match the known one. "
+                    "If the server key changed on purpose, update the known_hosts file."
+                )
+            elif isinstance(e, paramiko.SSHException) and "known_hosts" in str(e):
+                hint = (
+                    f" The host key of {host}:{port} is unknown. Add it to 'known_hosts_file' (e.g. with "
+                    f"ssh-keyscan -p {port} {host}) or set 'no_certificate_check: true' in the "
+                    f"'{self.config_key}' FTP configuration."
+                )
+            elif isinstance(e, paramiko.AuthenticationException):
+                hint = f" SSH authentication failed on {host}:{port}. Please verify the credentials or key file."
+            else:
+                hint = network_error_hint(e, host, port, timeout)
+            logger.error(
+                "Failed to connect via SFTP to '%s:%s' (config: '%s', no_certificate_check: %s, timeout: %ss): "
+                "%s: %s.%s",
+                host,
+                port,
+                self.config_key,
+                no_host_key_check,
+                timeout,
+                type(e).__name__,
+                e,
+                hint,
+            )
+            logger.debug("SFTP connection traceback for %s:%s:", host, port, exc_info=True)
+            raise ConnectionError("Could not connect to SFTP config '{}'".format(self.config_key)) from e
+        self.ssh, self.sftp = ssh, sftp
+
+    def _client(self) -> paramiko.SFTPClient:
+        if self.sftp is None:
+            raise ConnectionError("SFTP connection '{}' is not initialized".format(self.config_key))
+        return self.sftp
+
+    def _path(self, path: str) -> str:
+        return posixpath.join(self.root, path) if path else self.root
+
+    def entries(self, path: str = "") -> list[SourceEntry]:
+        sftp = self._client()
+        full_path = self._path(path)
+        try:
+            attrs = sftp.listdir_attr(full_path)
+        except OSError as e:
+            if e.errno == errno.ENOENT:
+                raise FileNotFoundError(path) from e
+            raise
+        result = []
+        for attr in attrs:
+            mode, size = attr.st_mode or 0, attr.st_size or 0
+            if stat.S_ISLNK(mode):
+                try:
+                    target = sftp.stat(posixpath.join(full_path, attr.filename))
+                except OSError:
+                    continue  # Broken link.
+                mode, size = target.st_mode or 0, target.st_size or 0
+            if stat.S_ISDIR(mode):
+                result.append(SourceEntry(attr.filename, True))
+            elif stat.S_ISREG(mode):
+                result.append(SourceEntry(attr.filename, False, size))
+        return result
+
+    def fetch(self, path: str, dest: str, size: int = 0, final: bool = False) -> None:
+        current = self.post_downloader.current_download
+        for attempt in range(1, self.fetch_retries + 1):
+            current.filesize = size
+            current.downloaded = 0
+            current.filename = path
+            start = time.perf_counter()
+
+            def progress(transferred: int, total: int) -> None:
+                current.downloaded = transferred
+                elapsed = time.perf_counter() - start
+                if elapsed > 0:
+                    current.speed = transferred / elapsed
+
+            try:
+                self._client().get(self._path(path), dest, callback=progress)
+                return
+            except (FileNotFoundError, PermissionError):
+                raise
+            except (OSError, EOFError, paramiko.SSHException) as e:
+                logger.warning(
+                    "SFTP transfer of {} failed (attempt {} of {}): {}, reconnecting...".format(
+                        path, attempt, self.fetch_retries, e
+                    )
+                )
+                self.close()
+                self._connect()
+            finally:
+                current.filename = ""
+                current.speed = 0
+                current.filesize = 0
+        raise ConnectionError("SFTP transfer of {} failed after {} attempts".format(path, self.fetch_retries))
+
+    def close(self) -> None:
+        for client in (self.sftp, self.ssh):
+            if client is not None:
+                try:
+                    client.close()
+                except Exception:
+                    pass
+        self.sftp = self.ssh = None

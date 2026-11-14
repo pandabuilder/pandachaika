@@ -28,6 +28,7 @@ from dal import autocomplete
 
 from core.base.utilities import available_filename
 from viewer.models import (
+    AdminReportSubscription,
     Archive,
     ArchiveMatches,
     Image,
@@ -1280,6 +1281,67 @@ class ProfileChangeForm(forms.ModelForm):
             "notify_new_private_archive": forms.widgets.CheckboxInput(attrs={"class": "form-check-input"}),
             "notify_wanted_gallery_found": forms.widgets.CheckboxInput(attrs={"class": "form-check-input"}),
         }
+
+
+class AdminReportSubscriptionForm(forms.ModelForm):
+    """A staff user's own admin report email schedule and contents."""
+
+    sections = forms.MultipleChoiceField(
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+        help_text="None selected means all sections.",
+    )
+    min_log_level = forms.TypedChoiceField(coerce=int, label="Minimum log level")
+    time_zone = forms.CharField(max_length=64, widget=forms.TextInput(attrs={"list": "admin-report-time-zones"}))
+
+    class Meta:
+        model = AdminReportSubscription
+        fields = [
+            "enabled",
+            "frequency",
+            "interval_hours",
+            "send_time",
+            "weekday",
+            "time_zone",
+            "sections",
+            "min_log_level",
+            "top_n",
+            "skip_if_quiet",
+        ]
+        widgets = {
+            "send_time": forms.TimeInput(attrs={"type": "time"}, format="%H:%M"),
+        }
+        labels = {
+            "enabled": "Email me this report",
+            "interval_hours": "Every (hours)",
+            "top_n": "List size",
+            "skip_if_quiet": "Skip when nothing needs attention",
+        }
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        from viewer.services.admin_report import LOG_LEVEL_CHOICES, SECTIONS
+
+        super().__init__(*args, **kwargs)
+        cast(forms.MultipleChoiceField, self.fields["sections"]).choices = SECTIONS
+        cast(forms.TypedChoiceField, self.fields["min_log_level"]).choices = LOG_LEVEL_CHOICES
+        for field in self.fields.values():
+            widget = field.widget
+            if isinstance(widget, forms.CheckboxSelectMultiple):
+                continue
+            if isinstance(widget, forms.CheckboxInput):
+                widget.attrs["class"] = "form-check-input"
+            elif isinstance(widget, forms.Select):
+                widget.attrs["class"] = "form-select form-select-sm"
+            else:
+                widget.attrs["class"] = "form-control form-control-sm"
+
+    def clean_time_zone(self) -> str:
+        from zoneinfo import available_timezones
+
+        value = self.cleaned_data["time_zone"].strip()
+        if value not in available_timezones():
+            raise ValidationError("Unknown time zone. Use a name like Europe/Madrid or UTC.")
+        return value
 
 
 class GalleryCreateForm(ModelForm):

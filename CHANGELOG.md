@@ -7,9 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-14
+
+### Added
+
+- **Admin Report**: New staff page at `/admin-report/` (Settings → Admin Report) summarizing a time window (last 24 hours, 7 or 30 days, or a custom range): archives and galleries added, event log activity, wanted gallery matches, finished and failed downloads, failed tasks, warning/error server logs grouped by similar message, submissions, and new archive file-check issues. It also shows the current state: download and task backlogs, unresponsive or overdue schedulers, stale worker processes, provider rate-limit cooldowns, disk usage of the media folders, and a "Needs attention" summary. Sections, minimum log level and list sizes are selectable. `?format=json` returns the same data, for staff sessions or bearer tokens with the `read` scope (see `docs/api/admin_report.md`).
+- **Scheduled Admin Report Emails**: Each staff user can have the admin report emailed on their own schedule ("My report email" on the admin report page): every N hours, daily or weekly at a time in their own time zone, with their choice of sections, minimum log level and list size, and an option to skip the email when nothing needs attention. Each email covers the time since that user's last report, and links to the same report on the site; the page also gets a "Since my last report email" window and a "Send my report now" button. Sent by the new `timed_admin_reporter` scheduler, enabled with `admin_report.enable` (checks every `admin_report.check_interval_minutes`, default 15) and using the `mail_logging` SMTP settings. Adds the `AdminReportSubscription` model (migration `0224`).
+- **SFTP Post-Download Transfers**: The `remote` download handler can now fetch finished torrent and H@H downloads over SFTP as well as FTPS. Set `protocol: sftp` in the `ftps` section or in a named `ftp_configs` entry (selected with `download_ftp_torrent` / `download_ftp_hath`). SFTP supports password or key authentication (`key_filename`, `key_passphrase`, falling back to the SSH agent and `~/.ssh` keys when neither is set), host key checks against `~/.ssh/known_hosts` plus an optional `known_hosts_file` (`no_certificate_check: true` accepts any host key), `port` (default 22), `bind_host` / `bind_port`, transfer progress reporting, and reconnect-and-retry on dropped connections. Adds the `paramiko` dependency.
+
+### Changed
+
+- **Settings Backed by the Config Models**: `Settings` attributes (`wait_timer`, `replace_metadata`, `MEDIA_ROOT`, ...) now read and write their Pydantic config section model instead of keeping a copy, so assignments are validated, and `settings.database` / `torrent` / `ftps` / `remote_site` are the section models (dict-style access still works). A `Settings` built without a config, or from a config missing a whole section, now uses the model defaults for that section (e.g. `convert_others_to_zip: true`, `archive_dl_folder: galleries/archive_dls`). Serialized task options no longer include the section models, which carried credentials such as `django_secret_key`; options queued by older versions still load.
+
 ### Fixed
 
 - **Torrent Download Transfers**: Finished torrents are now found from the contents of their `<download dir>/<gid>` folder instead of a match on the expected torrent name, which could differ from the real name (e.g. the e-hentai API torrent name) and left finished downloads retrying forever. A single archive is transferred, a single subfolder (the torrent root) is followed into, and loose files are zipped; partially written files (`.!qB`, `.part`, `.incomplete`) are reported as incomplete, and ambiguous contents (several subfolders or archives) are logged and skipped. `.cbr` / `.cb7` files are now converted to zip like `.rar` / `.7z`.
+- **Banned Tags & Uploaders Defaults**: A `general` section without `banned_tags` (`discard_tags`), `banned_uploaders` or `banned_search_queries` no longer bans the sample languages, the `random_guy` uploader and the sample query; these default to empty lists again, as before the move to Pydantic config models.
+- **Settings Page Redaction**: The torrent client password (`pass`) is now redacted on the settings stats page.
 
 ## [1.2.0] - 2026-11-13
 

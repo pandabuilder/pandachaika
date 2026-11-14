@@ -227,7 +227,9 @@ class CoreTest(TestCase):
         from django.core.management import call_command
         from core.base.setup import Settings
         from core.base.config_models import (
+            DatabaseSettings,
             PandaGalleryConfig,
+            TorrentSettings,
             get_config_schema,
             generate_default_yaml_content,
         )
@@ -263,8 +265,9 @@ class CoreTest(TestCase):
         runtime_settings = Settings(load_from_config=parsed_data)
         self.assertEqual(runtime_settings.db_engine, "postgresql")
         self.assertEqual(runtime_settings.general_model.db_engine, "postgresql")
-        self.assertIsInstance(runtime_settings.database, dict)
-        self.assertIsInstance(runtime_settings.torrent, dict)
+        self.assertIsInstance(runtime_settings.database, DatabaseSettings)
+        self.assertIsInstance(runtime_settings.torrent, TorrentSettings)
+        self.assertEqual(runtime_settings.torrent["pass"], runtime_settings.torrent.pass_)
         pydantic_export = runtime_settings.to_pydantic()
         self.assertIsInstance(pydantic_export, PandaGalleryConfig)
         self.assertEqual(pydantic_export.general.db_engine, "postgresql")

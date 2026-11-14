@@ -64,6 +64,7 @@ from viewer.models.matching import (
     GalleryMatchGroupEntry,
 )
 from viewer.models.user import (
+    AdminReportSubscription,
     Profile,
     UserArchivePrefs,
     UserLongLivedToken,
@@ -155,6 +156,7 @@ __all__ = [
     "GalleryMatchGroup",
     "GalleryMatchGroupEntry",
     # User
+    "AdminReportSubscription",
     "Profile",
     "UserArchivePrefs",
     "UserLongLivedToken",

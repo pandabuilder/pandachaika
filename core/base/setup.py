@@ -4,6 +4,7 @@ import shutil
 import threading
 import typing
 from copy import deepcopy
+from typing import Generic, TypeVar, overload
 
 import yaml
 
@@ -93,6 +94,7 @@ class GlobalInfo:
         ),
         ("archive_download_queue", "Downloads queued archives in background", "scheduler"),
         ("auto_wanted", "Parses providers for new galleries to create wanted galleries entries", "scheduler"),
+        ("timed_admin_reporter", "Emails the admin report to the staff users who enabled it", "scheduler"),
     ]
 
 
@@ -101,6 +103,7 @@ class ConfigFileError(Exception):
 
 
 from core.base.config_models import (
+    AdminReportSettings,
     AllowedSettings,
     AutoUpdaterSettings,
     AutoWantedSettings,
@@ -127,12 +130,135 @@ from core.base.config_models import (
     get_config_schema,
 )
 
+# Section models whose fields are exposed as top-level Settings attributes through _ModelField.
+_FLATTENED_SECTION_MODELS = ("general_model", "allowed_model", "locations_model", "match_params_model")
+
+
+_T = TypeVar("_T")
+
+
+class _ModelField(Generic[_T]):
+    """A ``Settings`` attribute stored on one of its config section models.
+
+    ``Settings.wait_timer`` reads and writes ``settings.general_model.wait_timer``, so the model stays the
+    single source of truth and assignments go through its validation.
+    """
+
+    def __init__(self, model_attr: str, field: str | None = None) -> None:
+        self.model_attr = model_attr
+        self.field = field or ""
+
+    def __set_name__(self, owner: type, name: str) -> None:
+        self.name = name
+        if not self.field:
+            self.field = name
+
+    @overload
+    def __get__(self, obj: None, objtype: type | None = None) -> "_ModelField[_T]": ...
+    @overload
+    def __get__(self, obj: object, objtype: type | None = None) -> _T: ...
+    def __get__(self, obj: object | None, objtype: type | None = None) -> "_T | _ModelField[_T]":
+        if obj is None:
+            return self
+        return getattr(getattr(obj, self.model_attr), self.field)
+
+    def __set__(self, obj: object, value: _T) -> None:
+        setattr(getattr(obj, self.model_attr), self.field, value)
+
 
 class Settings:
 
     # We are storing the context here, but it should be somewhere else, available globally.
     provider_context = ProviderContext()
     workers = WorkerContext()
+
+    # 'allowed' section
+    replace_metadata = _ModelField[bool]("allowed_model")
+    redownload = _ModelField[bool]("allowed_model")
+    auto_download_nested = _ModelField[bool]("allowed_model")
+    retry_failed = _ModelField[bool]("allowed_model")
+    internal_matches_for_non_matches = _ModelField[bool]("allowed_model")
+    convert_others_to_zip = _ModelField[bool]("allowed_model")
+    # Can also be set in 'general' (see _resolve_shared_fields).
+    non_current_links_as_deleted = _ModelField[bool]("allowed_model")
+
+    # 'general' section
+    db_engine = _ModelField[str]("general_model")
+    filename_filter = _ModelField[list[str]]("general_model")
+    django_secret_key = _ModelField[str]("general_model")
+    django_debug_mode = _ModelField[bool]("general_model")
+    download_handler = _ModelField[str]("general_model")
+    # More specific, if not set, will use 'download_handler'
+    download_handler_torrent = _ModelField[str]("general_model")
+    download_handler_hath = _ModelField[str]("general_model")
+    download_ftp_torrent = _ModelField[str]("general_model")
+    download_ftp_hath = _ModelField[str]("general_model")
+    temp_directory_path = _ModelField[str | None]("general_model")
+    wait_timer = _ModelField[float]("general_model")
+    timeout_timer = _ModelField[int]("general_model")
+    parallel_post_downloaders = _ModelField[int]("general_model")
+    # Also settable from the 'archive_download_queue' section.
+    parallel_archive_downloaders = _ModelField[int]("general_model")
+    queue_archive_downloads = _ModelField[bool]("general_model")
+    archive_download_queue_startup = _ModelField[bool]("general_model")
+    archive_download_queue_cycle_timer = _ModelField[float]("general_model")
+    archive_download_stall_timeout = _ModelField[float]("general_model")
+    worker_task_stall_timeout = _ModelField[float]("general_model")
+    download_progress_checker_startup = _ModelField[bool]("general_model")
+    download_progress_checker_cycle_timer = _ModelField[float]("general_model")
+    cherrypy_auto_restart = _ModelField[bool]("general_model")
+    stop_on_seen_links = _ModelField[bool]("general_model")
+    banned_tags = _ModelField[list[str]]("general_model")
+    banned_uploaders = _ModelField[list[str]]("general_model")
+    banned_search_queries = _ModelField[list[str]]("general_model")
+    ignore_global_filters = _ModelField[bool]("general_model")
+    add_as_public = _ModelField[bool]("general_model")
+    mark_similar_new_archives = _ModelField[bool]("general_model")
+    auto_hash_images = _ModelField[bool]("general_model")
+    auto_phash_images = _ModelField[bool]("general_model")
+    process_pool_workers = _ModelField[int]("general_model")
+    auto_match_wanted_images = _ModelField[bool]("general_model")
+    auto_match_phash_tags_archives = _ModelField[bool]("general_model")
+    default_wanted_publisher = _ModelField[str]("general_model")
+    default_wanted_categories = _ModelField[list[str]]("general_model")
+    default_wanted_providers = _ModelField[list[str]]("general_model")
+    recheck_wanted_on_update = _ModelField[bool]("general_model")
+    vertical_image_max_width = _ModelField[int]("general_model")
+    horizontal_image_max_width = _ModelField[int]("general_model")
+    log_level = _ModelField[str]("general_model", "force_log_level")
+    disable_sql_log = _ModelField[bool]("general_model")
+    # Option to auto-purge a torrent after a certain time has passed
+    max_torrent_lifespan = _ModelField[int]("general_model")
+    max_torrent_lifespan_type = _ModelField[str]("general_model")
+    recycle_failed_checks_downloads = _ModelField[bool]("general_model")
+    # Can also be set in 'allowed' or at the top level (see _resolve_shared_fields).
+    requeue_failed_downloads = _ModelField[bool]("general_model")
+    failed_download_downloader = _ModelField[str]("general_model")
+    requeue_downloader = _ModelField[str]("general_model", "failed_download_downloader")
+
+    # 'locations' section
+    MEDIA_ROOT = _ModelField[str]("locations_model", "media_root")
+    STATIC_ROOT = _ModelField[str]("locations_model", "static_root")
+    archive_dl_folder = _ModelField[str]("locations_model")
+    torrent_dl_folder = _ModelField[str]("locations_model")
+
+    # 'match_params' section
+    rematch_file = _ModelField[bool]("match_params_model")
+    rematch_file_list = _ModelField[list[str]]("match_params_model")
+    rehash_files = _ModelField[bool]("match_params_model")
+    copy_match_file = _ModelField[bool]("match_params_model")
+
+    @classmethod
+    def model_field_names(cls) -> list[str]:
+        """Names of the attributes stored on a config section model (not in the instance ``__dict__``)."""
+        return [name for name, value in vars(cls).items() if isinstance(value, _ModelField)]
+
+    def attribute_items(self) -> list[tuple[str, Any]]:
+        """Instance attributes plus the model-backed ones, leaving out the section models those are stored on."""
+        items = [(k, v) for k, v in vars(self).items() if k not in _FLATTENED_SECTION_MODELS]
+        items.extend((name, getattr(self, name)) for name in self.model_field_names())
+        items.append(("log_location", self.log_location))
+        return items
 
     def __init__(
         self,
@@ -148,7 +274,6 @@ class Settings:
         # Monitored link phases: only store the new links as pending / only process the stored ones.
         self.capture_links_only: bool = False
         self.skip_link_capture: bool = False
-        self.stop_nested = False
         # Used by autoupdater to not overwrite original value, since it would be replaced by provider_info
         self.keep_dl_type = False
         self.archive_reason = ""
@@ -171,100 +296,39 @@ class Settings:
         self.cancel_event: threading.Event | None = None
         self.is_cancelled: typing.Callable[[], bool] | None = None
 
-        # USER SETTINGS
-        self.replace_metadata = False
-        self.redownload = False
-        self.stop_on_seen_links = False
-        self.monitored_link: typing.Any | None = None
-        self.already_seen_links_mode: str = "dont_use"
-        self.how_long_after_already_seen: typing.Any | None = None
-        self.auto_download_nested = False
-        self.recheck_wanted_on_update = False
-        self.vertical_image_max_width = 900
-        self.horizontal_image_max_width = 1500
-        # Option to add metadata from a non-current link, but no archive download.
-        # The logic for a current link is provider-specific
-        self.non_current_links_as_deleted = False
-        self.recycle_failed_checks_downloads = False
-        self.requeue_failed_downloads = True
-        self.failed_download_downloader = "panda_archive"
-        self.requeue_downloader = "panda_archive"
-        # Option to auto-purge a torrent after a certain time has passed
-        self.max_torrent_lifespan = 0
-        self.max_torrent_lifespan_type = "days"
-
-        self.MEDIA_ROOT: str = ""
-        self.STATIC_ROOT: str = ""
-        self.django_secret_key: str = ""
-        self.django_debug_mode: bool = False
-        self.download_handler: str = "local"
-        self.temp_directory_path: str | None = None
-        # More specific, if not set, will use 'download_handler'
-        self.download_handler_torrent = ""
-        self.download_handler_hath = ""
-        self.download_ftp_torrent = "default"
-        self.download_ftp_hath = "default"
-        self.auto_wanted = AutoWantedSettings()
-        self.backlog_search = BacklogSearchSettings()
-        self.autoupdater = AutoUpdaterSettings()
-
-        self.pushover = PushoverSettings()
-
-        self.mail_logging = MailSettings()
-
-        self.elasticsearch = ElasticSearchSettings()
-
-        self.gallery_dl = GalleryDLSettings()
-
-        self.monitored_links = MonitoredLinksSettings()
-
-        self.retention = RetentionSettings()
-        self.manga_extractor = MangaExtractorSettings()
-
-        self.filename_filter = ["*.zip"]
-
-        self.retry_failed = False
-        self.internal_matches_for_non_matches = False
-        self.parallel_post_downloaders = 4
-        self.cherrypy_auto_restart = False
-        self.add_as_public = False
-
-        self.download_progress_checker_startup = True
-        self.download_progress_checker_cycle_timer: float = 10
-
-        self.queue_archive_downloads: bool = True
-        self.archive_download_queue_startup: bool = True
-        self.archive_download_queue_cycle_timer: float = 2.0
-        self.archive_download_stall_timeout: float = 180.0
-        self.worker_task_stall_timeout: float = 1800.0
-        self.parallel_archive_downloaders: int = 1
-
+        # Config sections. Most top-level attributes below are stored on these models (see the
+        # _ModelField declarations on the class), so there is a single source of truth per setting.
         self.general_model = GeneralSettings()
         self.allowed_model = AllowedSettings()
         self.locations_model = LocationsSettings()
-        self.database_model = DatabaseSettings()
-        self.torrent_model = TorrentSettings()
-        self.ftps_model = FtpsSettings()
         self.match_params_model = MatchParamsSettings()
-        self.remote_site_model = RemoteSiteSettings()
-
-        self.db_engine = "postgresql"
-        self.database: dict[str, Any] = self.database_model.to_dict()
-        self.torrent: dict[str, Any] = self.torrent_model.to_dict()
-        self.config: dict[str, Any] = {}
+        self.database = DatabaseSettings()
+        self.torrent = TorrentSettings()
+        self.ftps = FtpsSettings()
+        self.remote_site = RemoteSiteSettings()
+        self.auto_wanted = AutoWantedSettings()
+        self.backlog_search = BacklogSearchSettings()
+        self.autoupdater = AutoUpdaterSettings()
+        self.pushover = PushoverSettings()
+        self.mail_logging = MailSettings()
+        self.elasticsearch = ElasticSearchSettings()
+        self.gallery_dl = GalleryDLSettings()
+        self.monitored_links = MonitoredLinksSettings()
+        self.retention = RetentionSettings()
+        self.admin_report = AdminReportSettings()
+        self.manga_extractor = MangaExtractorSettings()
+        self.cloning_image_tool = CloningImageToolSettings()
         self.webserver = WebServerSettings()
         self.urls = UrlSettings()
 
-        self.ftps: dict[str, Any] = {}
-        self.ftp_configs: dict[str, dict[str, Any]] = {}
+        # USER SETTINGS (runtime only, not read from the config file)
+        self.monitored_link: typing.Any | None = None
+        self.already_seen_links_mode: str = "dont_use"
+        self.how_long_after_already_seen: typing.Any | None = None
 
-        self.rematch_file = False
-        self.rematch_file_list = ["non-match"]
-        self.rehash_files = False
-        self.banned_tags: list[str] = []
-        self.banned_uploaders: list[str] = []
-        self.banned_search_queries: list[str] = []
-        self.ignore_global_filters: bool = False
+        self.config: dict[str, Any] = {}
+        # Named remote connections; entries for download_ftp_torrent / download_ftp_hath default to 'ftps'.
+        self.ftp_configs: dict[str, dict[str, Any]] = {}
 
         self.matchers: dict[str, int] = {}
         self.downloaders: dict[str, int] = {}
@@ -272,39 +336,14 @@ class Settings:
         self.custom_downloaders: dict[str, dict[str, int]] = {}
         self.custom_downloader_providers: dict[str, str] = {}
 
-        self.copy_match_file = True
-
-        self.archive_dl_folder = ""
-        self.torrent_dl_folder: str = ""
-        self.log_location = ""
-        self.log_level: str = "INFO"
-        self.disable_sql_log: bool = False
-
-        self.convert_others_to_zip = False
-        self.mark_similar_new_archives = False
-        self.auto_hash_images = False
-        self.auto_phash_images = False
-        self.process_pool_workers: int = 0
-        self.auto_match_wanted_images = False
-        self.auto_match_phash_tags_archives = False
-        self.default_wanted_publisher = ''
-        self.default_wanted_categories = ["Doujinshi", "Artist CG"]
-        self.default_wanted_providers = ["panda"]
-        self.cloning_image_tool = CloningImageToolSettings()
-
         self.requests_headers: dict[str, Any] = {}
 
         self.experimental: dict[str, Any] = {}
 
         self.providers: ProvidersDict = ProvidersDict()
 
-        self.remote_site: dict[str, Any] = {}
-
         self._proxy: str = ""
         self.proxies: dict[str, Any] = {}
-
-        self.wait_timer: float = 6.0
-        self.timeout_timer = 25
 
         self.fatal = 0
         self.default_dir = ""
@@ -663,11 +702,10 @@ class Settings:
         incorporating any environment variable overrides.
         """
         base_config: dict[str, Any] = dict(self.config) if self.config else {}
-        if hasattr(self, "database") and isinstance(self.database, dict):
-            db_copy = dict(base_config.get("database", {}))
-            db_copy.update(self.database)
-            base_config["database"] = db_copy
-        if hasattr(self, "db_engine") and self.db_engine:
+        db_copy = dict(base_config.get("database", {}))
+        db_copy.update(self.database.to_dict())
+        base_config["database"] = db_copy
+        if self.db_engine:
             gen_copy = dict(base_config.get("general", {}))
             gen_copy["db_engine"] = self.db_engine
             base_config["general"] = gen_copy
@@ -678,102 +716,39 @@ class Settings:
         """Return the JSON Schema dictionary defining configuration structure and metadata."""
         return get_config_schema()
 
-    def dict_to_settings(self, config: DataDict) -> None:
-        if "requests_headers" in config and config["requests_headers"] is not None:
-            self.requests_headers.update(config["requests_headers"])
-        if "allowed" in config and isinstance(config["allowed"], dict):
-            self.allowed_model.update_from_dict(config["allowed"])
-            self.replace_metadata = self.allowed_model.replace_metadata
-            self.redownload = self.allowed_model.redownload
-            self.auto_download_nested = self.allowed_model.auto_download_nested
-            self.retry_failed = self.allowed_model.retry_failed
-            self.internal_matches_for_non_matches = self.allowed_model.internal_matches_for_non_matches
-            self.convert_others_to_zip = self.allowed_model.convert_others_to_zip
-            self.non_current_links_as_deleted = self.allowed_model.non_current_links_as_deleted
-            self.requeue_failed_downloads = self.allowed_model.requeue_failed_downloads
-            self.failed_download_downloader = self.allowed_model.failed_download_downloader
-            self.requeue_downloader = self.failed_download_downloader
+    def _resolve_shared_fields(self, config: DataDict) -> None:
+        """Apply settings that more than one config location can set to the model that stores them.
 
-        if "general" in config and isinstance(config["general"], dict):
-            self.general_model.update_from_dict(config["general"])
-            self.db_engine = self.general_model.db_engine
-            self.filename_filter = self.general_model.filename_filter
-            self.django_secret_key = self.general_model.django_secret_key
-            self.django_debug_mode = self.general_model.django_debug_mode
-            self.download_handler = self.general_model.download_handler
-            self.download_handler_torrent = self.general_model.download_handler_torrent
-            self.download_handler_hath = self.general_model.download_handler_hath
-            self.download_ftp_torrent = self.general_model.download_ftp_torrent
-            self.download_ftp_hath = self.general_model.download_ftp_hath
-            self.temp_directory_path = self.general_model.temp_directory_path
-            self.wait_timer = self.general_model.wait_timer
-            self.timeout_timer = self.general_model.timeout_timer
-            self.parallel_post_downloaders = self.general_model.parallel_post_downloaders
-            self.parallel_archive_downloaders = self.general_model.parallel_archive_downloaders
-            self.queue_archive_downloads = self.general_model.queue_archive_downloads
-            self.archive_download_queue_startup = self.general_model.archive_download_queue_startup
-            self.archive_download_queue_cycle_timer = self.general_model.archive_download_queue_cycle_timer
-            self.archive_download_stall_timeout = self.general_model.archive_download_stall_timeout
-            self.worker_task_stall_timeout = self.general_model.worker_task_stall_timeout
-            self.download_progress_checker_startup = self.general_model.download_progress_checker_startup
-            self.download_progress_checker_cycle_timer = self.general_model.download_progress_checker_cycle_timer
-            self.cherrypy_auto_restart = self.general_model.cherrypy_auto_restart
-            self.banned_tags = list(self.general_model.banned_tags)
-            self.banned_uploaders = list(self.general_model.banned_uploaders)
-            self.banned_search_queries = list(self.general_model.banned_search_queries)
-            self.ignore_global_filters = getattr(self.general_model, "ignore_global_filters", False)
-            self.add_as_public = self.general_model.add_as_public
-            self.mark_similar_new_archives = self.general_model.mark_similar_new_archives
-            self.auto_hash_images = self.general_model.auto_hash_images
-            self.auto_phash_images = self.general_model.auto_phash_images
-            self.process_pool_workers = self.general_model.process_pool_workers
-            self.auto_match_wanted_images = self.general_model.auto_match_wanted_images
-            self.auto_match_phash_tags_archives = self.general_model.auto_match_phash_tags_archives
-            self.default_wanted_publisher = self.general_model.default_wanted_publisher
-            self.default_wanted_categories = list(self.general_model.default_wanted_categories)
-            self.default_wanted_providers = list(self.general_model.default_wanted_providers)
-            self.recheck_wanted_on_update = self.general_model.recheck_wanted_on_update
-            self.vertical_image_max_width = self.general_model.vertical_image_max_width
-            self.horizontal_image_max_width = self.general_model.horizontal_image_max_width
-            self.log_level = self.general_model.force_log_level
-            self.disable_sql_log = self.general_model.disable_sql_log
-            self.max_torrent_lifespan = self.general_model.max_torrent_lifespan
-            self.max_torrent_lifespan_type = self.general_model.max_torrent_lifespan_type
-            if "non_current_links_as_deleted" in config["general"] and (
-                "allowed" not in config or "non_current_links_as_deleted" not in config["allowed"]
-            ):
-                self.non_current_links_as_deleted = self.general_model.non_current_links_as_deleted
-            self.recycle_failed_checks_downloads = self.general_model.recycle_failed_checks_downloads
-            self.requeue_failed_downloads = self.general_model.requeue_failed_downloads
-            self.failed_download_downloader = self.general_model.failed_download_downloader
-            self.requeue_downloader = self.failed_download_downloader
-            self.stop_on_seen_links = self.general_model.stop_on_seen_links
+        - non_current_links_as_deleted lives on 'allowed'; 'general' is used when only it sets the key.
+        - requeue_failed_downloads / failed_download_downloader live on 'general'. When there is no 'general'
+          section, 'allowed' (requeue_failed / requeue_downloader) provides them. Top-level keys override both.
+        - 'archive_download_queue' overrides the matching 'general' queue settings.
+        """
+        general = config.get("general")
+        allowed = config.get("allowed")
+        general_keys = general.keys() if isinstance(general, dict) else None
+        allowed_keys = allowed.keys() if isinstance(allowed, dict) else None
 
-        # Global-level overrides for requeue
+        if general_keys is not None and "non_current_links_as_deleted" in general_keys and not (
+            allowed_keys is not None and "non_current_links_as_deleted" in allowed_keys
+        ):
+            self.allowed_model.non_current_links_as_deleted = self.general_model.non_current_links_as_deleted
+
+        if allowed_keys is not None and general_keys is None:
+            self.general_model.requeue_failed_downloads = self.allowed_model.requeue_failed_downloads
+            self.general_model.failed_download_downloader = self.allowed_model.failed_download_downloader
+
         if "requeue_failed_downloads" in config:
             self.requeue_failed_downloads = _parse_bool(config["requeue_failed_downloads"])
         if "requeue_failed" in config:
             self.requeue_failed_downloads = _parse_bool(config["requeue_failed"])
         if "failed_download_downloader" in config:
             self.failed_download_downloader = config["failed_download_downloader"]
-            self.requeue_downloader = self.failed_download_downloader
         if "requeue_downloader" in config:
-            self.requeue_downloader = config["requeue_downloader"]
-            self.failed_download_downloader = self.requeue_downloader
+            self.failed_download_downloader = config["requeue_downloader"]
 
-        if "cloning_image_tool" in config and isinstance(config["cloning_image_tool"], dict):
-            self.cloning_image_tool.update_from_dict(config["cloning_image_tool"])
-
-        if "experimental" in config and config["experimental"] is not None:
-            self.experimental.update(config["experimental"])
-        if "matchers" in config and isinstance(config["matchers"], dict):
-            self.matchers = dict(config["matchers"])
-        if "downloaders" in config and isinstance(config["downloaders"], dict):
-            self.downloaders = dict(config["downloaders"])
-        if "custom_downloaders" in config:
-            self.parse_custom_downloaders(config["custom_downloaders"])
-        if "archive_download_queue" in config and isinstance(config["archive_download_queue"], dict):
-            adq_cfg = config["archive_download_queue"]
+        adq_cfg = config.get("archive_download_queue")
+        if isinstance(adq_cfg, dict):
             if "enable" in adq_cfg:
                 self.queue_archive_downloads = bool(adq_cfg["enable"])
             if "queue_archive_downloads" in adq_cfg:
@@ -787,71 +762,55 @@ class Settings:
             if "parallel_downloaders" in adq_cfg:
                 self.parallel_archive_downloaders = int(adq_cfg["parallel_downloaders"])
 
-        if "auto_wanted" in config and isinstance(config["auto_wanted"], dict):
-            self.auto_wanted.update_from_dict(config["auto_wanted"])
-        if "backlog_search" in config and isinstance(config["backlog_search"], dict):
-            self.backlog_search.update_from_dict(config["backlog_search"])
-        if "pushover" in config and isinstance(config["pushover"], dict):
-            self.pushover.update_from_dict(config["pushover"])
-        if "mail_logging" in config and isinstance(config["mail_logging"], dict):
-            self.mail_logging.update_from_dict(config["mail_logging"])
-        if "elasticsearch" in config and isinstance(config["elasticsearch"], dict):
-            self.elasticsearch.update_from_dict(config["elasticsearch"])
-        if "gallery_dl" in config and isinstance(config["gallery_dl"], dict):
-            self.gallery_dl.update_from_dict(config["gallery_dl"])
-        if "autoupdater" in config and isinstance(config["autoupdater"], dict):
-            self.autoupdater.update_from_dict(config["autoupdater"])
-        if "manga_extractor" in config and isinstance(config["manga_extractor"], dict):
-            self.manga_extractor.update_from_dict(config["manga_extractor"])
-        if "match_params" in config and isinstance(config["match_params"], dict):
-            self.match_params_model.update_from_dict(config["match_params"])
-            self.rematch_file = self.match_params_model.rematch_file
-            self.rematch_file_list = self.match_params_model.rematch_file_list
-            self.rehash_files = self.match_params_model.rehash_files
-            self.copy_match_file = self.match_params_model.copy_match_file
+    def dict_to_settings(self, config: DataDict) -> None:
+        if "requests_headers" in config and config["requests_headers"] is not None:
+            self.requests_headers.update(config["requests_headers"])
 
-        if "locations" in config and isinstance(config["locations"], dict):
-            self.locations_model.update_from_dict(config["locations"])
-            self.MEDIA_ROOT = self.locations_model.media_root
-            self.STATIC_ROOT = self.locations_model.static_root
-            self.archive_dl_folder = self.locations_model.archive_dl_folder
-            self.torrent_dl_folder = self.locations_model.torrent_dl_folder
-            if self.locations_model.log_location:
-                self.log_location = self.locations_model.log_location
-            else:
-                self.log_location = os.path.join(self.default_dir, "viewer.log")
+        section_models: list[tuple[str, Any]] = [
+            ("allowed", self.allowed_model),
+            ("general", self.general_model),
+            ("locations", self.locations_model),
+            ("match_params", self.match_params_model),
+            ("database", self.database),
+            ("torrent", self.torrent),
+            ("ftps", self.ftps),
+            ("remote_site", self.remote_site),
+            ("cloning_image_tool", self.cloning_image_tool),
+            ("auto_wanted", self.auto_wanted),
+            ("backlog_search", self.backlog_search),
+            ("pushover", self.pushover),
+            ("mail_logging", self.mail_logging),
+            ("elasticsearch", self.elasticsearch),
+            ("gallery_dl", self.gallery_dl),
+            ("autoupdater", self.autoupdater),
+            ("manga_extractor", self.manga_extractor),
+            ("webserver", self.webserver),
+            ("urls", self.urls),
+            ("monitored_links", self.monitored_links),
+            ("retention", self.retention),
+            ("admin_report", self.admin_report),
+        ]
+        for section_name, model in section_models:
+            if section_name in config and isinstance(config[section_name], dict):
+                model.update_from_dict(config[section_name])
 
-        if "database" in config and isinstance(config["database"], dict):
-            self.database_model.update_from_dict(config["database"])
-            self.database = self.database_model.to_dict()
+        self._resolve_shared_fields(config)
 
-        if "torrent" in config and isinstance(config["torrent"], dict):
-            self.torrent_model.update_from_dict(config["torrent"])
-            self.torrent = self.torrent_model.to_dict()
-            if self.torrent_model.pass_:
-                self.torrent["pass"] = self.torrent_model.pass_
-
-        if "ftps" in config and isinstance(config["ftps"], dict):
-            self.ftps_model.update_from_dict(config["ftps"])
-            self.ftps = self.ftps_model.to_dict()
+        if "experimental" in config and config["experimental"] is not None:
+            self.experimental.update(config["experimental"])
+        if "matchers" in config and isinstance(config["matchers"], dict):
+            self.matchers = dict(config["matchers"])
+        if "downloaders" in config and isinstance(config["downloaders"], dict):
+            self.downloaders = dict(config["downloaders"])
+        if "custom_downloaders" in config:
+            self.parse_custom_downloaders(config["custom_downloaders"])
 
         if "ftp_configs" in config:
-            self.ftp_configs = config["ftp_configs"]
-        if self.download_ftp_torrent not in self.ftp_configs:
-            self.ftp_configs[self.download_ftp_torrent] = self.ftps
-        if self.download_ftp_hath not in self.ftp_configs:
-            self.ftp_configs[self.download_ftp_hath] = self.ftps
-        if "webserver" in config and isinstance(config["webserver"], dict):
-            self.webserver.update_from_dict(config["webserver"])
-        if "urls" in config and isinstance(config["urls"], dict):
-            self.urls.update_from_dict(config["urls"])
-        if "remote_site" in config and isinstance(config["remote_site"], dict):
-            self.remote_site_model.update_from_dict(config["remote_site"])
-            self.remote_site = self.remote_site_model.to_dict()
-        if "monitored_links" in config and isinstance(config["monitored_links"], dict):
-            self.monitored_links.update_from_dict(config["monitored_links"])
-        if "retention" in config and isinstance(config["retention"], dict):
-            self.retention.update_from_dict(config["retention"])
+            # Copy, so the default entries added below don't end up in self.config (written back to settings.yaml).
+            self.ftp_configs = dict(config["ftp_configs"] or {})
+        for ftp_config_name in (self.download_ftp_torrent, self.download_ftp_hath):
+            if ftp_config_name not in self.ftp_configs:
+                self.ftp_configs[ftp_config_name] = self.ftps.to_dict()
 
         for provider_name, parse_config in self.provider_context.settings_parsers:
             if "providers" in config and provider_name in config["providers"] and config["providers"][provider_name] is not None:
@@ -867,6 +826,14 @@ class Settings:
         for matcher, priority in self.provider_context.get_matchers_name_priority(self):
             if matcher not in self.matchers:
                 self.matchers[matcher] = -1
+
+    @property
+    def log_location(self) -> str:
+        return self.locations_model.log_location or os.path.join(self.default_dir, "viewer.log")
+
+    @log_location.setter
+    def log_location(self, value: str) -> None:
+        self.locations_model.log_location = value
 
     @property
     def stop_on_seen_link(self) -> bool:

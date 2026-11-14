@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin report</title>
+</head>
+<body style="margin:0;padding:0;background:#f3f5f8;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2933;font-size:14px;line-height:1.45;">
+<div style="max-width:720px;margin:0 auto;padding:16px;">
+
+  <h1 style="font-size:20px;margin:0 0 4px;">Admin report: {{ summary }}</h1>
+  <p style="margin:0 0 16px;color:#52606d;">
+    From {{ report.since|date:"Y-m-d H:i" }} to {{ report.until|date:"Y-m-d H:i" }} ({{ time_zone }}).
+    {% if report_url %}<a href="{{ report_url }}" style="color:#0b6bcb;">See it on the site</a>.{% endif %}
+  </p>
+
+  <div style="background:#ffffff;border:1px solid #d9e2ec;border-radius:6px;padding:12px 16px;margin-bottom:16px;">
+    <h2 style="font-size:16px;margin:0 0 8px;">Needs attention</h2>
+    {% for item in report.attention %}
+      <div style="margin:0 0 4px;">
+        <span style="display:inline-block;min-width:64px;padding:1px 6px;border-radius:4px;font-size:12px;font-weight:600;text-align:center;
+          {% if item.severity == 'error' %}background:#fde2e1;color:#a61b1b;{% elif item.severity == 'warning' %}background:#fff1c7;color:#7a5b00;{% else %}background:#e0eefc;color:#0b4f8a;{% endif %}">{{ item.severity|upper }}</span>
+        {{ item.message }}
+      </div>
+    {% empty %}
+      <div style="color:#1e7b34;">Nothing needs attention.</div>
+    {% endfor %}
+  </div>
+
+  {% if s.content %}
+  <div style="background:#ffffff;border:1px solid #d9e2ec;border-radius:6px;padding:12px 16px;margin-bottom:16px;">
+    <h2 style="font-size:16px;margin:0 0 8px;">Content</h2>
+    {% if s.content.error %}<div style="color:#a61b1b;">Could not be built: {{ s.content.error }}</div>{% else %}
+    <table role="presentation" style="border-collapse:collapse;width:100%;">
+      <tr><td style="padding:2px 0;color:#52606d;">Archives added</td><td style="padding:2px 0;text-align:right;"><strong>{{ s.content.archives_added }}</strong> ({{ s.content.archives_added_size|filesizeformat }}, {{ s.content.archives_added_public }} public)</td></tr>
+      <tr><td style="padding:2px 0;color:#52606d;">Galleries added</td><td style="padding:2px 0;text-align:right;"><strong>{{ s.content.galleries_added }}</strong></td></tr>
+      <tr><td style="padding:2px 0;color:#52606d;">Archives recycled</td><td style="padding:2px 0;text-align:right;">{{ s.content.archives_recycled }}</td></tr>
+      <tr><td style="padding:2px 0;color:#52606d;">Event log entries</td><td style="padding:2px 0;text-align:right;">{{ s.content.activity_total }}</td></tr>
+    </table>
+    {% if s.content.galleries_by_provider %}
+      <div style="margin-top:6px;color:#52606d;font-size:13px;">Galleries by provider:
+        {% for row in s.content.galleries_by_provider %}{{ row.key }} {{ row.count }}{% if not forloop.last %} · {% endif %}{% endfor %}</div>
+    {% endif %}
+    {% if s.content.archives_by_origin %}
+      <div style="margin-top:2px;color:#52606d;font-size:13px;">Archives by origin:
+        {% for row in s.content.archives_by_origin %}{{ row.key }} {{ row.count }}{% if not forloop.last %} · {% endif %}{% endfor %}</div>
+    {% endif %}
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if s.logs %}
+  <div style="background:#ffffff;border:1px solid #d9e2ec;border-radius:6px;padding:12px 16px;margin-bottom:16px;">
+    <h2 style="font-size:16px;margin:0 0 8px;">Server logs ({{ s.logs.min_level }} and above): {{ s.logs.total }}</h2>
+    {% if s.logs.error %}<div style="color:#a61b1b;">Could not be built: {{ s.logs.error }}</div>{% else %}
+    {% if not s.logs.enabled %}<div style="color:#52606d;">Database logging is disabled (disable_sql_log).</div>{% endif %}
+    {% if s.logs.window_partially_pruned %}<div style="color:#52606d;">The oldest log kept is from {{ s.logs.oldest_log|date:"Y-m-d H:i" }}: older entries may be missing.</div>{% endif %}
+    {% if s.logs.by_level %}<div style="margin-bottom:6px;">{% for level, count in s.logs.by_level.items %}{{ level }}: <strong>{{ count }}</strong>{% if not forloop.last %} · {% endif %}{% endfor %}</div>{% endif %}
+    {% if s.logs.groups %}
+    <table style="border-collapse:collapse;width:100%;font-size:13px;">
+      <tr style="background:#f0f4f8;"><th style="text-align:right;padding:4px 6px;">Count</th><th style="text-align:left;padding:4px 6px;">Level</th><th style="text-align:left;padding:4px 6px;">Message</th></tr>
+      {% for group in s.logs.groups %}
+        <tr style="border-top:1px solid #e4e7eb;">
+          <td style="text-align:right;padding:4px 6px;vertical-align:top;">{{ group.count }}</td>
+          <td style="padding:4px 6px;vertical-align:top;{% if group.level == 'WARNING' %}color:#7a5b00;{% else %}color:#a61b1b;{% endif %}">{{ group.level }}</td>
+          <td style="padding:4px 6px;vertical-align:top;word-break:break-word;"><span style="color:#52606d;">{{ group.logger_name }}:</span> {{ group.message }}</td>
+        </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if s.downloads %}
+  <div style="background:#ffffff;border:1px solid #d9e2ec;border-radius:6px;padding:12px 16px;margin-bottom:16px;">
+    <h2 style="font-size:16px;margin:0 0 8px;">Downloads</h2>
+    {% if s.downloads.error %}<div style="color:#a61b1b;">Could not be built: {{ s.downloads.error }}</div>{% else %}
+    <div>Completed <strong>{{ s.downloads.completed }}</strong> ({{ s.downloads.completed_size|filesizeformat }}) · failed <strong>{{ s.downloads.failed }}</strong> · cancelled {{ s.downloads.cancelled }}</div>
+    <div style="color:#52606d;">Now: {{ s.downloads.queued_now }} queued, {{ s.downloads.downloading_now }} downloading{% if s.downloads.stuck_queued %}, {{ s.downloads.stuck_queued }} queued for over {{ s.downloads.stuck_queued_threshold_hours|floatformat:"0" }} hours{% endif %}</div>
+    {% if s.downloads.recent_failures %}
+    <table style="border-collapse:collapse;width:100%;font-size:13px;margin-top:6px;">
+      {% for event in s.downloads.recent_failures %}
+        <tr style="border-top:1px solid #e4e7eb;">
+          <td style="padding:4px 6px;vertical-align:top;white-space:nowrap;">{{ event.date|date:"m-d H:i" }}</td>
+          <td style="padding:4px 6px;vertical-align:top;word-break:break-word;">{{ event.name|truncatechars:70 }} <span style="color:#52606d;">({{ event.provider|default:"?" }}, {{ event.method }})</span><br><span style="color:#a61b1b;">{{ event.error }}</span></td>
+        </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if s.tasks %}
+  <div style="background:#ffffff;border:1px solid #d9e2ec;border-radius:6px;padding:12px 16px;margin-bottom:16px;">
+    <h2 style="font-size:16px;margin:0 0 8px;">Tasks</h2>
+    {% if s.tasks.error %}<div style="color:#a61b1b;">Could not be built: {{ s.tasks.error }}</div>{% else %}
+    <div>Completed <strong>{{ s.tasks.completed }}</strong> · failed <strong>{{ s.tasks.failed }}</strong></div>
+    <div style="color:#52606d;">Now: {{ s.tasks.pending_now }} pending, {{ s.tasks.processing_now }} processing, {{ s.tasks.links_pending_now }} captured links pending</div>
+    {% if s.tasks.recent_failures %}
+    <table style="border-collapse:collapse;width:100%;font-size:13px;margin-top:6px;">
+      {% for task in s.tasks.recent_failures %}
+        <tr style="border-top:1px solid #e4e7eb;">
+          <td style="padding:4px 6px;vertical-align:top;white-space:nowrap;">{{ task.date|date:"m-d H:i" }}</td>
+          <td style="padding:4px 6px;vertical-align:top;word-break:break-word;">{{ task.task_type }}<br><span style="color:#a61b1b;">{{ task.error }}</span></td>
+        </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if s.health %}
+  <div style="background:#ffffff;border:1px solid #d9e2ec;border-radius:6px;padding:12px 16px;margin-bottom:16px;">
+    <h2 style="font-size:16px;margin:0 0 8px;">Workers and schedulers (now)</h2>
+    {% if s.health.error %}<div style="color:#a61b1b;">Could not be built: {{ s.health.error }}</div>{% else %}
+    <div>Worker processes <strong>{{ s.health.workers_alive }}</strong> · schedulers OK {{ s.health.schedulers_running }} · stopped {{ s.health.schedulers_stopped }}</div>
+    {% for scheduler in s.health.scheduler_problems %}
+      <div style="color:#a61b1b;">{{ scheduler.display_name }}: {{ scheduler.problem }} (last run {{ scheduler.last_run|date:"Y-m-d H:i"|default:"never" }})</div>
+    {% endfor %}
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if s.wanted %}
+  <div style="background:#ffffff;border:1px solid #d9e2ec;border-radius:6px;padding:12px 16px;margin-bottom:16px;">
+    <h2 style="font-size:16px;margin:0 0 8px;">Wanted galleries</h2>
+    {% if s.wanted.error %}<div style="color:#a61b1b;">Could not be built: {{ s.wanted.error }}</div>{% else %}
+    <div>Matches found <strong>{{ s.wanted.found }}</strong> (for {{ s.wanted.wanted_galleries_found }} wanted galleries) · wanted created {{ s.wanted.wanted_created }}</div>
+    {% for found in s.wanted.recent_found %}
+      <div style="font-size:13px;color:#52606d;">{{ found.wanted_gallery|truncatechars:50 }} → {{ found.gallery|truncatechars:80 }}</div>
+    {% endfor %}
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if s.moderation or s.integrity %}
+  <div style="background:#ffffff;border:1px solid #d9e2ec;border-radius:6px;padding:12px 16px;margin-bottom:16px;">
+    {% if s.moderation %}
+      <h2 style="font-size:16px;margin:0 0 8px;">Submissions</h2>
+      {% if s.moderation.error %}<div style="color:#a61b1b;">Could not be built: {{ s.moderation.error }}</div>{% else %}
+      <div>Submitted <strong>{{ s.moderation.submitted }}</strong> · pending now <strong>{{ s.moderation.pending_now }}</strong></div>
+      {% endif %}
+    {% endif %}
+    {% if s.integrity %}
+      <h2 style="font-size:16px;margin:12px 0 8px;">Archive file checks</h2>
+      {% if s.integrity.error %}<div style="color:#a61b1b;">Could not be built: {{ s.integrity.error }}</div>{% else %}
+      <div>New issues <strong>{{ s.integrity.issues }}</strong> in {{ s.integrity.archives_with_issues }} archives{% for row in s.integrity.issues_by_kind %} · {{ row.key }} {{ row.count }}{% endfor %}</div>
+      {% endif %}
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if s.storage %}
+  <div style="background:#ffffff;border:1px solid #d9e2ec;border-radius:6px;padding:12px 16px;margin-bottom:16px;">
+    <h2 style="font-size:16px;margin:0 0 8px;">Storage (now)</h2>
+    {% if s.storage.error %}<div style="color:#a61b1b;">Could not be built: {{ s.storage.error }}</div>{% else %}
+    {% for disk in s.storage.disks %}
+      <div{% if disk.warning or disk.error %} style="color:#a61b1b;"{% endif %}>{{ disk.label }}: {% if disk.error %}{{ disk.error }}{% else %}{{ disk.used_percent }}% used, {{ disk.free|filesizeformat }} free of {{ disk.total|filesizeformat }}{% endif %}</div>
+    {% endfor %}
+    <div style="color:#52606d;">Archives {{ s.storage.archives_total }} ({{ s.storage.archives_total_size|filesizeformat }}) · galleries {{ s.storage.galleries_total }}</div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <p style="color:#7b8794;font-size:12px;margin:16px 0 0;">
+    You get this email because you enabled the admin report. Change its schedule or disable it on the admin report page.
+  </p>
+</div>
+</body>
+</html>

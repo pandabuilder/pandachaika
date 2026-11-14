@@ -40,7 +40,8 @@ general:
 
   # How finished downloads are handled:
   #   - 'local': files reside on the same machine.
-  #   - 'remote': files are downloaded on a remote seedbox/server and retrieved via FTPS.
+  #   - 'remote': files are downloaded on a remote seedbox/server and retrieved via FTPS or SFTP
+  #     (see 'protocol' in the 'ftps' section / 'ftp_configs').
   #   - 'local_copy': files are copied from the client download folder to media storage.
   #   - 'local_move': files are moved directly to media storage.
   #   - 'local_hardlink': files are hardlinked (requires same filesystem).
@@ -55,11 +56,13 @@ general:
   # Default: ''
   download_handler_hath: ''
 
-  # Named FTP config key from 'ftp_configs' used for torrent transfers when handler is 'remote'.
+  # Named connection config key from 'ftp_configs' used for torrent transfers when handler is 'remote'.
+  # A name not defined in 'ftp_configs' uses the 'ftps' section.
   # Default: default
   download_ftp_torrent: default
 
-  # Named FTP config key from 'ftp_configs' used for H@H transfers when handler is 'remote'.
+  # Named connection config key from 'ftp_configs' used for H@H transfers when handler is 'remote'.
+  # A name not defined in 'ftp_configs' uses the 'ftps' section.
   # Default: default
   download_ftp_hath: default
 
@@ -665,31 +668,58 @@ torrent:
   no_certificate_check: false
 
 # ------------------------------------------------------------------------------
-# Remote FTPS Configuration
+# Remote FTPS / SFTP Configuration
 # Used when download_handler is 'remote' to transfer files from a seedbox.
 # ------------------------------------------------------------------------------
 ftps:
-  # FTPS authentication username.
+  # Transfer protocol: 'ftps' (FTP over explicit TLS) or 'sftp' (SSH file transfer).
+  # Default: ftps
+  protocol: ftps
+
+  # Authentication username.
   user: panda
 
-  # FTPS authentication password.
+  # Authentication password. For SFTP it can be left empty when using key_filename;
+  # with neither set, the SSH agent and the keys in ~/.ssh are tried.
   passwd: panda
 
-  # FTPS server address (hostname or IP).
+  # Server address (hostname or IP), optionally as 'host:port'.
   address: remote.server.com
+
+  # Server port. If not set, uses the port in 'address', or 21 (FTPS) / 22 (SFTP).
+  # port: 22
 
   # Directory on the remote server where completed torrent downloads are located.
   remote_torrent_dir: /home/pandaremote/downloads/torrent
 
-  # Optional local network interface IP to bind to when opening FTPS connections.
+  # Optional local network interface IP to bind to when opening remote connections.
   # bind_host: 192.168.1.200
 
-  # Optional local port to bind to when opening FTPS connections (0 for ephemeral).
+  # Optional local port to bind to when opening remote connections (0 for ephemeral).
   # bind_port: 0
 
-  # Skip SSL/TLS certificate verification on remote FTPS server.
+  # FTPS: skip SSL/TLS certificate verification on the remote server.
+  # SFTP: accept the server's SSH host key without checking it against known_hosts.
   # Default: false
   no_certificate_check: false
+
+  # SFTP only: private key file used for authentication, and its passphrase if encrypted.
+  # key_filename: /home/panda/.ssh/id_ed25519
+  # key_passphrase: ''
+
+  # SFTP only: known_hosts file holding the server's host key (loaded besides ~/.ssh/known_hosts).
+  # Create it with e.g.: ssh-keyscan -p 22 remote.server.com > /home/panda/.ssh/seedbox_known_hosts
+  # known_hosts_file: /home/panda/.ssh/seedbox_known_hosts
+
+# Optional named connection configs, referenced by general.download_ftp_torrent / download_ftp_hath,
+# to use a different server (or protocol) for torrents and H@H. Each entry takes the same keys as 'ftps'.
+# ftp_configs:
+#   seedbox_sftp:
+#     protocol: sftp
+#     address: seedbox.example.com
+#     user: panda
+#     key_filename: /home/panda/.ssh/id_ed25519
+#     known_hosts_file: /home/panda/.ssh/seedbox_known_hosts
 
 # ------------------------------------------------------------------------------
 # Web Server Configuration
@@ -885,6 +915,22 @@ retention:
   # Maximum rows deleted per batch transaction to avoid database locks.
   # Default: 5000
   chunk_size: 5000
+
+# ------------------------------------------------------------------------------
+# Admin Report Emails
+# Scheduler that emails the admin report (/admin-report/) to staff users who
+# enabled it in their own report settings, each on their own schedule.
+# Needs mail_logging to be enabled and configured.
+# ------------------------------------------------------------------------------
+admin_report:
+  # Enable the scheduler that sends the admin report emails.
+  # Default: false
+  enable: false
+
+  # Minutes between checks for reports that are due. A report is sent at most
+  # this long after its scheduled time.
+  # Default: 15.0
+  check_interval_minutes: 15.0
 
 # ------------------------------------------------------------------------------
 # Contextual Extractor (manga-extractor Integration)

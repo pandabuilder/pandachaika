@@ -56,7 +56,7 @@ def reconcile_downloads(
     }
 
     torrent_download_dir = ""
-    if settings and hasattr(settings, "torrent") and isinstance(settings.torrent, dict):
+    if settings and getattr(settings, "torrent", None) is not None:
         torrent_download_dir = settings.torrent.get("download_dir", "")
 
     post_downloader = None

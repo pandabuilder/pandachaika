@@ -7,7 +7,7 @@ Note: Code is managed internally on another repository. This repository is used 
 
 Overview
 ---------------------
-Program is separated into two parts, one command line program that you can feed e-hentai.org/exhentai.org (panda) links, and it will download them using either torrent or archive/GP/Credits. The files will be kept on the filesystem as zip files. After downloading, all associated metadata will be obtained and stored on a database. Downloads using torrents can be handled by downloading to an external server, from which you can then download to the running server using FTPS.
+Program is separated into two parts, one command line program that you can feed e-hentai.org/exhentai.org (panda) links, and it will download them using either torrent or archive/GP/Credits. The files will be kept on the filesystem as zip files. After downloading, all associated metadata will be obtained and stored on a database. Downloads using torrents can be handled by downloading to an external server, from which you can then download to the running server using FTPS or SFTP.
 
 This program also does local file matching, getting metadata for files you've already downloaded from different providers. Online matching searches the providers (by file title, CRC32, size, or the first image of the archive, see matchers.py of each provider folder), and offline matching compares with the galleries already in the local database (see core/matching). Both can store the results as possible matches, or link each archive to its best match.
 

@@ -8,6 +8,7 @@ if typing.TYPE_CHECKING:
     from core.workers.download_progress import DownloadProgressChecker
     from core.workers.archive_download_queue import ArchiveDownloadQueue
     from core.workers.retention import TimedDatabasePruner
+    from core.workers.admin_report import TimedAdminReporter
     from core.workers.autoupdate import ProviderTimedAutoUpdater
     from core.workers.auto_wanted import TimedAutoWanted
     from core.workers.webqueue import WebQueue
@@ -26,6 +27,7 @@ class WorkerContext:
     download_progress_checker: "DownloadProgressChecker | None" = None
     archive_download_queue: "ArchiveDownloadQueue | None" = None
     timed_database_pruner: "TimedDatabasePruner | None" = None
+    timed_admin_reporter: "TimedAdminReporter | None" = None
     timed_auto_updaters: list["ProviderTimedAutoUpdater"] = []
     timed_link_monitors: list["LinkMonitor"] = []
 
@@ -39,6 +41,8 @@ class WorkerContext:
             workers.append(self.archive_download_queue)
         if self.timed_database_pruner:
             workers.append(self.timed_database_pruner)
+        if self.timed_admin_reporter:
+            workers.append(self.timed_admin_reporter)
         workers.extend(self.timed_auto_updaters)
         workers.extend(self.timed_link_monitors)
         return workers
@@ -268,6 +272,27 @@ class WorkerContext:
         if start_threads and retention_cfg and retention_cfg.enabled:
             self.timed_database_pruner.start_running(timer=prune_timer)
 
+        from core.workers.admin_report import TimedAdminReporter
+
+        admin_report_cfg = crawler_settings.admin_report
+        self.timed_admin_reporter = TimedAdminReporter(
+            crawler_settings,
+            timer=admin_report_cfg.check_interval_minutes,
+        )
+
+        obj, _ = SchedulerState.objects.get_or_create(
+            name=self.timed_admin_reporter.thread_name,
+            defaults={
+                "display_name": "Admin Report Emails",
+                "schedule_type": "scheduler",
+                "cycle_timer": self.timed_admin_reporter.timer,
+            },
+        )
+        self.timed_admin_reporter.last_run = obj.last_run
+        self.timed_admin_reporter.pk = obj.name
+        if start_threads and admin_report_cfg.enable:
+            self.timed_admin_reporter.start_running(timer=admin_report_cfg.check_interval_minutes)
+
     @property
     def is_worker_process(self) -> bool:
         return bool(self.crawler_settings and getattr(self.crawler_settings, "is_worker_process", False))
@@ -282,6 +307,8 @@ class WorkerContext:
             self.archive_download_queue.stop_running(force_local=True)
         if self.timed_database_pruner:
             self.timed_database_pruner.stop_running(force_local=True)
+        if self.timed_admin_reporter:
+            self.timed_admin_reporter.stop_running(force_local=True)
         if self.timed_auto_wanted:
             self.timed_auto_wanted.stop_running(force_local=True)
         for provider_auto_updater in self.timed_auto_updaters:

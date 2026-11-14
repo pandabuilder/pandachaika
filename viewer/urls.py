@@ -23,6 +23,7 @@ from viewer.views import (
     workers_dashboard,
     file_check,
     archive_picker,
+    admin_report,
 )
 
 from viewer.feeds import LatestArchivesFeed
@@ -226,6 +227,12 @@ urlpatterns += [
     path("tools/<str:tool>/", admin.tools, name="tools-id"),
     path("tools/", admin.tools, name="tools"),
     path("logs/", admin.logs, name="logs"),
+    path("admin-report/", admin_report.admin_report, name="admin-report"),
+    path(
+        "admin-report/subscription/",
+        admin_report.admin_report_subscription,
+        name="admin-report-subscription",
+    ),
     path("stats/collection/", admin.stats_collection, name="stats-collection"),
     path("public-stats/", head.public_stats, name="public-stats"),
     path("stats/workers/", admin.stats_workers, name="stats-workers"),

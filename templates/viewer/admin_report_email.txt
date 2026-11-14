@@ -1,0 +1,60 @@
+{% autoescape off %}Admin report: {{ summary }}
+From {{ report.since|date:"Y-m-d H:i" }} to {{ report.until|date:"Y-m-d H:i" }} ({{ time_zone }}).
+{% if report_url %}See it on the site: {{ report_url }}
+{% endif %}
+NEEDS ATTENTION
+{% for item in report.attention %}- [{{ item.severity|upper }}] {{ item.message }}
+{% empty %}Nothing needs attention.
+{% endfor %}{% if s.content %}
+CONTENT
+{% if s.content.error %}Could not be built: {{ s.content.error }}
+{% else %}- Archives added: {{ s.content.archives_added }} ({{ s.content.archives_added_size|filesizeformat }}, {{ s.content.archives_added_public }} public)
+- Galleries added: {{ s.content.galleries_added }}{% if s.content.galleries_by_provider %} ({% for row in s.content.galleries_by_provider %}{{ row.key }}: {{ row.count }}{% if not forloop.last %}, {% endif %}{% endfor %}){% endif %}
+- Archives recycled: {{ s.content.archives_recycled }}
+- Event log entries: {{ s.content.activity_total }}
+{% endif %}{% endif %}{% if s.logs %}
+SERVER LOGS ({{ s.logs.min_level }} and above)
+{% if s.logs.error %}Could not be built: {{ s.logs.error }}
+{% else %}{% if not s.logs.enabled %}Database logging is disabled (disable_sql_log).
+{% endif %}{% if s.logs.window_partially_pruned %}The oldest log kept is from {{ s.logs.oldest_log|date:"Y-m-d H:i" }}: older entries may be missing.
+{% endif %}- Total: {{ s.logs.total }}{% for level, count in s.logs.by_level.items %}, {{ level }}: {{ count }}{% endfor %}
+{% for group in s.logs.groups %}  {{ group.count }}x {{ group.level }} {{ group.logger_name }}: {{ group.message }}
+{% endfor %}{% endif %}{% endif %}{% if s.downloads %}
+DOWNLOADS
+{% if s.downloads.error %}Could not be built: {{ s.downloads.error }}
+{% else %}- Completed: {{ s.downloads.completed }} ({{ s.downloads.completed_size|filesizeformat }}), failed: {{ s.downloads.failed }}, cancelled: {{ s.downloads.cancelled }}
+- Queued now: {{ s.downloads.queued_now }}, downloading now: {{ s.downloads.downloading_now }}
+{% for event in s.downloads.recent_failures %}  {{ event.date|date:"Y-m-d H:i" }} {{ event.provider }} {{ event.name|truncatechars:60 }}: {{ event.error }}
+{% endfor %}{% endif %}{% endif %}{% if s.tasks %}
+TASKS
+{% if s.tasks.error %}Could not be built: {{ s.tasks.error }}
+{% else %}- Completed: {{ s.tasks.completed }}, failed: {{ s.tasks.failed }}
+- Pending now: {{ s.tasks.pending_now }}, processing now: {{ s.tasks.processing_now }}, links pending: {{ s.tasks.links_pending_now }}
+{% for task in s.tasks.recent_failures %}  {{ task.date|date:"Y-m-d H:i" }} {{ task.task_type }}: {{ task.error }}
+{% endfor %}{% endif %}{% endif %}{% if s.health %}
+WORKERS AND SCHEDULERS (now)
+{% if s.health.error %}Could not be built: {{ s.health.error }}
+{% else %}- Worker processes: {{ s.health.workers_alive }}, schedulers OK: {{ s.health.schedulers_running }}, stopped: {{ s.health.schedulers_stopped }}
+{% for scheduler in s.health.scheduler_problems %}  {{ scheduler.display_name }}: {{ scheduler.problem }} (last run {{ scheduler.last_run|date:"Y-m-d H:i"|default:"never" }})
+{% endfor %}{% endif %}{% endif %}{% if s.wanted %}
+WANTED GALLERIES
+{% if s.wanted.error %}Could not be built: {{ s.wanted.error }}
+{% else %}- Matches found: {{ s.wanted.found }} (for {{ s.wanted.wanted_galleries_found }} wanted galleries), wanted created: {{ s.wanted.wanted_created }}
+{% for found in s.wanted.recent_found %}  {{ found.wanted_gallery|truncatechars:50 }} -> {{ found.gallery|truncatechars:70 }}
+{% endfor %}{% endif %}{% endif %}{% if s.moderation %}
+SUBMISSIONS
+{% if s.moderation.error %}Could not be built: {{ s.moderation.error }}
+{% else %}- Submitted: {{ s.moderation.submitted }}, pending now: {{ s.moderation.pending_now }}
+{% endif %}{% endif %}{% if s.integrity %}
+ARCHIVE FILE CHECKS
+{% if s.integrity.error %}Could not be built: {{ s.integrity.error }}
+{% else %}- New issues: {{ s.integrity.issues }} in {{ s.integrity.archives_with_issues }} archives{% for row in s.integrity.issues_by_kind %}, {{ row.key }}: {{ row.count }}{% endfor %}
+{% endif %}{% endif %}{% if s.storage %}
+STORAGE (now)
+{% if s.storage.error %}Could not be built: {{ s.storage.error }}
+{% else %}{% for disk in s.storage.disks %}- {{ disk.label }} ({{ disk.path }}): {% if disk.error %}{{ disk.error }}{% else %}{{ disk.used_percent }}% used, {{ disk.free|filesizeformat }} free{% endif %}
+{% endfor %}- Archives: {{ s.storage.archives_total }} ({{ s.storage.archives_total_size|filesizeformat }}), galleries: {{ s.storage.galleries_total }}
+{% endif %}{% endif %}
+--
+You get this email because you enabled the admin report. Change its schedule or disable it on the admin report page.
+{% endautoescape %}

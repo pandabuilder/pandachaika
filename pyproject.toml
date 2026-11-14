@@ -79,9 +79,10 @@ dependencies = [
     "django-vite==3.2.0",
     "elasticsearch==8.19.3",
     "feedparser==6.0.14",
-    "gunicorn==26.2.0; sys_platform != 'win32'",
+    "gunicorn==27.0.1; sys_platform != 'win32'",
     "imagehash==4.3.2",
     "numpy==2.5.4",
+    "paramiko==5.1.0",
     "pillow==13.0.0",
     "psycopg[c,pool]==3.3.9; sys_platform != 'win32'",
     "psycopg[binary,pool]==3.3.9; sys_platform == 'win32'",
@@ -105,6 +106,7 @@ dev = [
     "pytest-django>=4.14.0",
     "ruff==0.17.5",
     "types-python-dateutil==2.9.0.20261104",
+    "types-paramiko==5.1.0.20261030",
     "types-requests==2.33.0.20261030",
 ]
 
@@ -112,6 +114,7 @@ ci = [
     "mypy==2.4.1",
     "ruff==0.17.5",
     "django-stubs==6.1.2",
+    "types-paramiko==5.1.0.20261030",
     "types-requests==2.33.0.20261030",
     "types-python-dateutil==2.9.0.20261104",
     "unittest-xml-reporting==4.0.0",

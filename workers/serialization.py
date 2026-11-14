@@ -1,4 +1,5 @@
 import copy
+from collections.abc import Iterable
 from datetime import timedelta
 import logging
 from typing import Any, cast
@@ -43,6 +44,25 @@ EXCLUDED_SETTINGS_ATTRIBUTES = {
     "activity_callback",
     "cancel_event",
     "is_cancelled",
+    # Section models backing the top-level Settings attributes; those attributes are serialized by name
+    # instead (see Settings.attribute_items), so credentials such as general_model.django_secret_key stay out.
+    "general_model",
+    "allowed_model",
+    "locations_model",
+    "match_params_model",
+}
+
+# Keys written by older versions, when Settings also kept the section models next to dict copies. Their content
+# is duplicated by the top-level keys, so they are ignored when deserializing queued tasks.
+LEGACY_SECTION_MODEL_KEYS = {
+    "general_model",
+    "allowed_model",
+    "locations_model",
+    "match_params_model",
+    "database_model",
+    "torrent_model",
+    "ftps_model",
+    "remote_site_model",
 }
 
 
@@ -124,7 +144,10 @@ def serialize_settings_options(options: Any) -> dict[str, Any]:
     if hasattr(options, "__dict__") or hasattr(options, "__slots__"):
         clean_dict = {}
 
-        if hasattr(options, "__dict__"):
+        raw_items: Iterable[tuple[str, Any]]
+        if isinstance(options, Settings):
+            raw_items = options.attribute_items()
+        elif hasattr(options, "__dict__"):
             raw_items = vars(options).items()
         elif hasattr(options, "__slots__"):
             raw_items = [(k, getattr(options, k)) for k in options.__slots__ if hasattr(options, k)]
@@ -226,7 +249,7 @@ def deserialize_settings_options(base_settings: Settings | None, options: dict[s
             pass
 
     for k, v in options.items():
-        if k in ("user_id", "archive_user", "monitored_link_id", "monitored_link"):
+        if k in ("user_id", "archive_user", "monitored_link_id", "monitored_link") or k in LEGACY_SECTION_MODEL_KEYS:
             continue
 
         if k in ("proxy", "_proxy") and v:

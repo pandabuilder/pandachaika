@@ -4,10 +4,11 @@ import os
 import pkgutil
 from typing import Any
 
+from core.base.config_models import TorrentSettings
 from core.base.types import TorrentClient
 
 
-def get_torrent_client(torrent_settings: dict[str, Any]) -> TorrentClient | None:
+def get_torrent_client(torrent_settings: TorrentSettings | dict[str, Any]) -> TorrentClient | None:
     client = None
     requested_client = str(torrent_settings.get("client", "")).strip().lower()
     if not requested_client:

@@ -48,18 +48,22 @@ class BaseConfigModel(BaseModel):
             return new_data
         return data
 
+    @classmethod
+    def _field_name(cls, key: str) -> str:
+        """Field name for ``key``, which may be a field name or a field alias (e.g. 'pass' -> 'pass_')."""
+        if key not in cls.model_fields:
+            for fname, f_info in cls.model_fields.items():
+                if f_info.alias == key:
+                    return fname
+        return key
+
     def update_from_dict(self, data: dict[str, Any]) -> None:
         if not isinstance(data, dict):
             return
         for key, val in data.items():
             if val is None:
                 continue
-            field_name = key
-            if field_name not in self.__class__.model_fields:
-                for fname, f_info in self.__class__.model_fields.items():
-                    if f_info.alias == key:
-                        field_name = fname
-                        break
+            field_name = self._field_name(key)
 
             if field_name in self.__class__.model_fields:
                 current = getattr(self, field_name, None)
@@ -84,18 +88,18 @@ class BaseConfigModel(BaseModel):
 
     def __getitem__(self, key: str) -> Any:
         try:
-            return getattr(self, key)
+            return getattr(self, self._field_name(key))
         except AttributeError:
             raise KeyError(key)
 
     def __setitem__(self, key: str, value: Any) -> None:
-        setattr(self, key, value)
+        setattr(self, self._field_name(key), value)
 
     def __contains__(self, key: object) -> bool:
-        return hasattr(self, str(key))
+        return hasattr(self, self._field_name(str(key)))
 
     def get(self, key: str, default: Any = None) -> Any:
-        return getattr(self, key, default)
+        return getattr(self, self._field_name(key), default)
 
 
 # Backward compatibility alias
@@ -134,7 +138,7 @@ class GeneralSettings(BaseConfigModel):
     )
     download_handler: str = Field(
         default="local",
-        description="Handler for completed downloads: 'local' (same server), 'remote' (fetch via FTPS from remote seedbox), 'local_copy', 'local_move', or 'local_hardlink'.",
+        description="Handler for completed downloads: 'local' (same server), 'remote' (fetch via FTPS or SFTP from remote seedbox, see ftps.protocol), 'local_copy', 'local_move', or 'local_hardlink'.",
     )
     download_handler_torrent: str = Field(
         default="",
@@ -146,11 +150,11 @@ class GeneralSettings(BaseConfigModel):
     )
     download_ftp_torrent: str = Field(
         default="default",
-        description="FTP configuration key from ftp_configs to use for downloading completed torrents.",
+        description="Connection config key from ftp_configs (FTPS or SFTP) to use for downloading completed torrents.",
     )
     download_ftp_hath: str = Field(
         default="default",
-        description="FTP configuration key from ftp_configs to use for downloading completed H@H archives.",
+        description="Connection config key from ftp_configs (FTPS or SFTP) to use for downloading completed H@H archives.",
     )
     temp_directory_path: str | None = Field(
         default=None,
@@ -212,30 +216,16 @@ class GeneralSettings(BaseConfigModel):
         description="Global default to stop processing when encountering a link seen before.",
     )
     banned_tags: list[str] = Field(
-        default_factory=lambda: [
-            "language:thai",
-            "language:chinese",
-            "language:korean",
-            "language:french",
-            "language:spanish",
-            "language:italian",
-            "language:hungarian",
-            "language:portuguese",
-            "language:polish",
-            "language:russian",
-            "language:vietnamese",
-        ],
+        default_factory=list,
         alias="discard_tags",
         description="Tags that trigger automatic discarding of galleries during crawling and matching.",
     )
     banned_uploaders: list[str] = Field(
-        default_factory=lambda: ["random_guy"],
+        default_factory=list,
         description="Uploader usernames whose galleries will be automatically discarded during crawling and matching.",
     )
     banned_search_queries: list[str] = Field(
-        default_factory=lambda: [
-            'tags.full:"language:chinese" AND (NOT tags.full:"language:japanese")'
-        ],
+        default_factory=list,
         description="Elasticsearch DSL query filters. Galleries matching these queries in the match index are automatically discarded.",
     )
     ignore_global_filters: bool = Field(
@@ -937,27 +927,64 @@ class TorrentSettings(BaseConfigModel):
 
 
 class FtpsSettings(BaseConfigModel):
-    """Remote FTPS connection settings for retrieving downloads from a remote seedbox."""
+    """Remote FTPS / SFTP connection settings for retrieving downloads from a remote seedbox.
 
-    user: str = Field(default="panda", description="FTPS username on remote server.")
-    passwd: str = Field(default="panda", description="FTPS password on remote server.")
-    address: str = Field(default="remote.server.com", description="Remote server hostname or IP address.")
+    Entries of ``ftp_configs`` accept the same keys.
+    """
+
+    protocol: str = Field(
+        default="ftps",
+        description="Transfer protocol: 'ftps' (FTP over explicit TLS) or 'sftp' (SSH file transfer).",
+    )
+    user: str = Field(default="panda", description="Username on remote server.")
+    passwd: str = Field(default="panda", description="Password on remote server (optional for SFTP with a key).")
+    address: str = Field(
+        default="remote.server.com",
+        description="Remote server hostname or IP address, optionally as 'host:port'.",
+    )
+    port: int | None = Field(
+        default=None,
+        description="Remote server port. Defaults to 21 for FTPS and 22 for SFTP (or the port in 'address').",
+    )
     remote_torrent_dir: str = Field(
         default="/home/pandaremote/downloads/torrent",
         description="Directory on remote server where finished torrent downloads are located.",
     )
     bind_host: str | None = Field(
         default=None,
-        description="Optional local IP address to bind to when opening FTPS connections.",
+        description="Optional local IP address to bind to when opening remote connections.",
     )
     bind_port: int | None = Field(
         default=None,
-        description="Optional local port to bind to when opening FTPS connections.",
+        description="Optional local port to bind to when opening remote connections.",
     )
     no_certificate_check: bool = Field(
         default=False,
-        description="Skip SSL/TLS certificate validation for self-signed remote certificates.",
+        description=(
+            "FTPS: skip SSL/TLS certificate validation for self-signed remote certificates. "
+            "SFTP: accept the server's SSH host key without checking it against known_hosts."
+        ),
     )
+    key_filename: str | None = Field(
+        default=None,
+        description="SFTP only: path to a private key file used for authentication.",
+    )
+    key_passphrase: str | None = Field(
+        default=None,
+        description="SFTP only: passphrase of the private key in key_filename, if encrypted.",
+    )
+    known_hosts_file: str | None = Field(
+        default=None,
+        description="SFTP only: known_hosts file with the server's host key, loaded besides ~/.ssh/known_hosts.",
+    )
+
+    @field_validator("protocol", mode="before")
+    @classmethod
+    def _validate_protocol(cls, value: Any) -> str:
+        protocol = str(value or "ftps").strip().lower()
+        if protocol not in ("ftps", "sftp"):
+            raise ValueError("protocol must be 'ftps' or 'sftp'")
+        return protocol
 
 
 class RemoteSiteSettings(BaseConfigModel):
@@ -1078,6 +1105,20 @@ DEFAULT_MANGA_EXTRACTOR_IMAGE_FIELDS: list[str] = [
     "japanese_metrics.kanji_ratio",
     "japanese_metrics.estimated_jlpt_level",
 ]
+
+
+class AdminReportSettings(BaseConfigModel):
+    """Scheduler that emails the admin report to the staff users who enabled it."""
+
+    enable: bool = Field(
+        default=False,
+        description="Enable the scheduler that sends the admin report emails (needs mail_logging).",
+    )
+    check_interval_minutes: float = Field(
+        default=15.0,
+        gt=0,
+        description="Minutes between checks for reports that are due.",
+    )
 
 
 class MangaExtractorRequestConfig(BaseConfigModel):
@@ -1670,11 +1711,14 @@ class PandaGalleryConfig(BaseConfigModel):
     )
     ftps: FtpsSettings = Field(
         default_factory=FtpsSettings,
-        description="Remote FTPS seedbox connection details.",
+        description="Remote FTPS / SFTP seedbox connection details.",
     )
     ftp_configs: dict[str, Any] = Field(
         default_factory=dict,
-        description="Named FTP configuration dictionaries referenced by download_ftp_torrent / download_ftp_hath.",
+        description=(
+            "Named connection configs referenced by download_ftp_torrent / download_ftp_hath. Each one takes the "
+            "same keys as 'ftps', including 'protocol' ('ftps' or 'sftp'). Names not defined here use 'ftps'."
+        ),
     )
     webserver: WebServerSettings = Field(
         default_factory=WebServerSettings,
@@ -1699,6 +1743,10 @@ class PandaGalleryConfig(BaseConfigModel):
     retention: RetentionSettings = Field(
         default_factory=RetentionSettings,
         description="Database retention and automated pruning configuration.",
+    )
+    admin_report: AdminReportSettings = Field(
+        default_factory=AdminReportSettings,
+        description="Admin report email scheduler.",
     )
     manga_extractor: MangaExtractorSettings = Field(
         default_factory=MangaExtractorSettings,
@@ -1772,7 +1820,8 @@ general:
 
   # How finished downloads are handled:
   #   - 'local': files reside on the same machine.
-  #   - 'remote': files are downloaded on a remote seedbox/server and retrieved via FTPS.
+  #   - 'remote': files are downloaded on a remote seedbox/server and retrieved via FTPS or SFTP
+  #     (see 'protocol' in the 'ftps' section / 'ftp_configs').
   #   - 'local_copy': files are copied from the client download folder to media storage.
   #   - 'local_move': files are moved directly to media storage.
   #   - 'local_hardlink': files are hardlinked (requires same filesystem).
@@ -1787,11 +1836,13 @@ general:
   # Default: ''
   download_handler_hath: ''
 
-  # Named FTP config key from 'ftp_configs' used for torrent transfers when handler is 'remote'.
+  # Named connection config key from 'ftp_configs' used for torrent transfers when handler is 'remote'.
+  # A name not defined in 'ftp_configs' uses the 'ftps' section.
   # Default: default
   download_ftp_torrent: default
 
-  # Named FTP config key from 'ftp_configs' used for H@H transfers when handler is 'remote'.
+  # Named connection config key from 'ftp_configs' used for H@H transfers when handler is 'remote'.
+  # A name not defined in 'ftp_configs' uses the 'ftps' section.
   # Default: default
   download_ftp_hath: default
 
@@ -2397,31 +2448,58 @@ torrent:
   no_certificate_check: false
 
 # ------------------------------------------------------------------------------
-# Remote FTPS Configuration
+# Remote FTPS / SFTP Configuration
 # Used when download_handler is 'remote' to transfer files from a seedbox.
 # ------------------------------------------------------------------------------
 ftps:
-  # FTPS authentication username.
+  # Transfer protocol: 'ftps' (FTP over explicit TLS) or 'sftp' (SSH file transfer).
+  # Default: ftps
+  protocol: ftps
+
+  # Authentication username.
   user: panda
 
-  # FTPS authentication password.
+  # Authentication password. For SFTP it can be left empty when using key_filename;
+  # with neither set, the SSH agent and the keys in ~/.ssh are tried.
   passwd: panda
 
-  # FTPS server address (hostname or IP).
+  # Server address (hostname or IP), optionally as 'host:port'.
   address: remote.server.com
+
+  # Server port. If not set, uses the port in 'address', or 21 (FTPS) / 22 (SFTP).
+  # port: 22
 
   # Directory on the remote server where completed torrent downloads are located.
   remote_torrent_dir: /home/pandaremote/downloads/torrent
 
-  # Optional local network interface IP to bind to when opening FTPS connections.
+  # Optional local network interface IP to bind to when opening remote connections.
   # bind_host: 192.168.1.200
 
-  # Optional local port to bind to when opening FTPS connections (0 for ephemeral).
+  # Optional local port to bind to when opening remote connections (0 for ephemeral).
   # bind_port: 0
 
-  # Skip SSL/TLS certificate verification on remote FTPS server.
+  # FTPS: skip SSL/TLS certificate verification on the remote server.
+  # SFTP: accept the server's SSH host key without checking it against known_hosts.
   # Default: false
   no_certificate_check: false
+
+  # SFTP only: private key file used for authentication, and its passphrase if encrypted.
+  # key_filename: /home/panda/.ssh/id_ed25519
+  # key_passphrase: ''
+
+  # SFTP only: known_hosts file holding the server's host key (loaded besides ~/.ssh/known_hosts).
+  # Create it with e.g.: ssh-keyscan -p 22 remote.server.com > /home/panda/.ssh/seedbox_known_hosts
+  # known_hosts_file: /home/panda/.ssh/seedbox_known_hosts
+
+# Optional named connection configs, referenced by general.download_ftp_torrent / download_ftp_hath,
+# to use a different server (or protocol) for torrents and H@H. Each entry takes the same keys as 'ftps'.
+# ftp_configs:
+#   seedbox_sftp:
+#     protocol: sftp
+#     address: seedbox.example.com
+#     user: panda
+#     key_filename: /home/panda/.ssh/id_ed25519
+#     known_hosts_file: /home/panda/.ssh/seedbox_known_hosts
 
 # ------------------------------------------------------------------------------
 # Web Server Configuration
@@ -2576,6 +2654,22 @@ monitored_links:
   # Enable the monitored links polling worker.
   # Default: false
   enable: false
+
+# ------------------------------------------------------------------------------
+# Admin Report Emails
+# Scheduler that emails the admin report (/admin-report/) to staff users who
+# enabled it in their own report settings, each on their own schedule.
+# Needs mail_logging to be enabled and configured.
+# ------------------------------------------------------------------------------
+admin_report:
+  # Enable the scheduler that sends the admin report emails.
+  # Default: false
+  enable: false
+
+  # Minutes between checks for reports that are due. A report is sent at most
+  # this long after its scheduled time.
+  # Default: 15.0
+  check_interval_minutes: 15.0
 
 # ------------------------------------------------------------------------------
 # Contextual Extractor (manga-extractor Integration)

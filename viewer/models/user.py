@@ -1,8 +1,10 @@
 import typing
-from datetime import datetime, timedelta
+from datetime import datetime, time as dt_time, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.conf import settings
 from django.contrib.auth.models import User
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models import Q
 from django.db.models.signals import post_save
@@ -140,6 +142,116 @@ class UserLongLivedToken(models.Model):
         type(self).objects.filter(pk=self.pk).filter(
             Q(last_used_date__isnull=True) | Q(last_used_date__lt=stale_before)
         ).update(last_used_date=now)
+
+
+def default_report_time() -> dt_time:
+    return dt_time(8, 0)
+
+
+def default_report_time_zone() -> str:
+    return settings.TIME_ZONE or "UTC"
+
+
+class AdminReportSubscription(models.Model):
+    """A staff user's own schedule for receiving the admin report by email.
+
+    ``next_send_at`` is when the next report is due; the admin report scheduler sends due reports and moves it forward.
+    Each report covers the time since ``last_sent_at`` (the end of the last report sent), so nothing is missed when a
+    send fails or is skipped.
+    """
+
+    class Frequency(models.TextChoices):
+        HOURLY = "hourly", "Every N hours"
+        DAILY = "daily", "Daily"
+        WEEKLY = "weekly", "Weekly"
+
+    WEEKDAY_CHOICES = (
+        (0, "Monday"),
+        (1, "Tuesday"),
+        (2, "Wednesday"),
+        (3, "Thursday"),
+        (4, "Friday"),
+        (5, "Saturday"),
+        (6, "Sunday"),
+    )
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="admin_report_subscription")
+    enabled = models.BooleanField(default=False)
+    frequency = models.CharField(max_length=10, choices=Frequency.choices, default=Frequency.DAILY)
+    interval_hours = models.PositiveSmallIntegerField(
+        default=6,
+        validators=[MinValueValidator(1), MaxValueValidator(168)],
+        help_text="Hours between reports, for the 'Every N hours' frequency.",
+    )
+    send_time = models.TimeField(default=default_report_time, help_text="Time of day for daily and weekly reports.")
+    weekday = models.PositiveSmallIntegerField(choices=WEEKDAY_CHOICES, default=0, help_text="Day for weekly reports.")
+    time_zone = models.CharField(
+        max_length=64, default=default_report_time_zone, help_text="Time zone of the send time (e.g. Europe/Madrid)."
+    )
+    # Report sections to include. Empty means all of them.
+    sections = models.JSONField(default=list, blank=True)
+    min_log_level = models.PositiveSmallIntegerField(default=30, help_text="Minimum level of the server logs included.")
+    top_n = models.PositiveSmallIntegerField(
+        default=10, validators=[MinValueValidator(1), MaxValueValidator(100)], help_text="Size of the lists."
+    )
+    skip_if_quiet = models.BooleanField(
+        default=False,
+        help_text="Don't send the email when nothing needs attention. The next report then covers both periods.",
+    )
+    next_send_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    last_sent_at = models.DateTimeField(null=True, blank=True)
+    last_run_at = models.DateTimeField(null=True, blank=True)
+    last_result = models.CharField(max_length=500, blank=True, default="")
+    create_date = models.DateTimeField(auto_now_add=True)
+    last_modified = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return f"Admin report for {self.user} ({self.get_frequency_display()})"
+
+    @property
+    def zone(self) -> ZoneInfo:
+        try:
+            return ZoneInfo(self.time_zone)
+        except (ZoneInfoNotFoundError, ValueError):
+            return ZoneInfo("UTC")
+
+    @property
+    def period(self) -> timedelta:
+        """Nominal time between two reports."""
+        if self.frequency == self.Frequency.HOURLY:
+            return timedelta(hours=self.interval_hours)
+        if self.frequency == self.Frequency.WEEKLY:
+            return timedelta(days=7)
+        return timedelta(days=1)
+
+    def compute_next_send(self, after: datetime) -> datetime:
+        """First scheduled send time strictly after ``after``."""
+        if self.frequency == self.Frequency.HOURLY:
+            return after + timedelta(hours=self.interval_hours)
+
+        zone = self.zone
+        local_after = after.astimezone(zone)
+        day = local_after.date()
+        for _ in range(9):
+            candidate = datetime.combine(day, self.send_time, tzinfo=zone)
+            if candidate > after and (self.frequency != self.Frequency.WEEKLY or day.weekday() == self.weekday):
+                return candidate
+            day += timedelta(days=1)
+        raise AssertionError("A daily or weekly schedule always has a send time within 8 days.")
+
+    def advance_schedule(self, now: datetime) -> datetime:
+        """Next send time after a run at ``now``, keeping the schedule's rhythm (no drift for hourly schedules)."""
+        if self.frequency == self.Frequency.HOURLY and self.next_send_at is not None:
+            next_send = self.next_send_at
+            while next_send <= now:
+                next_send += timedelta(hours=self.interval_hours)
+            return next_send
+        return self.compute_next_send(now)
+
+    def report_window(self, now: datetime, max_window: timedelta) -> tuple[datetime, datetime]:
+        """Window for a report sent at ``now``: since the last report, or one period back for the first one."""
+        since = self.last_sent_at or (now - self.period)
+        return max(since, now - max_window), now
 
 
 @receiver(post_save, sender=User)
