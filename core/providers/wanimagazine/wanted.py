@@ -9,7 +9,13 @@ from core.base.types import DataDict
 from core.base.utilities import provider_web_request, format_title_to_wanted_search, construct_request_dict
 from viewer.models import WantedGallery, Provider, Artist, ProcessedLinks
 from . import constants, utilities
-from .utilities import get_on_sale_date_from_soup, PRODUCT_ID_MATCHER, parse_product_page
+from .utilities import (
+    get_on_sale_date_from_soup,
+    PRODUCT_ID_MATCHER,
+    parse_product_page,
+    get_artists_from_soup,
+    get_cover_image_from_soup,
+)
 
 if typing.TYPE_CHECKING:
     from core.base.setup import Settings
@@ -38,7 +44,8 @@ def wanted_generator(settings: "Settings", attrs: "AttributeManager"):
     )
 
     # Values that can be set:
-    # subpath: RSS Feed subpath to search. (product-category/comic/feed/, product-category/comic/)
+    # subpath: RSS Feed subpath to search (comics/feed/ for R18 単行本, magazine/feed/ for R18 雑誌),
+    #   or the products list page when url_html_type is set (comics_index/).
     # url_html_type: If it's RSS feed or products list page.
     for query_name, query_values in queries.items():
 
@@ -151,7 +158,7 @@ def process_feed_page(attrs, own_settings, provider, query_name, request_dict, s
             },
         )
 
-        if not link_created and not not force_process.value:
+        if not link_created and not force_process.value:
             logger.error(
                 "For provider {}: Got to url: {}, was created before it was processed.".format(
                     constants.provider_name, gallery_data["link"]
@@ -184,13 +191,13 @@ def process_feed_page(attrs, own_settings, provider, query_name, request_dict, s
         else:
             soup = BeautifulSoup(response.text, "html.parser")
 
-            author_containers = soup.select("div.p-product-page__author")
-
-            if len(author_containers) >= 1:
-                author = author_containers[0].get_text()
-                gallery_data["artist"] = author
+            gallery_data["artists"] = get_artists_from_soup(soup)
 
             on_sale_date = get_on_sale_date_from_soup(soup)
+
+            cover_image = get_cover_image_from_soup(soup)
+            if cover_image:
+                gallery_data["image"] = cover_image
 
         wanted_galleries = get_or_create_wanted_galleries_from_gallery_data(attrs, gallery_data, query_name)
 
@@ -233,7 +240,7 @@ def process_products_page(attrs, own_settings, provider, query_name, request_dic
 
     while current_page < stop_page:
         current_page += 1
-        full_url = "{}/page/{}".format(subpath, current_page)
+        full_url = "{}/page/{}/".format(subpath.rstrip("/"), current_page)
 
         link = urllib.parse.urljoin(constants.main_url, full_url)
 
@@ -255,25 +262,20 @@ def process_products_page(attrs, own_settings, provider, query_name, request_dic
 
         products_soup = BeautifulSoup(response.text, "html.parser")
 
-        product_container = products_soup.select("div.p-products")
+        for product_page in products_soup.select("div.wci-card a.wci-cover-link"):
+            product_link = product_page.get("href")
+            if not isinstance(product_link, str):
+                continue
+            product_id_match = PRODUCT_ID_MATCHER.search(product_link)
 
-        if product_container:
-            li_containers = product_container[0].select("li.p-products__item")
-            if li_containers:
-                for li_container in li_containers:
-                    product_page = li_container.find("a")
-                    if product_page:
-                        product_link = product_page["href"]
-                        product_id_match = PRODUCT_ID_MATCHER.search(product_link)
-
-                        if product_id_match:
-                            product_uid = product_id_match.group(1)
-                            products_galleries_data.append(
-                                {
-                                    "uid": product_uid,
-                                    "link": product_link,
-                                }
-                            )
+            if product_id_match:
+                product_uid = product_id_match.group(1)
+                products_galleries_data.append(
+                    {
+                        "uid": product_uid,
+                        "link": product_link,
+                    }
+                )
         products_galleries_data = [x for x in products_galleries_data if x["uid"] is not None]
         gallery_gids = [x["uid"] for x in products_galleries_data]
         n_containers = len(products_galleries_data)
@@ -444,11 +446,11 @@ def get_or_create_wanted_galleries_from_gallery_data(attrs, gallery_data, query_
                 if wanted_provider_instance:
                     wanted_gallery.wanted_providers.add(wanted_provider_instance)
 
-        if gallery_data["artist"]:
+        for artist_name in gallery_data["artists"]:
 
-            artist_obj = Artist.objects.filter(name=gallery_data["artist"]).first()
+            artist_obj = Artist.objects.filter(name=artist_name).first()
             if not artist_obj:
-                artist_obj = Artist.objects.create(name=gallery_data["artist"])
+                artist_obj = Artist.objects.create(name=artist_name)
             wanted_gallery.artists.add(artist_obj)
         logger.info(
             "Created wanted gallery ({}): {}, search title: {}".format(

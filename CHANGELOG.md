@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Wanted Gallery Admin Actions**: "Add wanted tags" and "Remove wanted tags" actions on `/admin/viewer/wantedgallery/`, taking a comma separated list of tags (`scope:name` or `name`) in the action's text field. Adding creates missing tags; removing skips (and reports) tags that don't exist.
+
+### Fixed
+
+- **wanimagazine Wanted Generator**: Fixed the wanimagazine parser after changes on the remote site. Feed subpaths in `wanted_params_<n>_subpath` may need to be updated.
+
 ## [1.3.0] - 2026-11-14
 
 ### Added

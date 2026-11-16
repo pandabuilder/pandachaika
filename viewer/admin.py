@@ -46,7 +46,7 @@ from viewer.models import (
     GalleryMatchGroup,
     GalleryGroupPossibleMatches,
 )
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.contrib.admin.helpers import ActionForm
 from django import forms
 
@@ -421,6 +421,8 @@ class WantedGalleryAdmin(admin.ModelAdmin):
         "set_category",
         "add_wanted_categories",
         "set_wanted_categories",
+        "add_wanted_tags",
+        "remove_wanted_tags",
         "add_unwanted_tags",
         "set_unwanted_tags",
         "set_exclusive_scope_name",
@@ -465,6 +467,71 @@ class WantedGalleryAdmin(admin.ModelAdmin):
 
         self.message_user(request, f"Set categories for {count} wanted galleries.")
 
+
+    @admin.action(description="Add wanted tags (comma separated)")
+    def add_wanted_tags(self, request: HttpRequest, queryset: QuerySet) -> None:
+        tags_str = request.POST.get("extra_field", "")
+        tag_strings = [t.strip() for t in tags_str.split(",") if t.strip()]
+        if not tag_strings:
+            self.message_user(request, "No tags provided.", level=messages.WARNING)
+            return
+
+        tag_objs = []
+        for tag_str in tag_strings:
+            scope_name = tag_str.split(":", maxsplit=1)
+            if len(scope_name) > 1:
+                tag_obj, _ = Tag.objects.get_or_create(scope=scope_name[0], name=scope_name[1])
+            else:
+                tag_obj, _ = Tag.objects.get_or_create(name=tag_str, scope="")
+            tag_objs.append(tag_obj)
+
+        count = 0
+        for wanted_gallery in queryset:
+            wanted_gallery.wanted_tags.add(*tag_objs)
+            count += 1
+
+        self.message_user(
+            request,
+            "Added wanted tags {} to {} wanted galleries.".format(", ".join(str(t) for t in tag_objs), count),
+        )
+
+    @admin.action(description="Remove wanted tags (comma separated)")
+    def remove_wanted_tags(self, request: HttpRequest, queryset: QuerySet) -> None:
+        tags_str = request.POST.get("extra_field", "")
+        tag_strings = [t.strip() for t in tags_str.split(",") if t.strip()]
+        if not tag_strings:
+            self.message_user(request, "No tags provided.", level=messages.WARNING)
+            return
+
+        tag_objs = []
+        not_found = []
+        for tag_str in tag_strings:
+            scope_name = tag_str.split(":", maxsplit=1)
+            if len(scope_name) > 1:
+                tag_obj = Tag.objects.filter(scope=scope_name[0], name=scope_name[1]).first()
+            else:
+                tag_obj = Tag.objects.filter(name=tag_str, scope="").first()
+            if tag_obj:
+                tag_objs.append(tag_obj)
+            else:
+                not_found.append(tag_str)
+
+        if not_found:
+            self.message_user(
+                request, "Tags not found, skipped: {}".format(", ".join(not_found)), level=messages.WARNING
+            )
+        if not tag_objs:
+            return
+
+        count = 0
+        for wanted_gallery in queryset.filter(wanted_tags__in=tag_objs).distinct():
+            wanted_gallery.wanted_tags.remove(*tag_objs)
+            count += 1
+
+        self.message_user(
+            request,
+            "Removed wanted tags {} from {} wanted galleries.".format(", ".join(str(t) for t in tag_objs), count),
+        )
 
     @admin.action(description="Add unwanted tags (comma separated)")
     def add_unwanted_tags(self, request: HttpRequest, queryset: QuerySet) -> None:

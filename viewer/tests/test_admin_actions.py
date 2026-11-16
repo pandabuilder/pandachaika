@@ -54,6 +54,35 @@ class AdminActionsTestCase(TestCase):
         self.assertTrue(self.gallery.categories.filter(name="NewCat").exists())
         self.assertFalse(self.gallery.categories.filter(name="OldCat").exists())
 
+    def test_add_wanted_tags(self):
+        existing = Tag.objects.create(scope="language", name="english")
+        other = WantedGallery.objects.create(title="Other Gallery")
+        request = self.factory.post("/", {"extra_field": "language:english, tag2"})
+        request.user = self.user
+        self.admin.message_user = lambda *args, **kwargs: None
+
+        self.admin.add_wanted_tags(request, self.queryset)
+
+        self.assertEqual(self.gallery.wanted_tags.count(), 2)
+        self.assertTrue(self.gallery.wanted_tags.filter(pk=existing.pk).exists())
+        self.assertTrue(self.gallery.wanted_tags.filter(scope="", name="tag2").exists())
+        self.assertEqual(Tag.objects.filter(scope="language", name="english").count(), 1)
+        self.assertEqual(other.wanted_tags.count(), 0)
+
+    def test_remove_wanted_tags(self):
+        english = Tag.objects.create(scope="language", name="english")
+        keep = Tag.objects.create(scope="female", name="keep")
+        self.gallery.wanted_tags.add(english, keep)
+        request = self.factory.post("/", {"extra_field": "language:english, missing:tag"})
+        request.user = self.user
+        self.admin.message_user = lambda *args, **kwargs: None
+
+        self.admin.remove_wanted_tags(request, self.queryset)
+
+        self.assertEqual(list(self.gallery.wanted_tags.all()), [keep])
+        self.assertTrue(Tag.objects.filter(pk=english.pk).exists())
+        self.assertFalse(Tag.objects.filter(scope="missing", name="tag").exists())
+
     def test_add_unwanted_tags(self):
         request = self.factory.post("/", {"extra_field": "scope:tag1, tag2"})
         request.user = self.user
