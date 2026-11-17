@@ -20,7 +20,7 @@ from viewer.forms import (
     DivErrorList,
 )
 from viewer.models import ArchiveGroup, ArchiveGroupEntry, Archive
-from viewer.utils.general import clean_up_referer
+from viewer.utils.general import get_safe_referer
 
 from viewer.views.head import archive_filter_keys, filter_archives_simple
 
@@ -60,7 +60,6 @@ def archive_groups_explorer(request: HttpRequest) -> HttpResponse:
                 event_log(request.user, "ADD_ARCHIVE_GROUP", content_object=new_archive_group, result="created")
             else:
                 messages.error(request, "The provided data is not valid", extra_tags="danger")
-                # return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
         else:
             edit_form = ArchiveGroupCreateOrEditForm()
 
@@ -135,7 +134,7 @@ def archive_group_details(request: HttpRequest, pk: int | None = None, slug: str
         else:
             messages.info(request, "All archives in this group are already extracted or queued for extraction.")
         return HttpResponseRedirect(
-            clean_up_referer(request.META.get("HTTP_REFERER", archive_group_instance.get_absolute_url()))
+            get_safe_referer(request, archive_group_instance.get_absolute_url())
         )
 
     try:
@@ -204,7 +203,7 @@ def archive_group_edit(request: HttpRequest, pk: int | None = None, slug: str | 
         else:
             messages.info(request, "All archives in this group are already extracted or queued for extraction.")
         return HttpResponseRedirect(
-            clean_up_referer(request.META.get("HTTP_REFERER", archive_group_instance.get_absolute_url()))
+            get_safe_referer(request, archive_group_instance.get_absolute_url())
         )
 
     if request.POST.get("submit-archive-group"):

@@ -1,0 +1,20 @@
+{% comment %}Django messages for the streamlined pages; past 4 messages the rest are folded, bulk actions add one per item.{% endcomment %}
+{% if messages %}
+  <div class="dm-messages">
+    {% for message in messages %}
+      {% if forloop.counter == 5 %}
+        <div class="collapse" id="dm-more-messages">
+      {% endif %}
+      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% else %}alert-info{% endif %} alert-dismissible fade show py-2 mb-2" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+      {% if forloop.last and forloop.counter >= 5 %}
+        </div>
+        <button class="btn btn-sm btn-outline-light mb-3" type="button" data-bs-toggle="collapse" data-bs-target="#dm-more-messages" aria-expanded="false">
+          <i class="fas fa-list me-1"></i>{{ forloop.counter|add:"-4" }} more message{{ forloop.counter|add:"-4"|pluralize }}
+        </button>
+      {% endif %}
+    {% endfor %}
+  </div>
+{% endif %}

@@ -5,7 +5,7 @@ from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
 from django.db.models import Prefetch, Count, Q, Case, When
-from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
+from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render
 from django.conf import settings
 
@@ -30,7 +30,7 @@ from viewer.models import (
     GalleryMatchGroupEntry,
 )
 from viewer.utils.actions import event_log
-from viewer.utils.general import clean_up_referer
+from viewer.utils.general import safe_redirect_back
 from workers import client
 from viewer.views.head import (
     render_error,
@@ -580,7 +580,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
         elif "search_provider_galleries" in p:
             if thread_exists_in_db("web_search_worker"):
                 messages.error(request, "Web search worker is already running.", extra_tags="danger")
-                return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+                return safe_redirect_back(request, request.get_full_path())
             pks = []
             for k, v in p.items():
                 if k.startswith("sel-") and isinstance(v, str):
@@ -617,7 +617,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
         elif "search_provider_galleries_internal" in p:
             if thread_exists_in_db("wanted_local_search_worker"):
                 messages.error(request, "Wanted local matching worker is already running.", extra_tags="danger")
-                return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+                return safe_redirect_back(request, request.get_full_path())
             pks = []
             for k, v in p.items():
                 if k.startswith("sel-") and isinstance(v, str):

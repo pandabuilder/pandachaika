@@ -67,7 +67,7 @@ class LogsViewTestCase(TestCase):
         self.client.login(username="admin_user", password="testpassword")
         response = self.client.get(reverse("viewer:logs"))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Server logs")
+        self.assertContains(response, "Server Logs")
         self.assertContains(response, "Delete logs")
         self.assertContains(response, "deleteLogsModal")
         self.assertContains(response, "Recent log entry")

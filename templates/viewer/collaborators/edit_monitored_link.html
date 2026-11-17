@@ -154,7 +154,7 @@
                             </button>
                             <a href="{% url 'viewer:monitored-links' %}" class="btn btn-light ms-2">Cancel</a>
                         </div>
-                        {% if not is_create and link %}
+                        {% if not is_create and link and perms.viewer.delete_monitoredlink %}
                             <a href="{% url 'viewer:col-delete-monitored-link' link.pk %}" class="btn btn-outline-danger">
                                 <i class="fas fa-trash"></i> Delete
                             </a>

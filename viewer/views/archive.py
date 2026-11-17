@@ -43,7 +43,7 @@ from viewer.models import (
     ArchiveStatistics,
     UserLongLivedToken,
 )
-from viewer.utils.general import clean_up_referer, should_use_refined_views
+from viewer.utils.general import get_safe_referer, safe_redirect_back, should_use_refined_views
 from viewer.utils.requests import double_check_auth, authenticate_by_token
 from viewer.views.head import render_error
 from viewer.services.archive_extraction import ArchiveExtractionService
@@ -203,10 +203,8 @@ def archive_details(request: HttpRequest, pk: int, mode: str = "view") -> HttpRe
                 messages.success(request, message)
                 logger.info("User {}: {}".format(request.user.username, message))
                 event_log(request.user, "CHANGE_ARCHIVE", content_object=new_archive, result="changed")
-                # return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
             else:
                 messages.error(request, "The provided data is not valid", extra_tags="danger")
-                # return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
         else:
             archive_option = ArchiveOption.objects.filter(archive=archive).first()
             if not archive_option:
@@ -312,7 +310,7 @@ def archive_update(
     """Update archive title, rating, tags, archives."""
     if not request.user.is_staff:
         messages.error(request, "You need to be an admin to update an archive.")
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+        return safe_redirect_back(request, reverse("viewer:archive", args=[pk]))
     try:
         archive = Archive.objects.get(pk=pk)
     except Archive.DoesNotExist:
@@ -332,11 +330,11 @@ def archive_update(
                     )
                 )
         except ValueError:
-            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+            return safe_redirect_back(request, reverse("viewer:archive", args=[pk]))
+        return safe_redirect_back(request, reverse("viewer:archive", args=[pk]))
     elif tool == "clear-possible-matches":
         archive.possible_matches.clear()
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+        return safe_redirect_back(request, reverse("viewer:archive", args=[pk]))
 
     current_user_archive_preferences, created = UserArchivePrefs.objects.get_or_create(
         user__id=request.user.pk,
@@ -440,7 +438,7 @@ def archive_update(
         }
     )
 
-    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+    return safe_redirect_back(request, reverse("viewer:archive", args=[pk]))
 
 
 def archive_auth(request: HttpRequest) -> HttpResponse:
@@ -828,7 +826,7 @@ def extract(request: HttpRequest, pk: int) -> HttpResponse:
     try:
         with transaction.atomic():
             archive = Archive.objects.select_for_update().get(pk=pk)
-            target_url = clean_up_referer(request.META.get("HTTP_REFERER", archive.get_absolute_url()))
+            target_url = get_safe_referer(request, archive.get_absolute_url())
             if archive.extracted:
                 logger.info("Archive %s is already extracted.", archive.pk)
                 return HttpResponseRedirect(target_url)
@@ -871,7 +869,7 @@ def reduce(request: HttpRequest, pk: int) -> HttpResponse:
     try:
         with transaction.atomic():
             archive = Archive.objects.select_for_update().get(pk=pk)
-            target_url = clean_up_referer(request.META.get("HTTP_REFERER", archive.get_absolute_url()))
+            target_url = get_safe_referer(request, archive.get_absolute_url())
             if not archive.extracted:
                 logger.info("Archive %s is already reduced.", archive.pk)
                 return HttpResponseRedirect(target_url)
@@ -905,7 +903,7 @@ def check_and_convert_filetype(request: HttpRequest, pk: int) -> HttpResponse:
     try:
         with transaction.atomic():
             archive = Archive.objects.select_for_update().get(pk=pk)
-            target_url = clean_up_referer(request.META.get("HTTP_REFERER", archive.get_absolute_url()))
+            target_url = get_safe_referer(request, archive.get_absolute_url())
 
             if client.is_archive_task_active(archive.pk, "convert_archive_worker"):
                 messages.info(request, "Archive filetype conversion is already queued or in progress.")
@@ -944,7 +942,7 @@ def clone_plus(request: HttpRequest, pk: int) -> HttpResponse:
 
         if run_image_tool and not crawler_settings.cloning_image_tool.enable:
             messages.error(request, "Clone image tool is not setup.")
-            return HttpResponseRedirect(clean_up_referer(request.META.get("HTTP_REFERER", reverse("viewer:archive", args=[pk]))))
+            return safe_redirect_back(request, reverse("viewer:archive", args=[pk]))
 
         if reorder_by_sha1:
             sha1_text = p.get("sha1s", "")
@@ -957,7 +955,7 @@ def clone_plus(request: HttpRequest, pk: int) -> HttpResponse:
         try:
             with transaction.atomic():
                 archive = Archive.objects.select_for_update().get(pk=pk)
-                target_url = clean_up_referer(request.META.get("HTTP_REFERER", archive.get_absolute_url()))
+                target_url = get_safe_referer(request, archive.get_absolute_url())
 
                 if client.is_archive_task_active(archive.pk, "clone_archive_worker"):
                     messages.info(request, "Archive cloning is already queued or in progress.")
@@ -1026,7 +1024,7 @@ def split(request: HttpRequest, pk: int) -> HttpResponse:
         user_reason = p.get("reason", "")
         split_nested = p.get("split-nested", "")
 
-        target_url = clean_up_referer(request.META.get("HTTP_REFERER", archive.get_absolute_url()))
+        target_url = get_safe_referer(request, archive.get_absolute_url())
 
         if client.is_archive_task_active(archive.pk, "split_archive_worker"):
             messages.info(request, "Archive split is already queued or in progress.")
@@ -1108,7 +1106,7 @@ def public(request: HttpRequest, pk: int) -> HttpResponse:
     try:
         with transaction.atomic():
             archive = Archive.objects.select_for_update().get(pk=pk)
-            target_url = clean_up_referer(request.META.get("HTTP_REFERER", archive.get_absolute_url()))
+            target_url = get_safe_referer(request, archive.get_absolute_url())
             if archive.public:
                 return render_error(request, "Archive is already public.")
 
@@ -1150,7 +1148,7 @@ def private(request: HttpRequest, pk: int) -> HttpResponse:
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
 
-    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+    return safe_redirect_back(request, reverse("viewer:archive", args=[pk]))
 
 
 @login_required
@@ -1164,7 +1162,7 @@ def calculate_images_sha1(request: HttpRequest, pk: int) -> HttpResponse:
     try:
         with transaction.atomic():
             archive = Archive.objects.select_for_update().get(pk=pk)
-            target_url = clean_up_referer(request.META.get("HTTP_REFERER", archive.get_absolute_url()))
+            target_url = get_safe_referer(request, archive.get_absolute_url())
 
             if client.is_archive_task_active(archive.pk, "calculate_sha1_worker"):
                 messages.info(request, "Archive images SHA1 calculation is already queued or in progress.")
@@ -1195,7 +1193,7 @@ def recalc_info(request: HttpRequest, pk: int) -> HttpResponse:
     try:
         with transaction.atomic():
             archive = Archive.objects.select_for_update().get(pk=pk)
-            target_url = clean_up_referer(request.META.get("HTTP_REFERER", archive.get_absolute_url()))
+            target_url = get_safe_referer(request, archive.get_absolute_url())
 
             if client.is_archive_task_active(archive.pk, "fileinfo_worker"):
                 messages.info(request, "Archive file info recalculation is already queued or in progress.")
@@ -1232,7 +1230,7 @@ def extract_context(request: HttpRequest, pk: int) -> HttpResponse:
     try:
         with transaction.atomic():
             archive = Archive.objects.select_for_update().get(pk=pk)
-            target_url = clean_up_referer(request.META.get("HTTP_REFERER", archive.get_absolute_url()))
+            target_url = get_safe_referer(request, archive.get_absolute_url())
 
             if client.is_archive_extracting_context(archive.pk):
                 logger.info("Archive %s contextual extraction is already queued or in progress.", archive.pk)
@@ -1263,7 +1261,7 @@ def mark_similar_archives(request: HttpRequest, pk: int) -> HttpResponse:
     try:
         with transaction.atomic():
             archive = Archive.objects.select_for_update().get(pk=pk)
-            target_url = clean_up_referer(request.META.get("HTTP_REFERER", archive.get_absolute_url()))
+            target_url = get_safe_referer(request, archive.get_absolute_url())
 
             if client.is_archive_task_active(archive.pk, "mark_similar_worker"):
                 messages.info(request, "Archive similarity check is already queued or in progress.")
@@ -1312,7 +1310,7 @@ def recall_api(request: HttpRequest, pk: int) -> HttpResponse:
 
         logger.info("Updating gallery API data for gallery: {} and related archives".format(gallery.get_absolute_url()))
 
-    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+    return safe_redirect_back(request, reverse("viewer:archive", args=[pk]))
 
 
 @login_required
@@ -1325,7 +1323,7 @@ def generate_matches(request: HttpRequest, pk: int) -> HttpResponse:
     try:
         with transaction.atomic():
             archive = Archive.objects.select_for_update().get(pk=pk)
-            target_url = clean_up_referer(request.META.get("HTTP_REFERER", archive.get_absolute_url()))
+            target_url = get_safe_referer(request, archive.get_absolute_url())
 
             if archive.gallery:
                 return render_error(request, "Archive is already matched.")
@@ -1393,7 +1391,7 @@ def rematch_archive(request: HttpRequest, pk: int) -> HttpResponse:
 
     logger.info("Rematching archive: {}".format(archive.title))
 
-    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+    return safe_redirect_back(request, reverse("viewer:archive", args=[pk]))
 
 
 @login_required
@@ -1474,7 +1472,7 @@ def delete_manage_archive(request: HttpRequest, pk: int) -> HttpResponse:
         archive_manage_entry = ArchiveManageEntry.objects.get(pk=pk)
     except ArchiveManageEntry.DoesNotExist:
         messages.error(request, "ArchiveManageEntry does not exist")
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+        return safe_redirect_back(request, reverse("viewer:archive-manager"))
 
     if archive_manage_entry.mark_user != request.user and not request.user.is_staff:
         return render_error(request, "You don't have the permission to delete this mark.")
@@ -1485,7 +1483,7 @@ def delete_manage_archive(request: HttpRequest, pk: int) -> HttpResponse:
 
     archive_manage_entry.delete()
 
-    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+    return safe_redirect_back(request, reverse("viewer:archive", args=[archive_manage_entry.archive_id]))
 
 
 @login_required
@@ -1499,7 +1497,7 @@ def remove_from_index_manage_archive(request: HttpRequest, pk: int) -> HttpRespo
         archive_manage_entry = ArchiveManageEntry.objects.get(pk=pk)
     except ArchiveManageEntry.DoesNotExist:
         messages.error(request, "ArchiveManageEntry does not exist")
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+        return safe_redirect_back(request, reverse("viewer:archive-manager"))
 
     if (archive_manage_entry.mark_user is not None and archive_manage_entry.mark_user.id != 1) and not request.user.is_staff:
         return render_error(request, "You don't have the permission to remove from index a Mark for an Archive.")
@@ -1511,7 +1509,7 @@ def remove_from_index_manage_archive(request: HttpRequest, pk: int) -> HttpRespo
     archive_manage_entry.status = ArchiveManageEntry.StatusChoices.NOT_INDEXED
     archive_manage_entry.save()
 
-    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+    return safe_redirect_back(request, reverse("viewer:archive", args=[archive_manage_entry.archive_id]))
 
 @login_required
 @require_POST
@@ -1524,7 +1522,7 @@ def add_to_index_manage_archive(request: HttpRequest, pk: int) -> HttpResponse:
         archive_manage_entry = ArchiveManageEntry.objects.get(pk=pk)
     except ArchiveManageEntry.DoesNotExist:
         messages.error(request, "ArchiveManageEntry does not exist")
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+        return safe_redirect_back(request, reverse("viewer:archive-manager"))
 
     if (archive_manage_entry.mark_user is not None and archive_manage_entry.mark_user.id != 1) and not request.user.is_staff:
         return render_error(request, "You don't have the permission to add to index a Mark for an Archive.")
@@ -1536,4 +1534,4 @@ def add_to_index_manage_archive(request: HttpRequest, pk: int) -> HttpResponse:
     archive_manage_entry.status = ArchiveManageEntry.StatusChoices.NORMAL
     archive_manage_entry.save()
 
-    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+    return safe_redirect_back(request, reverse("viewer:archive", args=[archive_manage_entry.archive_id]))

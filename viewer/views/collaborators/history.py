@@ -1,17 +1,21 @@
+import datetime
 import json
 import logging
+import typing
 
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import permission_required, login_required
 from django.contrib.contenttypes.models import ContentType
+from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
-from django.db.models import Q
-from django.http import HttpRequest, HttpResponse, HttpResponseRedirect, JsonResponse
+from django.db.models import Count, Q
+from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.urls import reverse
+from django.utils import timezone
 
-from viewer.utils.general import clean_up_referer
+from viewer.utils.general import PAGE_SIZE_OPTIONS, page_size, safe_redirect_back
 from viewer.utils.actions import event_log
 from viewer.forms import (
     AllGalleriesSearchForm,
@@ -87,10 +91,13 @@ def activity_event_log(request: HttpRequest) -> HttpResponse:
     filter_archives = get.get("filter-archives", "")
     event_date_from = get.get("event_date_from", "")
     event_date_to = get.get("event_date_to", "")
-    if request.user.is_staff or request.user.has_perm("viewer.read_all_logs"):
+    can_see_users = request.user.is_staff or request.user.has_perm("viewer.read_all_logs")
+    if can_see_users:
         show_users = get.get("show-users", "")
+        user_filter = get.get("user", "").strip()
     else:
         show_users = ""
+        user_filter = ""
 
     event_content_type = get.get("content_type", "")
     event_content_id = get.get("content_id", "")
@@ -117,13 +124,20 @@ def activity_event_log(request: HttpRequest) -> HttpResponse:
     else:
         results = EventLog.objects.all().prefetch_related("content_object", "content_type")
 
-    if show_users:
+    if show_users or user_filter:
         results = results.select_related("user")
 
-    if event_date_from:
-        results = results.filter(create_date__gte=event_date_from)
-    if event_date_to:
-        results = results.filter(create_date__lte=event_date_to)
+    if user_filter:
+        results = results.filter(user__username=user_filter)
+
+    try:
+        if event_date_from:
+            results = results.filter(create_date__date__gte=event_date_from)
+        if event_date_to:
+            results = results.filter(create_date__date__lte=event_date_to)
+    except ValidationError:
+        messages.error(request, "Invalid date, use YYYY-MM-DD.", extra_tags="danger")
+        results = results.none()
 
     if data_field:
         results = results.filter(data__contains=data_field)
@@ -142,7 +156,11 @@ def activity_event_log(request: HttpRequest) -> HttpResponse:
     if event_content_id:
         results = results.filter(object_id=event_content_id)
 
-    if title or tags and (filter_galleries or filter_archives):
+    if (title or tags) and not (filter_galleries or filter_archives):
+        # Searching by title or tags without choosing where: look in both.
+        filter_galleries = filter_archives = "1"
+
+    if title or tags:
 
         total_filters = Q()
 
@@ -185,14 +203,66 @@ def activity_event_log(request: HttpRequest) -> HttpResponse:
 
     actions = EventLog.objects.order_by("action").values_list("action", flat=True).distinct()
 
-    paginator = Paginator(results, 100)
+    limit = page_size(get, default=100)
+    paginator = Paginator(results, limit)
     try:
         results_page = paginator.page(page)
     except (InvalidPage, EmptyPage):
         results_page = paginator.page(paginator.num_pages)
 
-    d = {"results": results_page, "actions": actions, "form": form, "form_event": form_event, "show_users": show_users}
+    now = timezone.now()
+    recent = EventLog.objects.filter(create_date__gte=now - datetime.timedelta(days=7))
+    top_actions = list(recent.values("action").annotate(count=Count("id")).order_by("-count", "action")[:12])
+    activity = {
+        "last_day": recent.filter(create_date__gte=now - datetime.timedelta(days=1)).count(),
+        "last_week": recent.count(),
+        "distinct_actions": len(actions),
+    }
+    top_users: list[typing.Any] = []
+    if can_see_users:
+        top_users = list(
+            recent.filter(user__isnull=False)
+            .values("user__username")
+            .annotate(count=Count("id"))
+            .order_by("-count", "user__username")[:8]
+        )
+
+    d = {
+        "results": results_page,
+        "actions": actions,
+        "selected_actions": selected_actions,
+        "form": form,
+        "form_event": form_event,
+        "show_users": show_users or user_filter,
+        "can_see_users": can_see_users,
+        "user_filter": user_filter,
+        "top_actions": top_actions,
+        "top_users": top_users,
+        "activity": activity,
+        "title_scope_galleries": bool(filter_galleries),
+        "title_scope_archives": bool(filter_archives),
+        "limit": limit,
+        "per_page_options": PAGE_SIZE_OPTIONS,
+    }
     return render(request, "viewer/collaborators/activity_event_log.html", d)
+
+
+def _download_stats() -> dict[str, int]:
+    """Counts for the download monitor tiles: active downloads now, finished ones in the last 24 hours."""
+    since = timezone.now() - datetime.timedelta(days=1)
+    active = DownloadEvent.objects.filter(completed=False, failed=False)
+    return {
+        "queued": active.filter(status=DownloadEvent.Status.QUEUED).count(),
+        "downloading": active.filter(status=DownloadEvent.Status.IN_PROGRESS).count(),
+        "finished_day": DownloadEvent.objects.filter(
+            Q(completed=True) | Q(status=DownloadEvent.Status.COMPLETED), failed=False, create_date__gte=since
+        )
+        .exclude(status__in=[DownloadEvent.Status.FAILED, DownloadEvent.Status.CANCELLED])
+        .count(),
+        "failed_day": DownloadEvent.objects.filter(Q(failed=True) | Q(status=DownloadEvent.Status.FAILED), create_date__gte=since)
+        .exclude(status=DownloadEvent.Status.CANCELLED)
+        .count(),
+    }
 
 
 @permission_required("viewer.download_history")
@@ -226,7 +296,7 @@ def download_history(request: AuthenticatedHttpRequest) -> HttpResponse:
             if is_json:
                 return JsonResponse({"error": "No download events selected."}, status=400)
             messages.warning(request, "No download events were selected.")
-            return HttpResponseRedirect(clean_up_referer(request.META.get("HTTP_REFERER", reverse("viewer:downloads"))))
+            return safe_redirect_back(request, reverse("viewer:downloads"))
 
         events_qs = DownloadEvent.objects.filter(pk__in=event_pks)
         count = 0
@@ -276,12 +346,12 @@ def download_history(request: AuthenticatedHttpRequest) -> HttpResponse:
             if is_json:
                 return JsonResponse({"error": f"Unknown action: '{action}'"}, status=400)
             messages.error(request, f"Unknown action: '{action}'")
-            return HttpResponseRedirect(clean_up_referer(request.META.get("HTTP_REFERER", reverse("viewer:downloads"))))
+            return safe_redirect_back(request, reverse("viewer:downloads"))
 
         if is_json:
             return JsonResponse({"success": True, "action": action, "count": count, "message": msg})
 
-        return HttpResponseRedirect(clean_up_referer(request.META.get("HTTP_REFERER", reverse("viewer:downloads"))))
+        return safe_redirect_back(request, reverse("viewer:downloads"))
     
     if len(request.GET) == 0:
         form = DownloadHistoryForm(initial={"status": "in_progress", "sort_by": "create_date", "direction": "desc"})
@@ -366,10 +436,7 @@ def download_history(request: AuthenticatedHttpRequest) -> HttpResponse:
     except ValueError:
         page = 1
 
-    try:
-        limit = max(1, int(request.GET.get("limit", "100")))
-    except ValueError:
-        limit = 100
+    limit = page_size(request.GET, default=100)
 
     paginator = Paginator(download_events, limit)
     try:
@@ -411,12 +478,14 @@ def download_history(request: AuthenticatedHttpRequest) -> HttpResponse:
                 }
 
             end_date_str = ""
+            end_date_val = None
             if event.completed:
+                end_date_val = event.completed_date
                 end_date_str = event.completed_date.strftime("%Y-%m-%d %H:%M:%S") if event.completed_date else ""
             else:
-                eta_val = event.eta()
-                if eta_val:
-                    end_date_str = eta_val.strftime("%Y-%m-%d %H:%M:%S")
+                end_date_val = event.eta()
+                if end_date_val:
+                    end_date_str = end_date_val.strftime("%Y-%m-%d %H:%M:%S")
 
             create_date_str = event.create_date.strftime("%Y-%m-%d %H:%M:%S") if event.create_date else ""
 
@@ -444,7 +513,10 @@ def download_history(request: AuthenticatedHttpRequest) -> HttpResponse:
                     "completed": bool(event.completed or effective_status == DownloadEvent.Status.COMPLETED),
                     "error_message": event.error_message,
                     "create_date": create_date_str,
+                    "create_date_iso": event.create_date.isoformat() if event.create_date else "",
                     "end_date_or_eta": end_date_str,
+                    "end_date_iso": end_date_val.isoformat() if end_date_val else "",
+                    "is_eta": not event.completed,
                 }
             )
 
@@ -456,10 +528,22 @@ def download_history(request: AuthenticatedHttpRequest) -> HttpResponse:
             "count": paginator.count,
             "in_page_count": len(results_page),
             "number": results_page.number,
+            "stats": _download_stats(),
         }
         return HttpResponse(json.dumps(response_dict), content_type="application/json; charset=utf-8")
 
-    d = {"results": results_page, "form": form}
+    d = {
+        "results": results_page,
+        "form": form,
+        "stats": _download_stats(),
+        "current_status": (
+            (form.cleaned_data.get("status") or ("all" if "status" in request.GET else "in_progress"))
+            if form.is_valid()
+            else "in_progress"
+        ),
+        "limit": limit,
+        "per_page_options": PAGE_SIZE_OPTIONS,
+    }
     return render(request, "viewer/collaborators/download_history.html", d)
 
 

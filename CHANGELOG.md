@@ -11,9 +11,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Wanted Gallery Admin Actions**: "Add wanted tags" and "Remove wanted tags" actions on `/admin/viewer/wantedgallery/`, taking a comma separated list of tags (`scope:name` or `name`) in the action's text field. Adding creates missing tags; removing skips (and reports) tags that don't exist.
 
+### Changed
+
+- **Streamlined Submit Queue, Archive Matching, Activity Event Log, Downloads and Server Logs pages**: The five pages now share the look of the database maintenance, workers and file check pages (shared `css/dm-pages.css` / `js/dm-pages.js`): clickable summary tiles that act as quick filters (pending/approved/denied entries, unmatched archives and archives with candidates, queued/running/finished/failed downloads, errors/warnings in the last 24 hours), removable chips for the active filters, a pager with page jump and page size, relative times, and a bulk action bar that follows the scroll and enables its buttons once something is selected (shift-click selects a range, clicking a row toggles it).
+  - Submit queue: status filter (`status=submitted|approved|denied|already_present`, the older checkboxes still work), thumbnails, wanted/archive/similar flags, resolution details. Gallery filters apply as soon as one has a value, without "Filter galleries".
+  - Archive matching: candidates grouped per gallery with accuracy bars and image count/size comparison; "Link" and "Clear" work without reloading the page; matching worker status; provider, method, cutoff and auto-link in the action bar.
+  - Activity event log: top actions and users of the last 7 days as quick filters, searchable action picker, user filter (`user=`, staff or `read_all_logs`), "all events of this object" links, expandable data. Title/tags search both galleries and archives when neither is chosen.
+  - Downloads and server logs: live refresh with a Live/Paused toggle (downloads are live by default), selection kept across refreshes on downloads, collapsible tracebacks and a logger filter link on logs.
+  - Bulk actions on the submit queue and archive matching redirect after posting, so reloading doesn't repeat them.
+
 ### Fixed
 
+- **Missing Referer Errors**: Views that redirect back to the previous page no longer fail with a server error when the browser sends no `Referer` header (privacy settings, `Referrer-Policy: no-referrer`). They go to a sensible page instead (the archive, gallery, tools or list page), and a `Referer` pointing to another site is ignored.
+- **Download Monitor and Server Logs Escaping**: Rows added by the auto-refresh now escape download names, error messages and log messages instead of inserting them as HTML.
+- **Event Log and Submit Queue Date Filters**: The "to" date now includes the whole day.
 - **wanimagazine Wanted Generator**: Fixed the wanimagazine parser after changes on the remote site. Feed subpaths in `wanted_params_<n>_subpath` may need to be updated.
+- **Collaborator View Permissions**: Restored permission checks lost when the collaborator views were split into modules. `/match-archives/` requires `match_archive` again and `/archives-by-field/` requires `manage_archive` again. `/upload-archive/` no longer also needs `match_archive`, and `/galleries-by-field/` no longer also needs `manage_archive`.
+
+### Security
+
+- **Monitored Link Permissions**: Changing monitored links now needs Django's model permissions on top of `view_monitored_links`: `add_monitoredlink` to create, `change_monitoredlink` to edit, start, stop or force-run, and `delete_monitoredlink` to delete. Users who only have `view_monitored_links` can still see the list but no longer change links; give the other permissions to users or groups that should. Start, stop, force-run and the inline actions on `/monitored-links/` now only work with POST, and the list only shows the buttons the user can use.
 
 ## [1.3.0] - 2026-11-14
 

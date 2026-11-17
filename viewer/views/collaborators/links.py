@@ -5,6 +5,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import permission_required, login_required
 from django.core import management
+from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect, Http404
 from django.shortcuts import render
@@ -13,7 +14,7 @@ from django.views.decorators.http import require_POST
 
 from core.base.utilities import get_schedulers_status
 from viewer.management.commands import update_provider_wanted
-from viewer.utils.general import clean_up_referer
+from viewer.utils.general import safe_redirect_back
 from viewer.utils.actions import event_log
 from viewer.forms import (
     WantedGalleryCreateOrEditForm,
@@ -124,9 +125,23 @@ def _can_manage_monitored_links(user: Any) -> bool:
         and (
             user.is_staff
             or user.has_perm("viewer.change_monitoredlink")
-            or user.has_perm("viewer.view_monitored_links")
         )
     )
+
+
+# Permission needed for each state-changing monitored link action.
+MONITORED_LINK_ACTION_PERMISSIONS = {
+    "start": "viewer.change_monitoredlink",
+    "stop": "viewer.change_monitoredlink",
+    "force_run": "viewer.change_monitoredlink",
+    "delete": "viewer.delete_monitoredlink",
+}
+
+
+def _check_monitored_link_action_permission(user: Any, action: str) -> None:
+    perm = MONITORED_LINK_ACTION_PERMISSIONS.get(action)
+    if perm and not user.has_perm(perm):
+        raise PermissionDenied
 
 
 @permission_required("viewer.view_monitored_links")
@@ -134,11 +149,12 @@ def monitored_links(request: HttpRequest) -> HttpResponse:
     get = request.GET
     post = request.POST
 
-    # Handle quick inline actions (Start / Stop / Force Run / Delete)
-    action = post.get("action") or get.get("tool") or get.get("action")
-    link_id_val = post.get("link_id") or get.get("id") or get.get("tool-id")
+    # Handle quick inline actions (Start / Stop / Force Run / Delete). These change state, so they are POST only.
+    action = post.get("action")
+    link_id_val = post.get("link_id")
 
-    if action and link_id_val:
+    if request.method == "POST" and action and link_id_val:
+        _check_monitored_link_action_permission(request.user, action)
         try:
             link_id = int(link_id_val)
             link = MonitoredLink.objects.filter(pk=link_id).first()
@@ -160,12 +176,14 @@ def monitored_links(request: HttpRequest) -> HttpResponse:
                     link.delete()
                     messages.success(request, f"Monitored link '{link_name}' successfully deleted")
                     event_log(request.user, "DELETE_MONITORED_LINK", result=f"deleted {link_name}")
-                return HttpResponseRedirect(clean_up_referer(request.META.get("HTTP_REFERER", reverse("viewer:monitored-links"))))
+                return safe_redirect_back(request, reverse("viewer:monitored-links"))
         except (ValueError, TypeError):
             pass
 
     # Handle inline creation of a MonitoredLink
-    if post.get("submit-monitored-link"):
+    if request.method == "POST" and post.get("submit-monitored-link"):
+        if not request.user.has_perm("viewer.add_monitoredlink"):
+            raise PermissionDenied
         edit_form = MonitoredLinkCreateOrEditForm(post)
         if edit_form.is_valid():
             new_link = edit_form.save(commit=False)
@@ -312,6 +330,7 @@ def monitored_links(request: HttpRequest) -> HttpResponse:
 
 
 @permission_required("viewer.view_monitored_links")
+@permission_required("viewer.add_monitoredlink")
 def create_monitored_link(request: HttpRequest) -> HttpResponse:
     if request.method == "POST":
         edit_form = MonitoredLinkCreateOrEditForm(request.POST)
@@ -338,6 +357,7 @@ def create_monitored_link(request: HttpRequest) -> HttpResponse:
 
 
 @permission_required("viewer.view_monitored_links")
+@permission_required("viewer.change_monitoredlink")
 def edit_monitored_link(request: HttpRequest, pk: int) -> HttpResponse:
     link = MonitoredLink.objects.filter(pk=pk).first()
     if not link:
@@ -365,6 +385,7 @@ def edit_monitored_link(request: HttpRequest, pk: int) -> HttpResponse:
 
 
 @permission_required("viewer.view_monitored_links")
+@permission_required("viewer.delete_monitoredlink")
 def delete_monitored_link(request: HttpRequest, pk: int) -> HttpResponse:
     link = MonitoredLink.objects.filter(pk=pk).first()
     if not link:
@@ -384,8 +405,10 @@ def delete_monitored_link(request: HttpRequest, pk: int) -> HttpResponse:
     return render(request, "viewer/collaborators/delete_monitored_link.html", d)
 
 
+@require_POST
 @permission_required("viewer.view_monitored_links")
 def monitored_link_action(request: HttpRequest, pk: int, action: str) -> HttpResponse:
+    _check_monitored_link_action_permission(request.user, action)
     link = MonitoredLink.objects.filter(pk=pk).first()
     if not link:
         raise Http404("Monitored link not found")
@@ -402,7 +425,7 @@ def monitored_link_action(request: HttpRequest, pk: int, action: str) -> HttpRes
         link.force_run()
         messages.success(request, f"Requested worker to force-run monitored link: '{link.name}'")
         event_log(request.user, "FORCE_RUN_MONITORED_LINK", content_object=link, result="force_run")
-    elif action == "delete" and request.method == "POST":
+    elif action == "delete":
         link_name = link.name
         link.delete()
         messages.success(request, f"Monitored link '{link_name}' successfully deleted")
@@ -410,7 +433,7 @@ def monitored_link_action(request: HttpRequest, pk: int, action: str) -> HttpRes
     else:
         messages.warning(request, f"Unknown action: '{action}'")
 
-    return HttpResponseRedirect(clean_up_referer(request.META.get("HTTP_REFERER", reverse("viewer:monitored-links"))))
+    return safe_redirect_back(request, reverse("viewer:monitored-links"))
 
 
 @login_required

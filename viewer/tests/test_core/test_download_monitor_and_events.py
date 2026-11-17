@@ -291,10 +291,10 @@ class DownloadMonitorAndEventTests(TestCase):
 
         url = reverse("viewer:downloads")
 
-        # Check HTML view contains Provider header and provider badges
+        # Check HTML view shows the provider badges
         resp = self.client.get(url, {"status": "in_progress"})
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, "<th>Provider</th>")
+        self.assertContains(resp, '<span class="badge bg-secondary">chaika</span>', html=True)
         self.assertContains(resp, "chaika")
         self.assertContains(resp, "panda")
         self.assertContains(resp, "nexus")

@@ -8,7 +8,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import permission_required, login_required
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
 from django.db.models import Prefetch, Count, Case, When
-from django.http import HttpRequest, HttpResponse, HttpResponseRedirect, Http404
+from django.http import HttpRequest, HttpResponse, Http404, JsonResponse
 from django.shortcuts import render
 from django.urls import reverse
 
@@ -18,7 +18,7 @@ from viewer.utils.functions import (
     galleries_update_metadata,
     gallery_search_results_to_json,
 )
-from viewer.utils.general import clean_up_referer
+from viewer.utils.general import safe_redirect_back
 from viewer.utils.actions import event_log
 from workers import client
 from viewer.forms import (
@@ -284,7 +284,7 @@ def manage_galleries(request: HttpRequest) -> HttpResponse:
                                 result="matched",
                             )
                 except ValueError:
-                    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+                    return safe_redirect_back(request, request.get_full_path())
 
             messages.success(request, "Adding the first possible match to the Match Group.")
         if json_request:
@@ -483,7 +483,7 @@ def gallery_match_groups_possibles(request: HttpRequest) -> HttpResponse:
                                 result="matched",
                             )
                 except ValueError:
-                    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+                    return safe_redirect_back(request, request.get_full_path())
 
             messages.success(request, "Adding the first possible match to the Match Group.")
 
@@ -549,6 +549,22 @@ def gallery_match_groups_possibles(request: HttpRequest) -> HttpResponse:
 def archive_update(
     request: HttpRequest, pk: int, tool: str | None = None, tool_use_id: str | None = None
 ) -> HttpResponse:
+    """Archive matching tools. Called with fetch (X-Requested-With: XMLHttpRequest), answers JSON instead of redirecting."""
+    is_ajax = request.headers.get("x-requested-with") == "XMLHttpRequest"
+
+    def done() -> HttpResponse:
+        if is_ajax:
+            return JsonResponse(
+                {
+                    "success": True,
+                    "archive": archive.pk,
+                    "gallery": archive.gallery_id,
+                    "gallery_url": archive.gallery.get_absolute_url() if archive.gallery else None,
+                    "gallery_title": archive.gallery.title if archive.gallery else None,
+                }
+            )
+        return safe_redirect_back(request, reverse("viewer:archive", args=[pk]))
+
     try:
         archive = Archive.objects.get(pk=pk)
     except Archive.DoesNotExist:
@@ -577,8 +593,9 @@ def archive_update(
                     result="matched",
                 )
         except ValueError:
-            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+            if is_ajax:
+                return JsonResponse({"success": False, "error": "Invalid gallery."}, status=400)
+        return done()
     elif tool == "clear-possible-matches" and request.user.has_perm("viewer.match_archive"):
         archive.possible_matches.clear()
         logger.info(
@@ -588,8 +605,10 @@ def archive_update(
                 reverse("viewer:archive", args=(archive.pk,)),
             )
         )
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+        return done()
     else:
+        if is_ajax:
+            return JsonResponse({"success": False, "error": "Unrecognized command or missing permission."}, status=400)
         return render_error(request, "Unrecognized command")
 
 
@@ -635,8 +654,8 @@ def gallery_update(
                 result="matched",
             )
         except ValueError:
-            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+            return safe_redirect_back(request, reverse("viewer:gallery", args=[pk]))
+        return safe_redirect_back(request, reverse("viewer:gallery", args=[pk]))
     elif tool == "clear-possible-matches" and request.user.has_perm("viewer.add_gallerymatchgroup"):
         gallery_group = GalleryMatchGroup.objects.filter(galleries__in=(gallery,)).first()
         if gallery_group:
@@ -647,7 +666,7 @@ def gallery_update(
                     gallery_group.pk
                 )
             )
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+        return safe_redirect_back(request, reverse("viewer:gallery", args=[pk]))
     else:
         return render_error(request, "Unrecognized command")
 
@@ -807,8 +826,6 @@ def missing_archives_for_galleries(request: HttpRequest) -> HttpResponse:
 
     return render(request, "viewer/collaborators/archives_missing_for_galleries.html", d)
 
-
-@permission_required("viewer.manage_archive")
 
 @permission_required("viewer.manage_gallery")
 def repeated_galleries_by_field(request: HttpRequest) -> HttpResponse:

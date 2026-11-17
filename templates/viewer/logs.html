@@ -1,568 +1,358 @@
 {% extends "viewer/base.html" %}
-{% load dict_key %}
-{% block title %}Log | {{ block.super }}{% endblock %}
+{% load static dict_key viewer_extras %}
+{% block title %}Server Logs | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
 
+{% block extra_head %}
+  {% load compress %}
+  {% compress css %}
+    <link href="{% static 'css/dm-pages.css' %}" type="text/css" rel="stylesheet" />
+  {% endcompress %}
+  <style>
+    .log-table { font-family: 'Consolas', 'Monaco', 'Menlo', monospace; font-size: 0.8rem; }
+    .log-table td { vertical-align: top !important; }
+    .log-table tbody tr > td:first-child { border-left: 3px solid transparent; }
+    .log-table tbody tr.lv-warning > td:first-child { border-left-color: #ffc107; }
+    .log-table tbody tr.lv-error > td:first-child,
+    .log-table tbody tr.lv-fatal > td:first-child { border-left-color: #dc3545; }
+    .log-table tbody tr.lv-debug > td { color: var(--pg-text-secondary); }
+    .log-time { color: var(--pg-text-secondary); white-space: nowrap; }
+    .log-logger { white-space: nowrap; max-width: 14rem; overflow: hidden; text-overflow: ellipsis; }
+    .log-logger a { color: var(--pg-text-secondary); }
+    .log-logger a:hover { color: var(--pg-accent-blue); }
+    .log-msg { white-space: pre-wrap; word-break: break-word; }
+    .log-trace { white-space: pre-wrap; word-break: break-word; margin: 0.35rem 0 0; padding: 0.5rem; background: var(--pg-bg-darkest); border: 1px solid var(--pg-border-subtle); border-radius: 4px; color: #ffb4b4; font-size: 0.76rem; }
+    .log-level { font-size: 0.7rem; min-width: 4.2rem; }
+    .log-table tr.log-matched-row > td { background-color: rgba(13, 110, 253, 0.18) !important; }
+    .log-table tr.log-context-row > td { opacity: 0.7; }
+    .log-table tr.log-context-row:hover > td { opacity: 1; }
+    .btn-trace { --bs-btn-padding-y: 0; --bs-btn-padding-x: 0.35rem; --bs-btn-font-size: 0.72rem; }
+  </style>
+{% endblock %}
+
 {% block content %}
-  {% load viewer_extras %}
-  {% if messages %}
-    {% for message in messages %}
-      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
-    {% endfor %}
-  {% endif %}
-  
-  <div class="page-header mb-4">
-    <div class="d-flex justify-content-between align-items-center">
-      <div>
-        <h2>Server logs</h2>
-        <p class="lead mb-0">Current server time: {% now "y-m-d, H:i:s" %}</p>
+<div class="container-fluid py-3">
+  {% include "viewer/include/dm_messages.html" %}
+
+  <!-- Header -->
+  <div class="dm-page-header">
+    <div>
+      <h2 class="h3 mb-1"><i class="fas fa-file-alt text-info me-2"></i>Server Logs</h2>
+      <p class="mb-0 small">Log entries stored by the web server and the workers. Server time: {% now "Y-m-d H:i:s T" %}</p>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <div class="dm-live" id="live-control">
+        <button class="btn btn-sm btn-outline-light" id="auto-refresh" type="button"{% if log_lines.number != 1 or is_context_view %} disabled title="Live updates only work on the first page, without context lines"{% endif %}><span class="dm-live-dot"></span>Paused</button>
+        <select class="form-select form-select-sm bg-transparent text-light" id="refresh-interval" title="Refresh every" aria-label="Refresh every">
+          <option value="2000">2s</option>
+          <option value="5000" selected>5s</option>
+          <option value="10000">10s</option>
+          <option value="30000">30s</option>
+          <option value="60000">1m</option>
+        </select>
+        <span class="dm-live-updated" id="live-updated"></span>
       </div>
-      <div class="d-flex flex-wrap gap-2 align-items-center">
-        <button class="btn btn-outline-light" id="copy-logs" title="Copy visible logs to clipboard">
-          <i class="fas fa-copy"></i> Copy
+      <button class="btn btn-outline-light btn-sm" id="copy-logs" type="button" title="Copy the listed entries to the clipboard"><i class="fas fa-copy me-1"></i>Copy</button>
+      <a href="{% url 'viewer:stats-workers' %}" class="btn btn-outline-info btn-sm"><i class="fas fa-tasks me-1"></i>Workers Dashboard</a>
+      <div class="btn-group">
+        <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteLogsModal"><i class="fas fa-trash-alt me-1"></i>Delete logs</button>
+        <button type="button" class="btn btn-sm btn-outline-danger dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false" title="Quick delete">
+          <span class="visually-hidden">Quick delete</span>
         </button>
-        <div class="input-group" style="width: auto;">
-          <button class="btn btn-outline-light" id="auto-refresh" title="Auto-refresh logs">
-            <i class="fas fa-sync"></i> Auto-refresh
-          </button>
-          <select class="form-select bg-dark text-light border-light" id="refresh-interval" data-bs-theme="dark" title="Auto-refresh frequency" style="width: auto;">
-            <option value="1000">1s</option>
-            <option value="5000" selected>5s</option>
-            <option value="10000">10s</option>
-            <option value="30000">30s</option>
-            <option value="60000">1m</option>
-          </select>
-        </div>
-        <div class="btn-group" role="group">
-          <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteLogsModal" title="Delete logs">
-            <i class="fas fa-trash-alt"></i> Delete logs
-          </button>
-          <button type="button" class="btn btn-outline-danger dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false" title="Quick delete options">
-            <span class="visually-hidden">Toggle Dropdown</span>
-          </button>
-          <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark">
-            <li><h6 class="dropdown-header text-uppercase text-secondary small fw-bold">Quick Cleanup</h6></li>
-            <li><a class="dropdown-item quick-delete-btn" href="#" data-delete-type="1_day" data-confirm="Are you sure you want to delete logs older than 1 day?"><i class="fas fa-clock text-warning me-2"></i>Older than 1 day</a></li>
-            <li><a class="dropdown-item quick-delete-btn" href="#" data-delete-type="7_days" data-confirm="Are you sure you want to delete logs older than 7 days (1 week)?"><i class="fas fa-calendar-week text-warning me-2"></i>Older than 7 days (1 week)</a></li>
-            <li><a class="dropdown-item quick-delete-btn" href="#" data-delete-type="30_days" data-confirm="Are you sure you want to delete logs older than 30 days (1 month)?"><i class="fas fa-calendar-alt text-warning me-2"></i>Older than 30 days</a></li>
-            <li><hr class="dropdown-divider"></li>
-            <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#deleteLogsModal"><i class="fas fa-calendar-day text-info me-2"></i>Choose custom date...</a></li>
-            <li><hr class="dropdown-divider"></li>
-            <li><a class="dropdown-item text-danger quick-delete-btn" href="#" data-delete-type="all" data-confirm="DANGER: Are you sure you want to permanently delete ALL server logs? This action CANNOT be undone!"><i class="fas fa-dumpster-fire me-2"></i>Delete ALL logs</a></li>
-          </ul>
-        </div>
+        <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark">
+          <li><h6 class="dropdown-header">Delete logs older than</h6></li>
+          <li><a class="dropdown-item quick-delete-btn" href="#" data-delete-type="1_day" data-confirm="Delete logs older than 1 day?"><i class="fas fa-clock text-warning me-2"></i>1 day</a></li>
+          <li><a class="dropdown-item quick-delete-btn" href="#" data-delete-type="7_days" data-confirm="Delete logs older than 7 days?"><i class="fas fa-calendar-week text-warning me-2"></i>7 days</a></li>
+          <li><a class="dropdown-item quick-delete-btn" href="#" data-delete-type="30_days" data-confirm="Delete logs older than 30 days?"><i class="fas fa-calendar-alt text-warning me-2"></i>30 days</a></li>
+          <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#deleteLogsModal"><i class="fas fa-calendar-day text-info me-2"></i>A date…</a></li>
+          <li><hr class="dropdown-divider"></li>
+          <li><a class="dropdown-item text-danger quick-delete-btn" href="#" data-delete-type="all" data-confirm="Permanently delete ALL server logs? This can't be undone."><i class="fas fa-dumpster-fire me-2"></i>Delete all logs</a></li>
+        </ul>
       </div>
     </div>
   </div>
 
-  <!-- Hidden Quick Delete Form -->
-  <form id="quick-delete-form" action="{% url 'viewer:logs' %}" method="POST" style="display: none;">
+  <form id="quick-delete-form" action="{% url 'viewer:logs' %}" method="POST" class="d-none">
     {% csrf_token %}
     <input type="hidden" name="action" value="delete_logs">
     <input type="hidden" name="delete_type" id="quick-delete-type" value="">
   </form>
 
-  <!-- Delete Logs Modal -->
-  <div class="modal fade" id="deleteLogsModal" tabindex="-1" aria-labelledby="deleteLogsModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
-      <div class="modal-content modal-background text-white shadow-lg">
-        <div class="modal-header border-secondary">
-          <h5 class="modal-title" id="deleteLogsModalLabel">
-            <i class="fas fa-trash-alt text-danger me-2"></i>Delete Server Logs
-          </h5>
-          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+  <!-- Level tiles (last 24 hours): quick filters -->
+  <div class="row g-2 mb-3">
+    <div class="col-6 col-md-3">
+      <a class="dm-stat{% if log_level_filter == 'ERROR' %} active{% endif %}" href="?{% url_filter 'log-level' 'ERROR' %}" title="Show errors and above">
+        <div class="dm-lbl"><i class="fas fa-times-circle me-1"></i>Errors</div>
+        <div class="dm-val {% if level_counts.error %}text-danger{% else %}text-secondary{% endif %}">{{ level_counts.error }}</div>
+        <div class="dm-stat-sub">last 24 hours</div>
+      </a>
+    </div>
+    <div class="col-6 col-md-3">
+      <a class="dm-stat{% if log_level_filter == 'WARNING' %} active{% endif %}" href="?{% url_filter 'log-level' 'WARNING' %}" title="Show warnings and above">
+        <div class="dm-lbl"><i class="fas fa-exclamation-triangle me-1"></i>Warnings</div>
+        <div class="dm-val {% if level_counts.warning %}text-warning{% else %}text-secondary{% endif %}">{{ level_counts.warning }}</div>
+        <div class="dm-stat-sub">last 24 hours</div>
+      </a>
+    </div>
+    <div class="col-6 col-md-3">
+      <a class="dm-stat{% if log_level_filter == 'INFO' %} active{% endif %}" href="?{% url_filter 'log-level' 'INFO' %}" title="Show info and above">
+        <div class="dm-lbl"><i class="fas fa-info-circle me-1"></i>Info</div>
+        <div class="dm-val text-info">{{ level_counts.info }}</div>
+        <div class="dm-stat-sub">last 24 hours</div>
+      </a>
+    </div>
+    <div class="col-6 col-md-3">
+      <a class="dm-stat{% if not has_filters %} active{% endif %}" href="{% url 'viewer:logs' %}" title="Show all entries">
+        <div class="dm-lbl"><i class="fas fa-list me-1"></i>All entries</div>
+        <div class="dm-val text-light">{{ level_counts.total }}</div>
+        <div class="dm-stat-sub">last 24 hours{% if level_counts.debug %}, {{ level_counts.debug }} debug{% endif %}</div>
+      </a>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <form action="{% url 'viewer:logs' %}" method="GET" id="log-filter-form" class="dm-card">
+    <div class="p-3">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-6 col-lg-4">
+          <label for="filter" class="form-label dm-lbl">Message contains</label>
+          <input type="search" class="form-control form-control-sm" id="filter" name="filter" value="{{ request.GET.filter }}" placeholder="Search in messages…  ( / )" data-dm-hotkey="/" autocomplete="off">
         </div>
-        <div class="modal-body p-4">
-          <p class="text-light mb-4">
-            Select an option below to delete log entries from the database. <strong class="text-warning">Deleted logs cannot be recovered.</strong>
-          </p>
-
-          <!-- Option 1: Choose a Cutoff Date -->
-          <div class="card bg-dark border-secondary mb-4">
-            <div class="card-header bg-secondary bg-opacity-25 border-secondary text-white fw-semibold">
-              <i class="fas fa-calendar-alt text-info me-2"></i>Delete logs older than a specific date
-            </div>
-            <div class="card-body">
-              <form action="{% url 'viewer:logs' %}" method="POST" id="custom-date-delete-form" onsubmit="return confirmCustomDateDelete();">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="delete_logs">
-                <input type="hidden" name="delete_type" value="custom">
-                <div class="row g-3 align-items-end">
-                  <div class="col-sm-8">
-                    <label for="custom_date" class="form-label small text-light">Cutoff date:</label>
-                    <input type="date" class="form-control bg-dark text-white border-secondary" id="custom_date" name="custom_date" required>
-                    <div class="form-text text-muted">
-                      All logs created before 00:00:00 UTC of this date will be permanently deleted.
-                    </div>
-                  </div>
-                  <div class="col-sm-4">
-                    <button type="submit" class="btn btn-warning w-100">
-                      <i class="fas fa-calendar-times me-1"></i> Delete older than date
-                    </button>
-                  </div>
-                </div>
-              </form>
-            </div>
-          </div>
-
-          <!-- Option 2: Quick Presets -->
-          <div class="card bg-dark border-secondary mb-4">
-            <div class="card-header bg-secondary bg-opacity-25 border-secondary text-white fw-semibold">
-              <i class="fas fa-history text-info me-2"></i>Quick presets
-            </div>
-            <div class="card-body">
-              <p class="small text-muted mb-3">Delete logs older than a predefined duration relative to current time:</p>
-              <div class="d-flex flex-wrap gap-2">
-                <form action="{% url 'viewer:logs' %}" method="POST" class="d-inline" onsubmit="return confirm('Are you sure you want to delete logs older than 1 day?');">
-                  {% csrf_token %}
-                  <input type="hidden" name="action" value="delete_logs">
-                  <input type="hidden" name="delete_type" value="1_day">
-                  <button type="submit" class="btn btn-outline-light">
-                    <i class="fas fa-clock text-warning me-1"></i> Older than 1 day
-                  </button>
-                </form>
-
-                <form action="{% url 'viewer:logs' %}" method="POST" class="d-inline" onsubmit="return confirm('Are you sure you want to delete logs older than 7 days (1 week)?');">
-                  {% csrf_token %}
-                  <input type="hidden" name="action" value="delete_logs">
-                  <input type="hidden" name="delete_type" value="7_days">
-                  <button type="submit" class="btn btn-outline-light">
-                    <i class="fas fa-calendar-week text-warning me-1"></i> Older than 7 days (1 week)
-                  </button>
-                </form>
-
-                <form action="{% url 'viewer:logs' %}" method="POST" class="d-inline" onsubmit="return confirm('Are you sure you want to delete logs older than 30 days (1 month)?');">
-                  {% csrf_token %}
-                  <input type="hidden" name="action" value="delete_logs">
-                  <input type="hidden" name="delete_type" value="30_days">
-                  <button type="submit" class="btn btn-outline-light">
-                    <i class="fas fa-calendar-alt text-warning me-1"></i> Older than 30 days (1 month)
-                  </button>
-                </form>
-              </div>
-            </div>
-          </div>
-
-          <!-- Option 3: Delete All Logs -->
-          <div class="card bg-dark border-danger">
-            <div class="card-header bg-danger bg-opacity-25 border-danger text-danger fw-semibold">
-              <i class="fas fa-exclamation-triangle me-2"></i>Danger zone
-            </div>
-            <div class="card-body">
-              <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
-                <div>
-                  <h6 class="text-white mb-1">Delete all server logs</h6>
-                  <p class="text-muted small mb-0">Permanently clears every log entry in the system.</p>
-                </div>
-                <form action="{% url 'viewer:logs' %}" method="POST" class="d-inline" onsubmit="return confirm('DANGER: Are you sure you want to permanently delete ALL server logs? This action CANNOT be undone.');">
-                  {% csrf_token %}
-                  <input type="hidden" name="action" value="delete_logs">
-                  <input type="hidden" name="delete_type" value="all">
-                  <button type="submit" class="btn btn-danger">
-                    <i class="fas fa-dumpster-fire me-1"></i> Delete ALL logs
-                  </button>
-                </form>
-              </div>
-            </div>
-          </div>
+        <div class="col-md-6 col-lg-2">
+          <label for="logger-name" class="form-label dm-lbl">Logger</label>
+          <input type="text" class="form-control form-control-sm" id="logger-name" name="logger-name" value="{{ request.GET|dict_key:'logger-name' }}" autocomplete="off">
         </div>
-        <div class="modal-footer border-secondary">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        <div class="col-6 col-lg-2">
+          <label for="log-level" class="form-label dm-lbl">Minimum level</label>
+          <select class="form-select form-select-sm" id="log-level" name="log-level">
+            {% with log_level=request.GET|dict_key:'log-level' %}
+              <option{% if not log_level %} selected{% endif %} value="">All levels</option>
+              <option{% if log_level == "DEBUG" %} selected{% endif %} value="DEBUG">Debug</option>
+              <option{% if log_level == "INFO" %} selected{% endif %} value="INFO">Info</option>
+              <option{% if log_level == "WARNING" %} selected{% endif %} value="WARNING">Warning</option>
+              <option{% if log_level == "ERROR" %} selected{% endif %} value="ERROR">Error</option>
+              <option{% if log_level == "CRITICAL" %} selected{% endif %} value="CRITICAL">Critical</option>
+            {% endwith %}
+          </select>
+        </div>
+        <div class="col-6 col-lg-2">
+          <label for="context" class="form-label dm-lbl" title="Show the entries logged just before and after each match">Context lines</label>
+          <select class="form-select form-select-sm" id="context" name="context">
+            {% with ctx=request.GET.context|default:"0" %}
+              <option{% if ctx == "0" %} selected{% endif %} value="0">None</option>
+              <option{% if ctx == "1" %} selected{% endif %} value="1">± 1</option>
+              <option{% if ctx == "2" %} selected{% endif %} value="2">± 2</option>
+              <option{% if ctx == "3" %} selected{% endif %} value="3">± 3</option>
+              <option{% if ctx == "5" %} selected{% endif %} value="5">± 5</option>
+              <option{% if ctx == "10" %} selected{% endif %} value="10">± 10</option>
+              <option{% if ctx == "20" %} selected{% endif %} value="20">± 20</option>
+            {% endwith %}
+          </select>
+        </div>
+        <div class="col-lg-2 d-flex flex-wrap gap-2">
+          <button type="submit" class="btn btn-info btn-sm"><i class="fas fa-search me-1"></i>Apply</button>
+          <a class="btn btn-outline-light btn-sm" href="{% url 'viewer:logs' %}"><i class="fas fa-times me-1"></i>Clear</a>
+        </div>
+      </div>
+      <div class="mt-3 d-none" data-dm-chips-wrapper>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <span class="dm-lbl"><i class="fas fa-filter me-1"></i>Active</span>
+          <div class="dm-chips" id="filter-chips"></div>
+          {% if is_context_view %}
+            <span class="badge bg-info text-dark"><i class="fas fa-layer-group me-1"></i>±{{ log_context }} line{{ log_context|pluralize }} around each match, matches highlighted</span>
+          {% endif %}
         </div>
       </div>
     </div>
-  </div>
-
-  <div class="card bg-dark mb-4">
-    <div class="card-body">
-      <form action="{% url 'viewer:logs' %}" method="GET" id="log-filter-form">
-        <div class="row g-3">
-          <div class="col-md-3 gy-1">
-            <div class="form-group">
-              <label for="filter" class="form-label filter-options">Filter logs:</label>
-              <input type="search" class="form-control" id="filter" name="filter" value="{{ request.GET.filter }}" 
-                     placeholder="Search in logs...">
-            </div>
-          </div>
-          <div class="col-md-2 gy-1">
-            <div class="form-group">
-              <label for="logger-name" class="form-label filter-options">Logger name:</label>
-              <input type="text" class="form-control" id="logger-name" name="logger-name" value="{{ request.GET|dict_key:'logger-name' }}">
-            </div>
-          </div>
-          <div class="col-md-2 gy-1">
-            <div class="form-group">
-              <label class="form-label filter-options">Log level:</label>
-              <select class="form-select" id="log-level" name="log-level" aria-label="Select log level">
-              {% with log_level=request.GET|dict_key:'log-level' %}
-                <option{% if log_level == "" %} selected{% endif %} value="">All levels</option>
-                <option{% if log_level == "DEBUG" %} selected{% endif %} value="DEBUG">Debug</option>
-                <option{% if log_level == "INFO" %} selected{% endif %} value="INFO">Info</option>
-                <option{% if log_level == "WARNING" %} selected{% endif %} value="WARNING">Warning</option>
-                <option{% if log_level == "ERROR" %} selected{% endif %} value="ERROR">Error</option>
-                <option{% if log_level == "CRITICAL" %} selected{% endif %} value="CRITICAL">Critical</option>
-              {% endwith %}
-              </select>
-            </div>
-          </div>
-          <div class="col-md-2 gy-1">
-            <div class="form-group">
-              <label class="form-label filter-options">Context lines:</label>
-              <select class="form-select" id="context" name="context" aria-label="Select context lines" title="Show surrounding log entries before and after matches">
-              {% with ctx=request.GET.context|default:"0" %}
-                <option{% if ctx == "0" or ctx == "" %} selected{% endif %} value="0">0 (Matches only)</option>
-                <option{% if ctx == "1" %} selected{% endif %} value="1">± 1 log line</option>
-                <option{% if ctx == "2" %} selected{% endif %} value="2">± 2 log lines</option>
-                <option{% if ctx == "3" %} selected{% endif %} value="3">± 3 log lines</option>
-                <option{% if ctx == "5" %} selected{% endif %} value="5">± 5 log lines</option>
-                <option{% if ctx == "10" %} selected{% endif %} value="10">± 10 log lines</option>
-                <option{% if ctx == "20" %} selected{% endif %} value="20">± 20 log lines</option>
-              {% endwith %}
-              </select>
-            </div>
-          </div>
-        </div>
-        <div class="row mt-3">
-          <div class="col-12">
-            <button type="submit" class="btn btn-primary">
-              <i class="fas fa-search"></i> Apply filter
-            </button>
-            <a class="btn btn-secondary" href="{% url 'viewer:logs' %}" role="button">
-              <i class="fas fa-times"></i> Clear
-            </a>
-            {% if is_context_view %}
-              <span class="badge bg-info text-dark ms-2 align-middle py-2 px-2">
-                <i class="fas fa-layer-group me-1"></i> Context mode: ±{{ log_context }} line{{ log_context|pluralize }} around matches
-              </span>
-            {% endif %}
-          </div>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- Pagination -->
-  {% if log_lines.object_list and log_lines.paginator.num_pages > 1 %}
-    <nav aria-label="Log pagination" class="mb-4">
-      <ul class="pagination justify-content-center">
-        <li class="page-item {% if not log_lines.has_previous %}disabled{% endif %}">
-          <a class="page-link" href="?{% url_replace 'page' '1' %}">
-            <i class="fas fa-angle-double-left"></i>
-          </a>
-        </li>
-        <li class="page-item {% if not log_lines.has_previous %}disabled{% endif %}">
-          <a class="page-link" href="{% if log_lines.has_previous %}?{% url_replace 'page' log_lines.previous_page_number %}{% endif %}">
-            <i class="fas fa-angle-left"></i>
-          </a>
-        </li>
-        <li class="page-item active">
-          <span class="page-link">
-            Page {{ log_lines.number }} of {{ log_lines.paginator.num_pages }}
-          </span>
-        </li>
-        <li class="page-item {% if not log_lines.has_next %}disabled{% endif %}">
-          <a class="page-link" href="{% if log_lines.has_next %}?{% url_replace 'page' log_lines.next_page_number %}{% endif %}">
-            <i class="fas fa-angle-right"></i>
-          </a>
-        </li>
-        <li class="page-item {% if not log_lines.has_next %}disabled{% endif %}">
-          <a class="page-link" href="?{% url_replace 'page' log_lines.paginator.num_pages %}">
-            <i class="fas fa-angle-double-right"></i>
-          </a>
-        </li>
-      </ul>
-    </nav>
-  {% endif %}
+  </form>
 
   <!-- Logs -->
-  <div class="card bg-dark">
-    <div class="card-body p-0">
-      <div class="table-responsive">
-        <table class="table table-sm table-bordered mb-0">
-          <thead>
-            <tr>
-              <th style="width: 230px;">Timestamp</th>
-              <th style="width: 80px;">Level</th>
-              <th style="width: 200px;">Logger</th>
-              <th>Content</th>
+  <div class="dm-card">
+    <div class="dm-card-header">
+      {% include "viewer/include/dm_pagination.html" with page_obj=log_lines noun=is_context_view|yesno:"matches,entries" %}
+    </div>
+    <div class="table-responsive">
+      <table class="table table-dm table-hover table-sm mb-0 log-table">
+        <thead>
+          <tr>
+            <th style="width: 12rem;">Time</th>
+            <th style="width: 5rem;">Level</th>
+            <th style="width: 12rem;">Logger</th>
+            <th>Message</th>
+          </tr>
+        </thead>
+        <tbody id="log-table">
+          {% for log_line in display_logs %}
+            {% with level=log_line.get_level_display|lower %}
+            <tr class="log-line lv-{{ level }}{% if is_context_view %}{% if log_line.is_match %} log-matched-row{% else %} log-context-row{% endif %}{% endif %}" id="log-{{ log_line.id }}">
+              <td class="log-time">{{ log_line.create_datetime|date:"Y-m-d H:i:s.u" }}</td>
+              <td>
+                <span class="badge log-level {% if level == 'error' or level == 'fatal' %}bg-danger{% elif level == 'warning' %}bg-warning text-dark{% elif level == 'info' %}bg-info text-dark{% else %}bg-secondary{% endif %}">{{ log_line.get_level_display|upper }}</span>
+                {% if is_context_view and log_line.is_match %}<span class="badge bg-primary log-level mt-1" title="Matches the filters">MATCH</span>{% endif %}
+              </td>
+              <td class="log-logger" title="{{ log_line.logger_name }}"><a href="?{% url_filter 'logger-name' log_line.logger_name %}" title="Only {{ log_line.logger_name }}">{{ log_line.logger_name }}</a></td>
+              <td>
+                <div class="log-msg">{{ log_line.msg }}</div>
+                {% if log_line.trace %}
+                  <button type="button" class="btn btn-outline-danger btn-trace mt-1" data-bs-toggle="collapse" data-bs-target="#trace-{{ log_line.id }}" aria-expanded="false"><i class="fas fa-bug me-1"></i>Trace</button>
+                  <pre class="collapse log-trace" id="trace-{{ log_line.id }}">{{ log_line.trace }}</pre>
+                {% endif %}
+              </td>
             </tr>
-          </thead>
-          <tbody id="log-table">
-            {% for log_line in display_logs|default:log_lines %}
-              <tr class="result-list log-line{% if is_context_view %}{% if log_line.is_match %} log-matched-row{% else %} log-context-row{% endif %}{% endif %}" id="log-{{ log_line.id }}"><td class="log-timestamp">{{ log_line.create_datetime|date:"Y-m-d H:i:s.u" }}</td>	<td class="log-content log-{{ log_line.get_level_display.lower }}">{% if is_context_view and log_line.is_match %}<span class="badge bg-primary text-white me-1" title="Direct search match">MATCH</span>{% endif %}{{ log_line.get_level_display }}</td>	<td class="log-content">{{ log_line.logger_name }}</td>	<td class="log-content">{{ log_line.msg }}{% if log_line.trace %} {{ log_line.trace }}{% endif %}</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
+            {% endwith %}
+          {% empty %}
+            <tr id="no-logs-row"><td colspan="4" class="dm-empty"><i class="fas fa-file-alt"></i>No log entries match these filters.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if log_lines.paginator.num_pages > 1 %}
+      <div class="p-2 border-top" style="border-color: var(--pg-border) !important;">
+        {% include "viewer/include/dm_pagination.html" with page_obj=log_lines compact=1 %}
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Delete Logs Modal -->
+  <div class="modal fade dm-modal" id="deleteLogsModal" tabindex="-1" aria-labelledby="deleteLogsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="deleteLogsModalLabel"><i class="fas fa-trash-alt text-danger me-2"></i>Delete server logs</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="small dm-muted">Deleted log entries can't be recovered.</p>
+
+          <div class="dm-lbl mb-2">Older than a date</div>
+          <form action="{% url 'viewer:logs' %}" method="POST" id="custom-date-delete-form" class="d-flex flex-wrap gap-2 align-items-start mb-1">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="delete_logs">
+            <input type="hidden" name="delete_type" value="custom">
+            <input type="date" class="form-control form-control-sm" style="max-width: 12rem;" id="custom_date" name="custom_date" required aria-label="Cutoff date">
+            <button type="submit" class="btn btn-sm btn-warning"><i class="fas fa-calendar-times me-1"></i>Delete older</button>
+          </form>
+          <div class="form-text dm-muted mb-3">Entries logged before the start of that day are deleted.</div>
+
+          <div class="dm-lbl mb-2">Older than</div>
+          <div class="d-flex flex-wrap gap-2 mb-4">
+            <button type="button" class="btn btn-sm btn-outline-light quick-delete-btn" data-delete-type="1_day" data-confirm="Delete logs older than 1 day?">1 day</button>
+            <button type="button" class="btn btn-sm btn-outline-light quick-delete-btn" data-delete-type="7_days" data-confirm="Delete logs older than 7 days?">7 days</button>
+            <button type="button" class="btn btn-sm btn-outline-light quick-delete-btn" data-delete-type="30_days" data-confirm="Delete logs older than 30 days?">30 days</button>
+          </div>
+
+          <div class="border border-danger rounded p-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div>
+              <div class="text-danger fw-semibold"><i class="fas fa-exclamation-triangle me-1"></i>Delete all logs</div>
+              <div class="small dm-muted">Clears every log entry.</div>
+            </div>
+            <button type="button" class="btn btn-sm btn-danger quick-delete-btn" data-delete-type="all" data-confirm="Permanently delete ALL server logs? This can't be undone.">
+              <i class="fas fa-dumpster-fire me-1"></i>Delete all
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
-
-  <!-- Bottom Pagination -->
-  {% if log_lines.object_list and log_lines.paginator.num_pages > 1 %}
-    <nav aria-label="Log pagination" class="mt-4">
-      <ul class="pagination justify-content-center">
-        <li class="page-item {% if not log_lines.has_previous %}disabled{% endif %}">
-          <a class="page-link" href="?{% url_replace 'page' '1' %}">
-            <i class="fas fa-angle-double-left"></i>
-          </a>
-        </li>
-        <li class="page-item {% if not log_lines.has_previous %}disabled{% endif %}">
-          <a class="page-link" href="{% if log_lines.has_previous %}?{% url_replace 'page' log_lines.previous_page_number %}{% endif %}">
-            <i class="fas fa-angle-left"></i>
-          </a>
-        </li>
-        <li class="page-item active">
-          <span class="page-link">
-            Page {{ log_lines.number }} of {{ log_lines.paginator.num_pages }}
-          </span>
-        </li>
-        <li class="page-item {% if not log_lines.has_next %}disabled{% endif %}">
-          <a class="page-link" href="{% if log_lines.has_next %}?{% url_replace 'page' log_lines.next_page_number %}{% endif %}">
-            <i class="fas fa-angle-right"></i>
-          </a>
-        </li>
-        <li class="page-item {% if not log_lines.has_next %}disabled{% endif %}">
-          <a class="page-link" href="?{% url_replace 'page' log_lines.paginator.num_pages %}">
-            <i class="fas fa-angle-double-right"></i>
-          </a>
-        </li>
-      </ul>
-    </nav>
-  {% endif %}
+</div>
 {% endblock %}
 
-{% block extra_head %}
-<style>
-.log-line {
-  font-family: 'Consolas', 'Monaco', monospace;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.log-timestamp {
-  color: #888;
-  margin-right: 10px;
-}
-
-.log-content {
-    color: #fff;
-}
-
-.log-debug {
-    color: #fff !important;
-}
-
-.log-info {
-    color: #fff !important;
-}
-
-.log-warning {
-    color: yellow !important;
-}
-
-.log-error {
-    color: #f00 !important;
-}
-
-.log-fatal {
-    color: #f00 !important;
-    font-weight: bold;
-}
-
-.table > :not(caption) > * > * {
-  padding: 0.5rem;
-}
-
-.card {
-  border: 1px solid rgba(255,255,255,0.1);
-}
-
-.form-control:focus, .form-select:focus {
-  background-color: #122963;
-  color: lightgrey;
-  border-color: #0d6efd;
-}
-
-.btn-outline-light:hover {
-  background-color: rgba(255,255,255,0.1);
-}
-
-input[type="date"] {
-  color-scheme: dark;
-}
-
-.modal-content.modal-background {
-  background-color: #1a2234 !important;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-}
-
-.log-matched-row {
-  background-color: rgba(13, 110, 253, 0.2) !important;
-  border-left: 3px solid #0d6efd;
-}
-
-.log-context-row {
-  background-color: rgba(255, 255, 255, 0.02) !important;
-  opacity: 0.85;
-}
-
-.log-context-row:hover {
-  opacity: 1;
-}
-
-
-</style>
-{% endblock %}
 {% block afterJQ %}
-{% load compress %}
-{% compress js %}
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-  // Copy logs functionality
-  document.getElementById('copy-logs').addEventListener('click', function() {
-    const logLines = Array.from(document.querySelectorAll('.log-line'))
-      .map(line => line.textContent)
-      .join('\n');
-    
-    navigator.clipboard.writeText(logLines).then(() => {
-      const originalText = this.innerHTML;
-      this.innerHTML = '<i class="fas fa-check"></i> Copied!';
-      setTimeout(() => {
-        this.innerHTML = originalText;
-      }, 2000);
-    });
-  });
-
-  // Auto-refresh functionality
-  const autoRefreshBtn = document.getElementById('auto-refresh');
-  const refreshIntervalSelect = document.getElementById('refresh-interval');
-  let refreshInterval = null;
-  let isRefreshing = false;
-
-  const savedLogsInterval = localStorage.getItem('logs_refresh_interval');
-  if (savedLogsInterval && refreshIntervalSelect) {
-    refreshIntervalSelect.value = savedLogsInterval;
-  }
-
-  function getIntervalMs() {
-    return parseInt(refreshIntervalSelect ? refreshIntervalSelect.value : 5000, 10) || 5000;
-  }
-
-  function startAutoRefresh() {
-    refreshLogs(); // Call immediately
-    refreshInterval = setInterval(refreshLogs, getIntervalMs());
-    if (autoRefreshBtn) {
-      autoRefreshBtn.classList.add('active', 'btn-success');
-      autoRefreshBtn.classList.remove('btn-outline-light');
-      autoRefreshBtn.innerHTML = '<i class="fas fa-stop"></i> Stop refresh';
-    }
-  }
-
-  function stopAutoRefresh() {
-    if (refreshInterval) {
-      clearInterval(refreshInterval);
-      refreshInterval = null;
-    }
-    if (autoRefreshBtn) {
-      autoRefreshBtn.classList.remove('active', 'btn-success');
-      autoRefreshBtn.classList.add('btn-outline-light');
-      autoRefreshBtn.innerHTML = '<i class="fas fa-sync"></i> Auto-refresh';
-    }
-  }
-
-  if (autoRefreshBtn) {
-    autoRefreshBtn.addEventListener('click', function() {
-      if (refreshInterval) {
-        stopAutoRefresh();
-      } else {
-        startAutoRefresh();
-      }
-    });
-  }
-
-  if (refreshIntervalSelect) {
-    refreshIntervalSelect.addEventListener('change', function() {
-      localStorage.setItem('logs_refresh_interval', this.value);
-      if (refreshInterval) {
-        clearInterval(refreshInterval);
-        refreshInterval = setInterval(refreshLogs, getIntervalMs());
-      }
-    });
-  }
-
-  async function refreshLogs() {
-    if (isRefreshing) return;
-    isRefreshing = true;
-
-    try {
-      const currentURL =new URL(window.location.href);
-      currentURL.searchParams.set("json", "1");
-      const fetchURL = currentURL.toString()
-
-      const response = await fetch(fetchURL);
-      const data = await response.json();
-      
+  {% load compress %}
+  {% compress js %}
+    <script src="{% static 'js/dm-pages.js' %}"></script>
+  {% endcompress %}
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const esc = DM.escapeHtml;
       const logTable = document.getElementById('log-table');
-      const existingIds = new Set(Array.from(logTable.children).map(row => row.id));
+      const MAX_ROWS = 1000;
 
-      data.results.reverse().forEach(log => {
-        if (!existingIds.has(`log-${log.id}`)) {
-          const newRow = document.createElement('tr');
-          newRow.id = `log-${log.id}`;
-          const isContextView = currentURL.searchParams.get("context") && currentURL.searchParams.get("context") !== "0";
-          let rowClass = 'result-list log-line';
-          let matchBadge = '';
-          if (isContextView) {
-            if (log.is_match) {
-              rowClass += ' log-matched-row';
-              matchBadge = '<span class="badge bg-primary text-white me-1" title="Direct search match">MATCH</span>';
-            } else {
-              rowClass += ' log-context-row';
-            }
-          }
-          newRow.className = rowClass;
-          newRow.innerHTML = `<td class="log-timestamp">${log.create_datetime}</td>	<td class="log-content log-${log.level.toLowerCase()}">${matchBadge}${log.level}</td>	<td class="log-content">${log.logger_name}</td>	<td class="log-content">${log.msg}${log.trace ? ' ' + log.trace : ''}</td>`;
-          logTable.insertBefore(newRow, logTable.firstChild);
-        }
+      DM.filterChips(document.getElementById('log-filter-form'), document.getElementById('filter-chips'), {
+        defaults: { context: '0' },
       });
-    } catch (error) {
-      console.error('Error refreshing logs:', error);
-    } finally {
-      isRefreshing = false;
-    }
-  }
 
-  // Quick delete dropdown action handler
-  document.querySelectorAll('.quick-delete-btn').forEach(function(item) {
-    item.addEventListener('click', function(e) {
-      e.preventDefault();
-      const deleteType = this.getAttribute('data-delete-type');
-      const confirmText = this.getAttribute('data-confirm');
-      if (confirm(confirmText)) {
-        const form = document.getElementById('quick-delete-form');
-        document.getElementById('quick-delete-type').value = deleteType;
-        form.submit();
+      // Copy the listed entries as plain text.
+      document.getElementById('copy-logs').addEventListener('click', function () {
+        const btn = this;
+        const text = Array.from(logTable.querySelectorAll('tr.log-line')).map(function (row) {
+          const cells = row.querySelectorAll('td');
+          const trace = row.querySelector('.log-trace');
+          return [cells[0].textContent.trim(), row.querySelector('.log-level').textContent.trim(), cells[2].textContent.trim(),
+                  row.querySelector('.log-msg').textContent].join('\t') + (trace ? '\n' + trace.textContent : '');
+        }).join('\n');
+        navigator.clipboard.writeText(text).then(function () {
+          const original = btn.innerHTML;
+          btn.innerHTML = '<i class="fas fa-check me-1"></i>Copied';
+          setTimeout(function () { btn.innerHTML = original; }, 1500);
+        });
+      });
+
+      function levelBadge(level) {
+        const l = level.toLowerCase();
+        const cls = (l === 'error' || l === 'fatal') ? 'bg-danger' : l === 'warning' ? 'bg-warning text-dark' : l === 'info' ? 'bg-info text-dark' : 'bg-secondary';
+        return '<span class="badge log-level ' + cls + '">' + esc(level.toUpperCase()) + '</span>';
       }
+
+      function renderRow(log) {
+        const row = document.createElement('tr');
+        row.id = 'log-' + log.id;
+        row.className = 'log-line dm-new lv-' + String(log.level).toLowerCase();
+        const params = new URLSearchParams(window.location.search);
+        params.set('logger-name', log.logger_name);
+        params.delete('page');
+        row.innerHTML =
+          '<td class="log-time">' + esc(log.create_datetime) + '</td>' +
+          '<td>' + levelBadge(log.level) + '</td>' +
+          '<td class="log-logger" title="' + esc(log.logger_name) + '"><a href="?' + esc(params.toString()) + '">' + esc(log.logger_name) + '</a></td>' +
+          '<td><div class="log-msg">' + esc(log.msg) + '</div>' +
+          (log.trace ? '<button type="button" class="btn btn-outline-danger btn-trace mt-1" data-bs-toggle="collapse" data-bs-target="#trace-' + log.id + '"><i class="fas fa-bug me-1"></i>Trace</button>' +
+                       '<pre class="collapse log-trace" id="trace-' + log.id + '">' + esc(log.trace) + '</pre>' : '') +
+          '</td>';
+        return row;
+      }
+
+      async function refreshLogs() {
+        const url = new URL(window.location.href);
+        url.searchParams.set('json', '1');
+        const res = await fetch(url.toString(), { headers: { 'Accept': 'application/json' } });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        const existing = new Set(Array.from(logTable.children).map(function (row) { return row.id; }));
+        const fresh = data.results.filter(function (log) { return !existing.has('log-' + log.id); });
+        if (fresh.length === 0) return;
+        document.getElementById('no-logs-row')?.remove();
+        // Results are newest first: insert from the oldest so the newest ends on top.
+        fresh.reverse().forEach(function (log) { logTable.insertBefore(renderRow(log), logTable.firstChild); });
+        while (logTable.children.length > MAX_ROWS) logTable.lastElementChild.remove();
+      }
+
+      const liveButton = document.getElementById('auto-refresh');
+      if (!liveButton.disabled) {
+        DM.autoRefresh({
+          button: liveButton,
+          select: document.getElementById('refresh-interval'),
+          container: document.getElementById('live-control'),
+          updated: document.getElementById('live-updated'),
+          storageKey: 'logs_refresh',
+          tick: refreshLogs,
+        });
+      }
+
+      // Quick delete (dropdown and modal presets).
+      document.querySelectorAll('.quick-delete-btn').forEach(function (item) {
+        item.addEventListener('click', function (e) {
+          e.preventDefault();
+          if (!confirm(this.dataset.confirm)) return;
+          document.getElementById('quick-delete-type').value = this.dataset.deleteType;
+          document.getElementById('quick-delete-form').submit();
+        });
+      });
+      const dateInput = document.getElementById('custom_date');
+      dateInput.max = new Date().toISOString().split('T')[0];
+      document.getElementById('custom-date-delete-form').addEventListener('submit', function (e) {
+        if (!confirm('Delete all logs older than ' + dateInput.value + '?')) e.preventDefault();
+      });
     });
-  });
-
-  // Modal custom date delete confirmation
-  window.confirmCustomDateDelete = function() {
-    const dateInput = document.getElementById('custom_date');
-    if (!dateInput.value) {
-      alert('Please select a date.');
-      return false;
-    }
-    return confirm('Are you sure you want to delete all logs older than ' + dateInput.value + '?');
-  };
-
-  // Set default max date to today
-  const dateInput = document.getElementById('custom_date');
-  if (dateInput) {
-    const today = new Date().toISOString().split('T')[0];
-    dateInput.setAttribute('max', today);
-  }
-});
-</script>
-{% endcompress %}
+  </script>
 {% endblock %}

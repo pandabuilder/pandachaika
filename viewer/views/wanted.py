@@ -13,7 +13,7 @@ from django.conf import settings
 from core.base.setup import Settings
 from viewer.forms import WantedGalleryCreateOrEditForm
 from viewer.models import Gallery, WantedGallery, FoundGallery, GalleryMatch, Archive
-from viewer.utils.general import clean_up_referer
+from viewer.utils.general import get_safe_referer
 from viewer.utils.actions import event_log
 from workers import client
 
@@ -84,7 +84,7 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
     # Handle tools
     tool = request.GET.get("tool", "")
     tool_use_id = request.GET.get("tool-id", "")
-    referer = clean_up_referer(request.META.get("HTTP_REFERER", reverse("viewer:wanted-gallery", args=[wanted_gallery_instance.pk])))
+    referer = get_safe_referer(request, reverse("viewer:wanted-gallery", args=[wanted_gallery_instance.pk]))
 
     if tool:
         if can_change:

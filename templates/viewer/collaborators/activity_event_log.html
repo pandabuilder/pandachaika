@@ -1,182 +1,336 @@
 {% extends "viewer/base.html" %}
+{% load static viewer_extras %}
 {% block title %}Activity Event Log | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
-{% load static %}
+
+{% block extra_head %}
+  {% load compress %}
+  {% compress css %}
+    <link href="{% static 'css/vendor/jal/style.css' %}" type="text/css" media="all" rel="stylesheet" />
+    <link href="{% static 'css/dm-pages.css' %}" type="text/css" rel="stylesheet" />
+  {% endcompress %}
+  <style>
+    .ev-action { cursor: pointer; font-family: monospace; font-size: 0.78rem; letter-spacing: 0.2px; }
+    .ev-data {
+      margin: 0;
+      max-height: 3.2em;
+      overflow: hidden;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 0.78rem;
+      color: var(--pg-text-primary);
+      cursor: zoom-in;
+      position: relative;
+    }
+    .ev-data.ev-long::after {
+      content: "";
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      height: 1.2em;
+      background: linear-gradient(transparent, var(--pg-bg-card));
+    }
+    tr:hover .ev-data.ev-long::after { background: linear-gradient(transparent, var(--pg-bg-hover)); }
+    .ev-data.ev-open { max-height: none; cursor: zoom-out; }
+    .ev-data.ev-open::after { display: none; }
+    .ev-data-cell { max-width: 32rem; min-width: 14rem; }
+  </style>
+{% endblock %}
 
 {% block content %}
-    {% if messages %}
-        {% for message in messages %}
-        <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
-        {% endfor %}
-    {% endif %}
-    <div class="page-header">
-    <h2>Activity Event Log</h2>
-    <h4>Current server time: {% now "y-m-d, H:i:s" %}</h4>
-    <p class="lead">Number of events (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
+<div class="container-fluid py-3">
+  {% include "viewer/include/dm_messages.html" %}
+
+  <!-- Header -->
+  <div class="dm-page-header">
+    <div>
+      <h2 class="h3 mb-1"><i class="fas fa-stream text-info me-2"></i>Activity Event Log</h2>
+      <p class="mb-0 small">
+        What users and background jobs did: additions, matches, approvals, deletions and more.
+        Server time: {% now "Y-m-d H:i:s T" %}
+      </p>
     </div>
-    {% load viewer_extras %}
-    <form action="{{ request.get_full_path }}" method="GET">
-      {% for field in form %}
-        <div class="page-line">
-          {{ field.errors }}
-          {{ field }}
-        </div>
-      {% endfor %}
-      <div class="row page-line mt-4 g-1 align-items-center">
-      {% for field in form_event %}
-        <div class="col-md-auto">
-            <div class="input-group align-items-center">
-                {{ field.label_tag }}{{ field }}
-            </div>
-        </div>
-      {% endfor %}
-        <div class="col-md-auto">
-            <div class="input-group align-items-center">
-            <label for="actions">Actions: </label>
-            <select multiple id="actions" name="actions" class="form-control" title="actions" aria-label="actions">
-            {% with selected_actions=request.GET|get_list:'actions' %}
-              {% for action in actions %}
-                <option value="{{ action }}" {% if action in selected_actions %} selected{% endif %}>{{ action }}</option>
-              {% endfor %}
-            {% endwith %}
-            </select>
-            </div>
-        </div>
-        <div class="col-md-auto">
-            <div class="form-check">
-                <input id="checkbox1" class="form-check-input" type="checkbox" name="filter-galleries" value="1" {% if "filter-galleries" in request.GET %}checked{% endif %}><label for="checkbox1">Filter Galleries</label>
-            </div>
-        </div>
-        <div class="col-md-auto">
-            <div class="form-check">
-                <input id="checkbox2" class="form-check-input" type="checkbox" name="filter-archives" value="1" {% if "filter-archives" in request.GET %}checked{% endif %}><label for="checkbox2">Filter Archives</label>
-            </div>
-        </div>
-        {% if request.user.is_staff %}
-            <div class="col-md-auto">
-                <div class="form-check">
-                    <input id="checkbox3" class="form-check-input" type="checkbox" name="show-users" value="1" {% if "show-users" in request.GET %}checked{% endif %}><label for="checkbox3">Show Users</label>
-                </div>
-            </div>
-        {% endif %}
-      </div>
-      <div class="row page-line g-1">
-          <div class="col-md-auto">
-            <button type="submit" name="apply" class="btn btn-info">Search</button>
-            <a class="btn btn-light" href="{% url 'viewer:activity-event-log' %}">Clear</a>
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{% url 'viewer:submit-queue' %}" class="btn btn-outline-info btn-sm"><i class="fas fa-inbox me-1"></i>Submit Queue</a>
+      <a href="{% url 'viewer:downloads' %}" class="btn btn-outline-info btn-sm"><i class="fas fa-download me-1"></i>Downloads</a>
+      {% if user.is_staff %}<a href="{% url 'viewer:logs' %}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-file-alt me-1"></i>Server Logs</a>{% endif %}
+    </div>
+  </div>
+
+  <!-- Overview -->
+  <div class="row g-2 mb-3">
+    <div class="col-6 col-md-3">
+      <div class="dm-stat"><div class="dm-lbl">Last 24 hours</div><div class="dm-val text-info">{{ activity.last_day }}</div><div class="dm-stat-sub">events</div></div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="dm-stat"><div class="dm-lbl">Last 7 days</div><div class="dm-val text-info">{{ activity.last_week }}</div><div class="dm-stat-sub">events</div></div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="dm-stat"><div class="dm-lbl">Matching filters</div><div class="dm-val text-warning">{{ results.paginator.count }}</div><div class="dm-stat-sub">events listed below</div></div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="dm-stat"><div class="dm-lbl">Action types</div><div class="dm-val text-secondary">{{ activity.distinct_actions }}</div><div class="dm-stat-sub">ever recorded</div></div>
+    </div>
+  </div>
+
+  {% if top_actions or top_users %}
+    <div class="dm-card p-3">
+      {% if top_actions %}
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <span class="dm-lbl me-1" title="Most frequent actions in the last 7 days, click one to list only its events">Top actions, 7 days</span>
+          <div class="dm-chips">
+            {% for item in top_actions %}
+              <a class="dm-chip dm-chip-link{% if item.action in selected_actions %} active{% endif %}" href="?{% url_filter 'actions' item.action %}">
+                <span class="badge {{ item.action|event_action_class }}">{{ item.count }}</span>{{ item.action }}
+              </a>
+            {% endfor %}
           </div>
-      </div>
-    </form>
-    <!-- Next/Prev page links  -->
-    {% if results.object_list and results.paginator.num_pages > 1 %}
-      <div>
-        <nav aria-label="Middle navigation">
-          <ul class="pagination justify-content-center my-0">
-            <li class="page-item{% if results.number == 1 %} disabled{% endif %}">
-              <a class="page-link" href="?{% url_replace 'page' '1' %}" aria-label="First">
-                <span aria-hidden="true">&laquo;</span>
-              </a>
-            </li>
-            {% if results.has_previous %}
-              <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.previous_page_number %}">Previous</a></li>
-            {% else %}
-              <li class="page-item disabled"><a class="page-link" href="#">Previous</a></li>
-            {% endif %}
-            <li class="page-item">
-              <div class="mid-item">Page {{ results.number }} of {{ results.paginator.num_pages }}</div>
-            </li>
-            {% if results.has_next %}
-              <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.next_page_number %}">Next</a></li>
-            {% else %}
-              <li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
-            {% endif %}
-            <li class="page-item{% if results.number == results.paginator.num_pages %} disabled{% endif %}">
-              <a class="page-link" href="?{% url_replace 'page' results.paginator.num_pages %}" aria-label="Last">
-                <span aria-hidden="true">&raquo;</span>
-              </a>
-            </li>
-          </ul>
-        </nav>
-      </div>
-    {% endif %}
-      <table class="table table-bordered table-sm generic-table">
-        <thead>
-        <tr>
-          {% if show_users %}<th>User</th>{% endif %}<th>Action</th><th>Reason</th><th>Data</th><th>Result</th><th>Object link</th><th>Date</th>
-        </tr>
-        </thead>
-        <tbody>
-        {% for event in results %}
-          <tr>
-          {% if show_users %}
-            <td>
-              {{ event.user }}
-            </td>
-          {% endif %}
-            <td>
-              {{ event.action }}
-            </td>
-            <td>
-              {{ event.reason }}
-            </td>
-            <td>
-                {% if event.content_type.model == 'gallery' or event.content_type.model == 'archive' %}
-                    <pre class="code-block">{{ event.data|format_json|default:"None"|urlize_all_rel|convert_special_urls }}</pre>
-                {% else %}
-                    {{ event.data|default:"None" }}
-                {% endif %}
-            </td>
-            <td>
-              {{ event.result }}
-            </td>
-            <td>
-              {% if event.object_id %}
-                {% if event.content_object.get_absolute_url %}
-                  <a href="{{ event.content_object.get_absolute_url }}">{{ event.content_object }}</a>
-                {% else %}
-                  {{ event.content_object }}
-                {% endif %}
-              {% else %}
-                None
-              {% endif %}
-            </td>
-            <td>
-              {{ event.create_date|date:"y-m-d, H:i:s" }}
-            </td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    <!-- Next/Prev page links  -->
-      {% if results.object_list and results.paginator.num_pages > 1 %}
-        <div>
-          <nav aria-label="Middle navigation">
-            <ul class="pagination justify-content-center">
-              <li class="page-item{% if results.number == 1 %} disabled{% endif %}">
-                <a class="page-link" href="?{% url_replace 'page' '1' %}" aria-label="First">
-                  <span aria-hidden="true">&laquo;</span>
-                </a>
-              </li>
-              {% if results.has_previous %}
-                <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.previous_page_number %}">Previous</a></li>
-              {% else %}
-                <li class="page-item disabled"><a class="page-link" href="#">Previous</a></li>
-              {% endif %}
-              <li class="page-item">
-                <div class="mid-item">Page {{ results.number }} of {{ results.paginator.num_pages }}</div>
-              </li>
-              {% if results.has_next %}
-                <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.next_page_number %}">Next</a></li>
-              {% else %}
-                <li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
-              {% endif %}
-              <li class="page-item{% if results.number == results.paginator.num_pages %} disabled{% endif %}">
-                <a class="page-link" href="?{% url_replace 'page' results.paginator.num_pages %}" aria-label="Last">
-                  <span aria-hidden="true">&raquo;</span>
-                </a>
-              </li>
-            </ul>
-          </nav>
         </div>
       {% endif %}
+      {% if top_users %}
+        <div class="d-flex flex-wrap align-items-center gap-2{% if top_actions %} mt-2{% endif %}">
+          <span class="dm-lbl me-1" title="Most active users in the last 7 days, click one to list only their events">Top users, 7 days</span>
+          <div class="dm-chips">
+            {% for item in top_users %}
+              <a class="dm-chip dm-chip-link{% if item.user__username == user_filter %} active{% endif %}" href="?{% url_filter 'user' item.user__username %}">
+                <span class="badge bg-secondary">{{ item.count }}</span><i class="fas fa-user dm-muted"></i>{{ item.user__username }}
+              </a>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  <!-- Filters -->
+  <form action="{% url 'viewer:activity-event-log' %}" method="GET" class="dm-card" id="filter-form">
+    <div class="p-3">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-6 col-lg-3">
+          <span class="form-label dm-lbl d-block">Actions</span>
+          <div class="dropdown">
+            <button class="form-select form-select-sm w-100 text-start text-truncate" type="button" id="action-picker-btn"
+                    data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" data-dm-hotkey="a">
+              <span id="action-picker-summary">All actions</span>
+            </button>
+            <div class="dropdown-menu dm-dropdown-menu p-2" aria-labelledby="action-picker-btn">
+              <input type="search" class="form-control form-control-sm mb-2" placeholder="Filter actions…" id="action-search" autocomplete="off" aria-label="Filter actions">
+              <div class="d-flex justify-content-between small mb-1 px-1">
+                <a href="#" id="actions-clear">Clear selection</a>
+                <span class="dm-muted" id="actions-count"></span>
+              </div>
+              <div class="dm-checklist" id="action-checklist">
+                {% for action in actions %}
+                  <div class="form-check" data-action="{{ action|lower }}">
+                    <input class="form-check-input" type="checkbox" name="actions" value="{{ action }}" id="act-{{ forloop.counter }}" data-chip-label="Action"{% if action in selected_actions %} checked{% endif %}>
+                    <label class="form-check-label" for="act-{{ forloop.counter }}"><span class="badge {{ action|event_action_class }} me-1">&nbsp;</span>{{ action }}</label>
+                  </div>
+                {% endfor %}
+              </div>
+              <button type="submit" name="apply" class="btn btn-info btn-sm w-100 mt-2">Apply</button>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6 col-lg-2">
+          <label class="form-label dm-lbl" for="f-data">Data contains</label>
+          <input id="f-data" class="form-control form-control-sm" name="data_field" value="{{ request.GET.data_field }}" autocomplete="off" data-dm-hotkey="/">
+        </div>
+        <div class="col-md-6 col-lg-2">
+          <label class="form-label dm-lbl" for="f-result">Result contains</label>
+          <input id="f-result" class="form-control form-control-sm" name="result_field" value="{{ request.GET.result_field }}" autocomplete="off">
+        </div>
+        {% if can_see_users %}
+          <div class="col-md-6 col-lg-1">
+            <label class="form-label dm-lbl" for="f-user">User</label>
+            <input id="f-user" class="form-control form-control-sm" name="user" value="{{ user_filter }}" autocomplete="off">
+          </div>
+        {% endif %}
+        <div class="col-6 col-lg-2">
+          <label class="form-label dm-lbl" for="f-date-from">From</label>
+          <input id="f-date-from" type="date" class="form-control form-control-sm" name="event_date_from" value="{{ request.GET.event_date_from }}">
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label dm-lbl" for="f-date-to">To</label>
+          <input id="f-date-to" type="date" class="form-control form-control-sm" name="event_date_to" value="{{ request.GET.event_date_to }}">
+        </div>
+      </div>
+
+      <div class="row g-2 align-items-end mt-1">
+        <div class="col-6 col-lg-2">
+          <label class="form-label dm-lbl" for="f-content-type">Object type</label>
+          <select id="f-content-type" name="content_type" class="form-select form-select-sm">
+            <option value="">Any</option>
+            <option value="archive"{% if request.GET.content_type == "archive" %} selected{% endif %}>Archive</option>
+            <option value="gallery"{% if request.GET.content_type == "gallery" %} selected{% endif %}>Gallery</option>
+          </select>
+        </div>
+        <div class="col-6 col-lg-1">
+          <label class="form-label dm-lbl" for="f-content-id">Object id</label>
+          <input id="f-content-id" type="number" min="1" class="form-control form-control-sm" name="content_id" value="{{ request.GET.content_id }}">
+        </div>
+        <div class="col-md-6 col-lg-3">
+          <label class="form-label dm-lbl" for="{{ form.title.id_for_label }}">Object title</label>
+          {{ form.title }}
+        </div>
+        <div class="col-md-6 col-lg-3">
+          <label class="form-label dm-lbl" for="{{ form.tags.id_for_label }}">Object tags</label>
+          {{ form.tags }}
+        </div>
+        <div class="col-lg-3">
+          <span class="form-label dm-lbl d-block" title="Where the title and tags are searched; both when none is chosen">Title/tags search in</span>
+          <div class="dm-toggles">
+            <input type="checkbox" class="btn-check" name="filter-galleries" value="1" id="f-in-galleries" autocomplete="off"{% if "filter-galleries" in request.GET %} checked{% endif %}>
+            <label class="btn btn-outline-secondary" for="f-in-galleries">Galleries</label>
+            <input type="checkbox" class="btn-check" name="filter-archives" value="1" id="f-in-archives" autocomplete="off"{% if "filter-archives" in request.GET %} checked{% endif %}>
+            <label class="btn btn-outline-secondary" for="f-in-archives">Archives</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="d-flex flex-wrap align-items-center gap-2 mt-3">
+        <button type="submit" name="apply" class="btn btn-info btn-sm"><i class="fas fa-search me-1"></i>Search</button>
+        <a class="btn btn-outline-light btn-sm" href="{% url 'viewer:activity-event-log' %}"><i class="fas fa-times me-1"></i>Clear</a>
+        {% if can_see_users %}
+          <div class="dm-toggles ms-2">
+            <input type="checkbox" class="btn-check" name="show-users" value="1" id="f-show-users" autocomplete="off"{% if "show-users" in request.GET %} checked{% endif %}>
+            <label class="btn btn-outline-secondary" for="f-show-users"><i class="fas fa-user me-1"></i>Show users</label>
+          </div>
+        {% endif %}
+        <span class="small dm-dim ms-auto d-none d-md-inline">Press <kbd>/</kbd> to search the data, <kbd>a</kbd> to pick actions</span>
+      </div>
+
+      <div class="mt-3 d-none" data-dm-chips-wrapper>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <span class="dm-lbl"><i class="fas fa-filter me-1"></i>Active</span>
+          <div class="dm-chips" id="filter-chips"></div>
+        </div>
+      </div>
+    </div>
+  </form>
+
+  <!-- Events -->
+  <div class="dm-card">
+    <div class="dm-card-header">
+      {% include "viewer/include/dm_pagination.html" with page_obj=results noun="events" per_page_options=per_page_options per_page=limit %}
+    </div>
+    <div class="table-responsive">
+      <table class="table table-dm table-hover table-sm mb-0" id="events-table">
+        <thead>
+          <tr>
+            <th>When</th>
+            {% if show_users %}<th>User</th>{% endif %}
+            <th>Action</th>
+            <th>Object</th>
+            <th>Reason</th>
+            <th>Result</th>
+            <th>Data</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for event in results %}
+            <tr>
+              <td class="small text-nowrap"><span data-dm-reltime="{{ event.create_date|date:'c' }}">{{ event.create_date|date:"Y-m-d H:i:s" }}</span></td>
+              {% if show_users %}
+                <td class="small text-nowrap">
+                  {% if event.user %}
+                    {{ event.user.username }}<a class="dm-filter-link" href="?{% url_filter 'user' event.user.username %}" title="Only this user's events"><i class="fas fa-filter"></i></a>
+                  {% else %}<span class="dm-dim">system</span>{% endif %}
+                </td>
+              {% endif %}
+              <td class="text-nowrap">
+                <a class="badge ev-action {{ event.action|event_action_class }} text-decoration-none" href="?{% url_filter 'actions' event.action %}" title="Only {{ event.action }} events">{{ event.action }}</a>
+              </td>
+              <td class="small dm-wrap" style="max-width: 22rem;">
+                {% if event.object_id %}
+                  {% if event.content_type %}<span class="badge dm-badge-outline text-secondary me-1">{{ event.content_type.model }}</span>{% endif %}
+                  {% if event.content_object %}
+                    {% if event.content_object.get_absolute_url %}
+                      <a href="{{ event.content_object.get_absolute_url }}">{{ event.content_object }}</a>
+                    {% else %}
+                      {{ event.content_object }}
+                    {% endif %}
+                  {% else %}
+                    <span class="dm-dim">#{{ event.object_id }} (deleted)</span>
+                  {% endif %}
+                  {% if event.content_type.model == "archive" or event.content_type.model == "gallery" %}
+                    <a class="dm-filter-link" href="?content_type={{ event.content_type.model }}&content_id={{ event.object_id }}&apply=" title="All events of this {{ event.content_type.model }}"><i class="fas fa-history"></i></a>
+                  {% endif %}
+                {% else %}
+                  <span class="dm-dim">-</span>
+                {% endif %}
+              </td>
+              <td class="small dm-wrap" style="max-width: 16rem;">{{ event.reason|default:"" }}</td>
+              <td class="small dm-wrap" style="max-width: 12rem;">{{ event.result|default:"" }}</td>
+              <td class="ev-data-cell">
+                {% if event.data %}
+                  {% if event.content_type.model == 'gallery' or event.content_type.model == 'archive' %}
+                    <pre class="ev-data" title="Click to expand">{{ event.data|format_json|urlize_all_rel|convert_special_urls }}</pre>
+                  {% else %}
+                    <pre class="ev-data" title="Click to expand">{{ event.data }}</pre>
+                  {% endif %}
+                {% endif %}
+              </td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="7" class="dm-empty"><i class="fas fa-stream"></i>No events match these filters.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if results.paginator.num_pages > 1 %}
+      <div class="p-2 border-top" style="border-color: var(--pg-border) !important;">
+        {% include "viewer/include/dm_pagination.html" with page_obj=results noun="events" compact=1 %}
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block afterJQ %}
+  {% load compress %}
+  {% compress js %}
+    <script src="{% static 'js/vendor/jal.js' %}"></script>
+    <script src="{% static 'js/dm-pages.js' %}"></script>
+  {% endcompress %}
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const form = document.getElementById('filter-form');
+      DM.filterChips(form, document.getElementById('filter-chips'), { ignore: ['limit'] });
+
+      // Action picker: search, count, summary.
+      const checklist = document.getElementById('action-checklist');
+      const summary = document.getElementById('action-picker-summary');
+      const countEl = document.getElementById('actions-count');
+      function updateActions() {
+        const chosen = Array.from(checklist.querySelectorAll('input:checked')).map(function (cb) { return cb.value; });
+        summary.textContent = chosen.length === 0 ? 'All actions' : (chosen.length <= 2 ? chosen.join(', ') : chosen.length + ' actions');
+        countEl.textContent = chosen.length ? chosen.length + ' selected' : '';
+      }
+      checklist.addEventListener('change', updateActions);
+      updateActions();
+      document.getElementById('action-search').addEventListener('input', function (e) {
+        const q = e.target.value.trim().toLowerCase();
+        checklist.querySelectorAll('.form-check').forEach(function (row) {
+          row.classList.toggle('d-none', q !== '' && row.dataset.action.indexOf(q) === -1);
+        });
+      });
+      document.getElementById('actions-clear').addEventListener('click', function (e) {
+        e.preventDefault();
+        checklist.querySelectorAll('input:checked').forEach(function (cb) { cb.checked = false; });
+        updateActions();
+      });
+      document.getElementById('action-picker-btn').addEventListener('shown.bs.dropdown', function () {
+        document.getElementById('action-search').focus();
+      });
+
+      // Long data: fade out, click to expand.
+      document.querySelectorAll('.ev-data').forEach(function (pre) {
+        if (pre.scrollHeight > pre.clientHeight + 4) pre.classList.add('ev-long'); else pre.style.cursor = 'auto';
+      });
+      document.getElementById('events-table').addEventListener('click', function (e) {
+        const pre = e.target.closest('.ev-data.ev-long');
+        if (!pre || e.target.closest('a') || String(window.getSelection())) return;
+        pre.classList.toggle('ev-open');
+      });
+    });
+  </script>
 {% endblock %}

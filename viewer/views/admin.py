@@ -24,7 +24,7 @@ from core.base.utilities import thread_exists_in_db, get_schedulers_status, time
 from core.workers.archive_work import ArchiveWorker
 
 from viewer.models import Archive, Tag, Gallery, ArchiveMatches, WantedGallery, FoundGallery, DownloadEvent
-from viewer.utils.general import clean_up_referer
+from viewer.utils.general import safe_redirect_back
 from viewer.utils.webserver import WebServerRestartError, restart_web_server
 from django.conf import settings
 from viewer.views.head import render_error
@@ -319,7 +319,7 @@ def queue_operations(request: HttpRequest, operation: str, arguments: str = "") 
     else:
         return render_error(request, "Unknown queue operation.")
 
-    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+    return safe_redirect_back(request, reverse("viewer:stats-workers"))
 
 
 @login_required
@@ -341,12 +341,12 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
             f"Reconciliation completed: {stats['total_checked']} checked, {rescued} rescued, "
             f"{recycled} recycled, {stats['requeued']} requeued, {stats['kept_in_progress']} in progress.",
         )
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+        return safe_redirect_back(request, reverse("viewer:tools"))
     elif tool == "retry_failed":
         client.enqueue(
             args=["--retry-failed"], task_type="web_crawler", override_options=crawler_settings, user=request.user
         )
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+        return safe_redirect_back(request, reverse("viewer:tools"))
     elif tool == "update_newer_than":
         p = request.POST if request.POST else request.GET
         if p and "newer_than" in p:
@@ -364,7 +364,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
                     messages.error(request, "Invalid date format.", extra_tags="danger")
             except ValueError:
                 messages.error(request, "Invalid date.", extra_tags="danger")
-            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+            return safe_redirect_back(request, reverse("viewer:tools"))
     elif tool == "update_missing_thumbnails":
         p = request.POST if request.POST else request.GET
         if p and "limit_number" in p:
@@ -392,7 +392,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
 
             except ValueError:
                 messages.error(request, "Invalid limit.", extra_tags="danger")
-            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+            return safe_redirect_back(request, reverse("viewer:tools"))
     elif tool == "generate_missing_thumbs":
         if thread_exists_in_db("thumbnails_worker"):
             return render_error(request, "Thumbnails worker is already running.")
@@ -401,7 +401,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         archive_pks = list(archives_no_thumbnail.values_list("pk", flat=True))
         if not archive_pks:
             messages.info(request, "No archives missing thumbnails found.")
-            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+            return safe_redirect_back(request, reverse("viewer:tools"))
 
         logger.info("Generating thumbs for %d archives missing thumbnails", len(archive_pks))
         if crawler_settings.workers.archive_worker:
@@ -410,7 +410,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
             archive_worker_thread = ArchiveWorker(crawler_settings, 4)
             archive_worker_thread.regenerate_all_thumbs(archives=archive_pks, user=request.user)
         messages.success(request, f"Thumbnails worker started in background for {len(archive_pks)} archives.")
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+        return safe_redirect_back(request, reverse("viewer:tools"))
     elif tool == "calculate_missing_info":
         if thread_exists_in_db("fileinfo_worker"):
             return render_error(request, "File info worker is already running.")
@@ -419,7 +419,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         archive_pks = list(archives_missing_info.values_list("pk", flat=True))
         if not archive_pks:
             messages.info(request, "No archives with missing file info found.")
-            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+            return safe_redirect_back(request, reverse("viewer:tools"))
 
         logger.info("Calculating file info for %d archives missing info", len(archive_pks))
         if crawler_settings.workers.archive_worker:
@@ -428,7 +428,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
             archive_worker_thread = ArchiveWorker(crawler_settings, 4)
             archive_worker_thread.recalc_all_file_info(archives=archive_pks, user=request.user)
         messages.success(request, f"File info worker started in background for {len(archive_pks)} archives.")
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+        return safe_redirect_back(request, reverse("viewer:tools"))
     elif tool == "recalc_all_file_info":
         if thread_exists_in_db("fileinfo_worker"):
             return render_error(request, "File info worker is already running.")
@@ -440,7 +440,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
             archive_worker_thread = ArchiveWorker(crawler_settings, 4)
             archive_worker_thread.recalc_all_file_info(user=request.user)
         messages.success(request, "File info worker started in background.")
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+        return safe_redirect_back(request, reverse("viewer:tools"))
     elif tool == "set_all_hidden_as_public":
         if thread_exists_in_db("publish_worker"):
             return render_error(request, "Publish worker is already running.")
@@ -449,7 +449,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         archive_pks = list(archives.values_list("pk", flat=True))
         if not archive_pks:
             messages.info(request, "No archives with hidden galleries found.")
-            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+            return safe_redirect_back(request, reverse("viewer:tools"))
 
         logger.info("Publishing %d archives with hidden galleries", len(archive_pks))
         if crawler_settings.workers.archive_worker:
@@ -458,7 +458,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
             archive_worker_thread = ArchiveWorker(crawler_settings, 4)
             archive_worker_thread.publish_archives(archives=archive_pks, user=request.user)
         messages.success(request, f"Publish worker started in background for {len(archive_pks)} archives.")
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+        return safe_redirect_back(request, reverse("viewer:tools"))
     elif tool == "regenerate_all_thumbs":
         if thread_exists_in_db("thumbnails_worker"):
             return render_error(request, "Thumbnails worker is already running.")
@@ -470,7 +470,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
             archive_worker_thread = ArchiveWorker(crawler_settings, 4)
             archive_worker_thread.regenerate_all_thumbs(user=request.user)
         messages.success(request, "Thumbnails worker started in background.")
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+        return safe_redirect_back(request, reverse("viewer:tools"))
     elif tool == "generate_possible_matches_internally":
         if thread_exists_in_db("match_unmatched_worker"):
             return render_error(request, "Matching worker is already running.")
@@ -505,22 +505,22 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         messages.success(
             request, "Looking for possible matches, filtering providers: {}, cutoff: {}.".format(provider, cutoff)
         )
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+        return safe_redirect_back(request, reverse("viewer:tools"))
     elif tool == "clear_all_archive_possible_matches":
         ArchiveMatches.objects.all().delete()
         logger.info("Clearing all possible matches for archives.")
         messages.success(request, "Clearing all possible matches for archives.")
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+        return safe_redirect_back(request, reverse("viewer:tools"))
     elif tool == "search_wanted_galleries_provider_titles":
         if thread_exists_in_db("web_search_worker"):
             messages.error(request, "Web search worker is already running.", extra_tags="danger")
-            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+            return safe_redirect_back(request, reverse("viewer:tools"))
         results = WantedGallery.objects.eligible_to_search()
 
         if not results:
             logger.info("No wanted galleries eligible to search.")
             messages.success(request, "No wanted galleries eligible to search.")
-            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+            return safe_redirect_back(request, reverse("viewer:tools"))
 
         p = request.POST if request.POST else request.GET
         provider = p.get("provider", "")
@@ -534,7 +534,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
             provider=provider,
             user=request.user,
         )
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+        return safe_redirect_back(request, reverse("viewer:tools"))
     elif tool == "wanted_galleries_possible_matches":
         if thread_exists_in_db("wanted_local_search_worker"):
             return render_error(request, "Wanted local matching worker is already running.")
@@ -544,7 +544,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         if not non_match_wanted:
             logger.info("No wanted galleries eligible to search.")
             messages.success(request, "No wanted galleries eligible to search.")
-            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+            return safe_redirect_back(request, reverse("viewer:tools"))
 
         logger.info("Looking for possible matches in gallery database for wanted galleries (fixed 0.4 cutoff)")
 
@@ -566,14 +566,14 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
             matching_kwargs={"provider_filter": provider, "cutoff": cutoff, "max_matches": max_matches},
             user=request.user,
         )
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+        return safe_redirect_back(request, reverse("viewer:tools"))
     elif tool == "restart_viewer":
         try:
             message = restart_web_server(request)
         except WebServerRestartError as e:
             return render_error(request, str(e))
         messages.success(request, message)
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+        return safe_redirect_back(request, reverse("viewer:tools"))
     elif tool == "restart_workers":
         import socket
         from datetime import timedelta
@@ -595,7 +595,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
             messages.success(request, f"Restart requested for {len(active_workers)} running worker process(es).")
         else:
             messages.warning(request, "Restart command queued, but no running worker processes were found.")
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+        return safe_redirect_back(request, reverse("viewer:tools"))
     elif tool == "modify_settings":
         return HttpResponseRedirect(reverse("viewer:tools-id", args=["modify_settings_editor"]))
     elif tool == "modify_settings_editor":
@@ -608,7 +608,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         crawler_settings.load_config_from_file()
         logger.info("Reloaded settings file for Panda Backup")
         messages.success(request, "Reloaded settings file for Panda Backup")
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+        return safe_redirect_back(request, reverse("viewer:tools"))
 
     return render(request, "viewer/tools.html", {"tool": tool})
 
@@ -710,10 +710,7 @@ def logs(request: HttpRequest, tool: str = "all") -> HttpResponse:
                     content_type="application/json; charset=utf-8",
                 )
 
-            referer = clean_up_referer(request.META.get("HTTP_REFERER", ""))
-            if not referer:
-                referer = reverse("viewer:logs")
-            return HttpResponseRedirect(referer)
+            return safe_redirect_back(request, reverse("viewer:logs"))
 
     status_logs = StatusLog.objects.all()
 
@@ -833,8 +830,32 @@ def logs(request: HttpRequest, tool: str = "all") -> HttpResponse:
         "display_logs": display_logs,
         "is_context_view": is_context_view,
         "log_context": log_filter_context,
+        "level_counts": _recent_log_level_counts(),
+        "log_level_filter": log_filter_level,
+        "has_filters": has_filters,
     }
     return render(request, "viewer/logs.html", d)
+
+
+def _recent_log_level_counts(hours: int = 24) -> dict[str, int]:
+    """Log entries per level in the last hours.
+
+    create_datetime has no index, but ids grow with time: walk the primary key back to the first older entry, then
+    count by id range.
+    """
+    since = timezone.now() - datetime.timedelta(hours=hours)
+    older_id = (
+        StatusLog.objects.filter(create_datetime__lt=since).order_by("-id").values_list("id", flat=True).first()
+    )
+    recent = StatusLog.objects.all() if older_id is None else StatusLog.objects.filter(id__gt=older_id)
+    by_level = dict(recent.order_by().values_list("level").annotate(c=Count("id")).values_list("level", "c"))
+    return {
+        "error": sum(c for level, c in by_level.items() if level >= logging.ERROR),
+        "warning": by_level.get(logging.WARNING, 0),
+        "info": by_level.get(logging.INFO, 0),
+        "debug": sum(c for level, c in by_level.items() if level < logging.INFO),
+        "total": sum(by_level.values()),
+    }
 
 
 @login_required

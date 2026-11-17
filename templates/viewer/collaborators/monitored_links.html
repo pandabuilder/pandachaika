@@ -47,6 +47,7 @@
             <h2>{{ title }}</h2>
             <p class="lead mb-0">Showing {{ results|length }} of {{ results.paginator.count }} monitored links</p>
         </div>
+        {% if perms.viewer.add_monitoredlink %}
         <div>
             <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#add-monitored-link-form" aria-expanded="false" aria-controls="add-monitored-link-form">
                 <i class="fas fa-plus"></i> Add Monitored Link
@@ -55,8 +56,10 @@
                 <i class="fas fa-external-link-alt"></i> New Page
             </a>
         </div>
+        {% endif %}
     </div>
 
+    {% if perms.viewer.add_monitoredlink %}
     <!-- Collapsible Add Form -->
     <div class="collapse mb-4" id="add-monitored-link-form">
         <div class="card shadow-sm">
@@ -161,6 +164,7 @@
             </div>
         </div>
     </div>
+    {% endif %}
 
     <!-- Filter and Search Bar -->
     <div class="card mb-3">
@@ -265,9 +269,13 @@
                 {% endif %}
             </td>
             <td>
+              {% if perms.viewer.change_monitoredlink %}
               <a href="{% url 'viewer:col-edit-monitored-link' monitored_link.pk %}" class="fw-bold text-decoration-none">
                   {{ monitored_link.name }}
               </a>
+              {% else %}
+              <span class="fw-bold">{{ monitored_link.name }}</span>
+              {% endif %}
               {% if monitored_link.description %}
                   <div class="small">{{ monitored_link.description|truncatechars:60 }}</div>
               {% endif %}
@@ -339,25 +347,32 @@
                 {% endif %}
             </td>
             <td class="text-center">
+              {% if perms.viewer.change_monitoredlink %}
+              <form id="monitored-link-actions-{{ monitored_link.pk }}" method="POST" class="d-none">{% csrf_token %}</form>
+              {% endif %}
               <div class="btn-group btn-group-sm" role="group">
+                {% if perms.viewer.change_monitoredlink %}
                 {% if sched and sched.is_running %}
-                  <a href="{% url 'viewer:col-monitored-link-action' monitored_link.pk 'stop' %}" class="btn btn-outline-warning" title="Stop scheduler">
+                  <button type="submit" form="monitored-link-actions-{{ monitored_link.pk }}" formaction="{% url 'viewer:col-monitored-link-action' monitored_link.pk 'stop' %}" class="btn btn-outline-warning" title="Stop scheduler">
                     <i class="fas fa-stop"></i>
-                  </a>
+                  </button>
                 {% else %}
-                  <a href="{% url 'viewer:col-monitored-link-action' monitored_link.pk 'start' %}" class="btn btn-outline-success" title="Start scheduler">
+                  <button type="submit" form="monitored-link-actions-{{ monitored_link.pk }}" formaction="{% url 'viewer:col-monitored-link-action' monitored_link.pk 'start' %}" class="btn btn-outline-success" title="Start scheduler">
                     <i class="fas fa-play"></i>
-                  </a>
+                  </button>
                 {% endif %}
-                <a href="{% url 'viewer:col-monitored-link-action' monitored_link.pk 'force_run' %}" class="btn btn-outline-primary" title="Force immediate run">
+                <button type="submit" form="monitored-link-actions-{{ monitored_link.pk }}" formaction="{% url 'viewer:col-monitored-link-action' monitored_link.pk 'force_run' %}" class="btn btn-outline-primary" title="Force immediate run">
                   <i class="fas fa-bolt"></i>
-                </a>
+                </button>
                 <a href="{% url 'viewer:col-edit-monitored-link' monitored_link.pk %}" class="btn btn-outline-secondary" title="Edit">
                   <i class="fas fa-edit"></i>
                 </a>
+                {% endif %}
+                {% if perms.viewer.delete_monitoredlink %}
                 <a href="{% url 'viewer:col-delete-monitored-link' monitored_link.pk %}" class="btn btn-outline-danger" title="Delete">
                   <i class="fas fa-trash"></i>
                 </a>
+                {% endif %}
               </div>
             </td>
           </tr>

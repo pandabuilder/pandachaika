@@ -9,7 +9,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import permission_required
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
-from django.db.models import Prefetch, Count, Case, When, QuerySet, Q
+from django.db.models import Exists, OuterRef, Prefetch, Count, Case, When, QuerySet, Q
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.urls import reverse
@@ -19,7 +19,7 @@ from core.matching.engine import available_offline_methods
 from viewer.utils.functions import (
     archive_manage_results_to_json,
 )
-from viewer.utils.general import clean_up_referer
+from viewer.utils.general import PAGE_SIZE_OPTIONS, page_size, safe_redirect_back
 from viewer.utils.actions import event_log
 from workers import client
 from viewer.forms import (
@@ -45,7 +45,6 @@ from viewer.services.archive_selection import filter_archives, filter_by_marks
 from viewer.views.head import (
     archive_filter_keys,
     filter_archives_simple,
-    render_error,
 )
 
 crawler_settings = settings.CRAWLER_SETTINGS
@@ -586,7 +585,7 @@ def archive_manager(request: HttpRequest) -> HttpResponse:
     return render(request, "viewer/collaborators/archive_manager.html")
 
 
-
+@permission_required("viewer.match_archive")
 def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
     p = request.POST
     get = request.GET
@@ -599,15 +598,8 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
     except ValueError:
         page = 1
 
-    try:
-        limit = max(1, int(get.get("limit", "100")))
-    except ValueError:
-        limit = 100
-
-    try:
-        inline_thumbnails = bool(get.get("inline-thumbnails", ""))
-    except ValueError:
-        inline_thumbnails = False
+    limit = page_size(get, default=100)
+    inline_thumbnails = bool(get.get("inline-thumbnails", ""))
 
     if "clear" in get:
         form = ArchiveSearchForm()
@@ -622,13 +614,18 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                 # results[pk][k] = v
                 pks.append(v)
 
+        if not pks:
+            messages.warning(request, "No archives were selected.")
+            return HttpResponseRedirect(request.get_full_path())
+
         preserved = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(pks)])
 
         archives = Archive.objects.filter(id__in=pks).order_by(preserved)
         if "create_possible_matches" in p:
             if thread_exists_in_db("match_unmatched_worker"):
-                return render_error(request, "Local matching worker is already running.")
-            provider = p["create_possible_matches"]
+                messages.error(request, "The local matching worker is already running, wait for it to finish.", extra_tags="danger")
+                return HttpResponseRedirect(request.get_full_path())
+            provider = p.get("match_provider", "") or p["create_possible_matches"]
             method = p.get("matcher_type", "all")
             auto_link = "auto_link" in p
             try:
@@ -699,9 +696,12 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                                 result="matched",
                             )
                 except ValueError:
-                    return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+                    return safe_redirect_back(request, request.get_full_path())
 
             messages.success(request, "Matching with first possible match.")
+
+        # Post/redirect/get: reloading the page must not repeat the action.
+        return HttpResponseRedirect(request.get_full_path())
 
     params: dict[str, str] = {
         "sort": "create_date",
@@ -724,7 +724,9 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
     results = results.prefetch_related( # type:ignore[misc]
         Prefetch(
             "archivematches_set",
-            queryset=ArchiveMatches.objects.select_related("gallery", "archive").prefetch_related(
+            queryset=ArchiveMatches.objects.select_related("gallery", "archive")
+            .annotate(gallery_archive_count=Count("gallery__archive"))
+            .prefetch_related(
                 Prefetch("gallery__tags", queryset=Tag.objects.filter(scope__exact="artist"), to_attr="artist_tags"),
                 Prefetch(
                     "gallery__tags", queryset=Tag.objects.filter(scope__exact="magazine"), to_attr="magazine_tags"
@@ -736,7 +738,7 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
     )
 
     if "with-possible-matches" in get:
-        results = results.annotate(n_possible_matches=Count("possible_matches")).filter(n_possible_matches__gt=0)
+        results = results.filter(Exists(ArchiveMatches.objects.filter(archive_id=OuterRef("pk"))))
 
     paginator = Paginator(results, limit)
     try:
@@ -744,9 +746,34 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
     except (InvalidPage, EmptyPage):
         results_page = paginator.page(paginator.num_pages)
 
-    available_providers = Gallery.objects.all().values_list("provider", flat=True).distinct()
+    # Group each archive's possible matches by gallery, best candidate first.
+    results_page.object_list = list(results_page.object_list)
+    for archive in results_page.object_list:
+        groups: dict[int, dict[str, Any]] = {}
+        for match in getattr(archive, "possible_galleries", []):
+            group = groups.setdefault(
+                match.gallery_id,
+                {"gallery": match.gallery, "matches": [], "best": 0.0, "archive_count": match.gallery_archive_count},
+            )
+            group["matches"].append(match)
+            group["best"] = max(group["best"], match.match_accuracy or 0.0)
+        candidates = sorted(groups.values(), key=lambda g: g["best"], reverse=True)
+        setattr(archive, "candidates", candidates)
+        setattr(archive, "best_accuracy", candidates[0]["best"] if candidates else None)
+
+    available_providers = Gallery.objects.order_by("provider").values_list("provider", flat=True).distinct()
 
     matcher_types = ["all", *available_offline_methods()]
+
+    unmatched = Archive.objects.filter(gallery__isnull=True)
+    stats = {
+        "unmatched": unmatched.count(),
+        "with_possible": unmatched.filter(
+            Exists(ArchiveMatches.objects.filter(archive_id=OuterRef("pk")))
+        ).count(),
+        "matcher_running": thread_exists_in_db("match_unmatched_worker"),
+    }
+    stats["without_possible"] = stats["unmatched"] - stats["with_possible"]
 
     d = {
         "results": results_page,
@@ -754,11 +781,14 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
         "matcher_types": matcher_types,
         "form": form,
         "inline_thumbnails": inline_thumbnails,
+        "stats": stats,
+        "limit": limit,
+        "per_page_options": PAGE_SIZE_OPTIONS,
     }
     return render(request, "viewer/collaborators/unmatched_archives.html", d)
 
 
-
+@permission_required("viewer.manage_archive")
 def archives_similar_by_fields(request: HttpRequest) -> HttpResponse:
     p = request.POST
     get = request.GET
@@ -877,7 +907,7 @@ def archives_similar_by_fields(request: HttpRequest) -> HttpResponse:
                     data=archive_report,
                 )
 
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+        return safe_redirect_back(request, request.get_full_path())
 
     params = {
         "sort": "create_date",

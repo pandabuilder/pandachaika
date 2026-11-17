@@ -1,291 +1,351 @@
 {% extends "viewer/base.html" %}
-{% block title %}Submit queue | {{ block.super }}{% endblock %}
+{% load static viewer_extras %}
+{% block title %}Submit Queue | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
-{% load static %}
 
-{% block content %}
-  {% load viewer_extras %}
-    {% if messages %}
-        {% for message in messages %}
-        <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
-        {% endfor %}
-    {% endif %}
-    <!-- Galleries not used  -->
-    <div class="page-header">
-    <h2>Submitted galleries</h2>
-    <p class="lead">Number of galleries (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
-    </div>
-    <form action="{{ request.get_full_path }}" method="GET">
-      {% for field in form %}
-        <div class="page-line">
-          {{ field.errors }}
-          {{ field }}
-        </div>
-      {% endfor %}
-      <div class="page-line row g-1 align-items-center">
-      <div class="col-md-auto">
-        <button id="toggle-all" class="btn btn-secondary" type="button">Toggle All</button>
-      </div>
-      <div class="col-md-auto">
-        <select id="provider" name="provider" class="form-control" title="provider" aria-label="provider">
-          <option value="">all</option>
-          {% for provider in providers %}
-            <option value="{{ provider }}" {% if request.GET.provider == provider %} selected{% endif %}>{{ provider }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-md-auto">
-          <div class="input-group align-items-center">
-            <label for="filecount-from">Filecount</label>
-            <input id="filecount-from" size="2" type="text" class="form-control me-sm-1" name="filecount_from" value="{{ request.GET.filecount_from }}" placeholder="from"/>
-          </div>
-      </div>
-      <div class="col-md-auto">
-        <input size="2" type="text" class="form-control me-sm-1" name="filecount_to" value="{{ request.GET.filecount_to }}" placeholder="to"/>
-      </div>
-      <div class="col-md-auto">
-        <input size="10" title="Category" class="form-control" name="category" placeholder="Category" value="{{ request.GET.category }}">
-      </div>
-      <div class="col-md-auto">
-        <input title="Reason" class="form-control" name="reason" placeholder="Reason" value="{{ request.GET.reason }}">
-      </div>
-        <div class="col-md-auto">
-            <input title="Submit Reason" class="form-control" name="submit_reason" placeholder="Submit Reason" value="{{ request.GET.submit_reason }}">
-        </div>
-        <div class="col-md-auto">
-            <div class="input-group align-items-center">
-                <label for="submitted-from">Submitted</label>
-                <input id="submitted-from" title="" class="form-control" type="date" name="submitted_from" placeholder="from" value="{{ request.GET.submitted_from }}">
-            </div>
-        </div>
-        <div class="col-md-auto">
-            <input title="" class="form-control" type="date" name="submitted_to" placeholder="to" value="{{ request.GET.submitted_to }}">
-        </div>
-      <div class="col-md-auto">
-        <div class="form-check">
-        <input id="checkbox-f31" class="form-check-input" type="checkbox" name="hide_submitted" value="1" {% if "hide_submitted" in request.GET %}checked{% endif %}><label for="checkbox-f31">Hide submitted</label>
-        </div>
-      </div>
-      <div class="col-md-auto">
-        <div class="form-check">
-        <input id="checkbox-f1" class="form-check-input" type="checkbox" name="denied" value="1" {% if "denied" in request.GET %}checked{% endif %}><label for="checkbox-f1">Show denied</label>
-        </div>
-      </div>
-      <div class="col-md-auto">
-        <div class="form-check">
-        <input id="checkbox-f2" class="form-check-input" type="checkbox" name="approved" value="1" {% if "approved" in request.GET %}checked{% endif %}><label for="checkbox-f2">Show approved</label>
-        </div>
-      </div>
-      <div class="col-md-auto">
-        <div class="form-check">
-        <input id="checkbox-f4" class="form-check-input" type="checkbox" name="already_present" value="1" {% if "already_present" in request.GET %}checked{% endif %}><label for="checkbox-f4">Show present</label>
-        </div>
-      </div>
-      <div class="col-md-auto">
-        <div class="form-check">
-        <input id="checkbox-f3" class="form-check-input" type="checkbox" name="filter_galleries" value="1" {% if "filter_galleries" in request.GET %}checked{% endif %}><label for="checkbox-f3">Filter galleries</label>
-        </div>
-      </div>
-      <div class="col-md-auto">
-        <div class="form-check">
-        <input id="checkbox-f5" class="form-check-input" type="checkbox" name="has_similar" value="1" {% if "has_similar" in request.GET %}checked{% endif %}><label for="checkbox-f5">With similar</label>
-        </div>
-      </div>
-      <div class="col-md-auto">
-        <div class="form-check">
-        <input id="checkbox-f6" class="form-check-input" type="checkbox" name="has_archives" value="1" {% if "has_archives" in request.GET %}checked{% endif %}><label for="checkbox-f6">With archives</label>
-        </div>
-      </div>
-      <div class="col-md-auto">
-        <div class="form-check">
-        <input id="checkbox-f10" class="form-check-input" type="checkbox" name="gallery-public" value="1" {% if "gallery-public" in request.GET %}checked{% endif %}><label for="checkbox-f10">Public Gallery</label>
-        </div>
-      </div>
-      <div class="col-md-auto">
-        <div class="form-check">
-        <input id="checkbox-f11" class="form-check-input" type="checkbox" name="gallery-private" value="1" {% if "gallery-private" in request.GET %}checked{% endif %}><label for="checkbox-f11">Private Gallery</label>
-        </div>
-      </div>
-      <div class="col-md-auto">
-        <button type="submit" name="apply" class="btn btn-info">Search</button>
-        <a class="btn btn-light" href="{% url 'viewer:submit-queue' %}">Clear</a>
-      </div>
-      </div>
-    </form>
-    <div id="contained-data">
-        <form action="{{ request.get_full_path }}" method="POST">{% csrf_token %}
-        <!-- Next/Prev page links  -->
-          <div>
-              <nav aria-label="Middle navigation">
-                <ul class="pagination justify-content-center my-0">
-                    <li class="page-item{% if results.number == 1 %} disabled{% endif %}">
-                      <a class="page-link" href="?{% url_replace 'page' '1' %}" aria-label="First">
-                        <span aria-hidden="true">&laquo;</span>
-                      </a>
-                    </li>
-                  {% if results.has_previous %}
-                    <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.previous_page_number %}">Previous</a></li>
-                  {% else %}
-                    <li class="page-item disabled"><a class="page-link" href="#">Previous</a></li>
-                  {% endif %}
-                  <li class="page-item">
-                    <div class="mid-item">{{ results.paginator.count }} results</div>
-                  </li>
-                  {% if results.has_next %}
-                    <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.next_page_number %}">Next</a></li>
-                  {% else %}
-                    <li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
-                  {% endif %}
-                    <li class="page-item{% if results.number == results.paginator.num_pages %} disabled{% endif %}">
-                      <a class="page-link" href="?{% url_replace 'page' results.paginator.num_pages %}"
-                         aria-label="Last">
-                        <span aria-hidden="true">&raquo;</span>
-                      </a>
-                    </li>
-                </ul>
-              </nav>
-          </div>
-          <table class="table table-bordered table-sm generic-table my-0">
-            <thead>
-            <tr>
-              <th>Select</th><th>URL</th><th>Gallery</th><th>Title</th><th>Size</th><th>Images</th><th>Source URL</th><th title="Linked to Wanted Gallery?">Wanted</th><th title="Gallery has Archives? (binned, total)">Archive</th><th title="Similar Galleries by filesize and filecount">Similar</th><th title="URLs in the same group were added together">Group</th><th>Entry Reason</th><th>Submitted</th><th>Entry Status</th><th>Public</th><th>Gallery Status</th>
-            </tr>
-            </thead>
-            <tbody>
-            {% for entry in results %}
-              <tr>
-                <td class="text-center">
-                  <input id="checkbox-{{ entry.id }}" class="toggle-list form-check-input" type="checkbox" name="sel-{{ entry.id }}" value="{{ entry.pk }}"><label for="checkbox-{{ entry.id }}"></label>
-                </td>
-                <td>
-                  {{ entry.submit_url|urlize_all_rel }}
-                </td>
-                <td>
-                  {% if entry.gallery.thumbnail.name %}
-                  <a href="{% url 'viewer:gallery' entry.gallery.pk %}">{{ entry.gallery.pk }}</a>
-                  {% else %}
-                    No gallery
-                  {% endif %}
-                </td>
-                <td>
-                  {{ entry.gallery.title }}
-                </td>
-                <td>
-                  {{ entry.gallery.filesize }} ({{ entry.gallery.filesize|filesizeformat }})
-                </td>
-                <td>
-                  {{ entry.gallery.filecount }}
-                </td>
-                <td>
-                  {% if entry.gallery.thumbnail.name %}
-                    <a href="{{ entry.gallery.get_link }}" class="img-preview" data-image-url="{{ entry.gallery.thumbnail.url }}" rel="popover noopener noreferrer nofollow">{{ entry.gallery.get_link }}</a>
-                  {% else %}
-                    {{ entry.gallery.get_link|urlize_all_rel }}
-                  {% endif %}
-                </td>
-                <td>
-                  {{ entry.gallery.foundgallery_set.count|yesno:"yes,no" }}
-                </td>
-                <td>
-                  {{ entry.gallery.archive_set.count|yesno:"yes,no" }}<br/>({{ entry.archives_recycled }}, {{ entry.archive_count }})
-                </td>
-                <td>
-                  {% for similar_gallery in entry.similar_galleries.all %}
-                    <span style="padding-right: 10px;">
-                      {% if similar_gallery.thumbnail.name %}
-                        <a href="{% url 'viewer:gallery' similar_gallery.pk %}" class="img-preview" data-image-url="{{ similar_gallery.thumbnail.url }}" rel="popover">{{ similar_gallery.pk }}</a>
-                      {% else %}
-                        <a href="{% url 'viewer:gallery' similar_gallery.pk %}" rel="popover">{{ similar_gallery.pk }}</a>
-                      {% endif %}
-                    </span>
-                  {% endfor %}
-                </td>
-              <td>
-                  {% if entry.submit_group %}
-                      <a href="?{% url_replace 'submit_group' entry.submit_group %}">{{ entry.submit_group }}</a>
-                  {% else %}
-                      Not set
-                  {% endif %}
-                </td>
-                <td>
-                  {{ entry.submit_reason }}
-                </td>
-                <td>
-                  {{ entry.submit_date|date:"DATETIME_FORMAT" }}
-                </td>
-                <td>
-                  {{ entry.get_resolved_status_display }}
-                </td>
-                <td>
-                  {{ entry.gallery.public|yesno }}
-                </td>
-                <td>
-                  {{ entry.gallery.get_status_display }}
-                </td>
-              </tr>
-            {% endfor %}
-            </tbody>
-          </table>
-        <!-- Next/Prev page links  -->
-          <div>
-              <nav aria-label="Middle navigation">
-                <ul class="pagination justify-content-center">
-                    <li class="page-item{% if results.number == 1 %} disabled{% endif %}">
-                      <a class="page-link" href="?{% url_replace 'page' '1' %}" aria-label="First">
-                        <span aria-hidden="true">&laquo;</span>
-                      </a>
-                    </li>
-                  {% if results.has_previous %}
-                    <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.previous_page_number %}">Previous</a></li>
-                  {% else %}
-                    <li class="page-item disabled"><a class="page-link" href="#">Previous</a></li>
-                  {% endif %}
-                  <li class="page-item">
-                    <div class="mid-item">{{ results.paginator.count }} results</div>
-                  </li>
-                  {% if results.has_next %}
-                    <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.next_page_number %}">Next</a></li>
-                  {% else %}
-                    <li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
-                  {% endif %}
-                    <li class="page-item{% if results.number == results.paginator.num_pages %} disabled{% endif %}">
-                      <a class="page-link" href="?{% url_replace 'page' results.paginator.num_pages %}"
-                         aria-label="Last">
-                        <span aria-hidden="true">&raquo;</span>
-                      </a>
-                    </li>
-                </ul>
-              </nav>
-          </div>
-        {% if perms.viewer.approve_gallery %}
-        <div class="mb-3">
-          <input size="10" class="form-control" name="reason" value="" placeholder="Gallery & Archive Reason" maxlength="200"/>
-        </div>
-        <div class="mb-3">
-          <input size="10" class="form-control" name="entry_reason" value="" placeholder="Entry Reason" maxlength="200"/>
-        </div>
-        <div class="mb-3">
-          <label for="entry_comment">Comment</label>
-          <textarea name="entry_comment" class="form-control" id="entry_comment" rows="5"></textarea>
-        </div>
-        <button name="download_galleries" class="btn btn-light">Approve & start download</button>
-        <button name="approve_galleries" class="btn btn-light">Approve galleries (no download)</button>
-        <button name="deny_galleries" class="btn btn-light">Deny galleries</button>
-        {% endif %}
-        {% if perms.viewer.publish_gallery %}
-        <button name="publish_galleries" class="btn btn-light">Publish galleries & archives</button>
-        {% endif %}
-        </form>
-    </div>
-
-{% endblock %}
-{% block afterJQ %}
+{% block extra_head %}
   {% load compress %}
   {% compress css %}
     <link href="{% static 'css/vendor/jal/style.css' %}" type="text/css" media="all" rel="stylesheet" />
+    <link href="{% static 'css/dm-pages.css' %}" type="text/css" rel="stylesheet" />
   {% endcompress %}
+  <style>
+    .sq-title { font-weight: 600; }
+    .sq-source { font-size: 0.78rem; }
+    .sq-similar a { margin-right: 0.4rem; }
+    .sq-status-detail { font-size: 0.78rem; color: var(--pg-text-secondary); max-width: 16rem; }
+  </style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+  {% include "viewer/include/dm_messages.html" %}
+
+  <!-- Header -->
+  <div class="dm-page-header">
+    <div>
+      <h2 class="h3 mb-1"><i class="fas fa-inbox text-info me-2"></i>Submit Queue</h2>
+      <p class="mb-0 small">
+        Galleries and URLs submitted by users. Approve and download them, approve them only, deny them or publish them.
+      </p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{% url 'viewer:downloads' %}" class="btn btn-outline-info btn-sm"><i class="fas fa-download me-1"></i>Downloads</a>
+      <a href="{% url 'viewer:activity-event-log' %}?actions=ACCEPT_GALLERY&actions=APPROVE_GALLERY&actions=DENY_GALLERY&actions=ACCEPT_URL&actions=APPROVE_URL&actions=DENY_URL&actions=PUBLISH_GALLERY&apply="
+         class="btn btn-outline-secondary btn-sm"><i class="fas fa-stream me-1"></i>Review history</a>
+    </div>
+  </div>
+
+  <!-- Status tiles: quick filters -->
+  <div class="row g-2 mb-3">
+    {% for tile in status_tiles %}
+      <div class="col-6 col-md-3">
+        <a class="dm-stat{% if tile.active %} active{% endif %}" href="?{% url_filter 'status' tile.value %}" title="Show {{ tile.label|lower }} entries only">
+          <div class="dm-lbl">{% if tile.value == "submitted" %}Pending review{% else %}{{ tile.label }}{% endif %}</div>
+          <div class="dm-val {% if tile.value == 'submitted' %}text-warning{% elif tile.value == 'approved' %}text-success{% elif tile.value == 'denied' %}text-danger{% else %}text-info{% endif %}">{{ tile.count }}</div>
+          <div class="dm-stat-sub">
+            {% if tile.value == "submitted" %}
+              {% if oldest_pending %}oldest submitted {{ oldest_pending|timesince }} ago{% else %}nothing waiting{% endif %}
+            {% else %}
+              click to list them
+            {% endif %}
+          </div>
+        </a>
+      </div>
+    {% endfor %}
+  </div>
+
+  <!-- Filters -->
+  <form action="{% url 'viewer:submit-queue' %}" method="GET" class="dm-card" id="filter-form">
+    <div class="p-3">
+      <div class="row g-2 align-items-end">
+        <div class="col-lg-5">
+          <label class="form-label dm-lbl" for="{{ form.title.id_for_label }}">Gallery title</label>
+          {{ form.title }}
+        </div>
+        <div class="col-lg-4">
+          <label class="form-label dm-lbl" for="{{ form.tags.id_for_label }}">Gallery tags</label>
+          {{ form.tags }}
+        </div>
+        <div class="col-lg-3 d-flex flex-wrap gap-2">
+          <button type="submit" name="apply" class="btn btn-info btn-sm"><i class="fas fa-search me-1"></i>Search</button>
+          <a class="btn btn-outline-light btn-sm" href="{% url 'viewer:submit-queue' %}" title="Clear all filters"><i class="fas fa-times me-1"></i>Clear</a>
+          <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#more-filters" aria-expanded="false" aria-controls="more-filters">
+            <i class="fas fa-sliders-h me-1"></i>More filters
+          </button>
+        </div>
+      </div>
+
+      <div class="d-flex flex-wrap align-items-center gap-3 mt-3">
+        <div class="d-flex align-items-center gap-2">
+          <span class="dm-lbl">Status</span>
+          <div class="dm-toggles">
+            {% for tile in status_tiles %}
+              <input type="checkbox" class="btn-check" name="status" value="{{ tile.value }}" id="status-{{ tile.value }}" autocomplete="off"
+                     data-chip-label="Status"{% if tile.value in selected_status_keys %} checked{% endif %}>
+              <label class="btn btn-outline-secondary" for="status-{{ tile.value }}">{% if tile.value == "submitted" %}Pending{% else %}{{ tile.label }}{% endif %}</label>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <span class="dm-lbl">Only</span>
+          <div class="dm-toggles">
+            <input type="checkbox" class="btn-check" name="has_similar" value="1" id="f-has-similar" autocomplete="off"{% if "has_similar" in request.GET %} checked{% endif %}>
+            <label class="btn btn-outline-secondary" for="f-has-similar">With similar</label>
+            <input type="checkbox" class="btn-check" name="has_archives" value="1" id="f-has-archives" autocomplete="off"{% if "has_archives" in request.GET %} checked{% endif %}>
+            <label class="btn btn-outline-secondary" for="f-has-archives">With archives</label>
+            <input type="checkbox" class="btn-check" name="gallery-public" value="1" id="f-public" autocomplete="off"{% if "gallery-public" in request.GET %} checked{% endif %}>
+            <label class="btn btn-outline-secondary" for="f-public">Public gallery</label>
+            <input type="checkbox" class="btn-check" name="gallery-private" value="1" id="f-private" autocomplete="off"{% if "gallery-private" in request.GET %} checked{% endif %}>
+            <label class="btn btn-outline-secondary" for="f-private">Private gallery</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="collapse" id="more-filters">
+        <div class="row g-2 mt-2">
+          <div class="col-sm-6 col-lg-2">
+            <label class="form-label dm-lbl" for="f-provider">Provider</label>
+            <select id="f-provider" name="provider" class="form-select form-select-sm">
+              <option value="">All</option>
+              {% for provider in providers %}
+                <option value="{{ provider }}"{% if request.GET.provider == provider %} selected{% endif %}>{{ provider }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-6 col-lg-1">
+            <label class="form-label dm-lbl" for="f-filecount-from">Images from</label>
+            <input id="f-filecount-from" type="number" min="0" class="form-control form-control-sm" name="filecount_from" value="{{ request.GET.filecount_from }}">
+          </div>
+          <div class="col-6 col-lg-1">
+            <label class="form-label dm-lbl" for="f-filecount-to">Images to</label>
+            <input id="f-filecount-to" type="number" min="0" class="form-control form-control-sm" name="filecount_to" value="{{ request.GET.filecount_to }}">
+          </div>
+          <div class="col-sm-6 col-lg-2">
+            <label class="form-label dm-lbl" for="f-category">Category</label>
+            <input id="f-category" class="form-control form-control-sm" name="category" value="{{ request.GET.category }}">
+          </div>
+          <div class="col-sm-6 col-lg-2">
+            <label class="form-label dm-lbl" for="f-reason">Gallery reason</label>
+            <input id="f-reason" class="form-control form-control-sm" name="reason" value="{{ request.GET.reason }}">
+          </div>
+          <div class="col-sm-6 col-lg-2">
+            <label class="form-label dm-lbl" for="f-submit-reason">Submit reason</label>
+            <input id="f-submit-reason" class="form-control form-control-sm" name="submit_reason" value="{{ request.GET.submit_reason }}">
+          </div>
+          <div class="col-sm-6 col-lg-2">
+            <label class="form-label dm-lbl" for="f-submit-group">Submit group</label>
+            <input id="f-submit-group" class="form-control form-control-sm font-monospace" name="submit_group" value="{{ request.GET.submit_group }}">
+          </div>
+          <div class="col-6 col-lg-2">
+            <label class="form-label dm-lbl" for="f-submitted-from">Submitted from</label>
+            <input id="f-submitted-from" class="form-control form-control-sm" type="date" name="submitted_from" value="{{ request.GET.submitted_from }}">
+          </div>
+          <div class="col-6 col-lg-2">
+            <label class="form-label dm-lbl" for="f-submitted-to">Submitted to</label>
+            <input id="f-submitted-to" class="form-control form-control-sm" type="date" name="submitted_to" value="{{ request.GET.submitted_to }}">
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-3 d-none" data-dm-chips-wrapper>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <span class="dm-lbl"><i class="fas fa-filter me-1"></i>Active</span>
+          <div class="dm-chips" id="filter-chips"></div>
+        </div>
+      </div>
+    </div>
+  </form>
+
+  <!-- Results -->
+  {% with can_approve=perms.viewer.approve_gallery can_publish=perms.viewer.publish_gallery %}
+  <form action="{{ request.get_full_path }}" method="POST" id="entries-form">
+    {% csrf_token %}
+    <div class="dm-card">
+      <div class="dm-card-header">
+        {% include "viewer/include/dm_pagination.html" with page_obj=results noun="entries" per_page_options=per_page_options per_page=limit %}
+      </div>
+      <div class="table-responsive">
+        <table class="table table-dm table-hover table-sm mb-0" id="entries-table">
+          <thead>
+            <tr>
+              {% if can_approve or can_publish %}
+                <th class="dm-check-col"><input type="checkbox" class="form-check-input" id="toggle-all" title="Select all on this page" aria-label="Select all on this page"></th>
+              {% endif %}
+              <th></th>
+              <th>Gallery / URL</th>
+              <th class="text-end">Size</th>
+              <th class="text-end">Images</th>
+              <th title="Wanted, archives (binned / total) and galleries with the same size and image count">Flags</th>
+              <th>Submit reason</th>
+              <th>Submitted</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for entry in results %}
+              {% with gallery=entry.gallery %}
+              <tr>
+                {% if can_approve or can_publish %}
+                  <td class="dm-check-col">
+                    <input class="form-check-input entry-checkbox" type="checkbox" name="sel-{{ entry.id }}" value="{{ entry.pk }}" aria-label="Select entry {{ entry.pk }}">
+                  </td>
+                {% endif %}
+                <td style="width: 52px;">
+                  {% if gallery and gallery.thumbnail.name %}
+                    <a href="{% url 'viewer:gallery' gallery.pk %}" class="img-preview" data-image-url="{{ gallery.thumbnail.url }}">
+                      <img class="dm-thumb" src="{{ gallery.thumbnail.url }}" alt="" loading="lazy">
+                    </a>
+                  {% else %}
+                    <span class="dm-thumb dm-thumb-placeholder"><i class="fas fa-link"></i></span>
+                  {% endif %}
+                </td>
+                <td class="dm-wrap" style="min-width: 18rem;">
+                  {% if gallery %}
+                    <div>
+                      <a class="sq-title" href="{% url 'viewer:gallery' gallery.pk %}">{{ gallery.title|default:"(no title)" }}</a>
+                      {% if gallery.provider %}<span class="badge bg-secondary ms-1">{{ gallery.provider }}</span>{% endif %}
+                      {% if gallery.category %}<span class="badge dm-badge-outline text-info ms-1">{{ gallery.category }}</span>{% endif %}
+                    </div>
+                    <div class="sq-source dm-break-all">{{ gallery.get_link|urlize_all_rel }}</div>
+                    {% if entry.submit_url and entry.submit_url != gallery.get_link %}
+                      <div class="sq-source dm-muted dm-break-all">Submitted: {{ entry.submit_url|urlize_all_rel }}</div>
+                    {% endif %}
+                  {% else %}
+                    <div class="dm-break-all">{{ entry.submit_url|default:"(empty URL)"|urlize_all_rel }}</div>
+                    <div class="sq-source dm-muted">No gallery yet</div>
+                  {% endif %}
+                </td>
+                <td class="text-end text-nowrap small" {% if gallery.filesize %}title="{{ gallery.filesize }} bytes"{% endif %}>
+                  {% if gallery.filesize %}{{ gallery.filesize|filesizeformat }}{% else %}<span class="dm-dim">-</span>{% endif %}
+                </td>
+                <td class="text-end font-monospace small">{{ gallery.filecount|default:"-" }}</td>
+                <td class="small">
+                  {% if entry.is_wanted %}<span class="badge bg-info text-dark me-1" title="Linked to a wanted gallery"><i class="fas fa-star me-1"></i>Wanted</span>{% endif %}
+                  {% if entry.archive_count %}
+                    <span class="badge bg-success me-1" title="Has archives: {{ entry.archives_recycled }} binned, {{ entry.archive_count }} total"><i class="fas fa-archive me-1"></i>{{ entry.archive_count }}{% if entry.archives_recycled %} ({{ entry.archives_recycled }} binned){% endif %}</span>
+                  {% endif %}
+                  {% with similar=entry.similar_galleries.all %}
+                    {% if similar %}
+                      <div class="sq-similar mt-1">
+                        <span class="dm-muted" title="Galleries with the same size and image count"><i class="fas fa-clone me-1"></i>Similar:</span>
+                        {% for similar_gallery in similar %}
+                          <a href="{% url 'viewer:gallery' similar_gallery.pk %}"{% if similar_gallery.thumbnail.name %} class="img-preview" data-image-url="{{ similar_gallery.thumbnail.url }}"{% endif %}>{{ similar_gallery.pk }}</a>
+                        {% endfor %}
+                      </div>
+                    {% endif %}
+                  {% endwith %}
+                  {% if not entry.is_wanted and not entry.archive_count and not entry.similar_galleries.all %}<span class="dm-dim">-</span>{% endif %}
+                </td>
+                <td class="small dm-wrap" style="max-width: 16rem;">{{ entry.submit_reason|default:"" }}</td>
+                <td class="small text-nowrap">
+                  <span data-dm-reltime="{{ entry.submit_date|date:'c' }}">{{ entry.submit_date|date:"Y-m-d H:i" }}</span>
+                  {% if entry.submit_group %}
+                    <div><a href="?{% url_filter 'submit_group' entry.submit_group %}" class="small" title="Show the URLs submitted together with this one ({{ entry.submit_group }})"><i class="fas fa-layer-group me-1"></i>{{ entry.submit_group|stringformat:"s"|slice:":8" }}</a></div>
+                  {% endif %}
+                </td>
+                <td class="small">
+                  {% if entry.resolved_status == 1 %}<span class="badge bg-warning text-dark">Pending</span>
+                  {% elif entry.resolved_status == 2 %}<span class="badge bg-success">Approved</span>
+                  {% elif entry.resolved_status == 3 %}<span class="badge bg-danger">Denied</span>
+                  {% else %}<span class="badge bg-info text-dark">{{ entry.get_resolved_status_display }}</span>{% endif %}
+                  {% if gallery %}
+                    {% if gallery.public %}<span class="badge dm-badge-outline text-success ms-1">Public</span>{% else %}<span class="badge dm-badge-outline text-secondary ms-1">Private</span>{% endif %}
+                    {% if gallery.status != 1 %}<span class="badge dm-badge-outline text-warning ms-1" title="Gallery status">{{ gallery.get_status_display }}</span>{% endif %}
+                  {% endif %}
+                  {% if entry.resolved_status != 1 %}
+                    <div class="sq-status-detail mt-1">
+                      {% if entry.resolved_date %}<span data-dm-reltime="{{ entry.resolved_date|date:'c' }}">{{ entry.resolved_date|date:"Y-m-d H:i" }}</span>{% endif %}
+                      {% if entry.resolved_reason %} · {{ entry.resolved_reason }}{% endif %}
+                      {% if entry.resolved_comment %}<div class="text-truncate" title="{{ entry.resolved_comment }}"><i class="fas fa-comment me-1"></i>{{ entry.resolved_comment }}</div>{% endif %}
+                    </div>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endwith %}
+            {% empty %}
+              <tr><td colspan="9" class="dm-empty"><i class="fas fa-inbox"></i>No submitted entries match these filters.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if results.paginator.num_pages > 1 %}
+        <div class="p-2 border-top" style="border-color: var(--pg-border) !important;">
+          {% include "viewer/include/dm_pagination.html" with page_obj=results noun="entries" compact=1 %}
+        </div>
+      {% endif %}
+    </div>
+
+    {% if can_approve or can_publish %}
+      <!-- Bulk actions -->
+      <div class="dm-actionbar">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <span class="dm-sel-count" data-dm-sel-count>None selected</span>
+          {% if can_approve %}
+            <input class="form-control form-control-sm dm-actionbar-extra" style="max-width: 15rem;" name="reason" value="" placeholder="Gallery & archive reason" maxlength="200"
+                   title="Reason set on the gallery and the downloaded archives">
+            <input class="form-control form-control-sm dm-actionbar-extra" style="max-width: 13rem;" name="entry_reason" value="" placeholder="Entry reason" maxlength="200"
+                   title="Reason stored on the submit entry and in the event log">
+            <button class="btn btn-sm btn-outline-light dm-actionbar-extra" type="button" data-bs-toggle="collapse" data-bs-target="#entry-comment-box" aria-expanded="false" title="Add a comment to the entries">
+              <i class="fas fa-comment"></i>
+            </button>
+          {% endif %}
+          <div class="ms-auto d-flex flex-wrap gap-2">
+            {% if can_approve %}
+              <button name="download_galleries" class="btn btn-sm btn-success" data-dm-needs-selection disabled title="Approve the entries and queue their download">
+                <i class="fas fa-download me-1"></i>Approve &amp; download
+              </button>
+              <button name="approve_galleries" class="btn btn-sm btn-outline-success" data-dm-needs-selection disabled title="Approve the entries without downloading">
+                <i class="fas fa-check me-1"></i>Approve only
+              </button>
+              <button name="deny_galleries" class="btn btn-sm btn-outline-danger" data-dm-needs-selection disabled
+                      data-dm-confirm="Deny {n} selected entr(ies)? Their galleries are marked as denied.">
+                <i class="fas fa-ban me-1"></i>Deny
+              </button>
+            {% endif %}
+            {% if can_publish %}
+              <button name="publish_galleries" class="btn btn-sm btn-outline-info" data-dm-needs-selection disabled
+                      data-dm-confirm="Publish the galleries and archives of {n} selected entr(ies)?">
+                <i class="fas fa-globe me-1"></i>Publish
+              </button>
+            {% endif %}
+          </div>
+        </div>
+        {% if can_approve %}
+          <div class="collapse" id="entry-comment-box">
+            <textarea name="entry_comment" class="form-control form-control-sm mt-2" rows="3" placeholder="Comment stored on the selected entries"></textarea>
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
+  </form>
+  {% endwith %}
+</div>
+{% endblock %}
+
+{% block afterJQ %}
+  {% load compress %}
   {% compress js %}
     <script src="{% static 'js/vendor/jal.js' %}"></script>
+    <script src="{% static 'js/dm-pages.js' %}"></script>
   {% endcompress %}
-  <script type="text/javascript" src="{% static 'js/list_operations.js' %}"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      DM.selection({
+        root: document.getElementById('entries-table'),
+        checkbox: '.entry-checkbox',
+        toggleAll: document.getElementById('toggle-all'),
+        rowClick: true,
+      });
+      const chips = DM.filterChips(document.getElementById('filter-form'), document.getElementById('filter-chips'), {
+        ignore: ['limit', 'filter_galleries', 'hide_submitted', 'denied', 'approved', 'already_present'],
+        defaults: { status: 'submitted' },
+      });
+      // Keep "More filters" open when one of its fields is in use.
+      const more = document.getElementById('more-filters');
+      if (Array.from(more.querySelectorAll('input, select')).some(function (el) { return el.value; })) {
+        more.classList.add('show');
+      }
+    });
+  </script>
 {% endblock %}

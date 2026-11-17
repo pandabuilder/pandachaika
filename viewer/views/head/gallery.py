@@ -27,7 +27,7 @@ from viewer.models import (
 )
 from viewer.utils.actions import event_log
 from viewer.utils.functions import gallery_search_results_to_json
-from viewer.utils.general import clean_up_referer, should_use_refined_views
+from viewer.utils.general import safe_redirect_back, should_use_refined_views
 from viewer.utils.tags import sort_tags
 from viewer.views.head.common import (
     crawler_settings,
@@ -41,10 +41,7 @@ logger = logging.getLogger(__name__)
 
 def process_gallery_page(request: HttpRequest, gallery: Gallery, tool: str | None = None) -> HttpResponse:
 
-    if "HTTP_REFERER" in request.META:
-        response = HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
-    else:
-        response = HttpResponseRedirect(gallery.get_absolute_url())
+    response = safe_redirect_back(request, gallery.get_absolute_url())
 
     if request.user.has_perm("viewer.download_gallery") and tool == "download":
         if "downloader" in request.GET and request.user.is_staff:

@@ -40,6 +40,15 @@ def url_replace(context: RequestContext, field: SafeText, value: SafeText) -> st
 
 
 @register.simple_tag(takes_context=True)
+def url_filter(context: RequestContext, field: SafeText, value: Any) -> str:
+    """Current query string with ``field`` set to ``value`` (replacing all its values), back on the first page."""
+    dict_ = context["request"].GET.copy()
+    dict_.setlist(field, [str(value)])
+    dict_.pop("page", None)
+    return dict_.urlencode()
+
+
+@register.simple_tag(takes_context=True)
 def url_multi_replace(context: RequestContext, **kwargs: Any) -> str:
     dict_ = context["request"].GET.copy()
     for key, value in kwargs.items():
@@ -483,3 +492,21 @@ def json_list(value: Any) -> list[Any] | None:
 def sort_regrouped_by_max_value_in_list(elements: list[GroupedResult], field: str) -> list[GroupedResult]:
     return sorted(elements, key=lambda x:getattr(max(x.list, key=lambda item: getattr(item, field)), field), reverse=True)
 
+
+
+_EVENT_ACTION_CLASSES = (
+    (("DELETE", "DENY", "FAIL", "REMOVE", "CANCEL", "BAN"), "bg-danger"),
+    (("ADD", "ACCEPT", "APPROVE", "PUBLISH", "MATCH", "CREATE", "DOWNLOAD"), "bg-success"),
+    (("UPDATE", "CHANGE", "EDIT", "MARK", "SPLIT", "MERGE", "RECALC", "REFRESH"), "bg-info text-dark"),
+    (("HIDE", "UNPUBLISH", "RECYCLE", "BIN"), "bg-warning text-dark"),
+)
+
+
+@register.filter
+def event_action_class(action: str | None) -> str:
+    """Badge class for an event log action, from the verbs in its name."""
+    words = (action or "").upper().split("_")
+    for keywords, css_class in _EVENT_ACTION_CLASSES:
+        if any(word.startswith(keyword) for word in words for keyword in keywords):
+            return css_class
+    return "bg-secondary"

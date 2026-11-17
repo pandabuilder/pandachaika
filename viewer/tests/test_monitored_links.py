@@ -345,8 +345,16 @@ class MonitoredLinkViewsTests(TestCase):
 
     def setUp(self):
         self.user = User.objects.create_user(username="viewer_user", password="password123")
-        perm = Permission.objects.get(codename="view_monitored_links")
-        self.user.user_permissions.add(perm)
+        self.user.user_permissions.add(
+            *Permission.objects.filter(
+                codename__in=[
+                    "view_monitored_links",
+                    "add_monitoredlink",
+                    "change_monitoredlink",
+                    "delete_monitoredlink",
+                ]
+            )
+        )
 
         self.client = Client()
         self.client.login(username="viewer_user", password="password123")
@@ -552,22 +560,55 @@ class MonitoredLinkViewsTests(TestCase):
             enabled=True,
         )
         # Start
-        res = self.client.get(reverse("viewer:col-monitored-link-action", args=[link.pk, "start"]))
+        res = self.client.post(reverse("viewer:col-monitored-link-action", args=[link.pk, "start"]))
         self.assertEqual(res.status_code, 302)
         state = SchedulerState.objects.get(name=link.scheduler_name)
         self.assertEqual(state.command_requested, "start")
 
         # Stop
-        res = self.client.get(reverse("viewer:col-monitored-link-action", args=[link.pk, "stop"]))
+        res = self.client.post(reverse("viewer:col-monitored-link-action", args=[link.pk, "stop"]))
         self.assertEqual(res.status_code, 302)
         state.refresh_from_db()
         self.assertEqual(state.command_requested, "stop")
 
         # Force run
-        res = self.client.get(reverse("viewer:col-monitored-link-action", args=[link.pk, "force_run"]))
+        res = self.client.post(reverse("viewer:col-monitored-link-action", args=[link.pk, "force_run"]))
         self.assertEqual(res.status_code, 302)
         state.refresh_from_db()
         self.assertEqual(state.command_requested, "force_run")
+
+    def test_monitored_link_action_view_rejects_get(self):
+        link = MonitoredLink.objects.create(
+            name="GET Action Link",
+            url="https://example.com/get-action",
+            frequency=timedelta(minutes=25),
+            enabled=True,
+        )
+        res = self.client.get(reverse("viewer:col-monitored-link-action", args=[link.pk, "start"]))
+        self.assertEqual(res.status_code, 405)
+        self.assertFalse(
+            SchedulerState.objects.filter(name=link.scheduler_name, command_requested="start").exists()
+        )
+
+    def test_monitored_links_inline_actions_ignore_get_parameters(self):
+        link = MonitoredLink.objects.create(
+            name="Inline GET Link",
+            url="https://example.com/inline-get",
+            frequency=timedelta(minutes=25),
+        )
+        res = self.client.get(reverse("viewer:monitored-links"), {"action": "delete", "id": link.pk})
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(MonitoredLink.objects.filter(pk=link.pk).exists())
+
+    def test_monitored_links_inline_actions_via_post(self):
+        link = MonitoredLink.objects.create(
+            name="Inline POST Link",
+            url="https://example.com/inline-post",
+            frequency=timedelta(minutes=25),
+        )
+        res = self.client.post(reverse("viewer:monitored-links"), {"action": "delete", "link_id": link.pk})
+        self.assertEqual(res.status_code, 302)
+        self.assertFalse(MonitoredLink.objects.filter(pk=link.pk).exists())
 
     def test_monitored_links_view_renders_last_run_and_next_run(self):
         link = MonitoredLink.objects.create(
@@ -758,3 +799,64 @@ class MonitoredLinksTemplateUnitTests(SimpleTestCase):
         self.assertIn('monitored_link.stop_page|default_if_none:"-"', content)
         self.assertNotIn('monitored_link.stop_page|default:"-"', content)
 
+
+class MonitoredLinkViewOnlyPermissionTests(TestCase):
+    """Users with only view_monitored_links can see the list but not change anything."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="view_only_user", password="password123")
+        self.user.user_permissions.add(Permission.objects.get(codename="view_monitored_links"))
+        self.client = Client()
+        self.client.login(username="view_only_user", password="password123")
+        self.link = MonitoredLink.objects.create(
+            name="Protected Link",
+            url="https://example.com/protected",
+            frequency=timedelta(minutes=10),
+        )
+
+    def test_list_is_visible_without_management_controls(self):
+        res = self.client.get(reverse("viewer:monitored-links"))
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, "Protected Link")
+        self.assertNotContains(res, reverse("viewer:col-create-monitored-link"))
+        self.assertNotContains(res, reverse("viewer:col-edit-monitored-link", args=[self.link.pk]))
+        self.assertNotContains(res, reverse("viewer:col-delete-monitored-link", args=[self.link.pk]))
+        self.assertNotContains(res, reverse("viewer:col-monitored-link-action", args=[self.link.pk, "force_run"]))
+
+    def test_cannot_create(self):
+        post_data = {"name": "Nope", "url": "https://example.com/nope", "frequency": "00:10:00", "enabled": True}
+        res = self.client.post(reverse("viewer:col-create-monitored-link"), post_data)
+        self.assertEqual(res.status_code, 302)
+        self.assertIn(reverse("viewer:login"), res["Location"])
+        res = self.client.post(reverse("viewer:monitored-links"), {**post_data, "submit-monitored-link": "1"})
+        self.assertEqual(res.status_code, 403)
+        self.assertFalse(MonitoredLink.objects.filter(name="Nope").exists())
+
+    def test_cannot_edit(self):
+        post_data = {"name": "Changed", "url": "https://example.com/protected", "frequency": "00:10:00"}
+        res = self.client.post(reverse("viewer:col-edit-monitored-link", args=[self.link.pk]), post_data)
+        self.assertEqual(res.status_code, 302)
+        self.assertIn(reverse("viewer:login"), res["Location"])
+        self.link.refresh_from_db()
+        self.assertEqual(self.link.name, "Protected Link")
+
+    def test_cannot_delete(self):
+        res = self.client.post(reverse("viewer:col-delete-monitored-link", args=[self.link.pk]))
+        self.assertEqual(res.status_code, 302)
+        self.assertIn(reverse("viewer:login"), res["Location"])
+        res = self.client.post(reverse("viewer:monitored-links"), {"action": "delete", "link_id": self.link.pk})
+        self.assertEqual(res.status_code, 403)
+        self.assertTrue(MonitoredLink.objects.filter(pk=self.link.pk).exists())
+
+    def test_cannot_run_actions(self):
+        def scheduler_command():
+            state = SchedulerState.objects.filter(name=self.link.scheduler_name).first()
+            return state.command_requested if state else None
+
+        command_before = scheduler_command()
+        for action in ("start", "stop", "force_run"):
+            res = self.client.post(reverse("viewer:col-monitored-link-action", args=[self.link.pk, action]))
+            self.assertEqual(res.status_code, 403, action)
+            res = self.client.post(reverse("viewer:monitored-links"), {"action": action, "link_id": self.link.pk})
+            self.assertEqual(res.status_code, 403, action)
+        self.assertEqual(scheduler_command(), command_before)

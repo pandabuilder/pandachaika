@@ -4,12 +4,12 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import permission_required
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
-from django.db.models import Count, Case, When, QuerySet, Q
-from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
+from django.db.models import Count, Case, Exists, OuterRef, When, QuerySet, Q
+from django.http import HttpRequest, HttpResponse, HttpResponseRedirect, QueryDict
 from django.shortcuts import render
 
 from core.base.setup import Settings
-from viewer.utils.general import clean_up_referer
+from viewer.utils.general import PAGE_SIZE_OPTIONS, page_size, safe_redirect_back
 from viewer.utils.actions import event_log
 from workers import client
 from viewer.forms import (
@@ -21,7 +21,8 @@ from viewer.models import (
     Archive,
     Gallery,
     Tag,
-    GallerySubmitEntry
+    FoundGallery,
+    GallerySubmitEntry,
 )
 from viewer.utils.types import AuthenticatedHttpRequest
 from viewer.views.head import (
@@ -32,6 +33,31 @@ from viewer.views.head import (
 crawler_settings = settings.CRAWLER_SETTINGS
 logger = logging.getLogger(__name__)
 
+# Gallery fields of the submit queue filter form, filtering on them implies "filter_galleries".
+SUBMIT_QUEUE_GALLERY_FILTERS = ("title", "tags", "provider", "filecount_from", "filecount_to", "category", "reason")
+
+SUBMIT_QUEUE_STATUS_KEYS = {
+    GallerySubmitEntry.RESOLVED_SUBMITTED: "submitted",
+    GallerySubmitEntry.RESOLVED_APPROVED: "approved",
+    GallerySubmitEntry.RESOLVED_DENIED: "denied",
+    GallerySubmitEntry.RESOLVED_ALREADY_PRESENT: "already_present",
+}
+
+
+def submit_queue_statuses(get: QueryDict) -> list[int]:
+    """Entry statuses to list: the ``status`` params, or the older checkbox params (submitted by default)."""
+    by_key = {v: k for k, v in SUBMIT_QUEUE_STATUS_KEYS.items()}
+    statuses = [by_key[s] for s in get.getlist("status") if s in by_key]
+    if statuses:
+        return sorted(set(statuses))
+    statuses = [] if "hide_submitted" in get else [GallerySubmitEntry.RESOLVED_SUBMITTED]
+    if "approved" in get:
+        statuses.append(GallerySubmitEntry.RESOLVED_APPROVED)
+    if "denied" in get:
+        statuses.append(GallerySubmitEntry.RESOLVED_DENIED)
+    if "already_present" in get:
+        statuses.append(GallerySubmitEntry.RESOLVED_ALREADY_PRESENT)
+    return sorted(statuses)
 
 
 @permission_required("viewer.view_submitted_gallery")
@@ -63,6 +89,10 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
                 # k, pk = k.split('-')
                 # results[pk][k] = v
                 pks.append(v)
+
+        if not pks:
+            messages.warning(request, "No entries were selected.")
+            return HttpResponseRedirect(request.get_full_path())
 
         preserved = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(pks)])
 
@@ -247,13 +277,20 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
                         result="accepted",
                     )
 
-    providers = Gallery.objects.all().values_list("provider", flat=True).distinct()
+        # Post/redirect/get: reloading the page must not repeat the action.
+        return HttpResponseRedirect(request.get_full_path())
+
+    providers = Gallery.objects.order_by("provider").values_list("provider", flat=True).distinct()
 
     submit_entries: QuerySet[GallerySubmitEntry] = (
-        GallerySubmitEntry.objects.all().prefetch_related("gallery", "similar_galleries").order_by("-submit_date")
+        GallerySubmitEntry.objects.all()
+        .select_related("gallery")
+        .prefetch_related("similar_galleries")
+        .order_by("-submit_date")
     )
 
-    if "filter_galleries" in get:
+    # Gallery fields only filter when "filter_galleries" is set, or when one of them has a value.
+    if "filter_galleries" in get or any(get.get(k) for k in SUBMIT_QUEUE_GALLERY_FILTERS):
         params: dict[str, str] = {}
 
         for k, v in get.items():
@@ -264,34 +301,31 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
             if k not in params:
                 params[k] = ""
 
-        gallery_results = filter_galleries_simple(params)
+        try:
+            submit_entries = submit_entries.filter(gallery__in=filter_galleries_simple(params))
+        except ValueError:
+            messages.error(request, "Invalid gallery filter value.", extra_tags="danger")
+            submit_entries = submit_entries.none()
 
-        submit_entries = submit_entries.filter(gallery__in=gallery_results)
-    
-    if "hide_submitted" in get:
-        allowed_resolved_status = []
-    else:
-        allowed_resolved_status = [GallerySubmitEntry.RESOLVED_SUBMITTED]
+    selected_statuses = submit_queue_statuses(get)
+    submit_entries = submit_entries.filter(resolved_status__in=selected_statuses)
 
-    if "denied" in get:
-        allowed_resolved_status.append(GallerySubmitEntry.RESOLVED_DENIED)
-    if "approved" in get:
-        allowed_resolved_status.append(GallerySubmitEntry.RESOLVED_APPROVED)
-    if "already_present" in get:
-        allowed_resolved_status.append(GallerySubmitEntry.RESOLVED_ALREADY_PRESENT)
-
-    submit_entries = submit_entries.filter(resolved_status__in=allowed_resolved_status)
-
-    if "submit_reason" in get:
+    if get.get("submit_reason"):
         submit_entries = submit_entries.filter(submit_reason__icontains=get["submit_reason"])
 
-    if "submit_group" in get:
+    if get.get("submit_group"):
         submit_entries = submit_entries.filter(submit_group__icontains=get["submit_group"])
 
     if "has_similar" in get:
-        submit_entries = submit_entries.annotate(similar_count=Count("similar_galleries")).filter(similar_count__gt=0)
+        submit_entries = submit_entries.filter(
+            Exists(GallerySubmitEntry.similar_galleries.through.objects.filter(gallerysubmitentry_id=OuterRef("pk")))
+        )
 
-    submit_entries = submit_entries.annotate(archive_count=Count("gallery__archive"))
+    submit_entries = submit_entries.annotate(
+        archive_count=Count("gallery__archive", distinct=True),
+        archives_recycled=Count("gallery__archive", filter=Q(gallery__archive__binned=True), distinct=True),
+        is_wanted=Exists(FoundGallery.objects.filter(gallery_id=OuterRef("gallery_id"))),
+    )
 
     if "has_archives" in get:
         submit_entries = submit_entries.filter(archive_count__gt=0)
@@ -302,23 +336,48 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
     if "gallery-private" in get:
         submit_entries = submit_entries.filter(gallery__public=False)
 
-    if "submitted_from" in get and get["submitted_from"]:
-        submit_entries = submit_entries.filter(submit_date__gte=get["submitted_from"])
+    if get.get("submitted_from"):
+        submit_entries = submit_entries.filter(submit_date__date__gte=get["submitted_from"])
 
-    if "submitted_to" in get and get["submitted_to"]:
-        submit_entries = submit_entries.filter(submit_date__lte=get["submitted_to"])
+    if get.get("submitted_to"):
+        submit_entries = submit_entries.filter(submit_date__date__lte=get["submitted_to"])
 
-    submit_entries = submit_entries.annotate(
-        archives_recycled=Count("gallery__archive", filter=Q(gallery__archive__binned=True))
-    )
-
-    paginator = Paginator(submit_entries, 50)
+    limit = page_size(get, default=50)
+    paginator = Paginator(submit_entries, limit)
     try:
         results_page = paginator.page(page)
     except (InvalidPage, EmptyPage):
         results_page = paginator.page(paginator.num_pages)
 
-    d = {"results": results_page, "providers": providers, "form": form}
+    status_counts = dict(
+        GallerySubmitEntry.objects.values_list("resolved_status").annotate(c=Count("id")).values_list("resolved_status", "c")
+    )
+    oldest_pending = (
+        GallerySubmitEntry.objects.filter(resolved_status=GallerySubmitEntry.RESOLVED_SUBMITTED)
+        .order_by("submit_date")
+        .values_list("submit_date", flat=True)
+        .first()
+    )
+    status_tiles = [
+        {
+            "value": SUBMIT_QUEUE_STATUS_KEYS[status],
+            "label": label,
+            "count": status_counts.get(status, 0),
+            "active": selected_statuses == [status],
+        }
+        for status, label in GallerySubmitEntry.RESOLVED_STATUS_CHOICES
+    ]
+
+    d = {
+        "results": results_page,
+        "providers": providers,
+        "form": form,
+        "status_tiles": status_tiles,
+        "selected_status_keys": [SUBMIT_QUEUE_STATUS_KEYS[s] for s in selected_statuses],
+        "oldest_pending": oldest_pending,
+        "limit": limit,
+        "per_page_options": PAGE_SIZE_OPTIONS,
+    }
     return render(request, "viewer/collaborators/submit_queue.html", d)
 
 
@@ -364,7 +423,7 @@ def user_crawler(request: AuthenticatedHttpRequest) -> HttpResponse:
 
         if not urls:
             messages.error(request, "Submission is empty.")
-            return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+            return safe_redirect_back(request, request.get_full_path())
 
         if "reason" in p and p["reason"] != "":
             reason = p["reason"]
@@ -504,14 +563,11 @@ def user_crawler(request: AuthenticatedHttpRequest) -> HttpResponse:
         # Not really optimal when there's many commands being queued
         # for command in url_list:
         #     messages.success(request, command)
-        return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
+        return safe_redirect_back(request, request.get_full_path())
 
     d.update({"downloaders": generic_downloaders})
 
     return render(request, "viewer/collaborators/gallery_crawler.html", d)
-
-
-@permission_required("viewer.match_archive")
 
 
 @permission_required("viewer.upload_with_metadata_archive")
@@ -533,10 +589,8 @@ def upload_archive(request: HttpRequest) -> HttpResponse:
             messages.success(request, message.format(request.build_absolute_uri(new_archive.get_absolute_url())))
             logger.info("User {}: {}".format(request.user.username, message.format(new_archive.get_absolute_url())))
             event_log(request.user, "ADD_ARCHIVE", content_object=new_archive, result="added")
-            # return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
         else:
             messages.error(request, "The provided data is not valid", extra_tags="danger")
-            # return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
 
         return render(request, "viewer/include/messages.html")
 

@@ -58,7 +58,6 @@ def gallery_match_groups_explorer(request: HttpRequest) -> HttpResponse:
                 event_log(request.user, "ADD_GALLERY_MATCH_GROUP", content_object=new_gallery_match_group, result="created")
             else:
                 messages.error(request, "The provided data is not valid", extra_tags="danger")
-                # return HttpResponseRedirect(clean_up_referer(request.META["HTTP_REFERER"]))
         else:
             edit_form = GalleryMatchGroupCreateOrEditForm()
 

@@ -1,0 +1,56 @@
+{% load viewer_extras %}{% comment %}
+Pager for the streamlined pages (needs css/dm-pages.css and js/dm-pages.js).
+  page_obj           Django Page
+  noun               what is listed ("events"), shown in the info text
+  per_page_options   optional list of page sizes, changes the `per_page_param` query param (default "limit")
+  per_page           the current page size
+  compact            only the pager, no info text / page size
+{% endcomment %}
+{% with paginator=page_obj.paginator %}
+<div class="dm-pager">
+  {% if not compact %}
+    <div class="dm-pager-info">
+      {% if paginator.count %}
+        Showing <strong class="text-light">{{ page_obj.start_index }}–{{ page_obj.end_index }}</strong> of <strong class="text-light">{{ paginator.count }}</strong> {{ noun|default:"results" }}
+      {% else %}
+        No {{ noun|default:"results" }}
+      {% endif %}
+    </div>
+  {% endif %}
+  <div class="d-flex flex-wrap align-items-center gap-2">
+    {% if paginator.num_pages > 1 %}
+      <nav aria-label="Pages">
+        <ul class="pagination pagination-sm">
+          <li class="page-item{% if not page_obj.has_previous %} disabled{% endif %}">
+            <a class="page-link" href="?{% url_replace 'page' '1' %}" aria-label="First page" title="First page"><i class="fas fa-angle-double-left"></i></a>
+          </li>
+          <li class="page-item{% if not page_obj.has_previous %} disabled{% endif %}">
+            <a class="page-link" href="{% if page_obj.has_previous %}?{% url_replace 'page' page_obj.previous_page_number %}{% else %}#{% endif %}" aria-label="Previous page" title="Previous page"><i class="fas fa-angle-left"></i></a>
+          </li>
+          <li class="page-item active" aria-current="page"><span class="page-link">{{ page_obj.number }} / {{ paginator.num_pages }}</span></li>
+          <li class="page-item{% if not page_obj.has_next %} disabled{% endif %}">
+            <a class="page-link" href="{% if page_obj.has_next %}?{% url_replace 'page' page_obj.next_page_number %}{% else %}#{% endif %}" aria-label="Next page" title="Next page"><i class="fas fa-angle-right"></i></a>
+          </li>
+          <li class="page-item{% if not page_obj.has_next %} disabled{% endif %}">
+            <a class="page-link" href="?{% url_replace 'page' paginator.num_pages %}" aria-label="Last page" title="Last page"><i class="fas fa-angle-double-right"></i></a>
+          </li>
+        </ul>
+      </nav>
+      {% if not compact and paginator.num_pages > 2 %}
+        <form class="dm-page-jump d-flex align-items-center gap-1" action="" method="get">
+          <label class="small dm-muted" for="dm-page-jump-{{ jump_id|default:'top' }}">Page</label>
+          <input id="dm-page-jump-{{ jump_id|default:'top' }}" type="number" name="page" min="1" max="{{ paginator.num_pages }}" value="{{ page_obj.number }}"
+                 class="form-control form-control-sm dm-page-input bg-transparent text-light">
+        </form>
+      {% endif %}
+    {% endif %}
+    {% if not compact and per_page_options %}
+      <select name="{{ per_page_param|default:'limit' }}" class="form-select form-select-sm dm-per-page bg-transparent text-light" style="width: auto;" title="Per page" aria-label="Per page">
+        {% for option in per_page_options %}
+          <option value="{{ option }}"{% if option == per_page %} selected{% endif %}>{{ option }} / page</option>
+        {% endfor %}
+      </select>
+    {% endif %}
+  </div>
+</div>
+{% endwith %}

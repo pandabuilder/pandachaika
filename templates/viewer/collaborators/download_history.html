@@ -1,637 +1,383 @@
 {% extends "viewer/base.html" %}
+{% load static viewer_extras %}
 {% block title %}Download Monitor | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
-{% load static %}
+
+{% block extra_head %}
+  {% load compress %}
+  {% compress css %}
+    <link href="{% static 'css/dm-pages.css' %}" type="text/css" rel="stylesheet" />
+  {% endcompress %}
+  <style>
+    .dl-progress { height: 1rem; background: var(--pg-bg-darkest); border: 1px solid var(--pg-border-subtle); min-width: 8rem; }
+    .dl-progress .progress-bar { font-size: 0.72rem; }
+    .dl-name { max-width: 28rem; word-break: break-all; }
+    .dl-sub { font-size: 0.76rem; color: var(--pg-text-secondary); }
+    .dl-error { font-size: 0.76rem; color: #ff8a8a; max-width: 18rem; }
+  </style>
+{% endblock %}
 
 {% block content %}
-{% load viewer_extras %}
-{% if messages %}
-{% for message in messages %}
-<div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
-{% endfor %}
-{% endif %}
+{% with is_staff=request.user.is_staff %}
+<div class="container-fluid py-3">
+  {% include "viewer/include/dm_messages.html" %}
 
-<div class="page-header mb-4">
-  <div class="d-flex justify-content-between align-items-center">
+  <!-- Header -->
+  <div class="dm-page-header">
     <div>
-      <h2>Download Monitor</h2>
-      <p class="lead mb-0" id="download-counts">Number of downloads (in page, total): <span id="count-in-page">{{ results|length }}</span>, <span id="count-total">{{ results.paginator.count }}</span></p>
+      <h2 class="h3 mb-1"><i class="fas fa-download text-info me-2"></i>Download Monitor</h2>
+      <p class="mb-0 small">Archive downloads: queued, running and finished ones, with their progress.</p>
     </div>
-    <div class="input-group" style="width: auto;">
-      <button class="btn btn-outline-light" id="auto-refresh" title="Auto-refresh downloads">
-        <i class="fas fa-sync"></i> Auto-refresh
-      </button>
-      <select class="form-select bg-dark text-light border-light" id="refresh-interval" data-bs-theme="dark" title="Auto-refresh frequency" style="width: auto;">
-        <option value="1000">1s</option>
-        <option value="5000" selected>5s</option>
-        <option value="10000">10s</option>
-        <option value="30000">30s</option>
-        <option value="60000">1m</option>
-      </select>
-    </div>
-  </div>
-</div>
-
-<form action="{{ request.get_full_path }}" method="GET" class="mb-4">
-  <div class="row g-2 align-items-end">
-    <div class="col-md-3">
-      {{ form.name.label_tag }}
-      {{ form.name }}
-    </div>
-    <div class="col-md-3">
-      {{ form.title.label_tag }}
-      {{ form.title }}
-    </div>
-    <div class="col-md-2">
-      {{ form.method.label_tag }}
-      {{ form.method }}
-    </div>
-    <div class="col-md-2">
-      {{ form.provider.label_tag }}
-      {{ form.provider }}
-    </div>
-    <div class="col-md-2">
-      {{ form.status.label_tag }}
-      {{ form.status }}
-    </div>
-    <div class="col-md-2">
-      {{ form.sort_by.label_tag }}
-      {{ form.sort_by }}
-    </div>
-    <div class="col-md-2">
-      {{ form.direction.label_tag }}
-      {{ form.direction }}
-    </div>
-    <div class="col-md-2">
-      {{ form.create_date_from.label_tag }}
-      {{ form.create_date_from }}
-    </div>
-    <div class="col-md-2">
-      {{ form.create_date_to.label_tag }}
-      {{ form.create_date_to }}
-    </div>
-
-    <div class="col-md-auto">
-      <button type="submit" class="btn btn-info">Apply Filters</button>
-      <a class="btn btn-light" href="{{ request.path }}">Clear</a>
-    </div>
-  </div>
-</form>
-
-{% if request.user.is_staff %}
-<form id="batch-events-form" method="POST" action="{{ request.get_full_path }}">
-  {% csrf_token %}
-  <input type="hidden" name="action" id="batch-action-field" value="">
-  <div class="card bg-dark border-secondary mb-3">
-    <div class="card-body py-2 d-flex flex-wrap align-items-center justify-content-between gap-2">
-      <div class="d-flex align-items-center gap-2">
-        <span class="badge bg-secondary" id="selected-count-badge">0 selected</span>
-        <button type="button" class="btn btn-sm btn-outline-light" id="select-all-page-btn">Select All on Page</button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" id="deselect-all-btn">Deselect All</button>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <div class="dm-live" id="live-control">
+        <button class="btn btn-sm btn-outline-light" id="auto-refresh" type="button"><span class="dm-live-dot"></span>Paused</button>
+        <select class="form-select form-select-sm bg-transparent text-light" id="refresh-interval" title="Refresh every" aria-label="Refresh every">
+          <option value="2000">2s</option>
+          <option value="5000" selected>5s</option>
+          <option value="10000">10s</option>
+          <option value="30000">30s</option>
+          <option value="60000">1m</option>
+        </select>
+        <span class="dm-live-updated" id="live-updated"></span>
       </div>
-      <div class="btn-group btn-group-sm">
-        <button type="button" class="btn btn-outline-danger" id="btn-batch-fail" disabled title="Mark selected download events as failed">
-          <i class="fas fa-times me-1"></i> Mark as Failed
-        </button>
-        <button type="button" class="btn btn-outline-success" id="btn-batch-complete" disabled title="Mark selected download events as completed">
-          <i class="fas fa-check me-1"></i> Mark as Completed
-        </button>
-        <button type="button" class="btn btn-outline-warning" id="btn-batch-delete-queued" disabled title="Remove selected queued events from queue">
-          <i class="fas fa-trash me-1"></i> Remove from Queue
-        </button>
-      </div>
+      {% if is_staff %}<a href="{% url 'viewer:stats-workers' %}" class="btn btn-outline-info btn-sm"><i class="fas fa-tasks me-1"></i>Workers Dashboard</a>{% endif %}
+      <a href="{% url 'viewer:submit-queue' %}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-inbox me-1"></i>Submit Queue</a>
     </div>
   </div>
-{% endif %}
 
-<div class="mt-2 table-responsive" id="contained-data" data-is-staff="{% if request.user.is_staff %}1{% else %}0{% endif %}">
-  <table class="table table-striped table-hover align-middle">
-    <thead>
-      <tr>
-        {% if request.user.is_staff %}
-        <th style="width: 40px;" class="text-center">
-          <input type="checkbox" class="form-check-input" id="th-select-all" title="Select all on page">
-        </th>
-        {% endif %}
-        <th style="min-width: 250px;">URL</th>
-        <th>Method</th>
-        <th>Provider</th>
-        <th>Status</th>
-        <th>Archive</th>
-        <th>Gallery</th>
-        <th>Size</th>
-        <th style="min-width: 140px;">Progress</th>
-        <th>Failed</th>
-        <th>Start date</th>
-        <th>End date (or ETA)</th>
-      </tr>
-    </thead>
-    <tbody id="download-table">
-      {% for download_event in results %}
-      <tr id="event-{{ download_event.id }}">
-        {% if request.user.is_staff %}
-        <td class="text-center event-cb-cell">
-          <input type="checkbox" name="selected_events" value="{{ download_event.id }}" class="form-check-input event-checkbox" data-status="{{ download_event.effective_status }}">
-        </td>
-        {% endif %}
-        <td class="event-name text-white" style="word-break: break-all; max-width: 320px;">
-          {{ download_event.name|urlize_all_rel }}
-        </td>
-        <td class="event-method">
-          <span class="badge bg-dark">{{ download_event.method }}</span>
-        </td>
-        <td class="event-provider">
-          {% if download_event.effective_provider %}
-          <span class="badge bg-secondary">{{ download_event.effective_provider }}</span>
-          {% else %}
-          <span class="text-white-50">-</span>
-          {% endif %}
-        </td>
-        <td class="event-status">
-          {% if download_event.effective_status == "queued" %}
-          <span class="badge bg-warning text-dark"><i class="fas fa-clock me-1"></i>Queued</span>
-          {% elif download_event.effective_status == "in_progress" %}
-          {% if download_event.progress >= 100 %}
-          <span class="badge bg-info text-dark"><i class="fas fa-sync fa-spin me-1"></i>Transferring</span>
-          {% else %}
-          <span class="badge bg-primary"><i class="fas fa-spinner fa-spin me-1"></i>Downloading</span>
-          {% endif %}
-          {% elif download_event.effective_status == "completed" %}
-          <span class="badge bg-success"><i class="fas fa-check me-1"></i>Completed</span>
-          {% elif download_event.effective_status == "cancelled" %}
-          <span class="badge bg-secondary"><i class="fas fa-ban me-1"></i>Cancelled</span>
-          {% elif download_event.effective_status == "failed" %}
-          <span class="badge bg-danger" {% if download_event.error_message %}title="{{ download_event.error_message }}"{% endif %}><i class="fas fa-times me-1"></i>Failed</span>
-          {% else %}
-          <span class="badge bg-secondary">{{ download_event.get_status_display|default:download_event.status }}</span>
-          {% endif %}
-        </td>
-        <td class="event-archive">
-          {% if download_event.archive %}
-          {% if download_event.archive.thumbnail.name %}
-          <a href="{% url 'viewer:archive' download_event.archive.pk %}"
-            data-image-url="{{ download_event.archive.thumbnail.url }}" class="img-preview" rel="popover">{{ download_event.archive.pk }}</a>
-          {% else %}
-          <a href="{% url 'viewer:archive' download_event.archive.pk %}">{{ download_event.archive.pk }}</a>
-          {% endif %}
-          {% else %}
-          <span class="text-white-50">Not set</span>
-          {% endif %}
-        </td>
-        <td class="event-gallery">
-          {% if download_event.gallery %}
-          {% if download_event.gallery.thumbnail.name %}
-          <a href="{% url 'viewer:gallery' download_event.gallery.pk %}"
-            data-image-url="{{ download_event.gallery.thumbnail.url }}" class="img-preview" rel="popover">{{ download_event.gallery.pk }}</a>
-          {% else %}
-          <a href="{% url 'viewer:gallery' download_event.gallery.pk %}">{{ download_event.gallery.pk }}</a>
-          {% endif %}
-          {% else %}
-          <span class="text-white-50">Not set</span>
-          {% endif %}
-        </td>
-        <td class="event-size text-nowrap text-white">
-          {{ download_event.total_size|filesizeformat }}
-        </td>
-        <td class="event-progress" style="min-width: 140px;">
-          <div class="progress" style="height: 18px;">
-            <div class="progress-bar {% if download_event.failed %}bg-danger{% elif download_event.completed %}bg-success{% else %}bg-primary progress-bar-striped progress-bar-animated{% endif %}"
-                 role="progressbar" style="width: {{ download_event.progress }}%;"
-                 aria-valuenow="{{ download_event.progress }}" aria-valuemin="0" aria-valuemax="100">
-              {{ download_event.progress|floatformat:1 }}%
-            </div>
-          </div>
-        </td>
-        <td class="event-failed text-center text-white">
-          {% if download_event.failed %}
-          <span class="text-danger fw-bold">Yes</span>
-          {% else %}
-          <span class="text-white">No</span>
-          {% endif %}
-        </td>
-        <td class="event-create-date text-nowrap small text-white">
-          {{ download_event.create_date|date:"DATETIME_FORMAT" }}
-        </td>
-        <td class="event-end-date text-nowrap small text-white">
-          {% if download_event.completed %}
-          {{ download_event.completed_date|date:"DATETIME_FORMAT" }}
-          {% else %}
-          {{ download_event.eta|date:"DATETIME_FORMAT" }}
-          {% endif %}
-        </td>
-      </tr>
-      {% empty %}
-      <tr id="no-downloads-row">
-        <td colspan="{% if request.user.is_staff %}12{% else %}11{% endif %}" class="text-center text-muted py-4">No download events found.</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
-{% if request.user.is_staff %}
-</form>
-{% endif %}
+  <!-- Status tiles: quick filters -->
+  <div class="row g-2 mb-3" id="stat-tiles">
+    <div class="col-6 col-md-3">
+      <a class="dm-stat{% if current_status == 'queued' %} active{% endif %}" href="?{% url_filter 'status' 'queued' %}">
+        <div class="dm-lbl"><i class="fas fa-clock me-1"></i>Queued</div>
+        <div class="dm-val text-warning" data-stat="queued">{{ stats.queued }}</div>
+        <div class="dm-stat-sub">waiting to start</div>
+      </a>
+    </div>
+    <div class="col-6 col-md-3">
+      <a class="dm-stat{% if current_status == 'downloading' %} active{% endif %}" href="?{% url_filter 'status' 'downloading' %}">
+        <div class="dm-lbl"><i class="fas fa-spinner me-1"></i>Downloading</div>
+        <div class="dm-val text-info" data-stat="downloading">{{ stats.downloading }}</div>
+        <div class="dm-stat-sub">running now</div>
+      </a>
+    </div>
+    <div class="col-6 col-md-3">
+      <a class="dm-stat{% if current_status == 'finished' %} active{% endif %}" href="?{% url_filter 'status' 'finished' %}">
+        <div class="dm-lbl"><i class="fas fa-check me-1"></i>Finished</div>
+        <div class="dm-val text-success" data-stat="finished_day">{{ stats.finished_day }}</div>
+        <div class="dm-stat-sub">started in the last 24 hours</div>
+      </a>
+    </div>
+    <div class="col-6 col-md-3">
+      <a class="dm-stat{% if current_status == 'failed' %} active{% endif %}" href="?{% url_filter 'status' 'failed' %}">
+        <div class="dm-lbl"><i class="fas fa-times me-1"></i>Failed</div>
+        <div class="dm-val text-danger" data-stat="failed_day">{{ stats.failed_day }}</div>
+        <div class="dm-stat-sub">started in the last 24 hours</div>
+      </a>
+    </div>
+  </div>
 
-{% if results.has_other_pages %}
-<nav aria-label="Page navigation" class="mt-3">
-  <ul class="pagination justify-content-center">
-    {% if results.has_previous %}
-    <li class="page-item"><a class="page-link" href="?page={{ results.previous_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' and key != 'json' %}&{{ key }}={{ value }}{% endif %}{% endfor %}">&laquo; Previous</a></li>
-    {% else %}
-    <li class="page-item disabled"><span class="page-link">&laquo; Previous</span></li>
-    {% endif %}
-    <li class="page-item active"><span class="page-link">Page {{ results.number }} of {{ results.paginator.num_pages }}</span></li>
-    {% if results.has_next %}
-    <li class="page-item"><a class="page-link" href="?page={{ results.next_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' and key != 'json' %}&{{ key }}={{ value }}{% endif %}{% endfor %}">Next &raquo;</a></li>
-    {% else %}
-    <li class="page-item disabled"><span class="page-link">Next &raquo;</span></li>
-    {% endif %}
-  </ul>
-</nav>
-{% endif %}
+  <!-- Filters -->
+  <form action="{% url 'viewer:downloads' %}" method="GET" class="dm-card" id="filter-form">
+    <div class="p-3">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-6 col-lg-3">
+          <label class="form-label dm-lbl" for="{{ form.name.id_for_label }}">URL</label>
+          {{ form.name }}
+        </div>
+        <div class="col-md-6 col-lg-3">
+          <label class="form-label dm-lbl" for="{{ form.title.id_for_label }}">Archive title</label>
+          {{ form.title }}
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label dm-lbl" for="{{ form.status.id_for_label }}">Status</label>
+          {{ form.status }}
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label dm-lbl" for="{{ form.method.id_for_label }}">Method</label>
+          {{ form.method }}
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label dm-lbl" for="{{ form.provider.id_for_label }}">Provider</label>
+          {{ form.provider }}
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label dm-lbl" for="{{ form.create_date_from.id_for_label }}">Started from</label>
+          {{ form.create_date_from }}
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label dm-lbl" for="{{ form.create_date_to.id_for_label }}">Started to</label>
+          {{ form.create_date_to }}
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label dm-lbl" for="{{ form.sort_by.id_for_label }}">Sort by</label>
+          {{ form.sort_by }}
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label dm-lbl" for="{{ form.direction.id_for_label }}">Order</label>
+          {{ form.direction }}
+        </div>
+        <div class="col-lg-4 d-flex flex-wrap gap-2">
+          <button type="submit" class="btn btn-info btn-sm"><i class="fas fa-search me-1"></i>Apply</button>
+          <a class="btn btn-outline-light btn-sm" href="{{ request.path }}"><i class="fas fa-times me-1"></i>Clear</a>
+        </div>
+      </div>
+      <div class="mt-3 d-none" data-dm-chips-wrapper>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <span class="dm-lbl"><i class="fas fa-filter me-1"></i>Active</span>
+          <div class="dm-chips" id="filter-chips"></div>
+        </div>
+      </div>
+    </div>
+  </form>
 
-{% load compress %}
-{% compress js %}
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-  const autoRefreshBtn = document.getElementById('auto-refresh');
-  const refreshIntervalSelect = document.getElementById('refresh-interval');
-  let refreshInterval = null;
-  let isRefreshing = false;
+  <!-- Downloads -->
+  <form id="batch-events-form" method="POST" action="{{ request.get_full_path }}">
+    {% csrf_token %}
+    <div class="dm-card">
+      <div class="dm-card-header">
+        {% include "viewer/include/dm_pagination.html" with page_obj=results noun="downloads" per_page_options=per_page_options per_page=limit %}
+      </div>
+      <div class="table-responsive" id="contained-data" data-is-staff="{% if is_staff %}1{% else %}0{% endif %}">
+        <table class="table table-dm table-hover table-sm mb-0" id="download-table-el">
+          <thead>
+            <tr>
+              {% if is_staff %}
+                <th class="dm-check-col"><input type="checkbox" class="form-check-input" id="th-select-all" title="Select all on this page" aria-label="Select all on this page"></th>
+              {% endif %}
+              <th>Download</th>
+              <th>Status</th>
+              <th>Progress</th>
+              <th class="text-end">Size</th>
+              <th>Archive</th>
+              <th>Gallery</th>
+              <th>Started</th>
+              <th>Finished / ETA</th>
+            </tr>
+          </thead>
+          <tbody id="download-table">
+            {% for download_event in results %}
+              {% with status=download_event.effective_status %}
+              <tr id="event-{{ download_event.id }}">
+                {% if is_staff %}
+                  <td class="dm-check-col">
+                    <input type="checkbox" name="selected_events" value="{{ download_event.id }}" class="form-check-input event-checkbox" aria-label="Select download {{ download_event.id }}">
+                  </td>
+                {% endif %}
+                <td class="dl-name">
+                  {{ download_event.name|urlize_all_rel }}
+                  <div class="dl-sub">
+                    <span class="badge bg-dark">{{ download_event.method }}</span>
+                    {% if download_event.effective_provider %}<span class="badge bg-secondary">{{ download_event.effective_provider }}</span>{% endif %}
+                    {% if download_event.archive %}<span class="ms-1">{{ download_event.archive.title|truncatechars:80 }}</span>{% endif %}
+                  </div>
+                </td>
+                <td class="text-nowrap">
+                  {% if status == "queued" %}<span class="badge bg-warning text-dark"><i class="fas fa-clock me-1"></i>Queued</span>
+                  {% elif status == "in_progress" %}
+                    {% if download_event.progress >= 100 %}<span class="badge bg-info text-dark"><i class="fas fa-sync fa-spin me-1"></i>Transferring</span>
+                    {% else %}<span class="badge bg-primary"><i class="fas fa-spinner fa-spin me-1"></i>Downloading</span>{% endif %}
+                  {% elif status == "completed" %}<span class="badge bg-success"><i class="fas fa-check me-1"></i>Completed</span>
+                  {% elif status == "cancelled" %}<span class="badge bg-secondary"><i class="fas fa-ban me-1"></i>Cancelled</span>
+                  {% elif status == "failed" %}<span class="badge bg-danger"><i class="fas fa-times me-1"></i>Failed</span>
+                  {% else %}<span class="badge bg-secondary">{{ download_event.get_status_display|default:download_event.status }}</span>{% endif %}
+                  {% if download_event.error_message and status == "failed" or download_event.error_message and status == "cancelled" %}
+                    <div class="dl-error text-truncate" title="{{ download_event.error_message }}">{{ download_event.error_message }}</div>
+                  {% endif %}
+                </td>
+                <td>
+                  <div class="progress dl-progress">
+                    <div class="progress-bar {% if download_event.failed %}bg-danger{% elif download_event.completed %}bg-success{% else %}progress-bar-striped progress-bar-animated{% endif %}"
+                         role="progressbar" style="width: {{ download_event.progress }}%;"
+                         aria-valuenow="{{ download_event.progress }}" aria-valuemin="0" aria-valuemax="100">{{ download_event.progress|floatformat:1 }}%</div>
+                  </div>
+                </td>
+                <td class="text-end text-nowrap small">{{ download_event.total_size|filesizeformat }}</td>
+                <td class="small">
+                  {% if download_event.archive %}
+                    <a href="{% url 'viewer:archive' download_event.archive.pk %}"{% if download_event.archive.thumbnail.name %} data-image-url="{{ download_event.archive.thumbnail.url }}" class="img-preview"{% endif %}>{{ download_event.archive.pk }}</a>
+                  {% else %}<span class="dm-dim">-</span>{% endif %}
+                </td>
+                <td class="small">
+                  {% if download_event.gallery %}
+                    <a href="{% url 'viewer:gallery' download_event.gallery.pk %}"{% if download_event.gallery.thumbnail.name %} data-image-url="{{ download_event.gallery.thumbnail.url }}" class="img-preview"{% endif %}>{{ download_event.gallery.pk }}</a>
+                  {% else %}<span class="dm-dim">-</span>{% endif %}
+                </td>
+                <td class="small text-nowrap"><span data-dm-reltime="{{ download_event.create_date|date:'c' }}">{{ download_event.create_date|date:"Y-m-d H:i:s" }}</span></td>
+                <td class="small text-nowrap">
+                  {% if download_event.completed %}
+                    {% if download_event.completed_date %}<span data-dm-reltime="{{ download_event.completed_date|date:'c' }}">{{ download_event.completed_date|date:"Y-m-d H:i:s" }}</span>{% endif %}
+                  {% else %}
+                    {% with eta=download_event.eta %}{% if eta %}<span class="dm-muted" title="Estimated">~</span><span data-dm-reltime="{{ eta|date:'c' }}">{{ eta|date:"Y-m-d H:i:s" }}</span>{% else %}<span class="dm-dim">-</span>{% endif %}{% endwith %}
+                  {% endif %}
+                </td>
+              </tr>
+              {% endwith %}
+            {% empty %}
+              <tr id="no-downloads-row"><td colspan="{% if is_staff %}9{% else %}8{% endif %}" class="dm-empty"><i class="fas fa-download"></i>No downloads match these filters.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if results.paginator.num_pages > 1 %}
+        <div class="p-2 border-top" style="border-color: var(--pg-border) !important;">
+          {% include "viewer/include/dm_pagination.html" with page_obj=results noun="downloads" compact=1 %}
+        </div>
+      {% endif %}
+    </div>
 
-  const savedDownloadInterval = localStorage.getItem('download_monitor_refresh_interval');
-  if (savedDownloadInterval && refreshIntervalSelect) {
-    refreshIntervalSelect.value = savedDownloadInterval;
-  }
-
-  function getIntervalMs() {
-    return parseInt(refreshIntervalSelect ? refreshIntervalSelect.value : 5000, 10) || 5000;
-  }
-
-  function initPopovers(container) {
-    if (typeof bootstrap !== 'undefined' && bootstrap.Popover) {
-      const scope = container || document;
-      scope.querySelectorAll('.img-preview').forEach(function(el) {
-        if (!el._popoverInitialized) {
-          el._popoverInitialized = true;
-          new bootstrap.Popover(el, {
-            trigger: 'hover',
-            html: true,
-            content: function() {
-              const url = el.dataset['imageUrl'] || el.getAttribute('data-image-url');
-              return url ? '<img alt="" class="img-fluid" style="max-width: 250px; max-height: 250px;" src="' + url + '">' : '';
-            }
-          });
-        }
-      });
-    }
-  }
-
-  function renderRowContent(item) {
-    let archiveHtml = '<span class="text-white-50">Not set</span>';
-    if (item.archive) {
-      if (item.archive.thumb_url) {
-        archiveHtml = `<a href="${item.archive.url}" data-image-url="${item.archive.thumb_url}" class="img-preview" rel="popover">${item.archive.id}</a>`;
-      } else {
-        archiveHtml = `<a href="${item.archive.url}">${item.archive.id}</a>`;
-      }
-    }
-
-    let galleryHtml = '<span class="text-white-50">Not set</span>';
-    if (item.gallery) {
-      if (item.gallery.thumb_url) {
-        galleryHtml = `<a href="${item.gallery.url}" data-image-url="${item.gallery.thumb_url}" class="img-preview" rel="popover">${item.gallery.id}</a>`;
-      } else {
-        galleryHtml = `<a href="${item.gallery.url}">${item.gallery.id}</a>`;
-      }
-    }
-
-    let effStatus = item.status;
-    if (item.completed && !item.failed && effStatus !== 'completed') {
-      effStatus = 'completed';
-    } else if (item.failed && effStatus !== 'failed' && effStatus !== 'cancelled') {
-      effStatus = 'failed';
-    }
-
-    let statusBadge = '';
-    if (effStatus === 'queued') {
-      statusBadge = '<span class="badge bg-warning text-dark"><i class="fas fa-clock me-1"></i>Queued</span>';
-    } else if (effStatus === 'in_progress') {
-      statusBadge = '<span class="badge bg-primary"><i class="fas fa-spinner fa-spin me-1"></i>Downloading</span>';
-    } else if (effStatus === 'completed') {
-      statusBadge = '<span class="badge bg-success"><i class="fas fa-check me-1"></i>Completed</span>';
-    } else if (effStatus === 'cancelled') {
-      statusBadge = '<span class="badge bg-secondary"><i class="fas fa-ban me-1"></i>Cancelled</span>';
-    } else if (effStatus === 'failed') {
-      const errTitle = item.error_message ? ` title="${item.error_message.replace(/"/g, '&quot;')}"` : '';
-      statusBadge = `<span class="badge bg-danger"${errTitle}><i class="fas fa-times me-1"></i>Failed</span>`;
-    } else {
-      statusBadge = `<span class="badge bg-secondary">${item.status_display || item.status}</span>`;
-    }
-
-    let barClass = 'bg-primary progress-bar-striped progress-bar-animated';
-    if (item.failed) {
-      barClass = 'bg-danger';
-    } else if (item.completed) {
-      barClass = 'bg-success';
-    }
-
-    const failedText = item.failed
-      ? '<span class="text-danger fw-bold">Yes</span>'
-      : '<span class="text-white">No</span>';
-
-    let nameHtml = item.name;
-    if (item.name && (item.name.startsWith('http://') || item.name.startsWith('https://'))) {
-      nameHtml = `<a href="${item.name}" target="_blank" rel="noopener noreferrer">${item.name}</a>`;
-    }
-
-    const containedData = document.getElementById('contained-data');
-    const isStaff = containedData && containedData.dataset.isStaff === '1';
-
-    let cbHtml = '';
-    if (isStaff) {
-      const isChecked = selectedEventIds.has(item.id);
-      cbHtml = `<td class="text-center event-cb-cell"><input type="checkbox" name="selected_events" value="${item.id}" class="form-check-input event-checkbox" data-status="${effStatus}" ${isChecked ? 'checked' : ''}></td>`;
-    }
-
-    return `
-      ${cbHtml}
-      <td class="event-name text-white" style="word-break: break-all; max-width: 320px;">${nameHtml}</td>
-      <td class="event-method"><span class="badge bg-dark">${item.method}</span></td>
-      <td class="event-provider">${item.provider ? `<span class="badge bg-secondary">${item.provider}</span>` : '<span class="text-white-50">-</span>'}</td>
-      <td class="event-status">${statusBadge}</td>
-      <td class="event-archive">${archiveHtml}</td>
-      <td class="event-gallery">${galleryHtml}</td>
-      <td class="event-size text-nowrap text-white">${item.total_size_formatted}</td>
-      <td class="event-progress" style="min-width: 140px;">
-        <div class="progress" style="height: 18px;">
-          <div class="progress-bar ${barClass}" role="progressbar" style="width: ${item.progress}%;" aria-valuenow="${item.progress}" aria-valuemin="0" aria-valuemax="100">
-            ${item.progress}%
+    {% if is_staff %}
+      <div class="dm-actionbar">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <span class="dm-sel-count" data-dm-sel-count>None selected</span>
+          <span class="small dm-muted">Selection is kept while the list refreshes.</span>
+          <div class="ms-auto d-flex flex-wrap gap-2">
+            <button type="submit" name="action" value="mark_completed" class="btn btn-sm btn-outline-success" data-dm-needs-selection disabled
+                    data-dm-confirm="Mark {n} selected download(s) as completed?">
+              <i class="fas fa-check me-1"></i>Mark completed
+            </button>
+            <button type="submit" name="action" value="mark_failed" class="btn btn-sm btn-outline-danger" data-dm-needs-selection disabled
+                    data-dm-confirm="Mark {n} selected download(s) as failed?">
+              <i class="fas fa-times me-1"></i>Mark failed
+            </button>
+            <button type="submit" name="action" value="delete_queued" class="btn btn-sm btn-outline-warning" data-dm-needs-selection disabled
+                    data-dm-confirm="Remove the queued ones of {n} selected download(s) from the queue? Only queued downloads are removed."
+                    title="Only queued downloads are removed">
+              <i class="fas fa-trash me-1"></i>Remove from queue
+            </button>
           </div>
         </div>
-      </td>
-      <td class="event-failed text-center text-white">${failedText}</td>
-      <td class="event-create-date text-nowrap small text-white">${item.create_date}</td>
-      <td class="event-end-date text-nowrap small text-white">${item.end_date_or_eta}</td>
-    `;
-  }
+      </div>
+    {% endif %}
+  </form>
+</div>
+{% endwith %}
+{% endblock %}
 
-  async function refreshDownloads() {
-    if (isRefreshing) return;
-    isRefreshing = true;
-
-    try {
-      const currentURL = new URL(window.location.href);
-      currentURL.searchParams.set("json", "1");
-      const fetchURL = currentURL.toString();
-
-      const response = await fetch(fetchURL);
-      if (!response.ok) return;
-      const data = await response.json();
-
+{% block afterJQ %}
+  {% load compress %}
+  {% compress js %}
+    <script src="{% static 'js/dm-pages.js' %}"></script>
+  {% endcompress %}
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const esc = DM.escapeHtml;
       const tableBody = document.getElementById('download-table');
-      if (!tableBody) return;
+      const isStaff = document.getElementById('contained-data').dataset.isStaff === '1';
+      const colCount = isStaff ? 9 : 8;
 
-      const countInPage = document.getElementById('count-in-page');
-      const countTotal = document.getElementById('count-total');
-      if (countInPage) countInPage.textContent = data.in_page_count;
-      if (countTotal) countTotal.textContent = data.count;
+      // Form widgets come from the Django form: match the page style.
+      document.querySelectorAll('#filter-form .form-control, #filter-form .form-select').forEach(function (el) {
+        el.classList.add(el.tagName === 'SELECT' ? 'form-select-sm' : 'form-control-sm');
+      });
+      DM.filterChips(document.getElementById('filter-form'), document.getElementById('filter-chips'), {
+        ignore: ['limit', 'sort_by', 'direction'],
+        defaults: { status: 'in_progress' },
+      });
 
-      const containedData = document.getElementById('contained-data');
-      const isStaff = containedData && containedData.dataset.isStaff === '1';
+      const selection = isStaff ? DM.selection({
+        root: tableBody,
+        checkbox: '.event-checkbox',
+        toggleAll: document.getElementById('th-select-all'),
+        rowClick: true,
+      }) : null;
 
-      if (!data.results || data.results.length === 0) {
-        tableBody.innerHTML = `<tr id="no-downloads-row"><td colspan="${isStaff ? 12 : 11}" class="text-center text-muted py-4">No download events found.</td></tr>`;
-        updateActionButtons();
-        return;
-      }
-
-      const noDownloadsRow = document.getElementById('no-downloads-row');
-      if (noDownloadsRow) {
-        noDownloadsRow.remove();
-      }
-
-      const incomingIds = new Set(data.results.map(r => r.id));
-
-      Array.from(tableBody.children).forEach(function(row) {
-        const idMatch = row.id && row.id.match(/^event-(\d+)$/);
-        if (idMatch && !incomingIds.has(parseInt(idMatch[1]))) {
-          row.remove();
+      function statusBadge(item) {
+        switch (item.status) {
+          case 'queued': return '<span class="badge bg-warning text-dark"><i class="fas fa-clock me-1"></i>Queued</span>';
+          case 'in_progress': return item.progress >= 100
+            ? '<span class="badge bg-info text-dark"><i class="fas fa-sync fa-spin me-1"></i>Transferring</span>'
+            : '<span class="badge bg-primary"><i class="fas fa-spinner fa-spin me-1"></i>Downloading</span>';
+          case 'completed': return '<span class="badge bg-success"><i class="fas fa-check me-1"></i>Completed</span>';
+          case 'cancelled': return '<span class="badge bg-secondary"><i class="fas fa-ban me-1"></i>Cancelled</span>';
+          case 'failed': return '<span class="badge bg-danger"><i class="fas fa-times me-1"></i>Failed</span>';
+          default: return '<span class="badge bg-secondary">' + esc(item.status_display || item.status) + '</span>';
         }
-      });
-
-      data.results.forEach(function(item, index) {
-        let row = document.getElementById(`event-${item.id}`);
-        if (!row) {
-          row = document.createElement('tr');
-          row.id = `event-${item.id}`;
-          if (index < tableBody.children.length) {
-            tableBody.insertBefore(row, tableBody.children[index]);
-          } else {
-            tableBody.appendChild(row);
-          }
-        } else {
-          if (tableBody.children[index] !== row) {
-            tableBody.insertBefore(row, tableBody.children[index]);
-          }
-        }
-        row.innerHTML = renderRowContent(item);
-        initPopovers(row);
-      });
-      updateActionButtons();
-    } catch (error) {
-      console.error('Error refreshing downloads:', error);
-    } finally {
-      isRefreshing = false;
-    }
-  }
-
-  function startAutoRefresh() {
-    refreshDownloads();
-    refreshInterval = setInterval(refreshDownloads, getIntervalMs());
-    if (autoRefreshBtn) {
-      autoRefreshBtn.classList.add('active');
-      autoRefreshBtn.classList.remove('btn-outline-light');
-      autoRefreshBtn.classList.add('btn-success');
-      autoRefreshBtn.innerHTML = '<i class="fas fa-stop"></i> Stop refresh';
-    }
-  }
-
-  function stopAutoRefresh() {
-    if (refreshInterval) {
-      clearInterval(refreshInterval);
-      refreshInterval = null;
-    }
-    if (autoRefreshBtn) {
-      autoRefreshBtn.classList.remove('active');
-      autoRefreshBtn.classList.remove('btn-success');
-      autoRefreshBtn.classList.add('btn-outline-light');
-      autoRefreshBtn.innerHTML = '<i class="fas fa-sync"></i> Auto-refresh';
-    }
-  }
-
-  if (autoRefreshBtn) {
-    autoRefreshBtn.addEventListener('click', function() {
-      if (refreshInterval) {
-        stopAutoRefresh();
-        sessionStorage.removeItem('download_monitor_auto_refresh');
-      } else {
-        startAutoRefresh();
-        sessionStorage.setItem('download_monitor_auto_refresh', '1');
       }
-    });
 
-    if (sessionStorage.getItem('download_monitor_auto_refresh') === '1') {
-      startAutoRefresh();
-    }
-  }
-
-  if (refreshIntervalSelect) {
-    refreshIntervalSelect.addEventListener('change', function() {
-      localStorage.setItem('download_monitor_refresh_interval', this.value);
-      if (refreshInterval) {
-        clearInterval(refreshInterval);
-        refreshInterval = setInterval(refreshDownloads, getIntervalMs());
+      function linkCell(obj) {
+        if (!obj) return '<span class="dm-dim">-</span>';
+        const preview = obj.thumb_url ? ' class="img-preview" data-image-url="' + esc(obj.thumb_url) + '"' : '';
+        return '<a href="' + esc(obj.url) + '"' + preview + '>' + esc(obj.id) + '</a>';
       }
-    });
-  }
 
-  const selectedEventIds = new Set();
-  const containedDataEl = document.getElementById('contained-data');
-  const isStaffUser = containedDataEl && containedDataEl.dataset.isStaff === '1';
-
-  function updateActionButtons() {
-    if (!isStaffUser) return;
-    const count = selectedEventIds.size;
-    const badge = document.getElementById('selected-count-badge');
-    if (badge) badge.textContent = `${count} selected`;
-
-    const btnFail = document.getElementById('btn-batch-fail');
-    const btnComplete = document.getElementById('btn-batch-complete');
-    const btnDeleteQueued = document.getElementById('btn-batch-delete-queued');
-
-    if (btnFail) btnFail.disabled = count === 0;
-    if (btnComplete) btnComplete.disabled = count === 0;
-    if (btnDeleteQueued) btnDeleteQueued.disabled = count === 0;
-
-    const thSelectAll = document.getElementById('th-select-all');
-    if (thSelectAll) {
-      const allCheckboxes = document.querySelectorAll('.event-checkbox');
-      if (allCheckboxes.length > 0) {
-        const allChecked = Array.from(allCheckboxes).every(cb => cb.checked);
-        thSelectAll.checked = allChecked;
-        thSelectAll.indeterminate = count > 0 && !allChecked;
-      } else {
-        thSelectAll.checked = false;
-        thSelectAll.indeterminate = false;
+      function timeCell(iso, text, estimated) {
+        if (!iso) return '<span class="dm-dim">-</span>';
+        return (estimated ? '<span class="dm-muted" title="Estimated">~</span>' : '') + '<span data-dm-reltime="' + esc(iso) + '">' + esc(text) + '</span>';
       }
-    }
-  }
 
-  if (isStaffUser) {
-    document.querySelectorAll('.event-checkbox:checked').forEach(function(cb) {
-      selectedEventIds.add(parseInt(cb.value, 10));
-    });
-    updateActionButtons();
+      function renderRow(item, checked) {
+        const isUrl = /^https?:\/\//.test(item.name || '');
+        const name = isUrl ? '<a href="' + esc(item.name) + '" target="_blank" rel="noopener noreferrer nofollow">' + esc(item.name) + '</a>' : esc(item.name);
+        let barClass = 'progress-bar-striped progress-bar-animated';
+        if (item.failed) barClass = 'bg-danger'; else if (item.completed) barClass = 'bg-success';
+        const showError = item.error_message && (item.status === 'failed' || item.status === 'cancelled');
+        return (isStaff ? '<td class="dm-check-col"><input type="checkbox" name="selected_events" value="' + item.id + '" class="form-check-input event-checkbox"' + (checked ? ' checked' : '') + ' aria-label="Select download ' + item.id + '"></td>' : '') +
+          '<td class="dl-name">' + name +
+            '<div class="dl-sub"><span class="badge bg-dark">' + esc(item.method) + '</span> ' +
+            (item.provider ? '<span class="badge bg-secondary">' + esc(item.provider) + '</span>' : '') +
+            (item.archive && item.archive.title ? '<span class="ms-1">' + esc(item.archive.title.length > 80 ? item.archive.title.slice(0, 79) + '…' : item.archive.title) + '</span>' : '') +
+            '</div></td>' +
+          '<td class="text-nowrap">' + statusBadge(item) +
+            (showError ? '<div class="dl-error text-truncate" title="' + esc(item.error_message) + '">' + esc(item.error_message) + '</div>' : '') + '</td>' +
+          '<td><div class="progress dl-progress"><div class="progress-bar ' + barClass + '" role="progressbar" style="width: ' + Number(item.progress) + '%;" aria-valuenow="' + Number(item.progress) + '" aria-valuemin="0" aria-valuemax="100">' + Number(item.progress).toFixed(1) + '%</div></div></td>' +
+          '<td class="text-end text-nowrap small">' + esc(item.total_size_formatted) + '</td>' +
+          '<td class="small">' + linkCell(item.archive) + '</td>' +
+          '<td class="small">' + linkCell(item.gallery) + '</td>' +
+          '<td class="small text-nowrap">' + timeCell(item.create_date_iso, item.create_date, false) + '</td>' +
+          '<td class="small text-nowrap">' + timeCell(item.end_date_iso, item.end_date_or_eta, item.is_eta) + '</td>';
+      }
 
-    const tableBodyEl = document.getElementById('download-table');
-    if (tableBodyEl) {
-      tableBodyEl.addEventListener('change', function(e) {
-        if (e.target && e.target.classList.contains('event-checkbox')) {
-          const id = parseInt(e.target.value, 10);
-          if (e.target.checked) {
-            selectedEventIds.add(id);
-          } else {
-            selectedEventIds.delete(id);
-          }
-          updateActionButtons();
-        }
-      });
-    }
+      async function refresh() {
+        const url = new URL(window.location.href);
+        url.searchParams.set('json', '1');
+        const res = await fetch(url.toString(), { headers: { 'Accept': 'application/json' } });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
 
-    const thSelectAll = document.getElementById('th-select-all');
-    if (thSelectAll) {
-      thSelectAll.addEventListener('change', function() {
-        const checked = this.checked;
-        document.querySelectorAll('.event-checkbox').forEach(function(cb) {
-          cb.checked = checked;
-          const id = parseInt(cb.value, 10);
-          if (checked) {
-            selectedEventIds.add(id);
-          } else {
-            selectedEventIds.delete(id);
-          }
-        });
-        updateActionButtons();
-      });
-    }
-
-    const selectAllPageBtn = document.getElementById('select-all-page-btn');
-    if (selectAllPageBtn) {
-      selectAllPageBtn.addEventListener('click', function() {
-        document.querySelectorAll('.event-checkbox').forEach(function(cb) {
-          cb.checked = true;
-          selectedEventIds.add(parseInt(cb.value, 10));
-        });
-        updateActionButtons();
-      });
-    }
-
-    const deselectAllBtn = document.getElementById('deselect-all-btn');
-    if (deselectAllBtn) {
-      deselectAllBtn.addEventListener('click', function() {
-        document.querySelectorAll('.event-checkbox').forEach(function(cb) {
-          cb.checked = false;
-        });
-        selectedEventIds.clear();
-        updateActionButtons();
-      });
-    }
-
-    function submitBatchAction(actionName, confirmMsg) {
-      if (selectedEventIds.size === 0) return;
-      if (confirm(confirmMsg)) {
-        const form = document.getElementById('batch-events-form');
-        const actionField = document.getElementById('batch-action-field');
-        if (form && actionField) {
-          actionField.value = actionName;
-          form.querySelectorAll('input[type="hidden"][name="selected_events"]').forEach(el => el.remove());
-          selectedEventIds.forEach(id => {
-            const hidden = document.createElement('input');
-            hidden.type = 'hidden';
-            hidden.name = 'selected_events';
-            hidden.value = id;
-            form.appendChild(hidden);
+        if (data.stats) {
+          Object.keys(data.stats).forEach(function (key) {
+            const el = document.querySelector('[data-stat="' + key + '"]');
+            if (el) el.textContent = data.stats[key];
           });
-          form.submit();
         }
+
+        const checkedIds = new Set(Array.from(tableBody.querySelectorAll('.event-checkbox:checked')).map(function (cb) { return cb.value; }));
+        if (!data.results || data.results.length === 0) {
+          tableBody.innerHTML = '<tr id="no-downloads-row"><td colspan="' + colCount + '" class="dm-empty"><i class="fas fa-download"></i>No downloads match these filters.</td></tr>';
+        } else {
+          document.getElementById('no-downloads-row')?.remove();
+          const incoming = new Set(data.results.map(function (r) { return 'event-' + r.id; }));
+          Array.from(tableBody.children).forEach(function (row) { if (!incoming.has(row.id)) row.remove(); });
+          data.results.forEach(function (item, index) {
+            let row = document.getElementById('event-' + item.id);
+            const isNew = !row;
+            if (isNew) {
+              row = document.createElement('tr');
+              row.id = 'event-' + item.id;
+            }
+            if (tableBody.children[index] !== row) tableBody.insertBefore(row, tableBody.children[index] || null);
+            // Close an open preview before replacing its element.
+            row.querySelectorAll('.img-preview').forEach(function (el) { bootstrap.Popover.getInstance(el)?.dispose(); });
+            row.innerHTML = renderRow(item, checkedIds.has(String(item.id)));
+            if (isNew) row.classList.add('dm-new');
+          });
+          DM.initPopovers(tableBody);
+          DM.relativeTimes(tableBody);
+        }
+        if (selection) selection.refresh();
       }
-    }
 
-    const btnFail = document.getElementById('btn-batch-fail');
-    if (btnFail) {
-      btnFail.addEventListener('click', function() {
-        submitBatchAction('mark_failed', `Are you sure you want to mark ${selectedEventIds.size} selected download event(s) as failed?`);
+      DM.autoRefresh({
+        button: document.getElementById('auto-refresh'),
+        select: document.getElementById('refresh-interval'),
+        container: document.getElementById('live-control'),
+        updated: document.getElementById('live-updated'),
+        storageKey: 'download_monitor_refresh',
+        tick: refresh,
+        defaultOn: true,
       });
-    }
-
-    const btnComplete = document.getElementById('btn-batch-complete');
-    if (btnComplete) {
-      btnComplete.addEventListener('click', function() {
-        submitBatchAction('mark_completed', `Are you sure you want to mark ${selectedEventIds.size} selected download event(s) as completed?`);
-      });
-    }
-
-    const btnDeleteQueued = document.getElementById('btn-batch-delete-queued');
-    if (btnDeleteQueued) {
-      btnDeleteQueued.addEventListener('click', function() {
-        submitBatchAction('delete_queued', `Are you sure you want to remove selected queued event(s) from the download queue? (Only events with status 'Queued' will be deleted).`);
-      });
-    }
-  }
-
-  initPopovers(document);
-});
-</script>
-{% endcompress %}
+      DM.initPopovers(document);
+    });
+  </script>
 {% endblock %}

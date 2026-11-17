@@ -18,7 +18,7 @@ from viewer.forms import (
     UserTokenCreateForm,
 )
 from viewer.models import Archive, Profile, UserArchivePrefs
-from viewer.utils.general import clean_up_referer
+from viewer.utils.general import get_safe_referer, safe_redirect_back
 from viewer.utils.types import AuthenticatedHttpRequest
 
 logger = logging.getLogger(__name__)
@@ -26,10 +26,7 @@ logger = logging.getLogger(__name__)
 
 def render_error(request: HttpRequest, message: str) -> HttpResponseRedirect:
     messages.error(request, message)
-    if "HTTP_REFERER" in request.META:
-        return HttpResponseRedirect(request.META["HTTP_REFERER"])
-    else:
-        return HttpResponseRedirect(reverse("viewer:main-page"))
+    return safe_redirect_back(request, reverse("viewer:main-page"))
 
 
 def render_message(request: HttpRequest, message: str) -> HttpResponse:
@@ -179,7 +176,7 @@ def user_archive_preferences(request: AuthenticatedHttpRequest, archive_pk: int,
     else:
         return render_error(request, "Unknown user preference.")
     return HttpResponseRedirect(
-        clean_up_referer(request.META["HTTP_REFERER"]), preserve_request=False, content={"user_archive_preferences": current_user_archive_preferences}
+        get_safe_referer(request, reverse("viewer:archive", args=[archive_pk])), preserve_request=False, content={"user_archive_preferences": current_user_archive_preferences}
     )
 
 
