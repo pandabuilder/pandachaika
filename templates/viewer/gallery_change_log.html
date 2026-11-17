@@ -13,20 +13,9 @@
   <div class="page-header">
     <h2>Change Log for Gallery: <a href="{% url 'viewer:gallery' gallery.pk %}">{{ gallery.best_title }}</a></h2>
 
-    {% if user.is_authenticated %}
-        <p class="lead">Tracked fields: title, title_jpn, tags, category, uploader, comment, posted, filecount, filesize, expunged, disowned, rating, fjord, public, dl_type, reason, thumbnail_url, status.</p>
-    {% else %}
-        <p class="lead">Tracked public fields: title, title_jpn, tags, category, uploader, comment, posted, filecount, filesize, expunged, disowned, rating.</p>
-    {% endif %}
+    <p class="lead">Tracked {% if not user.is_authenticated %}public {% endif %}fields: {{ tracked_fields|join:", " }}, tags. Only changes are listed.</p>
   </div>
   {% load viewer_extras %}
-    <div>
-        {% if 'object-data' in request.GET %}
-            <a class="btn btn-success" href="?{% url_toggle 'object-data' %}" role="button">Hide object data</a>
-        {% else %}
-            <a class="btn btn-secondary" href="?{% url_toggle 'object-data' %}" role="button">Show object data</a>
-        {% endif %}
-    </div>
   <!-- Next/Prev page links  -->
     {% if results.object_list and results.paginator.num_pages > 1 %}
       <div>
@@ -62,115 +51,71 @@
       <table class="table table-bordered table-sm generic-table">
         <thead>
         <tr>
-          <th style="width:10%">Date</th>{% if 'object-data' in request.GET %}<th style="width:40%">Data after changes</th>{% endif %}<th>Changes</th>
+          <th style="width:10%">Date</th><th>Changes</th>
         </tr>
         </thead>
         <tbody>
-        {% for history in results %}
-            {% with changes=history|changes_gallery_delta:user.is_authenticated %}
-            {% if changes|length > 0 %}
+        {% for entry, field_changes in rows %}
           <tr>
             <td>
-              {{ history.history_date|date:"DATETIME_FORMAT" }}
+              {{ entry.changed_at|date:"DATETIME_FORMAT" }}
             </td>
-            {% if 'object-data' in request.GET %}
             <td>
-                <table class="table table-bordered table-sm generic-table">
-                <thead>
-                <tr>
-                  <th style="width:10%">Field</th><th>Value</th>
-                </tr>
-                </thead>
-                <tbody>
-                {% for gallery_field, gallery_value in history|gallery_history_fields:user.is_authenticated %}
-                  <tr>
-                    <td>
-                      {{ gallery_field }}
-                    </td>
-                    <td>
-                        {% if gallery_field == 'tags' %}
-                          <ul class="tags">
-                            {% for tag_list in history|tag_history_to_tag_lists %}
-                              <li class="subtitle">
-                                {% if tag_list.0 %}{{ tag_list.0 }}:{% endif %}
-                                {% for tag in tag_list.1 %}
-                                  <a href="{% url 'viewer:gallery-tag-search' 'gallery-tag' tag %}">{% if tag_list.0 %}{{ tag.name }}{% else %}{{ tag }}{% endif %}</a>
-                                {% endfor %}
-                              </li>{% endfor %}
-                          </ul>
-                        {% elif gallery_field == 'status' %}
-                            {{ history.get_status_display }}
-                        {% elif gallery_field == 'filesize' %}
-                          {% if gallery_value %}
-                          {{ gallery_value|filesizeformat }}, {{ gallery_value }}
-                          {% else %}
-                          None provided
-                          {% endif %}
-                        {% else %}
-                            {{ gallery_value }}
-                        {% endif %}
-                    </td>
-                  </tr>
-                {% endfor %}
-                </tbody>
-              </table>
-            </td>
-            {% endif %}
-            <td>
-            {% with changes=history|changes_gallery_delta %}
-            {% if changes|length > 0 %}
-              <table class="table table-bordered table-sm generic-table">
+              <table class="table table-bordered table-sm generic-table mb-0">
                 <thead>
                 <tr>
                   <th style="width:10%">Field</th><th style="width:45%">Old</th><th style="width:45%">New</th>
                 </tr>
                 </thead>
                 <tbody>
-                {% for change in changes %}
+                {% for change in field_changes %}
                   <tr>
-                    <td>
-                      {{ change.field }}
-                    </td>
-                    <td>
-                        {% if change.field == 'tags' and change.old != None %}
-                          <ul class="tags">
-                            {% for tag_list in history.prev_record|tag_history_to_tag_lists %}
-                              <li class="subtitle">
-                                {% if tag_list.0 %}{{ tag_list.0 }}:{% endif %}
-                                {% for tag in tag_list.1 %}
-                                  <a href="{% url 'viewer:gallery-tag-search' 'gallery-tag' tag %}">{% if tag_list.0 %}{{ tag.name }}{% else %}{{ tag }}{% endif %}</a>
-                                {% endfor %}
-                              </li>{% endfor %}
-                          </ul>
-                        {% else %}
-                            {{ change.old }}
-                        {% endif %}
-                    </td>
-                    <td>
-                        {% if change.field == 'tags' %}
-                          <ul class="tags">
-                            {% for tag_list in history|tag_history_to_tag_lists %}
-                              <li class="subtitle">
-                                {% if tag_list.0 %}{{ tag_list.0 }}:{% endif %}
-                                {% for tag in tag_list.1 %}
-                                  <a href="{% url 'viewer:gallery-tag-search' 'gallery-tag' tag %}">{% if tag_list.0 %}{{ tag.name }}{% else %}{{ tag }}{% endif %}</a>
-                                {% endfor %}
-                              </li>{% endfor %}
-                          </ul>
-                        {% else %}
-                            {{ change.new }}
-                        {% endif %}
-                    </td>
+                    <td>{{ change.field }}</td>
+                    <td>{{ change.old }}</td>
+                    <td>{{ change.new }}</td>
                   </tr>
                 {% endfor %}
+                {% if entry.tags_added or entry.tags_removed %}
+                  <tr>
+                    <td>tags</td>
+                    <td>
+                      {% if entry.tags_removed %}
+                        <div class="small text-muted">Removed</div>
+                        <ul class="tags">
+                  {% for tag_list in entry.tags_removed_lists %}
+                    <li class="subtitle">
+                      {% if tag_list.0 %}{{ tag_list.0 }}:{% endif %}
+                      {% for tag in tag_list.1 %}
+                        <a href="{% url 'viewer:gallery-tag-search' 'gallery-tag' tag %}">{% if tag_list.0 %}{{ tag.name }}{% else %}{{ tag }}{% endif %}</a>
+                      {% endfor %}
+                    </li>
+                  {% endfor %}
+                </ul>
+                      {% endif %}
+                    </td>
+                    <td>
+                      {% if entry.tags_added %}
+                        <div class="small text-muted">Added</div>
+                        <ul class="tags">
+                  {% for tag_list in entry.tags_added_lists %}
+                    <li class="subtitle">
+                      {% if tag_list.0 %}{{ tag_list.0 }}:{% endif %}
+                      {% for tag in tag_list.1 %}
+                        <a href="{% url 'viewer:gallery-tag-search' 'gallery-tag' tag %}">{% if tag_list.0 %}{{ tag.name }}{% else %}{{ tag }}{% endif %}</a>
+                      {% endfor %}
+                    </li>
+                  {% endfor %}
+                </ul>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endif %}
                 </tbody>
               </table>
-            {% endif %}
-            {% endwith %}
             </td>
           </tr>
-        {% endif %}
-        {% endwith %}
+        {% empty %}
+          <tr><td colspan="2">No changes recorded.</td></tr>
         {% endfor %}
         </tbody>
       </table>

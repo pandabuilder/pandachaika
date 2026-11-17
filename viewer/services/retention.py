@@ -5,7 +5,7 @@ from typing import Any
 
 from django.conf import settings
 from django.db import connection
-from django.db.models import Max, Q, QuerySet
+from django.db.models import Q, QuerySet
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -91,18 +91,11 @@ def get_database_info() -> dict[str, Any]:
     }
 
 
-def _prunable_history(model: Any, cutoff: datetime.datetime) -> QuerySet:
-    """Old history rows, except the newest revision of every object (so unchanged objects keep their snapshot)."""
-    newest_per_object = model.objects.values("id").annotate(newest=Max("history_id")).values("newest")
-    return model.objects.filter(history_date__lt=cutoff).exclude(history_id__in=newest_per_object)
-
-
 def get_entity_definitions() -> list[dict[str, Any]]:
     """Return entity definitions specifying model, date fields, and query builders."""
     from django_db_logger.models import StatusLog
     from viewer.models import DownloadEvent, EventLog, ProcessedLinks
-    from viewer.models.archive import Archive
-    from viewer.models.gallery import Gallery
+    from viewer.models.change_log import ArchiveChange, GalleryChange
     from workers.models import TaskQueue
 
     defs: list[dict[str, Any]] = [
@@ -204,13 +197,14 @@ def get_entity_definitions() -> list[dict[str, Any]]:
         },
     ]
 
-    # Historical models from django-simple-history
-    hist_models = [
-        ("history_archive", "Historical Archive Snapshots", Archive.history.model, "Archive revision history"),
-        ("history_gallery", "Historical Gallery Snapshots", Gallery.history.model, "Gallery revision history"),
+    # Change log rows (GalleryChange / ArchiveChange). Each row is a diff and the current state lives in the
+    # object itself, so old rows can be pruned without losing anything but the oldest changes.
+    change_log_models = [
+        ("history_archive", "Archive Change Log", ArchiveChange, "Archive field changes"),
+        ("history_gallery", "Gallery Change Log", GalleryChange, "Gallery field and tag changes"),
     ]
 
-    for key, label, model, desc in hist_models:
+    for key, label, model, desc in change_log_models:
         defs.append(
             {
                 "key": key,
@@ -219,11 +213,11 @@ def get_entity_definitions() -> list[dict[str, Any]]:
                 "app_label": model._meta.app_label,
                 "model": model,
                 "description": desc,
-                "date_field": "history_date",
+                "date_field": "changed_at",
                 "fallback_date_field": None,
                 "config_field": "history_days",
-                "policy": "Revision records older than retention period (the newest revision of each object is kept)",
-                "build_prunable_qs": (lambda m=model: lambda cutoff: _prunable_history(m, cutoff))(),
+                "policy": "Recorded changes older than retention period",
+                "build_prunable_qs": (lambda m=model: lambda cutoff: m.objects.filter(changed_at__lt=cutoff))(),
                 "get_active_count": None,
             }
         )

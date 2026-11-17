@@ -28,11 +28,11 @@ from django.urls import reverse
 import django.utils.timezone as django_tz
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
-from simple_history.models import HistoricalRecords
 
 from core.base.image_ops import img_to_thumbnail
 from core.base.types import DataDict, GalleryData
 from core.base.utilities import get_dict_allowed_fields, request_with_retries
+from viewer.models.change_log import GALLERY_TRACKED_FIELDS, TrackedChangesMixin, batched_changes
 from viewer.models.common import EMPTY_TITLE, ItemProperties
 from viewer.models.tag import Tag
 from viewer.services import CompareObjectsService
@@ -261,7 +261,7 @@ class GalleryManager(models.Manager["Gallery"]):
     def update_by_gid_provider(self, gallery_data: GalleryData) -> bool:
         gallery = self.filter(gid=gallery_data.gid, provider=gallery_data.provider).first()
         if gallery:
-            with transaction.atomic():
+            with transaction.atomic(), batched_changes():
                 if gallery_data.tags is not None:
                     new_tags = []
                     for tag in gallery_data.tags:
@@ -366,7 +366,7 @@ class GalleryManager(models.Manager["Gallery"]):
                 values["first_gallery"] = gallery_first
             del values["first_gallery_gid"]
 
-        with transaction.atomic():
+        with transaction.atomic(), batched_changes():
             gallery = Gallery(**values)
             gallery.save()
 
@@ -443,7 +443,7 @@ class GalleryManager(models.Manager["Gallery"]):
                 values["first_gallery"] = gallery_first
             del values["first_gallery_gid"]
 
-        with transaction.atomic():
+        with transaction.atomic(), batched_changes():
             gallery, _ = self.update_or_create(defaults=values, gid=values["gid"], provider=values["provider"])
 
             if gallery_data.extra_provider_data:
@@ -503,7 +503,7 @@ class GalleryManager(models.Manager["Gallery"]):
 
 
 
-class Gallery(models.Model):
+class Gallery(TrackedChangesMixin, models.Model):
 
     class StatusChoices(models.IntegerChoices):
         NORMAL = 1, _("Normal")
@@ -570,18 +570,10 @@ class Gallery(models.Model):
     origin = models.SmallIntegerField(choices=OriginChoices, db_index=True, default=OriginChoices.ORIGIN_NORMAL)
     provider_metadata = models.TextField(blank=True, default="")
 
-    history = HistoricalRecords(
-        excluded_fields=[
-            "origin",
-            "thumbnail",
-            "thumbnail_height",
-            "thumbnail_width",
-            "last_modified",
-            "create_date",
-            "provider",
-        ],
-        m2m_fields=[tags],
-    )
+    # Change log (GalleryChange): see viewer.models.change_log
+    tracked_fields = GALLERY_TRACKED_FIELDS
+    change_log_model_name = "GalleryChange"
+    change_log_fk = "gallery_id"
 
     objects = GalleryManager()
 

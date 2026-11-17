@@ -27,7 +27,6 @@ from django.http import HttpRequest
 from django.urls import reverse
 import django.utils.timezone as django_tz
 from django.utils.translation import gettext_lazy as _
-from simple_history.models import HistoricalRecords
 
 from core.base.tag_logic import ArchiveTagsComparer
 from core.base.types import ArchiveGenericFile, DataDict
@@ -40,6 +39,7 @@ from core.base.utilities import (
     hamming_distance,
     replace_illegal_name,
 )
+from viewer.models.change_log import ARCHIVE_TRACKED_FIELDS, TrackedChangesMixin
 from viewer.models.common import EMPTY_TITLE, IMAGE_PHASH_BLACK, IMAGE_PHASH_WHITE, ItemProperties, fs
 from viewer.models.gallery import Gallery
 from viewer.models.tag import SortedTagList, Tag
@@ -197,7 +197,7 @@ class ArchiveManager(models.Manager["Archive"]):
 
 
 
-class Archive(models.Model):
+class Archive(TrackedChangesMixin, models.Model):
 
     ORIGIN_DEFAULT = 1
     ORIGIN_ACCEPT_SUBMITTED = 2
@@ -265,17 +265,11 @@ class Archive(models.Model):
 
     origin = models.SmallIntegerField(choices=ORIGIN_CHOICES, db_index=True, default=ORIGIN_DEFAULT)
 
-    history = HistoricalRecords(
-        excluded_fields=[
-            "origin",
-            "thumbnail",
-            "thumbnail_height",
-            "thumbnail_width",
-            "last_modified",
-            "create_date",
-            "original_filename",
-        ]
-    )
+    # Change log (ArchiveChange): see viewer.models.change_log
+    tracked_fields = ARCHIVE_TRACKED_FIELDS
+    change_log_model_name = "ArchiveChange"
+    change_log_fk = "archive_id"
+    change_log_tag_fields = ("custom_tags_added", "custom_tags_removed")
 
     objects = ArchiveManager()
 

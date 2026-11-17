@@ -1063,8 +1063,8 @@ class RetentionSettings(BaseConfigModel):
     history_days: int = Field(
         default=90,
         description=(
-            "Retention in days for django-simple-history records (0 to disable). "
-            "The newest revision of each object is always kept."
+            "Retention in days for Gallery/Archive change log entries (0 to disable). "
+            "Only real changes are stored, so keeping them for long is cheap."
         ),
     )
     chunk_size: int = Field(

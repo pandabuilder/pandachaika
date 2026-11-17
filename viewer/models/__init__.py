@@ -37,6 +37,11 @@ from viewer.models.gallery import (
     upload_mention_handler,
     upload_mention_thumb_handler,
 )
+from viewer.models.change_log import (
+    ArchiveChange,
+    GalleryChange,
+    batched_changes,
+)
 from viewer.models.archive import (
     Archive,
     ArchiveFileEntry,
@@ -129,6 +134,10 @@ __all__ = [
     "gallery_thumb_path_handler",
     "upload_mention_handler",
     "upload_mention_thumb_handler",
+    # Change log
+    "ArchiveChange",
+    "GalleryChange",
+    "batched_changes",
     # Archive
     "Archive",
     "ArchiveFileEntry",

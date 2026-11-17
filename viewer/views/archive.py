@@ -43,6 +43,7 @@ from viewer.models import (
     ArchiveStatistics,
     UserLongLivedToken,
 )
+from viewer.models.change_log import ARCHIVE_TRACKED_FIELDS, batched_changes
 from viewer.utils.general import get_safe_referer, safe_redirect_back, should_use_refined_views
 from viewer.utils.requests import double_check_auth, authenticate_by_token
 from viewer.views.head import render_error
@@ -304,6 +305,7 @@ def archive_details(request: HttpRequest, pk: int, mode: str = "view") -> HttpRe
 
 
 @login_required
+@batched_changes()  # custom tags are deleted and re-created on every save; only the net change is logged
 def archive_update(
     request: HttpRequest, pk: int, tool: str | None = None, tool_use_id: str | None = None
 ) -> HttpResponse:
@@ -672,28 +674,20 @@ def change_log(request: HttpRequest, pk: int) -> HttpResponse:
     if not archive.public and not request.user.is_authenticated:
         raise Http404("Archive does not exist")
 
-    archive_history = archive.history.order_by("-history_date")
-
-    paginator = Paginator(archive_history, 400)
+    paginator = Paginator(archive.change_log.all(), 200)
     try:
         page = int(request.GET.get("page", "1"))
     except ValueError:
         page = 1
 
     try:
-        results: Page | None = paginator.page(page)
+        results: Page = paginator.page(page)
     except (InvalidPage, EmptyPage):
         results = paginator.page(paginator.num_pages)
 
-    if results is not None:
-        history_list = list(results.object_list)
-        for i in range(len(history_list) - 1):
-            history_list[i].cached_prev_record = history_list[i + 1]
-        if history_list:
-            history_list[-1].cached_prev_record = history_list[-1].prev_record
-        results.object_list = history_list
+    rows = [(entry, entry.field_changes()) for entry in results.object_list]
 
-    d = {"archive": archive, "results": results}
+    d = {"archive": archive, "results": results, "rows": rows, "tracked_fields": ARCHIVE_TRACKED_FIELDS}
 
     return render(request, "viewer/archive_change_log.html", d)
 

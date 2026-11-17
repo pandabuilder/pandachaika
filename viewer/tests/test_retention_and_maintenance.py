@@ -402,26 +402,24 @@ class BackgroundWorkerExecutionTests(TestCase):
             self.assertEqual(task.status, TaskQueue.Status.COMPLETED)
 
 
-class HistoryRetentionKeepsLatestSnapshotTests(TestCase):
-    def test_prune_keeps_the_newest_revision_of_each_object(self):
-        from viewer.models import Gallery
+class ChangeLogRetentionTests(TestCase):
+    def test_prune_removes_only_old_change_log_rows(self):
+        from viewer.models import Gallery, GalleryChange
 
-        unchanged = Gallery.objects.create(gid="h1", provider="panda", title="unchanged")
-        changed = Gallery.objects.create(gid="h2", provider="panda", title="v1")
-        changed.title = "v2"
-        changed.save()
-
-        history_model = Gallery.history.model
-        old = timezone.now() - datetime.timedelta(days=400)
-        history_model.objects.all().update(history_date=old)
-        self.assertEqual(history_model.objects.filter(id=changed.id).count(), 2)
+        gallery = Gallery.objects.create(gid="h1", provider="panda", title="v1")
+        gallery.title = "v2"
+        gallery.save()
+        gallery.title = "v3"
+        gallery.save()
+        self.assertEqual(GalleryChange.objects.filter(gallery=gallery).count(), 2)
+        old_row = GalleryChange.objects.filter(gallery=gallery).order_by("id").first()
+        GalleryChange.objects.filter(pk=old_row.pk).update(changed_at=timezone.now() - datetime.timedelta(days=400))
 
         settings = Settings(load_from_disk=False)
         settings.retention.history_days = 90
         result = prune_database(settings_obj=settings, entity="history_gallery")
 
         self.assertTrue(result)
-        remaining = history_model.objects.all()
-        self.assertEqual(remaining.filter(id=unchanged.id).count(), 1)
-        self.assertEqual(remaining.filter(id=changed.id).count(), 1)
-        self.assertEqual(remaining.get(id=changed.id).title, "v2")
+        remaining = GalleryChange.objects.filter(gallery=gallery)
+        self.assertEqual(remaining.count(), 1)
+        self.assertEqual(remaining.get().changes, {"title": ["v2", "v3"]})

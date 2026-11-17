@@ -11,6 +11,7 @@ from django.shortcuts import render
 from core.base.setup import Settings
 from viewer.utils.general import PAGE_SIZE_OPTIONS, page_size, safe_redirect_back
 from viewer.utils.actions import event_log
+from viewer.models.change_log import batched_changes
 from workers import client
 from viewer.forms import (
     GallerySearchForm,
@@ -677,8 +678,9 @@ def upload_gallery(request: HttpRequest) -> HttpResponse:
                     new_gallery.dl_type = "info"
                     if not new_gallery.uploader:
                         new_gallery.uploader = ""
-                    new_gallery.save()
-                    new_gallery.tags.set(tag_objects)
+                    with batched_changes():
+                        new_gallery.save()
+                        new_gallery.tags.set(tag_objects)
                     new_gallery.schedule_thumbnail_fetch()
                     # edit_form.save_m2m()
                     message = "Gallery successfully created: {}".format(new_gallery.get_absolute_url())

@@ -1,10 +1,8 @@
-from unittest.mock import MagicMock
 from django.contrib.auth.models import User
 from django.db import connection
 from django.test import TestCase, RequestFactory
 
 from viewer.models import Archive, ArchiveFileEntry, ArchiveTag, Gallery, Tag
-from viewer.templatetags.viewer_extras import changes_archive_delta, changes_gallery_delta
 from viewer.views.head.search import filter_archives, filter_archives_simple
 from viewer.feeds import LatestArchivesFeed
 
@@ -114,32 +112,6 @@ class QueryOptimizationsTest(TestCase):
         qs_full = filter_archives(request, {}, params, authenticated=True)
         sql_full = str(qs_full.query)
         self.assertIn("DISTINCT", sql_full)
-
-    def test_change_log_cached_prev_record(self):
-        mock_prev = MagicMock()
-        mock_prev.title = "Old Title"
-
-        mock_curr = MagicMock()
-        mock_curr.title = "New Title"
-        mock_curr.cached_prev_record = mock_prev
-
-        diff_result = MagicMock()
-        diff_result.changes = [{"field": "title", "old": "Old Title", "new": "New Title"}]
-        mock_curr.diff_against.return_value = diff_result
-
-        # Test archive changes filter
-        changes = changes_archive_delta(mock_curr)
-        self.assertEqual(len(changes), 1)
-        mock_curr.diff_against.assert_called_once()
-        self.assertFalse(mock_curr.prev_record.called)
-
-        # Test gallery changes filter
-        mock_curr.diff_against.reset_mock()
-        mock_curr.prev_record.reset_mock()
-        changes = changes_gallery_delta(mock_curr, is_authenticated=True)
-        self.assertEqual(len(changes), 1)
-        mock_curr.diff_against.assert_called_once()
-        self.assertFalse(mock_curr.prev_record.called)
 
     def test_archive_details_optimizations(self):
         self.client.force_login(self.user)

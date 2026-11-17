@@ -908,7 +908,7 @@ retention:
   # 0 to disable pruning for this entity. Default: 180
   processed_links_days: 180
 
-  # Days to retain django-simple-history revision snapshots (HistoricalArchive/Gallery).
+  # Days to retain Gallery/Archive change log entries (recorded field and tag changes).
   # 0 to disable pruning for this entity. Default: 90
   history_days: 90
 

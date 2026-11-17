@@ -7,7 +7,7 @@ from django.utils.dateparse import parse_duration
 from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 from django.conf import settings
-from simple_history.admin import SimpleHistoryAdmin
+from viewer.models.change_log import batched_changes
 
 
 from viewer.models import (
@@ -67,7 +67,7 @@ class ArchiveImageInline(admin.TabularInline):
     # raw_id_fields = ("archive_group", "archive",)
 
 
-class ArchiveAdmin(SimpleHistoryAdmin):
+class ArchiveAdmin(admin.ModelAdmin):
     raw_id_fields = ("gallery", "tags", "alternative_sources")
     search_fields = ["title", "title_jpn", "zipped"]
     list_display = ["title", "zipped", "gallery_id", "filesize", "filecount", "create_date"]
@@ -223,7 +223,7 @@ class GalleryProviderDataInline(admin.TabularInline):
     extra = 1
 
 
-class GalleryAdmin(SimpleHistoryAdmin):
+class GalleryAdmin(admin.ModelAdmin):
     search_fields = ["title", "title_jpn", "gid"]
     raw_id_fields = ("tags", "gallery_container", "magazine", "first_gallery", "parent_gallery")
     list_display = [
@@ -257,6 +257,11 @@ class GalleryAdmin(SimpleHistoryAdmin):
     actions = ["make_hidden", "make_public", "make_private", "set_provider", "set_reason", "make_normal"]
     action_form = UpdateActionForm
     inlines = (GalleryProviderDataInline,)
+
+    def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
+        # Field and tag edits from one form submission become a single change-log row.
+        with batched_changes():
+            return super().changeform_view(request, object_id, form_url, extra_context)
 
     def save_model(self, request: HttpRequest, obj: Gallery, form: ModelForm, change: bool) -> None:
         super().save_model(request, obj, form, change)

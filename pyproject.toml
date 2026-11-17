@@ -75,7 +75,6 @@ dependencies = [
     "django-compressor==4.7.0",
     "django-cors-headers==4.9.0",
     "django-db-logger==0.1.13",
-    "django-simple-history==3.13.0",
     "django-vite==3.2.0",
     "elasticsearch==8.19.3",
     "feedparser==6.0.14",

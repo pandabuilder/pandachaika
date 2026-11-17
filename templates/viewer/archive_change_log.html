@@ -12,7 +12,7 @@
 
   <div class="page-header">
     <h2>Change Log for Archive: <a href="{% url 'viewer:archive' archive.pk %}">{{ archive.best_title }}</a></h2>
-    <p class="lead">Tracked fields: title, title_jpn, source_type, reason, public_date, public, gallery, filecount, filesize, extracted, details, crc32, binned.</p>
+    <p class="lead">Tracked fields: {{ tracked_fields|join:", " }}, custom tags. Only changes are listed.</p>
   </div>
   {% load viewer_extras %}
   <!-- Next/Prev page links  -->
@@ -54,48 +54,72 @@
         </tr>
         </thead>
         <tbody>
-        {% for history in results %}
-            {% with changes=history|changes_archive_delta %}
-            {% if changes|length > 0 %}
-              <tr>
-                <td>
-                  {{ history.history_date|date:"DATETIME_FORMAT" }}
-                </td>
-                <td>
-                  <table class="table table-bordered table-sm generic-table">
-                    <thead>
-                    <tr>
-                      <th style="width:10%">Field</th><th style="width:45%">Old</th><th style="width:45%">New</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    {% for change in history|changes_archive_delta %}
-                      <tr>
-                        <td>
-                          {{ change.field }}
-                        </td>
-                        <td>
-                            {% if change.field == 'gallery' and change.old != None %}
-                            <a href="{% url 'viewer:gallery' change.old %}">{% url 'viewer:gallery' change.old %}</a>
-                            {% else %}
-                            {{ change.old }}
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if change.field == 'gallery' and change.new != None %}
-                            <a href="{% url 'viewer:gallery' change.new %}">{% url 'viewer:gallery' change.new %}</a>
-                            {% else %}
-                            {{ change.new }}
-                            {% endif %}
-                        </td>
-                      </tr>
-                    {% endfor %}
-                    </tbody>
-                  </table>
-                </td>
-              </tr>
-            {% endif %}
-            {% endwith %}
+        {% for entry, field_changes in rows %}
+          <tr>
+            <td>
+              {{ entry.changed_at|date:"DATETIME_FORMAT" }}
+            </td>
+            <td>
+              <table class="table table-bordered table-sm generic-table mb-0">
+                <thead>
+                <tr>
+                  <th style="width:10%">Field</th><th style="width:45%">Old</th><th style="width:45%">New</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for change in field_changes %}
+                  <tr>
+                    <td>{{ change.field }}</td>
+                    {% if change.field == 'gallery' %}
+                      <td>{% if change.old != None %}<a href="{% url 'viewer:gallery' change.old %}">{% url 'viewer:gallery' change.old %}</a>{% else %}None{% endif %}</td>
+                      <td>{% if change.new != None %}<a href="{% url 'viewer:gallery' change.new %}">{% url 'viewer:gallery' change.new %}</a>{% else %}None{% endif %}</td>
+                    {% else %}
+                      <td>{{ change.old }}</td>
+                      <td>{{ change.new }}</td>
+                    {% endif %}
+                  </tr>
+                {% endfor %}
+                {% if entry.custom_tags_added or entry.custom_tags_removed %}
+                  <tr>
+                    <td>custom tags</td>
+                    <td>
+                      {% if entry.custom_tags_removed %}
+                        <div class="small text-muted">Removed</div>
+                        <ul class="tags">
+                  {% for tag_list in entry.custom_tags_removed_lists %}
+                    <li class="subtitle">
+                      {% if tag_list.0 %}{{ tag_list.0 }}:{% endif %}
+                      {% for tag in tag_list.1 %}
+                        <a href="{% url 'viewer:archive-tag-search' 'tag' tag %}">{% if tag_list.0 %}{{ tag.name }}{% else %}{{ tag }}{% endif %}</a>
+                      {% endfor %}
+                    </li>
+                  {% endfor %}
+                </ul>
+                      {% endif %}
+                    </td>
+                    <td>
+                      {% if entry.custom_tags_added %}
+                        <div class="small text-muted">Added</div>
+                        <ul class="tags">
+                  {% for tag_list in entry.custom_tags_added_lists %}
+                    <li class="subtitle">
+                      {% if tag_list.0 %}{{ tag_list.0 }}:{% endif %}
+                      {% for tag in tag_list.1 %}
+                        <a href="{% url 'viewer:archive-tag-search' 'tag' tag %}">{% if tag_list.0 %}{{ tag.name }}{% else %}{{ tag }}{% endif %}</a>
+                      {% endfor %}
+                    </li>
+                  {% endfor %}
+                </ul>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endif %}
+                </tbody>
+              </table>
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="2">No changes recorded.</td></tr>
         {% endfor %}
         </tbody>
       </table>

@@ -3,7 +3,6 @@
 from django.conf import settings
 from django.db import migrations, models
 import django.db.models.deletion
-import simple_history.models
 
 
 class Migration(migrations.Migration):
@@ -50,7 +49,9 @@ class Migration(migrations.Migration):
                 'ordering': ('-history_date', '-history_id'),
                 'get_latest_by': ('history_date', 'history_id'),
             },
-            bases=(simple_history.models.HistoricalChanges, models.Model),
+            # Was (simple_history.models.HistoricalChanges, models.Model). Python-only mixin, no
+            # effect on the schema; dropped so the migration loads without django-simple-history.
+            bases=(models.Model,),
         ),
         migrations.AlterModelOptions(
             name='archive',
@@ -131,6 +132,8 @@ class Migration(migrations.Migration):
                 'ordering': ('-history_date', '-history_id'),
                 'get_latest_by': ('history_date', 'history_id'),
             },
-            bases=(simple_history.models.HistoricalChanges, models.Model),
+            # Was (simple_history.models.HistoricalChanges, models.Model). Python-only mixin, no
+            # effect on the schema; dropped so the migration loads without django-simple-history.
+            bases=(models.Model,),
         ),
     ]

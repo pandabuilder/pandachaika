@@ -4,18 +4,34 @@ from urllib.parse import urljoin
 
 from django.conf import settings
 from django.db.models import Q
-from django.db.models.signals import pre_save
+from django.db.models.signals import m2m_changed, post_delete, post_save, pre_save
 from django.dispatch import receiver
 from django.urls import reverse
 from django.utils.html import urlize, linebreaks
 
-from viewer.models import Gallery, Archive, users_with_perm, WantedGallery, ArchiveGroupEntry
+from viewer.models import Gallery, Archive, ArchiveTag, users_with_perm, WantedGallery, ArchiveGroupEntry
+from viewer.models.change_log import (
+    record_archive_custom_tag_delete,
+    record_archive_custom_tag_save,
+    record_delete,
+    record_gallery_tags,
+    record_save,
+)
 from core.base.utilities import normalize_crc32
 from viewer.signals import wanted_gallery_found
 from viewer.utils.functions import send_mass_html_mail
 
 logger = logging.getLogger(__name__)
 crawler_settings = settings.CRAWLER_SETTINGS
+
+
+# Change log (GalleryChange / ArchiveChange): see viewer.models.change_log
+for _tracked_model in (Gallery, Archive):
+    post_save.connect(record_save, sender=_tracked_model, dispatch_uid=f"change_log_save_{_tracked_model.__name__}")
+    post_delete.connect(record_delete, sender=_tracked_model, dispatch_uid=f"change_log_delete_{_tracked_model.__name__}")
+m2m_changed.connect(record_gallery_tags, sender=Gallery.tags.through, dispatch_uid="change_log_gallery_tags")
+post_save.connect(record_archive_custom_tag_save, sender=ArchiveTag, dispatch_uid="change_log_archive_custom_tag_save")
+post_delete.connect(record_archive_custom_tag_delete, sender=ArchiveTag, dispatch_uid="change_log_archive_custom_tag_delete")
 
 
 @receiver(pre_save, sender=Archive)

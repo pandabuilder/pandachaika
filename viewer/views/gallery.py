@@ -3,7 +3,11 @@ from django.http import HttpRequest, HttpResponse, Http404
 from django.shortcuts import render
 
 
-from viewer.models import Gallery
+from viewer.models import Gallery, GalleryChange
+from viewer.models.change_log import GALLERY_PUBLIC_FIELDS, GALLERY_TRACKED_FIELDS
+
+
+CHANGE_LOG_PAGE_SIZE = 200
 
 
 def change_log(request: HttpRequest, pk: int) -> HttpResponse:
@@ -14,27 +18,24 @@ def change_log(request: HttpRequest, pk: int) -> HttpResponse:
     if not gallery.public and not request.user.is_authenticated:
         raise Http404("Gallery does not exist")
 
-    gallery_history = gallery.history.order_by("-history_date")
+    fields = GALLERY_TRACKED_FIELDS if request.user.is_authenticated else GALLERY_PUBLIC_FIELDS
+    entries = gallery.change_log.all()
+    if not request.user.is_authenticated:
+        entries = entries.filter(GalleryChange.public_filter())
 
-    paginator = Paginator(gallery_history, 400)
+    paginator = Paginator(entries, CHANGE_LOG_PAGE_SIZE)
     try:
         page = int(request.GET.get("page", "1"))
     except ValueError:
         page = 1
 
     try:
-        results: Page | None = paginator.page(page)
+        results: Page = paginator.page(page)
     except (InvalidPage, EmptyPage):
         results = paginator.page(paginator.num_pages)
 
-    if results is not None:
-        history_list = list(results.object_list)
-        for i in range(len(history_list) - 1):
-            history_list[i].cached_prev_record = history_list[i + 1]
-        if history_list:
-            history_list[-1].cached_prev_record = history_list[-1].prev_record
-        results.object_list = history_list
+    rows = [(entry, entry.field_changes(fields)) for entry in results.object_list]
 
-    d = {"gallery": gallery, "results": results}
+    d = {"gallery": gallery, "results": results, "rows": rows, "tracked_fields": fields}
 
     return render(request, "viewer/gallery_change_log.html", d)

@@ -183,8 +183,6 @@ if module_exists("xmlrunner"):
     TEST_RUNNER = "xmlrunner.extra.djangotestrunner.XMLTestRunner"
     TEST_OUTPUT_DIR = "test-results"
 
-INSTALLED_APPS += ["simple_history"]
-SIMPLE_HISTORY_FILEFIELD_TO_CHARFIELD = True
 
 MIDDLEWARE = [
     "django.contrib.sessions.middleware.SessionMiddleware",

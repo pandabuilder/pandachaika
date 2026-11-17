@@ -7,7 +7,7 @@ crawler_settings = settings.CRAWLER_SETTINGS
 
 
 class Command(BaseCommand):
-    help = "Prune old TaskQueue, DownloadEvent, EventLog, ProcessedLinks, StatusLog, and historical records according to retention policy."
+    help = "Prune old TaskQueue, DownloadEvent, EventLog, ProcessedLinks, StatusLog, and Gallery/Archive change log entries according to retention policy."
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -57,7 +57,7 @@ class Command(BaseCommand):
             "--history-days",
             type=int,
             default=None,
-            help="Override retention period in days for django-simple-history tables (0 to skip).",
+            help="Override retention period in days for the Gallery/Archive change log (0 to skip).",
         )
         parser.add_argument(
             "--chunk-size",
