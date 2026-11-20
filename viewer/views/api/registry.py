@@ -4,8 +4,11 @@ Each list maps a query-string command key to its handler. See dispatch.py for ro
 """
 
 from viewer.views.api.handlers.delete import (
+    handle_delete_archive,
     handle_delete_archive_group,
     handle_delete_archive_group_entry,
+    handle_delete_gallery,
+    handle_delete_gid,
     handle_delete_wanted_gallery,
 )
 from viewer.views.api.handlers.get import (
@@ -41,11 +44,14 @@ from viewer.views.api.handlers.get import (
 from viewer.views.api.handlers.post import (
     handle_post_archive_group,
     handle_post_archive_group_entry,
+    handle_post_update_metadata,
     handle_post_wanted_gallery,
 )
 from viewer.views.api.handlers.put import (
     handle_put_archive_group,
     handle_put_archive_group_entry,
+    handle_put_gallery,
+    handle_put_gid,
     handle_put_wanted_gallery,
 )
 
@@ -83,6 +89,7 @@ GET_HANDLERS = [
 
 
 POST_HANDLERS = [
+    ("update-metadata", "viewer.update_metadata", handle_post_update_metadata),
     ("archive-group", "viewer.change_archivegroup", handle_post_archive_group),
     ("archive-group-entry", "viewer.change_archivegroupentry", handle_post_archive_group_entry),
     ("wanted-gallery", "viewer.add_wantedgallery", handle_post_wanted_gallery),
@@ -93,6 +100,8 @@ PUT_HANDLERS = [
     ("archive-group", "viewer.change_archivegroup", handle_put_archive_group),
     ("archive-group-entry", "viewer.change_archivegroupentry", handle_put_archive_group_entry),
     ("wanted-gallery", "viewer.change_wantedgallery", handle_put_wanted_gallery),
+    ("gid", ("viewer.mark_delete_gallery", "viewer.approve_gallery"), handle_put_gid),
+    ("gallery", ("viewer.mark_delete_gallery", "viewer.approve_gallery"), handle_put_gallery),
 ]
 
 
@@ -100,5 +109,8 @@ DELETE_HANDLERS = [
     ("archive-group", "viewer.delete_archivegroup", handle_delete_archive_group),
     ("archive-group-entry", "viewer.delete_archivegroupentry", handle_delete_archive_group_entry),
     ("wanted-gallery", "viewer.delete_wantedgallery", handle_delete_wanted_gallery),
+    ("archive", "viewer.delete_archive", handle_delete_archive),
+    ("gid", "viewer.delete_archive", handle_delete_gid),
+    ("gallery", "viewer.delete_archive", handle_delete_gallery),
 ]
 

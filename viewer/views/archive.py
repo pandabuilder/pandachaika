@@ -44,7 +44,8 @@ from viewer.models import (
     UserLongLivedToken,
 )
 from viewer.models.change_log import ARCHIVE_TRACKED_FIELDS, batched_changes
-from viewer.utils.general import get_safe_referer, safe_redirect_back, should_use_refined_views
+from viewer.utils.general import get_safe_referer, safe_redirect_back
+from viewer.utils.task_actions import task_action_response
 from viewer.utils.requests import double_check_auth, authenticate_by_token
 from viewer.views.head import render_error
 from viewer.services.archive_extraction import ArchiveExtractionService
@@ -58,9 +59,25 @@ archive_download_regex = re.compile(r"/archive/(\d+)/download/$", re.IGNORECASE)
 
 VALID_ARCHIVE_VIEW_MODES = ("cover", "thumbnails", "full", "single")
 
+# Background tasks that the archive page's tool buttons start, keyed by the name the template uses.
+ARCHIVE_PAGE_TASK_TYPES = {
+    "extract": "extract_worker",
+    "reduce": "reduce_worker",
+    "publish": "publish_worker",
+    "extract_context": "contextual_extractor_worker",
+    "recalc_info": "fileinfo_worker",
+    "calc_sha1": "calculate_sha1_worker",
+    "mark_similar": "mark_similar_worker",
+    "convert": "convert_archive_worker",
+}
 
-def archive_details(request: HttpRequest, pk: int, mode: str = "view") -> HttpResponse:
-    """Archive listing."""
+
+def archive_details(request: HttpRequest, pk: int, mode: str = "view", view_style: str = "old") -> HttpResponse:
+    """Archive details page.
+
+    ``view_style`` ("new" or "old") picks the template. It comes from the URLconf: /archive_new/ and
+    /archive_old/ fix it, /archive/ uses ``urls.new_detail_views_as_default``.
+    """
 
     try:
         archive = Archive.objects.select_related("gallery").get(pk=pk)
@@ -155,13 +172,24 @@ def archive_details(request: HttpRequest, pk: int, mode: str = "view") -> HttpRe
             me_profiles = manga_extractor.get_profile_choices()
             default_profile_name = manga_extractor.default_profile
 
+        # Tasks queued for this archive by the page's tool buttons, shown as their polling status
+        # (see viewer.utils.task_actions) when the page loads while they're still pending or running.
+        active_tasks = client.get_active_archive_tasks(archive.pk, ARCHIVE_PAGE_TASK_TYPES)
+        if archive.extracted:
+            active_tasks.pop("extract", None)
+        else:
+            active_tasks.pop("reduce", None)
+        if archive.public:
+            active_tasks.pop("publish", None)
+
         d.update(
             {
                 "user_archive_preferences": current_user_archive_preferences,
-                "is_extracting": (not archive.extracted) and client.is_archive_extracting(archive.pk),
-                "is_reducing": archive.extracted and client.is_archive_reducing(archive.pk),
-                "is_publishing": (not archive.public) and client.is_archive_publishing(archive.pk),
-                "is_extracting_context": client.is_archive_extracting_context(archive.pk),
+                "active_tasks": active_tasks,
+                "is_extracting": "extract" in active_tasks,
+                "is_reducing": "reduce" in active_tasks,
+                "is_publishing": "publish" in active_tasks,
+                "is_extracting_context": "extract_context" in active_tasks,
                 "manga_extractor_enabled": me_enabled,
                 "manga_extractor_profiles": me_profiles,
                 "manga_extractor_default_profile": default_profile_name,
@@ -296,11 +324,7 @@ def archive_details(request: HttpRequest, pk: int, mode: str = "view") -> HttpRe
         }
     )
 
-    template = (
-        "viewer/archive_new.html"
-        if should_use_refined_views(request)
-        else "viewer/archive_old.html"
-    )
+    template = "viewer/archive_new.html" if view_style == "new" else "viewer/archive_old.html"
     return render(request, template, d)
 
 
@@ -823,12 +847,14 @@ def extract(request: HttpRequest, pk: int) -> HttpResponse:
             target_url = get_safe_referer(request, archive.get_absolute_url())
             if archive.extracted:
                 logger.info("Archive %s is already extracted.", archive.pk)
-                return HttpResponseRedirect(target_url)
+                return task_action_response(request, None, target_url, "Archive is already extracted.", messages.INFO)
 
-            if client.is_archive_extracting(archive.pk):
+            active_task = client.get_active_archive_task(archive.pk, "extract_worker")
+            if active_task:
                 logger.info("Archive %s extraction is already queued or in progress.", archive.pk)
-                messages.info(request, "Archive extraction is already queued or in progress.")
-                return HttpResponseRedirect(target_url)
+                return task_action_response(
+                    request, active_task, target_url, "Archive extraction is already queued or in progress.", messages.INFO
+                )
 
             resized = bool(request.GET.get("resized", ""))
 
@@ -837,21 +863,21 @@ def extract(request: HttpRequest, pk: int) -> HttpResponse:
             else:
                 logger.info("Queueing image expansion for archive: {}".format(archive.get_absolute_url()))
 
-            client.enqueue(
+            task = client.enqueue(
                 args=[archive.pk],
                 task_type="extract_worker",
                 override_options={"resized": resized},
                 user=request.user,
                 event_action="EXPAND_ARCHIVE",
             )
-            messages.success(
+            return task_action_response(
                 request,
+                task,
+                target_url,
                 "Queued archive extraction (resized)." if resized else "Queued archive extraction.",
             )
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
-
-    return HttpResponseRedirect(target_url)
 
 
 @login_required
@@ -866,26 +892,26 @@ def reduce(request: HttpRequest, pk: int) -> HttpResponse:
             target_url = get_safe_referer(request, archive.get_absolute_url())
             if not archive.extracted:
                 logger.info("Archive %s is already reduced.", archive.pk)
-                return HttpResponseRedirect(target_url)
+                return task_action_response(request, None, target_url, "Archive is already reduced.", messages.INFO)
 
-            if client.is_archive_reducing(archive.pk):
+            active_task = client.get_active_archive_task(archive.pk, "reduce_worker")
+            if active_task:
                 logger.info("Archive %s reduction is already queued or in progress.", archive.pk)
-                messages.info(request, "Archive reduction is already queued or in progress.")
-                return HttpResponseRedirect(target_url)
+                return task_action_response(
+                    request, active_task, target_url, "Archive reduction is already queued or in progress.", messages.INFO
+                )
 
             logger.info("Queueing image reduction for archive: {}".format(archive.get_absolute_url()))
 
-            client.enqueue(
+            task = client.enqueue(
                 args=[archive.pk],
                 task_type="reduce_worker",
                 user=request.user,
                 event_action="REDUCE_ARCHIVE",
             )
-            messages.success(request, "Queued archive reduction.")
+            return task_action_response(request, task, target_url, "Queued archive reduction.")
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
-
-    return HttpResponseRedirect(target_url)
 
 
 @login_required
@@ -899,22 +925,22 @@ def check_and_convert_filetype(request: HttpRequest, pk: int) -> HttpResponse:
             archive = Archive.objects.select_for_update().get(pk=pk)
             target_url = get_safe_referer(request, archive.get_absolute_url())
 
-            if client.is_archive_task_active(archive.pk, "convert_archive_worker"):
-                messages.info(request, "Archive filetype conversion is already queued or in progress.")
-                return HttpResponseRedirect(target_url)
+            active_task = client.get_active_archive_task(archive.pk, "convert_archive_worker")
+            if active_task:
+                return task_action_response(
+                    request, active_task, target_url, "Archive filetype conversion is already queued or in progress.", messages.INFO
+                )
 
             logger.info("Queueing filetype check and conversion to ZIP for archive: {}".format(archive.get_absolute_url()))
-            client.enqueue(
+            task = client.enqueue(
                 args=[archive.pk],
                 task_type="convert_archive_worker",
                 user=request.user,
                 event_action="CONVERT_TO_ZIP",
             )
-            messages.success(request, "Queued archive filetype check and conversion.")
+            return task_action_response(request, task, target_url, "Queued archive filetype check and conversion.")
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
-
-    return HttpResponseRedirect(target_url)
 
 
 @login_required
@@ -1104,23 +1130,23 @@ def public(request: HttpRequest, pk: int) -> HttpResponse:
             if archive.public:
                 return render_error(request, "Archive is already public.")
 
-            if client.is_archive_publishing(archive.pk):
+            active_task = client.get_active_archive_task(archive.pk, "publish_worker")
+            if active_task:
                 logger.info("Archive %s publishing is already queued or in progress.", archive.pk)
-                messages.info(request, "Archive publishing is already queued or in progress.")
-                return HttpResponseRedirect(target_url)
+                return task_action_response(
+                    request, active_task, target_url, "Archive publishing is already queued or in progress.", messages.INFO
+                )
 
             logger.info("Queueing public status for Archive: {}".format(archive.get_absolute_url()))
-            client.enqueue(
+            task = client.enqueue(
                 args=[archive.pk],
                 task_type="publish_worker",
                 user=request.user,
                 event_action="PUBLISH_ARCHIVE",
             )
-            messages.success(request, "Queued archive publishing.")
+            return task_action_response(request, task, target_url, "Queued archive publishing.")
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
-
-    return HttpResponseRedirect(target_url)
 
 
 @login_required
@@ -1158,22 +1184,22 @@ def calculate_images_sha1(request: HttpRequest, pk: int) -> HttpResponse:
             archive = Archive.objects.select_for_update().get(pk=pk)
             target_url = get_safe_referer(request, archive.get_absolute_url())
 
-            if client.is_archive_task_active(archive.pk, "calculate_sha1_worker"):
-                messages.info(request, "Archive images SHA1 calculation is already queued or in progress.")
-                return HttpResponseRedirect(target_url)
+            active_task = client.get_active_archive_task(archive.pk, "calculate_sha1_worker")
+            if active_task:
+                return task_action_response(
+                    request, active_task, target_url, "Archive images SHA1 calculation is already queued or in progress.", messages.INFO
+                )
 
             logger.info("Queueing images SHA1 calculation for Archive: {}".format(archive.get_absolute_url()))
-            client.enqueue(
+            task = client.enqueue(
                 args=[archive.pk],
                 task_type="calculate_sha1_worker",
                 user=request.user,
                 event_action="CALCULATE_IMAGES_SHA1",
             )
-            messages.success(request, "Queued images SHA1 calculation.")
+            return task_action_response(request, task, target_url, "Queued images SHA1 calculation.")
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
-
-    return HttpResponseRedirect(target_url)
 
 
 @login_required
@@ -1189,23 +1215,23 @@ def recalc_info(request: HttpRequest, pk: int) -> HttpResponse:
             archive = Archive.objects.select_for_update().get(pk=pk)
             target_url = get_safe_referer(request, archive.get_absolute_url())
 
-            if client.is_archive_task_active(archive.pk, "fileinfo_worker"):
-                messages.info(request, "Archive file info recalculation is already queued or in progress.")
-                return HttpResponseRedirect(target_url)
+            active_task = client.get_active_archive_task(archive.pk, "fileinfo_worker")
+            if active_task:
+                return task_action_response(
+                    request, active_task, target_url, "Archive file info recalculation is already queued or in progress.", messages.INFO
+                )
 
             logger.info("Queueing file info recalculation for Archive: {}".format(archive.get_absolute_url()))
-            client.enqueue(
+            task = client.enqueue(
                 args=[archive.pk],
                 task_type="fileinfo_worker",
                 override_options={"full": True},
                 user=request.user,
                 event_action="RECALCULATE_FILEINFO",
             )
-            messages.success(request, "Queued archive file info recalculation.")
+            return task_action_response(request, task, target_url, "Queued archive file info recalculation.")
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
-
-    return HttpResponseRedirect(target_url)
 
 
 @login_required
@@ -1226,23 +1252,25 @@ def extract_context(request: HttpRequest, pk: int) -> HttpResponse:
             archive = Archive.objects.select_for_update().get(pk=pk)
             target_url = get_safe_referer(request, archive.get_absolute_url())
 
-            if client.is_archive_extracting_context(archive.pk):
+            active_task = client.get_active_archive_task(archive.pk, "contextual_extractor_worker")
+            if active_task:
                 logger.info("Archive %s contextual extraction is already queued or in progress.", archive.pk)
-                messages.info(request, "Contextual extraction is already queued or in progress.")
-                return HttpResponseRedirect(target_url)
+                return task_action_response(
+                    request, active_task, target_url, "Contextual extraction is already queued or in progress.", messages.INFO
+                )
 
             logger.info("Queueing contextual extraction for Archive: %s (profile: %s)", archive.get_absolute_url(), profile_name)
-            client.enqueue_contextual_extraction(
+            tasks = client.enqueue_contextual_extraction(
                 [archive.pk],
                 user=request.user,
                 event_action="EXTRACT_CONTEXTUAL_INFO",
                 profile=profile_name,
             )
-            messages.success(request, f"Queued contextual extraction ({profile_name}).")
+            return task_action_response(
+                request, tasks[0] if tasks else None, target_url, f"Queued contextual extraction ({profile_name})."
+            )
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
-
-    return HttpResponseRedirect(target_url)
 
 
 @login_required
@@ -1257,25 +1285,25 @@ def mark_similar_archives(request: HttpRequest, pk: int) -> HttpResponse:
             archive = Archive.objects.select_for_update().get(pk=pk)
             target_url = get_safe_referer(request, archive.get_absolute_url())
 
-            if client.is_archive_task_active(archive.pk, "mark_similar_worker"):
-                messages.info(request, "Archive similarity check is already queued or in progress.")
-                return HttpResponseRedirect(target_url)
+            active_task = client.get_active_archive_task(archive.pk, "mark_similar_worker")
+            if active_task:
+                return task_action_response(
+                    request, active_task, target_url, "Archive similarity check is already queued or in progress.", messages.INFO
+                )
 
             use_recycled_archives = bool(request.GET.get("use-recycled", ""))
 
             logger.info("Queueing mark similar archives for Archive: {}, use recycled archives: {}".format(archive.get_absolute_url(), use_recycled_archives))
-            client.enqueue(
+            task = client.enqueue(
                 args=[archive.pk],
                 task_type="mark_similar_worker",
                 override_options={"use_recycled": use_recycled_archives},
                 user=request.user,
                 event_action="MARK_SIMILAR",
             )
-            messages.success(request, "Queued archive similarity check.")
+            return task_action_response(request, task, target_url, "Queued archive similarity check.")
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
-
-    return HttpResponseRedirect(target_url)
 
 
 @login_required
@@ -1295,16 +1323,19 @@ def recall_api(request: HttpRequest, pk: int) -> HttpResponse:
         return render_error(request, "No gallery associated with this archive.")
 
     gallery = Gallery.objects.get(pk=archive.gallery_id)
+    target_url = get_safe_referer(request, reverse("viewer:archive", args=[pk]))
 
-    if gallery.provider:
-        client.enqueue_gallery_update(
-            [gallery.get_link()],
-            user=request.user,
-        )
+    if not gallery.provider:
+        return render_error(request, "The gallery associated with this archive has no provider.")
 
-        logger.info("Updating gallery API data for gallery: {} and related archives".format(gallery.get_absolute_url()))
+    task = client.enqueue_gallery_update(
+        [gallery.get_link()],
+        user=request.user,
+    )
 
-    return safe_redirect_back(request, reverse("viewer:archive", args=[pk]))
+    logger.info("Updating gallery API data for gallery: {} and related archives".format(gallery.get_absolute_url()))
+
+    return task_action_response(request, task, target_url, "Queued gallery metadata update.")
 
 
 @login_required
@@ -1376,7 +1407,7 @@ def rematch_archive(request: HttpRequest, pk: int) -> HttpResponse:
     if archive.gallery:
         archive.gallery.archive_set.remove(archive)
 
-    client.enqueue(
+    task = client.enqueue(
         args=["-frm", archive.zipped.path],
         task_type="folder_crawler",
         override_options=crawler_settings,
@@ -1385,7 +1416,9 @@ def rematch_archive(request: HttpRequest, pk: int) -> HttpResponse:
 
     logger.info("Rematching archive: {}".format(archive.title))
 
-    return safe_redirect_back(request, reverse("viewer:archive", args=[pk]))
+    return task_action_response(
+        request, task, get_safe_referer(request, reverse("viewer:archive", args=[pk])), "Queued archive rematch."
+    )
 
 
 @login_required

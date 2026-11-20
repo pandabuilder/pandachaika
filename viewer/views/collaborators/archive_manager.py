@@ -41,7 +41,7 @@ from viewer.models import (
     ArchiveManageEntry
 )
 from viewer.utils.requests import double_check_auth
-from viewer.services.archive_selection import filter_archives, filter_by_marks
+from viewer.services.archive_selection import filter_archives
 from viewer.views.head import (
     archive_filter_keys,
     filter_archives_simple,
@@ -104,22 +104,12 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
             if "sort_by" in get:
                 params["sort_by"] = get.get("sort_by", "")
 
-            archives: QuerySet[Archive] = filter_archives_simple(params, actual_user.is_authenticated, show_binned=True)
-
-            archives, _ = filter_by_marks(archives, request.GET)
-
-            if "recycled" in get and actual_user.has_perm("viewer.recycle_archive"):
-                archives = archives.filter(binned=True)
-            else:
-                archives = archives.filter(binned=False)
-
-            if "file_deleted" in get and actual_user.has_perm("viewer.recycle_archive"):
-                archives = archives.filter(file_deleted=True)
-            else:
-                archives = archives.filter(file_deleted=False)
-
-            if "downloading" in get:
-                archives = archives.filter(crc32="")
+            # Same filters as the listing, so "Run for all" acts on exactly the archives shown.
+            archives: QuerySet[Archive] = filter_archives(
+                params,
+                can_view_recycled=actual_user.has_perm("viewer.recycle_archive"),
+                favorites_user_id=actual_user.pk,
+            )
         else:
             preserved = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(pks)])
             archives = Archive.objects.filter(id__in=pks).order_by(preserved)
@@ -273,6 +263,36 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                 logger.info("User {}: {}".format(actual_user.username, message))
                 if not json_request:
                     messages.success(request, message)
+        elif "delete_files_archives" in p and actual_user.has_perm("viewer.delete_archive"):
+            # Same as "Delete associated file (preserves metadata...)" on the single archive delete page:
+            # deletes the file, keeps the archive entry and image data, and moves the archive to the recycle bin.
+            delete_options = {
+                "delete_zipped": True,
+                "delete_archive": False,
+                "delete_file": False,
+                "delete_gallery": bool(p.get("delete_galleries")) and actual_user.has_perm("viewer.delete_gallery"),
+                "mark_gallery_deleted": bool(p.get("mark_delete_galleries"))
+                and actual_user.has_perm("viewer.mark_delete_gallery"),
+                "mark_gallery_denied": bool(p.get("deny_galleries")) and actual_user.has_perm("viewer.approve_gallery"),
+                "user_reason": user_reason,
+            }
+            for archive in archives:
+                message = "Queued deleting the file of archive: {}, link: {} (keeps metadata, moves to Recycle Bin)".format(
+                    archive.title, archive.get_absolute_url()
+                )
+                if user_reason:
+                    message += ", reason: {}".format(user_reason)
+                logger.info("User {}: {}".format(actual_user.username, message))
+                if not json_request:
+                    messages.success(request, message)
+                client.enqueue(
+                    args=[archive.pk],
+                    task_type="delete_archive_worker",
+                    override_options=delete_options,
+                    user=actual_user,
+                    reason=user_reason,
+                    event_action="DELETE_ARCHIVE",
+                )
         elif "update_metadata" in p and actual_user.has_perm("viewer.update_metadata"):
 
             galleries_from_archives = Gallery.objects.filter(archive__in=archives).distinct()
@@ -412,8 +432,9 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
             and (actual_user.is_staff or actual_user.has_perm("viewer.extract_contextual_info"))
         ):
             if not getattr(crawler_settings, "manga_extractor", None) or not crawler_settings.manga_extractor.enable:
-                if not json_request:
-                    messages.error(request, "Manga extractor is not enabled in settings.", extra_tags="danger")
+                if json_request:
+                    return HttpResponse("Manga extractor is not enabled in settings.", status=400)
+                messages.error(request, "Manga extractor is not enabled in settings.", extra_tags="danger")
             else:
                 profile_name = p.get("profile") or getattr(
                     crawler_settings.manga_extractor, "background_profile", "default"
@@ -453,11 +474,13 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
     if "sort_by" in get:
         params["sort_by"] = get.get("sort_by", "")
 
+    can_view_recycled = actual_user is not None and actual_user.has_perm("viewer.recycle_archive")
     filter_flags: dict[str, bool] = {}
     results: QuerySet[Archive] = filter_archives(
         params,
-        can_view_recycled=actual_user is not None and actual_user.has_perm("viewer.recycle_archive"),
+        can_view_recycled=can_view_recycled,
         flags=filter_flags,
+        favorites_user_id=actual_user.pk,
     )
     mark_filters = filter_flags["mark_filters"]
     extra_file_filters = filter_flags["extra_file_filters"]
@@ -473,12 +496,16 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
 
     if json_request:
         results = results.prefetch_related("tags")
+        if can_view_recycled:
+            results = results.select_related("recycle_entry", "recycle_entry__user")
 
     if actual_user.has_perm("viewer.view_marks"):
         results = results.prefetch_related(
             Prefetch(
                 "manage_entries",
-                queryset=ArchiveManageEntry.objects.filter(status=ArchiveManageEntry.StatusChoices.NORMAL),
+                queryset=ArchiveManageEntry.objects.filter(
+                    status=ArchiveManageEntry.StatusChoices.NORMAL
+                ).select_related("mark_user"),
                 to_attr="indexed_entries",
             )
         )
@@ -492,7 +519,9 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
     if json_request:
         response = json.dumps(
             {
-                "results": archive_manage_results_to_json(request, results_page, authenticated),
+                "results": archive_manage_results_to_json(
+                    request, results_page, authenticated, can_view_recycle_info=can_view_recycled
+                ),
                 "has_previous": results_page.has_previous(),
                 "has_next": results_page.has_next(),
                 "num_pages": paginator.num_pages,
@@ -534,6 +563,19 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
     return render(request, "viewer/collaborators/manage_archives.html", d)
 
 
+def manga_extractor_info(can_extract: bool) -> dict[str, Any]:
+    """Whether "Extract Context" is available, with its profiles; same rules as the archive page."""
+    manga_extractor = getattr(crawler_settings, "manga_extractor", None)
+    enabled = bool(manga_extractor and manga_extractor.enable)
+    if not (enabled and can_extract and manga_extractor):
+        return {"enabled": enabled, "profiles": [], "default_profile": ""}
+    return {
+        "enabled": True,
+        "profiles": [{"key": key, "label": label} for key, label in manga_extractor.get_profile_choices().items()],
+        "default_profile": manga_extractor.default_profile,
+    }
+
+
 @permission_required("viewer.manage_archive")
 def archive_manager(request: HttpRequest) -> HttpResponse:
     authenticated, actual_user = double_check_auth(request)
@@ -565,7 +607,8 @@ def archive_manager(request: HttpRequest) -> HttpResponse:
                         "expand_archive": actual_user.has_perm("viewer.expand_archive"),
                         "update_metadata": actual_user.has_perm("viewer.update_metadata"),
                         "recalc_fileinfo": actual_user.has_perm("viewer.recalc_fileinfo"),
-                        "extract_contextual_info": actual_user.has_perm("viewer.extract_contextual_info"),
+                        "extract_contextual_info": actual_user.is_staff
+                        or actual_user.has_perm("viewer.extract_contextual_info"),
                         "mark_similar_archive": actual_user.has_perm("viewer.mark_similar_archive"),
                         "change_archivegroup": actual_user.has_perm("viewer.change_archivegroup"),
                         "match_archive": actual_user.has_perm("viewer.match_archive"),
@@ -574,6 +617,7 @@ def archive_manager(request: HttpRequest) -> HttpResponse:
                     }
                     data["groups"] = groups_list
                     data["permissions"] = permissions
+                    data["manga_extractor"] = manga_extractor_info(permissions["extract_contextual_info"])
 
                 new_content = json.dumps(data, ensure_ascii=False)
                 return HttpResponse(new_content, content_type="application/json; charset=utf-8")

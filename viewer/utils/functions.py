@@ -2,6 +2,7 @@ from collections.abc import Iterable
 from datetime import timedelta
 from typing import Any
 
+from django.core.exceptions import ObjectDoesNotExist
 from django.core.mail import get_connection, EmailMultiAlternatives
 from django.http import HttpRequest
 from django.urls import reverse
@@ -64,8 +65,25 @@ def archive_search_result_to_json(
     return response
 
 
+def _recycle_entry_to_json(archive: Archive) -> dict[str, Any] | None:
+    try:
+        entry = archive.recycle_entry
+    except ObjectDoesNotExist:
+        return None
+    return {
+        "reason": entry.reason,
+        "user": entry.user.username if entry.user else None,
+        "comment": entry.comment,
+        "date": timestamp_or_null(entry.date_deleted),
+        "origin": entry.get_origin_display(),
+    }
+
+
 def archive_manage_results_to_json(
-    request: HttpRequest, archives: Iterable[Archive], user_is_authenticated: bool
+    request: HttpRequest,
+    archives: Iterable[Archive],
+    user_is_authenticated: bool,
+    can_view_recycle_info: bool = False,
 ) -> list[dict[str, Any]]:
     response = [
         {
@@ -90,8 +108,13 @@ def archive_manage_results_to_json(
                     "mark_comment": x.mark_comment,
                     "mark_priority": x.mark_priority,
                     "mark_date": timestamp_or_null(x.mark_date),
-                } for x in archive.manage_entries.all()
+                } for x in getattr(archive, "indexed_entries", [])
             ],
+            "binned": archive.binned,
+            "file_deleted": archive.file_deleted,
+            "recycle_entry": (
+                _recycle_entry_to_json(archive) if can_view_recycle_info and archive.binned else None
+            ),
             "gallery": (
                 {
                     "id": archive.gallery.pk,

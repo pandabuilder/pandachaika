@@ -9,9 +9,9 @@ import datetime
 import typing
 from collections.abc import Mapping
 
-from django.db.models import Count, F, Q, QuerySet
+from django.db.models import Count, Exists, F, OuterRef, Q, QuerySet
 
-from viewer.models import Archive, ArchiveManageEntry, ArchiveTag
+from viewer.models import Archive, ArchiveManageEntry, ArchiveTag, UserArchivePrefs
 from viewer.views.head import archive_filter_keys, archive_order_fields, filter_archives_simple
 
 if typing.TYPE_CHECKING:
@@ -53,6 +53,7 @@ FLAG_FILTERS = [
     "extracted",
     "downloading",
     "diff-filesize",
+    "gallery-other-archives",
     "no-custom-tags",
     "with-custom-tags",
     "with-scopeless-tags",
@@ -75,6 +76,9 @@ MARK_FILTERS = {
     "and-mark-conditions",
 }
 ADMIN_FILTERS = {"recycled", "file_deleted"}
+# Three-way filters: "1" (only these archives), "any" (ignore the filter); anything else excludes them (the default).
+TRISTATE_FILTERS = {"recycled", "file_deleted"}
+TRISTATE_ANY = "any"
 
 ALL_FILTERS = TEXT_FILTERS + NUMBER_FILTERS + DATE_FILTERS + FLAG_FILTERS
 MAX_TEXT_LENGTH = 500
@@ -95,6 +99,17 @@ def allowed_filter_keys(user: "User | AnonymousUser | None") -> list[str]:
     return [key for key in ALL_FILTERS if key not in MARK_FILTERS and key not in ADMIN_FILTERS]
 
 
+def tristate_filter(params: Mapping[str, typing.Any], key: str) -> bool | None:
+    """Value of a three-way filter: True (only), False (exclude, the default) or None (ignore)."""
+    value = params.get(key)
+    if value is None:
+        return False
+    value = str(value).strip().lower()
+    if value == TRISTATE_ANY:
+        return None
+    return value not in ("", "0", "false", "off", "no")
+
+
 def clean_filter(params: Mapping[str, typing.Any], user: "User | AnonymousUser | None") -> dict[str, str]:
     """Keep only the filters the user may use, with valid values. Empty values are dropped.
 
@@ -111,6 +126,9 @@ def clean_filter(params: Mapping[str, typing.Any], user: "User | AnonymousUser |
         if not isinstance(value, (str, int, float)):
             continue
         value = str(value).strip()[:MAX_TEXT_LENGTH]
+        if key in TRISTATE_FILTERS and value.lower() == TRISTATE_ANY:
+            cleaned[key] = TRISTATE_ANY
+            continue
         if not value or (key in FLAG_FILTERS and value.lower() in ("0", "false", "off")):
             continue
         if key in FLAG_FILTERS:
@@ -244,13 +262,29 @@ def filter_by_extra_files(archives: QuerySet[Archive], params: Mapping[str, typi
     return archives, extra_file_filters
 
 
+def filter_recycled_and_file_deleted(
+    archives: QuerySet[Archive], params: Mapping[str, typing.Any], can_view_recycled: bool
+) -> QuerySet[Archive]:
+    """Apply the three-way "recycled" and "file_deleted" filters. Without ``can_view_recycled`` both exclude."""
+    for key, field in (("recycled", "binned"), ("file_deleted", "file_deleted")):
+        wanted = tristate_filter(params, key) if can_view_recycled else False
+        if wanted is not None:
+            archives = archives.filter(**{field: wanted})
+    return archives
+
+
 def filter_archives(
-    params: Mapping[str, typing.Any], can_view_recycled: bool = False, flags: dict[str, bool] | None = None
+    params: Mapping[str, typing.Any],
+    can_view_recycled: bool = False,
+    flags: dict[str, bool] | None = None,
+    favorites_user_id: int | None = None,
 ) -> QuerySet[Archive]:
     """Archives matching the archive manager filters, ordered by its sort parameters.
 
-    Binned and file deleted archives are only returned when filtering for them ("recycled", "file_deleted"), and only
-    if ``can_view_recycled``. ``flags`` receives whether mark and extra file filters were used.
+    Binned and file deleted archives are excluded unless ``can_view_recycled``. Users who can view them choose with
+    "recycled" and "file_deleted": "1" for only those archives, "any" to ignore the filter, absent or "0" to exclude
+    them. ``flags`` receives whether mark and extra file filters were used. "only_favorites" keeps the archives that
+    ``favorites_user_id`` marked as favorite, and is ignored without it.
     """
     query: dict[str, typing.Any] = {"sort": "create_date", "asc_desc": "desc"}
     for key, value in params.items():
@@ -274,8 +308,16 @@ def filter_archives(
             .exclude(filesize=F("gallery__filesize"))
         )
 
-    results = results.filter(binned=bool("recycled" in params and can_view_recycled))
-    results = results.filter(file_deleted=bool("file_deleted" in params and can_view_recycled))
+    if "gallery-other-archives" in params:
+        # The gallery has at least one other archive that isn't in the Recycle Bin.
+        other_archives = Archive.objects.filter(gallery=OuterRef("gallery"), binned=False).exclude(pk=OuterRef("pk"))
+        results = results.filter(gallery__isnull=False).filter(Exists(other_archives))
+
+    results = filter_recycled_and_file_deleted(results, params, can_view_recycled)
+
+    if params.get("only_favorites") and favorites_user_id is not None:
+        favorites = UserArchivePrefs.objects.filter(user_id=favorites_user_id, favorite_group__gt=0).values("archive")
+        results = results.filter(pk__in=favorites)
 
     if "downloading" in params:
         results = results.filter(crc32="")

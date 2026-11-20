@@ -1052,6 +1052,13 @@ autocomplete-light[loading] input {
   justify-content: center;
 }
 
+/* Wrappers of background task buttons (js/task_actions.js) take no room of their own, so the buttons stay
+   direct flex items of the toolbar */
+.task-action,
+.task-tray {
+  display: contents;
+}
+
 /* Badge links hover contrast & readability */
 a.badge {
   text-decoration: none;

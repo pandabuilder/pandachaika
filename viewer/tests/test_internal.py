@@ -1311,7 +1311,7 @@ class OperationalFixesTest(TestCase):
         c = Client()
         for url in (
             reverse("viewer:gallery", args=[xss_gallery.pk]),
-            reverse("viewer:gallery", args=[xss_gallery.pk]) + "?view_style=new",
+            reverse("viewer:gallery-new", args=[xss_gallery.pk]),
         ):
             resp = c.get(url)
             self.assertEqual(resp.status_code, 200)
@@ -1474,46 +1474,68 @@ class GalleryAndArchiveViewsTest(TestCase):
         self.assertContains(resp, "Sample Private Archive")
         self.assertContains(resp, "EFGH5678")
 
-    def test_refined_views_opt_in_routing(self):
-        # 1. By default, views route to the old/legacy templates:
-        resp = self.client.get(reverse("viewer:gallery", args=[self.gallery_public.pk]))
+    def _assert_style(self, url: str, new: bool) -> None:
+        resp = self.client.get(url)
         self.assertEqual(resp.status_code, 200)
-        self.assertNotContains(resp, "btn-toggle-inline-cover")
+        if new:
+            self.assertContains(resp, "btn-toggle-inline-cover")
+            self.assertContains(resp, "inline-cover-container")
+        else:
+            self.assertNotContains(resp, "btn-toggle-inline-cover")
 
-        resp = self.client.get(reverse("viewer:archive", args=[self.archive_public.pk]))
-        self.assertEqual(resp.status_code, 200)
-        self.assertNotContains(resp, "btn-toggle-inline-cover")
+    def _assert_detail_routing(self, default_new):
+        gallery_pk = self.gallery_public.pk
+        archive_pk = self.archive_public.pk
+        self._assert_style(reverse("viewer:gallery", args=[gallery_pk]), default_new)
+        self._assert_style(reverse("viewer:archive", args=[archive_pk]), default_new)
+        # The explicit routes ignore the setting.
+        self._assert_style(reverse("viewer:gallery-new", args=[gallery_pk]), True)
+        self._assert_style(reverse("viewer:archive-new", args=[archive_pk]), True)
+        self._assert_style(reverse("viewer:gallery-old", args=[gallery_pk]), False)
+        self._assert_style(reverse("viewer:archive-old", args=[archive_pk]), False)
+        self.assertEqual(reverse("viewer:gallery-new", args=[gallery_pk]), f"/gallery_new/{gallery_pk}/")
+        self.assertEqual(reverse("viewer:archive-old", args=[archive_pk]), f"/archive_old/{archive_pk}/")
+        # The removed ?view_style= parameter does nothing.
+        self._assert_style(reverse("viewer:gallery", args=[gallery_pk]) + "?view_style=new", default_new)
+        self._assert_style(reverse("viewer:archive", args=[archive_pk]) + "?view_style=old", default_new)
 
-        # 2. When ?view_style=new is explicitly passed, views route to the new templates:
-        resp = self.client.get(reverse("viewer:gallery", args=[self.gallery_public.pk]) + "?view_style=new")
-        self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, "btn-toggle-inline-cover")
-        self.assertContains(resp, "inline-cover-container")
+    def _reload_urlconf(self) -> None:
+        import importlib
 
-        resp = self.client.get(reverse("viewer:archive", args=[self.archive_public.pk]) + "?view_style=new")
-        self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, "btn-toggle-inline-cover")
-        self.assertContains(resp, "inline-cover-container")
+        from django.urls import clear_url_caches, converters
 
-        # 3. Refreshing or requesting without ?view_style=new reverts to old design (stateless GET param):
-        resp = self.client.get(reverse("viewer:gallery", args=[self.gallery_public.pk]))
-        self.assertEqual(resp.status_code, 200)
-        self.assertNotContains(resp, "btn-toggle-inline-cover")
+        import pandabackup.urls
+        import viewer.urls
 
-        resp = self.client.get(reverse("viewer:gallery", args=[self.gallery_public.pk]) + "?view_style=old")
-        self.assertEqual(resp.status_code, 200)
-        self.assertNotContains(resp, "btn-toggle-inline-cover")
+        # Reloading registers viewer.urls' converters again, which Django refuses.
+        for name in ("edit_mode", "tag_mode", "gallery_tag_mode"):
+            converters.REGISTERED_CONVERTERS.pop(name, None)
+        importlib.reload(viewer.urls)
+        importlib.reload(pandabackup.urls)
+        clear_url_caches()
 
-        # 4. Authenticated users follow the exact same GET param behavior:
+    def test_detail_view_routing_default_old(self):
+        self._assert_detail_routing(default_new=False)
         self.client.login(username="test_user_views", password="password123")
-        resp = self.client.get(reverse("viewer:gallery", args=[self.gallery_public.pk]))
-        self.assertEqual(resp.status_code, 200)
-        self.assertNotContains(resp, "btn-toggle-inline-cover")
+        self._assert_detail_routing(default_new=False)
 
-        resp = self.client.get(reverse("viewer:gallery", args=[self.gallery_public.pk]) + "?view_style=new")
-        self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, "btn-toggle-inline-cover")
-        self.assertContains(resp, "inline-cover-container")
+    def test_detail_view_routing_new_as_default(self):
+        from django.conf import settings
+
+        url_settings = settings.CRAWLER_SETTINGS.urls
+        original = url_settings.new_detail_views_as_default
+        url_settings.new_detail_views_as_default = True
+
+        def restore() -> None:
+            url_settings.new_detail_views_as_default = original
+            self._reload_urlconf()
+
+        self.addCleanup(restore)
+        self._reload_urlconf()
+
+        self._assert_detail_routing(default_new=True)
+        self.client.login(username="test_user_views", password="password123")
+        self._assert_detail_routing(default_new=True)
 
 
 class TemplateTagsTest(TestCase):

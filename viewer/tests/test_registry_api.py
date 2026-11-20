@@ -1806,3 +1806,439 @@ class RegistryApiWantedGalleryEndpointsTests(BaseRegistryApiMixin, TestCase):
             self.manage_client, query_str="wanted-gallery=999999"
         )
         self.assertEqual(response.status_code, 404)
+
+
+class RegistryApiGalleryStatusArchiveDeleteAndUpdateMetadataTests(BaseRegistryApiMixin, TestCase):
+    """Tests for PUT ?gid=/?gallery=, DELETE ?archive=/?gid=/?gallery=, and POST ?update-metadata=."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+
+        cls.perm_mark_delete_gallery = Permission.objects.get(codename="mark_delete_gallery")
+        cls.perm_approve_gallery = Permission.objects.get(codename="approve_gallery")
+        cls.perm_delete_gallery = Permission.objects.get(codename="delete_gallery")
+        cls.perm_delete_archive = Permission.objects.get(codename="delete_archive")
+        cls.perm_update_metadata = Permission.objects.get(codename="update_metadata")
+
+        cls.user_mark_delete = User.objects.create_user(username="user_mark_delete_api", password="password123")
+        cls.user_mark_delete.user_permissions.add(cls.perm_mark_delete_gallery)
+
+        cls.user_approve = User.objects.create_user(username="user_approve_api", password="password123")
+        cls.user_approve.user_permissions.add(cls.perm_approve_gallery)
+
+        cls.user_delete_archive_only = User.objects.create_user(
+            username="user_del_archive_api", password="password123"
+        )
+        cls.user_delete_archive_only.user_permissions.add(cls.perm_delete_archive)
+
+        cls.user_update_meta = User.objects.create_user(username="user_update_meta_api", password="password123")
+        cls.user_update_meta.user_permissions.add(cls.perm_update_metadata)
+
+        # Read-only bearer token (lacks write scope)
+        cls.read_only_token_str = "read_only_token_gallery_ops"
+        UserLongLivedToken.objects.create(
+            user=cls.superuser,
+            name="read_only_token_gallery_ops",
+            key=UserLongLivedToken.create_salted_key_from_key(cls.read_only_token_str),
+            scopes=UserLongLivedToken.SCOPE_READ,
+            expire_date=timezone.now() + timedelta(days=30),
+        )
+
+    def setUp(self):
+        super().setUp()
+        self.mark_delete_client = Client()
+        self.mark_delete_client.login(username=self.user_mark_delete.username, password="password123")
+        self.approve_client = Client()
+        self.approve_client.login(username=self.user_approve.username, password="password123")
+        self.delete_archive_client = Client()
+        self.delete_archive_client.login(username=self.user_delete_archive_only.username, password="password123")
+        self.update_meta_client = Client()
+        self.update_meta_client.login(username=self.user_update_meta.username, password="password123")
+
+        self.gallery_panda = Gallery.objects.create(
+            title="API Ops Panda Gallery",
+            gid="77001",
+            token="tok77001",
+            provider="panda",
+            public=True,
+            status=Gallery.StatusChoices.NORMAL,
+        )
+        self.gallery_nhentai = Gallery.objects.create(
+            title="API Ops NHentai Gallery",
+            gid="77001",
+            token="tok77001nh",
+            provider="nhentai",
+            public=True,
+            status=Gallery.StatusChoices.NORMAL,
+        )
+        self.archive1 = Archive.objects.create(
+            title="API Ops Archive 1",
+            user=self.superuser,
+            gallery=self.gallery_panda,
+            public=True,
+        )
+        self.archive2 = Archive.objects.create(
+            title="API Ops Archive 2",
+            user=self.superuser,
+            gallery=self.gallery_panda,
+            public=False,
+        )
+
+    # --- PUT ?gid= / PUT ?gallery= (status change) ---
+
+    def test_put_gid_status_unauthenticated_403(self):
+        resp = self._api_put(self.anon_client, query_str="gid=77001&provider=panda", body={"status": "deleted"})
+        self.assertEqual(resp.status_code, 403)
+
+    def test_put_gid_status_regular_user_403(self):
+        resp = self._api_put(self.regular_client, query_str="gid=77001&provider=panda", body={"status": "deleted"})
+        self.assertEqual(resp.status_code, 403)
+
+    def test_put_gid_status_read_only_token_403(self):
+        resp = self._api_put(
+            self.anon_client,
+            query_str="gid=77001&provider=panda",
+            body={"status": "deleted"},
+            HTTP_AUTHORIZATION=f"Bearer {self.read_only_token_str}",
+        )
+        self.assertEqual(resp.status_code, 403)
+
+    def test_put_gid_status_deleted_and_normal_with_mark_delete_perm(self):
+        resp = self._api_put(
+            self.mark_delete_client,
+            query_str="gid=77001&provider=panda",
+            body={"status": "deleted", "reason": "Userscript delete"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.content)
+        self.assertEqual(data["result"], "success")
+        self.assertEqual(data["status"], "deleted")
+        self.assertFalse(data["public"])
+        self.assertEqual(data["id"], self.gallery_panda.pk)
+
+        self.gallery_panda.refresh_from_db()
+        self.assertEqual(self.gallery_panda.status, Gallery.StatusChoices.DELETED)
+        self.assertFalse(self.gallery_panda.public)
+        # Ensure other provider with same gid was untouched
+        self.gallery_nhentai.refresh_from_db()
+        self.assertEqual(self.gallery_nhentai.status, Gallery.StatusChoices.NORMAL)
+
+        # Restore back to normal
+        resp_norm = self._api_put(
+            self.mark_delete_client,
+            query_str="gid=77001&provider=panda",
+            body={"status": "normal", "reason": "Restore"},
+        )
+        self.assertEqual(resp_norm.status_code, 200)
+        data_norm = json.loads(resp_norm.content)
+        self.assertEqual(data_norm["status"], "normal")
+        self.gallery_panda.refresh_from_db()
+        self.assertEqual(self.gallery_panda.status, Gallery.StatusChoices.NORMAL)
+
+    def test_put_gid_status_denied_requires_approve_perm(self):
+        # User with only mark_delete_gallery cannot deny
+        resp_forbid = self._api_put(
+            self.mark_delete_client,
+            query_str="gid=77001&provider=panda",
+            body={"status": "denied"},
+        )
+        self.assertEqual(resp_forbid.status_code, 403)
+
+        # User with approve_gallery can deny, but cannot mark deleted/normal
+        resp_ok = self._api_put(
+            self.approve_client,
+            query_str="gid=77001&provider=panda",
+            body={"status": "denied", "reason": "Rejected"},
+        )
+        self.assertEqual(resp_ok.status_code, 200)
+        self.assertEqual(json.loads(resp_ok.content)["status"], "denied")
+        self.gallery_panda.refresh_from_db()
+        self.assertEqual(self.gallery_panda.status, Gallery.StatusChoices.DENIED)
+
+        resp_forbid_norm = self._api_put(
+            self.approve_client,
+            query_str="gid=77001&provider=panda",
+            body={"status": "normal"},
+        )
+        self.assertEqual(resp_forbid_norm.status_code, 403)
+
+    def test_put_gallery_by_id_and_bearer_token(self):
+        resp = self._api_put(
+            self.anon_client,
+            query_str=f"gallery={self.gallery_nhentai.pk}",
+            body={"status": "deleted"},
+            HTTP_AUTHORIZATION=f"Bearer {self.token_str}",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(json.loads(resp.content)["status"], "deleted")
+        self.gallery_nhentai.refresh_from_db()
+        self.assertEqual(self.gallery_nhentai.status, Gallery.StatusChoices.DELETED)
+
+    def test_put_gid_invalid_status_returns_400(self):
+        resp = self._api_put(
+            self.auth_client,
+            query_str="gid=77001&provider=panda",
+            body={"status": "bogus"},
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_put_gid_not_found_returns_404(self):
+        resp = self._api_put(
+            self.auth_client,
+            query_str="gid=9999999&provider=panda",
+            body={"status": "deleted"},
+        )
+        self.assertEqual(resp.status_code, 404)
+
+    # --- DELETE ?archive= / DELETE ?gid= / DELETE ?gallery= ---
+
+    def test_delete_archive_unauthorized_403(self):
+        resp = self._api_delete(self.regular_client, query_str=f"archive={self.archive1.pk}")
+        self.assertEqual(resp.status_code, 403)
+
+    def test_delete_invalid_json_body_returns_400(self):
+        url = f"{reverse('viewer:api')}?archive={self.archive1.pk}"
+        resp = self.auth_client.delete(url, data="invalid-json{", content_type="application/json")
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(json.loads(resp.content)["result"], "Invalid JSON body")
+
+    @patch("workers.client.enqueue")
+    def test_delete_archive_default_options_enqueues_delete_worker(self, mock_enqueue):
+        mock_task = MagicMock(pk=501)
+        mock_enqueue.return_value = mock_task
+
+        resp = self._api_delete(self.delete_archive_client, query_str=f"archive={self.archive1.pk}")
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.content)
+        self.assertEqual(data["result"], "success")
+        self.assertEqual(data["id"], self.archive1.pk)
+        self.assertEqual(data["task_id"], 501)
+
+        mock_enqueue.assert_called_once()
+        kwargs = mock_enqueue.call_args.kwargs
+        self.assertEqual(kwargs["args"], [self.archive1.pk])
+        self.assertEqual(kwargs["task_type"], "delete_archive_worker")
+        self.assertEqual(
+            kwargs["override_options"],
+            {
+                "delete_zipped": False,
+                "delete_archive": True,
+                "delete_file": True,
+                "delete_gallery": False,
+                "mark_gallery_deleted": False,
+                "mark_gallery_denied": False,
+                "user_reason": "",
+            },
+        )
+
+    @patch("workers.client.enqueue")
+    def test_delete_archive_with_delete_zipped_overrides_archive_and_file(self, mock_enqueue):
+        mock_enqueue.return_value = MagicMock(pk=502)
+
+        resp = self._api_delete(
+            self.auth_client,
+            query_str=f"archive={self.archive1.pk}",
+            body={
+                "delete_zipped": True,
+                "delete_archive": True,
+                "mark_gallery_deleted": True,
+                "reason": "Recycle file only",
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        opts = mock_enqueue.call_args.kwargs["override_options"]
+        self.assertTrue(opts["delete_zipped"])
+        self.assertFalse(opts["delete_archive"])
+        self.assertFalse(opts["delete_file"])
+        self.assertTrue(opts["mark_gallery_deleted"])
+        self.assertEqual(opts["user_reason"], "Recycle file only")
+
+    def test_delete_archive_gallery_flags_enforce_extra_permissions(self):
+        # delete_archive_client lacks mark_delete_gallery, approve_gallery, delete_gallery
+        for flag in ("mark_gallery_deleted", "mark_gallery_denied", "delete_gallery"):
+            resp = self._api_delete(
+                self.delete_archive_client,
+                query_str=f"archive={self.archive1.pk}",
+                body={flag: True},
+            )
+            self.assertEqual(resp.status_code, 403)
+
+    def test_delete_archive_conflicting_or_empty_options_return_400(self):
+        resp_conflict = self._api_delete(
+            self.auth_client,
+            query_str=f"archive={self.archive1.pk}",
+            body={"mark_gallery_deleted": True, "mark_gallery_denied": True},
+        )
+        self.assertEqual(resp_conflict.status_code, 400)
+
+        resp_noop = self._api_delete(
+            self.auth_client,
+            query_str=f"archive={self.archive1.pk}",
+            body={"delete_archive": False, "delete_file": False, "delete_zipped": False},
+        )
+        self.assertEqual(resp_noop.status_code, 400)
+
+    @patch("workers.client.enqueue")
+    def test_delete_gid_enqueues_for_all_archives_and_applies_gallery_action_once(self, mock_enqueue):
+        mock_enqueue.side_effect = [MagicMock(pk=601), MagicMock(pk=602)]
+
+        resp = self._api_delete(
+            self.auth_client,
+            query_str="gid=77001&provider=panda",
+            body={"mark_gallery_deleted": True, "reason": "Delete from userscript"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.content)
+        self.assertEqual(data["result"], "success")
+        self.assertEqual(data["id"], self.gallery_panda.pk)
+        self.assertEqual(data["gid"], "77001")
+        self.assertEqual(data["archives"], [self.archive1.pk, self.archive2.pk])
+        self.assertEqual(data["task_ids"], [601, 602])
+        self.assertEqual(data["gallery_action"], "mark_deleted")
+
+        self.assertEqual(mock_enqueue.call_count, 2)
+        first_opts = mock_enqueue.call_args_list[0].kwargs["override_options"]
+        second_opts = mock_enqueue.call_args_list[1].kwargs["override_options"]
+        self.assertTrue(first_opts["mark_gallery_deleted"])
+        self.assertFalse(second_opts["mark_gallery_deleted"])
+
+    @patch("workers.client.enqueue")
+    def test_delete_gid_supports_archive_ids_filter_and_query_params(self, mock_enqueue):
+        mock_enqueue.return_value = MagicMock(pk=603)
+
+        resp = self._api_delete(
+            self.auth_client,
+            query_str=f"gid=77001&provider=panda&archive_id={self.archive2.pk}&delete_zipped=1",
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.content)
+        self.assertEqual(data["archives"], [self.archive2.pk])
+        self.assertEqual(data["task_ids"], [603])
+        opts = mock_enqueue.call_args.kwargs["override_options"]
+        self.assertTrue(opts["delete_zipped"])
+
+    def test_delete_gid_no_archives_with_mark_gallery_deleted_updates_gallery_directly(self):
+        resp = self._api_delete(
+            self.auth_client,
+            query_str="gid=77001&provider=nhentai",
+            body={"mark_gallery_deleted": True, "reason": "No archives"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.content)
+        self.assertEqual(data["archives"], [])
+        self.assertEqual(data["task_ids"], [])
+        self.assertEqual(data["gallery_action"], "mark_deleted")
+        self.gallery_nhentai.refresh_from_db()
+        self.assertEqual(self.gallery_nhentai.status, Gallery.StatusChoices.DELETED)
+
+    @patch("workers.client.enqueue")
+    def test_delete_gallery_by_id(self, mock_enqueue):
+        mock_enqueue.side_effect = [MagicMock(pk=701), MagicMock(pk=702)]
+        resp = self._api_delete(
+            self.auth_client,
+            query_str=f"gallery={self.gallery_panda.pk}",
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.content)
+        self.assertEqual(data["archives"], [self.archive1.pk, self.archive2.pk])
+        self.assertEqual(data["task_ids"], [701, 702])
+
+    def test_delete_gid_not_found_404(self):
+        resp = self._api_delete(self.auth_client, query_str="gid=999999&provider=panda")
+        self.assertEqual(resp.status_code, 404)
+
+    # --- POST ?update-metadata= ---
+
+    def test_post_update_metadata_unauthorized_403(self):
+        resp = self._api_post(self.regular_client, query_str="update-metadata=&gid=77001&provider=panda")
+        self.assertEqual(resp.status_code, 403)
+
+    @patch("workers.client.enqueue_gallery_update")
+    def test_post_update_metadata_by_gid(self, mock_enqueue_update):
+        mock_enqueue_update.return_value = MagicMock(pk=801)
+        resp = self._api_post(
+            self.update_meta_client,
+            query_str="update-metadata=&gid=77001&provider=panda",
+            body={"reason": "Refresh from userscript"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.content)
+        self.assertEqual(data["result"], "success")
+        self.assertEqual(data["id"], self.gallery_panda.pk)
+        self.assertEqual(data["gid"], "77001")
+        self.assertEqual(data["provider"], "panda")
+        self.assertEqual(data["task_id"], 801)
+
+        mock_enqueue_update.assert_called_once_with(
+            [self.gallery_panda.get_link()],
+            user=self.user_update_meta,
+            reason="Refresh from userscript",
+            override_options={"gallery_reason": "Refresh from userscript"},
+        )
+
+    @patch("workers.client.enqueue_gallery_update")
+    def test_post_update_metadata_by_gids_batch(self, mock_enqueue_update):
+        mock_enqueue_update.return_value = MagicMock(pk=802)
+        gallery_panda_2 = Gallery.objects.create(
+            title="Second Panda Gallery",
+            gid="77002",
+            token="tok77002",
+            provider="panda",
+        )
+        resp = self._api_post(
+            self.update_meta_client,
+            query_str="update-metadata=",
+            body={"gids": ["77001", "77002"], "provider": "panda"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.content)
+        self.assertEqual(data["result"], "success")
+        self.assertEqual(data["count"], 2)
+        self.assertEqual(data["task_id"], 802)
+        self.assertEqual([g["gid"] for g in data["galleries"]], ["77001", "77002"])
+        mock_enqueue_update.assert_called_once_with(
+            [self.gallery_panda.get_link(), gallery_panda_2.get_link()],
+            user=self.user_update_meta,
+            reason=None,
+            override_options=None,
+        )
+
+    @patch("workers.client.enqueue_gallery_update")
+    def test_post_update_metadata_by_gallery_id_and_archive_id(self, mock_enqueue_update):
+        mock_enqueue_update.return_value = MagicMock(pk=803)
+        resp = self._api_post(
+            self.update_meta_client,
+            query_str=f"update-metadata=&gallery={self.gallery_panda.pk}",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(json.loads(resp.content)["id"], self.gallery_panda.pk)
+
+        mock_enqueue_update.reset_mock()
+        mock_enqueue_update.return_value = MagicMock(pk=804)
+        resp_arch = self._api_post(
+            self.update_meta_client,
+            query_str=f"update-metadata=&archive={self.archive1.pk}",
+        )
+        self.assertEqual(resp_arch.status_code, 200)
+        self.assertEqual(json.loads(resp_arch.content)["task_id"], 804)
+        mock_enqueue_update.assert_called_once()
+
+    def test_post_update_metadata_validation_and_404(self):
+        resp_missing = self._api_post(self.update_meta_client, query_str="update-metadata=")
+        self.assertEqual(resp_missing.status_code, 400)
+
+        resp_404 = self._api_post(self.update_meta_client, query_str="update-metadata=&gid=999999&provider=panda")
+        self.assertEqual(resp_404.status_code, 404)
+
+        orphan_archive = Archive.objects.create(title="Orphan Archive", user=self.superuser, gallery=None)
+        resp_no_gal = self._api_post(
+            self.update_meta_client, query_str=f"update-metadata=&archive={orphan_archive.pk}"
+        )
+        self.assertEqual(resp_no_gal.status_code, 400)
+
+        no_provider_gallery = Gallery.objects.create(title="No Provider", gid="77099", provider="")
+        resp_no_prov = self._api_post(
+            self.update_meta_client, query_str=f"update-metadata=&gallery={no_provider_gallery.pk}"
+        )
+        self.assertEqual(resp_no_prov.status_code, 400)

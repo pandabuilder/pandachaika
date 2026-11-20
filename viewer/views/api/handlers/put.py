@@ -6,17 +6,27 @@ import logging
 from django.contrib.auth.models import User, AnonymousUser
 from django.db import transaction
 from django.db.models import Prefetch
-from django.http import HttpResponse, HttpRequest, HttpResponseBadRequest, HttpResponseNotFound
+from django.http import (
+    HttpResponse,
+    HttpRequest,
+    HttpResponseBadRequest,
+    HttpResponseForbidden,
+    HttpResponseNotFound,
+)
 from django.http.request import QueryDict
 
 from core.base.utilities import timestamp_or_zero
-from viewer.models import Archive, ArchiveGroup, ArchiveGroupEntry, WantedGallery
+from viewer.models import Archive, ArchiveGroup, ArchiveGroupEntry, Gallery, WantedGallery
+from viewer.utils.actions import event_log
 from viewer.utils.functions import archive_group_entry_to_json, wanted_gallery_to_json
 from viewer.views.api.common import (
     _get_int,
     _get_int_from_data_or_body,
     apply_wanted_gallery_fields,
     apply_wanted_gallery_m2m_fields,
+    gallery_by_gid_to_json,
+    get_gallery_by_gid,
+    get_str_from_data_or_body,
 )
 
 logger = logging.getLogger(__name__)
@@ -193,5 +203,113 @@ def handle_put_wanted_gallery(
             json.dumps({"result": f"Error updating WantedGallery: {str(e)}"}),
             content_type="application/json; charset=utf-8",
         )
+
+
+VALID_GALLERY_STATUS_ACTIONS = {
+    "deleted": ("viewer.mark_delete_gallery", "MARK_DELETE_GALLERY", "deleted"),
+    "denied": ("viewer.approve_gallery", "MARK_DENIED_GALLERY", "success"),
+    "normal": ("viewer.mark_delete_gallery", "MARK_NORMAL_GALLERY", "success"),
+}
+
+
+def _validate_gallery_status_request(
+    data: QueryDict, body: dict, user: User | AnonymousUser | None
+) -> tuple[str | None, str, HttpResponse | None]:
+    raw_status = get_str_from_data_or_body(data, body, "status").lower()
+    if raw_status not in VALID_GALLERY_STATUS_ACTIONS:
+        return (
+            None,
+            "",
+            HttpResponseBadRequest(
+                json.dumps({"result": "Invalid status. Must be one of: deleted, denied, normal."}),
+                content_type="application/json; charset=utf-8",
+            ),
+        )
+    required_perm, _, _ = VALID_GALLERY_STATUS_ACTIONS[raw_status]
+    if not user or not user.has_perm(required_perm):
+        return (
+            None,
+            "",
+            HttpResponseForbidden(
+                json.dumps({"result": "Not authorized"}),
+                content_type="application/json; charset=utf-8",
+            ),
+        )
+    reason = get_str_from_data_or_body(data, body, "reason")[:200]
+    return raw_status, reason, None
+
+
+def _apply_gallery_status(
+    gallery_pk: int,
+    status: str,
+    reason: str,
+    user: User | AnonymousUser | None,
+) -> HttpResponse:
+    _, event_action, event_result = VALID_GALLERY_STATUS_ACTIONS[status]
+    try:
+        with transaction.atomic():
+            gallery = Gallery.objects.select_for_update(of=("self",)).get(pk=gallery_pk)
+            if status == "deleted":
+                gallery.mark_as_deleted()
+            elif status == "denied":
+                gallery.mark_as_denied()
+            elif status == "normal":
+                gallery.mark_as_normal()
+            if user and getattr(user, "is_authenticated", False):
+                event_log(user, event_action, content_object=gallery, result=event_result, reason=reason)
+    except Gallery.DoesNotExist:
+        return HttpResponseNotFound(
+            json.dumps({"result": "Gallery does not exist."}),
+            content_type="application/json; charset=utf-8",
+        )
+
+    logger.info(
+        "User %s: Gallery %s (gid=%s) marked as %s%s",
+        getattr(user, "username", "anonymous"),
+        gallery.get_absolute_url(),
+        gallery.gid,
+        status,
+        f", reason: {reason}" if reason else "",
+    )
+
+    response_data = gallery_by_gid_to_json(gallery, user_is_authenticated=True)
+    response_data["result"] = "success"
+    return HttpResponse(
+        json.dumps(response_data, sort_keys=True, ensure_ascii=False),
+        content_type="application/json; charset=utf-8",
+    )
+
+
+def handle_put_gid(request: HttpRequest, data: QueryDict, body: dict, user: User | AnonymousUser | None):
+    status, reason, err_response = _validate_gallery_status_request(data, body, user)
+    if err_response is not None:
+        return err_response
+    assert status is not None
+
+    gallery = get_gallery_by_gid(data, body)
+    if not gallery:
+        return HttpResponseNotFound(
+            json.dumps({"result": "Gallery does not exist."}),
+            content_type="application/json; charset=utf-8",
+        )
+
+    return _apply_gallery_status(gallery.pk, status, reason, user)
+
+
+def handle_put_gallery(request: HttpRequest, data: QueryDict, body: dict, user: User | AnonymousUser | None):
+    status, reason, err_response = _validate_gallery_status_request(data, body, user)
+    if err_response is not None:
+        return err_response
+    assert status is not None
+
+    try:
+        gallery_id = _get_int_from_data_or_body(data, "gallery", body)
+    except (ValueError, TypeError):
+        return HttpResponseNotFound(
+            json.dumps({"result": "Gallery does not exist."}),
+            content_type="application/json; charset=utf-8",
+        )
+
+    return _apply_gallery_status(gallery_id, status, reason, user)
 
 

@@ -14,6 +14,7 @@ from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.views.decorators.http import require_http_methods
 
 from viewer.models import DownloadEvent
+from viewer.utils.task_actions import can_view_task, render_task_status
 from workers import client as worker_client
 from workers.models import SchedulerState, TaskQueue, WorkerProcess
 
@@ -718,6 +719,18 @@ def get_workers_dashboard_snapshot(
             "edges": diagram_edges,
         },
     }
+
+
+@login_required
+def task_status(request: HttpRequest, pk: int) -> HttpResponse:
+    """Status fragment of one queued task, polled by the page that started it (see viewer.utils.task_actions).
+
+    Only staff and the user who queued the task can see it; for anyone else it is reported as missing.
+    """
+    task = TaskQueue.objects.filter(pk=pk).first()
+    if task is not None and not can_view_task(request, task):
+        task = None
+    return render_task_status(request, task)
 
 
 @login_required

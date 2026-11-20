@@ -80,7 +80,7 @@ dependencies = [
     "feedparser==6.0.14",
     "gunicorn==27.0.1; sys_platform != 'win32'",
     "imagehash==4.3.2",
-    "numpy==2.5.4",
+    "numpy==2.5.5",
     "paramiko==5.1.0",
     "pillow==13.0.0",
     "psycopg[c,pool]==3.3.9; sys_platform != 'win32'",
@@ -92,7 +92,7 @@ dependencies = [
     "rarfile==4.5",
     "requests==2.34.2",
     "transmission-rpc==7.0.12",
-    "pydantic==2.14.3",
+    "pydantic==2.14.4",
 ]
 
 [dependency-groups]
@@ -103,19 +103,19 @@ dev = [
     "factory-boy>=3.3.3",
     "mypy==2.4.1",
     "pytest-django>=4.14.0",
-    "ruff==0.17.5",
-    "types-python-dateutil==2.9.0.20261104",
+    "ruff==0.17.6",
+    "types-python-dateutil==2.9.0.20261116",
     "types-paramiko==5.1.0.20261030",
     "types-requests==2.33.0.20261030",
 ]
 
 ci = [
     "mypy==2.4.1",
-    "ruff==0.17.5",
+    "ruff==0.17.6",
     "django-stubs==6.1.2",
     "types-paramiko==5.1.0.20261030",
     "types-requests==2.33.0.20261030",
-    "types-python-dateutil==2.9.0.20261104",
+    "types-python-dateutil==2.9.0.20261116",
     "unittest-xml-reporting==4.0.0",
 ]
 

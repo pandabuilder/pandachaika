@@ -2,11 +2,11 @@
 django-debug-toolbar==8.0.0
 django-unused-media==0.2.2
 mypy==2.4.1
-ruff==0.17.5
+ruff==0.17.6
 django-stubs==6.1.2
 types-paramiko==5.1.0.20261030
 types-requests==2.33.0.20261030
-types-python-dateutil==2.9.0.20261104
+types-python-dateutil==2.9.0.20261116
 pytest-django==4.14.0
 factory-boy==3.3.3
 # django-cprofile-middleware

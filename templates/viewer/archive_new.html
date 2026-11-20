@@ -53,25 +53,26 @@
             <i class="fas fa-eye me-1"></i>View online
           </a>
           {% if is_reducing %}
-            <button class="btn btn-outline-warning btn-sm" type="button" disabled id="btn-reducing-archive">
-              <i class="fas fa-spinner fa-spin me-1"></i>Reducing...
-            </button>
+            {% task_status active_tasks.reduce %}
           {% else %}
-            <a class="btn btn-outline-light btn-sm" href="{% url 'viewer:archive-reduce' archive.pk %}" id="btn-reduce-archive">
+            <a class="btn btn-outline-light btn-sm task-action" href="{% url 'viewer:archive-reduce' archive.pk %}"
+               hx-get="{% url 'viewer:archive-reduce' archive.pk %}" hx-target="this" hx-swap="outerHTML" id="btn-reduce-archive">
               <i class="fas fa-compress-alt me-1"></i>Reduce archive
             </a>
           {% endif %}
         {% elif is_extracting %}
-          <button class="btn btn-outline-warning btn-sm" type="button" disabled id="btn-extracting-archive">
-            <i class="fas fa-spinner fa-spin me-1"></i>Extracting...
-          </button>
+          {% task_status active_tasks.extract %}
         {% else %}
-          <a class="btn btn-outline-light btn-sm" href="{% url 'viewer:archive-extract' archive.pk %}" id="btn-extract-archive">
-            <i class="fas fa-expand-alt me-1"></i>Expand archive
-          </a>
-          <a class="btn btn-outline-light btn-sm" href="{% url 'viewer:archive-extract' archive.pk %}?resized=1" id="btn-extract-resized-archive">
-            <i class="fas fa-compress-arrows-alt me-1"></i>Expand (resized)
-          </a>
+          <span class="task-action" hx-target="this" hx-swap="outerHTML">
+            <a class="btn btn-outline-light btn-sm" href="{% url 'viewer:archive-extract' archive.pk %}"
+               hx-get="{% url 'viewer:archive-extract' archive.pk %}" id="btn-extract-archive">
+              <i class="fas fa-expand-alt me-1"></i>Expand archive
+            </a>
+            <a class="btn btn-outline-light btn-sm" href="{% url 'viewer:archive-extract' archive.pk %}?resized=1"
+               hx-get="{% url 'viewer:archive-extract' archive.pk %}?resized=1" id="btn-extract-resized-archive">
+              <i class="fas fa-compress-arrows-alt me-1"></i>Expand (resized)
+            </a>
+          </span>
         {% endif %}
       {% endif %}
 
@@ -185,22 +186,26 @@
     {% endif %}
 
     {% if user.is_staff %}
-      <form method="POST" action="{% url 'viewer:archive-recalc-info' archive.pk %}" class="d-inline">
-        {% csrf_token %}
-        <button type="submit" class="btn btn-sm btn-outline-light">
-          <i class="fas fa-calculator me-1"></i>Recalc
-        </button>
-      </form>
+      {% if active_tasks.recalc_info %}
+        {% task_status active_tasks.recalc_info %}
+      {% else %}
+        <form method="POST" action="{% url 'viewer:archive-recalc-info' archive.pk %}" class="d-inline task-action"
+              hx-post="{% url 'viewer:archive-recalc-info' archive.pk %}" hx-target="this" hx-swap="outerHTML">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-sm btn-outline-light">
+            <i class="fas fa-calculator me-1"></i>Recalc
+          </button>
+        </form>
+      {% endif %}
     {% endif %}
 
     {% if manga_extractor_enabled %}
       {% if user.is_staff or perms.viewer.extract_contextual_info %}
         {% if is_extracting_context %}
-          <button class="btn btn-sm btn-outline-warning" type="button" disabled id="btn-extracting-context">
-            <i class="fas fa-spinner fa-spin me-1"></i>Extracting Context...
-          </button>
+          {% task_status active_tasks.extract_context %}
         {% else %}
-          <form method="POST" action="{% url 'viewer:archive-extract-context' archive.pk %}" class="d-inline">
+          <form method="POST" action="{% url 'viewer:archive-extract-context' archive.pk %}" class="d-inline task-action"
+                hx-post="{% url 'viewer:archive-extract-context' archive.pk %}" hx-target="this" hx-swap="outerHTML">
             {% csrf_token %}
             <div class="btn-group btn-group-sm">
               <button type="submit" class="btn btn-outline-info" id="btn-extract-context">
@@ -227,16 +232,25 @@
     {% endif %}
 
     {% if perms.viewer.mark_similar_archive %}
-      <a class="btn btn-sm btn-outline-light" href="{% url 'viewer:archive-mark-similar' archive.pk %}">
-        <i class="fas fa-equals me-1"></i>Mark similar
-      </a>
-      <a class="btn btn-sm btn-outline-light" href="{% url 'viewer:archive-mark-similar' archive.pk %}?use-recycled=1">
-        <i class="fas fa-recycle me-1"></i>Mark similar (incl. recycled)
-      </a>
+      {% if active_tasks.mark_similar %}
+        {% task_status active_tasks.mark_similar %}
+      {% else %}
+        <span class="task-action" hx-target="this" hx-swap="outerHTML">
+          <a class="btn btn-sm btn-outline-light" href="{% url 'viewer:archive-mark-similar' archive.pk %}"
+             hx-get="{% url 'viewer:archive-mark-similar' archive.pk %}">
+            <i class="fas fa-equals me-1"></i>Mark similar
+          </a>
+          <a class="btn btn-sm btn-outline-light" href="{% url 'viewer:archive-mark-similar' archive.pk %}?use-recycled=1"
+             hx-get="{% url 'viewer:archive-mark-similar' archive.pk %}?use-recycled=1">
+            <i class="fas fa-recycle me-1"></i>Mark similar (incl. recycled)
+          </a>
+        </span>
+      {% endif %}
     {% endif %}
 
     {% if perms.viewer.update_metadata %}
-      <form method="POST" action="{% url 'viewer:archive-recall-api' archive.pk %}" class="d-inline">
+      <form method="POST" action="{% url 'viewer:archive-recall-api' archive.pk %}" class="d-inline task-action"
+            hx-post="{% url 'viewer:archive-recall-api' archive.pk %}" hx-target="this" hx-swap="outerHTML">
         {% csrf_token %}
         <button type="submit" class="btn btn-sm btn-outline-light">
           <i class="fas fa-sync-alt me-1"></i>Recall API
@@ -245,12 +259,17 @@
     {% endif %}
 
     {% if perms.viewer.publish_archive %}
-      <form method="POST" action="{% url 'viewer:archive-calc-imgs-sha1' archive.pk %}" class="d-inline">
-        {% csrf_token %}
-        <button type="submit" class="btn btn-sm btn-outline-light">
-          <i class="fas fa-fingerprint me-1"></i>Calc SHA1
-        </button>
-      </form>
+      {% if active_tasks.calc_sha1 %}
+        {% task_status active_tasks.calc_sha1 %}
+      {% else %}
+        <form method="POST" action="{% url 'viewer:archive-calc-imgs-sha1' archive.pk %}" class="d-inline task-action"
+              hx-post="{% url 'viewer:archive-calc-imgs-sha1' archive.pk %}" hx-target="this" hx-swap="outerHTML">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-sm btn-outline-light">
+            <i class="fas fa-fingerprint me-1"></i>Calc SHA1
+          </button>
+        </form>
+      {% endif %}
       {% if archive.public %}
         <form method="POST" action="{% url 'viewer:archive-private' archive.pk %}" class="d-inline">
           {% csrf_token %}
@@ -259,11 +278,10 @@
           </button>
         </form>
       {% elif is_publishing %}
-        <button class="btn btn-sm btn-outline-warning" type="button" disabled id="btn-publishing-archive">
-          <i class="fas fa-spinner fa-spin me-1"></i>Publishing...
-        </button>
+        {% task_status active_tasks.publish %}
       {% else %}
-        <form method="POST" action="{% url 'viewer:archive-public' archive.pk %}" class="d-inline">
+        <form method="POST" action="{% url 'viewer:archive-public' archive.pk %}" class="d-inline task-action"
+              hx-post="{% url 'viewer:archive-public' archive.pk %}" hx-target="this" hx-swap="outerHTML">
           {% csrf_token %}
           <button type="submit" class="btn btn-sm btn-outline-success">
             <i class="fas fa-lock-open me-1"></i>Set Public
@@ -271,6 +289,9 @@
         </form>
       {% endif %}
     {% endif %}
+
+    {# Status of the tasks started from the "More Tools" dropdown #}
+    <span class="task-tray" id="tools-task-tray">{% if active_tasks.convert %}{% task_status active_tasks.convert %}{% endif %}</span>
 
     {% if perms.viewer.modify_archive_tools or user.is_staff %}
     <div class="dropdown">
@@ -296,13 +317,15 @@
         {% endif %}
         {% if user.is_staff %}
           {% if perms.viewer.modify_archive_tools %}<li><hr class="dropdown-divider border-secondary"></li>{% endif %}
-          <li>
-            <a class="dropdown-item text-light small" href="{% url 'viewer:check-convert-type' archive.pk %}">
+          <li class="task-action">
+            <a class="dropdown-item text-light small" href="{% url 'viewer:check-convert-type' archive.pk %}"
+               hx-get="{% url 'viewer:check-convert-type' archive.pk %}" hx-target="#tools-task-tray" hx-swap="innerHTML">
               <i class="fas fa-file-archive me-2 text-primary"></i>Convert zip
             </a>
           </li>
-          <li>
-            <form method="POST" action="{% url 'viewer:archive-rematch' archive.pk %}">
+          <li class="task-action">
+            <form method="POST" action="{% url 'viewer:archive-rematch' archive.pk %}"
+                  hx-post="{% url 'viewer:archive-rematch' archive.pk %}" hx-target="#tools-task-tray" hx-swap="innerHTML">
               {% csrf_token %}
               <button type="submit" class="dropdown-item text-light small">
                 <i class="fas fa-link me-2 text-info"></i>Rematch
@@ -1126,6 +1149,10 @@
 </script>
 {% endcompress %}
 <script type="text/javascript" src="{% static 'js/view_toggles.js' %}"></script>
+{% if user.is_authenticated %}
+  <script type="text/javascript" src="{% static 'js/vendor/htmx.min.js' %}"></script>
+  <script type="text/javascript" src="{% static 'js/task_actions.js' %}"></script>
+{% endif %}
 {% if user.is_staff %}
   <script type="text/javascript" src="{% static 'js/admin.js' %}"></script>
   <script type="text/javascript" src="{% static 'js/vendor/keys.min.js' %}"></script>

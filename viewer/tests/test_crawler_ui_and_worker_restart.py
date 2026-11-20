@@ -1025,3 +1025,369 @@ class ToolsPageCleanupTests(TestCase):
     def test_removed_scheduler_tools_are_not_actions_anymore(self):
         resp = self.client.post(reverse("viewer:tools-api", args=["start_timed_dl"]))
         self.assertEqual(json.loads(resp.content).get("error"), "Missing parameters")
+
+
+class CrawlerPerGalleryCounterAndSplitBatchSummaryTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.admin_user = User.objects.create_superuser(
+            username="admin_batch_logs",
+            email="admin_batch_logs@example.com",
+            password="testpassword",
+        )
+
+    def test_pass_gallery_data_counts_past_50_when_not_silent(self):
+        """When silent_processing is disabled, 'Working with gallery X of Y' must continue past 50."""
+        from collections import defaultdict
+        from core.base.parsers import BaseParser
+        from core.base.types import GalleryData
+
+        settings = Settings(load_from_disk=False)
+        settings.silent_processing = False
+        settings.is_worker_process = False
+        parser = BaseParser(settings)
+        parser.name = "panda"
+        parser.downloaders = []
+        parser.work_gallery_data = MagicMock()
+
+        galleries = [
+            GalleryData(gid=str(i), provider="panda", link=f"https://e-hentai.org/g/{i}/tok{i}/")
+            for i in range(1, 61)
+        ]
+
+        with patch("core.base.parsers.logger") as mock_logger:
+            parser.pass_gallery_data_to_downloaders(galleries, defaultdict(list))
+            formatted = [
+                (c.args[0] % c.args[1:] if len(c.args) > 1 else str(c.args[0]))
+                for c in mock_logger.info.call_args_list
+                if c.args
+            ]
+
+        self.assertIn("Working with gallery 1 of 60", formatted)
+        self.assertIn("Working with gallery 50 of 60", formatted)
+        self.assertIn("Working with gallery 51 of 60", formatted)
+        self.assertIn("Working with gallery 60 of 60", formatted)
+        self.assertFalse(any("Suppressing further per-gallery logs" in msg for msg in formatted))
+        self.assertEqual(parser.work_gallery_data.call_count, 60)
+
+    def test_pass_gallery_data_silent_processing_logs_milestones_only(self):
+        """When silent_processing is enabled, per-gallery counters stay suppressed and milestones are logged."""
+        from collections import defaultdict
+        from core.base.parsers import BaseParser
+        from core.base.types import GalleryData
+
+        settings = Settings(load_from_disk=False)
+        settings.silent_processing = True
+        settings.is_worker_process = False
+        parser = BaseParser(settings)
+        parser.name = "panda"
+        parser.downloaders = []
+        parser.work_gallery_data = MagicMock()
+
+        galleries = [
+            GalleryData(gid=str(i), provider="panda", link=f"https://e-hentai.org/g/{i}/tok{i}/")
+            for i in range(1, 61)
+        ]
+
+        with patch("core.base.parsers.logger") as mock_logger:
+            parser.pass_gallery_data_to_downloaders(galleries, defaultdict(list))
+            formatted = [
+                (c.args[0] % c.args[1:] if len(c.args) > 1 else str(c.args[0]))
+                for c in mock_logger.info.call_args_list
+                if c.args
+            ]
+
+        self.assertFalse(any("Working with gallery" in msg for msg in formatted))
+        self.assertTrue(any("Processing gallery 60 of 60 (100.0%)" in msg for msg in formatted))
+
+    @patch("workers.client.enqueue")
+    def test_crawler_split_attaches_shared_crawl_batch_metadata(self, mock_enqueue):
+        self.client.login(username="admin_batch_logs", password="testpassword")
+        resp = self.client.post(
+            reverse("viewer:crawler"),
+            data={
+                "urls": (
+                    "https://example.com/g/1\n"
+                    "https://example.com/g/2\n"
+                    "https://example.com/g/3\n"
+                    "https://example.com/g/4\n"
+                    "https://example.com/g/5"
+                ),
+                "split_size": "2",
+            },
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(mock_enqueue.call_count, 3)
+
+        batch_ids = set()
+        for idx, call in enumerate(mock_enqueue.call_args_list, start=1):
+            extra = call.kwargs.get("extra_options")
+            self.assertIsNotNone(extra)
+            batch_meta = extra["crawl_batch"]
+            batch_ids.add(batch_meta["id"])
+            self.assertEqual(batch_meta["index"], idx)
+            self.assertEqual(batch_meta["total"], 3)
+            self.assertEqual(batch_meta["total_links"], 5)
+            self.assertTrue(batch_meta["created_at"])
+        self.assertEqual(len(batch_ids), 1)
+
+    @patch("workers.client.enqueue")
+    def test_crawler_unsplit_does_not_attach_crawl_batch_metadata(self, mock_enqueue):
+        self.client.login(username="admin_batch_logs", password="testpassword")
+        resp = self.client.post(
+            reverse("viewer:crawler"),
+            data={
+                "urls": "https://example.com/g/1\nhttps://example.com/g/2",
+            },
+        )
+        self.assertEqual(resp.status_code, 302)
+        mock_enqueue.assert_called_once()
+        self.assertIsNone(mock_enqueue.call_args.kwargs.get("extra_options"))
+
+    def test_split_crawl_batch_groups_summary_logs_across_blocks(self):
+        """Split crawler tasks defer summary INFO logs and emit one grouped summary when the final block ends."""
+        from core.base.parsers import BaseParser
+        from core.base.types import GalleryData
+        from workers import client as worker_client
+        from workers.models import TaskQueue
+
+        batch_id = "batchtest123"
+        created_at_iso = django_tz.now().isoformat()
+
+        t1 = worker_client.enqueue(
+            args=["https://e-hentai.org/g/1/a/", "https://e-hentai.org/g/2/b/"],
+            task_type="web_crawler",
+            extra_options={
+                "crawl_batch": {
+                    "id": batch_id,
+                    "index": 1,
+                    "total": 2,
+                    "total_links": 4,
+                    "created_at": created_at_iso,
+                }
+            },
+        )
+        t2 = worker_client.enqueue(
+            args=["https://e-hentai.org/g/3/c/", "https://e-hentai.org/g/4/d/"],
+            task_type="web_crawler",
+            extra_options={
+                "crawl_batch": {
+                    "id": batch_id,
+                    "index": 2,
+                    "total": 2,
+                    "total_links": 4,
+                    "created_at": created_at_iso,
+                }
+            },
+        )
+
+        settings = Settings(load_from_disk=False)
+        runner = WorkerRunner(settings, enable_schedulers=False)
+
+        def fake_start_crawling(crawler_self, arg_line):
+            parser = BaseParser(crawler_self.settings)
+            parser.name = "panda"
+            parser.downloaders = []
+            parser.work_gallery_data = MagicMock()
+            if "https://e-hentai.org/g/1/a/" in arg_line:
+                parser.log_database_check_summary(total=2, existing=1, discarded=1, to_update=0)
+                parser.log_metadata_evaluation_summary(
+                    total_evaluated=1,
+                    accepted=1,
+                    matched_wanted=1,
+                    unmatched_wanted=0,
+                    banned=0,
+                    errors=0,
+                    wanted_filters=True,
+                    wanted_only=True,
+                )
+                g1 = GalleryData(gid="2", provider="panda", link="https://e-hentai.org/g/2/b/")
+                parser.pass_gallery_data_to_downloaders([g1], {"2": [MagicMock(pk=1)]})
+            else:
+                parser.log_database_check_summary(total=2, existing=0, discarded=0, to_update=0)
+                parser.log_metadata_evaluation_summary(
+                    total_evaluated=2,
+                    accepted=1,
+                    matched_wanted=1,
+                    unmatched_wanted=1,
+                    banned=0,
+                    errors=0,
+                    wanted_filters=True,
+                    wanted_only=True,
+                )
+                g2 = GalleryData(gid="3", provider="panda", link="https://e-hentai.org/g/3/c/")
+                parser.pass_gallery_data_to_downloaders([g2], {"3": [MagicMock(pk=2), MagicMock(pk=3)]})
+
+        with (
+            patch("core.web.crawler.WebCrawler.start_crawling", new=fake_start_crawling),
+            patch("workers.crawl_batch.logger") as mock_batch_logger,
+            patch("core.base.parsers.logger") as mock_parser_logger,
+        ):
+            # Run block 1: block 2 is still PENDING, so no grouped batch summary yet.
+            t1.status = TaskQueue.Status.PROCESSING
+            t1.save(update_fields=["status"])
+            runner.execute_job(t1)
+
+            self.assertEqual(mock_batch_logger.info.call_count, 0)
+            # Per-block DB/metadata summaries should not have been logged at INFO.
+            parser_info_msgs = [
+                (c.args[0] % c.args[1:] if len(c.args) > 1 else str(c.args[0]))
+                for c in mock_parser_logger.info.call_args_list
+                if c.args
+            ]
+            self.assertFalse(any("Database check for" in msg for msg in parser_info_msgs))
+            self.assertFalse(any("Metadata check for" in msg for msg in parser_info_msgs))
+
+            # Run block 2: now all blocks are COMPLETED -> grouped summary emitted once.
+            t2.status = TaskQueue.Status.PROCESSING
+            t2.save(update_fields=["status"])
+            runner.execute_job(t2)
+
+            batch_info_msgs = [
+                (c.args[0] % c.args[1:] if len(c.args) > 1 else str(c.args[0]))
+                for c in mock_batch_logger.info.call_args_list
+                if c.args
+            ]
+            self.assertTrue(
+                any("Crawl batch batchtest123 summary (2/2 blocks completed, 4 links):" in m for m in batch_info_msgs)
+            )
+            self.assertTrue(
+                any(
+                    "Crawl batch batchtest123 [panda] database check for 4 galleries: 1 existing (1 discarded, 0 to update), 3 new."
+                    in m
+                    for m in batch_info_msgs
+                )
+            )
+            self.assertTrue(
+                any(
+                    "Crawl batch batchtest123 [panda] metadata check for 3 galleries: 2 matched wanted filters, 1 skipped as non-matching (wanted-only mode)."
+                    in m
+                    for m in batch_info_msgs
+                )
+            )
+            self.assertTrue(
+                any(
+                    "Crawl batch batchtest123 [panda] WantedGallery matching complete: 2 galleries matched (3 total filter matches)."
+                    in m
+                    for m in batch_info_msgs
+                )
+            )
+            self.assertTrue(
+                any(
+                    "Crawl batch batchtest123 [panda] 2 galleries for downloaders (2 dispatched across 2 gallery_creator task(s))."
+                    in m
+                    for m in batch_info_msgs
+                )
+            )
+
+    def test_split_crawl_batch_emits_partial_summary_when_remaining_blocks_cancelled(self):
+        from core.base.parsers import BaseParser
+        from workers import client as worker_client
+        from workers.models import TaskQueue
+
+        batch_id = "batchcancel01"
+        created_at_iso = django_tz.now().isoformat()
+
+        t1 = worker_client.enqueue(
+            args=["https://e-hentai.org/g/10/a/"],
+            task_type="web_crawler",
+            extra_options={
+                "crawl_batch": {
+                    "id": batch_id,
+                    "index": 1,
+                    "total": 2,
+                    "total_links": 2,
+                    "created_at": created_at_iso,
+                }
+            },
+        )
+        t2 = worker_client.enqueue(
+            args=["https://e-hentai.org/g/11/b/"],
+            task_type="web_crawler",
+            extra_options={
+                "crawl_batch": {
+                    "id": batch_id,
+                    "index": 2,
+                    "total": 2,
+                    "total_links": 2,
+                    "created_at": created_at_iso,
+                }
+            },
+        )
+
+        settings = Settings(load_from_disk=False)
+        runner = WorkerRunner(settings, enable_schedulers=False)
+
+        def fake_start_crawling(crawler_self, arg_line):
+            parser = BaseParser(crawler_self.settings)
+            parser.name = "panda"
+            parser.log_database_check_summary(total=1, existing=0, discarded=0, to_update=0)
+
+        with (
+            patch("core.web.crawler.WebCrawler.start_crawling", new=fake_start_crawling),
+            patch("workers.crawl_batch.logger") as mock_batch_logger,
+        ):
+            t1.status = TaskQueue.Status.PROCESSING
+            t1.save(update_fields=["status"])
+            runner.execute_job(t1)
+            self.assertEqual(mock_batch_logger.info.call_count, 0)
+
+            # Cancelling the remaining pending block should emit the grouped summary once.
+            worker_client.cancel_by_id(t2.pk)
+            batch_info_msgs = [
+                (c.args[0] % c.args[1:] if len(c.args) > 1 else str(c.args[0]))
+                for c in mock_batch_logger.info.call_args_list
+                if c.args
+            ]
+            self.assertTrue(
+                any(
+                    "Crawl batch batchcancel01 summary (1/2 blocks completed, 1 cancelled, 2 links):" in m
+                    for m in batch_info_msgs
+                )
+            )
+            self.assertTrue(
+                any(
+                    "Crawl batch batchcancel01 [panda] database check for 1 galleries: 0 existing in database (all 1 new)."
+                    in m
+                    for m in batch_info_msgs
+                )
+            )
+
+    def test_split_crawl_batch_delayed_for_ban_does_not_emit_premature_summary(self):
+        from core.base.errors import ProviderBannedError
+        from workers import client as worker_client
+        from workers.models import TaskQueue
+
+        batch_id = "batchban01"
+        created_at_iso = django_tz.now().isoformat()
+
+        t1 = worker_client.enqueue(
+            args=["https://e-hentai.org/g/20/a/"],
+            task_type="web_crawler",
+            extra_options={
+                "crawl_batch": {
+                    "id": batch_id,
+                    "index": 1,
+                    "total": 1,
+                    "total_links": 1,
+                    "created_at": created_at_iso,
+                }
+            },
+        )
+
+        settings = Settings(load_from_disk=False)
+        runner = WorkerRunner(settings, enable_schedulers=False)
+
+        def fake_ban(crawler_self, arg_line):
+            raise ProviderBannedError("panda", 300.0, "temporarily banned")
+
+        with (
+            patch("core.web.crawler.WebCrawler.start_crawling", new=fake_ban),
+            patch("workers.crawl_batch.logger") as mock_batch_logger,
+        ):
+            t1.status = TaskQueue.Status.PROCESSING
+            t1.save(update_fields=["status"])
+            runner.execute_job(t1)
+            t1.refresh_from_db()
+            self.assertEqual(t1.status, TaskQueue.Status.PENDING)
+            self.assertEqual(mock_batch_logger.info.call_count, 0)

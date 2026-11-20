@@ -4,6 +4,7 @@ import logging
 import os.path
 import signal
 import typing
+import uuid
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -301,7 +302,7 @@ def stats_collection(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
-def queue_operations(request: HttpRequest, operation: str, arguments: str = "") -> HttpResponseRedirect:
+def queue_operations(request: HttpRequest, operation: str, arguments: str = "") -> HttpResponse:
 
     if not request.user.is_staff:
         return render_error(request, "You need to be an admin to operate the queue.")
@@ -1006,13 +1007,28 @@ def crawler(request: HttpRequest) -> HttpResponse:
             )
             chunks.append(chunk_args)
 
-        for chunk_args in chunks:
+        batch_id = uuid.uuid4().hex[:12] if len(chunks) > 1 else None
+        batch_created_at = timezone.now().isoformat() if len(chunks) > 1 else None
+
+        for idx, chunk_args in enumerate(chunks, start=1):
+            extra_options: dict[str, typing.Any] | None = None
+            if batch_id is not None:
+                extra_options = {
+                    "crawl_batch": {
+                        "id": batch_id,
+                        "index": idx,
+                        "total": len(chunks),
+                        "total_links": len(raw_links),
+                        "created_at": batch_created_at,
+                    }
+                }
             client.enqueue(
                 args=chunk_args,
                 task_type="web_crawler",
                 override_options=job_settings,
                 user=request.user,
                 priority=priority,
+                extra_options=extra_options,
             )
 
         if len(chunks) > 1:

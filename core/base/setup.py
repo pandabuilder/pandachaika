@@ -295,6 +295,7 @@ class Settings:
         self.activity_callback: typing.Callable[[], None] | None = None
         self.cancel_event: threading.Event | None = None
         self.is_cancelled: typing.Callable[[], bool] | None = None
+        self.crawl_batch_collector: Any = None
 
         # Config sections. Most top-level attributes below are stored on these models (see the
         # _ModelField declarations on the class), so there is a single source of truth per setting.

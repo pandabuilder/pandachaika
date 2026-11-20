@@ -1,0 +1,39 @@
+{% comment %}
+  Status of a queued worker task. While the task is pending or processing, this element asks the task status
+  endpoint for a fresh copy of itself (outerHTML swap) after poll_delay_ms. js/task_actions.js reloads the page once
+  it shows a completed task. Context comes from viewer.utils.task_actions.task_status_context.
+{% endcomment %}
+<span class="task-status d-inline-flex align-items-center gap-1"
+      data-task-state="{{ state }}"{% if task %} data-task-id="{{ task.pk }}"{% endif %}
+      {% if active %}hx-get="{{ status_url }}" hx-trigger="load delay:{{ poll_delay_ms }}ms, task-retry delay:10s" hx-swap="outerHTML" hx-target="this"{% endif %}>
+  {% if state == "pending" %}
+    <button class="btn btn-sm btn-outline-warning" type="button" disabled
+            title="Task #{{ task.pk }} is waiting for a worker">
+      <i class="fas fa-hourglass-half me-1"></i>{{ label }}: queued{% if not_before %} (delayed until {{ not_before|date:"H:i" }}){% elif ahead %} ({{ ahead }} ahead){% endif %}
+    </button>
+  {% elif state == "processing" %}
+    <button class="btn btn-sm btn-outline-warning" type="button" disabled title="Task #{{ task.pk }} is running">
+      <i class="fas fa-spinner fa-spin me-1"></i>{{ label }}...
+    </button>
+  {% elif state == "completed" %}
+    <button class="btn btn-sm btn-outline-success" type="button" data-task-reload title="Reload the page to see the changes">
+      <i class="fas fa-check me-1"></i>{{ done_label }}
+    </button>
+  {% elif state == "failed" %}
+    <button class="btn btn-sm btn-outline-danger" type="button" data-task-reload
+            title="{% if task.error_message %}{{ task.error_message }}{% else %}Task #{{ task.pk }} failed{% endif %}. Click to reload.">
+      <i class="fas fa-exclamation-triangle me-1"></i>{{ label }} failed
+    </button>
+  {% elif state == "cancelled" %}
+    <button class="btn btn-sm btn-outline-secondary" type="button" data-task-reload title="Task #{{ task.pk }} was cancelled. Click to reload.">
+      <i class="fas fa-ban me-1"></i>{{ label }} cancelled
+    </button>
+  {% else %}
+    <button class="btn btn-sm btn-outline-secondary" type="button" data-task-reload title="The task no longer exists. Click to reload.">
+      <i class="fas fa-question-circle me-1"></i>Task not found
+    </button>
+  {% endif %}
+  {% if active and not worker_running %}
+    <span class="badge bg-danger" title="No worker process is reporting a heartbeat, so the task won't run until one starts">No worker running</span>
+  {% endif %}
+</span>

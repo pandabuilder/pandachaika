@@ -28,6 +28,11 @@ All endpoints use the public JSON API at `/api/` (or `/jsearch/`, or slashless `
 | `?gs=` | `GET` | Filtered gallery search with downloadable archives (unpaginated) |
 | `?gsp=` | `GET` | Paginated gallery search with downloadable archives |
 | `?match=` | `GET` | Filtered gallery search for matching tools (includes container/parent relations) |
+| `?gid=<gid>` | `PUT` | Change gallery status (`deleted`, `denied`, `normal`) by provider GID |
+| `?gallery=<id>` | `PUT` | Change gallery status (`deleted`, `denied`, `normal`) by internal ID |
+| `?gid=<gid>` | `DELETE` | Queue deletion of archive(s) associated with a gallery by provider GID |
+| `?gallery=<id>` | `DELETE` | Queue deletion of archive(s) associated with a gallery by internal ID |
+| `?update-metadata=` | `POST` | Queue metadata update from upstream provider by `gid`, `gids`, `gallery`, or `archive` |
 
 ---
 
@@ -397,3 +402,120 @@ These query parameters can be passed to `g`, `gc`, `gs`, `gsp`, and `match`:
 | `thumbnail_url` | `string` | Remote provider thumbnail URL |
 | `tags` | `array[string]` | List of tags formatted as `scope:name` or `name` |
 | `archives` | `array[object]` | Downloadable archives associated with this gallery |
+
+---
+
+## 7. Change Gallery Status (`PUT ?gid=` / `PUT ?gallery=`)
+
+Changes a gallery's status to `"deleted"`, `"denied"`, or `"normal"`.
+
+- **Endpoint**: `/api/`
+- **Method**: `PUT`
+- **Permissions**:
+  - `status: "deleted"` or `"normal"` requires `viewer.mark_delete_gallery`
+  - `status: "denied"` requires `viewer.approve_gallery`
+  - Bearer tokens require the `write` scope.
+- **Identifiers**:
+  - `?gid=<gid>[&provider=<provider>]` (or `gid` / `provider` in JSON body)
+  - `?gallery=<id>` (or `id` / `gallery` in JSON body)
+- **JSON Body (or query params)**:
+  - `status` (`string`, required): `"deleted"`, `"denied"`, or `"normal"`.
+  - `reason` (`string`, optional): Reason recorded in the event log (max 200 chars).
+
+### Example Request
+```bash
+curl -X PUT "https://example.chaika.moe/api/?gid=1234567&provider=panda" \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"status": "deleted", "reason": "Removed via userscript"}'
+```
+
+### Response
+**Success (200 OK)**: Returns the updated gallery object (same schema as authenticated `GET ?gid=`) with `"result": "success"`.
+
+---
+
+## 8. Delete Archives by Gallery (`DELETE ?gid=` / `DELETE ?gallery=`)
+
+Queues background deletion (`delete_archive_worker`) for archive(s) associated with a gallery.
+
+- **Endpoint**: `/api/`
+- **Method**: `DELETE`
+- **Permissions**:
+  - Requires `viewer.delete_archive` (Bearer tokens require the `write` scope).
+  - Optional gallery flags additionally require:
+    - `mark_gallery_deleted`: `viewer.mark_delete_gallery`
+    - `mark_gallery_denied`: `viewer.approve_gallery`
+    - `delete_gallery`: `viewer.delete_gallery`
+- **Identifiers**:
+  - `?gid=<gid>[&provider=<provider>]` (or `gid` / `provider` in JSON body)
+  - `?gallery=<id>` (or `id` / `gallery` in JSON body)
+- **Options** (JSON body or query parameters; supports both `snake_case` and `kebab-case`):
+  - `delete_archive` (`bool`): Delete the archive database entry.
+  - `delete_file` (`bool`): Delete the associated file on disk.
+  - `delete_zipped` (`bool`): Delete the zip file on disk while preserving archive metadata and moving the archive to the Recycle Bin (overrides `delete_archive` and `delete_file`).
+  - *(If none of `delete_archive`, `delete_file`, `delete_zipped` are explicitly provided, defaults to `delete_archive=true` and `delete_file=true`.)*
+  - `mark_gallery_deleted` (`bool`): Mark the associated gallery as `deleted`.
+  - `mark_gallery_denied` (`bool`): Mark the associated gallery as `denied`.
+  - `delete_gallery` (`bool`): Permanently delete the associated gallery record.
+  - `archive_ids` (`array[integer]`, optional): Restrict deletion to specific archive IDs belonging to this gallery.
+  - `reason` (`string`, optional): Reason recorded in event logs / recycle bin (max 200 chars).
+
+### Example Request
+```bash
+curl -X DELETE "https://example.chaika.moe/api/?gid=1234567&provider=panda" \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"delete_archive": true, "delete_file": true, "mark_gallery_deleted": true, "reason": "Replaced"}'
+```
+
+### Response
+**Success (200 OK)**
+```json
+{
+  "archives": [42],
+  "gallery_action": "mark_deleted",
+  "gid": "1234567",
+  "id": 9636,
+  "provider": "panda",
+  "result": "success",
+  "task_ids": [512]
+}
+```
+
+---
+
+## 9. Update Gallery Metadata (`POST ?update-metadata=`)
+
+Enqueues a `gallery_updater` background task to refresh gallery metadata from the upstream provider and propagate changes to related archives.
+
+- **Endpoint**: `/api/`
+- **Method**: `POST`
+- **Permissions**: Requires `viewer.update_metadata` (Bearer tokens require the `write` scope).
+- **Identifiers** (query parameters or JSON body):
+  - `gid` (`string`) + optional `provider` (`string`): Single gallery by provider GID.
+  - `gids` (`array[string]` or repeatable query param) + optional `provider` (`string`): Multiple galleries by provider GID.
+  - `gallery` (`integer`): Single gallery by internal database ID.
+  - `archive` (`integer`): Refresh metadata for the gallery associated with this archive ID.
+  - `reason` (`string`, optional): Reason recorded on the task (max 200 chars).
+
+### Example Request
+```bash
+curl -X POST "https://example.chaika.moe/api/?update-metadata=&gid=1234567&provider=panda" \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"reason": "Refresh tags via userscript"}'
+```
+
+### Response
+**Success (200 OK)**
+```json
+{
+  "gid": "1234567",
+  "id": 9636,
+  "link": "https://exhentai.org/g/1234567/abcdef/",
+  "provider": "panda",
+  "result": "success",
+  "task_id": 513
+}
+```

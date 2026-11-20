@@ -378,11 +378,13 @@ class Parser(BaseParser):
             to_update=0,
         )
 
+        summary_log = logger.debug if getattr(self.settings, "crawl_batch_collector", None) is not None else logger.info
+
         if len(fetch_format_galleries) == 0:
-            logger.info("No galleries need downloading, returning.")
+            summary_log("No galleries need downloading, returning.")
             return
 
-        logger.info(
+        summary_log(
             "Queued %d galleries to fetch metadata (out of %d total).",
             len(fetch_format_galleries),
             len(unique_urls),

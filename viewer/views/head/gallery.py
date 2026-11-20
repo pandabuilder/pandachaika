@@ -27,7 +27,7 @@ from viewer.models import (
 )
 from viewer.utils.actions import event_log
 from viewer.utils.functions import gallery_search_results_to_json
-from viewer.utils.general import safe_redirect_back, should_use_refined_views
+from viewer.utils.general import safe_redirect_back
 from viewer.utils.tags import sort_tags
 from viewer.views.head.common import (
     crawler_settings,
@@ -39,7 +39,9 @@ from workers import client
 logger = logging.getLogger(__name__)
 
 
-def process_gallery_page(request: HttpRequest, gallery: Gallery, tool: str | None = None) -> HttpResponse:
+def process_gallery_page(
+    request: HttpRequest, gallery: Gallery, tool: str | None = None, view_style: str = "old"
+) -> HttpResponse:
 
     response = safe_redirect_back(request, gallery.get_absolute_url())
 
@@ -161,15 +163,13 @@ def process_gallery_page(request: HttpRequest, gallery: Gallery, tool: str | Non
         }
     )
 
-    template = (
-        "viewer/gallery_new.html"
-        if should_use_refined_views(request)
-        else "viewer/gallery_old.html"
-    )
+    template = "viewer/gallery_new.html" if view_style == "new" else "viewer/gallery_old.html"
     return render(request, template, d)
 
 
-def gallery_details_gid_provider(request: HttpRequest, tool: str | None = None) -> HttpResponse:
+def gallery_details_gid_provider(
+    request: HttpRequest, tool: str | None = None, view_style: str = "old"
+) -> HttpResponse:
     if "gid" in request.GET:
         gallery_gid = request.GET["gid"]
         qs = Gallery.objects.select_related("first_gallery", "parent_gallery", "magazine").prefetch_related(
@@ -188,10 +188,13 @@ def gallery_details_gid_provider(request: HttpRequest, tool: str | None = None) 
     if not (gallery.public or request.user.is_authenticated):
         raise Http404("Gallery does not exist")
 
-    return process_gallery_page(request, gallery, tool)
+    return process_gallery_page(request, gallery, tool, view_style)
 
 
-def gallery_details(request: HttpRequest, pk: int, tool: str | None = None) -> HttpResponse:
+def gallery_details(
+    request: HttpRequest, pk: int, tool: str | None = None, view_style: str = "old"
+) -> HttpResponse:
+    """Gallery details page. ``view_style`` works like in ``archive_details``."""
     try:
         gallery = (
             Gallery.objects.select_related("first_gallery", "parent_gallery", "magazine")
@@ -203,7 +206,7 @@ def gallery_details(request: HttpRequest, pk: int, tool: str | None = None) -> H
     if not (gallery.public or request.user.is_authenticated):
         raise Http404("Gallery does not exist")
 
-    return process_gallery_page(request, gallery, tool)
+    return process_gallery_page(request, gallery, tool, view_style)
 
 
 @login_required

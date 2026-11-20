@@ -19,13 +19,16 @@ from viewer.forms import (
 )
 from viewer.models import Archive, Profile, UserArchivePrefs
 from viewer.utils.general import get_safe_referer, safe_redirect_back
+from viewer.utils.task_actions import htmx_redirect, is_htmx
 from viewer.utils.types import AuthenticatedHttpRequest
 
 logger = logging.getLogger(__name__)
 
 
-def render_error(request: HttpRequest, message: str) -> HttpResponseRedirect:
+def render_error(request: HttpRequest, message: str) -> HttpResponse:
     messages.error(request, message)
+    if is_htmx(request):
+        return htmx_redirect(get_safe_referer(request, reverse("viewer:main-page")))
     return safe_redirect_back(request, reverse("viewer:main-page"))
 
 

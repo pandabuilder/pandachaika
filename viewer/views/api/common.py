@@ -5,9 +5,11 @@ from typing import Any
 
 from django.db.models import QuerySet
 from django.http.request import QueryDict
+from django.urls import reverse
 from django.utils import timezone as django_tz
 from django.utils.dateparse import parse_date, parse_datetime, parse_duration
 
+from core.base.utilities import str_to_int, timestamp_or_zero
 from viewer.models import ArchiveGroup, Category, Gallery, Provider, Tag, WantedGallery
 from viewer.views.head import gallery_filter_keys
 from viewer.views.api.filters import filter_galleries_no_request
@@ -36,9 +38,107 @@ def _get_int_from_data_or_body(data: QueryDict, key: str, body: dict) -> int:
     val = data.get(key)
     if val not in (None, ""):
         return _get_int(data, key)
-    if "id" in body and body["id"] not in (None, ""):
-        return int(body["id"])
+    if isinstance(body, dict):
+        if key in body and body[key] not in (None, ""):
+            return int(body[key])
+        if "id" in body and body["id"] not in (None, ""):
+            return int(body["id"])
     raise ValueError(f"Key {key} not found")
+
+
+def get_str_from_data_or_body(data: QueryDict, body: dict, *keys: str, default: str = "") -> str:
+    if isinstance(body, dict):
+        for key in keys:
+            if key in body and body[key] not in (None, ""):
+                return str(body[key]).strip()
+    for key in keys:
+        val = _get_str(data, key).strip()
+        if val:
+            return val
+    return default
+
+
+def parse_bool_from_data_or_body(
+    data: QueryDict, body: dict, *keys: str, default: bool = False
+) -> tuple[bool, bool]:
+    """Return (bool_value, was_explicitly_provided) checking JSON body first, then query params."""
+    if isinstance(body, dict):
+        for key in keys:
+            if key in body and body[key] is not None:
+                raw = body[key]
+                if isinstance(raw, bool):
+                    return raw, True
+                if isinstance(raw, (int, float)):
+                    return bool(raw), True
+                if isinstance(raw, str):
+                    lowered = raw.strip().lower()
+                    if lowered in ("1", "true", "yes", "on"):
+                        return True, True
+                    if lowered in ("0", "false", "no", "off", ""):
+                        return False, True
+                return bool(raw), True
+    for key in keys:
+        if key in data:
+            raw_str = _get_str(data, key).strip().lower()
+            if raw_str in ("0", "false", "no", "off"):
+                return False, True
+            return True, True
+    return default, False
+
+
+def get_gallery_by_gid(data: QueryDict, body: dict | None = None, gid_key: str = "gid") -> Gallery | None:
+    gid = _get_str(data, gid_key).strip()
+    if not gid and isinstance(body, dict) and body.get(gid_key) not in (None, ""):
+        gid = str(body[gid_key]).strip()
+    if not gid:
+        return None
+    provider = _get_str(data, "provider").strip()
+    if not provider and isinstance(body, dict) and body.get("provider") not in (None, ""):
+        provider = str(body["provider"]).strip()
+    if provider:
+        return Gallery.objects.filter_first(gid=gid, provider=provider)
+    return Gallery.objects.filter_first(gid=gid)
+
+
+def gallery_by_gid_to_json(gallery: Gallery, user_is_authenticated: bool) -> dict[str, Any]:
+    data: dict[str, Any] = {
+        "id": gallery.id,
+        "gid": gallery.gid,
+        "title": gallery.title,
+        "title_jpn": gallery.title_jpn,
+        "category": gallery.category,
+        "uploader": gallery.uploader,
+        "posted": int(timestamp_or_zero(gallery.posted)),
+        "filecount": gallery.filecount,
+        "filesize": gallery.filesize,
+        "expunged": gallery.expunged,
+        "disowned": gallery.disowned,
+        "hidden": gallery.hidden,
+        "replaced": gallery.is_replaced(),
+        "rating": float(str_to_int(gallery.rating)),
+        "fjord": gallery.fjord,
+        "link": gallery.get_link(),
+        "url": reverse("viewer:gallery", args=(gallery.pk,)),
+        "tags": gallery.tag_list(),
+        "archives": [
+            {
+                "id": archive.id,
+                "download": reverse("viewer:archive-download", args=(archive.pk,)),
+                "recycled": archive.is_recycled(),
+            }
+            for archive in gallery.archive_set.filter_by_authenticated_status(authenticated=user_is_authenticated)
+        ],
+    }
+    if user_is_authenticated:
+        data.update(
+            {
+                "status": gallery.get_status_display().lower(),
+                "public": gallery.public,
+                "origin": gallery.get_origin_display().lower(),
+                "create_date": int(timestamp_or_zero(gallery.create_date)),
+            }
+        )
+    return data
 
 
 def get_galleries_from_request(data: QueryDict, user_is_authenticated: bool) -> QuerySet[Gallery]:

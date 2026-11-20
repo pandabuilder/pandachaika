@@ -737,6 +737,14 @@ class UrlSettings(BaseConfigModel):
         default_factory=lambda: ["images_sha1_similarity", "images_phash_similarity"],
         description="List of mark reason identifiers visible to public viewers when enable_public_marks is true.",
     )
+    new_detail_views_as_default: bool = Field(
+        default=False,
+        description=(
+            "Serve the new archive and gallery detail pages at /archive/<id>/ and /gallery/<id>/; the old ones stay at "
+            "/archive_old/<id>/ and /gallery_old/<id>/. When false, /archive/ and /gallery/ show the old pages and the "
+            "new ones are at /archive_new/<id>/ and /gallery_new/<id>/. Read at startup: changing it needs a restart."
+        ),
+    )
     external_media_server: str = Field(
         default="",
         description="Base URL of an external CDN or media server used for offloading archive downloads.",
@@ -2597,6 +2605,13 @@ urls:
   public_mark_reasons:
     - images_sha1_similarity
     - images_phash_similarity
+
+  # Serve the new archive and gallery detail pages at /archive/<id>/ and /gallery/<id>/.
+  # The old ones stay at /archive_old/<id>/ and /gallery_old/<id>/. When false, /archive/ and /gallery/
+  # show the old pages and the new ones are at /archive_new/<id>/ and /gallery_new/<id>/.
+  # Read at startup: changing it needs a restart.
+  # Default: false
+  new_detail_views_as_default: false
 
   # Base URL of an external CDN or media server used to offload heavy archive downloads.
   # Default: ''

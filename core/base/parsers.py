@@ -555,10 +555,20 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
     ) -> None:
         if total == 0:
             return
+        collector = getattr(self.settings, "crawl_batch_collector", None)
+        if collector is not None:
+            collector.record_db_check(
+                provider=self.name,
+                total=total,
+                existing=existing,
+                discarded=discarded,
+                to_update=to_update,
+            )
         log = logger_override or getattr(sys.modules.get(self.__module__), "logger", None) or logging.getLogger(self.__module__)
+        emit = log.debug if collector is not None else log.info
         new_count = total - existing
         if existing > 0:
-            log.info(
+            emit(
                 "Database check for %d galleries: %d existing (%d discarded, %d to update), %d new.",
                 total,
                 existing,
@@ -567,7 +577,7 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
                 new_count,
             )
         else:
-            log.info(
+            emit(
                 "Database check for %d galleries: 0 existing in database (all %d new).",
                 total,
                 total,
@@ -587,12 +597,26 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
     ) -> None:
         if total_evaluated == 0:
             return
+        collector = getattr(self.settings, "crawl_batch_collector", None)
+        if collector is not None:
+            collector.record_metadata_check(
+                provider=self.name,
+                total_evaluated=total_evaluated,
+                accepted=accepted,
+                matched_wanted=matched_wanted,
+                unmatched_wanted=unmatched_wanted,
+                banned=banned,
+                errors=errors,
+                wanted_filters=wanted_filters,
+                wanted_only=wanted_only,
+            )
         log = logger_override or getattr(sys.modules.get(self.__module__), "logger", None) or logging.getLogger(self.__module__)
+        emit = log.debug if collector is not None else log.info
         extra_banned = f", {banned} discarded (banned data)" if banned else ""
         extra_errors = f", {errors} API/network errors" if errors else ""
         if wanted_filters:
             if wanted_only:
-                log.info(
+                emit(
                     "Metadata check for %d galleries: %d matched wanted filters, %d skipped as non-matching (wanted-only mode)%s%s.",
                     total_evaluated,
                     matched_wanted,
@@ -601,7 +625,7 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
                     extra_errors,
                 )
             else:
-                log.info(
+                emit(
                     "Metadata check for %d galleries: %d to process (%d matched wanted filters)%s%s.",
                     total_evaluated,
                     accepted,
@@ -610,7 +634,7 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
                     extra_errors,
                 )
         else:
-            log.info(
+            emit(
                 "Metadata check for %d galleries: %d to process%s%s.",
                 total_evaluated,
                 accepted,
@@ -625,26 +649,22 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
         force_provider: bool = False,
     ):
         gallery_count = len(gallery_data_list)
+        collector = getattr(self.settings, "crawl_batch_collector", None)
+        summary_log = logger.debug if collector is not None else logger.info
 
         total_matched_galleries = len(gallery_wanted_lists)
+        total_filter_matches = sum(len(flist) for flist in gallery_wanted_lists.values()) if total_matched_galleries > 0 else 0
         if total_matched_galleries > 0:
-            total_filter_matches = sum(len(flist) for flist in gallery_wanted_lists.values())
-            logger.info(
+            summary_log(
                 "WantedGallery matching complete: %d galleries matched (%d total filter matches).",
                 total_matched_galleries,
                 total_filter_matches,
             )
 
         if self.time_taken_wanted:
-            logger.info(
+            summary_log(
                 "Time taken to compare with WantedGallery: {} seconds.".format(int(self.time_taken_wanted + 0.5))
             )
-
-        if gallery_count == 0:
-            logger.info("No galleries need downloading, returning.")
-            return
-        else:
-            logger.info("{} galleries for downloaders to work with.".format(gallery_count))
 
         should_dispatch = (
             getattr(self.settings, "is_worker_process", False)
@@ -652,6 +672,21 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
             and getattr(self.settings, "dispatch_gallery_creation", True)
             and gallery_count > 0
         )
+
+        if collector is not None:
+            collector.record_download_dispatch(
+                provider=self.name,
+                gallery_count=gallery_count,
+                wanted_galleries_matched=total_matched_galleries,
+                wanted_filter_matches=total_filter_matches,
+                dispatched=should_dispatch,
+            )
+
+        if gallery_count == 0:
+            summary_log("No galleries need downloading, returning.")
+            return
+        else:
+            summary_log("{} galleries for downloaders to work with.".format(gallery_count))
 
         if should_dispatch:
             from workers import client as worker_client
@@ -676,7 +711,7 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
                 event_action=getattr(self.settings, "event_action", "") or "CRAWL",
                 priority=getattr(self.settings, "current_task_priority", 10),
             )
-            logger.info(
+            summary_log(
                 "Dispatched %d galleries to 'gallery_creator' task #%d to unlock web_crawler queue.",
                 gallery_count,
                 task.pk,
@@ -692,7 +727,6 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
 
         activity_cb = getattr(self.settings, "activity_callback", None)
         is_cancelled = getattr(self.settings, "is_cancelled", None)
-        is_bulk = gallery_count > 50 or self.settings.silent_processing
 
         for i, gallery in enumerate(gallery_data_list, start=1):
             if callable(is_cancelled) and is_cancelled():
@@ -715,14 +749,7 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
                     time.sleep(self.settings.wait_timer)
 
             if not self.settings.silent_processing:
-                if not is_bulk or i <= 50:
-                    logger.info("Working with gallery {} of {}".format(i, gallery_count))
-                elif i == 51:
-                    logger.info(
-                        "Processed 50 galleries so far. Suppressing further per-gallery logs for this batch (milestones will be logged)."
-                    )
-                elif i % 500 == 0 or i == gallery_count:
-                    logger.info("Processing gallery %d of %d (%.1f%%)", i, gallery_count, (i / gallery_count) * 100)
+                logger.info("Working with gallery {} of {}".format(i, gallery_count))
             elif i % 500 == 0 or i == gallery_count:
                 logger.info("Processing gallery %d of %d (%.1f%%)", i, gallery_count, (i / gallery_count) * 100)
 
@@ -730,7 +757,7 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
                 gallery.public = True
             self.work_gallery_data(gallery, gallery_wanted_lists, force_provider)
 
-        if is_bulk and not self.settings.silent_processing and gallery_count > 50:
+        if gallery_count > 50:
             logger.info("Finished processing all %d galleries for provider %s.", gallery_count, self.name)
 
     def work_gallery_data(

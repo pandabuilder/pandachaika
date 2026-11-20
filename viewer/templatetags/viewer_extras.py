@@ -16,6 +16,7 @@ from django.utils.safestring import SafeText, mark_safe
 from core.base.utilities import translate_tag, artist_from_title
 from viewer.models import Archive, Tag
 from viewer.utils.tags import sort_tags
+from viewer.utils.task_actions import task_status_context
 
 register = template.Library()
 
@@ -411,3 +412,9 @@ def event_action_class(action: str | None) -> str:
         if any(word.startswith(keyword) for word in words for keyword in keywords):
             return css_class
     return "bg-secondary"
+
+
+@register.inclusion_tag("viewer/include/task_status.html")
+def task_status(task: Any) -> dict[str, Any]:
+    """Polling status of a queued worker task (see viewer.utils.task_actions)."""
+    return task_status_context(task)

@@ -44,6 +44,10 @@ EXCLUDED_SETTINGS_ATTRIBUTES = {
     "activity_callback",
     "cancel_event",
     "is_cancelled",
+    "crawl_batch_collector",
+    "crawl_batch",
+    "crawl_batch_stats",
+    "crawl_batch_summary_logged",
     # Section models backing the top-level Settings attributes; those attributes are serialized by name
     # instead (see Settings.attribute_items), so credentials such as general_model.django_secret_key stay out.
     "general_model",

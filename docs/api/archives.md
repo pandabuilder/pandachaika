@@ -29,6 +29,7 @@ All endpoints use the public JSON API at `/api/` (or `/jsearch/`, or slashless `
 | `?q=<query>` | `GET` | Simple text/tag search returning compact objects |
 | `?as=` | `GET` | Archive search returning associated galleries with archives (sync/download) |
 | `?archive-wanted-image=<id>` | `GET` | Image match similarity against active wanted images *(auth required)* |
+| `?archive=<id>` | `DELETE` | Queue deletion of an archive by ID *(auth & `viewer.delete_archive` required)* |
 
 ---
 
@@ -473,3 +474,36 @@ These query parameters can be passed to `qa` and `as`:
 | `sort` | `string` | Sort field: `title`, `title_jpn`, `filesize`, `filecount`, `posted`, `public_date`, `create_date`, `reason`, `source_type`. |
 | `asc_desc` | `string` | `desc` for descending order, `asc` for ascending. Default is descending. |
 | `sort_by` | `string` (JSON) | Advanced multi-field sorting JSON: `[{"id": "public_date", "desc": true}]`. |
+
+---
+
+## 12. Delete Single Archive (`DELETE ?archive=<id>`)
+
+Queues a background `delete_archive_worker` task to delete an archive by its internal primary key.
+
+- **Endpoint**: `/api/`
+- **Method**: `DELETE`
+- **Permissions**:
+  - Requires `viewer.delete_archive` (Bearer tokens require the `write` scope).
+  - Optional gallery flags additionally require `viewer.mark_delete_gallery` (`mark_gallery_deleted`), `viewer.approve_gallery` (`mark_gallery_denied`), or `viewer.delete_gallery` (`delete_gallery`).
+- **Options** (JSON body or query parameters; supports `snake_case` and `kebab-case`):
+  - `delete_archive` (`bool`), `delete_file` (`bool`), `delete_zipped` (`bool`), `mark_gallery_deleted` (`bool`), `mark_gallery_denied` (`bool`), `delete_gallery` (`bool`), `reason` (`string`).
+  - Defaults to `delete_archive=true` and `delete_file=true` when none of `delete_archive`, `delete_file`, or `delete_zipped` are explicitly provided.
+
+### Example Request
+```bash
+curl -X DELETE "https://example.chaika.moe/api/?archive=42" \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"delete_zipped": true, "mark_gallery_deleted": true, "reason": "Duplicate"}'
+```
+
+### Response
+**Success (200 OK)**
+```json
+{
+  "id": 42,
+  "result": "success",
+  "task_id": 514
+}
+```

@@ -837,12 +837,15 @@ class Parser(BaseParser):
 
         self._load_pending_links(unique_urls)
 
+        batch_collector = getattr(self.settings, "crawl_batch_collector", None)
+        summary_log = logger.debug if batch_collector is not None else logger.info
+
         monitored_link = getattr(self.own_settings, "monitored_link", None) or getattr(self.settings, "monitored_link", None)
         ml_suffix = f" for monitored link '{monitored_link.name}'" if monitored_link and hasattr(monitored_link, "name") else ""
         if (len(unique_urls) > 0 or len(unique_page_urls) > 0 or skipped_invalid > 0) and (
             is_bulk or len(urls) > 1 or len(unique_urls) > 1
         ):
-            logger.info(
+            summary_log(
                 "Extracted %d unique gallery links (%d page links%s) from %d URLs for provider %s%s.",
                 len(unique_urls),
                 len(unique_page_urls),
@@ -902,7 +905,7 @@ class Parser(BaseParser):
                     )
 
         if len(fetch_format_galleries) > 0:
-            logger.info(
+            summary_log(
                 "Queued %d galleries to fetch metadata (out of %d total filtered).",
                 len(fetch_format_galleries),
                 len(total_galleries_filtered),
@@ -915,7 +918,7 @@ class Parser(BaseParser):
             fetch_format_galleries += page_links_results
 
         if len(fetch_format_galleries) == 0:
-            logger.info("No galleries need downloading, returning.")
+            summary_log("No galleries need downloading, returning.")
             return
 
         fetch_format_galleries_chunks = list(chunks(fetch_format_galleries, 25))

@@ -1,13 +1,15 @@
 import json
 import os
 import tempfile
+from unittest.mock import patch
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.test import TestCase
 from django.urls import reverse
 
-from viewer.models import ArchiveManageEntry, ArchiveTag, Tag
+from viewer.models import Archive, ArchiveManageEntry, ArchiveRecycleEntry, ArchiveTag, Tag, UserArchivePrefs
 from viewer.services.archive_selection import (
     ADMIN_FILTERS,
     ALL_FILTERS,
@@ -18,8 +20,9 @@ from viewer.services.archive_selection import (
     clean_filter,
     filter_archives,
 )
-from viewer.tests.factories import ArchiveFactory
+from viewer.tests.factories import ArchiveFactory, GalleryFactory
 from viewer.utils.dirbrowser import DirBrowser
+from workers.models import TaskQueue
 
 User = get_user_model()
 
@@ -109,6 +112,43 @@ class FilterArchivesTests(TestCase):
         self.assertEqual(
             self.ids(filter_archives({"recycled": "1"}, can_view_recycled=False)), {self.normal.pk, self.downloading.pk}
         )
+
+    def test_gallery_with_other_archives(self):
+        shared = GalleryFactory.create()
+        first = ArchiveFactory.create(gallery=shared, title="First")
+        second = ArchiveFactory.create(gallery=shared, title="Second")
+        with_recycled_twin = ArchiveFactory.create(title="Recycled twin")
+        ArchiveFactory.create(gallery=with_recycled_twin.gallery, title="Binned twin", binned=True)
+
+        self.assertEqual(self.ids(filter_archives({"gallery-other-archives": "1"})), {first.pk, second.pk})
+        # The binned twin itself shows up when listing the Recycle Bin, since its gallery has another archive.
+        self.assertEqual(
+            self.ids(filter_archives({"gallery-other-archives": "1", "recycled": "1"}, can_view_recycled=True)),
+            {Archive.objects.get(title="Binned twin").pk},
+        )
+
+    def test_recycled_and_file_deleted_are_three_way(self):
+        both = ArchiveFactory.create(gallery=None, title="Both", binned=True, file_deleted=True, crc32="DDDD0000")
+        visible = {self.normal.pk, self.downloading.pk}
+
+        def ids(**params):
+            return self.ids(filter_archives(params, can_view_recycled=True))
+
+        self.assertEqual(ids(recycled="0", file_deleted="0"), visible)
+        self.assertEqual(ids(recycled="1", file_deleted="any"), {self.binned.pk, both.pk})
+        self.assertEqual(ids(recycled="1", file_deleted="0"), {self.binned.pk})
+        self.assertEqual(ids(recycled="any", file_deleted="0"), visible | {self.binned.pk})
+        self.assertEqual(ids(recycled="any", file_deleted="1"), {self.deleted.pk, both.pk})
+        self.assertEqual(
+            ids(recycled="any", file_deleted="any"), visible | {self.binned.pk, self.deleted.pk, both.pk}
+        )
+        # Without the permission, "any" still hides them.
+        self.assertEqual(
+            self.ids(filter_archives({"recycled": "any", "file_deleted": "any"}, can_view_recycled=False)), visible
+        )
+        # The picker keeps "any" when cleaning the filter.
+        staff = make_user("s", staff=True)
+        self.assertEqual(clean_filter({"recycled": "any", "file_deleted": "0"}, staff), {"recycled": "any"})
 
     def test_filters_apply(self):
         self.assertEqual(self.ids(filter_archives({"title": "normal"})), {self.normal.pk})
@@ -203,6 +243,152 @@ class ArchiveManagerListingTests(TestCase):
         self.client.force_login(make_user("recycler", "manage_archive", "recycle_archive"))
         data = json.loads(self.client.get(url, {"json": "1", "recycled": "1"}).content)
         self.assertEqual([r["id"] for r in data["results"]], [binned.pk])
+
+    def test_run_for_all_uses_the_listing_filters(self):
+        shared = GalleryFactory.create()
+        twins = [ArchiveFactory.create(gallery=shared, title=f"Twin {n}") for n in (1, 2)]
+        single = ArchiveFactory.create(title="Single")
+        staff = make_user("staff", "manage_archive", "change_archive", staff=True)
+        self.client.force_login(staff)
+
+        url = reverse("viewer:archive-manager") + "?json=1&gallery-other-archives=1"
+        self.client.post(url, {"change_archive_reason": "1", "archive_reason": "dupe", "run_for_all": "1"})
+
+        self.assertEqual({a.reason for a in Archive.objects.filter(pk__in=[t.pk for t in twins])}, {"dupe"})
+        single.refresh_from_db()
+        self.assertNotEqual(single.reason, "dupe")
+
+    def test_only_favorites_uses_the_current_users_favorites(self):
+        mine = ArchiveFactory.create(gallery=None, title="Mine")
+        theirs = ArchiveFactory.create(gallery=None, title="Theirs")
+        ArchiveFactory.create(gallery=None, title="Nobody's")
+        manager = make_user("manager", "manage_archive")
+        other = make_user("other", "manage_archive")
+        UserArchivePrefs.objects.create(user=manager, archive=mine, favorite_group=1)
+        UserArchivePrefs.objects.create(user=manager, archive=theirs, favorite_group=0)  # Not a favorite.
+        UserArchivePrefs.objects.create(user=other, archive=theirs, favorite_group=1)
+        url = reverse("viewer:archive-manager")
+
+        self.client.force_login(manager)
+        data = json.loads(self.client.get(url, {"json": "1", "only_favorites": "1"}).content)
+        self.assertEqual([r["id"] for r in data["results"]], [mine.pk])
+
+        self.client.force_login(other)
+        data = json.loads(self.client.get(url, {"json": "1", "only_favorites": "1"}).content)
+        self.assertEqual([r["id"] for r in data["results"]], [theirs.pk])
+
+    def test_extract_context_info_and_action(self):
+        archive = ArchiveFactory.create(gallery=None, title="Extract me")
+        url = reverse("viewer:archive-manager")
+        extractor = settings.CRAWLER_SETTINGS.manga_extractor
+        plain = make_user("plain", "manage_archive")
+        extractor_user = make_user("extractor", "manage_archive", "extract_contextual_info")
+        action = {"extract_contextual_info": "1", f"sel-{archive.pk}": str(archive.pk), "profile": "default"}
+
+        with patch.object(extractor, "enable", False):
+            self.client.force_login(extractor_user)
+            data = json.loads(self.client.get(url, {"json": "1"}).content)
+            self.assertEqual(data["manga_extractor"], {"enabled": False, "profiles": [], "default_profile": ""})
+            response = self.client.post(url + "?json=1", action)
+            self.assertEqual(response.status_code, 400)
+
+        with patch.object(extractor, "enable", True):
+            self.client.force_login(plain)
+            data = json.loads(self.client.get(url, {"json": "1"}).content)
+            self.assertFalse(data["permissions"]["extract_contextual_info"])
+            self.assertEqual(data["manga_extractor"]["profiles"], [])
+
+            self.client.force_login(extractor_user)
+            data = json.loads(self.client.get(url, {"json": "1"}).content)
+            self.assertTrue(data["permissions"]["extract_contextual_info"])
+            self.assertTrue(data["manga_extractor"]["enabled"])
+            self.assertIn("default", [p["key"] for p in data["manga_extractor"]["profiles"]])
+
+            self.client.post(url + "?json=1", action)
+            task = TaskQueue.objects.get(task_type="contextual_extractor_worker")
+            self.assertEqual(task.args, [archive.pk])
+            self.assertEqual(task.options["manga_extractor_profile"], "default")
+
+    def test_delete_files_action_queues_delete_zipped(self):
+        archive = ArchiveFactory.create(gallery=None, title="To delete")
+        url = reverse("viewer:archive-manager") + "?json=1"
+        data = {
+            "delete_files_archives": "1",
+            f"sel-{archive.pk}": str(archive.pk),
+            "mark_delete_galleries": "1",
+            "reason": "duplicate",
+        }
+
+        self.client.force_login(make_user("manager", "manage_archive"))
+        self.client.post(url, data)
+        self.assertFalse(TaskQueue.objects.filter(task_type="delete_archive_worker").exists())
+
+        self.client.force_login(make_user("deleter", "manage_archive", "delete_archive", "mark_delete_gallery"))
+        self.client.post(url, data)
+        task = TaskQueue.objects.get(task_type="delete_archive_worker")
+        self.assertEqual(task.args, [archive.pk])
+        self.assertEqual(task.reason, "duplicate")
+        self.assertTrue(task.options["delete_zipped"])
+        self.assertFalse(task.options["delete_archive"])
+        self.assertFalse(task.options["delete_file"])
+        self.assertTrue(task.options["mark_gallery_deleted"])
+        self.assertFalse(task.options["delete_gallery"])
+        self.assertTrue(Archive.objects.filter(pk=archive.pk).exists())
+
+    def test_delete_zipped_worker_keeps_archive_and_recycles_it(self):
+        from core.base.setup import Settings
+        from core.workers.archive_work import ArchiveWorker
+
+        user = make_user("deleter", "manage_archive", "delete_archive")
+        archive = ArchiveFactory.create(gallery=None, title="To delete")
+        ArchiveWorker(Settings(load_from_disk=False), 4).delete_archive(
+            archive_id=archive.pk, delete_zipped=True, user_reason="duplicate", user=user, force_local=True
+        )
+
+        archive.refresh_from_db()
+        self.assertTrue(archive.binned)
+        self.assertTrue(archive.file_deleted)
+        self.assertEqual(archive.recycle_entry.reason, "duplicate")
+        self.assertEqual(archive.recycle_entry.user, user)
+
+    def test_json_listing_includes_recycle_info_for_recyclers(self):
+        recycler = make_user("recycler", "manage_archive", "recycle_archive")
+        binned = ArchiveFactory.create(gallery=None, title="Binned", binned=True)
+        ArchiveRecycleEntry.objects.create(archive=binned, reason="duplicate", user=recycler)
+        url = reverse("viewer:archive-manager")
+
+        self.client.force_login(recycler)
+        data = json.loads(self.client.get(url, {"json": "1", "recycled": "1"}).content)
+        [result] = data["results"]
+        self.assertTrue(result["binned"])
+        self.assertFalse(result["file_deleted"])
+        self.assertEqual(result["recycle_entry"]["reason"], "duplicate")
+        self.assertEqual(result["recycle_entry"]["user"], "recycler")
+        self.assertIsNotNone(result["recycle_entry"]["date"])
+
+    def test_json_listing_without_recycle_entry_row(self):
+        ArchiveFactory.create(gallery=None, title="Binned", binned=True)
+        self.client.force_login(make_user("recycler", "manage_archive", "recycle_archive"))
+        data = json.loads(
+            self.client.get(reverse("viewer:archive-manager"), {"json": "1", "recycled": "1"}).content
+        )
+        self.assertIsNone(data["results"][0]["recycle_entry"])
+
+    def test_json_listing_marks_require_view_marks(self):
+        archive = ArchiveFactory.create(gallery=None, title="Marked")
+        ArchiveManageEntry.objects.create(archive=archive, mark_reason="duplicate", mark_priority=1)
+        ArchiveManageEntry.objects.create(
+            archive=archive, mark_reason="hidden", status=ArchiveManageEntry.StatusChoices.NOT_INDEXED
+        )
+        url = reverse("viewer:archive-manager")
+
+        self.client.force_login(make_user("manager", "manage_archive"))
+        data = json.loads(self.client.get(url, {"json": "1"}).content)
+        self.assertEqual(data["results"][0]["manage_entries"], [])
+
+        self.client.force_login(make_user("viewer", "manage_archive", "view_marks"))
+        data = json.loads(self.client.get(url, {"json": "1"}).content)
+        self.assertEqual([m["mark_reason"] for m in data["results"][0]["manage_entries"]], ["duplicate"])
 
 
 class DirBrowserTests(TestCase):

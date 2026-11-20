@@ -37,6 +37,13 @@ from viewer.views.elasticsearch import (
 
 app_name = "viewer"
 
+# Template for /archive/<pk>/ and /gallery/<pk>/: the same as /archive_new/ and /gallery_new/, or as /archive_old/
+# and /gallery_old/. Read once when the URLconf loads, so changing urls.new_detail_views_as_default needs a restart.
+DEFAULT_DETAIL_VIEW_STYLE = "new" if settings.CRAWLER_SETTINGS.urls.new_detail_views_as_default else "old"
+_default_style = {"view_style": DEFAULT_DETAIL_VIEW_STYLE}
+_new_style = {"view_style": "new"}
+_old_style = {"view_style": "old"}
+
 
 class EditModeConverter:
     regex = "edit"
@@ -83,8 +90,12 @@ urlpatterns = [
     path("jsonapi/", api.json_parser, name="jsonapi"),
     re_path(r"^jsonapi$", api.json_parser, name="jsonapi-slashless"),
     path("admin-api/", api.json_parser, name="json-parser"),
-    path("archive/<int:pk>/", archive.archive_details, name="archive"),
-    path("archive/<int:pk>/<edit_mode:mode>/", archive.archive_details, name="archive-edit"),
+    path("archive/<int:pk>/", archive.archive_details, _default_style, name="archive"),
+    path("archive/<int:pk>/<edit_mode:mode>/", archive.archive_details, _default_style, name="archive-edit"),
+    path("archive_new/<int:pk>/", archive.archive_details, _new_style, name="archive-new"),
+    path("archive_new/<int:pk>/<edit_mode:mode>/", archive.archive_details, _new_style, name="archive-new-edit"),
+    path("archive_old/<int:pk>/", archive.archive_details, _old_style, name="archive-old"),
+    path("archive_old/<int:pk>/<edit_mode:mode>/", archive.archive_details, _old_style, name="archive-old-edit"),
     path("archive/<int:pk>/extract/", archive.extract, name="archive-extract"),
     path("archive/<int:pk>/reduce/", archive.reduce, name="archive-reduce"),
     path("archive/<int:pk>/public/", archive.public, name="archive-public"),
@@ -145,10 +156,12 @@ urlpatterns = [
     path("gallery/<int:pk>/thumb/", head.gallery_thumb, name="gallery-thumb"),
     path("gallery/<int:pk>/change-log/", gallery.change_log, name="gallery-change-log"),
     path("gallery-tool-reason/<int:pk>/<str:tool>/", head.gallery_enter_reason, name="gallery-tool-reason"),
-    path("gallery/<int:pk>/<str:tool>/", head.gallery_details, name="gallery-tool"),
-    path("gallery/<int:pk>/", head.gallery_details, name="gallery"),
-    path("gallery-find/<str:tool>/", head.gallery_details_gid_provider, name="gallery-find-tool"),
-    path("gallery-find/", head.gallery_details_gid_provider, name="gallery-find"),
+    path("gallery/<int:pk>/<str:tool>/", head.gallery_details, _default_style, name="gallery-tool"),
+    path("gallery/<int:pk>/", head.gallery_details, _default_style, name="gallery"),
+    path("gallery_new/<int:pk>/", head.gallery_details, _new_style, name="gallery-new"),
+    path("gallery_old/<int:pk>/", head.gallery_details, _old_style, name="gallery-old"),
+    path("gallery-find/<str:tool>/", head.gallery_details_gid_provider, _default_style, name="gallery-find-tool"),
+    path("gallery-find/", head.gallery_details_gid_provider, _default_style, name="gallery-find"),
     path("wanted-gallery/<int:pk>/", wanted.wanted_gallery, name="wanted-gallery"),
     path(
         "user-archive-preferences/<int:archive_pk>/<str:setting>/",
@@ -249,6 +262,7 @@ urlpatterns += [
     path("api/stats/", stats.stats_api, name="api-stats"),
     path("api/workers/status/", workers_dashboard.workers_status_api, name="api-workers-status"),
     path("api/workers/action/", workers_dashboard.workers_action_api, name="api-workers-action"),
+    path("api/tasks/<int:pk>/status/", workers_dashboard.task_status, name="task-status"),
     path("api/archive-picker/", archive_picker.archive_picker_api, name="api-archive-picker"),
     path(
         "api/archive-file-check/<int:pk>/",

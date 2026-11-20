@@ -89,13 +89,18 @@ All `POST`, `PUT`, and `DELETE` requests require an authenticated user with spec
 
 | Operation | Command Parameter | Required Django Permission |
 | :--- | :--- | :--- |
+| Queue Gallery Metadata Update | `POST ?update-metadata=` | `viewer.update_metadata` |
 | Create Archive Group | `POST ?archive-group=` | `viewer.change_archivegroup` |
 | Add Archive Group Entry | `POST ?archive-group-entry=<group_id>` | `viewer.change_archivegroupentry` |
 | Create Wanted Gallery | `POST ?wanted-gallery=` | `viewer.add_wantedgallery` |
+| Update Gallery Status (by GID or ID) | `PUT ?gid=<gid>` / `PUT ?gallery=<id>` | `viewer.mark_delete_gallery` (`deleted`/`normal`) or `viewer.approve_gallery` (`denied`) |
 | Update Archive Group | `PUT ?archive-group=<group_id>` | `viewer.change_archivegroup` |
 | Update Archive Group Entry | `PUT ?archive-group-entry=<entry_id>` | `viewer.change_archivegroupentry` |
+| Update Wanted Gallery | `PUT ?wanted-gallery=<id>` | `viewer.change_wantedgallery` |
+| Delete Archive (by Archive ID or Gallery GID/ID) | `DELETE ?archive=<id>` / `DELETE ?gid=<gid>` / `DELETE ?gallery=<id>` | `viewer.delete_archive` (plus gallery perms if gallery action flags are passed) |
 | Delete Archive Group | `DELETE ?archive-group=<group_id>` | `viewer.delete_archivegroup` |
 | Delete Archive Group Entry | `DELETE ?archive-group-entry=<entry_id>` | `viewer.delete_archivegroupentry` |
+| Delete Wanted Gallery | `DELETE ?wanted-gallery=<id>` | `viewer.delete_wantedgallery` |
 
 Requests without required permissions return `403 Forbidden`:
 ```json
@@ -174,6 +179,7 @@ Below is the complete list of available commands on `/api/` (and `/api`):
 ### POST Commands
 | Key | Target | Parameters | Permission | Description |
 | :--- | :--- | :--- | :--- | :--- |
+| `update-metadata` | Gallery | `?update-metadata=[&gid=<gid>&provider=<p>]` | `viewer.update_metadata` | Enqueue metadata update for gallery(ies) by `gid`, `gids`, `gallery`, or `archive` |
 | `archive-group` | ArchiveGroup | `?archive-group=` | `viewer.change_archivegroup` | Create archive group with initial entries |
 | `archive-group-entry` | ArchiveGroupEntry | `?archive-group-entry=<group_id>` | `viewer.change_archivegroupentry` | Append an entry to an archive group |
 | `wanted-gallery` | WantedGallery | `?wanted-gallery=` | `viewer.add_wantedgallery` | Create a new wanted gallery |
@@ -181,11 +187,18 @@ Below is the complete list of available commands on `/api/` (and `/api`):
 ### PUT Commands
 | Key | Target | Parameters | Permission | Description |
 | :--- | :--- | :--- | :--- | :--- |
+| `gid` | Gallery | `?gid=<gid>[&provider=<p>]` | `viewer.mark_delete_gallery` / `viewer.approve_gallery` | Change gallery status to `deleted`, `denied`, or `normal` |
+| `gallery` | Gallery | `?gallery=<id>` | `viewer.mark_delete_gallery` / `viewer.approve_gallery` | Change gallery status to `deleted`, `denied`, or `normal` by internal ID |
 | `archive-group` | ArchiveGroup | `?archive-group=<group_id>` | `viewer.change_archivegroup` | Update archive group metadata and entries |
 | `archive-group-entry` | ArchiveGroupEntry | `?archive-group-entry=<entry_id>` | `viewer.change_archivegroupentry` | Update an existing archive group entry |
+| `wanted-gallery` | WantedGallery | `?wanted-gallery=<id>` | `viewer.change_wantedgallery` | Update an existing wanted gallery |
 
 ### DELETE Commands
 | Key | Target | Parameters | Permission | Description |
 | :--- | :--- | :--- | :--- | :--- |
+| `archive` | Archive | `?archive=<id>` | `viewer.delete_archive` | Queue deletion of an archive (and optionally its file or gallery action) |
+| `gid` | Gallery/Archive | `?gid=<gid>[&provider=<p>]` | `viewer.delete_archive` | Queue deletion of archive(s) associated with a gallery by GID |
+| `gallery` | Gallery/Archive | `?gallery=<id>` | `viewer.delete_archive` | Queue deletion of archive(s) associated with a gallery by internal ID |
 | `archive-group` | ArchiveGroup | `?archive-group=<group_id>` | `viewer.delete_archivegroup` | Delete an archive group |
 | `archive-group-entry` | ArchiveGroupEntry | `?archive-group-entry=<entry_id>` | `viewer.delete_archivegroupentry` | Delete an archive group entry |
+| `wanted-gallery` | WantedGallery | `?wanted-gallery=<id>` | `viewer.delete_wantedgallery` | Delete a wanted gallery |

@@ -584,13 +584,13 @@ class MangaExtractorIntegrationTests(TestCase):
             self.client.logout()
 
             # archive_old.html
-            resp_old_anon = self.client.get(reverse("viewer:archive", args=[archive.pk]))
+            resp_old_anon = self.client.get(reverse("viewer:archive-old", args=[archive.pk]))
             self.assertEqual(resp_old_anon.status_code, 200)
             self.assertNotContains(resp_old_anon, "Contextual Metrics")
             self.assertNotContains(resp_old_anon, "total_pages")
 
             # archive_new.html
-            resp_new_anon = self.client.get(f"{reverse('viewer:archive', args=[archive.pk])}?view_style=new")
+            resp_new_anon = self.client.get(reverse("viewer:archive-new", args=[archive.pk]))
             self.assertEqual(resp_new_anon.status_code, 200)
             self.assertNotContains(resp_new_anon, "Contextual Metrics")
             self.assertNotContains(resp_new_anon, "total_pages")
@@ -605,14 +605,14 @@ class MangaExtractorIntegrationTests(TestCase):
             self.client.force_login(self.user)
 
             # archive_old.html
-            resp_old_auth = self.client.get(reverse("viewer:archive", args=[archive.pk]))
+            resp_old_auth = self.client.get(reverse("viewer:archive-old", args=[archive.pk]))
             self.assertEqual(resp_old_auth.status_code, 200)
             self.assertContains(resp_old_auth, "Contextual Metrics")
             self.assertContains(resp_old_auth, "total_pages")
             self.assertContains(resp_old_auth, "42")
 
             # archive_new.html
-            resp_new_auth = self.client.get(f"{reverse('viewer:archive', args=[archive.pk])}?view_style=new")
+            resp_new_auth = self.client.get(reverse("viewer:archive-new", args=[archive.pk]))
             self.assertEqual(resp_new_auth.status_code, 200)
             self.assertContains(resp_new_auth, "Contextual Metrics")
             self.assertContains(resp_new_auth, "total_pages")

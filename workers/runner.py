@@ -630,10 +630,30 @@ class WorkerRunner:
                     pass
 
     def execute_job(self, job: TaskQueue) -> None:
-        logger.info("Starting execution of Task #%d (%s), args: %s", job.pk, job.task_type, job.args)
+        crawl_batch = job.options.get("crawl_batch") if isinstance(job.options, dict) else None
+        batch_id = str(crawl_batch["id"]) if isinstance(crawl_batch, dict) and crawl_batch.get("id") else None
+        batch_created_at = (
+            str(crawl_batch["created_at"]) if isinstance(crawl_batch, dict) and crawl_batch.get("created_at") else None
+        )
+        if batch_id and isinstance(crawl_batch, dict):
+            logger.info(
+                "Starting execution of Task #%d (%s) [batch %s, block %s/%s], args: %s",
+                job.pk,
+                job.task_type,
+                batch_id,
+                crawl_batch.get("index", "?"),
+                crawl_batch.get("total", "?"),
+                job.args,
+            )
+        else:
+            logger.info("Starting execution of Task #%d (%s), args: %s", job.pk, job.task_type, job.args)
         job.refresh_from_db()
         if job.status == TaskQueue.Status.CANCELLED:
             logger.info("Task #%d was cancelled before execution started; skipping.", job.pk)
+            if batch_id:
+                from workers.crawl_batch import finalize_crawl_batch_if_done
+
+                finalize_crawl_batch_if_done(batch_id, batch_created_at)
             with self._jobs_lock:
                 self.active_jobs.pop(job.pk, None)
                 self.active_job_activity.pop(job.pk, None)
@@ -653,6 +673,8 @@ class WorkerRunner:
         start_time = time.time()
         set_task_hooks(lambda: self.touch_job_activity(job.pk), lambda: cancel_ev is not None and cancel_ev.is_set())
 
+        batch_collector = None
+        delayed_for_ban = False
         try:
             current_settings = deserialize_settings_options(self.settings, job.options)
             current_settings.activity_callback = lambda: self.touch_job_activity(job.pk)
@@ -670,6 +692,11 @@ class WorkerRunner:
                 current_settings.event_action = job.event_action
 
             if job.task_type in ("web_crawler", "webcrawler"):
+                if batch_id:
+                    from workers.crawl_batch import CrawlBatchCollector
+
+                    batch_collector = CrawlBatchCollector(batch_id)
+                    current_settings.crawl_batch_collector = batch_collector
                 crawler = WebCrawler(current_settings)
                 crawler.start_crawling(job.args)
             elif job.task_type in ("gallery_creator", "gallery_worker", "create_galleries"):
@@ -905,6 +932,7 @@ class WorkerRunner:
             duration = time.time() - start_time
             logger.info("Task #%d stopped promptly due to cancellation (%.2fs): %s", job.pk, duration, e)
         except ProviderBannedError as e:
+            delayed_for_ban = True
             self.delay_banned_job(job, e)
         except Exception as e:
             duration = time.time() - start_time
@@ -920,6 +948,15 @@ class WorkerRunner:
             except Exception:
                 logger.critical("Failed to save error state for Task #%d", job.pk)
         finally:
+            if batch_id and not delayed_for_ban:
+                try:
+                    from workers.crawl_batch import finalize_crawl_batch_if_done, record_task_batch_stats
+
+                    if batch_collector is not None:
+                        record_task_batch_stats(job.pk, batch_collector)
+                    finalize_crawl_batch_if_done(batch_id, batch_created_at)
+                except Exception:
+                    logger.warning("Failed to finalize crawl batch %s after Task #%d", batch_id, job.pk, exc_info=True)
             clear_task_hooks()
             with self._jobs_lock:
                 self.active_jobs.pop(job.pk, None)

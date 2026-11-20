@@ -1,10 +1,6 @@
 import re
-from typing import TYPE_CHECKING
 from django.http import HttpRequest, HttpResponseRedirect, QueryDict
 from django.utils.http import url_has_allowed_host_and_scheme
-
-if TYPE_CHECKING:
-    from core.base.setup import Settings
 
 
 def valid_sha1_string(s: str) -> bool:
@@ -33,15 +29,6 @@ def get_safe_referer(request: HttpRequest, fallback: str) -> str:
 def safe_redirect_back(request: HttpRequest, fallback: str) -> HttpResponseRedirect:
     """Redirect to the page the request came from, or to ``fallback`` (see ``get_safe_referer``)."""
     return HttpResponseRedirect(get_safe_referer(request, fallback))
-
-
-def should_use_refined_views(request: HttpRequest, crawler_settings: "Settings | None" = None) -> bool:
-    """Determine whether to use the refined archive/gallery templates.
-
-    Refined views are accessed exclusively via the 'view_style=new' GET parameter.
-    Otherwise, the default legacy/old templates are used.
-    """
-    return request.GET.get("view_style") == "new"
 
 
 PAGE_SIZE_OPTIONS = (25, 50, 100, 200, 500)

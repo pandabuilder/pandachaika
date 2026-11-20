@@ -6,7 +6,7 @@ stages:
 
 variables:
   UV_CACHE_DIR: "$CI_PROJECT_DIR/.cache/uv"
-  PYTHON_VERSION: "3.13"
+  PYTHON_VERSION: "3.14"
   FF_TIMESTAMPS: true
 
 # Skip the whole pipeline when the only change is TODO.md.

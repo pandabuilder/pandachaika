@@ -818,6 +818,13 @@ urls:
     - images_sha1_similarity
     - images_phash_similarity
 
+  # Serve the new archive and gallery detail pages at /archive/<id>/ and /gallery/<id>/.
+  # The old ones stay at /archive_old/<id>/ and /gallery_old/<id>/. When false, /archive/ and /gallery/
+  # show the old pages and the new ones are at /archive_new/<id>/ and /gallery_new/<id>/.
+  # Read at startup: changing it needs a restart.
+  # Default: false
+  new_detail_views_as_default: false
+
   # Base URL of an external CDN or media server used to offload heavy archive downloads.
   # Default: ''
   external_media_server: ''

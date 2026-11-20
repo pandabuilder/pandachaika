@@ -5,6 +5,7 @@ from collections.abc import Iterable
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.db.models import Q
 import django.utils.timezone as django_tz
 
 from workers.models import TaskQueue, WorkerProcess
@@ -249,11 +250,28 @@ def remove_by_index(index: int, task_type: str | None = None) -> bool:
 
 def cancel_by_id(task_id: int) -> bool:
     """Cancel a pending or processing task by its primary key."""
+    batch_info: tuple[str, str | None] | None = None
     with transaction.atomic():
+        task = TaskQueue.objects.filter(
+            pk=task_id, status__in=[TaskQueue.Status.PENDING, TaskQueue.Status.PROCESSING]
+        ).first()
+        if not task:
+            return False
+        if isinstance(task.options, dict):
+            crawl_batch = task.options.get("crawl_batch")
+            if isinstance(crawl_batch, dict) and crawl_batch.get("id"):
+                batch_info = (
+                    str(crawl_batch["id"]),
+                    str(crawl_batch["created_at"]) if crawl_batch.get("created_at") else None,
+                )
         updated = TaskQueue.objects.filter(
             pk=task_id, status__in=[TaskQueue.Status.PENDING, TaskQueue.Status.PROCESSING]
         ).update(status=TaskQueue.Status.CANCELLED, finished_at=django_tz.now())
-        return updated > 0
+    if updated > 0 and batch_info is not None:
+        from workers.crawl_batch import finalize_crawl_batch_if_done
+
+        finalize_crawl_batch_if_done(batch_info[0], batch_info[1])
+    return updated > 0
 
 
 def clear_pending_tasks(task_type: str | None = None, mode: str = "delete") -> int:
@@ -264,10 +282,25 @@ def clear_pending_tasks(task_type: str | None = None, mode: str = "delete") -> i
     qs = TaskQueue.objects.filter(status=TaskQueue.Status.PENDING)
     if task_type and task_type != "all":
         qs = qs.filter(task_type__in=get_task_type_aliases(task_type))
+    affected_batches: dict[str, str | None] = {}
+    for opts in qs.values_list("options", flat=True):
+        if isinstance(opts, dict):
+            crawl_batch = opts.get("crawl_batch")
+            if isinstance(crawl_batch, dict) and crawl_batch.get("id"):
+                bid = str(crawl_batch["id"])
+                affected_batches.setdefault(
+                    bid, str(crawl_batch["created_at"]) if crawl_batch.get("created_at") else None
+                )
     if mode == "cancel":
-        return qs.update(status=TaskQueue.Status.CANCELLED, finished_at=django_tz.now())
-    deleted, _ = qs.delete()
-    return deleted
+        affected = qs.update(status=TaskQueue.Status.CANCELLED, finished_at=django_tz.now())
+    else:
+        affected, _ = qs.delete()
+    if affected > 0 and affected_batches:
+        from workers.crawl_batch import finalize_crawl_batch_if_done
+
+        for bid, created_at_hint in affected_batches.items():
+            finalize_crawl_batch_if_done(bid, created_at_hint)
+    return affected
 
 
 def is_worker_running(threshold_seconds: int = 30) -> bool:
@@ -275,19 +308,63 @@ def is_worker_running(threshold_seconds: int = 30) -> bool:
     return WorkerProcess.is_any_worker_running(threshold_seconds=threshold_seconds)
 
 
-def is_archive_task_active(archive_pk: int, task_type: str) -> bool:
-    """Check if a task of given type for the archive PK is currently pending or processing."""
+def get_active_archive_tasks(archive_pk: int, task_types: dict[str, str]) -> dict[str, TaskQueue]:
+    """Find the pending or processing task for an archive PK, for each of several task types, in one query.
+
+    ``task_types`` maps a caller-chosen key to a task_type (aliases are matched too). The result has an entry only
+    for the keys that have an active task; a processing task wins over a pending one.
+    """
+    key_by_type: dict[str, list[str]] = {}
+    for key, task_type in task_types.items():
+        for alias in get_task_type_aliases(task_type):
+            key_by_type.setdefault(alias, []).append(key)
+    if not key_by_type:
+        return {}
+
     active_tasks = TaskQueue.objects.filter(
         status__in=[TaskQueue.Status.PENDING, TaskQueue.Status.PROCESSING],
-        task_type__in=get_task_type_aliases(task_type),
-    ).values_list("args", flat=True)
+        task_type__in=key_by_type.keys(),
+    ).order_by("priority", "created_at", "id")
     target_str = str(archive_pk)
-    for task_args in active_tasks:
-        if isinstance(task_args, list):
-            for arg in task_args:
-                if arg == archive_pk or str(arg) == target_str:
-                    return True
-    return False
+    found: dict[str, TaskQueue] = {}
+    for task in active_tasks:
+        if not isinstance(task.args, list) or not any(arg == archive_pk or str(arg) == target_str for arg in task.args):
+            continue
+        for key in key_by_type[task.task_type]:
+            current = found.get(key)
+            if current is None or (
+                current.status != TaskQueue.Status.PROCESSING and task.status == TaskQueue.Status.PROCESSING
+            ):
+                found[key] = task
+    return found
+
+
+def get_active_archive_task(archive_pk: int, task_type: str) -> TaskQueue | None:
+    """Return the pending or processing task of the given type for the archive PK, if any."""
+    return get_active_archive_tasks(archive_pk, {task_type: task_type}).get(task_type)
+
+
+def is_archive_task_active(archive_pk: int, task_type: str) -> bool:
+    """Check if a task of given type for the archive PK is currently pending or processing."""
+    return get_active_archive_task(archive_pk, task_type) is not None
+
+
+def tasks_ahead(task: TaskQueue) -> int:
+    """Number of pending tasks in the same queue that will start before the given pending task."""
+    if task.status != TaskQueue.Status.PENDING:
+        return 0
+    return (
+        TaskQueue.objects.filter(
+            status=TaskQueue.Status.PENDING,
+            task_type__in=get_task_type_aliases(task.task_type),
+        )
+        .filter(
+            Q(priority__lt=task.priority)
+            | Q(priority=task.priority, created_at__lt=task.created_at)
+            | Q(priority=task.priority, created_at=task.created_at, pk__lt=task.pk)
+        )
+        .count()
+    )
 
 
 def is_archive_extracting(archive_pk: int) -> bool:

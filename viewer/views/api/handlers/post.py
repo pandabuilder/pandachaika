@@ -12,14 +12,19 @@ from viewer.models import (
     Archive,
     ArchiveGroup,
     ArchiveGroupEntry,
+    Gallery,
     WantedGallery,
 )
 from viewer.utils.functions import archive_group_entry_to_json
 from viewer.views.api.common import (
     _get_int,
+    _get_str,
     apply_wanted_gallery_fields,
     apply_wanted_gallery_m2m_fields,
+    get_gallery_by_gid,
+    get_str_from_data_or_body,
 )
+from workers import client
 
 logger = logging.getLogger(__name__)
 
@@ -142,4 +147,168 @@ def handle_post_wanted_gallery(request: HttpRequest, data: QueryDict, body: dict
             json.dumps({"result": f"Error creating WantedGallery: {str(e)}"}),
             content_type="application/json; charset=utf-8",
         )
+
+
+def handle_post_update_metadata(
+    request: HttpRequest, data: QueryDict, body: dict, user: User | AnonymousUser | None
+):
+    reason = get_str_from_data_or_body(data, body, "reason")[:200]
+    provider = get_str_from_data_or_body(data, body, "provider")
+
+    # 1. Batch lookup by gids (query param ?gids=1&gids=2 or JSON body {"gids": [...]})
+    raw_gids: list[str] = []
+    if isinstance(body, dict) and "gids" in body and body["gids"] is not None:
+        if isinstance(body["gids"], list):
+            raw_gids = [str(g).strip() for g in body["gids"] if str(g).strip()]
+        elif isinstance(body["gids"], str):
+            raw_gids = [g.strip() for g in body["gids"].split(",") if g.strip()]
+    elif "gids" in data:
+        raw_gids = [g.strip() for g in data.getlist("gids") if g.strip()]
+
+    if raw_gids:
+        galleries: list[Gallery] = []
+        seen_pks: set[int] = set()
+        for gid_val in raw_gids:
+            if provider:
+                g = Gallery.objects.filter_first(gid=gid_val, provider=provider)
+            else:
+                g = Gallery.objects.filter_first(gid=gid_val)
+            if g and g.pk not in seen_pks:
+                seen_pks.add(g.pk)
+                galleries.append(g)
+
+        if not galleries:
+            return HttpResponseNotFound(
+                json.dumps({"result": "Gallery does not exist."}),
+                content_type="application/json; charset=utf-8",
+            )
+
+        valid_galleries = [g for g in galleries if g.provider]
+        if not valid_galleries:
+            return HttpResponseBadRequest(
+                json.dumps({"result": "No galleries with a provider to update."}),
+                content_type="application/json; charset=utf-8",
+            )
+
+        links = [g.get_link() for g in valid_galleries]
+        task = client.enqueue_gallery_update(
+            links,
+            user=user,
+            reason=reason or None,
+            override_options={"gallery_reason": reason} if reason else None,
+        )
+        logger.info(
+            "User %s: queued metadata update via API for %d gallery(ies) (task #%d)",
+            getattr(user, "username", "anonymous"),
+            len(valid_galleries),
+            task.pk,
+        )
+        return HttpResponse(
+            json.dumps(
+                {
+                    "result": "success",
+                    "count": len(valid_galleries),
+                    "task_id": task.pk,
+                    "galleries": [
+                        {
+                            "id": g.pk,
+                            "gid": g.gid,
+                            "provider": g.provider,
+                            "link": g.get_link(),
+                        }
+                        for g in valid_galleries
+                    ],
+                },
+                sort_keys=True,
+                ensure_ascii=False,
+            ),
+            content_type="application/json; charset=utf-8",
+        )
+
+    # 2. Single gallery lookup by gid, gallery ID, or archive ID
+    gallery: Gallery | None = None
+    has_gid = bool(_get_str(data, "gid").strip()) or (
+        isinstance(body, dict) and body.get("gid") not in (None, "")
+    )
+    has_gallery_id = bool(_get_str(data, "gallery").strip()) or (
+        isinstance(body, dict) and (body.get("gallery") not in (None, "") or body.get("id") not in (None, ""))
+    )
+    has_archive_id = bool(_get_str(data, "archive").strip()) or (
+        isinstance(body, dict) and body.get("archive") not in (None, "")
+    )
+
+    if has_gid:
+        gallery = get_gallery_by_gid(data, body)
+        if not gallery:
+            return HttpResponseNotFound(
+                json.dumps({"result": "Gallery does not exist."}),
+                content_type="application/json; charset=utf-8",
+            )
+    elif has_gallery_id:
+        raw_gallery_id = _get_str(data, "gallery").strip()
+        if not raw_gallery_id and isinstance(body, dict):
+            raw_gallery_id = str(body.get("gallery") if body.get("gallery") not in (None, "") else body.get("id", ""))
+        try:
+            gallery = Gallery.objects.get(pk=int(raw_gallery_id))
+        except (ValueError, TypeError, Gallery.DoesNotExist):
+            return HttpResponseNotFound(
+                json.dumps({"result": "Gallery does not exist."}),
+                content_type="application/json; charset=utf-8",
+            )
+    elif has_archive_id:
+        raw_archive_id = _get_str(data, "archive").strip()
+        if not raw_archive_id and isinstance(body, dict):
+            raw_archive_id = str(body.get("archive", ""))
+        try:
+            archive = Archive.objects.select_related("gallery").get(pk=int(raw_archive_id))
+        except (ValueError, TypeError, Archive.DoesNotExist):
+            return HttpResponseNotFound(
+                json.dumps({"result": "Archive does not exist."}),
+                content_type="application/json; charset=utf-8",
+            )
+        if not archive.gallery:
+            return HttpResponseBadRequest(
+                json.dumps({"result": "No gallery associated with this archive."}),
+                content_type="application/json; charset=utf-8",
+            )
+        gallery = archive.gallery
+    else:
+        return HttpResponseBadRequest(
+            json.dumps({"result": "Missing gallery identifier (gid, gids, gallery, or archive)."}),
+            content_type="application/json; charset=utf-8",
+        )
+
+    if not gallery.provider:
+        return HttpResponseBadRequest(
+            json.dumps({"result": "Gallery has no provider."}),
+            content_type="application/json; charset=utf-8",
+        )
+
+    link = gallery.get_link()
+    task = client.enqueue_gallery_update(
+        [link],
+        user=user,
+        reason=reason or None,
+        override_options={"gallery_reason": reason} if reason else None,
+    )
+    logger.info(
+        "Updating gallery API data for gallery: %s and related archives (task #%d)",
+        gallery.get_absolute_url(),
+        task.pk,
+    )
+    return HttpResponse(
+        json.dumps(
+            {
+                "result": "success",
+                "id": gallery.pk,
+                "gid": gallery.gid,
+                "provider": gallery.provider,
+                "link": link,
+                "task_id": task.pk,
+            },
+            sort_keys=True,
+            ensure_ascii=False,
+        ),
+        content_type="application/json; charset=utf-8",
+    )
 

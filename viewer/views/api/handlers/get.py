@@ -36,7 +36,7 @@ from viewer.views.head import (
     wanted_gallery_filter_keys,
     filter_wanted_galleries_simple,
 )
-from viewer.views.api.common import _get_int, _get_str, get_galleries_from_request
+from viewer.views.api.common import _get_int, _get_str, gallery_by_gid_to_json, get_galleries_from_request
 from viewer.views.api.filters import filter_galleries_no_request, simple_archive_filter
 
 ACCEPTED_PER_PAGE = [24, 48, 100, 200, 300]
@@ -311,44 +311,7 @@ def handle_get_gallery(request: HttpRequest, data: QueryDict, user_is_authentica
 
 
 def _gallery_by_gid_to_json(gallery: Gallery, user_is_authenticated: bool) -> dict[str, Any]:
-    data: dict[str, Any] = {
-        "id": gallery.id,
-        "gid": gallery.gid,
-        "title": gallery.title,
-        "title_jpn": gallery.title_jpn,
-        "category": gallery.category,
-        "uploader": gallery.uploader,
-        "posted": int(timestamp_or_zero(gallery.posted)),
-        "filecount": gallery.filecount,
-        "filesize": gallery.filesize,
-        "expunged": gallery.expunged,
-        "disowned": gallery.disowned,
-        "hidden": gallery.hidden,
-        "replaced": gallery.is_replaced(),
-        "rating": float(str_to_int(gallery.rating)),
-        "fjord": gallery.fjord,
-        "link": gallery.get_link(),
-        "url": reverse("viewer:gallery", args=(gallery.pk,)),
-        "tags": gallery.tag_list(),
-        "archives": [
-            {
-                "id": archive.id,
-                "download": reverse("viewer:archive-download", args=(archive.pk,)),
-                "recycled": archive.is_recycled(),
-            }
-            for archive in gallery.archive_set.filter_by_authenticated_status(authenticated=user_is_authenticated)
-        ],
-    }
-    if user_is_authenticated:
-        data.update(
-            {
-                "status": gallery.get_status_display().lower(),
-                "public": gallery.public,
-                "origin": gallery.get_origin_display().lower(),
-                "create_date": int(timestamp_or_zero(gallery.create_date)),
-            }
-        )
-    return data
+    return gallery_by_gid_to_json(gallery, user_is_authenticated)
 
 
 def _gallery_for_gid(data: QueryDict, gallery_gid: str | list[object]) -> Gallery | None:
